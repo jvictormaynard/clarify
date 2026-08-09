@@ -98,6 +98,19 @@ class RepositorySafetyTests(unittest.TestCase):
         self.assertIn('"requirements-lock-windows.txt"', content)
         self.assertIn('"Could not install the pinned bootstrap tools."', content)
 
+    def test_pre_commit_hook_formats_only_staged_python_files(self):
+        hook = (ROOT / ".githooks" / "pre-commit").read_text(encoding="utf-8")
+        formatter = (ROOT / "scripts" / "format_staged.py").read_text(encoding="utf-8")
+        package = (ROOT / "package.json").read_text(encoding="utf-8")
+        setup = (ROOT / "scripts" / "setup.ps1").read_text(encoding="utf-8")
+        self.assertIn("scripts/format_staged.py", hook)
+        self.assertIn('"--cached"', formatter)
+        self.assertIn('"--diff-filter=ACMR"', formatter)
+        self.assertIn('"format", "--force-exclude"', formatter)
+        self.assertIn('"add", "--"', formatter)
+        self.assertIn('"setup-hooks": "git config core.hooksPath .githooks"', package)
+        self.assertIn('"config", "core.hooksPath", ".githooks"', setup)
+
     def test_release_publishes_verified_sox_source(self):
         content = (ROOT / ".github" / "workflows" / "release.yml").read_text(
             encoding="utf-8"
@@ -107,6 +120,26 @@ class RepositorySafetyTests(unittest.TestCase):
             "b45f598643ffbd8e363ff24d61166ccec4836fea6d3888881b8df53e3bb55f6c",
             content,
         )
+
+    def test_community_release_is_unsigned_portable_only(self):
+        content = (ROOT / ".github" / "workflows" / "community-release.yml").read_text(
+            encoding="utf-8"
+        )
+        for required in (
+            "name: Community Release",
+            "Build unsigned portable release",
+            "ClarifyVoice.exe.sha256",
+            "ClarifyVoice.sbom.json",
+            "ClarifyVoice-windows-x64.zip",
+            "sox-14.4.2-source.tar.gz",
+            "actions/attest-build-provenance@",
+            "Publish unsigned community release",
+        ):
+            self.assertIn(required, content)
+        self.assertNotIn("azure/login", content)
+        self.assertNotIn("azure/artifact-signing-action", content)
+        self.assertNotIn("ClarifyVoice-windows-x64.msi", content)
+        self.assertNotIn("release-manifest", content)
 
     def test_release_requires_managed_signing_and_provenance(self):
         content = (ROOT / ".github" / "workflows" / "release.yml").read_text(
@@ -263,7 +296,15 @@ class RepositorySafetyTests(unittest.TestCase):
         self.assertEqual(package["version"], __version__)
         self.assertEqual(
             set(package["scripts"]),
-            {"test", "check", "build", "installer", "setup", "deploy"},
+            {
+                "test",
+                "check",
+                "build",
+                "installer",
+                "setup",
+                "setup-hooks",
+                "deploy",
+            },
         )
 
     def test_version_module_is_the_runtime_diagnostics_source(self):
@@ -318,6 +359,7 @@ class RepositorySafetyTests(unittest.TestCase):
             ".github/PULL_REQUEST_TEMPLATE.md",
             ".github/workflows/ci.yml",
             ".github/workflows/release.yml",
+            ".github/workflows/community-release.yml",
         ]
         for relative_path in required:
             self.assertTrue((ROOT / relative_path).is_file(), relative_path)

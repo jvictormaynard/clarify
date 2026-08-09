@@ -6,14 +6,27 @@ credential. Until the prerequisites in [Rollout gates](#rollout-gates) are
 complete, this is a fail-closed implementation contract rather than a claim
 that published ClarifyVoice artifacts are already signed.
 
+## No-cost community release
+
+While sponsored signing is unavailable, the repository may publish a
+community portable release. It contains only the unsigned portable EXE, its
+SHA-256 file, the runtime SBOM, the portable ZIP, the verified SoX source
+archive, and GitHub build provenance. It does not contain the MSI or the
+authenticated update manifest.
+
+The community EXE is not a trusted Authenticode publisher. Windows SmartScreen
+may show a warning, so the user must verify the published SHA-256 before the
+first launch. The MSI and in-app update path remain disabled. The signed
+contract below remains the target for a future sponsored release.
+
 ## Signing mechanism and ownership
 
 ClarifyVoice uses [Azure Artifact Signing](https://azure.microsoft.com/en-us/products/artifact-signing)
 (formerly Trusted Signing) with its public-trust certificate profile:
 
-- The project owner, João Victor Maynard Mota, owns the Azure subscription,
-  verified publisher identity, Artifact Signing account, and certificate
-  profile.
+- For the future signed track, the project owner, João Victor Maynard Mota,
+  will own the Azure subscription, verified publisher identity, Artifact
+  Signing account, and certificate profile after sponsored provisioning.
 - The release job authenticates through GitHub OIDC and a federated Microsoft
   Entra identity restricted to the protected `release-signing` environment.
   There is no client secret or exportable certificate private key in GitHub.
@@ -131,6 +144,9 @@ uninstall must remove it. It also creates and parses the release manifest and
 CAB. These automated checks do not substitute for signed-artifact or real-user
 manual acceptance.
 
+The community tag workflow is separate from the signed workflow and does not
+use Azure credentials. It publishes only the portable assets described above.
+
 `scripts/test-installer.ps1` is intentionally destructive and must never be run
 on a developer workstation or a shared ClarifyVoice installation. It fails
 closed unless `CI` and `GITHUB_ACTIONS` are true, the runner identifies itself
@@ -140,7 +156,7 @@ ClarifyVoice path and registry value is initially absent. Use only a disposable
 VM for the separate manual lifecycle procedure. This script itself is restricted
 to the hosted runner; do not bypass its guards.
 
-The tag release workflow must fail unless it can:
+The signed release workflow must fail unless it can:
 
 1. run Azure OIDC login and Artifact Signing actions only from reviewed,
    immutable full commit SHAs, never mutable tags;

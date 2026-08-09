@@ -28,6 +28,7 @@ The tag, release, and executable must all originate from the same green
 - `requirements-lock-windows.txt`
 - `requirements-lock-runtime-windows.txt`
 - `scripts/check_runtime_lock.py`
+- `scripts/format_staged.py`
 - `scripts/install_bootstrap_tools.py`
 - `scripts/add_sbom_component.py`
 - `scripts/sox-runtime-manifest.json`
@@ -39,6 +40,7 @@ The tag, release, and executable must all originate from the same green
 - `scripts/verify-signature.ps1`
 - `distribution/update-policy.json`
 - `docs/windows-distribution.md`
+- `.githooks/pre-commit`
 - `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
 
@@ -67,9 +69,11 @@ On the PR and after merge:
 
 On the tag:
 
-- successful `Release` workflow
+- successful `Release` workflow for signed releases, or successful
+  `Community Release` workflow for the no-cost portable track
 - Azure OIDC login and Artifact Signing actions pinned to reviewed full commit
-  SHAs; mutable tags are not an acceptable release trust boundary
+  SHAs for signed releases; mutable tags are not an acceptable release trust
+  boundary
 
 ## Required release assets
 
@@ -96,6 +100,22 @@ The SoX source archive must match:
 
 `b45f598643ffbd8e363ff24d61166ccec4836fea6d3888881b8df53e3bb55f6c`
 
+## Community portable release track
+
+The community track is intentionally unsigned and exists for releases without
+sponsored signing infrastructure. It must publish exactly these assets:
+
+- `ClarifyVoice.exe`
+- `ClarifyVoice.exe.sha256`
+- `ClarifyVoice.sbom.json`
+- `ClarifyVoice-windows-x64.zip`
+- `sox-14.4.2-source.tar.gz`
+
+The ZIP contains the portable executable, checksum, SBOM, `LICENSE`, and
+`THIRD_PARTY_NOTICES.md`. The track does not publish an MSI or authenticated
+update manifest. Windows SmartScreen warnings remain expected, and the in-app
+update path stays disabled until a signed release satisfies the rollout gates.
+
 ## Documentation ownership
 
 - `CHANGELOG.md`: released user-visible behavior and comparison links
@@ -117,8 +137,9 @@ Portuguese installation instructions behaviorally equivalent.
 - Never overwrite a published asset to conceal provenance drift; publish a new
   patch version instead.
 - Require valid, timestamped Authenticode signatures from the publisher pinned
-  in `distribution/update-policy.json` for EXE, MSI, and manifest CAB.
+  in `distribution/update-policy.json` for the signed EXE, MSI, and manifest
+  CAB track.
 - Require GitHub build-provenance attestations for EXE, MSI, CAB, and ZIP.
-- Keep the unsigned v0.1.2-and-earlier SmartScreen limitation explicit.
+- Keep the unsigned community-track SmartScreen limitation explicit.
 - Follow `docs/windows-distribution.md` for signing ownership, cost, rotation,
   revocation, rollout prerequisites, and manual acceptance.

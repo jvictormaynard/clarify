@@ -113,6 +113,11 @@ sign and verify the EXE, MSI, and manifest CAB through the protected Azure OIDC
 environment, create checksums, ZIP, and provenance attestations, obtain the
 verified SoX source archive, and publish the GitHub release.
 
+When sponsored signing is unavailable, use the tag-triggered
+`Community Release` workflow instead. It publishes only the unsigned portable
+EXE, checksum, runtime SBOM, ZIP, SoX source archive, and provenance
+attestations. It must not publish an MSI or authenticated update manifest.
+
 Do not create a second manual release while the workflow is running.
 
 ### 6. Verify the published release
@@ -124,11 +129,12 @@ Require all of the following:
 - release is the current latest release;
 - all required assets from the contract exist exactly once;
 - downloaded `ClarifyVoice.exe` matches `ClarifyVoice.exe.sha256`;
-- downloaded MSI and manifest CAB match their checksums, have valid RFC 3161
-  timestamped Authenticode signatures, and match the pinned publisher;
-- authenticated manifest version, tag, channel, asset name, URL, size, and MSI
-  checksum all match the release;
-- GitHub provenance attestations verify for the EXE, MSI, CAB, and ZIP;
+- for a signed release, downloaded MSI and manifest CAB match their checksums,
+  have valid RFC 3161 timestamped Authenticode signatures, and match the pinned
+  publisher;
+- for a signed release, authenticated manifest version, tag, channel, asset
+  name, URL, size, and MSI checksum all match the release;
+- GitHub provenance attestations verify for every published asset;
 - ZIP contains the executable, `LICENSE`, and `THIRD_PARTY_NOTICES.md`;
 - SoX source digest matches the pinned release-workflow digest;
 - `/releases/latest` resolves to the new version.
@@ -161,7 +167,8 @@ Stop publication and explain the blocker if:
 - Windows interaction changes lack real executable acceptance;
 - the tag exists at another commit;
 - the release workflow or any required asset is missing;
-- signing configuration, timestamp, publisher identity, or provenance fails;
+- signed-release signing configuration, timestamp, publisher identity, or
+  provenance fails;
 - the installer/update rollout gates are incomplete for a release that intends
   to enable that path;
 - checksum, ZIP contents, SoX source digest, or tag provenance does not match.

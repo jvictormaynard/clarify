@@ -42,6 +42,15 @@ SHA-256 corresponderem à release. Consulte [segurança da distribuição e das
 atualizações](windows-distribution.md) para os comportamentos de instalação,
 upgrade, reparo, rollback e desinstalação.
 
+### Release portátil comunitária
+
+O projeto também publica uma release comunitária sem custo para o aplicativo
+portátil. Ela contém `ClarifyVoice.exe`, seu arquivo SHA-256, o SBOM de runtime,
+um arquivo ZIP e o código-fonte verificado do SoX. Ela não possui assinatura
+Authenticode enquanto não houver patrocínio para a assinatura paga. O
+SmartScreen pode pedir confirmação no primeiro uso. Essa release não inclui o
+MSI nem o manifesto de atualização autenticado.
+
 ### Executável portátil
 
 1. Abra a [versão mais recente](https://github.com/jvictormaynard/clarify-voice/releases/latest).
@@ -57,9 +66,10 @@ upgrade, reparo, rollback e desinstalação.
    escolher a rota de cada workflow. Cada rota pode ter seu próprio provedor,
    modelo, endpoint, estado e prompt.
 
-Os executáveis publicados até a v0.1.2 ainda não possuem assinatura de código. Por isso, o Windows
-SmartScreen pode pedir confirmação no primeiro uso. Cada release inclui um
-arquivo SHA-256 para conferir a integridade do download.
+Os executáveis portáteis comunitários não possuem assinatura de código. Confira
+o arquivo SHA-256 publicado com a release antes de executar o download. O MSI e
+o caminho de atualização no aplicativo permanecem desativados até que os gates
+da release assinada sejam concluídos.
 
 Se ainda não houver uma release, instale pelo código-fonte:
 

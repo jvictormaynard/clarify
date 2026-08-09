@@ -67,7 +67,7 @@ jobs:
       - name: Run Ruff lint
         if: matrix.os == 'ubuntu-latest'
         run: >-
-          ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py
+          ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py scripts/format_staged.py
           spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py spikes/pyside6/qml_runtime.py
           spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py spikes/pyside6/qml_audio_batch.py
           spikes/pyside6/qml_clipboard.py spikes/pyside6/qml_voice_translation.py
@@ -79,7 +79,7 @@ jobs:
       - name: Run Ruff format check
         if: matrix.os == 'ubuntu-latest'
         run: >-
-          ruff format --check scripts/dependency_audit.py tests/test_repository.py
+          ruff format --check scripts/dependency_audit.py scripts/format_staged.py tests/test_repository.py
           spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py spikes/pyside6/qml_runtime.py
           spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py spikes/pyside6/qml_audio_batch.py
           spikes/pyside6/qml_clipboard.py spikes/pyside6/qml_voice_translation.py
@@ -107,7 +107,7 @@ jobs:
           voice_translation.py
           secret_store.py update_security.py version.py windows_clipboard.py
           windows_hotkeys.py provider_types.py provider_adapters.py provider_http.py
-          provider_registry.py scripts/create_release_manifest.py tests
+          provider_registry.py scripts/format_staged.py scripts/create_release_manifest.py tests
           local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py
 
       - name: Validate QML assets

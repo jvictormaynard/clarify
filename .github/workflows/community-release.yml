@@ -1,18 +1,23 @@
-name: Release
+name: Community Release
 
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: write
   id-token: write
   attestations: write
 
+concurrency:
+  group: community-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
-    name: Build Windows release
+    name: Build unsigned portable release
     runs-on: windows-latest
-    environment: release-signing
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -108,64 +113,11 @@ jobs:
           }
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - name: Sign in to Azure with GitHub OIDC
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Sign portable executable
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\dist
-          files-folder-filter: exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: ClarifyVoice
-          description-url: https://github.com/jvictormaynard/clarify-voice
-
-      - name: Verify portable publisher signature
-        shell: pwsh
-        run: .\scripts\verify-signature.ps1 -Path dist\ClarifyVoice.exe
-
-      - name: Build installer from signed executable
-        shell: pwsh
-        run: |
-          .\scripts\build-installer.ps1 `
-            -Version "${{ steps.release.outputs.version }}" `
-            -SourceExe dist\ClarifyVoice.exe `
-            -OutputPath dist\ClarifyVoice-windows-x64.msi
-
-      - name: Sign installer
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\dist
-          files-folder-filter: msi
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: ClarifyVoice Windows Installer
-          description-url: https://github.com/jvictormaynard/clarify-voice
-
-      - name: Verify installer publisher signature
-        shell: pwsh
-        run: .\scripts\verify-signature.ps1 -Path dist\ClarifyVoice-windows-x64.msi
-
-      - name: Create release assets
+      - name: Create unsigned community assets
         shell: pwsh
         run: |
           $hash = (Get-FileHash dist\ClarifyVoice.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  ClarifyVoice.exe" | Set-Content -Encoding ascii dist\ClarifyVoice.exe.sha256
-          $msiHash = (Get-FileHash dist\ClarifyVoice-windows-x64.msi -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$msiHash  ClarifyVoice-windows-x64.msi" | Set-Content -Encoding ascii dist\ClarifyVoice-windows-x64.msi.sha256
           $soxSource = "dist\sox-14.4.2-source.tar.gz"
           & curl.exe `
             --fail `
@@ -180,85 +132,52 @@ jobs:
           if ($soxHash -ne "b45f598643ffbd8e363ff24d61166ccec4836fea6d3888881b8df53e3bb55f6c") {
             throw "The downloaded SoX source archive did not match the expected SHA-256."
           }
-          Compress-Archive -Path dist\ClarifyVoice.exe, dist\ClarifyVoice.sbom.json, LICENSE, THIRD_PARTY_NOTICES.md -DestinationPath dist\ClarifyVoice-windows-x64.zip -Force
-          python .\scripts\create_release_manifest.py `
-            --version "${{ steps.release.outputs.version }}" `
-            --installer dist\ClarifyVoice-windows-x64.msi `
-            --output dist\release-manifest.json
-          .\scripts\build-manifest-container.ps1 `
-            -Manifest dist\release-manifest.json `
-            -OutputPath dist\ClarifyVoice-release-manifest.cab
-
-      - name: Sign authenticated release manifest
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\dist
-          files-folder-filter: cab
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: ClarifyVoice Release Manifest
-          description-url: https://github.com/jvictormaynard/clarify-voice
-
-      - name: Verify all signed release identities
-        shell: pwsh
-        run: |
-          .\scripts\verify-signature.ps1 -Path `
-            dist\ClarifyVoice.exe, `
-            dist\ClarifyVoice-windows-x64.msi, `
-            dist\ClarifyVoice-release-manifest.cab
-          $cabHash = (Get-FileHash dist\ClarifyVoice-release-manifest.cab -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$cabHash  ClarifyVoice-release-manifest.cab" | Set-Content -Encoding ascii dist\ClarifyVoice-release-manifest.cab.sha256
+          Compress-Archive `
+            -Path dist\ClarifyVoice.exe, dist\ClarifyVoice.exe.sha256, dist\ClarifyVoice.sbom.json, LICENSE, THIRD_PARTY_NOTICES.md `
+            -DestinationPath dist\ClarifyVoice-windows-x64.zip `
+            -Force
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ClarifyVoice-windows-${{ github.ref_name }}
+          name: ClarifyVoice-community-${{ github.ref_name }}
           path: |
             dist/ClarifyVoice.exe
             dist/ClarifyVoice.exe.sha256
             dist/ClarifyVoice.sbom.json
-            dist/ClarifyVoice-windows-x64.msi
-            dist/ClarifyVoice-windows-x64.msi.sha256
-            dist/ClarifyVoice-release-manifest.cab
-            dist/ClarifyVoice-release-manifest.cab.sha256
             dist/ClarifyVoice-windows-x64.zip
             dist/sox-14.4.2-source.tar.gz
           if-no-files-found: error
 
-      - name: Attest release artifact provenance
+      - name: Attest community release provenance
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: |
             dist/ClarifyVoice.exe
             dist/ClarifyVoice.exe.sha256
             dist/ClarifyVoice.sbom.json
-            dist/ClarifyVoice-windows-x64.msi
-            dist/ClarifyVoice-windows-x64.msi.sha256
-            dist/ClarifyVoice-release-manifest.cab
-            dist/ClarifyVoice-release-manifest.cab.sha256
             dist/ClarifyVoice-windows-x64.zip
             dist/sox-14.4.2-source.tar.gz
 
-      - name: Publish tagged GitHub release
+      - name: Publish unsigned community release
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $notes = @"
+          This is an unsigned community portable release.
+
+          Windows SmartScreen may show a warning because the executable does not have a paid Authenticode publisher signature. Verify ClarifyVoice.exe with ClarifyVoice.exe.sha256 before launching it.
+
+          This free release contains the portable app only. The signed MSI and authenticated update manifest remain disabled until the project has sponsored signing infrastructure.
+          "@
           gh release create "${{ github.ref_name }}" `
             dist\ClarifyVoice.exe `
             dist\ClarifyVoice.exe.sha256 `
             dist\ClarifyVoice.sbom.json `
-            dist\ClarifyVoice-windows-x64.msi `
-            dist\ClarifyVoice-windows-x64.msi.sha256 `
-            dist\ClarifyVoice-release-manifest.cab `
-            dist\ClarifyVoice-release-manifest.cab.sha256 `
             dist\ClarifyVoice-windows-x64.zip `
             dist\sox-14.4.2-source.tar.gz `
             --verify-tag `
-            --generate-notes `
+            --notes $notes `
             --title "ClarifyVoice ${{ github.ref_name }}"
