@@ -46,6 +46,8 @@ translate selected text without opening a separate editor.
 - Gemini, OpenAI, Groq, Local Whisper, and compatible custom endpoints
 - Native Windows hotkeys and system tray integration
 - English, Portuguese, Spanish, German, and Russian interface languages
+- Workflow-focused Settings pages for recording, speech-to-text, text processing,
+  and integrations
 - Local-only usage statistics without storing transcripts
 - Bundled SoX runtime in the portable Windows build
 - No ClarifyVoice account, hosted backend, or telemetry service
@@ -71,20 +73,17 @@ do not need Python, Node.js, or SoX.
 1. Open the [latest release](https://github.com/jvictormaynard/clarify-voice/releases/latest).
 2. Download `ClarifyVoice.exe` and place it in a folder you control.
 3. Double-click the executable.
-4. Open **Providers** first and choose one explicit onboarding path:
-   - **Cloud setup (credential required):** in **Providers**, select Gemini,
-     OpenAI, Groq, or a compatible custom endpoint, then add and validate an API
-     key. After the provider is active, open **Models** to select the
-     transcription model and, when using Prompt mode, the text-refinement model.
-   - **Local Whisper setup (keyless):** in **Providers**, select **Local
-     Whisper**, review its requirements, and use **Download local ASR**. No API
-     key or text-refinement model is required for local transcription. After the
-     installation completes, open **Models** and select Local Whisper for
-     transcription. Prompt-mode cloud refinement remains optional: configure a
-     cloud provider in **Providers**, select its model in **Models**, and enable
-     **Allow cloud refinement for Prompt mode** only if desired. The
-     Windows/offline acceptance for Local Whisper is still pending; see [Local
-     ASR](docs/local-asr.md).
+4. Open **Settings → Integrations** and choose one explicit onboarding path:
+   - **Cloud setup (credential required):** select Gemini, OpenAI, Groq, or a
+     compatible custom endpoint, then add and validate an API key.
+   - **Local Whisper setup (keyless):** select **Local Whisper**, review its
+     requirements, and use **Download local ASR**. No API key is required for
+     local transcription. Prompt-mode cloud refinement remains optional; enable
+     **Allow cloud refinement** only when desired. The Windows/offline
+     acceptance for Local Whisper is still pending; see [Local ASR](docs/local-asr.md).
+5. Open **Settings → Speech-to-text** or **Settings → Text processing** to
+   choose the route for each workflow. A route selects its provider, model,
+   endpoint, enablement, and optional prompt independently.
 
 Published executables through v0.1.2 are not code-signed. Windows SmartScreen may therefore ask
 you to confirm the first launch. Verify the SHA-256 file published with the
@@ -134,7 +133,9 @@ their current limitations.
 | `Alt + T` (default) | Translate the selected text |
 | `Alt + R` (default) | Show or hide ClarifyVoice |
 
-All four global shortcuts can be captured, validated, and reset in **Settings**.
+All four global shortcuts can be captured, validated, and reset in **Settings →
+Shortcuts**. After a recording completes, its result appears directly and the
+recording shortcuts remain available without clicking **Dismiss**.
 The packaged native layer currently supports safe toggle activation only;
 push-to-talk remains visibly unavailable until a key-release-capable adapter is
 implemented.
@@ -151,16 +152,15 @@ text, HTML, RTF, and DIB image clipboard formats after a short bounded delay.
 If focus, paste confirmation, or clipboard ownership is lost, the generated
 result remains available for manual paste and the newer clipboard contents win.
 
-## Providers
+## Providers and workflow routes
 
-Open **Providers** to configure a cloud provider, base URL, and API key, or to
-install Local Whisper. Local Whisper does not require an API key or cloud
-endpoint: use **Providers → Local Whisper → Download local ASR** explicitly to
-install its verified optional assets. After a provider is active or Local
-Whisper is installed, open **Models** only to select among the active
-transcription and refinement models. Ordinary settings are stored in
-`%APPDATA%\ClarifyVoice\config.json`; cloud API keys are kept separately with
-Windows Data Protection API (DPAPI).
+Open **Settings → Integrations** to configure a cloud provider, base URL, and
+API key, or to install Local Whisper. Local Whisper does not require an API key
+or cloud endpoint; use **Download local ASR** explicitly to install its verified
+optional assets. Open **Settings → Speech-to-text** and **Settings → Text
+processing** to select independent workflow routes. Ordinary settings are
+stored in `%APPDATA%\ClarifyVoice\config.json`; cloud API keys are kept
+separately with Windows Data Protection API (DPAPI).
 
 | Provider | Transcription | Text refinement | Default endpoint |
 | --- | --- | --- | --- |

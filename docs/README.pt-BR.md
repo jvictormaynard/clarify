@@ -18,13 +18,16 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Tradução de texto selecionado
 - Integração nativa com atalhos e bandeja do Windows
 - Interface em inglês, português, espanhol, alemão e russo
+- Páginas de Settings separadas para gravação, speech-to-text, processamento de
+  texto e integrações
 - Estatísticas locais sem armazenar o conteúdo das transcrições
 - Sem conta ClarifyVoice, backend próprio ou telemetria
 
 > [!IMPORTANT]
-> Você precisa fornecer uma chave de API de pelo menos um provedor. As chaves e
-> estatísticas ficam no seu computador. O áudio e o texto selecionado são
-> enviados diretamente ao provedor configurado.
+> A transcrição ou o refinamento em provedores cloud exige uma chave de API. O
+> Local Whisper pode transcrever sem chave e baixa seus assets somente após uma
+> ação explícita. As chaves e estatísticas ficam no seu computador. O áudio e o
+> texto selecionado são enviados diretamente ao provedor configurado.
 
 ## Instalação no Windows
 
@@ -44,8 +47,15 @@ upgrade, reparo, rollback e desinstalação.
 1. Abra a [versão mais recente](https://github.com/jvictormaynard/clarify-voice/releases/latest).
 2. Baixe `ClarifyVoice.exe` e salve-o em uma pasta sob seu controle.
 3. Abra o executável.
-4. Entre em **Models**, adicione sua chave, valide o provedor e escolha os
-   modelos de transcrição e refinamento.
+4. Abra **Settings → Integrations** e escolha um caminho de configuração:
+   - **Cloud:** selecione Gemini, OpenAI, Groq ou um endpoint compatível,
+     informe a chave de API e valide o provedor.
+   - **Local Whisper:** revise os requisitos e use **Download local ASR**. A
+     transcrição local não exige chave. O refinamento cloud é opcional e pode
+     ser ativado com **Allow cloud refinement**.
+5. Abra **Settings → Speech-to-text** ou **Settings → Text processing** para
+   escolher a rota de cada workflow. Cada rota pode ter seu próprio provedor,
+   modelo, endpoint, estado e prompt.
 
 Os executáveis publicados até a v0.1.2 ainda não possuem assinatura de código. Por isso, o Windows
 SmartScreen pode pedir confirmação no primeiro uso. Cada release inclui um
@@ -72,6 +82,18 @@ dependências automaticamente.
 | `Alt + K` | Reescrever o texto selecionado |
 | `Alt + T` | Traduzir o texto selecionado |
 | `Alt + R` | Mostrar ou esconder o ClarifyVoice |
+
+Os quatro atalhos globais podem ser capturados, validados e redefinidos em
+**Settings → Shortcuts**. Depois de concluir uma gravação, o resultado aparece
+diretamente e os atalhos continuam disponíveis sem clicar em **Dismiss**.
+
+## Provedores e rotas de workflow
+
+Um **provider** é o serviço e suas credenciais. Uma **route** define como cada
+workflow usa esse serviço: provedor, modelo, endpoint, ativação e prompt. Os
+providers são configurados em **Settings → Integrations**; as rotas ficam em
+**Settings → Speech-to-text** e **Settings → Text processing**. O Local Whisper
+usa um sidecar local e não exige chave para transcrição.
 
 ## Privacidade
 
