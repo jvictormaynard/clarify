@@ -8,26 +8,27 @@ Button {
     property bool primary: false
     property bool quiet: false
     property int contentAlignment: Text.AlignHCenter
-    property string iconText: ""
+    property url iconSource: ""
 
     implicitHeight: control.theme.controlHeight
     hoverEnabled: true
 
     contentItem: RowLayout {
-        spacing: control.iconText === "" ? 0 : 6
+        spacing: control.iconSource == "" ? 0 : 6
 
-        Label {
-            Layout.preferredWidth: control.iconText === "" ? 0 : 16
-            visible: control.iconText !== ""
-            text: control.iconText
-            color: !control.enabled
-                   ? control.theme.dim
-                   : control.primary ? control.theme.text
-                   : control.quiet ? control.theme.dim : control.theme.subtleText
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            font.pixelSize: 13
-            font.weight: Font.Normal
+        Image {
+            Layout.preferredWidth: control.iconSource == "" ? 0 : 16
+            Layout.preferredHeight: 16
+            visible: control.iconSource != ""
+            source: control.iconSource
+            sourceSize.width: 16
+            sourceSize.height: 16
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            mipmap: true
+            opacity: !control.enabled
+                     ? 0.35
+                     : control.primary ? 1.0 : 0.62
         }
 
         Label {

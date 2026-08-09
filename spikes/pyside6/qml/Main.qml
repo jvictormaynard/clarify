@@ -504,11 +504,11 @@ ApplicationWindow {
                 focus: workflow.surface === "settings"
                 property int selectedSection: 0
                 readonly property var sectionItems: [
-                    { "label": "General", "icon": "⚙" },
-                    { "label": "Shortcuts", "icon": "⌨" },
-                    { "label": "Recording", "icon": "●" },
-                    { "label": "Providers", "icon": "◆" },
-                    { "label": "Routes", "icon": "↗" }
+                    { "label": "General", "icon": "settings.svg" },
+                    { "label": "Shortcuts", "icon": "keyboard.svg" },
+                    { "label": "Recording", "icon": "mic.svg" },
+                    { "label": "Providers", "icon": "server.svg" },
+                    { "label": "Routes", "icon": "route.svg" }
                 ]
 
                 function selectSection(index) {
@@ -600,7 +600,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 28
                                         text: modelData.label
-                                        iconText: modelData.icon
+                                        iconSource: "icons/" + modelData.icon
                                         theme: root.visualTheme
                                         primary: index === settingsPage.selectedSection
                                         quiet: true
