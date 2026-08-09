@@ -109,9 +109,9 @@ class RepositorySafetyTests(unittest.TestCase):
         )
 
     def test_community_release_is_unsigned_portable_only(self):
-        content = (
-            ROOT / ".github" / "workflows" / "community-release.yml"
-        ).read_text(encoding="utf-8")
+        content = (ROOT / ".github" / "workflows" / "community-release.yml").read_text(
+            encoding="utf-8"
+        )
         for required in (
             "name: Community Release",
             "Build unsigned portable release",
