@@ -5,6 +5,13 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-09
+
+### Fixed
+
+- Made the Windows release type-check gate portable across the supported
+  Python environments so tagged release builds can complete successfully
+
 ## [0.2.0] - 2026-08-09
 
 ### Added
@@ -110,7 +117,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify-voice/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify-voice/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/jvictormaynard/clarify-voice/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jvictormaynard/clarify-voice/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/jvictormaynard/clarify-voice/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jvictormaynard/clarify-voice/compare/v0.1.0...v0.1.1
