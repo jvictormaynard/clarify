@@ -504,7 +504,7 @@ ApplicationWindow {
                 readonly property var sectionItems: [
                     { "label": "General", "icon": "settings.svg" },
                     { "label": "Shortcuts", "icon": "keyboard.svg" },
-                    { "label": "Recording", "icon": "mic.svg" },
+                    { "label": "Recording", "icon": "audio-lines.svg" },
                     { "label": "Speech-to-text", "icon": "mic.svg" },
                     { "label": "Text processing", "icon": "sparkles.svg" },
                     { "label": "Integrations", "icon": "server.svg" }

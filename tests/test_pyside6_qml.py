@@ -253,6 +253,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         for icon_name in (
             "settings.svg",
             "keyboard.svg",
+            "audio-lines.svg",
             "mic.svg",
             "server.svg",
             "route.svg",
@@ -265,6 +266,14 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             self.assertIn('<svg xmlns="http://www.w3.org/2000/svg"', icon_source)
             self.assertIn('viewBox="0 0 24 24"', icon_source)
             self.assertIn('stroke="#ffffff"', icon_source)
+        self.assertIn(
+            '{ "label": "Recording", "icon": "audio-lines.svg" }',
+            main_source,
+        )
+        self.assertIn(
+            '{ "label": "Speech-to-text", "icon": "mic.svg" }',
+            main_source,
+        )
         self.assertIn("function selectSection(index)", main_source)
         self.assertNotIn("cardFadeTimer", main_source)
         self.assertNotIn("settingsSectionFadeTimer", main_source)
