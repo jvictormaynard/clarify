@@ -252,7 +252,7 @@ class _WorkflowWindowVisibility:
         if pill_active:
             if self._restore_visible is None:
                 self._restore_visible = bool(self._window.isVisible())
-            self._window.hide()
+            self._shell.hide_window()
             return
         if self._restore_visible is None:
             return
@@ -429,9 +429,8 @@ def main(argv: list[str] | None = None) -> int:
         runtime.shutdown()
         return 1
 
-    if start_hidden:
-        window.hide()
-    else:
+    window.setProperty("presentationVisible", not start_hidden)
+    if not start_hidden:
         window.show()
     if sys.platform == "win32":
         hotkeys = WindowsGlobalHotkeyBackend(

@@ -680,13 +680,27 @@ class QtShell(QObject):
 
     @Slot()
     def show_window(self) -> None:
+        self._set_presentation_visible(True)
         self._window.show()
         self._window.raise_()
         self._window.requestActivate()
 
     @Slot()
     def hide_window(self) -> None:
-        self._window.hide()
+        if not self._set_presentation_visible(False):
+            self._window.hide()
+
+    def _set_presentation_visible(self, visible: bool) -> bool:
+        """Let the QML window fade before changing native visibility."""
+
+        setter = getattr(self._window, "setProperty", None)
+        if not callable(setter):
+            return False
+        try:
+            setter("presentationVisible", bool(visible))
+        except Exception:
+            return False
+        return True
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         """Hide a tray-owned QWindow instead of destroying its native handle."""

@@ -24,7 +24,15 @@ ApplicationWindow {
               ? theme.panelHeight : theme.windowHeight
     minimumWidth: theme.windowWidth
     minimumHeight: theme.windowHeight
-    visible: false
+    property bool presentationVisible: false
+    visible: presentationVisible || opacity > 0.001
+    opacity: presentationVisible ? 1.0 : 0.0
+    Behavior on opacity {
+        NumberAnimation {
+            duration: theme.fadeDuration
+            easing.type: Easing.OutCubic
+        }
+    }
     title: "ClarifyVoice"
     color: "transparent"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -100,7 +108,6 @@ ApplicationWindow {
                 || workflow.surface === "recording"
                 || workflow.surface === "processing"
                 || workflow.surface === "voice_processing"
-                || workflow.surface === "success"
             ? height / 2 : theme.panelRadius
         color: theme.card
         border.color: theme.border
@@ -112,11 +119,6 @@ ApplicationWindow {
                 name: "recording"
                 when: workflow.surface === "recording"
                 PropertyChanges { target: card; border.color: theme.dim }
-            },
-            State {
-                name: "success"
-                when: workflow.surface === "success"
-                PropertyChanges { target: card; border.color: theme.text }
             }
         ]
 
@@ -181,8 +183,7 @@ ApplicationWindow {
                                       : workflow.surface === "recording" ? "Recording"
                                       : workflow.surface === "processing" ? "Processing…"
                                       : workflow.surface === "voice_processing" ? workflow.status
-                                      : workflow.surface === "error" ? workflow.status
-                                      : "Done"
+                                      : workflow.status
                                 color: theme.text
                                 font.pixelSize: 13
                                 font.weight: Font.Bold
@@ -208,7 +209,15 @@ ApplicationWindow {
 
                     Item {
                         id: busyIndicator
-                        visible: workflow.busy
+                        property bool fadeShown: workflow.busy
+                        visible: fadeShown || opacity > 0.001
+                        opacity: fadeShown ? 1.0 : 0.0
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: theme.fadeDuration
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                         Layout.preferredWidth: 14
                         Layout.preferredHeight: 14
                         Layout.alignment: Qt.AlignVCenter
@@ -241,7 +250,15 @@ ApplicationWindow {
 
                     RowLayout {
                         id: idleControls
-                        visible: workflow.surface === "idle"
+                        property bool fadeShown: workflow.surface === "idle"
+                        visible: fadeShown || opacity > 0.001
+                        opacity: fadeShown ? 1.0 : 0.0
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: theme.fadeDuration
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                         spacing: 4
 
                         AppButton {
@@ -336,7 +353,15 @@ ApplicationWindow {
 
                     RowLayout {
                         id: errorControls
-                        visible: workflow.surface === "error"
+                        property bool fadeShown: workflow.surface === "error"
+                        visible: fadeShown || opacity > 0.001
+                        opacity: fadeShown ? 1.0 : 0.0
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: theme.fadeDuration
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                         spacing: 4
 
                         AppButton {
@@ -351,17 +376,6 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
                     }
 
-                    AppButton {
-                        id: resultButton
-                        objectName: "resultButton"
-                        visible: workflow.surface === "success"
-                        text: "View"
-                        theme: theme
-                        Layout.preferredWidth: 48
-                        Layout.preferredHeight: 26
-                        Accessible.name: "View result"
-                        onClicked: workflow.showResult()
-                    }
                 }
             }
 
@@ -485,6 +499,16 @@ ApplicationWindow {
                 id: settingsPage
                 objectName: "settingsPage"
                 focus: workflow.surface === "settings"
+                property int selectedSection: 0
+                readonly property var sectionLabels: [
+                    "General", "Shortcuts", "Recording", "Providers", "Routes"
+                ]
+
+                function selectSection(index) {
+                    if (index >= 0 && index < sectionLabels.length
+                            && index !== selectedSection)
+                        selectedSection = index
+                }
 
                 onVisibleChanged: {
                     if (visible) {
@@ -492,6 +516,12 @@ ApplicationWindow {
                             settingsScroll.contentItem.contentY = 0
                         })
                     }
+                }
+
+                onSelectedSectionChanged: {
+                    Qt.callLater(function() {
+                        settingsScroll.contentItem.contentY = 0
+                    })
                 }
 
                 ColumnLayout {
@@ -537,7 +567,59 @@ ApplicationWindow {
                         color: theme.border
                     }
 
-                    ScrollView {
+                    RowLayout {
+                        id: settingsBody
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        spacing: 8
+
+                        Rectangle {
+                            id: settingsSidebar
+                            objectName: "settingsSidebar"
+                            Layout.preferredWidth: 118
+                            Layout.fillHeight: true
+                            radius: theme.controlRadius
+                            color: theme.resultSurface
+                            border.color: theme.border
+                            border.width: 1
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                spacing: 4
+
+                                Label {
+                                    text: "Sections"
+                                    color: theme.dim
+                                    font.pixelSize: 10
+                                    font.weight: Font.DemiBold
+                                    font.letterSpacing: 0.6
+                                    Layout.leftMargin: 4
+                                    Layout.bottomMargin: 2
+                                }
+
+                                Repeater {
+                                    model: settingsPage.sectionLabels
+
+                                    delegate: AppButton {
+                                        required property int index
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 30
+                                        text: modelData
+                                        theme: root.visualTheme
+                                        primary: index === settingsPage.selectedSection
+                                        quiet: index !== settingsPage.selectedSection
+                                        Accessible.name: "Open " + modelData + " settings"
+                                        onClicked: settingsPage.selectSection(index)
+                                    }
+                                }
+
+                                Item { Layout.fillHeight: true }
+                            }
+                        }
+
+                        ScrollView {
                         id: settingsScroll
                         objectName: "settingsScroll"
                         Layout.fillWidth: true
@@ -561,6 +643,13 @@ ApplicationWindow {
                             id: settingsContent
                             width: Math.max(0, settingsScroll.availableWidth)
                             spacing: 8
+
+                            ColumnLayout {
+                                id: generalSettingsSection
+                                objectName: "generalSettingsSection"
+                                Layout.fillWidth: true
+                                spacing: 8
+                                visible: settingsPage.selectedSection === 0
 
                             Label {
                                 text: "General"
@@ -749,7 +838,15 @@ ApplicationWindow {
 
                                         Label {
                                             anchors.centerIn: parent
-                                            visible: autostartBox.checked
+                                            property bool fadeShown: autostartBox.checked
+                                            visible: fadeShown || opacity > 0.001
+                                            opacity: fadeShown ? 1.0 : 0.0
+                                            Behavior on opacity {
+                                                NumberAnimation {
+                                                    duration: theme.fadeDuration
+                                                    easing.type: Easing.OutCubic
+                                                }
+                                            }
                                             text: "✓"
                                             color: theme.card
                                             font.pixelSize: 11
@@ -792,7 +889,15 @@ ApplicationWindow {
 
                                             Label {
                                                 anchors.centerIn: parent
-                                                visible: historyBox.checked
+                                                property bool fadeShown: historyBox.checked
+                                                visible: fadeShown || opacity > 0.001
+                                                opacity: fadeShown ? 1.0 : 0.0
+                                                Behavior on opacity {
+                                                    NumberAnimation {
+                                                        duration: theme.fadeDuration
+                                                        easing.type: Easing.OutCubic
+                                                    }
+                                                }
                                                 text: "✓"
                                                 color: theme.card
                                                 font.pixelSize: 11
@@ -832,6 +937,15 @@ ApplicationWindow {
                                     }
                                 }
                             }
+
+                            }
+
+                            ColumnLayout {
+                                id: shortcutSettingsSection
+                                objectName: "shortcutSettingsSection"
+                                Layout.fillWidth: true
+                                spacing: 8
+                                visible: settingsPage.selectedSection === 1
 
                             Label {
                                 text: "Keyboard shortcuts"
@@ -974,6 +1088,15 @@ ApplicationWindow {
                                 }
                             }
 
+                            }
+
+                            ColumnLayout {
+                                id: recordingSettingsSection
+                                objectName: "recordingSettingsSection"
+                                Layout.fillWidth: true
+                                spacing: 8
+                                visible: settingsPage.selectedSection === 2
+
                             Rectangle {
                                 Layout.fillWidth: true
                                 height: 1
@@ -1105,7 +1228,15 @@ ApplicationWindow {
                                         text: "Use default"
                                         theme: theme
                                         quiet: true
-                                        visible: settings.selectedMicrophoneId !== null
+                                        property bool fadeShown: settings.selectedMicrophoneId !== null
+                                        visible: fadeShown || opacity > 0.001
+                                        opacity: fadeShown ? 1.0 : 0.0
+                                        Behavior on opacity {
+                                            NumberAnimation {
+                                                duration: theme.fadeDuration
+                                                easing.type: Easing.OutCubic
+                                            }
+                                        }
                                         Layout.preferredWidth: 78
                                         Layout.preferredHeight: 26
                                         Accessible.name: "Use current system microphone"
@@ -1138,7 +1269,7 @@ ApplicationWindow {
                                           ? "" : String(settings.recordingControls["max_duration_seconds"])
                                     placeholderText: "Blank = unlimited"
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                    onEditingFinished: settingsContent.updateRecordingControls()
+                                    onEditingFinished: recordingSettingsSection.updateRecordingControls()
                                     color: theme.text
                                     placeholderTextColor: theme.dim
                                     font.pixelSize: 11
@@ -1164,7 +1295,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: String(settings.recordingControls["warning_seconds"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                    onEditingFinished: settingsContent.updateRecordingControls()
+                                    onEditingFinished: recordingSettingsSection.updateRecordingControls()
                                     color: theme.text
                                     font.pixelSize: 11
                                     selectByMouse: true
@@ -1183,7 +1314,7 @@ ApplicationWindow {
                                     Layout.columnSpan: 2
                                     checked: settings.recordingControls["vad"]["enabled"]
                                     text: "Stop after speech and silence"
-                                    onToggled: settingsContent.updateRecordingControls()
+                                    onToggled: recordingSettingsSection.updateRecordingControls()
                                     contentItem: Label {
                                         leftPadding: 24
                                         text: vadEnabledBox.text
@@ -1203,7 +1334,15 @@ ApplicationWindow {
 
                                         Label {
                                             anchors.centerIn: parent
-                                            visible: vadEnabledBox.checked
+                                            property bool fadeShown: vadEnabledBox.checked
+                                            visible: fadeShown || opacity > 0.001
+                                            opacity: fadeShown ? 1.0 : 0.0
+                                            Behavior on opacity {
+                                                NumberAnimation {
+                                                    duration: theme.fadeDuration
+                                                    easing.type: Easing.OutCubic
+                                                }
+                                            }
                                             text: "✓"
                                             color: theme.card
                                             font.pixelSize: 11
@@ -1223,7 +1362,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: String(settings.recordingControls["vad"]["level_threshold"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                    onEditingFinished: settingsContent.updateRecordingControls()
+                                    onEditingFinished: recordingSettingsSection.updateRecordingControls()
                                     color: theme.text
                                     font.pixelSize: 11
                                     selectByMouse: true
@@ -1248,7 +1387,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: String(settings.recordingControls["vad"]["minimum_speech_seconds"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                    onEditingFinished: settingsContent.updateRecordingControls()
+                                    onEditingFinished: recordingSettingsSection.updateRecordingControls()
                                     color: theme.text
                                     font.pixelSize: 11
                                     selectByMouse: true
@@ -1273,7 +1412,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: String(settings.recordingControls["vad"]["silence_duration_seconds"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                    onEditingFinished: settingsContent.updateRecordingControls()
+                                    onEditingFinished: recordingSettingsSection.updateRecordingControls()
                                     color: theme.text
                                     font.pixelSize: 11
                                     selectByMouse: true
@@ -1289,7 +1428,15 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
-                                visible: settings.microphoneTestStatus !== ""
+                                property bool fadeShown: settings.microphoneTestStatus !== ""
+                                visible: fadeShown || opacity > 0.001
+                                opacity: fadeShown ? 1.0 : 0.0
+                                Behavior on opacity {
+                                    NumberAnimation {
+                                        duration: theme.fadeDuration
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
                                 text: settings.microphoneTestStatus
                                 color: settings.microphoneTestStatusKind === "error"
                                        ? theme.secondaryText
@@ -1304,6 +1451,15 @@ ApplicationWindow {
                                 height: 1
                                 color: theme.border
                             }
+
+                            }
+
+                            ColumnLayout {
+                                id: providerSettingsSection
+                                objectName: "providerSettingsSection"
+                                Layout.fillWidth: true
+                                spacing: 8
+                                visible: settingsPage.selectedSection === 3
 
                             Label {
                                 text: "Providers"
@@ -1361,7 +1517,15 @@ ApplicationWindow {
 
                                 Label {
                                     text: "API key"
-                                    visible: settings.selectedProviderId !== "local_asr"
+                                    property bool fadeShown: settings.selectedProviderId !== "local_asr"
+                                    visible: fadeShown || opacity > 0.001
+                                    opacity: fadeShown ? 1.0 : 0.0
+                                    Behavior on opacity {
+                                        NumberAnimation {
+                                            duration: theme.fadeDuration
+                                            easing.type: Easing.OutCubic
+                                        }
+                                    }
                                     color: theme.dim
                                     font.pixelSize: 11
                                 }
@@ -1369,7 +1533,15 @@ ApplicationWindow {
                                 TextField {
                                     id: providerApiKeyField
                                     objectName: "providerApiKeyField"
-                                    visible: settings.selectedProviderId !== "local_asr"
+                                    property bool fadeShown: settings.selectedProviderId !== "local_asr"
+                                    visible: fadeShown || opacity > 0.001
+                                    opacity: fadeShown ? 1.0 : 0.0
+                                    Behavior on opacity {
+                                        NumberAnimation {
+                                            duration: theme.fadeDuration
+                                            easing.type: Easing.OutCubic
+                                        }
+                                    }
                                     Layout.fillWidth: true
                                     text: settings.providerApiKey
                                     placeholderText: settings.providerHasApiKey
@@ -1392,7 +1564,15 @@ ApplicationWindow {
 
                                 Label {
                                     text: "Base URL"
-                                    visible: settings.selectedProviderId !== "local_asr"
+                                    property bool fadeShown: settings.selectedProviderId !== "local_asr"
+                                    visible: fadeShown || opacity > 0.001
+                                    opacity: fadeShown ? 1.0 : 0.0
+                                    Behavior on opacity {
+                                        NumberAnimation {
+                                            duration: theme.fadeDuration
+                                            easing.type: Easing.OutCubic
+                                        }
+                                    }
                                     color: theme.dim
                                     font.pixelSize: 11
                                 }
@@ -1400,7 +1580,15 @@ ApplicationWindow {
                                 TextField {
                                     id: providerBaseUrlField
                                     objectName: "providerBaseUrlField"
-                                    visible: settings.selectedProviderId !== "local_asr"
+                                    property bool fadeShown: settings.selectedProviderId !== "local_asr"
+                                    visible: fadeShown || opacity > 0.001
+                                    opacity: fadeShown ? 1.0 : 0.0
+                                    Behavior on opacity {
+                                        NumberAnimation {
+                                            duration: theme.fadeDuration
+                                            easing.type: Easing.OutCubic
+                                        }
+                                    }
                                     enabled: settings.providerSupportsCustomEndpoint
                                     Layout.fillWidth: true
                                     text: settings.providerBaseUrl
@@ -1422,7 +1610,15 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
-                                visible: settings.selectedProviderId !== "local_asr"
+                                property bool fadeShown: settings.selectedProviderId !== "local_asr"
+                                visible: fadeShown || opacity > 0.001
+                                opacity: fadeShown ? 1.0 : 0.0
+                                Behavior on opacity {
+                                    NumberAnimation {
+                                        duration: theme.fadeDuration
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
                                 text: "Status: " + settings.providerStatus
                                       + (settings.providerError !== ""
                                          ? " — " + settings.providerError : "")
@@ -1434,7 +1630,15 @@ ApplicationWindow {
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                visible: settings.selectedProviderId !== "local_asr"
+                                property bool fadeShown: settings.selectedProviderId !== "local_asr"
+                                visible: fadeShown || opacity > 0.001
+                                opacity: fadeShown ? 1.0 : 0.0
+                                Behavior on opacity {
+                                    NumberAnimation {
+                                        duration: theme.fadeDuration
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
                                 spacing: 5
 
                                 Item { Layout.fillWidth: true }
@@ -1464,7 +1668,15 @@ ApplicationWindow {
 
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                visible: settings.selectedProviderId === "local_asr"
+                                property bool fadeShown: settings.selectedProviderId === "local_asr"
+                                visible: fadeShown || opacity > 0.001
+                                opacity: fadeShown ? 1.0 : 0.0
+                                Behavior on opacity {
+                                    NumberAnimation {
+                                        duration: theme.fadeDuration
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
                                 spacing: 5
 
                                 Label {
@@ -1477,7 +1689,15 @@ ApplicationWindow {
 
                                 ProgressBar {
                                     Layout.fillWidth: true
-                                    visible: settings.localAsrBusy
+                                    property bool fadeShown: settings.localAsrBusy
+                                    visible: fadeShown || opacity > 0.001
+                                    opacity: fadeShown ? 1.0 : 0.0
+                                    Behavior on opacity {
+                                        NumberAnimation {
+                                            duration: theme.fadeDuration
+                                            easing.type: Easing.OutCubic
+                                        }
+                                    }
                                     value: settings.localAsrProgress
                                     from: 0
                                     to: 1
@@ -1528,7 +1748,15 @@ ApplicationWindow {
 
                                     CheckBox {
                                         id: localRefinementBox
-                                        visible: settings.localAsrStatus === "installed"
+                                        property bool fadeShown: settings.localAsrStatus === "installed"
+                                        visible: fadeShown || opacity > 0.001
+                                        opacity: fadeShown ? 1.0 : 0.0
+                                        Behavior on opacity {
+                                            NumberAnimation {
+                                                duration: theme.fadeDuration
+                                                easing.type: Easing.OutCubic
+                                            }
+                                        }
                                         checked: settings.localAsrCloudRefinement
                                         text: "Allow cloud refinement"
                                         onToggled: settings.setLocalAsrCloudRefinement(checked)
@@ -1542,6 +1770,15 @@ ApplicationWindow {
                                     }
                                 }
                             }
+
+                            }
+
+                            ColumnLayout {
+                                id: routeSettingsSection
+                                objectName: "routeSettingsSection"
+                                Layout.fillWidth: true
+                                spacing: 8
+                                visible: settingsPage.selectedSection === 4
 
                             Label {
                                 text: "Workflow route"
@@ -1584,7 +1821,7 @@ ApplicationWindow {
                                     contentItem: Label {
                                         leftPadding: 8
                                         rightPadding: 24
-                                        text: settingsContent.scopeLabel(scopeBox.currentText)
+                                        text: routeSettingsSection.scopeLabel(scopeBox.currentText)
                                         color: theme.text
                                         font.pixelSize: 11
                                         verticalAlignment: Text.AlignVCenter
@@ -1726,7 +1963,15 @@ ApplicationWindow {
 
                                         Label {
                                             anchors.centerIn: parent
-                                            visible: routeEnabledBox.checked
+                                            property bool fadeShown: routeEnabledBox.checked
+                                            visible: fadeShown || opacity > 0.001
+                                            opacity: fadeShown ? 1.0 : 0.0
+                                            Behavior on opacity {
+                                                NumberAnimation {
+                                                    duration: theme.fadeDuration
+                                                    easing.type: Easing.OutCubic
+                                                }
+                                            }
                                             text: "✓"
                                             color: theme.card
                                             font.pixelSize: 11
@@ -1768,13 +2013,24 @@ ApplicationWindow {
                                 id: settingsErrorLabel
                                 objectName: "settingsErrorLabel"
                                 Layout.fillWidth: true
-                                visible: settings.lastError !== ""
+                                property bool fadeShown: settings.lastError !== ""
+                                visible: fadeShown || opacity > 0.001
+                                opacity: fadeShown ? 1.0 : 0.0
+                                Behavior on opacity {
+                                    NumberAnimation {
+                                        duration: theme.fadeDuration
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
                                 text: settings.lastError
                                 color: theme.secondaryText
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
                             }
+                            }
                         }
+                    }
+
                     }
 
                     RowLayout {
@@ -2246,7 +2502,15 @@ ApplicationWindow {
                                             }
 
                                             ScrollView {
-                                                visible: fileResultRow.hasTranscript
+                                                property bool fadeShown: fileResultRow.hasTranscript
+                                                visible: fadeShown || opacity > 0.001
+                                                opacity: fadeShown ? 1.0 : 0.0
+                                                Behavior on opacity {
+                                                    NumberAnimation {
+                                                        duration: theme.fadeDuration
+                                                        easing.type: Easing.OutCubic
+                                                    }
+                                                }
                                                 Layout.fillWidth: true
                                                 Layout.preferredHeight: 88
                                                 clip: true
@@ -2273,7 +2537,15 @@ ApplicationWindow {
                                             }
 
                                             RowLayout {
-                                                visible: fileResultRow.hasTranscript
+                                                property bool fadeShown: fileResultRow.hasTranscript
+                                                visible: fadeShown || opacity > 0.001
+                                                opacity: fadeShown ? 1.0 : 0.0
+                                                Behavior on opacity {
+                                                    NumberAnimation {
+                                                        duration: theme.fadeDuration
+                                                        easing.type: Easing.OutCubic
+                                                    }
+                                                }
                                                 Layout.fillWidth: true
                                                 Layout.preferredHeight: 25
                                                 spacing: 5
@@ -2305,7 +2577,15 @@ ApplicationWindow {
                                 }
 
                                 Label {
-                                    visible: audioBatch.results.length === 0
+                                    property bool fadeShown: audioBatch.results.length === 0
+                                    visible: fadeShown || opacity > 0.001
+                                    opacity: fadeShown ? 1.0 : 0.0
+                                    Behavior on opacity {
+                                        NumberAnimation {
+                                            duration: theme.fadeDuration
+                                            easing.type: Easing.OutCubic
+                                        }
+                                    }
                                     width: parent.width
                                     text: "Your selected files will appear here."
                                     color: theme.dim
@@ -2318,7 +2598,15 @@ ApplicationWindow {
 
                     Label {
                         Layout.fillWidth: true
-                        visible: audioBatch.lastError !== ""
+                        property bool fadeShown: audioBatch.lastError !== ""
+                        visible: fadeShown || opacity > 0.001
+                        opacity: fadeShown ? 1.0 : 0.0
+                        Behavior on opacity {
+                            NumberAnimation {
+                                duration: theme.fadeDuration
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                         text: audioBatch.lastError
                         color: theme.secondaryText
                         font.pixelSize: 10

@@ -545,7 +545,7 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
         self.assertEqual(service.commands[0].mode, "transcription")
         self.assertEqual(service.commands[0].language, "pt")
 
-    def test_bridge_maps_real_state_and_finishes_terminal_result(self):
+    def test_bridge_maps_real_state_and_opens_terminal_result(self):
         service = DeterministicWorkflowService()
         copied = []
         completed = []
@@ -564,12 +564,10 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
 
         bridge.stopRecording()
         self.assertIsInstance(service.commands[1], StopDictation)
-        self.assertEqual(bridge.surface, "success")
+        self.assertEqual(bridge.surface, "result")
         self.assertEqual(bridge.result, "Real result")
         self.assertTrue(bridge.canShowResult)
 
-        bridge.showResult()
-        self.assertEqual(bridge.surface, "result")
         self.assertTrue(bridge.copyResult())
         self.assertEqual(copied, ["Real result"])
         self.assertEqual(completed, [True])
@@ -589,7 +587,6 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
         bridge.copyCompleted.connect(completed.append)
         bridge.startRecording()
         bridge.stopRecording()
-        bridge.showResult()
 
         self.assertTrue(bridge.copyResult())
         self.assertEqual(completed, [False])

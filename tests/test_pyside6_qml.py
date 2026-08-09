@@ -77,6 +77,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             self.assertIn(value, theme_source)
         self.assertIn("readonly property int windowWidth: 380", theme_source)
         self.assertIn("readonly property int windowHeight: 48", theme_source)
+        self.assertIn("readonly property int fadeDuration: 180", theme_source)
 
         main_source = (QML_ROOT / "Main.qml").read_text(encoding="utf-8")
         self.assertIn('objectName: "clarifyVoiceMainWindow"', main_source)
@@ -136,10 +137,11 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("palette.highlightedText: theme.text", main_source)
         self.assertIn('QQuickStyle.setStyle("Basic")', entrypoint_source)
         self.assertIn("property bool successVisible: false", status_pill_source)
+        self.assertIn("readonly property bool requestedVisible", status_pill_source)
+        self.assertIn("Behavior on opacity", status_pill_source)
         self.assertIn("interval: 850", status_pill_source)
-        self.assertIn(
-            'workflow.surface === "success" && successVisible', status_pill_source
-        )
+        self.assertIn('workflow.surface === "success"', status_pill_source)
+        self.assertIn("successVisible", status_pill_source)
         self.assertIn("pillStatus.audioLevel", status_pill_source)
         self.assertIn("pillStatus.targetIcon", status_pill_source)
         self.assertIn("Screen.devicePixelRatio", status_pill_source)
@@ -157,12 +159,18 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("StatusPill {", main_source)
         self.assertIn('qml_root / "StatusPill.qml"', entrypoint_source)
         self.assertIn('root.objectName() == "workflowStatusPill"', entrypoint_source)
-        self.assertIn("visible: false", main_source)
-        self.assertIn("else:\n        window.show()", entrypoint_source)
+        self.assertIn("property bool presentationVisible: false", main_source)
+        self.assertIn("presentationVisible", entrypoint_source)
+        self.assertIn("Behavior on opacity", main_source)
+        self.assertNotIn("card.opacity", main_source)
+        self.assertNotIn("pages.opacity", main_source)
         self.assertIn("copyResetTimer", main_source)
         self.assertIn("copyResetTimer.restart()", main_source)
         self.assertIn("function onCopyCompleted(success)", main_source)
         self.assertIn("onClicked: workflow.copyResult()", main_source)
+        self.assertNotIn('id: resultButton', main_source)
+        self.assertNotIn('text: "View"', main_source)
+        self.assertNotIn("workflow.showResult()", main_source)
         self.assertIn("onVisibleChanged: resetCopyConfirmation()", main_source)
         self.assertIn('resultPage.copyLabel = "Copy"', main_source)
         self.assertIn("workflow.stopRecording()", main_source)
@@ -180,6 +188,19 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn('text: "Select text to reuse"', main_source)
         self.assertNotIn("Global shortcuts and settings will be connected", main_source)
         self.assertIn('objectName: "settingsPage"', main_source)
+        self.assertIn('objectName: "settingsSidebar"', main_source)
+        self.assertIn("readonly property var sectionLabels", main_source)
+        self.assertIn("function selectSection(index)", main_source)
+        self.assertNotIn("cardFadeTimer", main_source)
+        self.assertNotIn("settingsSectionFadeTimer", main_source)
+        for section_object in (
+            "generalSettingsSection",
+            "shortcutSettingsSection",
+            "recordingSettingsSection",
+            "providerSettingsSection",
+            "routeSettingsSection",
+        ):
+            self.assertIn(f'objectName: "{section_object}"', main_source)
         for binding in (
             "settings.mode",
             "settings.language",
@@ -430,6 +451,8 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn('normalized == "recording_hotkey"', bridge_source)
         self.assertIn('normalized == "rewrite_hotkey"', bridge_source)
         self.assertIn('normalized == "translation_hotkey"', bridge_source)
+        self.assertIn("def _run_when_ready", bridge_source)
+        self.assertIn("_pending_workflow_action", bridge_source)
         self.assertIn("StartRewrite(target)", bridge_source)
         self.assertIn("StartTranslation(target)", bridge_source)
         self.assertIn("CancelTranslation()", bridge_source)
@@ -451,7 +474,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("legacy_adapters", runtime_source)
         self.assertNotIn("QmlRuntimeUnavailableError", runtime_source)
         self.assertIn("_hidden_start_requested", source)
-        self.assertIn("window.hide()", source)
+        self.assertIn("presentationVisible", source)
 
     @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
     def test_qml_entrypoint_accepts_only_the_supported_hidden_start_flag(self):
@@ -516,6 +539,7 @@ class QmlWorkflowBridgeHotkeyTests(unittest.TestCase):
             self.state = WorkflowState()
             self.commands = []
             self.listeners = []
+            self.finish_calls = []
 
         def subscribe(self, listener):
             self.listeners.append(listener)
@@ -527,6 +551,13 @@ class QmlWorkflowBridgeHotkeyTests(unittest.TestCase):
 
         def dispatch(self, command):
             self.commands.append(command)
+            return True
+
+        def finish(self, operation_id):
+            from workflows import WorkflowState
+
+            self.finish_calls.append(operation_id)
+            self.publish(WorkflowState())
             return True
 
     class VoiceTranslationController(QObject):
@@ -595,6 +626,50 @@ class QmlWorkflowBridgeHotkeyTests(unittest.TestCase):
         self.assertTrue(bridge.busy)
         self.assertTrue(bridge.handleHotkey("recording_hotkey"))
         self.assertIsInstance(service.commands[-1], StopDictation)
+
+    def test_terminal_result_is_released_before_next_global_workflow_hotkey(self):
+        from workflows import (
+            StartDictation,
+            StartRewrite,
+            StartTranslation,
+            WorkflowPhase,
+            WorkflowState,
+        )
+
+        cases = (
+            ("recording_hotkey", StartDictation),
+            ("rewrite_hotkey", StartRewrite),
+            ("translation_hotkey", StartTranslation),
+        )
+        for action, command_type in cases:
+            with self.subTest(action=action):
+                service, bridge = self._bridge()
+                service.publish(
+                    WorkflowState(
+                        phase=WorkflowPhase.COMPLETED,
+                        operation_id=17,
+                        result_text="previous result",
+                    )
+                )
+
+                self.assertTrue(bridge.handleHotkey(action))
+                self.assertEqual(service.finish_calls, [17])
+                self.assertIsInstance(service.commands[-1], command_type)
+
+    def test_completed_workflow_opens_result_surface_immediately(self):
+        from workflows import WorkflowPhase, WorkflowState
+
+        service, bridge = self._bridge()
+        service.publish(
+            WorkflowState(
+                phase=WorkflowPhase.COMPLETED,
+                operation_id=17,
+                result_text="previous result",
+            )
+        )
+
+        self.assertEqual(bridge.surface, "result")
+        self.assertTrue(bridge.canShowResult)
 
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
