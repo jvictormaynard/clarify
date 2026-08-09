@@ -1114,12 +1114,6 @@ ApplicationWindow {
                                 spacing: 8
                                 visible: settingsPage.selectedSection === 2
 
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 1
-                                color: theme.border
-                            }
-
                             Label {
                                 text: "Microphone and recording"
                                 color: theme.secondaryText

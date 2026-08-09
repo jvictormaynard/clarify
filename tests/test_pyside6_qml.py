@@ -275,6 +275,10 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             "routeSettingsSection",
         ):
             self.assertIn(f'objectName: "{section_object}"', main_source)
+        recording_title = 'text: "Microphone and recording"'
+        recording_section = main_source[main_source.index('id: recordingSettingsSection'):]
+        recording_title_index = recording_section.index(recording_title)
+        self.assertNotIn("height: 1", recording_section[:recording_title_index])
         for binding in (
             "settings.mode",
             "settings.language",
