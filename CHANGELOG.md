@@ -5,6 +5,8 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-09
+
 ### Added
 
 - Added a staged per-user Windows MSI, authenticated release-manifest contract,
@@ -13,9 +15,32 @@ Notable user-facing changes are documented here. This project follows
 - Added managed signing, publisher verification, provenance attestation,
   certificate rotation, and emergency revocation documentation and release
   gates
+- Replaced the desktop frontend with a native Qt Quick/QML shell connected to
+  the real workflow runtime
+- Added workflow-focused Settings pages for General, Shortcuts, Recording,
+  Speech-to-text, Text processing, and Integrations
+- Added configurable global shortcuts, microphone selection, recording limits,
+  voice-activity controls, local history, dictionary snippets, audio-file
+  import, and voice translation
+- Added opt-in Local Whisper onboarding with verified runtime and model
+  lifecycle management
+
+### Changed
+
+- Separated provider credentials from workflow routes so each workflow can use
+  its own provider, model, endpoint, enablement, and prompt settings
+- Refined the QML interface with scalable sizing, minimal sidebar navigation,
+  local SVG icons, rounded language flags, and reliable dropdown controls
+- Applied fade animations to transient controls while keeping page navigation
+  immediate and stable
 
 ### Fixed
 
+- Showed completed recording results immediately without a separate View step
+- Rearmed recording and the Alt+K, Alt+T, and Alt+L actions after a terminal
+  result without requiring Dismiss
+- Fixed Windows QML dropdown options, microphone refresh controls, and several
+  alignment and asset-loading issues
 - Gave each recording an explicit session owner with unique temporary audio,
   bounded SoX shutdown, cancellation, stale-worker protection, and cleanup on
   success, failure, cancellation, and application exit
@@ -85,7 +110,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify-voice/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify-voice/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jvictormaynard/clarify-voice/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/jvictormaynard/clarify-voice/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jvictormaynard/clarify-voice/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jvictormaynard/clarify-voice/releases/tag/v0.1.0
