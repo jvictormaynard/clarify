@@ -1,6 +1,5 @@
 import QtQuick 6.5
 import QtQuick.Controls 6.5
-import QtQuick.Layouts 6.5
 
 Button {
     id: control
@@ -13,13 +12,13 @@ Button {
     implicitHeight: control.theme.controlHeight
     hoverEnabled: true
 
-    contentItem: RowLayout {
-        spacing: control.iconSource == "" ? 0 : 6
-
+    contentItem: Item {
         Image {
-            Layout.preferredWidth: control.iconSource == "" ? 0 : 16
-            Layout.preferredHeight: 16
-            Layout.alignment: control.text === "" ? Qt.AlignHCenter : Qt.AlignVCenter
+            id: buttonIcon
+            width: control.iconSource == "" ? 0 : 16
+            height: 16
+            anchors.verticalCenter: parent.verticalCenter
+            x: control.text === "" ? (parent.width - width) / 2 : 0
             visible: control.iconSource != ""
             source: control.iconSource
             sourceSize.width: 16
@@ -33,7 +32,9 @@ Button {
         }
 
         Label {
-            Layout.fillWidth: control.text !== ""
+            x: control.iconSource != "" ? buttonIcon.x + buttonIcon.width + 6 : 0
+            width: Math.max(0, parent.width - x)
+            height: parent.height
             visible: control.text !== ""
             text: control.text
             color: !control.enabled

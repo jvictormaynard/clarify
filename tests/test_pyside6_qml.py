@@ -210,6 +210,11 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("property int contentAlignment", button_source)
         self.assertIn("property url iconSource", button_source)
         self.assertIn("source: control.iconSource", button_source)
+        self.assertIn("anchors.verticalCenter: parent.verticalCenter", button_source)
+        self.assertIn(
+            'x: control.text === "" ? (parent.width - width) / 2 : 0',
+            button_source,
+        )
         self.assertIn("horizontalAlignment: control.contentAlignment", button_source)
         self.assertIn("contentAlignment: Text.AlignLeft", main_source)
         self.assertIn("readonly property var sectionItems", main_source)
