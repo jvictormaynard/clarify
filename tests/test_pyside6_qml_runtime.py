@@ -262,9 +262,7 @@ class QtRecordingSessionTests(unittest.TestCase):
             is_default=False,
             backend_index=4,
         )
-        inventory = MicrophoneInventory.from_records(
-            [selected], default_id="selected"
-        )
+        inventory = MicrophoneInventory.from_records([selected], default_id="selected")
 
         class Config:
             def current(self):
