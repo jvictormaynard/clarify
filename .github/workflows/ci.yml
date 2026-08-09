@@ -69,7 +69,7 @@ jobs:
         run: >-
           ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py
           spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py spikes/pyside6/qml_runtime.py
-          spikes/pyside6/qml_settings.py spikes/pyside6/qml_audio_batch.py
+          spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py spikes/pyside6/qml_audio_batch.py
           spikes/pyside6/qml_clipboard.py spikes/pyside6/qml_voice_translation.py
           spikes/pyside6/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
           tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py
@@ -81,7 +81,7 @@ jobs:
         run: >-
           ruff format --check scripts/dependency_audit.py tests/test_repository.py
           spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py spikes/pyside6/qml_runtime.py
-          spikes/pyside6/qml_settings.py spikes/pyside6/qml_audio_batch.py
+          spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py spikes/pyside6/qml_audio_batch.py
           spikes/pyside6/qml_clipboard.py spikes/pyside6/qml_voice_translation.py
           spikes/pyside6/qt_shell.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py
           tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py
@@ -100,7 +100,7 @@ jobs:
       - name: Compile Python sources
         run: >-
           python -m compileall -q spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py
-          spikes/pyside6/qml_runtime.py spikes/pyside6/qml_settings.py
+          spikes/pyside6/qml_runtime.py spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py
           spikes/pyside6/qml_audio_batch.py spikes/pyside6/qml_clipboard.py
           spikes/pyside6/qml_voice_translation.py spikes/pyside6/qt_shell.py
           workflows.py desktop_state.py repositories.py workflow_config.py workflow_settings.py

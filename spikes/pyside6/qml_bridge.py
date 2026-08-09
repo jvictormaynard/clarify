@@ -62,6 +62,8 @@ class QmlWorkflowBridge(QObject):
     busyChanged = Signal()
     canShowResultChanged = Signal()
     voiceChanged = Signal()
+    recordingChanged = Signal()
+    targetExecutableChanged = Signal()
     modeChanged = Signal()
     languageChanged = Signal()
     copyCompleted = Signal(bool)
@@ -119,6 +121,7 @@ class QmlWorkflowBridge(QObject):
         voice_translation_handler: Callable[[], Any] | None = None,
         voice_translation_controller: Any | None = None,
         audio_batch_controller: Any | None = None,
+        target_provider: Callable[[], Any | None] | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -131,6 +134,7 @@ class QmlWorkflowBridge(QObject):
         self._voice_translation_handler = voice_translation_handler
         self._voice_translation_controller = voice_translation_controller
         self._audio_batch_controller = audio_batch_controller
+        self._target_provider = target_provider
         self._voice_state = (
             getattr(voice_translation_controller, "state", None)
             if voice_translation_controller is not None
@@ -141,6 +145,7 @@ class QmlWorkflowBridge(QObject):
         self._settings_visible = False
         self._files_visible = False
         self._finishing = False
+        self._target_executable = ""
         saved_config = app_config
         if saved_config is None:
             config_provider = getattr(workflow_service, "_config", None)
@@ -205,6 +210,17 @@ class QmlWorkflowBridge(QObject):
             or getattr(self._voice_translation_controller, "active", False)
             or getattr(self._audio_batch_controller, "running", False)
         )
+
+    @Property(bool, notify=recordingChanged)
+    def recording(self) -> bool:
+        return bool(
+            self._state.phase is WorkflowPhase.RECORDING
+            or self._voice_phase() is VoiceTranslationPhase.RECORDING
+        )
+
+    @Property(str, notify=targetExecutableChanged)
+    def targetExecutable(self) -> str:
+        return self._target_executable
 
     @Property(bool, notify=canShowResultChanged)
     def canShowResult(self) -> bool:
@@ -311,10 +327,13 @@ class QmlWorkflowBridge(QObject):
         self.busyChanged.emit()
         self.canShowResultChanged.emit()
         self.voiceChanged.emit()
+        self.recordingChanged.emit()
 
     @Slot(object)
     def _on_workflow_state(self, state: WorkflowState) -> None:
         self._state = state
+        if state.target_executable:
+            self.setTargetExecutable(state.target_executable)
         self._finishing = False
         if state.phase is not WorkflowPhase.COMPLETED:
             self._result_visible = False
@@ -331,6 +350,25 @@ class QmlWorkflowBridge(QObject):
 
     def _submit(self, callback: Callable[[], None]) -> None:
         self._dispatch_runner(callback)
+
+    def _capture_target(self) -> Any | None:
+        if self._target_provider is None:
+            return None
+        try:
+            target = self._target_provider()
+        except Exception:
+            return None
+        if target is not None:
+            self.setTargetExecutable(getattr(target, "executable", "") or "")
+        return target
+
+    @Slot(str)
+    def setTargetExecutable(self, executable: str) -> None:
+        normalized = str(executable or "")
+        if normalized == self._target_executable:
+            return
+        self._target_executable = normalized
+        self.targetExecutableChanged.emit()
 
     @staticmethod
     def _normalize_mode(mode: Any) -> str:
@@ -388,9 +426,10 @@ class QmlWorkflowBridge(QObject):
             return
         self._settings_visible = False
         self._result_visible = False
+        target = self._capture_target()
         self._submit(
             lambda: self._workflow_service.dispatch(
-                StartDictation(None, self._mode, self._language)
+                StartDictation(target, self._mode, self._language)
             )
         )
 
@@ -452,7 +491,8 @@ class QmlWorkflowBridge(QObject):
                 return False
             if not self._dismiss_files_before_workflow():
                 return False
-            self._submit(lambda: self._workflow_service.dispatch(StartRewrite()))
+            target = self._capture_target()
+            self._submit(lambda: self._workflow_service.dispatch(StartRewrite(target)))
             return True
 
         if normalized == "translation_hotkey":
@@ -460,7 +500,10 @@ class QmlWorkflowBridge(QObject):
                 return False
             if not self._dismiss_files_before_workflow():
                 return False
-            self._submit(lambda: self._workflow_service.dispatch(StartTranslation()))
+            target = self._capture_target()
+            self._submit(
+                lambda: self._workflow_service.dispatch(StartTranslation(target))
+            )
             return True
 
         if normalized == "escape":

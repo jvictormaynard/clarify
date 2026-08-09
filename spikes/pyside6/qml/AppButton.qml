@@ -14,7 +14,8 @@ Button {
         text: control.text
         color: !control.enabled
                ? control.theme.dim
-               : control.quiet ? control.theme.dim : control.theme.text
+               : control.primary ? control.theme.text
+               : control.quiet ? control.theme.dim : control.theme.subtleText
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         font.pixelSize: 11
@@ -27,8 +28,10 @@ Button {
         color: !control.enabled
                ? control.theme.controlDisabled
                : control.quiet
-                 ? (control.hovered ? control.theme.controlHover : "transparent")
-                 : (control.hovered ? control.theme.controlHover : control.theme.control)
+                 ? (control.down ? control.theme.controlPressed
+                    : control.hovered ? control.theme.controlHover : "transparent")
+                 : (control.down ? control.theme.controlPressed
+                    : control.hovered ? control.theme.controlHover : control.theme.control)
         border.width: 0
 
         Behavior on color {
