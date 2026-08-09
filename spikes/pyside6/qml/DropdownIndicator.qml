@@ -1,8 +1,6 @@
 import QtQuick 6.5
 
 Image {
-    implicitWidth: 16
-    implicitHeight: 16
     width: 16
     height: 16
     source: "icons/chevron-down.svg"

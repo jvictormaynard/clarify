@@ -233,6 +233,10 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn('text: "↻"', main_source)
         indicator_source = (QML_ROOT / "DropdownIndicator.qml").read_text(encoding="utf-8")
         self.assertIn('source: "icons/chevron-down.svg"', indicator_source)
+        self.assertIn("width: 16", indicator_source)
+        self.assertIn("height: 16", indicator_source)
+        self.assertNotIn("implicitWidth", indicator_source)
+        self.assertNotIn("implicitHeight", indicator_source)
         popup_delegate_source = (QML_ROOT / "ComboPopupDelegate.qml").read_text(
             encoding="utf-8"
         )
