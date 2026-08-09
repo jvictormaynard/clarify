@@ -211,6 +211,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         button_source = (QML_ROOT / "AppButton.qml").read_text(encoding="utf-8")
         self.assertIn("property int contentAlignment", button_source)
         self.assertIn("property url iconSource", button_source)
+        self.assertIn("property int iconSize", button_source)
         self.assertIn("source: control.iconSource", button_source)
         self.assertIn("anchors.verticalCenter: parent.verticalCenter", button_source)
         self.assertIn(
@@ -222,6 +223,21 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("readonly property var sectionItems", main_source)
         self.assertIn('iconSource: "icons/" + modelData.icon', main_source)
         self.assertNotIn("iconText", main_source)
+        self.assertIn('iconSource: "icons/refresh.svg"', main_source)
+        self.assertIn("iconSize: 18", main_source)
+        self.assertEqual(main_source.count("indicator: DropdownIndicator"), 10)
+        self.assertEqual(main_source.count("delegate: ComboPopupDelegate"), 9)
+        self.assertEqual(main_source.count("popup.padding: 4"), 10)
+        self.assertNotIn("indicator: Label", main_source)
+        self.assertNotIn('text: "⌄"', main_source)
+        self.assertNotIn('text: "↻"', main_source)
+        indicator_source = (QML_ROOT / "DropdownIndicator.qml").read_text(encoding="utf-8")
+        self.assertIn('source: "icons/chevron-down.svg"', indicator_source)
+        popup_delegate_source = (QML_ROOT / "ComboPopupDelegate.qml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("comboBox.textAt(index)", popup_delegate_source)
+        self.assertIn("highlighted: comboBox", popup_delegate_source)
         icon_dir = QML_ROOT / "icons"
         self.assertTrue(icon_dir.is_dir())
         for icon_name in (
@@ -231,6 +247,8 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             "server.svg",
             "route.svg",
             "x.svg",
+            "chevron-down.svg",
+            "refresh.svg",
         ):
             icon_source = (icon_dir / icon_name).read_text(encoding="utf-8")
             self.assertIn('<svg xmlns="http://www.w3.org/2000/svg"', icon_source)

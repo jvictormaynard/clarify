@@ -679,6 +679,10 @@ ApplicationWindow {
                                     model: settings.modes
                                     currentIndex: Math.max(0, settings.modes.indexOf(settings.mode))
                                     onActivated: settings.setMode(currentText)
+                                    delegate: ComboPopupDelegate {
+                                        theme: theme
+                                        comboBox: settingsModeBox
+                                    }
                                     contentItem: Label {
                                         leftPadding: 8
                                         rightPadding: 24
@@ -688,12 +692,9 @@ ApplicationWindow {
                                         verticalAlignment: Text.AlignVCenter
                                         elide: Text.ElideRight
                                     }
-                                    indicator: Label {
+                                    indicator: DropdownIndicator {
                                         x: settingsModeBox.width - width - 8
                                         y: (settingsModeBox.height - height) / 2
-                                        text: "⌄"
-                                        color: theme.dim
-                                        font.pixelSize: 12
                                     }
                                     background: Rectangle {
                                         implicitHeight: 26
@@ -701,6 +702,13 @@ ApplicationWindow {
                                         color: theme.control
                                         border.color: theme.border
                                         border.width: 1
+                                    }
+                                    popup.padding: 4
+                                    popup.background: Rectangle {
+                                        color: theme.control
+                                        border.color: theme.border
+                                        border.width: 1
+                                        radius: 9
                                     }
                                 }
 
@@ -743,7 +751,11 @@ ApplicationWindow {
                                     delegate: ItemDelegate {
                                         id: languageDelegate
                                         required property var modelData
-                                        width: settingsLanguageBox.width
+                                        width: Math.max(
+                                            0,
+                                            settingsLanguageBox.popup.width
+                                            - settingsLanguageBox.popup.leftPadding
+                                            - settingsLanguageBox.popup.rightPadding)
                                         height: 30
                                         hoverEnabled: true
 
@@ -775,15 +787,12 @@ ApplicationWindow {
                                             color: languageDelegate.down ? theme.controlPressed
                                                    : languageDelegate.hovered
                                                      || languageDelegate.highlighted
-                                                     ? theme.controlHover : theme.card
+                                                     ? theme.controlHover : "transparent"
                                         }
                                     }
-                                    indicator: Label {
+                                    indicator: DropdownIndicator {
                                         x: settingsLanguageBox.width - width - 8
                                         y: (settingsLanguageBox.height - height) / 2
-                                        text: "⌄"
-                                        color: theme.dim
-                                        font.pixelSize: 12
                                     }
                                     background: Rectangle {
                                         implicitHeight: 26
@@ -793,11 +802,12 @@ ApplicationWindow {
                                         border.width: 1
                                     }
 
+                                    popup.padding: 4
                                     popup.background: Rectangle {
-                                        color: theme.card
+                                        color: theme.control
                                         border.color: theme.border
                                         border.width: 1
-                                        radius: 8
+                                        radius: 9
                                     }
                                 }
 
@@ -1007,6 +1017,14 @@ ApplicationWindow {
                                         0, settings.hotkeyActivationModes.indexOf(
                                             settings.hotkeyActivationMode))
                                     onActivated: settings.setHotkeyActivationMode(currentText)
+                                    delegate: ComboPopupDelegate {
+                                        theme: theme
+                                        comboBox: hotkeyActivationBox
+                                        displayTextForIndex: function(index, value) {
+                                            return value === "push_to_talk"
+                                                   ? "Push-to-talk" : "Toggle"
+                                        }
+                                    }
                                     contentItem: Label {
                                         leftPadding: 8
                                         rightPadding: 24
@@ -1016,12 +1034,9 @@ ApplicationWindow {
                                         font.pixelSize: 11
                                         verticalAlignment: Text.AlignVCenter
                                     }
-                                    indicator: Label {
+                                    indicator: DropdownIndicator {
                                         x: hotkeyActivationBox.width - width - 8
                                         y: (hotkeyActivationBox.height - height) / 2
-                                        text: "⌄"
-                                        color: theme.dim
-                                        font.pixelSize: 12
                                     }
                                     background: Rectangle {
                                         implicitHeight: 26
@@ -1029,6 +1044,13 @@ ApplicationWindow {
                                         color: theme.control
                                         border.color: theme.border
                                         border.width: 1
+                                    }
+                                    popup.padding: 4
+                                    popup.background: Rectangle {
+                                        color: theme.control
+                                        border.color: theme.border
+                                        border.width: 1
+                                        radius: 9
                                     }
                                 }
 
@@ -1161,6 +1183,10 @@ ApplicationWindow {
                                             Math.min(settings.microphoneSelectionIndex, count - 1))
                                         onActivated: settings.selectMicrophone(
                                             microphoneBox.model[index]["id"])
+                                        delegate: ComboPopupDelegate {
+                                            theme: theme
+                                            comboBox: microphoneBox
+                                        }
                                         contentItem: Label {
                                             leftPadding: 8
                                             rightPadding: 24
@@ -1170,12 +1196,9 @@ ApplicationWindow {
                                             verticalAlignment: Text.AlignVCenter
                                             elide: Text.ElideRight
                                         }
-                                        indicator: Label {
+                                        indicator: DropdownIndicator {
                                             x: microphoneBox.width - width - 8
                                             y: (microphoneBox.height - height) / 2
-                                            text: "⌄"
-                                            color: theme.dim
-                                            font.pixelSize: 12
                                         }
                                         background: Rectangle {
                                             implicitHeight: 26
@@ -1184,11 +1207,19 @@ ApplicationWindow {
                                             border.color: theme.border
                                             border.width: 1
                                         }
+                                        popup.padding: 4
+                                        popup.background: Rectangle {
+                                            color: theme.control
+                                            border.color: theme.border
+                                            border.width: 1
+                                            radius: 9
+                                        }
                                     }
 
                                     AppButton {
-                                        text: "↻"
-                                                theme: root.visualTheme
+                                        iconSource: "icons/refresh.svg"
+                                        iconSize: 18
+                                        theme: root.visualTheme
                                         quiet: true
                                         Layout.preferredWidth: 28
                                         Layout.preferredHeight: 26
@@ -1485,6 +1516,13 @@ ApplicationWindow {
                                         0, settings.providerIds.indexOf(
                                             settings.selectedProviderId))
                                     onActivated: settings.selectProvider(currentText)
+                                    delegate: ComboPopupDelegate {
+                                        theme: theme
+                                        comboBox: onboardingProviderBox
+                                        displayTextForIndex: function(index, value) {
+                                            return settings.providerName(value)
+                                        }
+                                    }
                                     contentItem: Label {
                                         leftPadding: 8
                                         rightPadding: 24
@@ -1494,12 +1532,9 @@ ApplicationWindow {
                                         font.pixelSize: 11
                                         verticalAlignment: Text.AlignVCenter
                                     }
-                                    indicator: Label {
+                                    indicator: DropdownIndicator {
                                         x: onboardingProviderBox.width - width - 8
                                         y: (onboardingProviderBox.height - height) / 2
-                                        text: "⌄"
-                                        color: theme.dim
-                                        font.pixelSize: 12
                                     }
                                     background: Rectangle {
                                         implicitHeight: 26
@@ -1507,6 +1542,13 @@ ApplicationWindow {
                                         color: theme.control
                                         border.color: theme.border
                                         border.width: 1
+                                    }
+                                    popup.padding: 4
+                                    popup.background: Rectangle {
+                                        color: theme.control
+                                        border.color: theme.border
+                                        border.width: 1
+                                        radius: 9
                                     }
                                 }
 
@@ -1813,6 +1855,13 @@ ApplicationWindow {
                                     model: settings.workflowScopes
                                     currentIndex: Math.max(0, settings.workflowScopes.indexOf(settings.selectedScope))
                                     onActivated: settings.selectWorkflow(currentText)
+                                    delegate: ComboPopupDelegate {
+                                        theme: theme
+                                        comboBox: scopeBox
+                                        displayTextForIndex: function(index, value) {
+                                            return routeSettingsSection.scopeLabel(value)
+                                        }
+                                    }
                                     contentItem: Label {
                                         leftPadding: 8
                                         rightPadding: 24
@@ -1822,12 +1871,9 @@ ApplicationWindow {
                                         verticalAlignment: Text.AlignVCenter
                                         elide: Text.ElideRight
                                     }
-                                    indicator: Label {
+                                    indicator: DropdownIndicator {
                                         x: scopeBox.width - width - 8
                                         y: (scopeBox.height - height) / 2
-                                        text: "⌄"
-                                        color: theme.dim
-                                        font.pixelSize: 12
                                     }
                                     background: Rectangle {
                                         implicitHeight: 26
@@ -1835,6 +1881,13 @@ ApplicationWindow {
                                         color: theme.control
                                         border.color: theme.border
                                         border.width: 1
+                                    }
+                                    popup.padding: 4
+                                    popup.background: Rectangle {
+                                        color: theme.control
+                                        border.color: theme.border
+                                        border.width: 1
+                                        radius: 9
                                     }
                                 }
 
@@ -1851,6 +1904,10 @@ ApplicationWindow {
                                     model: settings.providersForScope(settings.selectedScope)
                                     currentIndex: Math.max(0, model.indexOf(settings.routeProviderId))
                                     onActivated: settings.setRouteProviderId(currentText)
+                                    delegate: ComboPopupDelegate {
+                                        theme: theme
+                                        comboBox: providerBox
+                                    }
                                     contentItem: Label {
                                         leftPadding: 8
                                         rightPadding: 24
@@ -1860,12 +1917,9 @@ ApplicationWindow {
                                         verticalAlignment: Text.AlignVCenter
                                         elide: Text.ElideRight
                                     }
-                                    indicator: Label {
+                                    indicator: DropdownIndicator {
                                         x: providerBox.width - width - 8
                                         y: (providerBox.height - height) / 2
-                                        text: "⌄"
-                                        color: theme.dim
-                                        font.pixelSize: 12
                                     }
                                     background: Rectangle {
                                         implicitHeight: 26
@@ -1873,6 +1927,13 @@ ApplicationWindow {
                                         color: theme.control
                                         border.color: theme.border
                                         border.width: 1
+                                    }
+                                    popup.padding: 4
+                                    popup.background: Rectangle {
+                                        color: theme.control
+                                        border.color: theme.border
+                                        border.width: 1
+                                        radius: 9
                                     }
                                 }
 
@@ -2299,6 +2360,13 @@ ApplicationWindow {
                             currentIndex: Math.max(
                                 0, model.indexOf(filesPage.batchExecution))
                             onActivated: filesPage.selectBatchExecution(currentText)
+                            delegate: ComboPopupDelegate {
+                                theme: theme
+                                comboBox: batchExecutionBox
+                                displayTextForIndex: function(index, value) {
+                                    return value === "local" ? "Local Whisper" : "Cloud"
+                                }
+                            }
                             contentItem: Label {
                                 leftPadding: 8
                                 rightPadding: 24
@@ -2309,12 +2377,9 @@ ApplicationWindow {
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                             }
-                            indicator: Label {
+                            indicator: DropdownIndicator {
                                 x: batchExecutionBox.width - width - 8
                                 y: (batchExecutionBox.height - height) / 2
-                                text: "⌄"
-                                color: theme.dim
-                                font.pixelSize: 12
                             }
                             background: Rectangle {
                                 implicitHeight: 26
@@ -2322,6 +2387,13 @@ ApplicationWindow {
                                 color: theme.control
                                 border.color: theme.border
                                 border.width: 1
+                            }
+                            popup.padding: 4
+                            popup.background: Rectangle {
+                                color: theme.control
+                                border.color: theme.border
+                                border.width: 1
+                                radius: 9
                             }
                         }
 
@@ -2341,6 +2413,13 @@ ApplicationWindow {
                             currentIndex: Math.max(
                                 0, model.indexOf(filesPage.batchProviderId))
                             onActivated: filesPage.selectBatchProvider(currentText)
+                            delegate: ComboPopupDelegate {
+                                theme: theme
+                                comboBox: batchProviderBox
+                                displayTextForIndex: function(index, value) {
+                                    return settings.providerName(value)
+                                }
+                            }
                             contentItem: Label {
                                 leftPadding: 8
                                 rightPadding: 24
@@ -2351,12 +2430,9 @@ ApplicationWindow {
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                             }
-                            indicator: Label {
+                            indicator: DropdownIndicator {
                                 x: batchProviderBox.width - width - 8
                                 y: (batchProviderBox.height - height) / 2
-                                text: "⌄"
-                                color: theme.dim
-                                font.pixelSize: 12
                             }
                             background: Rectangle {
                                 implicitHeight: 26
@@ -2364,6 +2440,13 @@ ApplicationWindow {
                                 color: theme.control
                                 border.color: theme.border
                                 border.width: 1
+                            }
+                            popup.padding: 4
+                            popup.background: Rectangle {
+                                color: theme.control
+                                border.color: theme.border
+                                border.width: 1
+                                radius: 9
                             }
                         }
 
@@ -2386,12 +2469,27 @@ ApplicationWindow {
                                 0, model.indexOf(filesPage.batchModelId))
                             onActivated: filesPage.selectBatchModel(currentText)
                             onAccepted: filesPage.commitBatchModel()
+                            delegate: ComboPopupDelegate {
+                                theme: theme
+                                comboBox: batchModelBox
+                            }
+                            indicator: DropdownIndicator {
+                                x: batchModelBox.width - width - 8
+                                y: (batchModelBox.height - height) / 2
+                            }
                             background: Rectangle {
                                 implicitHeight: 26
                                 radius: theme.controlRadius
                                 color: theme.control
                                 border.color: theme.border
                                 border.width: 1
+                            }
+                            popup.padding: 4
+                            popup.background: Rectangle {
+                                color: theme.control
+                                border.color: theme.border
+                                border.width: 1
+                                radius: 9
                             }
                         }
                     }

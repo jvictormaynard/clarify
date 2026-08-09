@@ -8,6 +8,7 @@ Button {
     property bool quiet: false
     property int contentAlignment: Text.AlignHCenter
     property url iconSource: ""
+    property int iconSize: 16
 
     implicitHeight: control.theme.controlHeight
     hoverEnabled: true
@@ -15,14 +16,14 @@ Button {
     contentItem: Item {
         Image {
             id: buttonIcon
-            width: control.iconSource == "" ? 0 : 16
-            height: 16
+            width: control.iconSource == "" ? 0 : control.iconSize
+            height: control.iconSize
             anchors.verticalCenter: parent.verticalCenter
             x: control.text === "" ? (parent.width - width) / 2 : 0
             visible: control.iconSource != ""
             source: control.iconSource
-            sourceSize.width: 16
-            sourceSize.height: 16
+            sourceSize.width: control.iconSize
+            sourceSize.height: control.iconSize
             fillMode: Image.PreserveAspectFit
             smooth: true
             mipmap: true
