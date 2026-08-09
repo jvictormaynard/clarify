@@ -65,6 +65,15 @@ SHA-256 match that release. See [Windows distribution and update
 security](docs/windows-distribution.md) for the exact install, upgrade, repair,
 rollback, uninstall, signing, and incident behavior.
 
+### Community portable release
+
+The project also publishes a no-cost community release for the portable app.
+It contains `ClarifyVoice.exe`, its SHA-256 file, the runtime SBOM, a ZIP
+archive, and the verified SoX source archive. It is intentionally unsigned
+until paid publisher signing is sponsored. Windows SmartScreen can therefore
+ask for confirmation on first launch. This release does not contain the MSI or
+the authenticated update manifest.
+
 ### Portable Windows app
 
 The release workflow produces a self-contained `ClarifyVoice.exe`, so end users
@@ -85,12 +94,9 @@ do not need Python, Node.js, or SoX.
    choose the route for each workflow. A route selects its provider, model,
    endpoint, enablement, and optional prompt independently.
 
-Published executables through v0.1.2 are not code-signed. Windows SmartScreen may therefore ask
-you to confirm the first launch. Verify the SHA-256 file published with the
-release if you want to check the download before running it.
-
-No release available yet? Use the source installation below. Maintainers can
-publish the first portable build by pushing a tag such as `v0.1.0`.
+Community portable executables are not code-signed. Verify the SHA-256 file
+published with the release before running the download. The MSI and in-app
+update path remain disabled until the signed rollout gates are complete.
 
 ### Run from source on Windows
 

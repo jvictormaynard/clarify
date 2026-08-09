@@ -1,6 +1,6 @@
 {
   "name": "clarify-voice",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "scripts": {
     "test": "python3 -m unittest discover -s tests -v",

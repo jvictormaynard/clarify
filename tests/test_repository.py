@@ -108,6 +108,26 @@ class RepositorySafetyTests(unittest.TestCase):
             content,
         )
 
+    def test_community_release_is_unsigned_portable_only(self):
+        content = (
+            ROOT / ".github" / "workflows" / "community-release.yml"
+        ).read_text(encoding="utf-8")
+        for required in (
+            "name: Community Release",
+            "Build unsigned portable release",
+            "ClarifyVoice.exe.sha256",
+            "ClarifyVoice.sbom.json",
+            "ClarifyVoice-windows-x64.zip",
+            "sox-14.4.2-source.tar.gz",
+            "actions/attest-build-provenance@",
+            "Publish unsigned community release",
+        ):
+            self.assertIn(required, content)
+        self.assertNotIn("azure/login", content)
+        self.assertNotIn("azure/artifact-signing-action", content)
+        self.assertNotIn("ClarifyVoice-windows-x64.msi", content)
+        self.assertNotIn("release-manifest", content)
+
     def test_release_requires_managed_signing_and_provenance(self):
         content = (ROOT / ".github" / "workflows" / "release.yml").read_text(
             encoding="utf-8"
@@ -318,6 +338,7 @@ class RepositorySafetyTests(unittest.TestCase):
             ".github/PULL_REQUEST_TEMPLATE.md",
             ".github/workflows/ci.yml",
             ".github/workflows/release.yml",
+            ".github/workflows/community-release.yml",
         ]
         for relative_path in required:
             self.assertTrue((ROOT / relative_path).is_file(), relative_path)
