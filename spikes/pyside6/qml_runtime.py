@@ -668,7 +668,20 @@ class QtRecorder:
         )
         return device.name
 
-    def _start_level_meter(self) -> None:
+    @staticmethod
+    def _close_level_stream(stream: Any | None) -> None:
+        if stream is None:
+            return
+        try:
+            stream.stop()
+        except Exception:
+            pass
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+    def _start_level_meter(self, cancel_event: threading.Event | None = None) -> None:
         """Open a best-effort monitor stream for the reactive QML waveform."""
 
         if _sounddevice is None:
@@ -690,6 +703,8 @@ class QtRecorder:
                 math.sqrt(mean_square) / 32768.0 * 16,
             )
 
+        stream = None
+        published = False
         try:
             stream_options: dict[str, Any] = {
                 "channels": 1,
@@ -702,23 +717,31 @@ class QtRecorder:
                 stream_options["device"] = self._level_stream_device
             stream = _sounddevice.RawInputStream(**stream_options)
             stream.start()
-            self.mic_stream = stream
+            with self._lock:
+                process = self.process
+                cancelled = cancel_event is not None and cancel_event.is_set()
+                if (
+                    process is not None
+                    and process.poll() is None
+                    and not cancelled
+                    and self.mic_stream is None
+                ):
+                    self.mic_stream = stream
+                    published = True
+            if not published:
+                self._close_level_stream(stream)
         except Exception:
             # The meter is presentation-only; SoX remains authoritative.
-            self.mic_stream = None
+            if not published:
+                self._close_level_stream(stream)
             self.mic_level = 0.0
 
     def _stop_level_meter(self) -> None:
-        stream = self.mic_stream
-        self.mic_stream = None
-        self.mic_level = 0.0
-        if stream is None:
-            return
-        try:
-            stream.stop()
-            stream.close()
-        except Exception:
-            pass
+        with self._lock:
+            stream = self.mic_stream
+            self.mic_stream = None
+            self.mic_level = 0.0
+        self._close_level_stream(stream)
 
     def microphone_inventory(self) -> Any:
         """Return the same safe inventory boundary used by recording.
@@ -866,13 +889,16 @@ class QtRecorder:
                 if self.process is process:
                     self.process = None
             raise MicrophoneUnavailableError("No active microphone")
-        self._start_level_meter()
+        self._start_level_meter(cancel_event)
 
     def stop(self) -> None:
-        self._stop_level_meter()
         with self._lock:
+            level_stream = self.mic_stream
+            self.mic_stream = None
+            self.mic_level = 0.0
             process = self.process
             self.process = None
+        self._close_level_stream(level_stream)
         if process is None:
             return
         if process.poll() is None:

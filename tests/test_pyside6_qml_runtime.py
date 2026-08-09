@@ -252,6 +252,87 @@ class QtRecordingSessionTests(unittest.TestCase):
         self.assertTrue(level_streams[0].closed)
         self.assertEqual(recorder.mic_level, 0.0)
 
+    def test_recorder_closes_level_meter_when_stop_races_stream_start(self):
+        from microphone_controls import MicrophoneDevice, MicrophoneInventory
+
+        selected = MicrophoneDevice(
+            stable_id="selected",
+            name="USB microphone",
+            input_channels=1,
+            is_default=False,
+            backend_index=4,
+        )
+        inventory = MicrophoneInventory.from_records(
+            [selected], default_id="selected"
+        )
+
+        class Config:
+            def current(self):
+                return SimpleNamespace(
+                    microphone=SimpleNamespace(selected_id="selected")
+                )
+
+        class InventorySource:
+            def snapshot(self):
+                return inventory
+
+        class BlockingLevelStream:
+            def __init__(self, **options):
+                self.options = options
+                self.entered_start = threading.Event()
+                self.release_start = threading.Event()
+                self.closed = False
+
+            def start(self):
+                self.entered_start.set()
+                self.release_start.wait(timeout=1)
+
+            def stop(self):
+                return None
+
+            def close(self):
+                self.closed = True
+
+        level_stream = BlockingLevelStream()
+        recorder = QtRecorder(Config(), InventorySource())
+        recorder.sox = "sox"
+        process = Mock()
+        process.poll.return_value = None
+        start_errors = []
+
+        def run_start():
+            try:
+                recorder.start(Path("capture.wav"), threading.Event())
+            except Exception as error:
+                start_errors.append(error)
+
+        with (
+            patch(
+                "spikes.pyside6.qml_runtime.platform.system",
+                return_value="Windows",
+            ),
+            patch(
+                "spikes.pyside6.qml_runtime.subprocess.Popen",
+                return_value=process,
+            ),
+            patch(
+                "spikes.pyside6.qml_runtime._sounddevice",
+                SimpleNamespace(RawInputStream=lambda **_options: level_stream),
+            ),
+            patch("spikes.pyside6.qml_runtime.time.sleep"),
+        ):
+            starter = threading.Thread(target=run_start)
+            starter.start()
+            self.assertTrue(level_stream.entered_start.wait(timeout=1))
+            recorder.stop()
+            level_stream.release_start.set()
+            starter.join(timeout=1)
+
+        self.assertFalse(starter.is_alive())
+        self.assertEqual(start_errors, [])
+        self.assertTrue(level_stream.closed)
+        self.assertIsNone(recorder.mic_stream)
+
     def test_recorder_resolves_sox_from_a_frozen_bundle(self):
         from spikes.pyside6 import qml_runtime
 
