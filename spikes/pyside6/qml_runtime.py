@@ -629,9 +629,13 @@ class QtRecorder:
                 _sounddevice
             )
         self.process: subprocess.Popen[bytes] | None = None
+        self.mic_stream: Any | None = None
+        self.mic_level = 0.0
+        self._level_stream_device: Any | None = None
         self._lock = threading.RLock()
 
     def _microphone_input_name(self, system: str) -> str:
+        self._level_stream_device = None
         selected_id = None
         if self.config is not None:
             selected_id = self.config.current().microphone.selected_id
@@ -659,7 +663,85 @@ class QtRecorder:
                     "Explicit microphone selection is unavailable with SoX PulseAudio"
                 )
             return "default"
+        self._level_stream_device = (
+            device.backend_index if device.backend_index is not None else device.name
+        )
         return device.name
+
+    @staticmethod
+    def _close_level_stream(stream: Any | None) -> None:
+        if stream is None:
+            return
+        try:
+            stream.stop()
+        except Exception:
+            pass
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+    def _start_level_meter(self, cancel_event: threading.Event | None = None) -> None:
+        """Open a best-effort monitor stream for the reactive QML waveform."""
+
+        if _sounddevice is None:
+            return
+
+        def callback(indata, _frames, _time_info, _status):
+            raw_samples = memoryview(indata)
+            samples = (
+                raw_samples
+                if raw_samples.format in {"h", "<h", "=h", "@h"}
+                and raw_samples.ndim == 1
+                else memoryview(raw_samples.tobytes()).cast("h")
+            )
+            if not samples:
+                return
+            mean_square = sum(sample * sample for sample in samples) / len(samples)
+            self.mic_level = min(
+                1.0,
+                math.sqrt(mean_square) / 32768.0 * 16,
+            )
+
+        stream = None
+        published = False
+        try:
+            stream_options: dict[str, Any] = {
+                "channels": 1,
+                "samplerate": 16000,
+                "blocksize": 256,
+                "dtype": "int16",
+                "callback": callback,
+            }
+            if self._level_stream_device is not None:
+                stream_options["device"] = self._level_stream_device
+            stream = _sounddevice.RawInputStream(**stream_options)
+            stream.start()
+            with self._lock:
+                process = self.process
+                cancelled = cancel_event is not None and cancel_event.is_set()
+                if (
+                    process is not None
+                    and process.poll() is None
+                    and not cancelled
+                    and self.mic_stream is None
+                ):
+                    self.mic_stream = stream
+                    published = True
+            if not published:
+                self._close_level_stream(stream)
+        except Exception:
+            # The meter is presentation-only; SoX remains authoritative.
+            if not published:
+                self._close_level_stream(stream)
+            self.mic_level = 0.0
+
+    def _stop_level_meter(self) -> None:
+        with self._lock:
+            stream = self.mic_stream
+            self.mic_stream = None
+            self.mic_level = 0.0
+        self._close_level_stream(stream)
 
     def microphone_inventory(self) -> Any:
         """Return the same safe inventory boundary used by recording.
@@ -807,11 +889,16 @@ class QtRecorder:
                 if self.process is process:
                     self.process = None
             raise MicrophoneUnavailableError("No active microphone")
+        self._start_level_meter(cancel_event)
 
     def stop(self) -> None:
         with self._lock:
+            level_stream = self.mic_stream
+            self.mic_stream = None
+            self.mic_level = 0.0
             process = self.process
             self.process = None
+        self._close_level_stream(level_stream)
         if process is None:
             return
         if process.poll() is None:

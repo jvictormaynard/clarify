@@ -10,7 +10,9 @@ QtObject {
     readonly property color dim: "#666666"
     readonly property color control: "#151515"
     readonly property color controlHover: "#222222"
+    readonly property color controlPressed: "#2b2b2b"
     readonly property color controlDisabled: "#101010"
+    readonly property color subtleText: "#8a8a8a"
     readonly property color transparentKey: "#010101"
 
     readonly property int pillRadius: 24
@@ -23,5 +25,6 @@ QtObject {
     readonly property int resultHeight: 148
     readonly property int panelWidth: 520
     readonly property int panelHeight: 430
-    readonly property int settingsHeight: panelHeight
+    readonly property int settingsWidth: 720
+    readonly property int settingsHeight: 540
 }

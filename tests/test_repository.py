@@ -299,6 +299,7 @@ class RepositorySafetyTests(unittest.TestCase):
         for workflow in (ci, release):
             self.assertIn("spikes/pyside6/qml_app.py", workflow)
             self.assertIn("spikes/pyside6/qml_runtime.py", workflow)
+            self.assertIn("spikes/pyside6/qml_status.py", workflow)
             self.assertIn("spikes/pyside6/qml_audio_batch.py", workflow)
             self.assertIn("spikes/pyside6/qml_clipboard.py", workflow)
             self.assertIn("spikes/pyside6/qml_voice_translation.py", workflow)

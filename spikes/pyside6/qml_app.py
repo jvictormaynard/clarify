@@ -17,6 +17,7 @@ if str(_REPOSITORY_ROOT) not in sys.path:
 from PySide6.QtCore import QUrl  # noqa: E402
 from PySide6.QtGui import QIcon  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
+from PySide6.QtQuickControls2 import QQuickStyle  # noqa: E402
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon  # noqa: E402
 
 
@@ -86,6 +87,7 @@ try:
     from .qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from .qml_bridge import QmlWorkflowBridge  # noqa: E402
     from .qml_settings import QmlSettingsController  # noqa: E402
+    from .qml_status import QmlStatusPillController  # noqa: E402
     from .qml_voice_translation import (  # noqa: E402
         create_qml_voice_translation_controller,
     )
@@ -100,6 +102,7 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from qml_bridge import QmlWorkflowBridge  # noqa: E402
     from qml_settings import QmlSettingsController  # noqa: E402
+    from qml_status import QmlStatusPillController  # noqa: E402
     from qml_voice_translation import (  # noqa: E402
         create_qml_voice_translation_controller,
     )
@@ -157,6 +160,7 @@ def _register_qml_context(
     settings,
     voice_translation=None,
     audio_batch=None,
+    status_pill=None,
 ) -> None:
     """Expose the real Qt-facing controllers before QML is loaded."""
 
@@ -167,6 +171,8 @@ def _register_qml_context(
         context.setContextProperty("voiceTranslation", voice_translation)
     if audio_batch is not None:
         context.setContextProperty("audioBatch", audio_batch)
+    if status_pill is not None:
+        context.setContextProperty("pillStatus", status_pill)
 
 
 def _connect_preference_sync(bridge, settings) -> None:
@@ -229,6 +235,33 @@ def _show_translation_picker_if_needed(bridge, shell) -> None:
         shell.show_window()
 
 
+class _WorkflowWindowVisibility:
+    """Hide the main card while a transient pill owns workflow feedback."""
+
+    _PILL_SURFACES = frozenset({"recording", "processing", "voice_processing"})
+
+    def __init__(self, bridge, shell, window) -> None:
+        self._bridge = bridge
+        self._shell = shell
+        self._window = window
+        self._restore_visible: bool | None = None
+        bridge.surfaceChanged.connect(self.sync)
+
+    def sync(self) -> None:
+        pill_active = self._bridge.surface in self._PILL_SURFACES
+        if pill_active:
+            if self._restore_visible is None:
+                self._restore_visible = bool(self._window.isVisible())
+            self._window.hide()
+            return
+        if self._restore_visible is None:
+            return
+        restore_visible = self._restore_visible
+        self._restore_visible = None
+        if restore_visible:
+            self._shell.show_window()
+
+
 def _sync_recording_escape_hotkey(bridge, hotkeys) -> None:
     """Register global Escape only while the workflow is recording."""
 
@@ -277,6 +310,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    # The platform-native Controls style can inject light Windows hover and
+    # popup surfaces into the otherwise dark frameless shell.  Basic keeps the
+    # controls deterministic so the QML palette owns every interaction state.
+    QQuickStyle.setStyle("Basic")
     app = QApplication(sys.argv[:1])
     app.setApplicationName("ClarifyVoice")
     app.setOrganizationName("ClarifyVoice")
@@ -331,6 +368,7 @@ def main(argv: list[str] | None = None) -> int:
         target = runtime.clipboard.capture_target()
         if target is None:
             return False
+        bridge.setTargetExecutable(target.executable or "")
         return voice_translation.startForTarget(target)
 
     bridge = QmlWorkflowBridge(
@@ -341,6 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         voice_translation_handler=toggle_voice_translation,
         voice_translation_controller=voice_translation,
         audio_batch_controller=audio_batch,
+        target_provider=runtime.clipboard.capture_target,
         parent=app,
     )
     hotkeys = None
@@ -355,6 +394,13 @@ def main(argv: list[str] | None = None) -> int:
         microphone_backend=runtime.recording_audio.recorder,
         hotkey_applier=apply_qml_hotkeys,
     )
+    branding_icon = _load_branding_icon()
+    status_pill = QmlStatusPillController(
+        bridge,
+        runtime.recording_audio.recorder,
+        fallback_icon=branding_icon,
+        parent=app,
+    )
     _connect_preference_sync(bridge, settings)
     engine = QQmlApplicationEngine()
     _register_qml_context(
@@ -363,18 +409,30 @@ def main(argv: list[str] | None = None) -> int:
         settings,
         voice_translation,
         audio_batch,
+        status_pill,
     )
 
     qml_root = _qml_root()
     engine.addImportPath(str(qml_root))
     engine.load(QUrl.fromLocalFile(str(qml_root / "Main.qml")))
-    if not engine.rootObjects():
+    engine.load(QUrl.fromLocalFile(str(qml_root / "StatusPill.qml")))
+    roots = engine.rootObjects()
+    window = next(
+        (root for root in roots if root.objectName() == "clarifyVoiceMainWindow"),
+        None,
+    )
+    pill_window = next(
+        (root for root in roots if root.objectName() == "workflowStatusPill"),
+        None,
+    )
+    if window is None or pill_window is None:
         runtime.shutdown()
         return 1
 
-    window = engine.rootObjects()[0]
     if start_hidden:
         window.hide()
+    else:
+        window.show()
     if sys.platform == "win32":
         hotkeys = WindowsGlobalHotkeyBackend(
             app,
@@ -390,13 +448,16 @@ def main(argv: list[str] | None = None) -> int:
         window,
         hotkeys=hotkeys,
         application=app,
-        icon=_load_branding_icon(),
+        icon=branding_icon,
         parent=app,
     )
     shell.hotkeyTriggered.connect(bridge.handleHotkey)
     bridge.surfaceChanged.connect(
         lambda: _show_translation_picker_if_needed(bridge, shell)
     )
+    workflow_window_visibility = _WorkflowWindowVisibility(bridge, shell, window)
+    # Keep the coordinator strongly referenced for the lifetime of app.exec().
+    _ = workflow_window_visibility
     _connect_shutdown(app, shell, runtime, voice_translation, audio_batch)
     app.aboutToQuit.connect(settings.shutdown)
 

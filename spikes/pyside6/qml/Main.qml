@@ -10,45 +10,43 @@ ApplicationWindow {
     width: workflow.surface === "result"
            || workflow.surface === "voice_result"
            || workflow.surface === "voice_error" ? theme.resultWidth
-           : (workflow.surface === "settings"
-              || workflow.surface === "files"
+           : workflow.surface === "settings" ? theme.settingsWidth
+           : (workflow.surface === "files"
               || workflow.surface === "translation_picker")
              ? theme.panelWidth : theme.windowWidth
     height: workflow.surface === "result"
             || workflow.surface === "voice_result"
             || workflow.surface === "voice_error"
             ? theme.resultHeight
-            : (workflow.surface === "settings"
-               || workflow.surface === "files"
+            : workflow.surface === "settings" ? theme.settingsHeight
+            : (workflow.surface === "files"
                || workflow.surface === "translation_picker")
               ? theme.panelHeight : theme.windowHeight
     minimumWidth: theme.windowWidth
     minimumHeight: theme.windowHeight
-    visible: true
+    visible: false
     title: "ClarifyVoice"
     color: "transparent"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
 
+    palette.window: theme.card
+    palette.windowText: theme.text
+    palette.base: theme.control
+    palette.alternateBase: theme.controlHover
+    palette.text: theme.text
+    palette.button: theme.control
+    palette.buttonText: theme.subtleText
+    palette.highlight: theme.controlHover
+    palette.highlightedText: theme.text
+    palette.placeholderText: theme.dim
+    palette.light: theme.controlHover
+    palette.mid: theme.border
+    palette.dark: theme.resultSurface
+    palette.toolTipBase: theme.control
+    palette.toolTipText: theme.text
+
     Theme { id: theme }
     property Theme visualTheme: theme
-
-    // The production shell uses the 380x48 card as its idle surface and a
-    // separate 142x42 transient pill while recording/processing. Keep that
-    // relationship visible in the production shell without introducing a dashboard.
-    StatusPill {
-        id: pill
-        theme: theme
-        x: root.x + (root.width - width) / 2
-        y: root.y + root.height + 12
-
-        Connections {
-            target: root
-            function onXChanged() { pill.x = root.x + (root.width - pill.width) / 2 }
-            function onYChanged() { pill.y = root.y + root.height + 12 }
-            function onWidthChanged() { pill.x = root.x + (root.width - pill.width) / 2 }
-            function onHeightChanged() { pill.y = root.y + root.height + 12 }
-        }
-    }
 
     Shortcut {
         sequence: "Escape"
@@ -156,6 +154,7 @@ ApplicationWindow {
                     Item {
                         id: statusArea
                         Layout.fillWidth: true
+                        Layout.fillHeight: true
                         Layout.minimumWidth: 0
                         Layout.alignment: Qt.AlignVCenter
 
@@ -188,19 +187,17 @@ ApplicationWindow {
                                 font.pixelSize: 13
                                 font.weight: Font.Bold
                                 elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
                                 Accessible.name: workflow.status
                             }
 
                         }
 
-                        MouseArea {
-                            anchors.fill: parent
+                        TapHandler {
                             enabled: workflow.surface === "idle"
                                      || workflow.surface === "recording"
-                            hoverEnabled: true
-                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            Accessible.name: workflow.status
-                            onClicked: {
+                            gesturePolicy: TapHandler.ReleaseWithinBounds
+                            onTapped: {
                                 if (workflow.surface === "recording")
                                     workflow.stopRecording()
                                 else
@@ -261,12 +258,23 @@ ApplicationWindow {
                                 "ru": "Russian"
                             })
                             property string languageCode: workflow.language.toUpperCase()
-                            text: languageCode
+                            text: ""
                             theme: theme
                             Layout.preferredWidth: 32
                             Layout.preferredHeight: 26
                             Accessible.name: "Language: "
                                               + languageNames[workflow.language]
+
+                            Image {
+                                anchors.centerIn: parent
+                                width: 20
+                                height: 14
+                                sourceSize.width: 20
+                                sourceSize.height: 14
+                                source: "flags/" + workflow.language + ".svg"
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
+                            }
                             onClicked: {
                                 var currentIndex = supportedLanguages.indexOf(workflow.language)
                                 var nextIndex = (currentIndex + 1) % supportedLanguages.length
@@ -478,6 +486,14 @@ ApplicationWindow {
                 objectName: "settingsPage"
                 focus: workflow.surface === "settings"
 
+                onVisibleChanged: {
+                    if (visible) {
+                        Qt.callLater(function() {
+                            settingsScroll.contentItem.contentY = 0
+                        })
+                    }
+                }
+
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 10
@@ -485,6 +501,15 @@ ApplicationWindow {
 
                     RowLayout {
                         Layout.fillWidth: true
+
+                        DragHandler {
+                            id: settingsWindowDragHandler
+                            target: null
+                            onActiveChanged: {
+                                if (active)
+                                    root.startSystemMove()
+                            }
+                        }
 
                         Label {
                             text: "Settings"
@@ -602,13 +627,72 @@ ApplicationWindow {
                                     model: settings.languages
                                     currentIndex: Math.max(0, settings.languages.indexOf(settings.language))
                                     onActivated: settings.setLanguage(currentText)
-                                    contentItem: Label {
-                                        leftPadding: 8
-                                        rightPadding: 24
-                                        text: settingsLanguageBox.currentText.toUpperCase()
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
+                                    contentItem: RowLayout {
+                                        x: 8
+                                        width: Math.max(0, parent.width - 32)
+                                        height: parent.height
+                                        spacing: 7
+
+                                        Image {
+                                            Layout.preferredWidth: 20
+                                            Layout.preferredHeight: 14
+                                            Layout.alignment: Qt.AlignVCenter
+                                            sourceSize.width: 20
+                                            sourceSize.height: 14
+                                            source: "flags/" + settingsLanguageBox.currentText + ".svg"
+                                            fillMode: Image.PreserveAspectFit
+                                            smooth: true
+                                        }
+
+                                        Label {
+                                            Layout.alignment: Qt.AlignVCenter
+                                            text: settingsLanguageBox.currentText.toUpperCase()
+                                            color: theme.text
+                                            font.pixelSize: 11
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+                                    }
+                                    delegate: ItemDelegate {
+                                        id: languageDelegate
+                                        required property var modelData
+                                        width: settingsLanguageBox.width
+                                        height: 30
+                                        hoverEnabled: true
+
+                                        contentItem: RowLayout {
+                                            x: 8
+                                            width: Math.max(0, parent.width - 16)
+                                            height: parent.height
+                                            spacing: 7
+
+                                            Image {
+                                                Layout.preferredWidth: 20
+                                                Layout.preferredHeight: 14
+                                                Layout.alignment: Qt.AlignVCenter
+                                                sourceSize.width: 20
+                                                sourceSize.height: 14
+                                                source: "flags/" + modelData + ".svg"
+                                                fillMode: Image.PreserveAspectFit
+                                                smooth: true
+                                            }
+
+                                            Label {
+                                                Layout.alignment: Qt.AlignVCenter
+                                                text: String(modelData).toUpperCase()
+                                                color: theme.text
+                                                font.pixelSize: 11
+                                            }
+
+                                            Item { Layout.fillWidth: true }
+                                        }
+
+                                        background: Rectangle {
+                                            color: languageDelegate.down ? theme.controlPressed
+                                                   : languageDelegate.hovered
+                                                     || languageDelegate.highlighted
+                                                     ? theme.controlHover : theme.card
+                                        }
                                     }
                                     indicator: Label {
                                         x: settingsLanguageBox.width - width - 8
@@ -623,6 +707,13 @@ ApplicationWindow {
                                         color: theme.control
                                         border.color: theme.border
                                         border.width: 1
+                                    }
+
+                                    popup.background: Rectangle {
+                                        color: theme.card
+                                        border.color: theme.border
+                                        border.width: 1
+                                        radius: 8
                                     }
                                 }
 

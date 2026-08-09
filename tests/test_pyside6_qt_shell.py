@@ -161,7 +161,7 @@ class FakeAction:
 
 
 class FakeMenu:
-    def __init__(self, _parent, *, fail_on_add_action: bool = False):
+    def __init__(self, *, fail_on_add_action: bool = False):
         self.actions = []
         self.fail_on_add_action = fail_on_add_action
         self.delete_later_calls = 0
@@ -348,6 +348,22 @@ class WindowsHotkeyEventFilterTests(unittest.TestCase):
 
         self.assertEqual(received, [0x5101])
         self.assertEqual(result, (False, 0))
+
+    def test_filter_deduplicates_qt_copies_of_the_same_native_hotkey(self):
+        received = []
+        times = iter((10.0, 10.001, 10.1))
+        event_filter = WindowsHotkeyEventFilter(
+            received.append,
+            message_decoder=lambda _event_type, _message: 0x5104,
+            action_for_id=lambda _hotkey_id: "toggle_visibility",
+            monotonic=lambda: next(times),
+        )
+
+        event_filter.nativeEventFilter(b"windows_generic_MSG", object())
+        event_filter.nativeEventFilter(b"windows_generic_MSG", object())
+        event_filter.nativeEventFilter(b"windows_generic_MSG", object())
+
+        self.assertEqual(received, [0x5104, 0x5104])
 
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
@@ -674,6 +690,7 @@ class QtShellTests(unittest.TestCase):
             or QtSingleInstanceGuard(
                 lock_path=Path(tempfile.gettempdir()) / "clarifyvoice-shell.lock",
                 lock_factory=FakeLock,
+                activation_api=FakeActivationApi(),
             ),
             hotkeys=hotkeys,
             application=application,
@@ -826,11 +843,11 @@ class QtShellTests(unittest.TestCase):
 
     def test_partial_menu_failure_cleans_both_tray_objects(self):
         tray = FakeTray(None, None)
-        menu = FakeMenu(None, fail_on_add_action=True)
+        menu = FakeMenu(fail_on_add_action=True)
 
         shell = self._shell(
             tray_icon_factory=lambda _icon, _parent: tray,
-            menu_factory=lambda _parent: menu,
+            menu_factory=lambda: menu,
         )
 
         with self.assertRaisesRegex(RuntimeError, "menu configuration"):

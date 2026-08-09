@@ -52,6 +52,7 @@ if PYSIDE6_AVAILABLE:
         StartTranslation,
         StopDictation,
         RecordingSnapshot,
+        SelectionTarget,
         WorkflowPhase,
         WorkflowService,
         WorkflowState,
@@ -190,10 +191,33 @@ class QtRecordingSessionTests(unittest.TestCase):
             def snapshot(self):
                 return inventory
 
+        class LevelStream:
+            def __init__(self, **options):
+                self.options = options
+                self.started = False
+                self.closed = False
+
+            def start(self):
+                self.started = True
+
+            def stop(self):
+                return None
+
+            def close(self):
+                self.closed = True
+
+        level_streams = []
+
+        def create_level_stream(**options):
+            stream = LevelStream(**options)
+            level_streams.append(stream)
+            return stream
+
         recorder = QtRecorder(Config(), InventorySource())
         recorder.sox = "sox"
         process = Mock()
         process.poll.return_value = None
+        fake_sounddevice = SimpleNamespace(RawInputStream=create_level_stream)
         with (
             patch(
                 "spikes.pyside6.qml_runtime.platform.system",
@@ -203,6 +227,10 @@ class QtRecordingSessionTests(unittest.TestCase):
                 "spikes.pyside6.qml_runtime.subprocess.Popen",
                 return_value=process,
             ) as popen,
+            patch(
+                "spikes.pyside6.qml_runtime._sounddevice",
+                fake_sounddevice,
+            ),
             patch("spikes.pyside6.qml_runtime.time.sleep"),
         ):
             recorder.start(Path("capture.wav"), threading.Event())
@@ -211,7 +239,97 @@ class QtRecordingSessionTests(unittest.TestCase):
             popen.call_args.args[0][0:4],
             ["sox", "-t", "waveaudio", "USB microphone"],
         )
+        self.assertTrue(level_streams[0].started)
+        self.assertEqual(level_streams[0].options["device"], 4)
+        level_streams[0].options["callback"](
+            memoryview(bytearray(b"\x00\x40" * 32)).cast("h"),
+            32,
+            None,
+            None,
+        )
+        self.assertGreater(recorder.mic_level, 0.0)
         recorder.stop()
+        self.assertTrue(level_streams[0].closed)
+        self.assertEqual(recorder.mic_level, 0.0)
+
+    def test_recorder_closes_level_meter_when_stop_races_stream_start(self):
+        from microphone_controls import MicrophoneDevice, MicrophoneInventory
+
+        selected = MicrophoneDevice(
+            stable_id="selected",
+            name="USB microphone",
+            input_channels=1,
+            is_default=False,
+            backend_index=4,
+        )
+        inventory = MicrophoneInventory.from_records([selected], default_id="selected")
+
+        class Config:
+            def current(self):
+                return SimpleNamespace(
+                    microphone=SimpleNamespace(selected_id="selected")
+                )
+
+        class InventorySource:
+            def snapshot(self):
+                return inventory
+
+        class BlockingLevelStream:
+            def __init__(self, **options):
+                self.options = options
+                self.entered_start = threading.Event()
+                self.release_start = threading.Event()
+                self.closed = False
+
+            def start(self):
+                self.entered_start.set()
+                self.release_start.wait(timeout=1)
+
+            def stop(self):
+                return None
+
+            def close(self):
+                self.closed = True
+
+        level_stream = BlockingLevelStream()
+        recorder = QtRecorder(Config(), InventorySource())
+        recorder.sox = "sox"
+        process = Mock()
+        process.poll.return_value = None
+        start_errors = []
+
+        def run_start():
+            try:
+                recorder.start(Path("capture.wav"), threading.Event())
+            except Exception as error:
+                start_errors.append(error)
+
+        with (
+            patch(
+                "spikes.pyside6.qml_runtime.platform.system",
+                return_value="Windows",
+            ),
+            patch(
+                "spikes.pyside6.qml_runtime.subprocess.Popen",
+                return_value=process,
+            ),
+            patch(
+                "spikes.pyside6.qml_runtime._sounddevice",
+                SimpleNamespace(RawInputStream=lambda **_options: level_stream),
+            ),
+            patch("spikes.pyside6.qml_runtime.time.sleep"),
+        ):
+            starter = threading.Thread(target=run_start)
+            starter.start()
+            self.assertTrue(level_stream.entered_start.wait(timeout=1))
+            recorder.stop()
+            level_stream.release_start.set()
+            starter.join(timeout=1)
+
+        self.assertFalse(starter.is_alive())
+        self.assertEqual(start_errors, [])
+        self.assertTrue(level_stream.closed)
+        self.assertIsNone(recorder.mic_stream)
 
     def test_recorder_resolves_sox_from_a_frozen_bundle(self):
         from spikes.pyside6 import qml_runtime
@@ -497,6 +615,29 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
         self.assertTrue(bridge.handleHotkey("escape"))
         self.assertIsInstance(service.commands[-1], CancelTranslation)
         self.assertFalse(bridge.handleHotkey("toggle_visibility"))
+
+    def test_bridge_captures_target_before_each_workflow_dispatch(self):
+        service = DeterministicWorkflowService()
+        targets = [
+            SelectionTarget(11, "C:/Apps/editor.exe"),
+            SelectionTarget(12, "C:/Apps/rewrite.exe"),
+            SelectionTarget(13, "C:/Apps/translate.exe"),
+        ]
+        bridge = QmlWorkflowBridge(service, target_provider=lambda: targets.pop(0))
+
+        bridge.startRecording()
+        self.assertEqual(service.commands[-1].target.window, 11)
+        self.assertEqual(bridge.targetExecutable, "C:/Apps/editor.exe")
+        service.publish(WorkflowState())
+
+        self.assertTrue(bridge.handleHotkey("rewrite_hotkey"))
+        self.assertEqual(service.commands[-1].target.window, 12)
+        self.assertEqual(bridge.targetExecutable, "C:/Apps/rewrite.exe")
+        service.publish(WorkflowState())
+
+        self.assertTrue(bridge.handleHotkey("translation_hotkey"))
+        self.assertEqual(service.commands[-1].target.window, 13)
+        self.assertEqual(bridge.targetExecutable, "C:/Apps/translate.exe")
 
     def test_workflow_hotkeys_dismiss_files_before_dispatch(self):
         cases = (
