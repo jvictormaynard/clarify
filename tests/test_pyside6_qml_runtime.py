@@ -217,6 +217,7 @@ class QtRecordingSessionTests(unittest.TestCase):
         recorder.sox = "sox"
         process = Mock()
         process.poll.return_value = None
+        fake_sounddevice = SimpleNamespace(RawInputStream=create_level_stream)
         with (
             patch(
                 "spikes.pyside6.qml_runtime.platform.system",
@@ -227,8 +228,8 @@ class QtRecordingSessionTests(unittest.TestCase):
                 return_value=process,
             ) as popen,
             patch(
-                "spikes.pyside6.qml_runtime._sounddevice.RawInputStream",
-                side_effect=create_level_stream,
+                "spikes.pyside6.qml_runtime._sounddevice",
+                fake_sounddevice,
             ),
             patch("spikes.pyside6.qml_runtime.time.sleep"),
         ):
