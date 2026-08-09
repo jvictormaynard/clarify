@@ -295,6 +295,16 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("settingsPage.workflowDescription(settings.selectedScope)", main_source)
         self.assertIn("settingsPage.workflowToggleLabel(settings.selectedScope)", main_source)
         self.assertIn("settings.providerName(value)", main_source)
+        tab_start = main_source.index(
+            "RowLayout {\n                                Layout.alignment: Qt.AlignLeft\n                                spacing: 4"
+        )
+        tab_end = main_source.index("GridLayout {", tab_start)
+        tab_source = main_source[tab_start:tab_end]
+        self.assertNotIn("Layout.fillWidth: true", tab_source)
+        self.assertNotIn("iconSource:", tab_source)
+        self.assertNotIn("iconSize:", tab_source)
+        self.assertIn("Layout.preferredWidth: tabTextMetrics.advanceWidth + 20", tab_source)
+        self.assertIn("TextMetrics", tab_source)
         recording_title = 'text: "Microphone and recording"'
         recording_section = main_source[main_source.index('id: recordingSettingsSection'):]
         recording_title_index = recording_section.index(recording_title)

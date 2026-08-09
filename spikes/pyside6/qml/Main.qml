@@ -510,13 +510,13 @@ ApplicationWindow {
                     { "label": "Integrations", "icon": "server.svg" }
                 ]
                 readonly property var speechWorkflowItems: [
-                    { "scope": "transcription", "label": "Dictation", "icon": "mic.svg" }
+                    { "scope": "transcription", "label": "Dictation" }
                 ]
                 readonly property var textWorkflowItems: [
-                    { "scope": "refinement", "label": "Cleanup", "icon": "sparkles.svg" },
-                    { "scope": "rewrite", "label": "Rewrite", "icon": "settings.svg" },
-                    { "scope": "translation", "label": "Translation", "icon": "route.svg" },
-                    { "scope": "local_asr_refinement", "label": "Local refinement", "icon": "mic.svg" }
+                    { "scope": "refinement", "label": "Cleanup" },
+                    { "scope": "rewrite", "label": "Rewrite" },
+                    { "scope": "translation", "label": "Translation" },
+                    { "scope": "local_asr_refinement", "label": "Local refinement" }
                 ]
                 readonly property var workflowTabItems:
                     selectedSection === 3 ? speechWorkflowItems : textWorkflowItems
@@ -1899,7 +1899,7 @@ ApplicationWindow {
                             }
 
                             RowLayout {
-                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignLeft
                                 spacing: 4
 
                                 Repeater {
@@ -1907,17 +1907,22 @@ ApplicationWindow {
 
                                     delegate: AppButton {
                                         required property var modelData
-                                        Layout.fillWidth: true
                                         Layout.preferredHeight: 30
+                                        Layout.preferredWidth: tabTextMetrics.advanceWidth + 20
                                         text: settingsPage.workflowScopeLabel(modelData.scope)
-                                        iconSource: "icons/" + modelData.icon
-                                        iconSize: 14
                                         theme: root.visualTheme
                                         primary: settings.selectedScope === modelData.scope
                                         quiet: settings.selectedScope !== modelData.scope
                                         contentAlignment: Text.AlignHCenter
                                         Accessible.name: "Open " + modelData.label + " settings"
                                         onClicked: settingsPage.selectWorkflowScope(modelData.scope)
+
+                                        TextMetrics {
+                                            id: tabTextMetrics
+                                            text: settingsPage.workflowScopeLabel(modelData.scope)
+                                            font.pixelSize: 12
+                                            font.weight: Font.Normal
+                                        }
                                     }
                                 }
                             }
