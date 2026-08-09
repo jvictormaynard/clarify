@@ -28,6 +28,7 @@ The tag, release, and executable must all originate from the same green
 - `requirements-lock-windows.txt`
 - `requirements-lock-runtime-windows.txt`
 - `scripts/check_runtime_lock.py`
+- `scripts/format_staged.py`
 - `scripts/install_bootstrap_tools.py`
 - `scripts/add_sbom_component.py`
 - `scripts/sox-runtime-manifest.json`
@@ -39,6 +40,7 @@ The tag, release, and executable must all originate from the same green
 - `scripts/verify-signature.ps1`
 - `distribution/update-policy.json`
 - `docs/windows-distribution.md`
+- `.githooks/pre-commit`
 - `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
 

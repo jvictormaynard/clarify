@@ -259,6 +259,19 @@ the native Windows temporary directory, builds, backs up the installed
 executable, replaces it, and restarts ClarifyVoice. Override the discovered
 target with `CLARIFYVOICE_INSTALL_PATH` when needed.
 
+## Automatic Python formatting before commits
+
+Install the repository hook once in each clone:
+
+```bash
+npm run setup-hooks
+```
+
+The hook runs `ruff format` on staged Python files and stages the formatted
+result automatically. It refuses to change a file that also has unstaged
+edits, so unrelated work is not added to the commit. `npm run setup` also
+installs the hook on Windows. CI keeps the format check as the final guard.
+
 ## Automated quality and supply-chain checks
 
 The CI quality gate runs staged Ruff linting, a focused Ruff format check, mypy for the

@@ -27,6 +27,7 @@ REQUIRED_FILES = (
     "requirements-lock-windows.txt",
     "requirements-lock-runtime-windows.txt",
     "scripts/check_runtime_lock.py",
+    "scripts/format_staged.py",
     "scripts/install_bootstrap_tools.py",
     "scripts/add_sbom_component.py",
     "scripts/sox-runtime-manifest.json",
@@ -38,6 +39,7 @@ REQUIRED_FILES = (
     "scripts/verify-signature.ps1",
     "distribution/update-policy.json",
     "docs/windows-distribution.md",
+    ".githooks/pre-commit",
     ".github/workflows/ci.yml",
     ".github/workflows/release.yml",
 )
@@ -176,22 +178,20 @@ def main() -> int:
         failures.append("Unreleased comparison does not start at the new tag")
 
     if previous_tag:
-        expected_version = (
-            f"[{version}]: {owner_url}/compare/{previous_tag}...{tag}"
-        )
+        expected_version = f"[{version}]: {owner_url}/compare/{previous_tag}...{tag}"
         if expected_version not in changelog:
             failures.append("version comparison link is missing or incorrect")
 
     if args.track == "community":
         release_workflow_path = repo / ".github/workflows/community-release.yml"
         release_workflow = release_workflow_path.read_text(encoding="utf-8")
-        if not re.search(
-            r'^\s*-\s*["\']v\*["\']\s*$', release_workflow, re.MULTILINE
-        ):
+        if not re.search(r'^\s*-\s*["\']v\*["\']\s*$', release_workflow, re.MULTILINE):
             failures.append("community release workflow is not triggered by v* tags")
         for asset in COMMUNITY_REQUIRED_ASSETS:
             if asset not in release_workflow:
-                failures.append(f"community release workflow does not reference {asset}")
+                failures.append(
+                    f"community release workflow does not reference {asset}"
+                )
         if "requirements-lock-windows.txt" not in release_workflow:
             failures.append(
                 "community release workflow does not use requirements-lock-windows.txt"
@@ -205,7 +205,9 @@ def main() -> int:
             "cyclonedx-py requirements requirements-lock-runtime-windows.txt"
             not in release_workflow
         ):
-            failures.append("community release SBOM is not generated from the runtime lock")
+            failures.append(
+                "community release SBOM is not generated from the runtime lock"
+            )
         if "attest-build-provenance@" not in release_workflow:
             failures.append(
                 "community release workflow does not publish artifact provenance"
@@ -224,15 +226,15 @@ def main() -> int:
     else:
         release_workflow_path = repo / ".github/workflows/release.yml"
         release_workflow = release_workflow_path.read_text(encoding="utf-8")
-        if not re.search(
-            r'^\s*-\s*["\']v\*["\']\s*$', release_workflow, re.MULTILINE
-        ):
+        if not re.search(r'^\s*-\s*["\']v\*["\']\s*$', release_workflow, re.MULTILINE):
             failures.append("release workflow is not triggered by v* tags")
         for asset in SIGNED_REQUIRED_ASSETS:
             if asset not in release_workflow:
                 failures.append(f"release workflow does not reference {asset}")
         if "requirements-lock-windows.txt" not in release_workflow:
-            failures.append("release workflow does not use requirements-lock-windows.txt")
+            failures.append(
+                "release workflow does not use requirements-lock-windows.txt"
+            )
         if "requirements-lock-runtime-windows.txt" not in release_workflow:
             failures.append(
                 "release workflow does not use requirements-lock-runtime-windows.txt"
@@ -257,10 +259,14 @@ def main() -> int:
             release_workflow,
         )
         if len(azure_action_refs) != 4:
-            failures.append("release workflow must contain exactly four Azure action uses")
+            failures.append(
+                "release workflow must contain exactly four Azure action uses"
+            )
         for action, action_ref in azure_action_refs:
             if not re.fullmatch(r"[0-9a-f]{40}", action_ref):
-                failures.append(f"release workflow uses mutable {action} ref: {action_ref}")
+                failures.append(
+                    f"release workflow uses mutable {action} ref: {action_ref}"
+                )
 
     readme = (repo / "README.md").read_text(encoding="utf-8")
     readme_pt = (repo / "docs/README.pt-BR.md").read_text(encoding="utf-8")

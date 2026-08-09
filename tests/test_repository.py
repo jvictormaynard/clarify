@@ -98,6 +98,19 @@ class RepositorySafetyTests(unittest.TestCase):
         self.assertIn('"requirements-lock-windows.txt"', content)
         self.assertIn('"Could not install the pinned bootstrap tools."', content)
 
+    def test_pre_commit_hook_formats_only_staged_python_files(self):
+        hook = (ROOT / ".githooks" / "pre-commit").read_text(encoding="utf-8")
+        formatter = (ROOT / "scripts" / "format_staged.py").read_text(encoding="utf-8")
+        package = (ROOT / "package.json").read_text(encoding="utf-8")
+        setup = (ROOT / "scripts" / "setup.ps1").read_text(encoding="utf-8")
+        self.assertIn("scripts/format_staged.py", hook)
+        self.assertIn('"--cached"', formatter)
+        self.assertIn('"--diff-filter=ACMR"', formatter)
+        self.assertIn('"format", "--force-exclude"', formatter)
+        self.assertIn('"add", "--"', formatter)
+        self.assertIn('"setup-hooks": "git config core.hooksPath .githooks"', package)
+        self.assertIn('"config", "core.hooksPath", ".githooks"', setup)
+
     def test_release_publishes_verified_sox_source(self):
         content = (ROOT / ".github" / "workflows" / "release.yml").read_text(
             encoding="utf-8"
@@ -283,7 +296,15 @@ class RepositorySafetyTests(unittest.TestCase):
         self.assertEqual(package["version"], __version__)
         self.assertEqual(
             set(package["scripts"]),
-            {"test", "check", "build", "installer", "setup", "deploy"},
+            {
+                "test",
+                "check",
+                "build",
+                "installer",
+                "setup",
+                "setup-hooks",
+                "deploy",
+            },
         )
 
     def test_version_module_is_the_runtime_diagnostics_source(self):

@@ -12,6 +12,7 @@ Notable user-facing changes are documented here. This project follows
 - Added a no-cost community release workflow for the portable Windows app,
   including a SHA-256 checksum, runtime SBOM, ZIP archive, SoX source archive,
   and GitHub build provenance
+- Added a repository Git hook that formats staged Python files before commit
 
 ### Changed
 

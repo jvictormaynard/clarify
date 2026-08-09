@@ -110,4 +110,9 @@ Invoke-CheckedProcess $venvPython @(
     "-c", $lockFile
 ) "Could not install ClarifyVoice dependencies."
 
+Write-Host "Installing the repository Git hooks..."
+Invoke-CheckedProcess "git.exe" @(
+    "-C", $repoRoot, "config", "core.hooksPath", ".githooks"
+) "Could not configure the repository Git hooks."
+
 Write-Host "ClarifyVoice environment is ready."
