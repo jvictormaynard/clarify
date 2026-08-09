@@ -680,7 +680,7 @@ ApplicationWindow {
                                     currentIndex: Math.max(0, settings.modes.indexOf(settings.mode))
                                     onActivated: settings.setMode(currentText)
                                     delegate: ComboPopupDelegate {
-                                        theme: theme
+                                        visualTheme: theme
                                         comboBox: settingsModeBox
                                     }
                                     contentItem: Label {
@@ -1018,7 +1018,7 @@ ApplicationWindow {
                                             settings.hotkeyActivationMode))
                                     onActivated: settings.setHotkeyActivationMode(currentText)
                                     delegate: ComboPopupDelegate {
-                                        theme: theme
+                                        visualTheme: theme
                                         comboBox: hotkeyActivationBox
                                         displayTextForIndex: function(index, value) {
                                             return value === "push_to_talk"
@@ -1184,7 +1184,7 @@ ApplicationWindow {
                                         onActivated: settings.selectMicrophone(
                                             microphoneBox.model[index]["id"])
                                         delegate: ComboPopupDelegate {
-                                            theme: theme
+                                            visualTheme: theme
                                             comboBox: microphoneBox
                                         }
                                         contentItem: Label {
@@ -1517,7 +1517,7 @@ ApplicationWindow {
                                             settings.selectedProviderId))
                                     onActivated: settings.selectProvider(currentText)
                                     delegate: ComboPopupDelegate {
-                                        theme: theme
+                                        visualTheme: theme
                                         comboBox: onboardingProviderBox
                                         displayTextForIndex: function(index, value) {
                                             return settings.providerName(value)
@@ -1856,7 +1856,7 @@ ApplicationWindow {
                                     currentIndex: Math.max(0, settings.workflowScopes.indexOf(settings.selectedScope))
                                     onActivated: settings.selectWorkflow(currentText)
                                     delegate: ComboPopupDelegate {
-                                        theme: theme
+                                        visualTheme: theme
                                         comboBox: scopeBox
                                         displayTextForIndex: function(index, value) {
                                             return routeSettingsSection.scopeLabel(value)
@@ -1905,7 +1905,7 @@ ApplicationWindow {
                                     currentIndex: Math.max(0, model.indexOf(settings.routeProviderId))
                                     onActivated: settings.setRouteProviderId(currentText)
                                     delegate: ComboPopupDelegate {
-                                        theme: theme
+                                        visualTheme: theme
                                         comboBox: providerBox
                                     }
                                     contentItem: Label {
@@ -2361,7 +2361,7 @@ ApplicationWindow {
                                 0, model.indexOf(filesPage.batchExecution))
                             onActivated: filesPage.selectBatchExecution(currentText)
                             delegate: ComboPopupDelegate {
-                                theme: theme
+                                visualTheme: theme
                                 comboBox: batchExecutionBox
                                 displayTextForIndex: function(index, value) {
                                     return value === "local" ? "Local Whisper" : "Cloud"
@@ -2414,7 +2414,7 @@ ApplicationWindow {
                                 0, model.indexOf(filesPage.batchProviderId))
                             onActivated: filesPage.selectBatchProvider(currentText)
                             delegate: ComboPopupDelegate {
-                                theme: theme
+                                visualTheme: theme
                                 comboBox: batchProviderBox
                                 displayTextForIndex: function(index, value) {
                                     return settings.providerName(value)
@@ -2470,7 +2470,7 @@ ApplicationWindow {
                             onActivated: filesPage.selectBatchModel(currentText)
                             onAccepted: filesPage.commitBatchModel()
                             delegate: ComboPopupDelegate {
-                                theme: theme
+                                visualTheme: theme
                                 comboBox: batchModelBox
                             }
                             indicator: DropdownIndicator {

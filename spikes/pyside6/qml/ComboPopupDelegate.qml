@@ -3,15 +3,13 @@ import QtQuick.Controls 6.5
 
 ItemDelegate {
     id: delegate
-    required property Theme theme
+    required property Theme visualTheme
     required property var comboBox
+    required property int index
+    required property var model
     property var displayTextForIndex: null
 
-    width: comboBox && comboBox.popup
-           ? Math.max(0, comboBox.popup.width
-                      - comboBox.popup.leftPadding
-                      - comboBox.popup.rightPadding)
-           : 0
+    width: ListView.view ? ListView.view.width : (comboBox ? comboBox.width : 0)
     height: 30
     padding: 0
     leftPadding: 10
@@ -26,7 +24,7 @@ ItemDelegate {
                  : comboBox.textAt(index))
               : ""
         color: delegate.highlighted || delegate.hovered
-               ? delegate.theme.text : delegate.theme.secondaryText
+               ? delegate.visualTheme.text : delegate.visualTheme.secondaryText
         font.pixelSize: 11
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
@@ -35,8 +33,8 @@ ItemDelegate {
     background: Rectangle {
         radius: 7
         color: delegate.down
-               ? delegate.theme.controlPressed
+               ? delegate.visualTheme.controlPressed
                : delegate.highlighted || delegate.hovered
-                 ? delegate.theme.controlHover : "transparent"
+                 ? delegate.visualTheme.controlHover : "transparent"
     }
 }

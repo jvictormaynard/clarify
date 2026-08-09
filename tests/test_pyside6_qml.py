@@ -240,6 +240,12 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         popup_delegate_source = (QML_ROOT / "ComboPopupDelegate.qml").read_text(
             encoding="utf-8"
         )
+        self.assertIn("required property Theme visualTheme", popup_delegate_source)
+        self.assertIn("required property int index", popup_delegate_source)
+        self.assertIn("required property var model", popup_delegate_source)
+        self.assertIn("ListView.view ? ListView.view.width", popup_delegate_source)
+        self.assertEqual(main_source.count("visualTheme: theme"), 10)
+        self.assertNotIn("theme: theme\n                                        comboBox:", main_source)
         self.assertIn("comboBox.textAt(index)", popup_delegate_source)
         self.assertIn("highlighted: comboBox", popup_delegate_source)
         icon_dir = QML_ROOT / "icons"
