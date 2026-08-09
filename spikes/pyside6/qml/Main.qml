@@ -573,30 +573,16 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         spacing: 8
 
-                        Rectangle {
+                        Item {
                             id: settingsSidebar
                             objectName: "settingsSidebar"
                             Layout.preferredWidth: 118
                             Layout.fillHeight: true
-                            radius: theme.controlRadius
-                            color: theme.resultSurface
-                            border.color: theme.border
-                            border.width: 1
 
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 6
-                                spacing: 4
-
-                                Label {
-                                    text: "Sections"
-                                    color: theme.dim
-                                    font.pixelSize: 10
-                                    font.weight: Font.DemiBold
-                                    font.letterSpacing: 0.6
-                                    Layout.leftMargin: 4
-                                    Layout.bottomMargin: 2
-                                }
+                                anchors.margins: 2
+                                spacing: 2
 
                                 Repeater {
                                     model: settingsPage.sectionLabels
@@ -605,11 +591,11 @@ ApplicationWindow {
                                         required property int index
                                         required property var modelData
                                         Layout.fillWidth: true
-                                        Layout.preferredHeight: 30
+                                        Layout.preferredHeight: 28
                                         text: modelData
                                         theme: root.visualTheme
                                         primary: index === settingsPage.selectedSection
-                                        quiet: index !== settingsPage.selectedSection
+                                        quiet: true
                                         Accessible.name: "Open " + modelData + " settings"
                                         onClicked: settingsPage.selectSection(index)
                                     }
