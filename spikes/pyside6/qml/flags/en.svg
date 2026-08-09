@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="14" viewBox="0 0 20 14">
-  <defs><clipPath id="r"><rect width="20" height="14" rx="2"/></clipPath></defs>
+  <defs><clipPath id="r"><rect width="20" height="14" rx="2.5"/></clipPath></defs>
   <g clip-path="url(#r)">
     <path fill="#b22234" d="M0 0h20v14H0z"/>
     <path stroke="#fff" stroke-width="2" d="M0 3h20M0 7h20M0 11h20"/>

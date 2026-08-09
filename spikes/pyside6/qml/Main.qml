@@ -7,23 +7,23 @@ import QtQuick.Window 6.5
 ApplicationWindow {
     id: root
     objectName: "clarifyVoiceMainWindow"
-    width: workflow.surface === "result"
-           || workflow.surface === "voice_result"
-           || workflow.surface === "voice_error" ? theme.resultWidth
-           : workflow.surface === "settings" ? theme.settingsWidth
-           : (workflow.surface === "files"
-              || workflow.surface === "translation_picker")
-             ? theme.panelWidth : theme.windowWidth
-    height: workflow.surface === "result"
+    width: (workflow.surface === "result"
             || workflow.surface === "voice_result"
-            || workflow.surface === "voice_error"
-            ? theme.resultHeight
-            : workflow.surface === "settings" ? theme.settingsHeight
+            || workflow.surface === "voice_error" ? theme.resultWidth
+            : workflow.surface === "settings" ? theme.settingsWidth
             : (workflow.surface === "files"
                || workflow.surface === "translation_picker")
-              ? theme.panelHeight : theme.windowHeight
-    minimumWidth: theme.windowWidth
-    minimumHeight: theme.windowHeight
+              ? theme.panelWidth : theme.windowWidth) * theme.uiScale
+    height: (workflow.surface === "result"
+             || workflow.surface === "voice_result"
+             || workflow.surface === "voice_error"
+             ? theme.resultHeight
+             : workflow.surface === "settings" ? theme.settingsHeight
+             : (workflow.surface === "files"
+                || workflow.surface === "translation_picker")
+               ? theme.panelHeight : theme.windowHeight) * theme.uiScale
+    minimumWidth: theme.windowWidth * theme.uiScale
+    minimumHeight: theme.windowHeight * theme.uiScale
     property bool presentationVisible: false
     visible: presentationVisible || opacity > 0.001
     opacity: presentationVisible ? 1.0 : 0.0
@@ -102,8 +102,11 @@ ApplicationWindow {
     Rectangle {
         id: card
         objectName: "mainCard"
-        anchors.fill: parent
-        anchors.margins: 1
+        width: root.width / theme.uiScale
+        height: root.height / theme.uiScale
+        anchors.centerIn: parent
+        scale: theme.uiScale
+        transformOrigin: Item.Center
         radius: workflow.surface === "idle"
                 || workflow.surface === "recording"
                 || workflow.surface === "processing"
@@ -500,12 +503,16 @@ ApplicationWindow {
                 objectName: "settingsPage"
                 focus: workflow.surface === "settings"
                 property int selectedSection: 0
-                readonly property var sectionLabels: [
-                    "General", "Shortcuts", "Recording", "Providers", "Routes"
+                readonly property var sectionItems: [
+                    { "label": "General", "icon": "⚙" },
+                    { "label": "Shortcuts", "icon": "⌨" },
+                    { "label": "Recording", "icon": "●" },
+                    { "label": "Providers", "icon": "◆" },
+                    { "label": "Routes", "icon": "↗" }
                 ]
 
                 function selectSection(index) {
-                    if (index >= 0 && index < sectionLabels.length
+                    if (index >= 0 && index < sectionItems.length
                             && index !== selectedSection)
                         selectedSection = index
                 }
@@ -585,18 +592,22 @@ ApplicationWindow {
                                 spacing: 2
 
                                 Repeater {
-                                    model: settingsPage.sectionLabels
+                                    model: settingsPage.sectionItems
 
                                     delegate: AppButton {
                                         required property int index
                                         required property var modelData
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 28
-                                        text: modelData
+                                        text: modelData.label
+                                        iconText: modelData.icon
                                         theme: root.visualTheme
                                         primary: index === settingsPage.selectedSection
                                         quiet: true
-                                        Accessible.name: "Open " + modelData + " settings"
+                                        contentAlignment: Text.AlignLeft
+                                        leftPadding: 8
+                                        rightPadding: 4
+                                        Accessible.name: "Open " + modelData.label + " settings"
                                         onClicked: settingsPage.selectSection(index)
                                     }
                                 }
