@@ -189,6 +189,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("Global shortcuts and settings will be connected", main_source)
         self.assertIn('objectName: "settingsPage"', main_source)
         self.assertIn('objectName: "settingsSidebar"', main_source)
+        self.assertIn('objectName: "settingsSidebarDivider"', main_source)
         self.assertIn("readonly property var sectionLabels", main_source)
         self.assertIn("function selectSection(index)", main_source)
         self.assertNotIn("cardFadeTimer", main_source)

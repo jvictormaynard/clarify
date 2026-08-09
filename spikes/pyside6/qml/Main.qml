@@ -605,6 +605,14 @@ ApplicationWindow {
                             }
                         }
 
+                        Rectangle {
+                            id: settingsSidebarDivider
+                            objectName: "settingsSidebarDivider"
+                            Layout.preferredWidth: 1
+                            Layout.fillHeight: true
+                            color: theme.border
+                        }
+
                         ScrollView {
                         id: settingsScroll
                         objectName: "settingsScroll"
