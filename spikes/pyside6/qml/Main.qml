@@ -499,18 +499,79 @@ ApplicationWindow {
                 objectName: "settingsPage"
                 focus: workflow.surface === "settings"
                 property int selectedSection: 0
+                property string speechWorkflowScope: "transcription"
+                property string textWorkflowScope: "refinement"
                 readonly property var sectionItems: [
                     { "label": "General", "icon": "settings.svg" },
                     { "label": "Shortcuts", "icon": "keyboard.svg" },
                     { "label": "Recording", "icon": "mic.svg" },
-                    { "label": "Providers", "icon": "server.svg" },
-                    { "label": "Routes", "icon": "route.svg" }
+                    { "label": "Speech-to-text", "icon": "mic.svg" },
+                    { "label": "Text processing", "icon": "sparkles.svg" },
+                    { "label": "Integrations", "icon": "server.svg" }
                 ]
+                readonly property var speechWorkflowItems: [
+                    { "scope": "transcription", "label": "Dictation", "icon": "mic.svg" }
+                ]
+                readonly property var textWorkflowItems: [
+                    { "scope": "refinement", "label": "Cleanup", "icon": "sparkles.svg" },
+                    { "scope": "rewrite", "label": "Rewrite", "icon": "settings.svg" },
+                    { "scope": "translation", "label": "Translation", "icon": "route.svg" },
+                    { "scope": "local_asr_refinement", "label": "Local refinement", "icon": "mic.svg" }
+                ]
+                readonly property var workflowTabItems:
+                    selectedSection === 3 ? speechWorkflowItems : textWorkflowItems
+
+                function workflowScopeLabel(scope) {
+                    var labels = {
+                        "transcription": "Dictation",
+                        "refinement": "Cleanup",
+                        "rewrite": "Rewrite",
+                        "translation": "Translation",
+                        "local_asr_refinement": "Local refinement"
+                    }
+                    return labels[scope] || scope
+                }
+
+                function workflowDescription(scope) {
+                    var descriptions = {
+                        "transcription": "Choose how recorded speech is transcribed before it is pasted.",
+                        "refinement": "Improve dictated text while preserving its meaning.",
+                        "rewrite": "Rewrite selected text while preserving its requirements.",
+                        "translation": "Translate selected text using the configured language model.",
+                        "local_asr_refinement": "Optionally refine text produced by the local speech recognizer."
+                    }
+                    return descriptions[scope] || "Configure this workflow."
+                }
+
+                function workflowToggleLabel(scope) {
+                    var labels = {
+                        "transcription": "Enable dictation",
+                        "refinement": "Enable cleanup",
+                        "rewrite": "Enable rewrite",
+                        "translation": "Enable translation",
+                        "local_asr_refinement": "Enable local refinement"
+                    }
+                    return labels[scope] || "Enable this feature"
+                }
+
+                function selectWorkflowScope(scope) {
+                    if (!settings.selectWorkflow(scope))
+                        return
+                    if (scope === "transcription")
+                        speechWorkflowScope = scope
+                    else
+                        textWorkflowScope = scope
+                }
 
                 function selectSection(index) {
                     if (index >= 0 && index < sectionItems.length
-                            && index !== selectedSection)
+                            && index !== selectedSection) {
                         selectedSection = index
+                        if (index === 3)
+                            selectWorkflowScope(speechWorkflowScope)
+                        else if (index === 4)
+                            selectWorkflowScope(textWorkflowScope)
+                    }
                 }
 
                 onVisibleChanged: {
@@ -1475,18 +1536,26 @@ ApplicationWindow {
                             }
 
                             ColumnLayout {
-                                id: providerSettingsSection
-                                objectName: "providerSettingsSection"
+                                id: integrationsSettingsSection
+                                objectName: "integrationsSettingsSection"
                                 Layout.fillWidth: true
                                 spacing: 8
-                                visible: settingsPage.selectedSection === 3
+                                visible: settingsPage.selectedSection === 5
 
                             Label {
-                                text: "Providers"
+                                text: "Integrations"
                                 color: theme.secondaryText
                                 font.pixelSize: 10
                                 font.weight: Font.DemiBold
                                 font.letterSpacing: 0.7
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: "Connect services and manage credentials used by your workflows."
+                                color: theme.dim
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
                             }
 
                             GridLayout {
@@ -1496,7 +1565,7 @@ ApplicationWindow {
                                 rowSpacing: 6
 
                                 Label {
-                                    text: "Provider"
+                                    text: "Service"
                                     color: theme.dim
                                     font.pixelSize: 11
                                 }
@@ -1625,7 +1694,7 @@ ApplicationWindow {
                                     text: settings.providerBaseUrl
                                     onEditingFinished: settings.setProviderBaseUrl(text)
                                     color: theme.text
-                                    placeholderText: "Provider endpoint"
+                                    placeholderText: "Service endpoint"
                                     placeholderTextColor: theme.dim
                                     font.pixelSize: 11
                                     selectByMouse: true
@@ -1805,29 +1874,52 @@ ApplicationWindow {
                             }
 
                             ColumnLayout {
-                                id: routeSettingsSection
-                                objectName: "routeSettingsSection"
+                                id: workflowSettingsSection
+                                objectName: "workflowSettingsSection"
                                 Layout.fillWidth: true
                                 spacing: 8
-                                visible: settingsPage.selectedSection === 4
+                                visible: settingsPage.selectedSection === 3
+                                         || settingsPage.selectedSection === 4
 
                             Label {
-                                text: "Workflow route"
+                                text: settingsPage.selectedSection === 3
+                                      ? "Speech-to-text" : "Text processing"
                                 color: theme.secondaryText
                                 font.pixelSize: 10
                                 font.weight: Font.DemiBold
                                 font.letterSpacing: 0.7
                             }
 
-                            function scopeLabel(scope) {
-                                var labels = {
-                                    "transcription": "Transcription",
-                                    "refinement": "Refinement",
-                                    "rewrite": "Rewrite",
-                                    "translation": "Translation",
-                                    "local_asr_refinement": "Local ASR refinement"
+                            Label {
+                                Layout.fillWidth: true
+                                text: settingsPage.workflowDescription(settings.selectedScope)
+                                color: theme.dim
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+
+                                Repeater {
+                                    model: settingsPage.workflowTabItems
+
+                                    delegate: AppButton {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 30
+                                        text: settingsPage.workflowScopeLabel(modelData.scope)
+                                        iconSource: "icons/" + modelData.icon
+                                        iconSize: 14
+                                        theme: root.visualTheme
+                                        primary: settings.selectedScope === modelData.scope
+                                        quiet: settings.selectedScope !== modelData.scope
+                                        contentAlignment: Text.AlignHCenter
+                                        Accessible.name: "Open " + modelData.label + " settings"
+                                        onClicked: settingsPage.selectWorkflowScope(modelData.scope)
+                                    }
                                 }
-                                return labels[scope] || scope
                             }
 
                             GridLayout {
@@ -1837,56 +1929,7 @@ ApplicationWindow {
                                 rowSpacing: 6
 
                                 Label {
-                                    text: "Scope"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                ComboBox {
-                                    id: scopeBox
-                                    objectName: "workflowScopeBox"
-                                    Layout.fillWidth: true
-                                    model: settings.workflowScopes
-                                    currentIndex: Math.max(0, settings.workflowScopes.indexOf(settings.selectedScope))
-                                    onActivated: settings.selectWorkflow(currentText)
-                                    delegate: ComboPopupDelegate {
-                                        visualTheme: theme
-                                        comboBox: scopeBox
-                                        displayTextForIndex: function(index, value) {
-                                            return routeSettingsSection.scopeLabel(value)
-                                        }
-                                    }
-                                    contentItem: Label {
-                                        leftPadding: 8
-                                        rightPadding: 24
-                                        text: routeSettingsSection.scopeLabel(scopeBox.currentText)
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                        elide: Text.ElideRight
-                                    }
-                                    indicator: DropdownIndicator {
-                                        x: scopeBox.width - width - 8
-                                        y: (scopeBox.height - height) / 2
-                                    }
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                    popup.padding: 4
-                                    popup.background: Rectangle {
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                        radius: 9
-                                    }
-                                }
-
-                                Label {
-                                    text: "Provider"
+                                    text: "Service"
                                     color: theme.dim
                                     font.pixelSize: 11
                                 }
@@ -1901,11 +1944,15 @@ ApplicationWindow {
                                     delegate: ComboPopupDelegate {
                                         visualTheme: theme
                                         comboBox: providerBox
+                                        displayTextForIndex: function(index, value) {
+                                            return settings.providerName(value)
+                                        }
                                     }
                                     contentItem: Label {
                                         leftPadding: 8
                                         rightPadding: 24
-                                        text: providerBox.currentText || "Select provider"
+                                        text: settings.providerName(providerBox.currentText)
+                                              || "Select service"
                                         color: theme.text
                                         font.pixelSize: 11
                                         verticalAlignment: Text.AlignVCenter
@@ -1982,7 +2029,7 @@ ApplicationWindow {
                                 }
 
                                 Label {
-                                    text: "Enabled"
+                                    text: "Status"
                                     color: theme.dim
                                     font.pixelSize: 11
                                 }
@@ -1992,7 +2039,7 @@ ApplicationWindow {
                                     objectName: "workflowEnabledBox"
                                     Layout.fillWidth: true
                                     checked: settings.routeEnabled
-                                    text: "Use this route"
+                                    text: settingsPage.workflowToggleLabel(settings.selectedScope)
                                     onToggled: settings.setRouteEnabled(checked)
                                     contentItem: Label {
                                         leftPadding: 24
@@ -2032,7 +2079,7 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
-                                text: "Prompt"
+                                text: "Instructions"
                                 color: theme.dim
                                 font.pixelSize: 11
                             }
@@ -2043,7 +2090,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 52
                                 text: settings.routePrompt
-                                placeholderText: "Optional route instruction"
+                                placeholderText: "Optional instructions for this feature"
                                 onEditingFinished: settings.setRoutePrompt(text)
                                 color: theme.text
                                 placeholderTextColor: theme.dim

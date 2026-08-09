@@ -225,9 +225,9 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("iconText", main_source)
         self.assertIn('iconSource: "icons/refresh.svg"', main_source)
         self.assertIn("iconSize: 18", main_source)
-        self.assertEqual(main_source.count("indicator: DropdownIndicator"), 10)
-        self.assertEqual(main_source.count("delegate: ComboPopupDelegate"), 9)
-        self.assertEqual(main_source.count("popup.padding: 4"), 10)
+        self.assertEqual(main_source.count("indicator: DropdownIndicator"), 9)
+        self.assertEqual(main_source.count("delegate: ComboPopupDelegate"), 8)
+        self.assertEqual(main_source.count("popup.padding: 4"), 9)
         self.assertNotIn("indicator: Label", main_source)
         self.assertNotIn('text: "⌄"', main_source)
         self.assertNotIn('text: "↻"', main_source)
@@ -244,7 +244,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("required property int index", popup_delegate_source)
         self.assertIn("required property var model", popup_delegate_source)
         self.assertIn("ListView.view ? ListView.view.width", popup_delegate_source)
-        self.assertEqual(main_source.count("visualTheme: theme"), 10)
+        self.assertEqual(main_source.count("visualTheme: theme"), 9)
         self.assertNotIn("theme: theme\n                                        comboBox:", main_source)
         self.assertIn("comboBox.textAt(index)", popup_delegate_source)
         self.assertIn("highlighted: comboBox", popup_delegate_source)
@@ -256,6 +256,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             "mic.svg",
             "server.svg",
             "route.svg",
+            "sparkles.svg",
             "x.svg",
             "chevron-down.svg",
             "refresh.svg",
@@ -271,10 +272,29 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             "generalSettingsSection",
             "shortcutSettingsSection",
             "recordingSettingsSection",
-            "providerSettingsSection",
-            "routeSettingsSection",
+            "integrationsSettingsSection",
+            "workflowSettingsSection",
         ):
             self.assertIn(f'objectName: "{section_object}"', main_source)
+        for section_label in (
+            "Speech-to-text",
+            "Text processing",
+            "Integrations",
+            "Dictation",
+            "Cleanup",
+            "Rewrite",
+            "Translation",
+            "Local refinement",
+        ):
+            self.assertIn(f'"label": "{section_label}"', main_source)
+        self.assertNotIn('"label": "Providers"', main_source)
+        self.assertNotIn('"label": "Routes"', main_source)
+        self.assertNotIn('text: "Workflow route"', main_source)
+        self.assertNotIn('text: "Scope"', main_source)
+        self.assertIn("function selectWorkflowScope(scope)", main_source)
+        self.assertIn("settingsPage.workflowDescription(settings.selectedScope)", main_source)
+        self.assertIn("settingsPage.workflowToggleLabel(settings.selectedScope)", main_source)
+        self.assertIn("settings.providerName(value)", main_source)
         recording_title = 'text: "Microphone and recording"'
         recording_section = main_source[main_source.index('id: recordingSettingsSection'):]
         recording_title_index = recording_section.index(recording_title)
