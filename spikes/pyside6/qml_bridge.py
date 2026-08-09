@@ -145,6 +145,7 @@ class QmlWorkflowBridge(QObject):
         self._settings_visible = False
         self._files_visible = False
         self._finishing = False
+        self._pending_workflow_action: Callable[[], None] | None = None
         self._target_executable = ""
         saved_config = app_config
         if saved_config is None:
@@ -315,7 +316,7 @@ class QmlWorkflowBridge(QObject):
         ):
             return "processing"
         if phase is WorkflowPhase.COMPLETED:
-            return "success"
+            return "result"
         if phase in QmlWorkflowBridge._ERROR_PHASES:
             return "error"
         return "idle"
@@ -338,6 +339,11 @@ class QmlWorkflowBridge(QObject):
         if state.phase is not WorkflowPhase.COMPLETED:
             self._result_visible = False
         self._notify_all()
+        if state.phase is WorkflowPhase.READY:
+            pending_action = self._pending_workflow_action
+            self._pending_workflow_action = None
+            if pending_action is not None:
+                pending_action()
 
     @Slot(object)
     def _on_voice_translation_state(self, state: Any) -> None:
@@ -350,6 +356,32 @@ class QmlWorkflowBridge(QObject):
 
     def _submit(self, callback: Callable[[], None]) -> None:
         self._dispatch_runner(callback)
+
+    def _run_when_ready(self, action: Callable[[], None]) -> bool:
+        """Release a terminal result before starting the next workflow.
+
+        The workflow service deliberately keeps terminal operations alive until
+        the view releases them, so the result can still be copied or inspected.
+        A new hotkey is an explicit request to move on, though, and should not
+        require a separate Dismiss click.  Queue one action while the service
+        publishes READY, including the case where clipboard publication is
+        still finishing in the background.
+        """
+
+        if self._state.phase is WorkflowPhase.READY:
+            action()
+            return True
+        if self._state.phase not in (
+            WorkflowPhase.COMPLETED,
+            WorkflowPhase.FAILED,
+        ):
+            return False
+        if self._pending_workflow_action is not None:
+            return False
+        self._pending_workflow_action = action
+        if not self._finishing:
+            self.finish()
+        return True
 
     def _capture_target(self) -> Any | None:
         if self._target_provider is None:
@@ -422,6 +454,12 @@ class QmlWorkflowBridge(QObject):
 
     @Slot()
     def startRecording(self) -> None:
+        if self._state.phase in (
+            WorkflowPhase.COMPLETED,
+            WorkflowPhase.FAILED,
+        ):
+            self._run_when_ready(self.startRecording)
+            return
         if self._state.phase is not WorkflowPhase.READY:
             return
         self._settings_visible = False
@@ -479,6 +517,11 @@ class QmlWorkflowBridge(QObject):
                 return True
             if self.busy:
                 return False
+            if self._state.phase in (
+                WorkflowPhase.COMPLETED,
+                WorkflowPhase.FAILED,
+            ):
+                return self._run_when_ready(self.startRecording)
             if self._state.phase is WorkflowPhase.READY:
                 if not self._dismiss_files_before_workflow():
                     return False
@@ -487,7 +530,14 @@ class QmlWorkflowBridge(QObject):
             return False
 
         if normalized == "rewrite_hotkey":
-            if self.busy or self._state.phase is not WorkflowPhase.READY:
+            if self.busy:
+                return False
+            if self._state.phase in (
+                WorkflowPhase.COMPLETED,
+                WorkflowPhase.FAILED,
+            ):
+                return self._run_when_ready(lambda: self.handleHotkey("rewrite_hotkey"))
+            if self._state.phase is not WorkflowPhase.READY:
                 return False
             if not self._dismiss_files_before_workflow():
                 return False
@@ -496,7 +546,16 @@ class QmlWorkflowBridge(QObject):
             return True
 
         if normalized == "translation_hotkey":
-            if self.busy or self._state.phase is not WorkflowPhase.READY:
+            if self.busy:
+                return False
+            if self._state.phase in (
+                WorkflowPhase.COMPLETED,
+                WorkflowPhase.FAILED,
+            ):
+                return self._run_when_ready(
+                    lambda: self.handleHotkey("translation_hotkey")
+                )
+            if self._state.phase is not WorkflowPhase.READY:
                 return False
             if not self._dismiss_files_before_workflow():
                 return False

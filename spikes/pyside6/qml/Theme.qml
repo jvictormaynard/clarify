@@ -27,4 +27,6 @@ QtObject {
     readonly property int panelHeight: 430
     readonly property int settingsWidth: 720
     readonly property int settingsHeight: 540
+    readonly property int fadeDuration: 180
+    readonly property real uiScale: 1.1
 }

@@ -16,17 +16,26 @@ Window {
     color: "transparent"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
            | Qt.WindowDoesNotAcceptFocus
-    visible: workflow.surface === "recording"
-             || workflow.surface === "processing"
-             || workflow.surface === "voice_processing"
-             || (workflow.surface === "success" && successVisible)
+    readonly property bool requestedVisible: workflow.surface === "recording"
+                                             || workflow.surface === "processing"
+                                             || workflow.surface === "voice_processing"
+                                             || (workflow.surface === "success"
+                                                 && successVisible)
+    visible: requestedVisible || opacity > 0.001
+    opacity: requestedVisible ? 1.0 : 0.0
+    Behavior on opacity {
+        NumberAnimation {
+            duration: theme.fadeDuration
+            easing.type: Easing.OutCubic
+        }
+    }
     title: "ClarifyVoice workflow status"
 
     Theme { id: theme }
     property bool successVisible: false
     property real motionPhase: 0.0
     readonly property bool recording: workflow.recording
-    readonly property bool processing: visible && !recording
+    readonly property bool processing: requestedVisible && !recording
                                       && workflow.surface !== "success"
 
     Timer {
@@ -93,7 +102,15 @@ Window {
                 y: 0
                 width: 96
                 height: parent.height
-                visible: pill.recording
+                property bool fadeShown: pill.recording
+                visible: fadeShown || opacity > 0.001
+                opacity: fadeShown ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: theme.fadeDuration
+                        easing.type: Easing.OutCubic
+                    }
+                }
 
                 Repeater {
                     model: 12
@@ -133,7 +150,15 @@ Window {
                 x: 45
                 width: 82
                 height: parent.height
-                visible: pill.processing
+                property bool fadeShown: pill.processing
+                visible: fadeShown || opacity > 0.001
+                opacity: fadeShown ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: theme.fadeDuration
+                        easing.type: Easing.OutCubic
+                    }
+                }
 
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
@@ -156,7 +181,16 @@ Window {
 
             Label {
                 anchors.centerIn: progress
-                visible: workflow.surface === "success" && pill.successVisible
+                property bool fadeShown: workflow.surface === "success"
+                                         && pill.successVisible
+                visible: fadeShown || opacity > 0.001
+                opacity: fadeShown ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: theme.fadeDuration
+                        easing.type: Easing.OutCubic
+                    }
+                }
                 text: "✓"
                 color: "#30d158"
                 font.pixelSize: 25

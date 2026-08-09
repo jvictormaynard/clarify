@@ -77,6 +77,8 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             self.assertIn(value, theme_source)
         self.assertIn("readonly property int windowWidth: 380", theme_source)
         self.assertIn("readonly property int windowHeight: 48", theme_source)
+        self.assertIn("readonly property int fadeDuration: 180", theme_source)
+        self.assertIn("readonly property real uiScale: 1.1", theme_source)
 
         main_source = (QML_ROOT / "Main.qml").read_text(encoding="utf-8")
         self.assertIn('objectName: "clarifyVoiceMainWindow"', main_source)
@@ -94,6 +96,23 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("#72a7ff", qml_source)
         self.assertNotIn("#4f83e8", qml_source)
         self.assertIn('source: "flags/" + workflow.language + ".svg"', main_source)
+        self.assertIn('iconSource: "icons/settings.svg"', main_source)
+        self.assertIn('iconSource: "icons/x.svg"', main_source)
+        self.assertNotIn('text: "☰"', main_source)
+        self.assertNotIn('text: "—"', main_source)
+        rounded_flag_source = (QML_ROOT / "RoundedFlag.qml").read_text(encoding="utf-8")
+        self.assertIn("property url source", rounded_flag_source)
+        self.assertIn("radius: 4", rounded_flag_source)
+        self.assertIn("clip: true", rounded_flag_source)
+        self.assertIn("anchors.margins: 1", rounded_flag_source)
+        self.assertIn("border.width: 1", rounded_flag_source)
+        self.assertIn("Layout.leftMargin: 8", main_source)
+        self.assertEqual(main_source.count("RoundedFlag {"), 3)
+        for language in ("en", "pt", "es", "de", "ru"):
+            flag_source = (QML_ROOT / "flags" / f"{language}.svg").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn('rx="4"', flag_source)
         self.assertIn('Accessible.name: "Language: "', main_source)
         self.assertIn(
             "readonly property var supportedLanguages: [\n"
@@ -136,10 +155,11 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("palette.highlightedText: theme.text", main_source)
         self.assertIn('QQuickStyle.setStyle("Basic")', entrypoint_source)
         self.assertIn("property bool successVisible: false", status_pill_source)
+        self.assertIn("readonly property bool requestedVisible", status_pill_source)
+        self.assertIn("Behavior on opacity", status_pill_source)
         self.assertIn("interval: 850", status_pill_source)
-        self.assertIn(
-            'workflow.surface === "success" && successVisible', status_pill_source
-        )
+        self.assertIn('workflow.surface === "success"', status_pill_source)
+        self.assertIn("successVisible", status_pill_source)
         self.assertIn("pillStatus.audioLevel", status_pill_source)
         self.assertIn("pillStatus.targetIcon", status_pill_source)
         self.assertIn("Screen.devicePixelRatio", status_pill_source)
@@ -157,12 +177,18 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("StatusPill {", main_source)
         self.assertIn('qml_root / "StatusPill.qml"', entrypoint_source)
         self.assertIn('root.objectName() == "workflowStatusPill"', entrypoint_source)
-        self.assertIn("visible: false", main_source)
-        self.assertIn("else:\n        window.show()", entrypoint_source)
+        self.assertIn("property bool presentationVisible: false", main_source)
+        self.assertIn("presentationVisible", entrypoint_source)
+        self.assertIn("Behavior on opacity", main_source)
+        self.assertNotIn("card.opacity", main_source)
+        self.assertNotIn("pages.opacity", main_source)
         self.assertIn("copyResetTimer", main_source)
         self.assertIn("copyResetTimer.restart()", main_source)
         self.assertIn("function onCopyCompleted(success)", main_source)
         self.assertIn("onClicked: workflow.copyResult()", main_source)
+        self.assertNotIn("id: resultButton", main_source)
+        self.assertNotIn('text: "View"', main_source)
+        self.assertNotIn("workflow.showResult()", main_source)
         self.assertIn("onVisibleChanged: resetCopyConfirmation()", main_source)
         self.assertIn('resultPage.copyLabel = "Copy"', main_source)
         self.assertIn("workflow.stopRecording()", main_source)
@@ -180,6 +206,131 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn('text: "Select text to reuse"', main_source)
         self.assertNotIn("Global shortcuts and settings will be connected", main_source)
         self.assertIn('objectName: "settingsPage"', main_source)
+        self.assertIn('objectName: "settingsSidebar"', main_source)
+        self.assertIn('objectName: "settingsSidebarDivider"', main_source)
+        button_source = (QML_ROOT / "AppButton.qml").read_text(encoding="utf-8")
+        self.assertIn("property int contentAlignment", button_source)
+        self.assertIn("property url iconSource", button_source)
+        self.assertIn("property int iconSize", button_source)
+        self.assertIn("source: control.iconSource", button_source)
+        self.assertIn("anchors.verticalCenter: parent.verticalCenter", button_source)
+        self.assertIn(
+            'x: control.text === "" ? (parent.width - width) / 2 : 0',
+            button_source,
+        )
+        self.assertIn("horizontalAlignment: control.contentAlignment", button_source)
+        self.assertIn("contentAlignment: Text.AlignLeft", main_source)
+        self.assertIn("readonly property var sectionItems", main_source)
+        self.assertIn('iconSource: "icons/" + modelData.icon', main_source)
+        self.assertNotIn("iconText", main_source)
+        self.assertIn('iconSource: "icons/refresh.svg"', main_source)
+        self.assertIn("iconSize: 18", main_source)
+        self.assertEqual(main_source.count("indicator: DropdownIndicator"), 9)
+        self.assertEqual(main_source.count("delegate: ComboPopupDelegate"), 8)
+        self.assertEqual(main_source.count("popup.padding: 4"), 9)
+        self.assertNotIn("indicator: Label", main_source)
+        self.assertNotIn('text: "⌄"', main_source)
+        self.assertNotIn('text: "↻"', main_source)
+        indicator_source = (QML_ROOT / "DropdownIndicator.qml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('source: "icons/chevron-down.svg"', indicator_source)
+        self.assertIn("width: 16", indicator_source)
+        self.assertIn("height: 16", indicator_source)
+        self.assertNotIn("implicitWidth", indicator_source)
+        self.assertNotIn("implicitHeight", indicator_source)
+        popup_delegate_source = (QML_ROOT / "ComboPopupDelegate.qml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("required property Theme visualTheme", popup_delegate_source)
+        self.assertIn("required property int index", popup_delegate_source)
+        self.assertIn("required property var model", popup_delegate_source)
+        self.assertIn("ListView.view ? ListView.view.width", popup_delegate_source)
+        self.assertEqual(main_source.count("visualTheme: theme"), 9)
+        self.assertNotIn(
+            "theme: theme\n                                        comboBox:",
+            main_source,
+        )
+        self.assertIn("comboBox.textAt(index)", popup_delegate_source)
+        self.assertIn("highlighted: comboBox", popup_delegate_source)
+        icon_dir = QML_ROOT / "icons"
+        self.assertTrue(icon_dir.is_dir())
+        for icon_name in (
+            "settings.svg",
+            "keyboard.svg",
+            "audio-lines.svg",
+            "mic.svg",
+            "server.svg",
+            "route.svg",
+            "sparkles.svg",
+            "x.svg",
+            "chevron-down.svg",
+            "refresh.svg",
+        ):
+            icon_source = (icon_dir / icon_name).read_text(encoding="utf-8")
+            self.assertIn('<svg xmlns="http://www.w3.org/2000/svg"', icon_source)
+            self.assertIn('viewBox="0 0 24 24"', icon_source)
+            self.assertIn('stroke="#ffffff"', icon_source)
+        self.assertIn(
+            '{ "label": "Recording", "icon": "audio-lines.svg" }',
+            main_source,
+        )
+        self.assertIn(
+            '{ "label": "Speech-to-text", "icon": "mic.svg" }',
+            main_source,
+        )
+        self.assertIn("function selectSection(index)", main_source)
+        self.assertNotIn("cardFadeTimer", main_source)
+        self.assertNotIn("settingsSectionFadeTimer", main_source)
+        for section_object in (
+            "generalSettingsSection",
+            "shortcutSettingsSection",
+            "recordingSettingsSection",
+            "integrationsSettingsSection",
+            "workflowSettingsSection",
+        ):
+            self.assertIn(f'objectName: "{section_object}"', main_source)
+        for section_label in (
+            "Speech-to-text",
+            "Text processing",
+            "Integrations",
+            "Dictation",
+            "Cleanup",
+            "Rewrite",
+            "Translation",
+            "Local refinement",
+        ):
+            self.assertIn(f'"label": "{section_label}"', main_source)
+        self.assertNotIn('"label": "Providers"', main_source)
+        self.assertNotIn('"label": "Routes"', main_source)
+        self.assertNotIn('text: "Workflow route"', main_source)
+        self.assertNotIn('text: "Scope"', main_source)
+        self.assertIn("function selectWorkflowScope(scope)", main_source)
+        self.assertIn(
+            "settingsPage.workflowDescription(settings.selectedScope)", main_source
+        )
+        self.assertIn(
+            "settingsPage.workflowToggleLabel(settings.selectedScope)", main_source
+        )
+        self.assertIn("settings.providerName(value)", main_source)
+        tab_start = main_source.index(
+            "RowLayout {\n                                Layout.alignment: Qt.AlignLeft\n                                spacing: 4"
+        )
+        tab_end = main_source.index("GridLayout {", tab_start)
+        tab_source = main_source[tab_start:tab_end]
+        self.assertNotIn("Layout.fillWidth: true", tab_source)
+        self.assertNotIn("iconSource:", tab_source)
+        self.assertNotIn("iconSize:", tab_source)
+        self.assertIn(
+            "Layout.preferredWidth: tabTextMetrics.advanceWidth + 20", tab_source
+        )
+        self.assertIn("TextMetrics", tab_source)
+        recording_title = 'text: "Microphone and recording"'
+        recording_section = main_source[
+            main_source.index("id: recordingSettingsSection") :
+        ]
+        recording_title_index = recording_section.index(recording_title)
+        self.assertNotIn("height: 1", recording_section[:recording_title_index])
         for binding in (
             "settings.mode",
             "settings.language",
@@ -430,6 +581,8 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn('normalized == "recording_hotkey"', bridge_source)
         self.assertIn('normalized == "rewrite_hotkey"', bridge_source)
         self.assertIn('normalized == "translation_hotkey"', bridge_source)
+        self.assertIn("def _run_when_ready", bridge_source)
+        self.assertIn("_pending_workflow_action", bridge_source)
         self.assertIn("StartRewrite(target)", bridge_source)
         self.assertIn("StartTranslation(target)", bridge_source)
         self.assertIn("CancelTranslation()", bridge_source)
@@ -451,7 +604,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("legacy_adapters", runtime_source)
         self.assertNotIn("QmlRuntimeUnavailableError", runtime_source)
         self.assertIn("_hidden_start_requested", source)
-        self.assertIn("window.hide()", source)
+        self.assertIn("presentationVisible", source)
 
     @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
     def test_qml_entrypoint_accepts_only_the_supported_hidden_start_flag(self):
@@ -516,6 +669,7 @@ class QmlWorkflowBridgeHotkeyTests(unittest.TestCase):
             self.state = WorkflowState()
             self.commands = []
             self.listeners = []
+            self.finish_calls = []
 
         def subscribe(self, listener):
             self.listeners.append(listener)
@@ -527,6 +681,13 @@ class QmlWorkflowBridgeHotkeyTests(unittest.TestCase):
 
         def dispatch(self, command):
             self.commands.append(command)
+            return True
+
+        def finish(self, operation_id):
+            from workflows import WorkflowState
+
+            self.finish_calls.append(operation_id)
+            self.publish(WorkflowState())
             return True
 
     class VoiceTranslationController(QObject):
@@ -595,6 +756,50 @@ class QmlWorkflowBridgeHotkeyTests(unittest.TestCase):
         self.assertTrue(bridge.busy)
         self.assertTrue(bridge.handleHotkey("recording_hotkey"))
         self.assertIsInstance(service.commands[-1], StopDictation)
+
+    def test_terminal_result_is_released_before_next_global_workflow_hotkey(self):
+        from workflows import (
+            StartDictation,
+            StartRewrite,
+            StartTranslation,
+            WorkflowPhase,
+            WorkflowState,
+        )
+
+        cases = (
+            ("recording_hotkey", StartDictation),
+            ("rewrite_hotkey", StartRewrite),
+            ("translation_hotkey", StartTranslation),
+        )
+        for action, command_type in cases:
+            with self.subTest(action=action):
+                service, bridge = self._bridge()
+                service.publish(
+                    WorkflowState(
+                        phase=WorkflowPhase.COMPLETED,
+                        operation_id=17,
+                        result_text="previous result",
+                    )
+                )
+
+                self.assertTrue(bridge.handleHotkey(action))
+                self.assertEqual(service.finish_calls, [17])
+                self.assertIsInstance(service.commands[-1], command_type)
+
+    def test_completed_workflow_opens_result_surface_immediately(self):
+        from workflows import WorkflowPhase, WorkflowState
+
+        service, bridge = self._bridge()
+        service.publish(
+            WorkflowState(
+                phase=WorkflowPhase.COMPLETED,
+                operation_id=17,
+                result_text="previous result",
+            )
+        )
+
+        self.assertEqual(bridge.surface, "result")
+        self.assertTrue(bridge.canShowResult)
 
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
@@ -713,6 +918,9 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
             def __init__(self, window):
                 self.window = window
                 self.show_calls = 0
+
+            def hide_window(self):
+                self.window.hide()
 
             def show_window(self):
                 self.window.visible = True
