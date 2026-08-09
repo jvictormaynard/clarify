@@ -102,15 +102,17 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn('text: "—"', main_source)
         rounded_flag_source = (QML_ROOT / "RoundedFlag.qml").read_text(encoding="utf-8")
         self.assertIn("property url source", rounded_flag_source)
-        self.assertIn("radius: 3", rounded_flag_source)
+        self.assertIn("radius: 4", rounded_flag_source)
         self.assertIn("clip: true", rounded_flag_source)
+        self.assertIn('anchors.margins: 1', rounded_flag_source)
         self.assertIn('border.width: 1', rounded_flag_source)
+        self.assertIn('Layout.leftMargin: 8', main_source)
         self.assertEqual(main_source.count("RoundedFlag {"), 3)
         for language in ("en", "pt", "es", "de", "ru"):
             flag_source = (QML_ROOT / "flags" / f"{language}.svg").read_text(
                 encoding="utf-8"
             )
-            self.assertIn('rx="3"', flag_source)
+            self.assertIn('rx="4"', flag_source)
         self.assertIn('Accessible.name: "Language: "', main_source)
         self.assertIn(
             "readonly property var supportedLanguages: [\n"

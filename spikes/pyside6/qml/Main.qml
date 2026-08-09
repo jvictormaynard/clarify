@@ -718,7 +718,7 @@ ApplicationWindow {
                                     currentIndex: Math.max(0, settings.languages.indexOf(settings.language))
                                     onActivated: settings.setLanguage(currentText)
                                     contentItem: RowLayout {
-                                        x: 8
+                                        x: 0
                                         width: Math.max(0, parent.width - 32)
                                         height: parent.height
                                         spacing: 7
@@ -727,6 +727,7 @@ ApplicationWindow {
                                             Layout.preferredWidth: 20
                                             Layout.preferredHeight: 14
                                             Layout.alignment: Qt.AlignVCenter
+                                            Layout.leftMargin: 8
                                             source: "flags/" + settingsLanguageBox.currentText + ".svg"
                                         }
 
@@ -747,7 +748,7 @@ ApplicationWindow {
                                         hoverEnabled: true
 
                                         contentItem: RowLayout {
-                                            x: 8
+                                            x: 0
                                             width: Math.max(0, parent.width - 16)
                                             height: parent.height
                                             spacing: 7
@@ -756,6 +757,7 @@ ApplicationWindow {
                                                 Layout.preferredWidth: 20
                                                 Layout.preferredHeight: 14
                                                 Layout.alignment: Qt.AlignVCenter
+                                                Layout.leftMargin: 8
                                                 source: "flags/" + modelData + ".svg"
                                             }
 
