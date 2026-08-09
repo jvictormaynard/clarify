@@ -19,6 +19,7 @@ Button {
         Image {
             Layout.preferredWidth: control.iconSource == "" ? 0 : 16
             Layout.preferredHeight: 16
+            Layout.alignment: control.text === "" ? Qt.AlignHCenter : Qt.AlignVCenter
             visible: control.iconSource != ""
             source: control.iconSource
             sourceSize.width: 16
@@ -32,7 +33,8 @@ Button {
         }
 
         Label {
-            Layout.fillWidth: true
+            Layout.fillWidth: control.text !== ""
+            visible: control.text !== ""
             text: control.text
             color: !control.enabled
                    ? control.theme.dim

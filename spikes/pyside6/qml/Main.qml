@@ -285,15 +285,11 @@ ApplicationWindow {
                             Accessible.name: "Language: "
                                               + languageNames[workflow.language]
 
-                            Image {
+                            RoundedFlag {
                                 anchors.centerIn: parent
                                 width: 20
                                 height: 14
-                                sourceSize.width: 20
-                                sourceSize.height: 14
                                 source: "flags/" + workflow.language + ".svg"
-                                fillMode: Image.PreserveAspectFit
-                                smooth: true
                             }
                             onClicked: {
                                 var currentIndex = supportedLanguages.indexOf(workflow.language)
@@ -332,7 +328,7 @@ ApplicationWindow {
                         AppButton {
                             id: settingsButton
                             objectName: "settingsButton"
-                            text: "☰"
+                            iconSource: "icons/settings.svg"
                             theme: theme
                             quiet: true
                             Layout.preferredWidth: 26
@@ -344,7 +340,7 @@ ApplicationWindow {
                         AppButton {
                             id: closeButton
                             objectName: "closeButton"
-                            text: "—"
+                            iconSource: "icons/x.svg"
                             theme: theme
                             quiet: true
                             Layout.preferredWidth: 26
@@ -436,7 +432,7 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
 
                         AppButton {
-                            text: "—"
+                            iconSource: "icons/x.svg"
                             theme: theme
                             quiet: true
                             Layout.preferredWidth: 26
@@ -558,7 +554,7 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
 
                         AppButton {
-                            text: "—"
+                            iconSource: "icons/x.svg"
                             theme: theme
                             quiet: true
                             Layout.preferredWidth: 26
@@ -727,15 +723,11 @@ ApplicationWindow {
                                         height: parent.height
                                         spacing: 7
 
-                                        Image {
+                                        RoundedFlag {
                                             Layout.preferredWidth: 20
                                             Layout.preferredHeight: 14
                                             Layout.alignment: Qt.AlignVCenter
-                                            sourceSize.width: 20
-                                            sourceSize.height: 14
                                             source: "flags/" + settingsLanguageBox.currentText + ".svg"
-                                            fillMode: Image.PreserveAspectFit
-                                            smooth: true
                                         }
 
                                         Label {
@@ -760,15 +752,11 @@ ApplicationWindow {
                                             height: parent.height
                                             spacing: 7
 
-                                            Image {
+                                            RoundedFlag {
                                                 Layout.preferredWidth: 20
                                                 Layout.preferredHeight: 14
                                                 Layout.alignment: Qt.AlignVCenter
-                                                sourceSize.width: 20
-                                                sourceSize.height: 14
                                                 source: "flags/" + modelData + ".svg"
-                                                fillMode: Image.PreserveAspectFit
-                                                smooth: true
                                             }
 
                                             Label {
@@ -2271,7 +2259,7 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            text: "—"
+                            iconSource: "icons/x.svg"
                             theme: theme
                             quiet: true
                             enabled: !audioBatch.running
@@ -2702,7 +2690,7 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            text: "—"
+                            iconSource: "icons/x.svg"
                             theme: theme
                             quiet: true
                             Layout.preferredWidth: 26

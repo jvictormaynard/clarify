@@ -96,6 +96,21 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("#72a7ff", qml_source)
         self.assertNotIn("#4f83e8", qml_source)
         self.assertIn('source: "flags/" + workflow.language + ".svg"', main_source)
+        self.assertIn('iconSource: "icons/settings.svg"', main_source)
+        self.assertIn('iconSource: "icons/x.svg"', main_source)
+        self.assertNotIn('text: "☰"', main_source)
+        self.assertNotIn('text: "—"', main_source)
+        rounded_flag_source = (QML_ROOT / "RoundedFlag.qml").read_text(encoding="utf-8")
+        self.assertIn("property url source", rounded_flag_source)
+        self.assertIn("radius: 3", rounded_flag_source)
+        self.assertIn("clip: true", rounded_flag_source)
+        self.assertIn('border.width: 1', rounded_flag_source)
+        self.assertEqual(main_source.count("RoundedFlag {"), 3)
+        for language in ("en", "pt", "es", "de", "ru"):
+            flag_source = (QML_ROOT / "flags" / f"{language}.svg").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn('rx="3"', flag_source)
         self.assertIn('Accessible.name: "Language: "', main_source)
         self.assertIn(
             "readonly property var supportedLanguages: [\n"
@@ -202,7 +217,14 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("iconText", main_source)
         icon_dir = QML_ROOT / "icons"
         self.assertTrue(icon_dir.is_dir())
-        for icon_name in ("settings.svg", "keyboard.svg", "mic.svg", "server.svg", "route.svg"):
+        for icon_name in (
+            "settings.svg",
+            "keyboard.svg",
+            "mic.svg",
+            "server.svg",
+            "route.svg",
+            "x.svg",
+        ):
             icon_source = (icon_dir / icon_name).read_text(encoding="utf-8")
             self.assertIn('<svg xmlns="http://www.w3.org/2000/svg"', icon_source)
             self.assertIn('viewBox="0 0 24 24"', icon_source)
