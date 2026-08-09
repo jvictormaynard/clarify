@@ -104,9 +104,9 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("property url source", rounded_flag_source)
         self.assertIn("radius: 4", rounded_flag_source)
         self.assertIn("clip: true", rounded_flag_source)
-        self.assertIn('anchors.margins: 1', rounded_flag_source)
-        self.assertIn('border.width: 1', rounded_flag_source)
-        self.assertIn('Layout.leftMargin: 8', main_source)
+        self.assertIn("anchors.margins: 1", rounded_flag_source)
+        self.assertIn("border.width: 1", rounded_flag_source)
+        self.assertIn("Layout.leftMargin: 8", main_source)
         self.assertEqual(main_source.count("RoundedFlag {"), 3)
         for language in ("en", "pt", "es", "de", "ru"):
             flag_source = (QML_ROOT / "flags" / f"{language}.svg").read_text(
@@ -186,7 +186,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("copyResetTimer.restart()", main_source)
         self.assertIn("function onCopyCompleted(success)", main_source)
         self.assertIn("onClicked: workflow.copyResult()", main_source)
-        self.assertNotIn('id: resultButton', main_source)
+        self.assertNotIn("id: resultButton", main_source)
         self.assertNotIn('text: "View"', main_source)
         self.assertNotIn("workflow.showResult()", main_source)
         self.assertIn("onVisibleChanged: resetCopyConfirmation()", main_source)
@@ -231,7 +231,9 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("indicator: Label", main_source)
         self.assertNotIn('text: "⌄"', main_source)
         self.assertNotIn('text: "↻"', main_source)
-        indicator_source = (QML_ROOT / "DropdownIndicator.qml").read_text(encoding="utf-8")
+        indicator_source = (QML_ROOT / "DropdownIndicator.qml").read_text(
+            encoding="utf-8"
+        )
         self.assertIn('source: "icons/chevron-down.svg"', indicator_source)
         self.assertIn("width: 16", indicator_source)
         self.assertIn("height: 16", indicator_source)
@@ -245,7 +247,10 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("required property var model", popup_delegate_source)
         self.assertIn("ListView.view ? ListView.view.width", popup_delegate_source)
         self.assertEqual(main_source.count("visualTheme: theme"), 9)
-        self.assertNotIn("theme: theme\n                                        comboBox:", main_source)
+        self.assertNotIn(
+            "theme: theme\n                                        comboBox:",
+            main_source,
+        )
         self.assertIn("comboBox.textAt(index)", popup_delegate_source)
         self.assertIn("highlighted: comboBox", popup_delegate_source)
         icon_dir = QML_ROOT / "icons"
@@ -301,8 +306,12 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn('text: "Workflow route"', main_source)
         self.assertNotIn('text: "Scope"', main_source)
         self.assertIn("function selectWorkflowScope(scope)", main_source)
-        self.assertIn("settingsPage.workflowDescription(settings.selectedScope)", main_source)
-        self.assertIn("settingsPage.workflowToggleLabel(settings.selectedScope)", main_source)
+        self.assertIn(
+            "settingsPage.workflowDescription(settings.selectedScope)", main_source
+        )
+        self.assertIn(
+            "settingsPage.workflowToggleLabel(settings.selectedScope)", main_source
+        )
         self.assertIn("settings.providerName(value)", main_source)
         tab_start = main_source.index(
             "RowLayout {\n                                Layout.alignment: Qt.AlignLeft\n                                spacing: 4"
@@ -312,10 +321,14 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("Layout.fillWidth: true", tab_source)
         self.assertNotIn("iconSource:", tab_source)
         self.assertNotIn("iconSize:", tab_source)
-        self.assertIn("Layout.preferredWidth: tabTextMetrics.advanceWidth + 20", tab_source)
+        self.assertIn(
+            "Layout.preferredWidth: tabTextMetrics.advanceWidth + 20", tab_source
+        )
         self.assertIn("TextMetrics", tab_source)
         recording_title = 'text: "Microphone and recording"'
-        recording_section = main_source[main_source.index('id: recordingSettingsSection'):]
+        recording_section = main_source[
+            main_source.index("id: recordingSettingsSection") :
+        ]
         recording_title_index = recording_section.index(recording_title)
         self.assertNotIn("height: 1", recording_section[:recording_title_index])
         for binding in (
@@ -905,6 +918,9 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
             def __init__(self, window):
                 self.window = window
                 self.show_calls = 0
+
+            def hide_window(self):
+                self.window.hide()
 
             def show_window(self):
                 self.window.visible = True

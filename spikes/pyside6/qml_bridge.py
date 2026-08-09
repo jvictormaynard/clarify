@@ -536,9 +536,7 @@ class QmlWorkflowBridge(QObject):
                 WorkflowPhase.COMPLETED,
                 WorkflowPhase.FAILED,
             ):
-                return self._run_when_ready(
-                    lambda: self.handleHotkey("rewrite_hotkey")
-                )
+                return self._run_when_ready(lambda: self.handleHotkey("rewrite_hotkey"))
             if self._state.phase is not WorkflowPhase.READY:
                 return False
             if not self._dismiss_files_before_workflow():
