@@ -63,6 +63,21 @@ class RepositorySafetyTests(unittest.TestCase):
         )
         self.assertIn("'PySide6'", content)
 
+    def test_windows_builds_isolate_host_dll_paths_and_smoke_test_imports(self):
+        entrypoint = (ROOT / "spikes" / "pyside6" / "qml_app.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('CLARIFYVOICE_IMPORT_SMOKE_TEST") == "1"', entrypoint)
+
+        for name in ("build.ps1", "deploy.ps1"):
+            content = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+            with self.subTest(script=name):
+                self.assertIn("function Get-IsolatedBuildPath", content)
+                self.assertIn("codex-runtimes", content)
+                self.assertIn("$env:PATH = Get-IsolatedBuildPath", content)
+                self.assertIn('$env:CLARIFYVOICE_IMPORT_SMOKE_TEST = "1"', content)
+                self.assertIn("ClarifyVoice import smoke test failed", content)
+
     def test_production_entrypoint_and_dependencies_are_qml_only(self):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")

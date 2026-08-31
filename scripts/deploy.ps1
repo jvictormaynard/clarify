@@ -62,6 +62,14 @@ function Invoke-LoggedProcess {
     }
 }
 
+function Get-IsolatedBuildPath {
+    param([string]$PathValue)
+
+    return (($PathValue -split ";") | Where-Object {
+        $_ -and $_ -notmatch '[\\/]\.cache[\\/]codex-runtimes[\\/]'
+    }) -join ";"
+}
+
 function Resolve-InstallPath {
     param([string]$ExplicitPath)
 
@@ -251,10 +259,32 @@ foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File))
 # provider credentials from the user's ClarifyVoice config directory instead.
 $pyinstallerArgs += $source
 
-Invoke-LoggedProcess $venvPython $pyinstallerArgs $buildOutLog $buildErrLog `
-    "ClarifyVoice build failed. The installed version was not changed."
+$inheritedPath = $env:PATH
+$env:PATH = Get-IsolatedBuildPath $inheritedPath
+try {
+    Invoke-LoggedProcess $venvPython $pyinstallerArgs $buildOutLog $buildErrLog `
+        "ClarifyVoice build failed. The installed version was not changed."
+} finally {
+    $env:PATH = $inheritedPath
+}
 if (-not (Test-Path $builtExe)) {
     throw "ClarifyVoice build completed without producing an executable."
+}
+
+$smokeOutLog = Join-Path $buildRoot "smoke.stdout.log"
+$smokeErrLog = Join-Path $buildRoot "smoke.stderr.log"
+$previousSmokeTest = $env:CLARIFYVOICE_IMPORT_SMOKE_TEST
+$env:CLARIFYVOICE_IMPORT_SMOKE_TEST = "1"
+try {
+    $smoke = Start-Process -FilePath $builtExe -Wait -PassThru `
+        -WindowStyle Hidden -RedirectStandardOutput $smokeOutLog `
+        -RedirectStandardError $smokeErrLog
+} finally {
+    $env:CLARIFYVOICE_IMPORT_SMOKE_TEST = $previousSmokeTest
+}
+if ($smoke.ExitCode -ne 0) {
+    Get-Content $smokeOutLog, $smokeErrLog -ErrorAction SilentlyContinue
+    throw "ClarifyVoice import smoke test failed. The installed version was not changed."
 }
 
 Write-Host "Updating $targetExe..."

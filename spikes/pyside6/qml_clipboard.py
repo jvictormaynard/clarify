@@ -54,6 +54,7 @@ except ImportError:  # PyInstaller may load the module as part of the package.
 CLIPBOARD_RESTORE_DELAY_SECONDS = 0.2
 SELECTION_COPY_TIMEOUT_SECONDS = 0.7
 SELECTION_COPY_POLL_SECONDS = 0.02
+SELECTION_COPY_RETRY_SECONDS = 0.12
 
 
 def _foreground_window_handle() -> int | None:
@@ -304,6 +305,11 @@ class QmlClipboardGateway(ClipboardGateway):
             return None, previous_sequence, previous_sequence
 
         deadline = self._monotonic() + self.copy_timeout
+        retry_at = min(
+            deadline,
+            self._monotonic() + SELECTION_COPY_RETRY_SECONDS,
+        )
+        retried = False
         observed_sequence = previous_sequence
         while self._monotonic() < deadline:
             observed_sequence = self._sequence()
@@ -317,6 +323,23 @@ class QmlClipboardGateway(ClipboardGateway):
                         raise
                     selected = None
                 return selected, previous_sequence, observed_sequence
+            if not retried and self._monotonic() >= retry_at:
+                # Some custom Windows controls swallow the first synthetic
+                # Ctrl+C immediately after the global Alt hotkey is released.
+                # Retry only while focus and clipboard ownership are unchanged.
+                if before_copy is not None:
+                    try:
+                        if not before_copy():
+                            return None, previous_sequence, observed_sequence
+                    except Exception:
+                        return None, previous_sequence, observed_sequence
+                try:
+                    copied = self._send_ctrl_c()
+                except Exception:
+                    return None, previous_sequence, observed_sequence
+                if copied is False:
+                    return None, previous_sequence, observed_sequence
+                retried = True
             self._sleep(SELECTION_COPY_POLL_SECONDS)
         return None, previous_sequence, observed_sequence
 

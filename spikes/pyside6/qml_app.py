@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from enum import Enum
 from functools import partial
@@ -113,6 +114,12 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
         create_real_workflow_runtime,
     )
     from qt_shell import QtShell, WindowsGlobalHotkeyBackend  # noqa: E402
+
+
+if os.environ.get("CLARIFYVOICE_IMPORT_SMOKE_TEST") == "1":
+    # Import Qt and all application modules without opening the UI. This catches
+    # DLL collection conflicts before a new executable replaces the installed one.
+    raise SystemExit(0)
 
 
 class ShellStartResult(Enum):
