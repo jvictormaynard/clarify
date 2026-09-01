@@ -129,7 +129,7 @@ pyside6==6.11.1
     # via -r requirements.txt
 pyside6-addons==6.11.1
     # via pyside6
-pyside6-essentials==6.11.1
+pyside6-essentials==6.11.2
     # via
     #   pyside6
     #   pyside6-addons
