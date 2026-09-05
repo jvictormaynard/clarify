@@ -28,6 +28,8 @@ from workflows import (
     StartRewrite,
     StartTranslation,
     StopDictation,
+    RetryDictation,
+    TranscriptionTransportError,
     WorkflowPhase,
     WorkflowService,
     WorkflowState,
@@ -101,9 +103,7 @@ class FakeProvider:
         self.transcription_request = (audio_source, mode, language)
         if self.on_transcribe:
             self.on_transcribe()
-        return TranscriptionResult(
-            self.transcription, "gemini", "gemini-test"
-        )
+        return TranscriptionResult(self.transcription, "gemini", "gemini-test")
 
     def rewrite(self, text):
         self.rewrite_request = text
@@ -113,9 +113,7 @@ class FakeProvider:
 
     def translate(self, text, target_language):
         self.translation_request = (text, target_language)
-        return TranslationResult(
-            self.translated, "openai", "gpt-test", target_language
-        )
+        return TranslationResult(self.translated, "openai", "gpt-test", target_language)
 
 
 class FakeAudio:
@@ -275,12 +273,8 @@ class FakeStatistics:
     def record_rewrite(self, provider, model, source, result):
         self.rewrites.append((provider, model, source, result))
 
-    def record_translation(
-        self, provider, model, source, result, target_language
-    ):
-        self.translations.append(
-            (provider, model, source, result, target_language)
-        )
+    def record_translation(self, provider, model, source, result, target_language):
+        self.translations.append((provider, model, source, result, target_language))
 
 
 class WorkflowServiceTests(unittest.TestCase):
@@ -311,6 +305,100 @@ class WorkflowServiceTests(unittest.TestCase):
         source = inspect.getsource(workflows)
         self.assertNotIn("customtkinter", source)
         self.assertNotIn("tkinter", source)
+
+    def test_rewrite_network_failure_has_actionable_status_and_no_retry(self):
+        from provider_http import NetworkError
+
+        def fail():
+            raise NetworkError(provider="groq", operation="text_generation")
+
+        self.provider.on_rewrite = fail
+        self.service.dispatch(StartRewrite())
+        self.assertEqual(self.service.state.phase, WorkflowPhase.FAILED)
+        self.assertEqual(self.service.state.status_key, "provider_network")
+        self.assertFalse(self.service.state.can_retry)
+        self.assertEqual(self.statistics.rewrites, [])
+
+    def test_network_failure_retries_same_audio_only_after_explicit_command(self):
+        requests = []
+
+        def fail_once():
+            requests.append(self.provider.transcription_request[0])
+            if len(requests) == 1:
+                raise TranscriptionTransportError("offline")
+
+        self.provider.on_transcribe = fail_once
+        self.service.dispatch(StartDictation(None, "transcription", "pt"))
+        self.clock.now += 7
+        self.service.dispatch(StopDictation())
+        self.assertEqual(self.service.state.phase, WorkflowPhase.FAILED)
+        self.assertTrue(self.service.state.can_retry)
+        self.assertEqual(len(requests), 1)
+        self.assertIsNone(self.audio.failures[0].__traceback__)
+        self.assertIsNone(self.audio.failures[0].__context__)
+        self.assertIsNone(self.audio.failures[0].__cause__)
+        self.assertEqual(self.statistics.dictations, [])
+        session = self.service._session
+        self.assertIsNotNone(session.retry_audio)
+        operation_id = self.service.state.operation_id
+        self.assertFalse(self.service.dispatch(RetryDictation(operation_id + 1)))
+        self.assertTrue(self.service.dispatch(RetryDictation(operation_id)))
+        self.assertFalse(self.service.dispatch(RetryDictation(operation_id)))
+        self.assertEqual(self.service.state.phase, WorkflowPhase.COMPLETED)
+        self.assertEqual(self.audio.started, 1)
+        self.assertEqual(self.audio.stopped, 1)
+        self.assertIs(requests[0], requests[1])
+        self.assertEqual(len(self.statistics.dictations), 1)
+        self.assertEqual(self.statistics.dictations[0][1], 7)
+        self.assertIsNone(session.retry_audio)
+
+    def test_discard_and_shutdown_release_retry_audio(self):
+        def fail():
+            raise TranscriptionTransportError("offline")
+
+        self.provider.on_transcribe = fail
+        for discard in (
+            lambda: self.service.finish(self.service.state.operation_id),
+            self.service.cancel_active,
+        ):
+            self.service.dispatch(StartDictation(None, "transcription", "pt"))
+            self.service.dispatch(StopDictation())
+            session = self.service._session
+            self.assertIsNotNone(session.retry_audio)
+            # A second failure remains retryable and never records again.
+            self.assertTrue(self.service.dispatch(RetryDictation(session.operation_id)))
+            self.assertTrue(self.service.state.can_retry)
+            discard()
+            self.assertIsNone(session.retry_audio)
+            self.assertFalse(
+                self.service.dispatch(RetryDictation(session.operation_id))
+            )
+        self.assertEqual(self.statistics.dictations, [])
+
+    def test_retry_is_reserved_once_and_cancelled_worker_cannot_publish(self):
+        requests = []
+
+        def fail():
+            requests.append(self.provider.transcription_request[0])
+            raise TranscriptionTransportError("offline")
+
+        self.provider.on_transcribe = fail
+        self.service.dispatch(StartDictation(None, "transcription", "pt"))
+        self.service.dispatch(StopDictation())
+        operation_id = self.service.state.operation_id
+        scheduler = ManualScheduler()
+        self.service._scheduler = scheduler
+        self.assertTrue(self.service.dispatch(RetryDictation(operation_id)))
+        self.assertFalse(self.service.dispatch(RetryDictation(operation_id)))
+        self.assertEqual(len(scheduler.background), 1)
+        self.assertEqual(self.service.state.phase, WorkflowPhase.PROCESSING)
+        self.service.cancel_active()
+        scheduler.background.pop()()
+        for callback in scheduler.soon:
+            callback()
+        self.assertEqual(self.service.state.phase, WorkflowPhase.READY)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(self.statistics.dictations, [])
 
     def test_app_microphone_error_implements_the_workflow_domain_contract(self):
         self.assertTrue(
@@ -500,22 +588,20 @@ class WorkflowServiceTests(unittest.TestCase):
     def test_translation_prepares_picker_then_translates_after_choice(self):
         picker_restores = []
         self.service.subscribe(
-            lambda state: picker_restores.append(list(self.clipboard.restores))
-            if state.phase is WorkflowPhase.TRANSLATION_PICKER
-            else None
+            lambda state: (
+                picker_restores.append(list(self.clipboard.restores))
+                if state.phase is WorkflowPhase.TRANSLATION_PICKER
+                else None
+            )
         )
 
         self.assertTrue(self.service.dispatch(StartTranslation()))
-        self.assertEqual(
-            self.service.state.phase, WorkflowPhase.TRANSLATION_PICKER
-        )
+        self.assertEqual(self.service.state.phase, WorkflowPhase.TRANSLATION_PICKER)
         self.assertEqual(picker_restores, [["previous"]])
         self.assertEqual(self.clipboard.restores, ["previous"])
         self.assertEqual(self.clipboard.writes, [])
 
-        self.assertTrue(
-            self.service.dispatch(ChooseTranslationLanguage("de"))
-        )
+        self.assertTrue(self.service.dispatch(ChooseTranslationLanguage("de")))
 
         self.assertEqual(self.provider.translation_request, ("Original", "de"))
         self.assertEqual(self.clipboard.activations, [77])
@@ -688,9 +774,7 @@ class WorkflowServiceTests(unittest.TestCase):
         service = self.make_service(scheduler)
 
         self.assertTrue(service.dispatch(StartTranslation()))
-        self.assertEqual(
-            service.state.phase, WorkflowPhase.PREPARING_TRANSLATION
-        )
+        self.assertEqual(service.state.phase, WorkflowPhase.PREPARING_TRANSLATION)
         self.assertFalse(service.dispatch(StartRewrite()))
 
         scheduler.background.pop(0)()
@@ -775,9 +859,7 @@ class WorkflowServiceTests(unittest.TestCase):
         self.assertEqual(state.phase, WorkflowPhase.COMPLETED)
 
     def test_dictation_focus_change_during_transcription_uses_copied_fallback(self):
-        self.provider.on_transcribe = lambda: setattr(
-            self.clipboard, "window", 88
-        )
+        self.provider.on_transcribe = lambda: setattr(self.clipboard, "window", 88)
 
         self.service.dispatch(
             StartDictation(SelectionTarget(77, "editor.exe"), "prompt", "en")
@@ -874,9 +956,7 @@ class WorkflowServiceTests(unittest.TestCase):
         self.audio.start_release.set()
         scheduler.join()
 
-        self.assertEqual(
-            service.state.phase, WorkflowPhase.MICROPHONE_UNAVAILABLE
-        )
+        self.assertEqual(service.state.phase, WorkflowPhase.MICROPHONE_UNAVAILABLE)
         self.assertIsInstance(self.audio.failures[0], MicrophoneUnavailableError)
 
     def test_immediate_stop_preserves_typed_microphone_startup_failure(self):
@@ -893,9 +973,7 @@ class WorkflowServiceTests(unittest.TestCase):
         self.audio.start_release.set()
         scheduler.join()
 
-        self.assertEqual(
-            service.state.phase, WorkflowPhase.MICROPHONE_UNAVAILABLE
-        )
+        self.assertEqual(service.state.phase, WorkflowPhase.MICROPHONE_UNAVAILABLE)
 
     def test_audio_owner_rejection_keeps_dictation_ready_without_worker(self):
         scheduler = ManualScheduler()
@@ -957,13 +1035,9 @@ class WorkflowServiceTests(unittest.TestCase):
             StartDictation(SelectionTarget(77, "editor.exe"), "prompt", "en")
         )
 
-        self.assertEqual(
-            self.service.state.phase, WorkflowPhase.MICROPHONE_UNAVAILABLE
-        )
+        self.assertEqual(self.service.state.phase, WorkflowPhase.MICROPHONE_UNAVAILABLE)
         self.assertEqual(self.audio.started, 0)
-        self.assertTrue(
-            self.service.dispatch(DismissMicrophoneUnavailable())
-        )
+        self.assertTrue(self.service.dispatch(DismissMicrophoneUnavailable()))
         self.assertEqual(self.service.state.phase, WorkflowPhase.READY)
 
     def test_cancelled_recording_start_cannot_restore_stale_state(self):

@@ -10,7 +10,7 @@ Button {
     property url iconSource: ""
     property int iconSize: 16
 
-    implicitHeight: control.theme.controlHeight
+    implicitHeight: control.theme.fieldHeight
     hoverEnabled: true
 
     contentItem: Item {
@@ -51,7 +51,7 @@ Button {
     }
 
     background: Rectangle {
-        radius: control.theme.controlRadius
+        radius: control.theme.fieldRadius
         color: !control.enabled
                ? control.theme.controlDisabled
                : control.quiet
@@ -59,7 +59,8 @@ Button {
                     : control.hovered ? control.theme.controlHover : "transparent")
                  : (control.down ? control.theme.controlPressed
                     : control.hovered ? control.theme.controlHover : control.theme.control)
-        border.width: 0
+        border.width: control.activeFocus || !control.quiet ? 1 : 0
+        border.color: control.activeFocus ? control.theme.secondaryText : control.theme.border
 
         Behavior on color {
             ColorAnimation { duration: 110; easing.type: Easing.OutCubic }

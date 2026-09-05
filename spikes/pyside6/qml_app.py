@@ -255,10 +255,19 @@ class _WorkflowWindowVisibility:
         bridge.surfaceChanged.connect(self.sync)
 
     def sync(self) -> None:
-        pill_active = self._bridge.surface in self._PILL_SURFACES
+        feedback = bool(getattr(self._bridge, "feedbackVisible", False))
+        pill_active = (
+            self._bridge.surface in self._PILL_SURFACES
+            or feedback
+            or bool(getattr(self._bridge, "transitionPending", False))
+        )
         if pill_active:
             if self._restore_visible is None:
                 self._restore_visible = bool(self._window.isVisible())
+            if feedback:
+                # An error is handled in the pill. Restoring the main window
+                # on dismissal would steal the next shortcut's selection.
+                self._restore_visible = False
             self._shell.hide_window()
             return
         if self._restore_visible is None:
@@ -458,6 +467,7 @@ def main(argv: list[str] | None = None) -> int:
         parent=app,
     )
     shell.hotkeyTriggered.connect(bridge.handleHotkey)
+    bridge.resultRequested.connect(shell.show_window)
     bridge.surfaceChanged.connect(
         lambda: _show_translation_picker_if_needed(bridge, shell)
     )

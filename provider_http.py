@@ -72,12 +72,12 @@ class CancellationToken:
         return self._event.wait(timeout)
 
     def raise_if_cancelled(
-            self, provider: str = "", operation: str = "",
-            operation_id: str | None = None) -> None:
+        self, provider: str = "", operation: str = "", operation_id: str | None = None
+    ) -> None:
         if self.cancelled:
             raise ProviderCancelledError(
-                provider=provider, operation=operation,
-                operation_id=operation_id)
+                provider=provider, operation=operation, operation_id=operation_id
+            )
 
 
 _OPERATION_CAPABILITIES = {
@@ -92,15 +92,18 @@ class ProviderError(DomainProviderError):
     code = "provider_error"
 
     def __init__(
-            self, *, provider: str = "", operation: str = "",
-            status_code: int | None = None,
-            operation_id: str | None = None) -> None:
+        self,
+        *,
+        provider: str = "",
+        operation: str = "",
+        status_code: int | None = None,
+        operation_id: str | None = None,
+    ) -> None:
         self.provider = provider
         self.operation = operation
         self.status_code = status_code
         self.operation_id = operation_id
-        super().__init__(
-            provider, self.code, _OPERATION_CAPABILITIES.get(operation))
+        super().__init__(provider, self.code, _OPERATION_CAPABILITIES.get(operation))
 
 
 class AuthenticationError(ProviderError):
@@ -222,14 +225,17 @@ def redact_sensitive(value: Any, key: str = "") -> Any:
     if key and _SENSITIVE_KEY.search(str(key)):
         return "[REDACTED]"
     if isinstance(value, dict):
-        return {str(item_key): redact_sensitive(item, str(item_key))
-                for item_key, item in value.items()}
+        return {
+            str(item_key): redact_sensitive(item, str(item_key))
+            for item_key, item in value.items()
+        }
     if isinstance(value, (list, tuple)):
         return [redact_sensitive(item) for item in value]
     if isinstance(value, str):
         redacted = _BEARER.sub("Bearer [REDACTED]", value)
         redacted = _SECRET_ASSIGNMENT.sub(
-            lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", redacted)
+            lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", redacted
+        )
         return _AUDIO_PATH.sub("[REDACTED_AUDIO_PATH]", redacted)
     return value
 
@@ -242,8 +248,9 @@ class _BestEffortRotatingFileHandler(RotatingFileHandler):
 
 
 class SafeRotatingLogger:
-    def __init__(self, directory: Path, *, max_bytes: int = 512 * 1024,
-                 backup_count: int = 3) -> None:
+    def __init__(
+        self, directory: Path, *, max_bytes: int = 512 * 1024, backup_count: int = 3
+    ) -> None:
         self.directory = Path(directory)
         self.path = self.directory / "provider.log"
         self.max_bytes = max_bytes
@@ -260,8 +267,11 @@ class SafeRotatingLogger:
             logger.setLevel(logging.INFO)
             logger.propagate = False
             handler = _BestEffortRotatingFileHandler(
-                self.path, maxBytes=self.max_bytes,
-                backupCount=self.backup_count, encoding="utf-8")
+                self.path,
+                maxBytes=self.max_bytes,
+                backupCount=self.backup_count,
+                encoding="utf-8",
+            )
             handler.setFormatter(logging.Formatter("%(message)s"))
             logger.addHandler(handler)
             self._logger = logger
@@ -271,13 +281,20 @@ class SafeRotatingLogger:
         # Diagnostics are strictly best-effort. A read-only profile, a full
         # disk, or a failed rollover must never change provider behavior.
         try:
-            safe_event = redact_sensitive({
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                **event,
-            })
-            self._get_logger().info(json.dumps(
-                safe_event, ensure_ascii=False, sort_keys=True,
-                separators=(",", ":")))
+            safe_event = redact_sensitive(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    **event,
+                }
+            )
+            self._get_logger().info(
+                json.dumps(
+                    safe_event,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
         except Exception:
             return
 
@@ -321,13 +338,15 @@ def _response_error_status(response: requests.Response) -> str:
 def _is_permanent_quota(classification: str) -> bool:
     if "insufficient_quota" in classification:
         return True
-    return bool(re.search(
-        r"(?:\b(?:billing|credit)[\s_-]+(?:hard[\s_-]+limit|"
-        r"limit[\s_-]+reached|exhausted)\b|"
-        r"\b(?:hard[\s_-]+limit|limit[\s_-]+reached)[\s_-]+"
-        r"(?:billing|credit)\b)",
-        classification,
-    ))
+    return bool(
+        re.search(
+            r"(?:\b(?:billing|credit)[\s_-]+(?:hard[\s_-]+limit|"
+            r"limit[\s_-]+reached|exhausted)\b|"
+            r"\b(?:hard[\s_-]+limit|limit[\s_-]+reached)[\s_-]+"
+            r"(?:billing|credit)\b)",
+            classification,
+        )
+    )
 
 
 _MODEL_REQUEST_OPERATIONS = frozenset(("transcription", "text_generation"))
@@ -339,14 +358,22 @@ _MODEL_NOT_FOUND_MESSAGE = re.compile(
 _GEMINI_MODEL_NOT_FOUND_MESSAGE = re.compile(
     r"\bmodels/([A-Za-z0-9][\w./:@-]{0,127})\s+is\s+not\s+found\b",
 )
-_NON_MODEL_ROUTE_NAMES = frozenset((
-    "api", "endpoint", "list", "models", "path", "resource", "route",
-))
+_NON_MODEL_ROUTE_NAMES = frozenset(
+    (
+        "api",
+        "endpoint",
+        "list",
+        "models",
+        "path",
+        "resource",
+        "route",
+    )
+)
 
 
 def _is_invalid_model_response(
-        operation: str, error_code: str, response_text: str,
-        error_status: str = "") -> bool:
+    operation: str, error_code: str, response_text: str, error_status: str = ""
+) -> bool:
     """Classify only model-targeting failures as unavailable models."""
     if operation not in _MODEL_REQUEST_OPERATIONS:
         return False
@@ -366,8 +393,9 @@ def _is_invalid_model_response(
     return _GEMINI_MODEL_NOT_FOUND_MESSAGE.search(response_text) is not None
 
 
-def _http_error(response: requests.Response, provider: str,
-                operation: str, operation_id: str) -> ProviderError:
+def _http_error(
+    response: requests.Response, provider: str, operation: str, operation_id: str
+) -> ProviderError:
     status = int(response.status_code)
     error_code = _response_error_code(response)
     error_status = _response_error_status(response)
@@ -384,8 +412,7 @@ def _http_error(response: requests.Response, provider: str,
     }
     headers = getattr(response, "headers", {}) or {}
     try:
-        retry_after_seconds = _retry_after_seconds(
-            headers.get("Retry-After"))
+        retry_after_seconds = _retry_after_seconds(headers.get("Retry-After"))
     except (AttributeError, TypeError, ValueError):
         retry_after_seconds = None
 
@@ -407,25 +434,53 @@ def _http_error(response: requests.Response, provider: str,
     if status in (502, 503, 504) or status >= 500:
         return finish(ServiceUnavailableError(**details))
     if status in (400, 404) and _is_invalid_model_response(
-            operation, error_code, classification_text, error_status):
+        operation, error_code, classification_text, error_status
+    ):
         return finish(InvalidModelError(**details))
     if status in (400, 404, 405, 409, 415, 422):
         return finish(InvalidRequestError(**details))
     return finish(ProviderError(**details))
 
 
-def _network_error(error: BaseException, provider: str,
-                   operation: str, operation_id: str) -> ProviderError:
+def _network_error(
+    error: BaseException, provider: str, operation: str, operation_id: str
+) -> ProviderError:
     if isinstance(error, requests.Timeout):
         return ProviderTimeoutError(
-            provider=provider, operation=operation,
-            operation_id=operation_id)
+            provider=provider, operation=operation, operation_id=operation_id
+        )
     return NetworkError(
-        provider=provider, operation=operation,
-        operation_id=operation_id)
+        provider=provider, operation=operation, operation_id=operation_id
+    )
 
 
-def _retry_after_seconds(value: str | None, *, now: datetime | None = None) -> float | None:
+def _exception_metadata(error: BaseException) -> dict[str, Any]:
+    """Describe nested transport failures without messages or request data."""
+    pending = [error]
+    seen: set[int] = set()
+    names: list[str] = []
+    codes: list[int] = []
+    while pending and len(names) < 10:
+        current = pending.pop(0)
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        names.append(type(current).__name__)
+        for field in ("errno", "winerror"):
+            code = getattr(current, field, None)
+            if isinstance(code, int) and code not in codes:
+                codes.append(code)
+        pending.extend(item for item in current.args if isinstance(item, BaseException))
+        for field in ("__cause__", "__context__", "reason"):
+            nested = getattr(current, field, None)
+            if isinstance(nested, BaseException):
+                pending.append(nested)
+    return {"exception_chain": names, "os_error_codes": codes}
+
+
+def _retry_after_seconds(
+    value: str | None, *, now: datetime | None = None
+) -> float | None:
     if not value:
         return None
     value = value.strip()
@@ -450,10 +505,19 @@ class ProviderHttpClient:
     create work or charges use one attempt because they have no idempotency key.
     """
 
-    def __init__(self, *, session: requests.Session | None = None,
-                 logger: SafeRotatingLogger | None = None,
-                 random_fn=random.random, sleeper=None) -> None:
-        self.session = session or requests.Session()
+    def __init__(
+        self,
+        *,
+        session: requests.Session | None = None,
+        logger: SafeRotatingLogger | None = None,
+        random_fn=random.random,
+        sleeper=None,
+    ) -> None:
+        # requests' module-level methods create and close a Session per call.
+        # Do not carry idle TCP/TLS connections across desktop operations:
+        # a stale pooled socket can fail the first POST after an idle period.
+        # Injected sessions remain supported for explicitly managed transports.
+        self.session = session if session is not None else requests
         self.logger = logger
         self._random = random_fn
         self._sleeper = sleeper
@@ -489,8 +553,14 @@ class ProviderHttpClient:
             except Exception:
                 return
 
-    def _sleep(self, delay: float, token: CancellationToken | None,
-               provider: str, operation: str, operation_id: str) -> None:
+    def _sleep(
+        self,
+        delay: float,
+        token: CancellationToken | None,
+        provider: str,
+        operation: str,
+        operation_id: str,
+    ) -> None:
         if self._sleeper is not None:
             self._sleeper(delay)
             if token is not None:
@@ -499,15 +569,22 @@ class ProviderHttpClient:
         if token is not None:
             if token.wait(delay):
                 raise ProviderCancelledError(
-                    provider=provider, operation=operation,
-                    operation_id=operation_id)
+                    provider=provider, operation=operation, operation_id=operation_id
+                )
         else:
             time.sleep(delay)
 
     def request(
-            self, method: str, url: str, *, provider: str, operation: str,
-            cancel_token: CancellationToken | None = None,
-            safe_to_retry: bool | None = None, **kwargs: Any) -> requests.Response:
+        self,
+        method: str,
+        url: str,
+        *,
+        provider: str,
+        operation: str,
+        cancel_token: CancellationToken | None = None,
+        safe_to_retry: bool | None = None,
+        **kwargs: Any,
+    ) -> requests.Response:
         method = method.upper()
         if operation not in TIMEOUTS:
             raise ValueError(f"unknown provider HTTP operation: {operation}")
@@ -521,20 +598,25 @@ class ProviderHttpClient:
         for attempt in range(1, attempts + 1):
             if cancel_token is not None:
                 try:
-                    cancel_token.raise_if_cancelled(
-                        provider, operation, operation_id)
+                    cancel_token.raise_if_cancelled(provider, operation, operation_id)
                 except ProviderCancelledError:
                     self._log(
-                        event="provider_http_error", provider=provider,
-                        operation=operation, operation_id=operation_id,
-                        method=method, host=self._host(url), attempt=attempt,
-                        max_attempts=attempts, error_type="cancelled")
+                        event="provider_http_error",
+                        provider=provider,
+                        operation=operation,
+                        operation_id=operation_id,
+                        method=method,
+                        host=self._host(url),
+                        attempt=attempt,
+                        max_attempts=attempts,
+                        error_type="cancelled",
+                    )
                     raise
+            started = time.monotonic()
             try:
                 response = sender(url, timeout=TIMEOUTS[operation], **kwargs)
             except requests.RequestException as error:
-                typed_error = _network_error(
-                    error, provider, operation, operation_id)
+                typed_error = _network_error(error, provider, operation, operation_id)
                 should_retry = (
                     retryable
                     and isinstance(error, (requests.ConnectionError, requests.Timeout))
@@ -542,16 +624,29 @@ class ProviderHttpClient:
                 )
                 delay = self._backoff(attempt) if should_retry else None
                 self._log(
-                    event="provider_http_error", provider=provider,
-                    operation=operation, operation_id=operation_id,
-                    method=method, host=self._host(url),
-                    attempt=attempt, max_attempts=attempts,
-                    error_type=typed_error.code, retry_delay_seconds=delay)
+                    event="provider_http_error",
+                    provider=provider,
+                    operation=operation,
+                    operation_id=operation_id,
+                    method=method,
+                    host=self._host(url),
+                    attempt=attempt,
+                    max_attempts=attempts,
+                    error_type=typed_error.code,
+                    retry_delay_seconds=delay,
+                    exception_type=type(error).__name__,
+                    cause_type=type(error.args[0]).__name__ if error.args else None,
+                    elapsed_ms=round((time.monotonic() - started) * 1000),
+                    connection_policy="fresh"
+                    if self.session is requests
+                    else "injected",
+                    **_exception_metadata(error),
+                )
                 if not should_retry:
                     raise typed_error from error
                 self._sleep(
-                    delay or 0.0, cancel_token, provider, operation,
-                    operation_id)
+                    delay or 0.0, cancel_token, provider, operation, operation_id
+                )
                 continue
 
             if cancel_token is not None and cancel_token.cancelled:
@@ -559,34 +654,50 @@ class ProviderHttpClient:
                 if callable(close):
                     close()
                 self._log(
-                    event="provider_http_error", provider=provider,
-                    operation=operation, operation_id=operation_id,
-                    method=method, host=self._host(url), attempt=attempt,
-                    max_attempts=attempts, error_type="cancelled")
+                    event="provider_http_error",
+                    provider=provider,
+                    operation=operation,
+                    operation_id=operation_id,
+                    method=method,
+                    host=self._host(url),
+                    attempt=attempt,
+                    max_attempts=attempts,
+                    error_type="cancelled",
+                )
                 raise ProviderCancelledError(
-                    provider=provider, operation=operation,
-                    operation_id=operation_id)
+                    provider=provider, operation=operation, operation_id=operation_id
+                )
             status = int(response.status_code)
             if 200 <= status < 300:
                 setattr(response, "_clarify_operation_id", operation_id)
                 return response
 
-            typed_error = _http_error(
-                response, provider, operation, operation_id)
+            typed_error = _http_error(response, provider, operation, operation_id)
             should_retry = (
-                retryable and status in TRANSIENT_STATUS_CODES
+                retryable
+                and status in TRANSIENT_STATUS_CODES
                 and not isinstance(typed_error, QuotaError)
-                and attempt < attempts)
+                and attempt < attempts
+            )
             headers = getattr(response, "headers", {}) or {}
-            delay = self._backoff(attempt, headers.get("Retry-After")) \
-                if should_retry else None
+            delay = (
+                self._backoff(attempt, headers.get("Retry-After"))
+                if should_retry
+                else None
+            )
             self._log(
-                event="provider_http_error", provider=provider,
-                operation=operation, operation_id=operation_id,
-                method=method, host=self._host(url),
-                attempt=attempt, max_attempts=attempts,
+                event="provider_http_error",
+                provider=provider,
+                operation=operation,
+                operation_id=operation_id,
+                method=method,
+                host=self._host(url),
+                attempt=attempt,
+                max_attempts=attempts,
                 status_code=status,
-                error_type=typed_error.code, retry_delay_seconds=delay)
+                error_type=typed_error.code,
+                retry_delay_seconds=delay,
+            )
             if not should_retry:
                 close = getattr(response, "close", None)
                 if callable(close):
@@ -595,39 +706,49 @@ class ProviderHttpClient:
             close = getattr(response, "close", None)
             if callable(close):
                 close()
-            self._sleep(
-                delay or 0.0, cancel_token, provider, operation,
-                operation_id)
+            self._sleep(delay or 0.0, cancel_token, provider, operation, operation_id)
 
         raise AssertionError("provider HTTP retry loop exhausted unexpectedly")
 
-    def invalid_response(self, response: requests.Response, *, provider: str,
-            operation: str) -> InvalidResponseError:
+    def invalid_response(
+        self, response: requests.Response, *, provider: str, operation: str
+    ) -> InvalidResponseError:
         operation_id = getattr(response, "_clarify_operation_id", None)
         typed_error = InvalidResponseError(
-            provider=provider, operation=operation,
+            provider=provider,
+            operation=operation,
             status_code=getattr(response, "status_code", None),
-            operation_id=operation_id)
+            operation_id=operation_id,
+        )
         self._log(
-            event="provider_http_error", provider=provider,
-            operation=operation, operation_id=operation_id,
+            event="provider_http_error",
+            provider=provider,
+            operation=operation,
+            operation_id=operation_id,
             status_code=getattr(response, "status_code", None),
-            error_type=typed_error.code)
+            error_type=typed_error.code,
+        )
         return typed_error
 
-    def json(self, response: requests.Response, *, provider: str,
-             operation: str) -> Any:
+    def json(
+        self, response: requests.Response, *, provider: str, operation: str
+    ) -> Any:
         try:
             return response.json()
         except (TypeError, ValueError) as error:
             typed_error = self.invalid_response(
-                response, provider=provider, operation=operation)
+                response, provider=provider, operation=operation
+            )
             raise typed_error from error
 
 
 def export_diagnostics(
-        destination: Path, *, log_directory: Path,
-        application_version: str, limit: int = 200) -> Path:
+    destination: Path,
+    *,
+    log_directory: Path,
+    application_version: str,
+    limit: int = 200,
+) -> Path:
     """Export safe runtime metadata and parsed redacted error events."""
     events: list[dict[str, Any]] = []
     log_directory = Path(log_directory)
@@ -661,5 +782,6 @@ def export_diagnostics(
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(
         json.dumps(redact_sensitive(payload), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     return destination

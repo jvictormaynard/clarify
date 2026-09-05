@@ -19,6 +19,9 @@ QtObject {
     readonly property int panelRadius: 18
     readonly property int controlRadius: 13
     readonly property int controlHeight: 26
+    readonly property int fieldHeight: 34
+    readonly property int fieldRadius: 8
+    readonly property int fieldFontSize: 11
     readonly property int windowWidth: 380
     readonly property int windowHeight: 48
     readonly property int resultWidth: 400

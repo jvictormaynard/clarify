@@ -23,6 +23,7 @@ try:
         StartRewrite,
         StartTranslation,
         StopDictation,
+        RetryDictation,
         WorkflowPhase,
         WorkflowState,
     )
@@ -36,6 +37,7 @@ except ImportError:  # PyInstaller may analyze the spike as a standalone file.
         StartRewrite,
         StartTranslation,
         StopDictation,
+        RetryDictation,
         WorkflowPhase,
         WorkflowState,
     )
@@ -67,6 +69,7 @@ class QmlWorkflowBridge(QObject):
     modeChanged = Signal()
     languageChanged = Signal()
     copyCompleted = Signal(bool)
+    resultRequested = Signal()
 
     _TRANSLATION_OPTIONS = (
         {"code": "en", "label": "English"},
@@ -92,6 +95,39 @@ class QmlWorkflowBridge(QObject):
     _STATUS_KEYS = {
         "error": "The dictation could not be completed",
         "no_audio": "No usable audio was captured",
+        "transcription_network": "Could not connect to the transcription service",
+        "no_selection": "No text selected. Select text and try again.",
+        "rewrite_failed": "Could not rewrite the selected text. Try again.",
+        "translation_failed": "Could not translate the selected text. Try again.",
+        "provider_network": "Connection interrupted. Check your connection and try again.",
+        "provider_timeout": "The service took too long to respond. Try again.",
+        "provider_authentication": "Invalid API key. Check the provider connection in settings.",
+        "provider_quota": "Provider quota exceeded. Check your balance or plan.",
+        "provider_rate_limit": "Too many requests. Wait a moment and try again.",
+        "provider_unavailable": "Service temporarily unavailable. Try again later.",
+        "provider_invalid_model": "Model unavailable. Select another model in settings.",
+        "provider_invalid_request": "The service rejected the request. Check the model settings.",
+        "provider_invalid_response": "The service returned an invalid response. Try again.",
+        "provider_cancelled": "Operation cancelled.",
+    }
+    _ERROR_MESSAGES_PT = {
+        "error": "Não foi possível concluir a operação. Tente novamente.",
+        "no_audio": "Nenhum áudio foi capturado. Verifique o microfone.",
+        "no_selection": "Nenhum texto selecionado. Selecione um texto e tente novamente.",
+        "rewrite_failed": "Não foi possível reescrever o texto. Tente novamente.",
+        "translation_failed": "Não foi possível traduzir o texto. Tente novamente.",
+        "transcription_network": "Falha de conexão com o serviço de transcrição.",
+        "microphone_unavailable": "Microfone indisponível. Verifique a conexão e selecione um microfone.",
+        "provider_network": "Conexão interrompida. Verifique sua conexão e tente novamente.",
+        "provider_timeout": "O serviço demorou para responder. Tente novamente.",
+        "provider_authentication": "Chave de API inválida. Verifique a conexão do provedor nas configurações.",
+        "provider_quota": "Limite do provedor atingido. Verifique seu saldo ou plano.",
+        "provider_rate_limit": "Muitas solicitações. Aguarde um pouco e tente novamente.",
+        "provider_unavailable": "Serviço temporariamente indisponível. Tente novamente mais tarde.",
+        "provider_invalid_model": "Modelo indisponível. Selecione outro modelo nas configurações.",
+        "provider_invalid_request": "O serviço recusou a solicitação. Verifique a configuração do modelo.",
+        "provider_invalid_response": "O serviço retornou uma resposta inválida. Tente novamente.",
+        "provider_cancelled": "Operação cancelada.",
     }
     _ERROR_PHASES = frozenset(
         {
@@ -190,6 +226,13 @@ class QmlWorkflowBridge(QObject):
             return voice_status
         if self._finishing:
             return self._STATUS[WorkflowPhase.READY]
+        if self._state.phase in self._ERROR_PHASES and self._language == "pt":
+            key = (
+                "microphone_unavailable"
+                if self._state.phase is WorkflowPhase.MICROPHONE_UNAVAILABLE
+                else self._state.status_key or "error"
+            )
+            return self._ERROR_MESSAGES_PT.get(key, self._ERROR_MESSAGES_PT["error"])
         if self._state.status_key in self._STATUS_KEYS:
             return self._STATUS_KEYS[self._state.status_key]
         return self._STATUS.get(
@@ -230,6 +273,54 @@ class QmlWorkflowBridge(QObject):
         return self._state.phase is WorkflowPhase.COMPLETED and bool(
             self._state.result_text
         )
+
+    @Property(bool, notify=surfaceChanged)
+    def canRetryTranscription(self) -> bool:
+        return self._state.phase is WorkflowPhase.FAILED and self._state.can_retry
+
+    @Property(bool, notify=surfaceChanged)
+    def feedbackVisible(self) -> bool:
+        return (
+            not self._settings_visible
+            and not self._files_visible
+            and not self._voice_surface()
+            and not self._result_visible
+            and not self._finishing
+            and self._state.phase in self._ERROR_PHASES
+        )
+
+    @Property(bool, notify=surfaceChanged)
+    def transitionPending(self) -> bool:
+        return self._pending_workflow_action is not None
+
+    @Property(int, notify=surfaceChanged)
+    def feedbackOperationId(self) -> int:
+        return self._state.operation_id
+
+    @Property(str, notify=statusChanged)
+    def feedbackTitle(self) -> str:
+        return self.status.partition(". ")[0].rstrip(".")
+
+    @Slot(int)
+    def dismissFeedback(self, operation_id: int) -> None:
+        # An old animation/timer must never dismiss a newer operation or
+        # discard audio that the user can still explicitly resend.
+        if (
+            operation_id == self._state.operation_id
+            and self._state.phase in self._ERROR_PHASES
+            and not self.canRetryTranscription
+        ):
+            self.reset()
+
+    @Slot(result=bool)
+    def retryTranscription(self) -> bool:
+        if not self.canRetryTranscription:
+            return False
+        operation_id = self._state.operation_id
+        self._submit(
+            lambda: self._workflow_service.dispatch(RetryDictation(operation_id))
+        )
+        return True
 
     @Property(str, notify=modeChanged)
     def mode(self) -> str:
@@ -425,6 +516,7 @@ class QmlWorkflowBridge(QObject):
         if normalized and normalized != self._language:
             self._language = normalized
             self.languageChanged.emit()
+            self.statusChanged.emit()
 
     @Slot(str, result=bool)
     def chooseTranslation(self, language: str) -> bool:
@@ -580,6 +672,7 @@ class QmlWorkflowBridge(QObject):
         self._result_visible = True
         self._settings_visible = False
         self._notify_all()
+        self.resultRequested.emit()
 
     @Slot(result=bool)
     def copyResult(self) -> bool:
