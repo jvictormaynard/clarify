@@ -287,9 +287,7 @@ class RepositorySafetyTests(unittest.TestCase):
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
         self.assertIn("${distribution};distribution", build)
 
-        installer = (ROOT / "installer" / "Clarify.wxs").read_text(
-            encoding="utf-8"
-        )
+        installer = (ROOT / "installer" / "Clarify.wxs").read_text(encoding="utf-8")
         self.assertIn('Id="RemoveAutostartOnUninstall"', installer)
         self.assertIn(
             'Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"',
