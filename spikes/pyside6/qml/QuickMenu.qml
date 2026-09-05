@@ -9,6 +9,12 @@ Menu {
     padding: 6
     margins: 8
     overlap: 0
+    enter: Transition {
+        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: menu.visualTheme.fadeDuration; easing.type: Easing.OutCubic }
+    }
+    exit: Transition {
+        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: menu.visualTheme.fadeDuration; easing.type: Easing.OutCubic }
+    }
     delegate: QuickMenuItem { visualTheme: menu.visualTheme }
     background: Rectangle {
         radius: 10

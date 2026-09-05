@@ -7,20 +7,22 @@ import QtQuick.Window 6.5
 ApplicationWindow {
     id: root
     objectName: "clarifyVoiceMainWindow"
-    width: (workflow.surface === "result"
-            || workflow.surface === "voice_result"
-            || workflow.surface === "voice_error" ? theme.resultWidth
-            : workflow.surface === "settings" ? theme.settingsWidth
-            : (workflow.surface === "files"
-               || workflow.surface === "translation_picker")
+    property string displayedSurface: workflow.surface
+    property real surfaceOpacity: 1
+    width: (displayedSurface === "result"
+            || displayedSurface === "voice_result"
+            || displayedSurface === "voice_error" ? theme.resultWidth
+            : displayedSurface === "settings" ? theme.settingsWidth
+            : (displayedSurface === "files"
+               || displayedSurface === "translation_picker")
               ? theme.panelWidth : theme.windowWidth) * theme.uiScale
-    height: (workflow.surface === "result"
-             || workflow.surface === "voice_result"
-             || workflow.surface === "voice_error"
+    height: (displayedSurface === "result"
+             || displayedSurface === "voice_result"
+             || displayedSurface === "voice_error"
              ? theme.resultHeight
-             : workflow.surface === "settings" ? theme.settingsHeight
-             : (workflow.surface === "files"
-                || workflow.surface === "translation_picker")
+             : displayedSurface === "settings" ? theme.settingsHeight
+             : (displayedSurface === "files"
+                || displayedSurface === "translation_picker")
                ? theme.panelHeight : theme.windowHeight) * theme.uiScale
     minimumWidth: theme.windowWidth * theme.uiScale
     minimumHeight: theme.windowHeight * theme.uiScale
@@ -59,11 +61,33 @@ ApplicationWindow {
 
     Theme { id: theme }
     property Theme visualTheme: theme
+    Component.onCompleted: displayedSurface = workflow.surface
+    Connections {
+        target: workflow
+        function onSurfaceChanged() {
+            if (workflow.surface !== "idle") quickMenu.close()
+            if (workflow.surface === root.displayedSurface) return
+            surfaceTransition.stop()
+            if (workflow.surface === "files" || root.displayedSurface === "files") {
+                surfaceTransition.start()
+            } else {
+                root.displayedSurface = workflow.surface
+                root.surfaceOpacity = 1
+            }
+        }
+    }
+    SequentialAnimation {
+        id: surfaceTransition
+        NumberAnimation { target: root; property: "surfaceOpacity"; to: 0; duration: theme.fadeDuration; easing.type: Easing.OutCubic }
+        ScriptAction { script: root.displayedSurface = workflow.surface }
+        NumberAnimation { target: root; property: "surfaceOpacity"; to: 1; duration: theme.fadeDuration; easing.type: Easing.OutCubic }
+    }
 
     QuickMenu {
         id: quickMenu
         objectName: "quickMenu"
         parent: root.contentItem
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         visualTheme: root.visualTheme
         onAboutToShow: settings.refreshMicrophoneInventory()
         property var pendingAction: null
@@ -187,15 +211,17 @@ ApplicationWindow {
     Rectangle {
         id: card
         objectName: "mainCard"
+        opacity: root.surfaceOpacity
+        enabled: !surfaceTransition.running
         width: root.width / theme.uiScale
         height: root.height / theme.uiScale
         anchors.centerIn: parent
         scale: theme.uiScale
         transformOrigin: Item.Center
-        radius: workflow.surface === "idle"
-                || workflow.surface === "recording"
-                || workflow.surface === "processing"
-                || workflow.surface === "voice_processing"
+        radius: root.displayedSurface === "idle"
+                || root.displayedSurface === "recording"
+                || root.displayedSurface === "processing"
+                || root.displayedSurface === "voice_processing"
             ? height / 2 : theme.panelRadius
         color: theme.card
         border.color: theme.border
@@ -222,18 +248,31 @@ ApplicationWindow {
             id: pages
             objectName: "appPages"
             anchors.fill: parent
-            currentIndex: workflow.surface === "result"
+            currentIndex: root.displayedSurface === "result"
                           ? 1
-                          : workflow.surface === "settings" ? 2
-                          : workflow.surface === "files" ? 3
-                          : workflow.surface === "translation_picker" ? 4
-                          : (workflow.surface === "voice_result"
-                             || workflow.surface === "voice_error") ? 1 : 0
+                          : root.displayedSurface === "settings" ? 2
+                          : root.displayedSurface === "files" ? 3
+                          : root.displayedSurface === "translation_picker" ? 4
+                          : (root.displayedSurface === "voice_result"
+                             || root.displayedSurface === "voice_error") ? 1 : 0
 
             Item {
                 id: homePage
                 objectName: "homePage"
                 property bool promptMode: workflow.mode === "prompt"
+                DragHandler {
+                    id: windowDragHandler
+                    objectName: "homeWindowDragHandler"
+                    target: null
+                    acceptedButtons: Qt.LeftButton
+                    grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.CanTakeOverFromHandlersOfDifferentType
+                    onActiveChanged: {
+                        if (active) {
+                            quickMenu.close()
+                            root.startSystemMove()
+                        }
+                    }
+                }
 
                 RowLayout {
                     anchors.fill: parent
@@ -248,16 +287,6 @@ ApplicationWindow {
                         Layout.minimumWidth: 32
                         Layout.alignment: Qt.AlignVCenter
 
-                        // Keep dragging available around the microphone button.
-                        DragHandler {
-                            id: windowDragHandler
-                            target: null
-                            onActiveChanged: {
-                                if (active)
-                                    root.startSystemMove()
-                            }
-                        }
-
                         AppButton {
                             objectName: "microphoneButton"
                             anchors.centerIn: parent
@@ -270,9 +299,6 @@ ApplicationWindow {
                                      || workflow.surface === "recording"
                             Accessible.name: workflow.surface === "recording"
                                              ? "Stop recording" : "Start recording"
-                            ToolTip.visible: hovered
-                            ToolTip.delay: 600
-                            ToolTip.text: Accessible.name
                             onClicked: {
                                 if (workflow.surface === "recording")
                                     workflow.stopRecording()
@@ -323,6 +349,7 @@ ApplicationWindow {
                                 source: "flags/" + workflow.language + ".svg"
                             }
                             onClicked: {
+                                quickMenu.close()
                                 var currentIndex = supportedLanguages.indexOf(workflow.language)
                                 var nextIndex = (currentIndex + 1) % supportedLanguages.length
                                 workflow.setLanguage(supportedLanguages[nextIndex])
@@ -340,6 +367,7 @@ ApplicationWindow {
                                               + (homePage.promptMode
                                                  ? "Prompt" : "Transcribe")
                             onClicked: {
+                                quickMenu.close()
                                 workflow.setMode(homePage.promptMode
                                                  ? "transcription" : "prompt")
                             }
@@ -355,6 +383,10 @@ ApplicationWindow {
                             Layout.preferredHeight: 26
                             Accessible.name: "Open quick actions"
                             onClicked: {
+                                if (quickMenu.visible) {
+                                    quickMenu.close()
+                                    return
+                                }
                                 var position = mapToItem(root.contentItem, width, height)
                                 quickMenu.x = Math.max(0, position.x - quickMenu.width)
                                 quickMenu.y = root.height + 8

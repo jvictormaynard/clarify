@@ -8,7 +8,7 @@ Window {
     readonly property real dpiCompensation: 1.0 / Math.max(1.0,
                                                            Screen.devicePixelRatio)
     readonly property int designWidth: 156
-    readonly property int designHeight: 46
+    readonly property int designHeight: 50
     readonly property bool feedback: workflow.feedbackVisible
     property string feedbackCaption: ""
     readonly property real feedbackWidth: Math.min(620, Math.max(230,
@@ -239,7 +239,7 @@ Window {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - 47 - feedbackActions.width - 17
                 text: pill.feedbackCaption
-                font.pixelSize: 14
+                font.pixelSize: 16
                 color: theme.text
                 elide: Text.ElideRight
                 opacity: pill.feedback ? 1 : 0
@@ -247,10 +247,6 @@ Window {
                 Behavior on opacity {
                     NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
                 }
-                HoverHandler { id: feedbackHover }
-                ToolTip.visible: feedbackHover.hovered && pill.feedback
-                ToolTip.text: workflow.status
-                ToolTip.delay: 500
                 Accessible.name: workflow.status
             }
 
@@ -279,7 +275,7 @@ Window {
                     contentItem: Label {
                         text: undoButton.text
                         color: undoButton.enabled ? theme.text : theme.subtleText
-                        font.pixelSize: 14
+                        font.pixelSize: 16
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -288,10 +284,6 @@ Window {
                         color: undoButton.hovered ? "#30ffffff" : "#18ffffff"
                     }
                     Accessible.name: text
-                    ToolTip.visible: hovered
-                    ToolTip.text: workflow.language === "pt"
-                        ? "Recuperar e transcrever o áudio cancelado"
-                        : "Recover and transcribe the cancelled audio"
                     onClicked: workflow.undoCancellation()
                 }
                 ToolButton {
@@ -314,8 +306,7 @@ Window {
                         color: parent.hovered ? "#20ffffff" : "transparent"
                     }
                     Accessible.name: "Retry transcription with the same audio"
-                    ToolTip.visible: hovered
-                    ToolTip.text: workflow.language === "pt"
+                    Accessible.description: workflow.language === "pt"
                         ? "Reenviar o mesmo áudio. Pode gerar outra cobrança."
                         : "Resend the same audio. May incur another charge."
                     onClicked: workflow.retryTranscription()

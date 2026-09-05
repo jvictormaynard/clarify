@@ -226,7 +226,12 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("Screen.devicePixelRatio", status_pill_source)
         self.assertIn("scale: pill.dpiCompensation", status_pill_source)
         self.assertIn("readonly property int designWidth: 156", status_pill_source)
-        self.assertIn("readonly property int designHeight: 46", status_pill_source)
+        self.assertIn("readonly property int designHeight: 50", status_pill_source)
+        self.assertNotIn("ToolTip.", status_pill_source)
+        self.assertNotIn(
+            "ToolTip.",
+            main_source.split("id: homePage", 1)[1].split("id: settingsPage", 1)[0],
+        )
         self.assertIn("sourceSize.width: 64", status_pill_source)
         self.assertIn("Theme { id: theme }", status_pill_source)
         self.assertIn("Repeater", status_pill_source)

@@ -347,9 +347,41 @@ def main():
                     assert dispatch.call_count == 1
                     assert type(dispatch.call_args.args[0]).__name__ == "StartDictation"
             assert window.findChild(QObject, "fileButton") is None
+            drag = window.findChild(QObject, "homeWindowDragHandler")
+            assert drag is not None
+            with patch.object(service, "dispatch", create=True) as dispatch:
+                for start in (
+                    QPointF(window.width() / 2, 5).toPoint(),
+                    microphone_button.mapToScene(QPointF(13, 13)).toPoint(),
+                ):
+                    QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, start)
+                    QTest.mouseMove(window, start + QPointF(35, 0).toPoint(), 30)
+                    QTest.mouseMove(window, start + QPointF(45, 0).toPoint(), 30)
+                    assert drag.property("active"), (
+                        "drag must work across the home pill"
+                    )
+                    QTest.mouseRelease(
+                        window,
+                        Qt.LeftButton,
+                        Qt.NoModifier,
+                        start + QPointF(45, 0).toPoint(),
+                    )
+                dispatch.assert_not_called()
             click(visible_item("settingsButton"))
             quick_menu = window.findChild(QObject, "quickMenu")
             assert quick_menu.property("visible")
+            click(visible_item("settingsButton"))
+            assert not quick_menu.property("visible"), (
+                "second gear click must close the menu"
+            )
+            gear = visible_item("settingsButton")
+            gear_point = gear.mapToScene(
+                QPointF(gear.width() / 2, gear.height() / 2)
+            ).toPoint()
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, gear_point)
+            QTest.qWait(60)
+            assert 0 < quick_menu.property("opacity") < 1, "menu must fade in"
+            settle()
             assert bridge.surface == "idle"
             quick_settings = window.findChild(QObject, "quickSettingsItem")
             menu_window = quick_settings.window()
@@ -360,6 +392,31 @@ def main():
             if output:
                 assert menu_window.grabWindow().save(str(output / "quick-menu.png"))
             assert not window.findChild(QObject, "quickPasteItem").property("enabled")
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, gear_point)
+            QTest.qWait(60)
+            assert quick_menu.property("visible")
+            assert 0 < quick_menu.property("opacity") < 1, (
+                "menu must fade out before hiding"
+            )
+            settle()
+            assert not quick_menu.property("visible")
+            old_surface = bridge.surface
+            bridge.openFiles()
+            QTest.qWait(60)
+            assert window.property("displayedSurface") == old_surface
+            assert 0 < window.property("surfaceOpacity") < 1
+            QTest.qWait(400)
+            assert window.property("displayedSurface") == "files"
+            assert window.property("surfaceOpacity") == 1
+            bridge.closeFiles()
+            QTest.qWait(60)
+            assert window.property("displayedSurface") == "files"
+            assert 0 < window.property("surfaceOpacity") < 1
+            QTest.qWait(400)
+            assert window.property("displayedSurface") == old_surface
+            assert window.property("surfaceOpacity") == 1
+            click(visible_item("settingsButton"))
+            menu_window = quick_settings.window()
             QTest.keyClick(menu_window, Qt.Key.Key_Down)
             QTest.keyClick(menu_window, Qt.Key.Key_Right)
             settle()
