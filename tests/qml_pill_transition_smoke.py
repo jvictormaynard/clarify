@@ -13,7 +13,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from spikes.pyside6.qml_bridge import QmlWorkflowBridge
-from workflows import RetryDictation, WorkflowPhase, WorkflowState
+from workflows import RetryDictation, UndoCancelDictation, WorkflowPhase, WorkflowState
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -144,6 +144,36 @@ def main():
     service.publish(WorkflowPhase.COMPLETED, result_text="fixture")
     QTest.qWait(350)
     assert not pill.isVisible()
+    service.publish(WorkflowPhase.RECORDING, operation_id=5)
+    QTest.qWait(350)
+    service.publish(WorkflowPhase.CANCELLED, operation_id=5, can_undo=True)
+    QTest.qWait(75)
+    assert start_width < pill.width()
+    assert 0 < label.property("opacity") < 1
+    QTest.qWait(300)
+    assert pill.winId() == native_id
+    assert pill.findChild(QObject, "statusCapsule") is capsule
+    assert pill.height() == height
+    assert label.property("text") == "Transcrição cancelada"
+    assert not label.property("truncated")
+    undo = pill.findChild(QObject, "undoCancellationButton")
+    assert undo.property("visible") and undo.property("enabled")
+    assert not pill.findChild(QObject, "dismissFeedbackButton").property("visible")
+    shot("06-cancelled-pt")
+    click("undoCancellationButton")
+    assert service.commands[-1] == UndoCancelDictation(5)
+    assert service.state.phase is WorkflowPhase.PROCESSING
+    QTest.qWait(5100)  # Old expiry must not dismiss restored processing.
+    assert service.state.phase is WorkflowPhase.PROCESSING
+    bridge.setLanguage("en")
+    service.publish(WorkflowPhase.CANCELLED, operation_id=6, can_undo=True)
+    QTest.qWait(350)
+    assert label.property("text") == "Transcript cancelled"
+    assert not label.property("truncated")
+    shot("07-cancelled-en")
+    QTest.qWait(5100)
+    assert service.state.phase is WorkflowPhase.READY
+    assert not pill.isVisible()
     errors = [
         m
         for m in messages
@@ -160,7 +190,7 @@ def main():
     ]
     assert not errors, errors
     print(
-        "PASS: one native capsule, animated width and text fade, constant height, error expiry, inline retry, no success window"
+        "PASS: one native capsule, animated width and text fade, constant height, error expiry, inline retry, cancellation Undo/expiry, no success window"
     )
     engine.deleteLater()
     app.processEvents()

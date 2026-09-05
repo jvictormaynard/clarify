@@ -210,6 +210,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn('objectName: "microphoneButton"', main_source)
         self.assertIn('iconSource: "icons/mic.svg"', main_source)
         self.assertNotIn("id: statusLabel", main_source)
+        self.assertNotIn("id: busyIndicator", main_source)
         self.assertIn("Layout.fillHeight: true", main_source)
         self.assertIn("settingsScroll.contentItem.contentY = 0", main_source)
         self.assertIn("palette.highlightedText: theme.text", main_source)
@@ -846,7 +847,7 @@ class QmlWorkflowBridgeHotkeyTests(unittest.TestCase):
                 self.assertEqual(service.finish_calls, [17])
                 self.assertIsInstance(service.commands[-1], command_type)
 
-    def test_completed_workflow_opens_result_surface_immediately(self):
+    def test_completed_workflow_does_not_open_result_surface(self):
         from workflows import WorkflowPhase, WorkflowState
 
         service, bridge = self._bridge()
@@ -858,7 +859,9 @@ class QmlWorkflowBridgeHotkeyTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(bridge.surface, "result")
+        self.assertEqual(bridge.surface, "idle")
+        self.assertFalse(bridge.feedbackVisible)
+        self.assertEqual(bridge.result, "previous result")
         self.assertTrue(bridge.canShowResult)
 
 

@@ -24,6 +24,7 @@ try:
         StartTranslation,
         StopDictation,
         RetryDictation,
+        UndoCancelDictation,
         WorkflowPhase,
         WorkflowState,
     )
@@ -38,6 +39,7 @@ except ImportError:  # PyInstaller may analyze the spike as a standalone file.
         StartTranslation,
         StopDictation,
         RetryDictation,
+        UndoCancelDictation,
         WorkflowPhase,
         WorkflowState,
     )
@@ -229,6 +231,12 @@ class QmlWorkflowBridge(QObject):
 
     @Property(str, notify=statusChanged)
     def status(self) -> str:
+        if self.cancellationVisible:
+            return (
+                "Transcrição cancelada"
+                if self._language == "pt"
+                else "Transcript cancelled"
+            )
         voice_status = self._voice_status()
         if voice_status:
             return voice_status
@@ -288,6 +296,24 @@ class QmlWorkflowBridge(QObject):
         return self._state.phase is WorkflowPhase.FAILED and self._state.can_retry
 
     @Property(bool, notify=surfaceChanged)
+    def cancellationVisible(self) -> bool:
+        return self._state.phase is WorkflowPhase.CANCELLED and not self._finishing
+
+    @Property(bool, notify=surfaceChanged)
+    def canUndoCancellation(self) -> bool:
+        return self.cancellationVisible and self._state.can_undo
+
+    @Slot(result=bool)
+    def undoCancellation(self) -> bool:
+        if not self.canUndoCancellation:
+            return False
+        operation_id = self._state.operation_id
+        self._submit(
+            lambda: self._workflow_service.dispatch(UndoCancelDictation(operation_id))
+        )
+        return True
+
+    @Property(bool, notify=surfaceChanged)
     def feedbackVisible(self) -> bool:
         return (
             not self._settings_visible
@@ -295,7 +321,11 @@ class QmlWorkflowBridge(QObject):
             and not self._voice_surface()
             and not self._result_visible
             and not self._finishing
-            and (self._state.phase in self._ERROR_PHASES or bool(self._quick_feedback))
+            and (
+                self._state.phase in self._ERROR_PHASES
+                or self.cancellationVisible
+                or bool(self._quick_feedback)
+            )
         )
 
     @Property(bool, notify=surfaceChanged)
@@ -316,6 +346,9 @@ class QmlWorkflowBridge(QObject):
 
     @Slot(int)
     def dismissFeedback(self, operation_id: int) -> None:
+        if operation_id == self._state.operation_id and self.cancellationVisible:
+            self.finish()
+            return
         if self._quick_feedback and operation_id == self._quick_feedback_id:
             self._quick_feedback = ""
             self._notify_all()
@@ -383,7 +416,8 @@ class QmlWorkflowBridge(QObject):
         if bool(getattr(controller, "active", False)):
             return "voice_processing"
         if phase is VoiceTranslationPhase.COMPLETED:
-            return "voice_result" if self._voice_result() else "voice_error"
+            # Publication already copied/pasted the result. Success is silent.
+            return ""
         if phase is VoiceTranslationPhase.FAILED:
             return "voice_result" if self._voice_result() else "voice_error"
         return ""
@@ -424,7 +458,8 @@ class QmlWorkflowBridge(QObject):
         ):
             return "processing"
         if phase is WorkflowPhase.COMPLETED:
-            return "result"
+            # Keep the text available to quick paste without opening a panel.
+            return "idle"
         if phase in QmlWorkflowBridge._ERROR_PHASES:
             return "error"
         return "idle"
@@ -489,6 +524,7 @@ class QmlWorkflowBridge(QObject):
         if self._state.phase not in (
             WorkflowPhase.COMPLETED,
             WorkflowPhase.FAILED,
+            WorkflowPhase.CANCELLED,
         ):
             return False
         if self._pending_workflow_action is not None:
@@ -575,6 +611,7 @@ class QmlWorkflowBridge(QObject):
         if self._state.phase in (
             WorkflowPhase.COMPLETED,
             WorkflowPhase.FAILED,
+            WorkflowPhase.CANCELLED,
         ):
             self._run_when_ready(self.startRecording)
             return
@@ -599,7 +636,9 @@ class QmlWorkflowBridge(QObject):
     def cancelRecording(self) -> None:
         if self._state.phase is not WorkflowPhase.RECORDING:
             return
-        self._submit(lambda: self._workflow_service.dispatch(CancelDictation()))
+        self._submit(
+            lambda: self._workflow_service.dispatch(CancelDictation(retain_audio=True))
+        )
 
     def _dismiss_files_before_workflow(self) -> bool:
         if not self._files_visible:
@@ -621,6 +660,10 @@ class QmlWorkflowBridge(QObject):
             # translation as dictation or selected-text translation.
             if self._voice_translation_handler is None:
                 return False
+            if self._state.phase is WorkflowPhase.CANCELLED:
+                return self._run_when_ready(
+                    lambda: self.handleHotkey("voice_translation_hotkey")
+                )
             voice_active = bool(
                 getattr(self._voice_translation_controller, "active", False)
             )
@@ -640,6 +683,7 @@ class QmlWorkflowBridge(QObject):
             if self._state.phase in (
                 WorkflowPhase.COMPLETED,
                 WorkflowPhase.FAILED,
+                WorkflowPhase.CANCELLED,
             ):
                 return self._run_when_ready(self.startRecording)
             if self._state.phase is WorkflowPhase.READY:
@@ -655,6 +699,7 @@ class QmlWorkflowBridge(QObject):
             if self._state.phase in (
                 WorkflowPhase.COMPLETED,
                 WorkflowPhase.FAILED,
+                WorkflowPhase.CANCELLED,
             ):
                 return self._run_when_ready(lambda: self.handleHotkey("rewrite_hotkey"))
             if self._state.phase is not WorkflowPhase.READY:
@@ -671,6 +716,7 @@ class QmlWorkflowBridge(QObject):
             if self._state.phase in (
                 WorkflowPhase.COMPLETED,
                 WorkflowPhase.FAILED,
+                WorkflowPhase.CANCELLED,
             ):
                 return self._run_when_ready(
                     lambda: self.handleHotkey("translation_hotkey")
@@ -724,6 +770,7 @@ class QmlWorkflowBridge(QObject):
         if self._state.phase not in (
             WorkflowPhase.COMPLETED,
             WorkflowPhase.FAILED,
+            WorkflowPhase.CANCELLED,
         ):
             return
         operation_id = self._state.operation_id
@@ -735,6 +782,9 @@ class QmlWorkflowBridge(QObject):
 
     @Slot()
     def reset(self) -> None:
+        if self._quick_feedback:
+            self.dismissFeedback(self._quick_feedback_id)
+            return
         controller = self._voice_translation_controller
         if controller is not None:
             voice_surface = self._voice_surface()
@@ -764,6 +814,7 @@ class QmlWorkflowBridge(QObject):
         if self._state.phase in (
             WorkflowPhase.COMPLETED,
             WorkflowPhase.FAILED,
+            WorkflowPhase.CANCELLED,
         ):
             self.finish()
 

@@ -63,6 +63,7 @@ ApplicationWindow {
     QuickMenu {
         id: quickMenu
         objectName: "quickMenu"
+        parent: root.contentItem
         visualTheme: root.visualTheme
         onAboutToShow: settings.refreshMicrophoneInventory()
         property var pendingAction: null
@@ -260,11 +261,10 @@ ApplicationWindow {
                         AppButton {
                             objectName: "microphoneButton"
                             anchors.centerIn: parent
-                            width: 32
-                            height: 32
+                            width: 26
+                            height: 26
                             theme: root.visualTheme
                             iconSource: "icons/mic.svg"
-                            iconSize: 18
                             quiet: true
                             enabled: workflow.surface === "idle"
                                      || workflow.surface === "recording"
@@ -279,47 +279,6 @@ ApplicationWindow {
                                 else
                                     workflow.startRecording()
                             }
-                        }
-                    }
-
-                    Item {
-                        id: busyIndicator
-                        property bool fadeShown: workflow.busy
-                        visible: fadeShown || opacity > 0.001
-                        opacity: fadeShown ? 1.0 : 0.0
-                        Behavior on opacity {
-                            NumberAnimation {
-                                duration: theme.fadeDuration
-                                easing.type: Easing.OutCubic
-                            }
-                        }
-                        Layout.preferredWidth: 14
-                        Layout.preferredHeight: 14
-                        Layout.alignment: Qt.AlignVCenter
-
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: width / 2
-                            color: "transparent"
-                            border.color: theme.dim
-                            border.width: 1
-                        }
-
-                        Rectangle {
-                            width: 4
-                            height: 4
-                            radius: 2
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            y: 0
-                            color: theme.text
-                        }
-
-                        RotationAnimation on rotation {
-                            running: workflow.busy
-                            from: 0
-                            to: 360
-                            duration: 760
-                            loops: Animation.Infinite
                         }
                     }
 
@@ -398,7 +357,7 @@ ApplicationWindow {
                             onClicked: {
                                 var position = mapToItem(root.contentItem, width, height)
                                 quickMenu.x = Math.max(0, position.x - quickMenu.width)
-                                quickMenu.y = position.y + 6
+                                quickMenu.y = root.height + 8
                                 quickMenu.open()
                             }
                         }

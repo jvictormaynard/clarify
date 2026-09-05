@@ -134,6 +134,54 @@ class QuickActionsTests(unittest.TestCase):
         finally:
             controller.timer.stop()
 
+    def test_voice_translation_success_does_not_open_result(self):
+        from voice_translation import VoiceTranslationPhase
+
+        service = SimpleNamespace(
+            state=WorkflowState(), subscribe=lambda listener: None
+        )
+        voice = SimpleNamespace(
+            state=SimpleNamespace(
+                phase=VoiceTranslationPhase.COMPLETED,
+                workflow_state=SimpleNamespace(published_text="Translated text"),
+            ),
+            active=False,
+            stateChanged=Mock(),
+        )
+        bridge = QmlWorkflowBridge(service, voice_translation_controller=voice)
+        self.assertEqual(bridge.surface, "idle")
+        self.assertFalse(bridge.feedbackVisible)
+
+    def test_all_successful_workflows_remain_on_compact_home(self):
+        from spikes.pyside6.qml_app import _WorkflowWindowVisibility
+
+        service = SimpleNamespace(
+            state=WorkflowState(), subscribe=lambda listener: None
+        )
+        for kind in WorkflowKind:
+            bridge = QmlWorkflowBridge(service)
+            restored_surfaces = []
+            shell = SimpleNamespace(
+                hide_window=Mock(),
+                show_window=lambda: restored_surfaces.append(bridge.surface),
+            )
+            coordinator = _WorkflowWindowVisibility(
+                bridge, shell, SimpleNamespace(isVisible=lambda: True)
+            )
+            bridge._on_workflow_state(
+                WorkflowState(phase=WorkflowPhase.PROCESSING, kind=kind)
+            )
+            bridge._on_workflow_state(
+                WorkflowState(
+                    phase=WorkflowPhase.COMPLETED,
+                    kind=kind,
+                    result_text="Already published",
+                )
+            )
+            self.assertEqual(restored_surfaces, ["idle"])
+            self.assertFalse(bridge.feedbackVisible)
+            self.assertIsNotNone(coordinator)
+
     def test_clipboard_failure_does_not_retry_or_expose_text(self):
         clipboard = Mock()
         clipboard.capture_target.return_value = None

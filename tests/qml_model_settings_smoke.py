@@ -318,6 +318,18 @@ def main():
                 microphone_button.property("iconSource").toString().endswith("mic.svg")
             )
             assert window.width() < 270
+            for name in ("settingsButton", "closeButton"):
+                other = visible_item(name)
+                assert microphone_button.width() == other.width()
+                assert microphone_button.height() == other.height()
+                assert microphone_button.property("iconSize") == other.property(
+                    "iconSize"
+                )
+                mic_center = microphone_button.mapToScene(
+                    QPointF(0, microphone_button.height() / 2)
+                ).y()
+                other_center = other.mapToScene(QPointF(0, other.height() / 2)).y()
+                assert abs(mic_center - other_center) < 1
             for name in (
                 "microphoneButton",
                 "languageButton",
@@ -343,6 +355,8 @@ def main():
             menu_window = quick_settings.window()
             assert isinstance(menu_window, QQuickWindow)
             assert menu_window != window, "menu must extend outside the compact bar"
+            menu_gap = menu_window.y() - (window.y() + window.height())
+            assert 7 <= menu_gap <= 10, ("menu must sit below the pill", menu_gap)
             if output:
                 assert menu_window.grabWindow().save(str(output / "quick-menu.png"))
             assert not window.findChild(QObject, "quickPasteItem").property("enabled")
@@ -717,6 +731,8 @@ def main():
             settle()
             assert not bridge.feedbackVisible
             assert not pill.property("requestedVisible")
+            assert bridge.surface == "idle"
+            assert window.findChild(QObject, "appPages").property("currentIndex") == 0
             assert not pill.isVisible()
             assert not window.isVisible()
             bridge._on_workflow_state(

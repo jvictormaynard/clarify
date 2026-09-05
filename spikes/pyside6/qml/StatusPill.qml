@@ -12,7 +12,7 @@ Window {
     readonly property bool feedback: workflow.feedbackVisible
     property string feedbackCaption: ""
     readonly property real feedbackWidth: Math.min(620, Math.max(230,
-        feedbackLabel.implicitWidth + (workflow.canRetryTranscription ? 142 : 108)))
+        feedbackLabel.implicitWidth + feedbackActions.width + 66))
     property real animatedWidth: feedback ? feedbackWidth : designWidth
     Behavior on animatedWidth {
         NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
@@ -62,7 +62,7 @@ Window {
 
     Timer {
         id: feedbackTimer
-        interval: 3200
+        interval: workflow.cancellationVisible ? 5000 : 3200
         property int operationId: 0
         onTriggered: workflow.dismissFeedback(operationId)
     }
@@ -267,6 +267,34 @@ Window {
                     NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
                 }
                 ToolButton {
+                    id: undoButton
+                    objectName: "undoCancellationButton"
+                    visible: workflow.cancellationVisible
+                    enabled: workflow.canUndoCancellation
+                    width: Math.max(64, contentItem.implicitWidth + 24)
+                    height: 32
+                    padding: 0
+                    text: workflow.language === "pt" ? "Desfazer" : "Undo"
+                    focusPolicy: Qt.NoFocus
+                    contentItem: Label {
+                        text: undoButton.text
+                        color: undoButton.enabled ? theme.text : theme.subtleText
+                        font.pixelSize: 14
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 8
+                        color: undoButton.hovered ? "#30ffffff" : "#18ffffff"
+                    }
+                    Accessible.name: text
+                    ToolTip.visible: hovered
+                    ToolTip.text: workflow.language === "pt"
+                        ? "Recuperar e transcrever o áudio cancelado"
+                        : "Recover and transcribe the cancelled audio"
+                    onClicked: workflow.undoCancellation()
+                }
+                ToolButton {
                     objectName: "retryTranscriptionButton"
                     visible: workflow.canRetryTranscription
                     width: 32
@@ -294,6 +322,7 @@ Window {
                 }
                 ToolButton {
                     objectName: "dismissFeedbackButton"
+                    visible: !workflow.cancellationVisible
                     width: 32
                     height: 32
                     padding: 0

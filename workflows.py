@@ -51,6 +51,7 @@ class WorkflowKind(str, Enum):
 class WorkflowPhase(str, Enum):
     READY = "ready"
     RECORDING = "recording"
+    CANCELLED = "cancelled"
     PROCESSING = "processing"
     REWRITING = "rewriting"
     PREPARING_TRANSLATION = "preparing_translation"
@@ -126,6 +127,7 @@ class WorkflowState:
     result_text: str | None = None
     status_key: str | None = None
     can_retry: bool = False
+    can_undo: bool = False
     # Optional source/route metadata lets the desktop runtime persist an
     # opt-in history entry without coupling the orchestration layer to a
     # storage implementation.  Existing consumers can ignore these fields.
@@ -156,7 +158,12 @@ class RetryDictation:
 
 @dataclass(frozen=True)
 class CancelDictation:
-    pass
+    retain_audio: bool = False
+
+
+@dataclass(frozen=True)
+class UndoCancelDictation:
+    operation_id: int
 
 
 @dataclass(frozen=True)
@@ -188,6 +195,8 @@ WorkflowCommand = (
     StartDictation
     | StopDictation
     | CancelDictation
+    | RetryDictation
+    | UndoCancelDictation
     | DismissMicrophoneUnavailable
     | StartRewrite
     | StartTranslation
@@ -319,6 +328,7 @@ class _Session:
     usage_context: dict[str, Any] = field(default_factory=dict)
     recording: RecordingSessionGateway | None = None
     retry_audio: RecordingSnapshot | None = None
+    cancel_capture_pending: bool = False
     # A publication is claimed under the service lock, then all gateway calls
     # happen after the lock is released.  This makes cancellation a clear
     # winner while a publication is still queued, while still preventing
@@ -370,7 +380,9 @@ class WorkflowService:
         if isinstance(command, RetryDictation):
             return self._retry_dictation(command.operation_id)
         if isinstance(command, CancelDictation):
-            return self._cancel_dictation()
+            return self._cancel_dictation(retain_audio=command.retain_audio)
+        if isinstance(command, UndoCancelDictation):
+            return self._resume_dictation(command.operation_id, cancelled=True)
         if isinstance(command, DismissMicrophoneUnavailable):
             return self._dismiss_microphone_unavailable()
         if isinstance(command, StartRewrite):
@@ -394,9 +406,10 @@ class WorkflowService:
             if self._state.phase not in (
                 WorkflowPhase.COMPLETED,
                 WorkflowPhase.FAILED,
+                WorkflowPhase.CANCELLED,
             ):
                 return False
-            if not session.publication_finished:
+            if not session.publication_finished or session.cancel_capture_pending:
                 session.finish_requested = True
                 return True
             session.retry_audio = None
@@ -484,6 +497,7 @@ class WorkflowService:
         result_text: str | None = None,
         status_key: str | None = None,
         can_retry: bool = False,
+        can_undo: bool = False,
         source_text: str | None = None,
         refined_text: str | None = None,
         provider_id: str | None = None,
@@ -503,6 +517,7 @@ class WorkflowService:
                 result_text=result_text,
                 status_key=status_key,
                 can_retry=can_retry,
+                can_undo=can_undo,
                 source_text=source_text,
                 refined_text=refined_text,
                 provider_id=provider_id,
@@ -688,8 +703,8 @@ class WorkflowService:
             ):
                 return False
             recording = session.recording
-        elapsed = self._clock.time() - session.started_at
-        self._transition(session, WorkflowPhase.PROCESSING)
+            elapsed = self._clock.time() - session.started_at
+            self._transition(session, WorkflowPhase.PROCESSING)
         self._run_recording(
             recording,
             lambda: self._process_dictation(session, elapsed),
@@ -697,13 +712,19 @@ class WorkflowService:
         return True
 
     def _retry_dictation(self, operation_id: int) -> bool:
+        return self._resume_dictation(operation_id, cancelled=False)
+
+    def _resume_dictation(self, operation_id: int, *, cancelled: bool) -> bool:
         with self._lock:
             session = self._session
+            phase = WorkflowPhase.CANCELLED if cancelled else WorkflowPhase.FAILED
+            allowed = self._state.can_undo if cancelled else self._state.can_retry
             if (
                 session is None
                 or session.operation_id != operation_id
-                or self._state.phase is not WorkflowPhase.FAILED
-                or not self._state.can_retry
+                or self._state.phase is not phase
+                or not allowed
+                or session.finish_requested
                 or session.retry_audio is None
                 or session.recording is None
             ):
@@ -865,7 +886,7 @@ class WorkflowService:
                 session.publication_finished = True
             self._release_terminal_if_requested(session)
 
-    def _cancel_dictation(self) -> bool:
+    def _cancel_dictation(self, *, retain_audio: bool = False) -> bool:
         with self._lock:
             session = self._session
             if (
@@ -874,12 +895,62 @@ class WorkflowService:
                 or self._state.phase is not WorkflowPhase.RECORDING
             ):
                 return False
-            self._session = None
-            self._state = WorkflowState()
+            if retain_audio and session.recording is not None:
+                session.cancel_capture_pending = True
+                session.elapsed_seconds = max(
+                    0.0, self._clock.time() - session.started_at
+                )
+                self._transition(session, WorkflowPhase.CANCELLED)
+            else:
+                self._session = None
+                self._state = WorkflowState()
+        if retain_audio and session.recording is not None:
+            self._run_recording(
+                session.recording, lambda: self._capture_cancelled_audio(session)
+            )
+            return True
         if session.recording is not None:
             self._run_recording(session.recording, session.recording.cancel)
         self._scheduler.call_soon(lambda: self._deliver_ready())
         return True
+
+    def _capture_cancelled_audio(self, session: _Session) -> None:
+        """Stop capture without calling a provider; keep detached bytes for Undo."""
+        audio_source = None
+        recording = session.recording
+        try:
+            recording.wait_until_started()
+            if self._is_current(session.operation_id):
+                audio_source = recording.stop()
+                # Delete the temporary WAV and release the microphone now.
+                recording.complete()
+        except Exception:
+            # Cancellation must remain cancellation, including an empty capture.
+            audio_source = None
+            recording.cancel()
+        finally:
+            with self._lock:
+                session.cancel_capture_pending = False
+                if not self._is_current_locked(session.operation_id):
+                    return
+                if not session.finish_requested:
+                    session.retry_audio = audio_source
+                    if (
+                        audio_source is not None
+                        and audio_source.duration_seconds is not None
+                    ):
+                        session.elapsed_seconds = audio_source.duration_seconds
+                    self._transition(
+                        session,
+                        WorkflowPhase.CANCELLED,
+                        can_undo=audio_source is not None,
+                    )
+                    return
+                # Dismiss/new shortcut arrived while capture was still stopping.
+                session.retry_audio = None
+                self._session = None
+                self._state = WorkflowState()
+            self._scheduler.call_soon(lambda: self._deliver_ready())
 
     def _dismiss_microphone_unavailable(self) -> bool:
         with self._lock:
