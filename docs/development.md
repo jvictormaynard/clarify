@@ -14,8 +14,8 @@ short aliases for maintainers working from WSL.
 ## Windows setup
 
 ```powershell
-git clone https://github.com/jvictormaynard/clarify-voice.git
-cd clarify-voice
+git clone https://github.com/jvictormaynard/clarify.git
+cd clarify
 .\scripts\setup.ps1 -Dev
 .\.venv\Scripts\python.exe spikes\pyside6\qml_app.py
 ```
@@ -61,7 +61,7 @@ values you need. API-key environment variables override stored credentials for
 that process and are never persisted. Never commit `.env`.
 
 Windows uses current-user DPAPI for provider keys. Linux and macOS source runs
-use the explicit plaintext `~/.clarifyvoice/secrets.json` fallback because
+use the explicit plaintext `~/.clarify/secrets.json` fallback because
 those platforms remain experimental; the file is written with owner-only
 permissions where supported. Tests inject an in-memory store or use temporary
 directories and never access the developer's credential store.
@@ -116,7 +116,7 @@ After a Windows package is built, the executable can validate its actual
 credential backend without touching the developer profile:
 
 ```powershell
-.\dist\ClarifyVoice.exe secret-store-self-test
+.\dist\Clarify.exe secret-store-self-test
 ```
 
 The command writes non-production markers to a temporary directory through the
@@ -139,15 +139,15 @@ boundary. It does not prove that the Settings UI, a real Windows restart, or a
 provider request can use a key. Record those remaining checks only with
 revocable, non-production credentials in a disposable Windows account or VM;
 never use a personal production key and never run this procedure against an
-existing ClarifyVoice profile.
+existing Clarify profile.
 
 Use a temporary profile for the complete manual pass:
 
 ```powershell
-$dataRoot = Join-Path ([IO.Path]::GetTempPath()) ("clarifyvoice-secret-accept-" + [guid]::NewGuid())
+$dataRoot = Join-Path ([IO.Path]::GetTempPath()) ("clarify-secret-accept-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $dataRoot | Out-Null
 $env:APPDATA = $dataRoot
-& .\dist\ClarifyVoice.exe
+& .\dist\Clarify.exe
 ```
 
 For each of Gemini, OpenAI, and Groq:
@@ -159,14 +159,14 @@ For each of Gemini, OpenAI, and Groq:
    `config.json` contains no provider key field and no test-key text:
 
    ```powershell
-   $profile = Join-Path $dataRoot "ClarifyVoice"
+   $profile = Join-Path $dataRoot "Clarify"
    $config = Get-Content (Join-Path $profile "config.json") -Raw
    if ($config -match 'gemini_api_key|openai_api_key|groq_api_key') {
        throw "A provider key field was written to config.json"
    }
    ```
 
-3. Close ClarifyVoice completely, launch the same executable again with the
+3. Close Clarify completely, launch the same executable again with the
    same `$env:APPDATA`, and confirm that the provider remains active and can
    complete one harmless validation/request. The masked key field may remain
    blank by design; do not overwrite it with a blank value.
@@ -209,7 +209,7 @@ or:
 .\scripts\build.ps1
 ```
 
-The portable executable is written to `dist\ClarifyVoice.exe`. Local `.env`
+The portable executable is written to `dist\Clarify.exe`. Local `.env`
 files are deliberately excluded from every build.
 
 ## Windows acceptance checklist
@@ -218,7 +218,7 @@ For changes that affect UI, hotkeys, audio, clipboard behavior, system tray, or
 packaging, unit tests are necessary but not sufficient. Verify the built
 executable on Windows:
 
-1. Launch `dist\ClarifyVoice.exe` and confirm only one logical app instance is
+1. Launch `dist\Clarify.exe` and confirm only one logical app instance is
    active. A one-file PyInstaller build may show a launcher and child process.
 2. Check the floating bar and menu at 100% and one scaled DPI setting if
    available.
@@ -241,7 +241,7 @@ Windows registration is transactional: if another application owns one
 combination, all newly accepted IDs are unregistered and the previous set is
 restored. Confirm this manually from a packaged build by reserving one test
 combination in another application, attempting Apply, and checking that the
-other three ClarifyVoice actions still use their previous bindings.
+other three Clarify actions still use their previous bindings.
 
 Recording defaults to toggle mode. Push-to-talk remains unavailable in the
 packaged Windows layer until a key-release-capable input adapter is present;
@@ -256,8 +256,8 @@ npm run deploy
 
 This invokes `scripts/deploy.ps1` with Windows PowerShell, stages source files on
 the native Windows temporary directory, builds, backs up the installed
-executable, replaces it, and restarts ClarifyVoice. Override the discovered
-target with `CLARIFYVOICE_INSTALL_PATH` when needed.
+executable, replaces it, and restarts Clarify. Override the discovered
+target with `CLARIFY_INSTALL_PATH` when needed.
 
 ## Automatic Python formatting before commits
 
@@ -284,7 +284,7 @@ reviewed-exception policy lives in `dependency-audit.json`; it is intentionally
 empty today. Any future exception must include a maintainer-approved rationale
 in that file and should be removed as soon as the dependency can be upgraded.
 
-Tagged releases also publish `ClarifyVoice.sbom.json` (CycloneDX) from the
+Tagged releases also publish `Clarify.sbom.json` (CycloneDX) from the
 runtime-only `requirements-lock-runtime-windows.txt` lock, include it in the
 portable ZIP. The SBOM is augmented with the bundled SoX 14.4.2 component and
 the SHA-256 of every `sox.exe`/DLL selected by
@@ -320,8 +320,8 @@ part of startup or packaging.
 
 ## Release process
 
-The repository-local `$clarifyvoice-release` skill under
-`.agents/skills/clarifyvoice-release/` is the canonical maintainer procedure.
+The repository-local `$clarify-release` skill under
+`.agents/skills/clarify-release/` is the canonical maintainer procedure.
 It standardizes the release PR, CI gates, tag provenance, assets, checksums, and
 post-release verification.
 
@@ -334,7 +334,7 @@ publish an MSI or authenticated manifest until every signed rollout gate there
 is complete.
 
 For a local unsigned packaging check, run `npm run build` followed by
-`npm run installer`. This creates `dist\ClarifyVoice-windows-x64.msi`; it does
+`npm run installer`. This creates `dist\Clarify-windows-x64.msi`; it does
 not install it. The build requires a .NET SDK because
 `scripts/build-installer.ps1` installs pinned WiX 6.0.2 under ignored
 `build\tools`.
@@ -347,7 +347,7 @@ not install it. The build requires a .NET SDK because
 4. Run the release preflight, replacing the example version:
 
    ```bash
-   python3 .agents/skills/clarifyvoice-release/scripts/release_preflight.py \
+   python3 .agents/skills/clarify-release/scripts/release_preflight.py \
      --repo . --version 0.1.1
    ```
 

@@ -1,4 +1,4 @@
-"""UI-independent orchestration for ClarifyVoice desktop workflows.
+"""UI-independent orchestration for Clarify desktop workflows.
 
 The desktop view dispatches commands and renders :class:`WorkflowState` values.
 All provider, audio, clipboard, configuration, statistics, scheduling, and

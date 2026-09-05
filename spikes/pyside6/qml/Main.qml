@@ -6,7 +6,7 @@ import QtQuick.Window 6.5
 
 ApplicationWindow {
     id: root
-    objectName: "clarifyVoiceMainWindow"
+    objectName: "clarifyMainWindow"
     width: (workflow.surface === "result"
             || workflow.surface === "voice_result"
             || workflow.surface === "voice_error" ? theme.resultWidth
@@ -33,7 +33,7 @@ ApplicationWindow {
             easing.type: Easing.OutCubic
         }
     }
-    title: "ClarifyVoice"
+    title: "Clarify"
     color: "transparent"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
 
@@ -345,7 +345,7 @@ ApplicationWindow {
                             quiet: true
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
-                            Accessible.name: "Close ClarifyVoice"
+                            Accessible.name: "Close Clarify"
                             onClicked: root.close()
                         }
                     }
@@ -1023,7 +1023,7 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
-                                text: "Configure the global ClarifyVoice actions. Changes apply when you save Settings."
+                                text: "Configure the global Clarify actions. Changes apply when you save Settings."
                                 color: theme.dim
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap

@@ -29,7 +29,7 @@ Window {
             easing.type: Easing.OutCubic
         }
     }
-    title: "ClarifyVoice workflow status"
+    title: "Clarify workflow status"
 
     Theme { id: theme }
     property bool successVisible: false

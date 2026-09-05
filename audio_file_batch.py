@@ -561,7 +561,7 @@ class AudioBatchJob:
         ]
         self._result: AudioBatchResult | None = None
         self._thread = threading.Thread(
-            target=self._run, name="ClarifyVoiceAudioBatch", daemon=True)
+            target=self._run, name="ClarifyAudioBatch", daemon=True)
 
     def start(self) -> "AudioBatchJob":
         # Invalid imports are published before the worker starts so a future
@@ -654,7 +654,7 @@ class AudioBatchJob:
         # executor becoming a hidden unbounded queue for a dropped folder.
         executor = ThreadPoolExecutor(
             max_workers=self._service.max_workers,
-            thread_name_prefix="ClarifyVoiceAudioFile",
+            thread_name_prefix="ClarifyAudioFile",
         )
         pending = [
             index for index, item in enumerate(self._results)
@@ -949,7 +949,7 @@ class AudioFileBatchService:
         if self.temp_root is not None:
             self.temp_root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(
-                prefix="clarifyvoice-audio-", dir=str(self.temp_root) if self.temp_root else None
+                prefix="clarify-audio-", dir=str(self.temp_root) if self.temp_root else None
         ) as temporary:
             destination = Path(temporary) / "normalized.wav"
             normalized = self.converter.convert(path, destination, cancel_token)

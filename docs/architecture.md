@@ -1,6 +1,6 @@
 # Architecture
 
-ClarifyVoice is a local-first desktop application. It has no ClarifyVoice-owned
+Clarify is a local-first desktop application. It has no Clarify-owned
 backend: the desktop process calls the AI provider selected by the user.
 
 ## Runtime flow
@@ -299,7 +299,7 @@ implements the typed provider-registry contract over the narrow
 explicit provider and exposes its install/progress/cancel/remove flow in
 Settings → Providers; installation remains an explicit product action and no
 cloud fallback is implicit. The #32 signed MSI/update contract is for packaged
-ClarifyVoice artifacts; this source-only sidecar harness does not claim
+Clarify artifacts; this source-only sidecar harness does not claim
 signed-release coverage or silently join that updater. It consumes the #18
 `TranscriptionRequest.audio_bytes` snapshot;
 `RecordingSession` remains the sole owner of the temporary WAV, while the local
@@ -401,21 +401,21 @@ atomically removes that provider key from `config.json`. A backend, read-back,
 or cleanup failure keeps the legacy value recoverable.
 
 Experimental Linux and macOS source runs use a separate plaintext
-`~/.clarifyvoice/secrets.json` fallback with mode `0600` where supported. This
+`~/.clarify/secrets.json` fallback with mode `0600` where supported. This
 fallback is intentionally explicit; it does not claim OS-backed protection.
 
 ## Data ownership
 
 | Data | Location | Content |
 | --- | --- | --- |
-| Settings | `%APPDATA%\ClarifyVoice\config.json` | Provider endpoints, models, selections, and UI preferences; no API keys |
-| Provider secrets | `%APPDATA%\ClarifyVoice\secrets.dpapi.json` | Current-user DPAPI ciphertext keyed by provider |
-| Usage stats | `%APPDATA%\ClarifyVoice\usage_stats.json` | Counts, durations, model identifiers, and estimates; no transcript text |
-| Dictionary and snippets | `%APPDATA%\ClarifyVoice\dictionary.json` | Versioned local terms, aliases, and bounded replacement rules; no credentials or usage events |
-| Working audio | `%APPDATA%\ClarifyVoice\clarifyvoice-recording-*.wav` | One unique session-owned file, deleted after the provider no longer needs it |
+| Settings | `%APPDATA%\Clarify\config.json` | Provider endpoints, models, selections, and UI preferences; no API keys |
+| Provider secrets | `%APPDATA%\Clarify\secrets.dpapi.json` | Current-user DPAPI ciphertext keyed by provider |
+| Usage stats | `%APPDATA%\Clarify\usage_stats.json` | Counts, durations, model identifiers, and estimates; no transcript text |
+| Dictionary and snippets | `%APPDATA%\Clarify\dictionary.json` | Versioned local terms, aliases, and bounded replacement rules; no credentials or usage events |
+| Working audio | `%APPDATA%\Clarify\clarify-recording-*.wav` | One unique session-owned file, deleted after the provider no longer needs it |
 
 On non-Windows source runs, the equivalent data directory is
-`~/.clarifyvoice`.
+`~/.clarify`.
 
 For API keys, documented environment variables (`GEMINI_API_KEY`, legacy
 `API_KEY`, `OPENAI_API_KEY`, and `GROQ_API_KEY`) override the stored credential

@@ -4,7 +4,7 @@ This document defines the target installer, signing, update, recovery, and
 incident contract. The repository contains no private key or reusable signing
 credential. Until the prerequisites in [Rollout gates](#rollout-gates) are
 complete, this is a fail-closed implementation contract rather than a claim
-that published ClarifyVoice artifacts are already signed.
+that published Clarify artifacts are already signed.
 
 ## No-cost community release
 
@@ -21,7 +21,7 @@ contract below remains the target for a future sponsored release.
 
 ## Signing mechanism and ownership
 
-ClarifyVoice uses [Azure Artifact Signing](https://azure.microsoft.com/en-us/products/artifact-signing)
+Clarify uses [Azure Artifact Signing](https://azure.microsoft.com/en-us/products/artifact-signing)
 (formerly Trusted Signing) with its public-trust certificate profile:
 
 - For the future signed track, the project owner, João Victor Maynard Mota,
@@ -72,17 +72,17 @@ terms.
 
 | Operation | Defined behavior |
 | --- | --- |
-| Install | Installs the signed executable and notices under `%LOCALAPPDATA%\Programs\ClarifyVoice`; creates per-user Desktop and Start Menu shortcuts. |
-| Upgrade | Windows Installer performs a major upgrade transaction. `%APPDATA%\ClarifyVoice` is outside the MSI and is never copied, migrated, or removed. |
-| Repair | `msiexec /fa ClarifyVoice-windows-x64.msi` repairs program files and shortcuts without modifying user data. |
-| Autostart | The installer does not enable autostart. The existing in-app setting owns the HKCU Run value. Upgrade preserves it; uninstall removes a stale ClarifyVoice Run value. |
+| Install | Installs the signed executable and notices under `%LOCALAPPDATA%\Programs\Clarify`; creates per-user Desktop and Start Menu shortcuts. |
+| Upgrade | Windows Installer performs a major upgrade transaction. `%APPDATA%\Clarify` is outside the MSI and is never copied, migrated, or removed. |
+| Repair | `msiexec /fa Clarify-windows-x64.msi` repairs program files and shortcuts without modifying user data. |
+| Autostart | The installer does not enable autostart. The existing in-app setting owns the HKCU Run value. Upgrade preserves it; uninstall removes a stale Clarify Run value. |
 | Failed upgrade | Windows Installer rolls the package transaction back. The previous installed product and all user data remain available. |
-| Manual rollback | A user may run an older, still-trusted ClarifyVoice MSI. The MSI permits this explicit rollback, while the in-app update checker refuses every downgrade. |
-| Uninstall | Removes installed program files, shortcuts, install metadata, and the autostart entry. Settings, usage statistics, and credentials remain in `%APPDATA%\ClarifyVoice` for recovery or reinstall. |
+| Manual rollback | A user may run an older, still-trusted Clarify MSI. The MSI permits this explicit rollback, while the in-app update checker refuses every downgrade. |
+| Uninstall | Removes installed program files, shortcuts, install metadata, and the autostart entry. Settings, usage statistics, and credentials remain in `%APPDATA%\Clarify` for recovery or reinstall. |
 | Portable | The signed portable EXE and ZIP remain supported and do not participate in MSI registration. The in-app MSI updater requires the current executable path to match the MSI-owned HKCU install registration, so portable builds fail closed. Manual checksum/signature verification remains documented. |
 
 Do not run an installer while recording or processing text. The update UI
-closes ClarifyVoice after starting the visible Windows Installer flow.
+closes Clarify after starting the visible Windows Installer flow.
 
 ## Authenticated release manifest
 
@@ -91,7 +91,7 @@ and is manual: **Settings → Check for updates**. It performs no idle polling a
 no forced update. A frozen portable executable is not sufficient evidence of an
 MSI installation and cannot launch `msiexec` through this flow.
 
-1. Download `ClarifyVoice-release-manifest.cab` from the fixed
+1. Download `Clarify-release-manifest.cab` from the fixed
    `releases/latest/download` URL into a sibling `.part` file.
 2. Require a valid Windows Authenticode chain and the publisher common name
    pinned inside the signed application.
@@ -148,11 +148,11 @@ The community tag workflow is separate from the signed workflow and does not
 use Azure credentials. It publishes only the portable assets described above.
 
 `scripts/test-installer.ps1` is intentionally destructive and must never be run
-on a developer workstation or a shared ClarifyVoice installation. It fails
+on a developer workstation or a shared Clarify installation. It fails
 closed unless `CI` and `GITHUB_ACTIONS` are true, the runner identifies itself
 as a GitHub-hosted Windows runner, the repository matches `GITHUB_WORKSPACE`,
 the profile roots have their expected hosted-runner layout, and every targeted
-ClarifyVoice path and registry value is initially absent. Use only a disposable
+Clarify path and registry value is initially absent. Use only a disposable
 VM for the separate manual lifecycle procedure. This script itself is restricted
 to the hosted runner; do not bypass its guards.
 

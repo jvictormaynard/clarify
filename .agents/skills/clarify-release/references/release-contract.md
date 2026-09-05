@@ -1,8 +1,8 @@
-# ClarifyVoice release contract
+# Clarify release contract
 
 ## Canonical state
 
-- Repository: `jvictormaynard/clarify-voice`
+- Repository: `jvictormaynard/clarify`
 - Release branch base: `master`
 - Versioning: Semantic Versioning with `v`-prefixed Git tags
 - Maintained application: Python `app.py`
@@ -79,20 +79,20 @@ On the tag:
 
 The GitHub release must contain exactly one of each:
 
-1. `ClarifyVoice.exe`
-2. `ClarifyVoice.exe.sha256`
-3. `ClarifyVoice.sbom.json`
-4. `ClarifyVoice-windows-x64.msi`
-5. `ClarifyVoice-windows-x64.msi.sha256`
-6. `ClarifyVoice-release-manifest.cab`
-7. `ClarifyVoice-release-manifest.cab.sha256`
-8. `ClarifyVoice-windows-x64.zip`
+1. `Clarify.exe`
+2. `Clarify.exe.sha256`
+3. `Clarify.sbom.json`
+4. `Clarify-windows-x64.msi`
+5. `Clarify-windows-x64.msi.sha256`
+6. `Clarify-release-manifest.cab`
+7. `Clarify-release-manifest.cab.sha256`
+8. `Clarify-windows-x64.zip`
 9. `sox-14.4.2-source.tar.gz`
 
 The ZIP must contain:
 
-- `ClarifyVoice.exe`
-- `ClarifyVoice.sbom.json`
+- `Clarify.exe`
+- `Clarify.sbom.json`
 - `LICENSE`
 - `THIRD_PARTY_NOTICES.md`
 
@@ -105,10 +105,10 @@ The SoX source archive must match:
 The community track is intentionally unsigned and exists for releases without
 sponsored signing infrastructure. It must publish exactly these assets:
 
-- `ClarifyVoice.exe`
-- `ClarifyVoice.exe.sha256`
-- `ClarifyVoice.sbom.json`
-- `ClarifyVoice-windows-x64.zip`
+- `Clarify.exe`
+- `Clarify.exe.sha256`
+- `Clarify.sbom.json`
+- `Clarify-windows-x64.zip`
 - `sox-14.4.2-source.tar.gz`
 
 The ZIP contains the portable executable, checksum, SBOM, `LICENSE`, and
@@ -131,7 +131,7 @@ Portuguese installation instructions behaviorally equivalent.
 ## Security and provenance
 
 - Never bundle `.env`, API keys, `%APPDATA%` config, or local credentials.
-- Keep provider credentials in `%APPDATA%\ClarifyVoice\config.json`.
+- Keep provider credentials in `%APPDATA%\Clarify\config.json`.
 - Preserve contributor attribution and existing Git history.
 - Never force-update or reuse a published tag.
 - Never overwrite a published asset to conceal provenance drift; publish a new

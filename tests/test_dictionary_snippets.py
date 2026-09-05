@@ -74,14 +74,14 @@ class DictionarySnippetTests(unittest.TestCase):
 
     def test_unversioned_document_migrates_to_v1(self):
         self.path.write_text(json.dumps({
-            "dictionary": [{"term": "ClarifyVoice"}],
+            "dictionary": [{"term": "Clarify"}],
             "snippets": [{"trigger": "addr", "replacement": "address"}],
         }), encoding="utf-8")
 
         loaded = self.repository.load()
 
         self.assertEqual(loaded.schema_version, 1)
-        self.assertEqual(loaded.dictionary[0].term, "ClarifyVoice")
+        self.assertEqual(loaded.dictionary[0].term, "Clarify")
         self.assertEqual(loaded.snippets[0].replacement, "address")
 
     def test_failed_import_leaves_previous_state_unchanged(self):
@@ -237,7 +237,7 @@ class DictionarySnippetTests(unittest.TestCase):
     def test_supported_cloud_adapters_forward_context_without_workflow_branches(self):
         audio_path = Path(self.directory.name) / "audio.wav"
         audio_path.write_bytes(b"RIFFfake")
-        context = "Use the preferred term: ClarifyVoice."
+        context = "Use the preferred term: Clarify."
 
         gemini_http = _FakeHttp(_FakeResponse({
             "candidates": [{"content": {"parts": [{"text": "ok"}]}}],
@@ -277,7 +277,7 @@ class DictionarySnippetTests(unittest.TestCase):
     def test_recording_path_applies_context_and_expands_result_after_provider_work(self):
         service = DictionarySnippetService(self.repository)
         service.replace(DictionarySnippets(
-            dictionary=(DictionaryEntry("ClarifyVoice"),),
+            dictionary=(DictionaryEntry("Clarify"),),
             snippets=(Snippet("brb", "be right back"),),
         ))
         original_config = app.APP_CONFIG.copy()
@@ -303,7 +303,7 @@ class DictionarySnippetTests(unittest.TestCase):
 
             self.assertEqual(result, "be right back")
             self.assertEqual(len(request_seen), 1)
-            self.assertIn("ClarifyVoice", request_seen[0].dictionary_context)
+            self.assertIn("Clarify", request_seen[0].dictionary_context)
         finally:
             app.APP_CONFIG.clear()
             app.APP_CONFIG.update(original_config)

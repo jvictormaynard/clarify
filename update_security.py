@@ -177,9 +177,9 @@ def load_update_policy(path: Path | None = None) -> UpdatePolicy:
         raise UpdatePolicyError("only the stable channel is supported")
     manifest_asset = str(payload["manifest_asset"])
     installer_asset = str(payload["installer_asset"])
-    if manifest_asset != "ClarifyVoice-release-manifest.cab":
+    if manifest_asset != "Clarify-release-manifest.cab":
         raise UpdatePolicyError("unexpected manifest asset identity")
-    if installer_asset != "ClarifyVoice-windows-x64.msi":
+    if installer_asset != "Clarify-windows-x64.msi":
         raise UpdatePolicyError("unexpected installer asset identity")
     publisher = str(payload["publisher_common_name"]).strip()
     if not publisher or len(publisher) > 256:
@@ -347,7 +347,7 @@ _AUTHENTICODE_TIMESTAMP_INSPECTOR = r"""
 using System;
 using System.Runtime.InteropServices;
 
-public static class ClarifyVoiceTimestampInspector
+public static class ClarifyTimestampInspector
 {
     private const uint CertQueryObjectFile = 1;
     private const uint CertQueryContentPkcs7SignedEmbed = 10;
@@ -644,11 +644,11 @@ def verify_authenticode(
         + "\n'@;"
         "Add-Type -TypeDefinition $inspectorSource -Language CSharp;"
         "$signature=Get-AuthenticodeSignature -LiteralPath "
-        "$env:CLARIFYVOICE_SIGNATURE_PATH;"
+        "$env:CLARIFY_SIGNATURE_PATH;"
         "$certificate=$signature.SignerCertificate;"
         "$timestampCertificate=$signature.TimeStamperCertificate;"
-        "$timestampProtocol=[ClarifyVoiceTimestampInspector]::"
-        "GetTimestampProtocol($env:CLARIFYVOICE_SIGNATURE_PATH);"
+        "$timestampProtocol=[ClarifyTimestampInspector]::"
+        "GetTimestampProtocol($env:CLARIFY_SIGNATURE_PATH);"
         "$timestampStatus=if($timestampProtocol -ceq 'RFC3161'){'Valid'}"
         "elseif($timestampProtocol -ceq 'Missing'){'Missing'}"
         "else{'Invalid'};"
@@ -669,7 +669,7 @@ def verify_authenticode(
         "$result|ConvertTo-Json -Compress"
     )
     environment = os.environ.copy()
-    environment["CLARIFYVOICE_SIGNATURE_PATH"] = str(path.resolve())
+    environment["CLARIFY_SIGNATURE_PATH"] = str(path.resolve())
     result = runner(
         [executable, "-NoProfile", "-NonInteractive", "-Command", script],
         check=False,

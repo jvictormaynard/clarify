@@ -450,7 +450,7 @@ class QmlAudioFileImportController(QObject):
 
         threading.Thread(
             target=wait_for_completion,
-            name="ClarifyVoiceQmlAudioBatch",
+            name="ClarifyQmlAudioBatch",
             daemon=True,
         ).start()
 

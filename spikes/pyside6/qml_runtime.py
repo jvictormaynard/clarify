@@ -265,7 +265,7 @@ class QtWorkflowScheduler(QObject):
         self._start_worker(
             callback,
             self._background_workers,
-            "ClarifyVoiceQmlWorkflow",
+            "ClarifyQmlWorkflow",
         )
 
     def run_dispatch(self, callback: Callable[[], None]) -> None:
@@ -274,7 +274,7 @@ class QtWorkflowScheduler(QObject):
         self._start_worker(
             callback,
             self._dispatch_workers,
-            "ClarifyVoiceQmlDispatch",
+            "ClarifyQmlDispatch",
         )
 
     def begin_shutdown(self) -> None:
@@ -344,7 +344,7 @@ class QtWorkflowScheduler(QObject):
 
         worker = threading.Thread(
             target=run,
-            name="ClarifyVoiceQmlRecording",
+            name="ClarifyQmlRecording",
             daemon=True,
         )
         attach = getattr(
@@ -357,13 +357,13 @@ class QtWorkflowScheduler(QObject):
 
 
 def _data_directory() -> Path:
-    configured = os.environ.get("CLARIFYVOICE_DATA_DIR", "").strip()
+    configured = os.environ.get("CLARIFY_DATA_DIR", "").strip()
     if configured:
         path = Path(configured)
     elif platform.system() == "Windows":
-        path = Path(os.environ.get("APPDATA", Path.home())) / "ClarifyVoice"
+        path = Path(os.environ.get("APPDATA", Path.home())) / "Clarify"
     else:
-        path = Path.home() / ".clarifyvoice"
+        path = Path.home() / ".clarify"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -869,7 +869,7 @@ class QtRecorder:
 
     def start(self, path: Path, cancel_event: threading.Event) -> None:
         if not self.sox:
-            raise QtRuntimeError("SoX was not found in the ClarifyVoice runtime")
+            raise QtRuntimeError("SoX was not found in the Clarify runtime")
         if cancel_event.is_set():
             raise RuntimeError("Recording cancelled before startup")
         system = platform.system()
@@ -947,7 +947,7 @@ class QtRecordingSession(RecordingSessionGateway):
             config if config is not None else getattr(recorder, "config", None)
         )
         descriptor, raw_path = tempfile.mkstemp(
-            prefix="clarifyvoice-recording-",
+            prefix="clarify-recording-",
             suffix=".wav",
             dir=str(_data_directory()),
         )
@@ -1031,7 +1031,7 @@ class QtRecordingSession(RecordingSessionGateway):
 
         worker = threading.Thread(
             target=monitor,
-            name="ClarifyVoiceQmlRecordingBoundary",
+            name="ClarifyQmlRecordingBoundary",
             daemon=True,
         )
         with self._lock:

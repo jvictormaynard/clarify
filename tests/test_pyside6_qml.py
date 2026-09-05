@@ -81,7 +81,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("readonly property real uiScale: 1.1", theme_source)
 
         main_source = (QML_ROOT / "Main.qml").read_text(encoding="utf-8")
-        self.assertIn('objectName: "clarifyVoiceMainWindow"', main_source)
+        self.assertIn('objectName: "clarifyMainWindow"', main_source)
         self.assertIn('objectName: "appPages"', main_source)
         self.assertNotIn("PilotButton", main_source)
         status_pill_source = (QML_ROOT / "StatusPill.qml").read_text(encoding="utf-8")

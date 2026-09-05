@@ -1,6 +1,6 @@
-# Contributing to ClarifyVoice
+# Contributing to Clarify
 
-Thank you for helping improve ClarifyVoice. Contributions are welcome from
+Thank you for helping improve Clarify. Contributions are welcome from
 first-time and experienced open-source contributors.
 
 ## Good first contributions
@@ -13,7 +13,7 @@ first-time and experienced open-source contributors.
 - Support another compatible transcription or refinement provider
 
 Large UI rewrites, new resident services, or broad dependency changes should be
-discussed in an issue first. ClarifyVoice is intentionally lightweight and
+discussed in an issue first. Clarify is intentionally lightweight and
 focus-safe.
 
 ## Before opening an issue
@@ -34,8 +34,8 @@ privately as described in [SECURITY.md](SECURITY.md).
 On Windows:
 
 ```powershell
-git clone https://github.com/jvictormaynard/clarify-voice.git
-cd clarify-voice
+git clone https://github.com/jvictormaynard/clarify.git
+cd clarify
 .\scripts\setup.ps1 -Dev
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe spikes\pyside6\qml_app.py

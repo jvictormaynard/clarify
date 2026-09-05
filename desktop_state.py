@@ -1,4 +1,4 @@
-"""Small explicit state controllers for ClarifyVoice desktop workflows."""
+"""Small explicit state controllers for Clarify desktop workflows."""
 
 from __future__ import annotations
 

@@ -43,8 +43,8 @@ from windows_hotkeys import (
 )
 
 
-DEFAULT_INSTANCE_NAME = "clarifyvoice"
-ACTIVATION_EVENT_NAME = r"Local\ClarifyVoice.ShowExisting.v1"
+DEFAULT_INSTANCE_NAME = "clarify"
+ACTIVATION_EVENT_NAME = r"Local\Clarify.ShowExisting.v1"
 _WINDOWS_NATIVE_EVENT_TYPES = frozenset(
     {"windows_generic_MSG", "windows_dispatcher_MSG"}
 )
@@ -281,7 +281,7 @@ class QtSingleInstanceGuard:
 
         worker = threading.Thread(
             target=wait_loop,
-            name="ClarifyVoiceSingleInstanceActivation",
+            name="ClarifySingleInstanceActivation",
             daemon=True,
         )
         self._activation_listener_thread = worker
@@ -590,7 +590,7 @@ class QtShell(QObject):
         tray_icon_factory: Callable[[QIcon, QObject | None], Any] = QSystemTrayIcon,
         menu_factory: Callable[[], Any] = QMenu,
         icon: QIcon | None = None,
-        title: str = "ClarifyVoice",
+        title: str = "Clarify",
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)

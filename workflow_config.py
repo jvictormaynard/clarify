@@ -1,4 +1,4 @@
-"""Typed, UI-free provider routing for each ClarifyVoice workflow.
+"""Typed, UI-free provider routing for each Clarify workflow.
 
 This module deliberately has no persistence or desktop imports.  It validates
 provider capabilities and normalizes route IDs before a caller starts a

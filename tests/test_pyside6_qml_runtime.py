@@ -1270,7 +1270,7 @@ class QmlRuntimeFactoryTests(unittest.TestCase):
         missing = object()
         legacy_app_before = sys.modules.get("app", missing)
         with TemporaryDirectory() as directory:
-            with patch.dict(os.environ, {"CLARIFYVOICE_DATA_DIR": directory}):
+            with patch.dict(os.environ, {"CLARIFY_DATA_DIR": directory}):
                 runtime = create_real_workflow_runtime(object())
 
         self.assertIsInstance(runtime.workflow_service, WorkflowService)
@@ -1279,7 +1279,7 @@ class QmlRuntimeFactoryTests(unittest.TestCase):
 
     def test_factory_constructs_opt_in_history_recorder(self):
         with TemporaryDirectory() as directory:
-            with patch.dict(os.environ, {"CLARIFYVOICE_DATA_DIR": directory}):
+            with patch.dict(os.environ, {"CLARIFY_DATA_DIR": directory}):
                 runtime = create_real_workflow_runtime(object())
 
         self.assertIsInstance(runtime.history_recorder, QtHistoryRecorder)

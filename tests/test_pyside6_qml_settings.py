@@ -899,7 +899,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
         )
 
     def test_frozen_autostart_command_does_not_append_source_script(self):
-        executable = r"C:\Program Files\ClarifyVoice\ClarifyVoice.exe"
+        executable = r"C:\Program Files\Clarify\Clarify.exe"
 
         with patch.object(qml_settings.sys, "frozen", True, create=True):
             command = qml_settings._autostart_command(executable)
@@ -923,8 +923,8 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 self.assertTrue(controller.save())
 
             apply.assert_called_once()
-            self.assertIn("qml_app.py", registry.values["ClarifyVoice"])
-            self.assertIn("--hidden", registry.values["ClarifyVoice"])
+            self.assertIn("qml_app.py", registry.values["Clarify"])
+            self.assertIn("--hidden", registry.values["Clarify"])
             self.assertTrue(repositories.config.load().startup.autostart)
             self.assertFalse(controller.dirty)
 
@@ -976,22 +976,22 @@ class QmlSettingsControllerTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             repositories = _repositories(directory)
             registry = _Registry()
-            registry.values["ClarifyVoice"] = r"C:\Legacy\ClarifyVoice.exe --old"
+            registry.values["Clarify"] = r"C:\Legacy\Clarify.exe --old"
             controller = QmlSettingsController(repositories, registry=registry)
 
             with patch("spikes.pyside6.qml_settings._is_windows", return_value=True):
                 self.assertTrue(controller.save())
 
-            self.assertNotIn("ClarifyVoice", registry.values)
-            self.assertNotIn("ClarifyVoice", registry.types)
+            self.assertNotIn("Clarify", registry.values)
+            self.assertNotIn("Clarify", registry.types)
             self.assertFalse(repositories.config.load().startup.autostart)
 
     def test_windows_save_restores_registry_when_apply_fails(self):
         with TemporaryDirectory() as directory:
             repositories = _repositories(directory)
             registry = _Registry()
-            registry.values["ClarifyVoice"] = r"C:\Legacy\ClarifyVoice.exe --old"
-            registry.types["ClarifyVoice"] = 42
+            registry.values["Clarify"] = r"C:\Legacy\Clarify.exe --old"
+            registry.types["Clarify"] = 42
             controller = QmlSettingsController(repositories, registry=registry)
             controller.setAutostart(True)
             with (
@@ -1005,10 +1005,10 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 self.assertFalse(controller.save())
 
             self.assertEqual(
-                registry.values["ClarifyVoice"],
-                r"C:\Legacy\ClarifyVoice.exe --old",
+                registry.values["Clarify"],
+                r"C:\Legacy\Clarify.exe --old",
             )
-            self.assertEqual(registry.types["ClarifyVoice"], 42)
+            self.assertEqual(registry.types["Clarify"], 42)
             self.assertFalse(repositories.config.load().startup.autostart)
             self.assertTrue(controller.dirty)
             self.assertIn("simulated config write failure", controller.lastError)

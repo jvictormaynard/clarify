@@ -12,6 +12,6 @@ if command -v python >/dev/null 2>&1; then
     exec python scripts/format_staged.py
 fi
 
-echo "ClarifyVoice pre-commit: Python 3 is required to run Ruff format." >&2
+echo "Clarify pre-commit: Python 3 is required to run Ruff format." >&2
 echo "Run npm run setup or install Python 3 before committing." >&2
 exit 1

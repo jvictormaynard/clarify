@@ -1,17 +1,17 @@
 ---
-name: clarifyvoice-release
-description: Prepare, publish, and verify ClarifyVoice GitHub releases with SemVer, changelog and documentation maintenance, Windows executable validation, CI gates, tags, release assets, checksums, and post-release checks. Use when the user asks to release, publish, tag, version, or audit a ClarifyVoice release in the clarify-voice repository.
+name: clarify-release
+description: Prepare, publish, and verify Clarify GitHub releases with SemVer, changelog and documentation maintenance, Windows executable validation, CI gates, tags, release assets, checksums, and post-release checks. Use when the user asks to release, publish, tag, version, or audit a Clarify release in the clarify repository.
 ---
 
-# ClarifyVoice Release
+# Clarify Release
 
-Publish a reproducible Windows-first ClarifyVoice release without allowing the
+Publish a reproducible Windows-first Clarify release without allowing the
 tag, documentation, executable, or source state to drift apart.
 
 ## Required context
 
-Operate on `/home/ork/repos/clarify-voice` unless the user supplies another
-ClarifyVoice checkout. Read [references/release-contract.md](references/release-contract.md)
+Operate on `/home/ork/repos/clarify` unless the user supplies another
+Clarify checkout. Read [references/release-contract.md](references/release-contract.md)
 completely before changing release state.
 
 Use local `git` for branches, commits, tags, and pushes. Prefer the GitHub
@@ -66,7 +66,7 @@ Do not make cosmetic documentation edits merely to create a release commit.
 Run:
 
 ```bash
-python3 .agents/skills/clarifyvoice-release/scripts/release_preflight.py \
+python3 .agents/skills/clarify-release/scripts/release_preflight.py \
   --repo . \
   --version X.Y.Z
 git diff --check
@@ -76,7 +76,7 @@ npm test
 
 For Windows UI, dependency, packaging, hotkey, focus, microphone, or
 transparency changes, also run `npm run deploy`. Confirm that
-`C:\repos\clarify-voice\dist\ClarifyVoice.exe` restarted and is responding.
+`C:\repos\clarify\dist\Clarify.exe` restarted and is responding.
 Require the user's manual acceptance for visible or interaction changes.
 
 Never treat unit tests or a successful PyInstaller build as visual acceptance.
@@ -104,7 +104,7 @@ Do not tag an unmerged branch or a commit whose post-merge CI is failing.
 Resolve the exact green `origin/master` SHA. Create an annotated tag:
 
 ```bash
-git tag -a vX.Y.Z <master-sha> -m "ClarifyVoice vX.Y.Z"
+git tag -a vX.Y.Z <master-sha> -m "Clarify vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
@@ -128,7 +128,7 @@ Require all of the following:
 - tag resolves to the intended green `master` commit;
 - release is the current latest release;
 - all required assets from the contract exist exactly once;
-- downloaded `ClarifyVoice.exe` matches `ClarifyVoice.exe.sha256`;
+- downloaded `Clarify.exe` matches `Clarify.exe.sha256`;
 - for a signed release, downloaded MSI and manifest CAB match their checksums,
   have valid RFC 3161 timestamped Authenticode signatures, and match the pinned
   publisher;

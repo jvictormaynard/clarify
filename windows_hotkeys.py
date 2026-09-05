@@ -1,4 +1,4 @@
-"""Native Windows global-hotkey and synthetic-key helpers for ClarifyVoice."""
+"""Native Windows global-hotkey and synthetic-key helpers for Clarify."""
 
 from __future__ import annotations
 

@@ -182,7 +182,7 @@ def _benchmark(args) -> dict:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="ClarifyVoice local-ASR maintainer harness (not product integration)")
+        description="Clarify local-ASR maintainer harness (not product integration)")
     parser.add_argument(
         "--root", help="Override the asset root (recommended for isolated acceptance runs)")
     commands = parser.add_subparsers(dest="command", required=True)

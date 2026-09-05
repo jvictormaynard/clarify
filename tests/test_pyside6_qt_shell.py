@@ -260,13 +260,13 @@ class QtSingleInstanceGuardTests(unittest.TestCase):
 
     def test_only_one_guard_can_own_a_name(self):
         first = QtSingleInstanceGuard(
-            "clarifyvoice-test",
-            lock_path=Path(tempfile.gettempdir()) / "clarifyvoice-test.lock",
+            "clarify-test",
+            lock_path=Path(tempfile.gettempdir()) / "clarify-test.lock",
             lock_factory=FakeLock,
         )
         second = QtSingleInstanceGuard(
-            "clarifyvoice-test",
-            lock_path=Path(tempfile.gettempdir()) / "clarifyvoice-test.lock",
+            "clarify-test",
+            lock_path=Path(tempfile.gettempdir()) / "clarify-test.lock",
             lock_factory=FakeLock,
         )
 
@@ -282,14 +282,14 @@ class QtSingleInstanceGuardTests(unittest.TestCase):
     def test_second_guard_signals_the_primary_activation_event(self):
         activation_api = FakeActivationApi()
         first = QtSingleInstanceGuard(
-            "clarifyvoice-test",
-            lock_path=Path(tempfile.gettempdir()) / "clarifyvoice-test.lock",
+            "clarify-test",
+            lock_path=Path(tempfile.gettempdir()) / "clarify-test.lock",
             lock_factory=FakeLock,
             activation_api=activation_api,
         )
         second = QtSingleInstanceGuard(
-            "clarifyvoice-test",
-            lock_path=Path(tempfile.gettempdir()) / "clarifyvoice-test.lock",
+            "clarify-test",
+            lock_path=Path(tempfile.gettempdir()) / "clarify-test.lock",
             lock_factory=FakeLock,
             activation_api=activation_api,
         )
@@ -312,8 +312,8 @@ class QtSingleInstanceGuardTests(unittest.TestCase):
     def test_release_wakes_and_joins_activation_listener_before_closing_handle(self):
         activation_api = BlockingActivationApi()
         guard = QtSingleInstanceGuard(
-            "clarifyvoice-test",
-            lock_path=Path(tempfile.gettempdir()) / "clarifyvoice-test.lock",
+            "clarify-test",
+            lock_path=Path(tempfile.gettempdir()) / "clarify-test.lock",
             lock_factory=FakeLock,
             activation_api=activation_api,
         )
@@ -688,7 +688,7 @@ class QtShellTests(unittest.TestCase):
             FakeWindow(),
             instance_guard=guard
             or QtSingleInstanceGuard(
-                lock_path=Path(tempfile.gettempdir()) / "clarifyvoice-shell.lock",
+                lock_path=Path(tempfile.gettempdir()) / "clarify-shell.lock",
                 lock_factory=FakeLock,
                 activation_api=FakeActivationApi(),
             ),
@@ -700,11 +700,11 @@ class QtShellTests(unittest.TestCase):
 
     def test_secondary_process_does_not_create_tray_or_hotkeys(self):
         guard = QtSingleInstanceGuard(
-            lock_path=Path(tempfile.gettempdir()) / "clarifyvoice-shell.lock",
+            lock_path=Path(tempfile.gettempdir()) / "clarify-shell.lock",
             lock_factory=FakeLock,
         )
         owner = QtSingleInstanceGuard(
-            lock_path=Path(tempfile.gettempdir()) / "clarifyvoice-shell.lock",
+            lock_path=Path(tempfile.gettempdir()) / "clarify-shell.lock",
             lock_factory=FakeLock,
         )
         self.assertTrue(owner.acquire())

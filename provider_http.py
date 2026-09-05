@@ -256,7 +256,7 @@ class SafeRotatingLogger:
             if self._logger is not None:
                 return self._logger
             self.directory.mkdir(parents=True, exist_ok=True)
-            logger = logging.getLogger(f"clarifyvoice.provider.{id(self)}")
+            logger = logging.getLogger(f"clarify.provider.{id(self)}")
             logger.setLevel(logging.INFO)
             logger.propagate = False
             handler = _BestEffortRotatingFileHandler(
@@ -647,7 +647,7 @@ def export_diagnostics(
     payload = {
         "schema_version": 1,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "application": {"name": "ClarifyVoice", "version": application_version},
+        "application": {"name": "Clarify", "version": application_version},
         "environment": {
             "platform": platform.system(),
             "platform_release": platform.release(),

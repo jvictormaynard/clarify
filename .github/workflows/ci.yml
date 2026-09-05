@@ -150,8 +150,8 @@ jobs:
             -OutputDirectory dist\baseline `
             -PayloadIdentity baseline-msi-0.1.1
 
-          $baselinePayload = "dist\baseline\ClarifyVoice.exe"
-          $currentPayload = "dist\ClarifyVoice.exe"
+          $baselinePayload = "dist\baseline\Clarify.exe"
+          $currentPayload = "dist\Clarify.exe"
           $baselineHash = (Get-FileHash $baselinePayload -Algorithm SHA256).Hash
           $currentHash = (Get-FileHash $currentPayload -Algorithm SHA256).Hash
           if ($baselineHash -eq $currentHash) {
@@ -163,20 +163,20 @@ jobs:
         run: |
           .\scripts\build-installer.ps1 `
             -Version 0.1.1 `
-            -SourceExe dist\baseline\ClarifyVoice.exe `
-            -OutputPath dist\ClarifyVoice-windows-x64-baseline.msi
+            -SourceExe dist\baseline\Clarify.exe `
+            -OutputPath dist\Clarify-windows-x64-baseline.msi
           .\scripts\build-installer.ps1 `
-            -SourceExe dist\ClarifyVoice.exe `
-            -OutputPath dist\ClarifyVoice-windows-x64.msi
+            -SourceExe dist\Clarify.exe `
+            -OutputPath dist\Clarify-windows-x64.msi
 
       - name: Smoke-test packaged QML entrypoint
         shell: pwsh
         run: |
-          $executable = (Resolve-Path .\dist\ClarifyVoice.exe).Path
-          $smokeDataDirectory = Join-Path $env:RUNNER_TEMP "clarifyvoice-packaged-smoke"
+          $executable = (Resolve-Path .\dist\Clarify.exe).Path
+          $smokeDataDirectory = Join-Path $env:RUNNER_TEMP "clarify-packaged-smoke"
           New-Item -Path $smokeDataDirectory -ItemType Directory -Force | Out-Null
-          $previousDataDirectory = $env:CLARIFYVOICE_DATA_DIR
-          $env:CLARIFYVOICE_DATA_DIR = $smokeDataDirectory
+          $previousDataDirectory = $env:CLARIFY_DATA_DIR
+          $env:CLARIFY_DATA_DIR = $smokeDataDirectory
           try {
             $process = Start-Process -FilePath $executable `
               -ArgumentList @('--hidden') -PassThru
@@ -192,9 +192,9 @@ jobs:
             }
           } finally {
             if ($null -eq $previousDataDirectory) {
-              Remove-Item Env:CLARIFYVOICE_DATA_DIR -ErrorAction SilentlyContinue
+              Remove-Item Env:CLARIFY_DATA_DIR -ErrorAction SilentlyContinue
             } else {
-              $env:CLARIFYVOICE_DATA_DIR = $previousDataDirectory
+              $env:CLARIFY_DATA_DIR = $previousDataDirectory
             }
           }
 
@@ -206,10 +206,10 @@ jobs:
         shell: pwsh
         run: |
           .\scripts\test-installer.ps1 `
-            -BaselineInstaller dist\ClarifyVoice-windows-x64-baseline.msi `
-            -CurrentInstaller dist\ClarifyVoice-windows-x64.msi `
-            -BaselinePayloadSha256 $((Get-FileHash dist\baseline\ClarifyVoice.exe -Algorithm SHA256).Hash) `
-            -CurrentPayloadSha256 $((Get-FileHash dist\ClarifyVoice.exe -Algorithm SHA256).Hash)
+            -BaselineInstaller dist\Clarify-windows-x64-baseline.msi `
+            -CurrentInstaller dist\Clarify-windows-x64.msi `
+            -BaselinePayloadSha256 $((Get-FileHash dist\baseline\Clarify.exe -Algorithm SHA256).Hash) `
+            -CurrentPayloadSha256 $((Get-FileHash dist\Clarify.exe -Algorithm SHA256).Hash)
 
       - name: Validate release manifest contract
         shell: pwsh
@@ -217,19 +217,19 @@ jobs:
           $version = python -c "from version import __version__; print(__version__)"
           python .\scripts\create_release_manifest.py `
             --version $version `
-            --installer dist\ClarifyVoice-windows-x64.msi `
+            --installer dist\Clarify-windows-x64.msi `
             --output dist\release-manifest.json
           .\scripts\build-manifest-container.ps1 `
             -Manifest dist\release-manifest.json `
-            -OutputPath dist\ClarifyVoice-release-manifest.cab
+            -OutputPath dist\Clarify-release-manifest.cab
 
       - name: Upload smoke-test build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ClarifyVoice-windows-${{ github.sha }}
+          name: Clarify-windows-${{ github.sha }}
           path: |
-            dist/ClarifyVoice.exe
-            dist/ClarifyVoice-windows-x64.msi
-            dist/ClarifyVoice-release-manifest.cab
+            dist/Clarify.exe
+            dist/Clarify-windows-x64.msi
+            dist/Clarify-release-manifest.cab
           if-no-files-found: error
           retention-days: 7

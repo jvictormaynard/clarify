@@ -30,7 +30,7 @@ from secret_store import (
 from voice_translation import VoiceTranslationConfig, VoiceTranslationLanguages, VoiceTranslationRoute
 
 
-_TEST_HOME = tempfile.TemporaryDirectory(prefix="clarifyvoice-repository-tests-")
+_TEST_HOME = tempfile.TemporaryDirectory(prefix="clarify-repository-tests-")
 os.environ["HOME"] = _TEST_HOME.name
 os.environ["APPDATA"] = _TEST_HOME.name
 
@@ -737,29 +737,29 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                     with self.assertRaises(OSError):
                         app._persist_autostart_preference(False, failing_bundle, registry)
                 self.assertTrue(app.APP_CONFIG["autostart"])
-                self.assertNotIn("ClarifyVoice", registry.values)
+                self.assertNotIn("Clarify", registry.values)
                 self.assertTrue(config_repository.load().startup.autostart)
 
                 with patch.object(app, "IS_WIN", True):
                     app._persist_autostart_preference(False, bundle, registry)
                 self.assertFalse(app.APP_CONFIG["autostart"])
-                self.assertNotIn("ClarifyVoice", registry.values)
+                self.assertNotIn("Clarify", registry.values)
                 self.assertFalse(config_repository.load().startup.autostart)
 
                 with patch.object(app, "IS_WIN", True):
                     app._persist_autostart_preference(True, bundle, registry)
                 self.assertTrue(app.APP_CONFIG["autostart"])
-                self.assertIn("ClarifyVoice", registry.values)
+                self.assertIn("Clarify", registry.values)
                 self.assertTrue(config_repository.load().startup.autostart)
 
-                custom_command = r"C:\Legacy\ClarifyVoice.exe --custom-start"
-                registry.values["ClarifyVoice"] = custom_command
-                registry.types["ClarifyVoice"] = 42
+                custom_command = r"C:\Legacy\Clarify.exe --custom-start"
+                registry.values["Clarify"] = custom_command
+                registry.types["Clarify"] = 42
                 with patch.object(app, "IS_WIN", True):
                     with self.assertRaises(OSError):
                         app._persist_autostart_preference(False, failing_bundle, registry)
-                self.assertEqual(registry.values["ClarifyVoice"], custom_command)
-                self.assertEqual(registry.types["ClarifyVoice"], 42)
+                self.assertEqual(registry.values["Clarify"], custom_command)
+                self.assertEqual(registry.types["Clarify"], 42)
             finally:
                 app.APP_CONFIG.clear()
                 app.APP_CONFIG.update(original)

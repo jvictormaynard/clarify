@@ -1,4 +1,4 @@
-"""Real Qt Quick/QML entrypoint for ClarifyVoice dictation."""
+"""Real Qt Quick/QML entrypoint for Clarify dictation."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ def _branding_icon_path() -> Path:
             return candidate
 
     raise FileNotFoundError(
-        f"ClarifyVoice branding icon was not found under: {', '.join(map(str, roots))}"
+        f"Clarify branding icon was not found under: {', '.join(map(str, roots))}"
     )
 
 
@@ -53,7 +53,7 @@ def _load_branding_icon() -> QIcon:
 
     icon = QIcon(str(_branding_icon_path()))
     if icon.isNull():
-        raise RuntimeError("ClarifyVoice branding icon could not be loaded")
+        raise RuntimeError("Clarify branding icon could not be loaded")
     return icon
 
 
@@ -80,7 +80,7 @@ def _qml_root() -> Path:
             return candidate
 
     raise FileNotFoundError(
-        f"ClarifyVoice QML assets were not found under: {', '.join(map(str, roots))}"
+        f"Clarify QML assets were not found under: {', '.join(map(str, roots))}"
     )
 
 
@@ -116,7 +116,7 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from qt_shell import QtShell, WindowsGlobalHotkeyBackend  # noqa: E402
 
 
-if os.environ.get("CLARIFYVOICE_IMPORT_SMOKE_TEST") == "1":
+if os.environ.get("CLARIFY_IMPORT_SMOKE_TEST") == "1":
     # Import Qt and all application modules without opening the UI. This catches
     # DLL collection conflicts before a new executable replaces the installed one.
     raise SystemExit(0)
@@ -149,7 +149,7 @@ def _start_shell_if_available(shell) -> ShellStartResult:
         # hotkey resources.  It deliberately keeps the instance guard owned so
         # this fallback runtime remains single-instance until shutdown.
         print(
-            f"ClarifyVoice QML shell unavailable: {error}",
+            f"Clarify QML shell unavailable: {error}",
             file=sys.stderr,
         )
         return ShellStartResult.SETUP_FAILED
@@ -312,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
         start_hidden = _hidden_start_requested(arguments)
     except ValueError:
         print(
-            "ClarifyVoice QML accepts only the optional --hidden launch flag.",
+            "Clarify QML accepts only the optional --hidden launch flag.",
             file=sys.stderr,
         )
         return 2
@@ -322,14 +322,14 @@ def main(argv: list[str] | None = None) -> int:
     # controls deterministic so the QML palette owns every interaction state.
     QQuickStyle.setStyle("Basic")
     app = QApplication(sys.argv[:1])
-    app.setApplicationName("ClarifyVoice")
-    app.setOrganizationName("ClarifyVoice")
+    app.setApplicationName("Clarify")
+    app.setOrganizationName("Clarify")
 
     scheduler = QtWorkflowScheduler(app)
     try:
         runtime = create_real_workflow_runtime(scheduler)
     except QtRuntimeError as error:
-        print(f"ClarifyVoice QML startup failed: {error}", file=sys.stderr)
+        print(f"Clarify QML startup failed: {error}", file=sys.stderr)
         return 2
 
     workflow_service = runtime.workflow_service
@@ -337,7 +337,7 @@ def main(argv: list[str] | None = None) -> int:
     if repositories is None:
         runtime.shutdown()
         print(
-            "ClarifyVoice QML startup failed: runtime repositories are missing",
+            "Clarify QML startup failed: runtime repositories are missing",
             file=sys.stderr,
         )
         return 2
@@ -425,7 +425,7 @@ def main(argv: list[str] | None = None) -> int:
     engine.load(QUrl.fromLocalFile(str(qml_root / "StatusPill.qml")))
     roots = engine.rootObjects()
     window = next(
-        (root for root in roots if root.objectName() == "clarifyVoiceMainWindow"),
+        (root for root in roots if root.objectName() == "clarifyMainWindow"),
         None,
     )
     pill_window = next(

@@ -1,4 +1,4 @@
-"""Typed Qt Quick settings controller for the ClarifyVoice frontend.
+"""Typed Qt Quick settings controller for the Clarify frontend.
 
 The controller keeps an :class:`repositories.AppConfig` draft and exposes
 only typed scalar properties and workflow-route mappings to QML.  Persistence
@@ -62,7 +62,7 @@ from windows_hotkeys import supports_push_to_talk
 
 
 AUTOSTART_REGISTRY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
-AUTOSTART_VALUE_NAME = "ClarifyVoice"
+AUTOSTART_VALUE_NAME = "Clarify"
 
 _HOTKEY_ACTION_LABELS = {
     HotkeyAction.RECORDING: "Record / stop",
@@ -974,7 +974,7 @@ class QmlSettingsController(QObject):
 
         threading.Thread(
             target=run,
-            name="ClarifyVoiceQmlMicrophoneTest",
+            name="ClarifyQmlMicrophoneTest",
             daemon=True,
         ).start()
         return True
@@ -1169,7 +1169,7 @@ class QmlSettingsController(QObject):
 
         threading.Thread(
             target=validate,
-            name=f"ClarifyVoiceProviderValidation-{provider_id}",
+            name=f"ClarifyProviderValidation-{provider_id}",
             daemon=True,
         ).start()
         return True

@@ -68,11 +68,11 @@ class DictionarySettingsControllerTests(unittest.TestCase):
             DictionarySnippets.empty())
 
     def test_failed_update_does_not_mutate_existing_profile(self):
-        self.controller.add_dictionary("ClarifyVoice")
+        self.controller.add_dictionary("Clarify")
         before = self.controller.state
 
         with self.assertRaises(DictionarySnippetsError):
-            self.controller.update_dictionary(0, "ClarifyVoice", aliases=("x", "X"))
+            self.controller.update_dictionary(0, "Clarify", aliases=("x", "X"))
 
         self.assertEqual(self.controller.state, before)
         self.assertEqual(

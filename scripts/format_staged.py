@@ -80,7 +80,7 @@ def main() -> int:
     conflicting = unstaged_files(paths)
     if conflicting:
         print(
-            "ClarifyVoice pre-commit: stage the complete file before formatting "
+            "Clarify pre-commit: stage the complete file before formatting "
             "it automatically:",
             file=sys.stderr,
         )
@@ -91,7 +91,7 @@ def main() -> int:
     command = ruff_command()
     if command is None:
         print(
-            "ClarifyVoice pre-commit: Ruff was not found. Run npm run setup "
+            "Clarify pre-commit: Ruff was not found. Run npm run setup "
             "or install the locked development dependencies.",
             file=sys.stderr,
         )

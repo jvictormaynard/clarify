@@ -1,4 +1,4 @@
-"""Typed contracts shared by ClarifyVoice provider adapters."""
+"""Typed contracts shared by Clarify provider adapters."""
 
 from __future__ import annotations
 

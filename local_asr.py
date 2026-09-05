@@ -42,7 +42,7 @@ from provider_types import (
 PROVIDER_ID = "local_asr"
 MODEL_ID = "ggml-small"
 MANIFEST_FILENAME = "local_asr_manifest.json"
-ROOT_MARKER = ".clarifyvoice-local-asr-root"
+ROOT_MARKER = ".clarify-local-asr-root"
 ProgressCallback = Callable[[str, int, int], None]
 LOCAL_ASR_METADATA = ProviderMetadata(
     provider_id=PROVIDER_ID,
@@ -240,9 +240,9 @@ def default_manifest_path() -> Path:
 def default_install_root() -> Path:
     if platform.system() == "Windows":
         parent = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-        return parent / "ClarifyVoice" / "local-asr"
+        return parent / "Clarify" / "local-asr"
     parent = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return parent / "ClarifyVoice" / "local-asr"
+    return parent / "Clarify" / "local-asr"
 
 
 def _sha256(
@@ -554,7 +554,7 @@ class LocalASRInstaller:
         try:
             response = self._session.get(
                 asset.url, stream=True, timeout=(10, 60),
-                headers={"User-Agent": "ClarifyVoice-local-asr/1"})
+                headers={"User-Agent": "Clarify-local-asr/1"})
             response.raise_for_status()
             with destination.open("wb") as stream:
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
@@ -619,7 +619,7 @@ class LocalASRInstaller:
             raise LocalASRError(
                 "Cannot resolve the local-ASR asset root for locking; retry the operation."
             ) from error
-        lock_path = root.parent / f".{root.name}.clarifyvoice-local-asr.lock"
+        lock_path = root.parent / f".{root.name}.clarify-local-asr.lock"
         return _AssetRootInstallLock(lock_path)
 
     def _assert_owned_root(self) -> None:
@@ -1231,7 +1231,7 @@ def _require_unelevated_windows_process(
     if elevation is True:
         raise LocalASRSidecarError(
             "Local ASR refuses to start from an elevated Windows process. "
-            "Restart ClarifyVoice without administrator privileges.")
+            "Restart Clarify without administrator privileges.")
     if elevation is None:
         raise LocalASRSidecarError(
             "Local ASR could not verify Windows process privileges and refused "
@@ -1329,7 +1329,7 @@ class LocalASRSidecarManager:
                 "Cannot prepare the local-ASR sidecar lock; retry the operation."
             ) from error
         return _AssetRootInstallLock(
-            root.parent / f".{root.name}.clarifyvoice-local-asr.lock")
+            root.parent / f".{root.name}.clarify-local-asr.lock")
 
     def _release_sidecar_lock_locked(self) -> None:
         lock = self._sidecar_lock

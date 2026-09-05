@@ -99,7 +99,7 @@ if ($Dev) {
     ) "Could not install the pinned bootstrap tools."
 }
 
-Write-Host "Installing ClarifyVoice dependencies..."
+Write-Host "Installing Clarify dependencies..."
 $requirements = if ($Dev) {
     Join-Path $repoRoot "requirements-dev.txt"
 } else {
@@ -108,11 +108,11 @@ $requirements = if ($Dev) {
 Invoke-CheckedProcess $venvPython @(
     "-m", "pip", "install", "--disable-pip-version-check", "-r", $requirements,
     "-c", $lockFile
-) "Could not install ClarifyVoice dependencies."
+) "Could not install Clarify dependencies."
 
 Write-Host "Installing the repository Git hooks..."
 Invoke-CheckedProcess "git.exe" @(
     "-C", $repoRoot, "config", "core.hooksPath", ".githooks"
 ) "Could not configure the repository Git hooks."
 
-Write-Host "ClarifyVoice environment is ready."
+Write-Host "Clarify environment is ready."

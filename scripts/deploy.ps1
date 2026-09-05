@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$InstallPath = $env:CLARIFYVOICE_INSTALL_PATH
+    [string]$InstallPath = $env:CLARIFY_INSTALL_PATH
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +13,7 @@ $repoQmlPython = Join-Path $repoRoot "spikes\pyside6"
 $repoQml = Join-Path $repoQmlPython "qml"
 $repoLocalAsrManifest = Join-Path $repoRoot "local_asr_manifest.json"
 $repoLocalAsrLicenses = Join-Path $repoRoot "licenses"
-$buildRoot = Join-Path $env:TEMP "clarify-voice-build"
+$buildRoot = Join-Path $env:TEMP "clarify-build"
 $venvDir = Join-Path $buildRoot "venv"
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
 $requirementsDir = Join-Path $buildRoot "requirements"
@@ -23,7 +23,7 @@ $sourceDir = Join-Path $buildRoot "source"
 $distDir = Join-Path $buildRoot "dist"
 $workDir = Join-Path $buildRoot "work"
 $specDir = Join-Path $buildRoot "spec"
-$builtExe = Join-Path $distDir "ClarifyVoice.exe"
+$builtExe = Join-Path $distDir "Clarify.exe"
 $pipOutLog = Join-Path $buildRoot "pip.stdout.log"
 $pipErrLog = Join-Path $buildRoot "pip.stderr.log"
 $versionsOutLog = Join-Path $buildRoot "versions.stdout.log"
@@ -86,7 +86,7 @@ function Resolve-InstallPath {
         }
     }
 
-    return Join-Path $env:LOCALAPPDATA "ClarifyVoice\ClarifyVoice.exe"
+    return Join-Path $env:LOCALAPPDATA "Clarify\Clarify.exe"
 }
 
 function Resolve-Python {
@@ -107,7 +107,7 @@ function Resolve-Python {
         return $installed.FullName
     }
 
-    throw "A Windows Python installation is required to build ClarifyVoice."
+    throw "A Windows Python installation is required to build Clarify."
 }
 
 $targetExe = Resolve-InstallPath $InstallPath
@@ -115,7 +115,7 @@ $python = Resolve-Python
 $targetDir = Split-Path -Parent $targetExe
 $backupExe = "$targetExe.backup"
 
-Write-Host "Building ClarifyVoice..."
+Write-Host "Building Clarify..."
 New-Item $buildRoot, $requirementsDir -ItemType Directory -Force | Out-Null
 Copy-Item (Join-Path $repoRoot "requirements.txt") $requirementsDir -Force
 Copy-Item (Join-Path $repoRoot "requirements-dev.txt") $requirementsDir -Force
@@ -224,7 +224,7 @@ Remove-Item (Join-Path $soxDir "*.pdf"),
 $pyinstallerArgs = @(
     "-m", "PyInstaller",
     "--noconfirm", "--onefile", "--windowed",
-    "--name", "ClarifyVoice",
+    "--name", "Clarify",
     "--icon", (Join-Path $assets "branding\clarify.ico"),
     "--distpath", $distDir,
     "--workpath", $workDir,
@@ -256,39 +256,39 @@ foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File))
 }
 
 # Never copy or bundle the repository .env. Public and local executables read
-# provider credentials from the user's ClarifyVoice config directory instead.
+# provider credentials from the user's Clarify config directory instead.
 $pyinstallerArgs += $source
 
 $inheritedPath = $env:PATH
 $env:PATH = Get-IsolatedBuildPath $inheritedPath
 try {
     Invoke-LoggedProcess $venvPython $pyinstallerArgs $buildOutLog $buildErrLog `
-        "ClarifyVoice build failed. The installed version was not changed."
+        "Clarify build failed. The installed version was not changed."
 } finally {
     $env:PATH = $inheritedPath
 }
 if (-not (Test-Path $builtExe)) {
-    throw "ClarifyVoice build completed without producing an executable."
+    throw "Clarify build completed without producing an executable."
 }
 
 $smokeOutLog = Join-Path $buildRoot "smoke.stdout.log"
 $smokeErrLog = Join-Path $buildRoot "smoke.stderr.log"
-$previousSmokeTest = $env:CLARIFYVOICE_IMPORT_SMOKE_TEST
-$env:CLARIFYVOICE_IMPORT_SMOKE_TEST = "1"
+$previousSmokeTest = $env:CLARIFY_IMPORT_SMOKE_TEST
+$env:CLARIFY_IMPORT_SMOKE_TEST = "1"
 try {
     $smoke = Start-Process -FilePath $builtExe -Wait -PassThru `
         -WindowStyle Hidden -RedirectStandardOutput $smokeOutLog `
         -RedirectStandardError $smokeErrLog
 } finally {
-    $env:CLARIFYVOICE_IMPORT_SMOKE_TEST = $previousSmokeTest
+    $env:CLARIFY_IMPORT_SMOKE_TEST = $previousSmokeTest
 }
 if ($smoke.ExitCode -ne 0) {
     Get-Content $smokeOutLog, $smokeErrLog -ErrorAction SilentlyContinue
-    throw "ClarifyVoice import smoke test failed. The installed version was not changed."
+    throw "Clarify import smoke test failed. The installed version was not changed."
 }
 
 Write-Host "Updating $targetExe..."
-Get-Process ClarifyVoice -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process Clarify -ErrorAction SilentlyContinue | Stop-Process -Force
 New-Item $targetDir -ItemType Directory -Force | Out-Null
 
 try {
@@ -305,4 +305,4 @@ try {
 }
 
 Start-Process $targetExe -WorkingDirectory $targetDir
-Write-Host "ClarifyVoice was updated and restarted successfully."
+Write-Host "Clarify was updated and restarted successfully."

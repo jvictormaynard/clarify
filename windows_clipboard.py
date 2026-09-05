@@ -1,4 +1,4 @@
-"""Small, testable Windows clipboard adapter used by ClarifyVoice.
+"""Small, testable Windows clipboard adapter used by Clarify.
 
 The adapter deliberately handles only clipboard formats that can be copied as
 owned global-memory blocks.  This keeps restoration deterministic and avoids
