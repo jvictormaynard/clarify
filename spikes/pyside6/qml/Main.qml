@@ -319,17 +319,6 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            id: fileButton
-                            objectName: "fileButton"
-                            text: "Files"
-                            theme: root.visualTheme
-                            Layout.preferredWidth: 48
-                            Layout.preferredHeight: 26
-                            Accessible.name: "Import audio files"
-                            onClicked: workflow.openFiles()
-                        }
-
-                        AppButton {
                             id: settingsButton
                             objectName: "settingsButton"
                             iconSource: "icons/settings.svg"
@@ -1491,6 +1480,22 @@ ApplicationWindow {
                                 }
                             }
 
+                            }
+
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                visualTheme: root.visualTheme
+                                title: "Audio files"
+                                visible: settingsPage.selectedSection === 1
+                                AppButton {
+                                    objectName: "settingsImportFilesButton"
+                                    Layout.preferredWidth: 136
+                                    text: "Import audio files"
+                                    theme: root.visualTheme
+                                    quiet: true
+                                    Accessible.name: "Import audio files"
+                                    onClicked: workflow.openFiles()
+                                }
                             }
 
                             Label {

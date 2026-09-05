@@ -311,6 +311,7 @@ def main():
             window = engine.rootObjects()[0]
             window.show()
             shot("home")
+            assert window.findChild(QObject, "fileButton") is None
             bridge.openSettings()
             settings_page = window.findChild(QObject, "settingsPage")
             shot("general")
@@ -508,7 +509,10 @@ def main():
             # Restore defaults before subsequent mocked catalog checks.
             controller.setProviderBaseUrl("")
 
-            bridge.openFiles()
+            settings_page.selectSection(1)
+            settle()
+            click(visible_item("settingsImportFilesButton"))
+            assert bridge.surface == "files"
             shot("audio-files")
             choose("batchExecutionBox", 1)
             cloud_providers = [
