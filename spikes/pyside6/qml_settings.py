@@ -927,6 +927,27 @@ class QmlSettingsController(QObject):
 
         return self.setMicrophone(value)
 
+    @Property(str, notify=microphoneChanged)
+    def quickMicrophoneId(self) -> str:
+        return self._config_repository.load().microphone.selected_id or ""
+
+    @Slot(str, result=bool)
+    def selectQuickMicrophone(self, value: str) -> bool:
+        """Apply only this preference; preserve unrelated settings drafts."""
+        if value not in {option["id"] for option in self.microphoneDevices}:
+            self._set_error(ValueError("Microphone unavailable"))
+            return False
+        microphone = MicrophoneSettings(value or None)
+        if not self._persist_ui_preference(
+            lambda config: replace(config, microphone=microphone)
+        ):
+            return False
+        self.stopMicrophoneTest()
+        self._config = replace(self._config, microphone=microphone)
+        self.configChanged.emit()
+        self.microphoneChanged.emit()
+        return True
+
     @Slot("QVariantMap", result=bool)
     def setRecordingControls(self, value: object) -> bool:
         """Validate boundary settings through the shared typed policy."""

@@ -387,6 +387,18 @@ def main(argv: list[str] | None = None) -> int:
         bridge.setTargetExecutable(target.executable or "")
         return voice_translation.startForTarget(target)
 
+    try:
+        from .qml_quick_paste import QuickPasteController
+    except ImportError:
+        from qml_quick_paste import QuickPasteController
+
+    quick_paste = QuickPasteController(
+        runtime.clipboard,
+        scheduler.run_dispatch,
+        app.allWindows,
+        lambda: shell.hide_window(),
+        parent=app,
+    )
     bridge = QmlWorkflowBridge(
         workflow_service,
         app_config=loaded_config,
@@ -395,7 +407,8 @@ def main(argv: list[str] | None = None) -> int:
         voice_translation_handler=toggle_voice_translation,
         voice_translation_controller=voice_translation,
         audio_batch_controller=audio_batch,
-        target_provider=runtime.clipboard.capture_target,
+        target_provider=quick_paste.capture_target,
+        paste_runner=quick_paste.paste,
         parent=app,
     )
     hotkeys = None

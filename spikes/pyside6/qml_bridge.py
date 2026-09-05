@@ -70,6 +70,7 @@ class QmlWorkflowBridge(QObject):
     languageChanged = Signal()
     copyCompleted = Signal(bool)
     resultRequested = Signal()
+    quickPasteCompleted = Signal(str)
 
     _TRANSLATION_OPTIONS = (
         {"code": "en", "label": "English"},
@@ -158,6 +159,7 @@ class QmlWorkflowBridge(QObject):
         voice_translation_controller: Any | None = None,
         audio_batch_controller: Any | None = None,
         target_provider: Callable[[], Any | None] | None = None,
+        paste_runner: Callable | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -171,6 +173,12 @@ class QmlWorkflowBridge(QObject):
         self._voice_translation_controller = voice_translation_controller
         self._audio_batch_controller = audio_batch_controller
         self._target_provider = target_provider
+        self._paste_runner = paste_runner
+        self._last_transcription = ""
+        self._quick_paste_busy = False
+        self._quick_feedback = ""
+        self._quick_feedback_id = 0
+        self.quickPasteCompleted.connect(self._finish_quick_paste)
         self._voice_state = (
             getattr(voice_translation_controller, "state", None)
             if voice_translation_controller is not None
@@ -251,6 +259,7 @@ class QmlWorkflowBridge(QObject):
     def busy(self) -> bool:
         return bool(
             self._state.phase in self._BUSY_PHASES
+            or self._quick_paste_busy
             or getattr(self._voice_translation_controller, "active", False)
             or getattr(self._audio_batch_controller, "running", False)
         )
@@ -286,7 +295,7 @@ class QmlWorkflowBridge(QObject):
             and not self._voice_surface()
             and not self._result_visible
             and not self._finishing
-            and self._state.phase in self._ERROR_PHASES
+            and (self._state.phase in self._ERROR_PHASES or bool(self._quick_feedback))
         )
 
     @Property(bool, notify=surfaceChanged)
@@ -295,14 +304,22 @@ class QmlWorkflowBridge(QObject):
 
     @Property(int, notify=surfaceChanged)
     def feedbackOperationId(self) -> int:
-        return self._state.operation_id
+        return (
+            self._quick_feedback_id
+            if self._quick_feedback
+            else self._state.operation_id
+        )
 
     @Property(str, notify=statusChanged)
     def feedbackTitle(self) -> str:
-        return self.status.partition(". ")[0].rstrip(".")
+        return self._quick_feedback or self.status.partition(". ")[0].rstrip(".")
 
     @Slot(int)
     def dismissFeedback(self, operation_id: int) -> None:
+        if self._quick_feedback and operation_id == self._quick_feedback_id:
+            self._quick_feedback = ""
+            self._notify_all()
+            return
         # An old animation/timer must never dismiss a newer operation or
         # discard audio that the user can still explicitly resend.
         if (
@@ -424,6 +441,13 @@ class QmlWorkflowBridge(QObject):
     @Slot(object)
     def _on_workflow_state(self, state: WorkflowState) -> None:
         self._state = state
+        self._quick_feedback = ""
+        if (
+            state.phase is WorkflowPhase.COMPLETED
+            and state.kind == "dictation"
+            and state.result_text
+        ):
+            self._last_transcription = state.result_text
         if state.target_executable:
             self.setTargetExecutable(state.target_executable)
         self._finishing = False
@@ -546,6 +570,8 @@ class QmlWorkflowBridge(QObject):
 
     @Slot()
     def startRecording(self) -> None:
+        if self._quick_paste_busy:
+            return
         if self._state.phase in (
             WorkflowPhase.COMPLETED,
             WorkflowPhase.FAILED,
@@ -585,6 +611,8 @@ class QmlWorkflowBridge(QObject):
     def handleHotkey(self, action: str) -> bool:
         """Dispatch a native-shell action through the real workflow service."""
 
+        if self._quick_paste_busy:
+            return False
         normalized = str(action or "").strip().lower()
         if normalized == "voice_translation_hotkey":
             # Dedicated voice translation intentionally lives outside
@@ -771,4 +799,46 @@ class QmlWorkflowBridge(QObject):
         if bool(getattr(self._audio_batch_controller, "running", False)):
             return
         self._files_visible = False
+        self._notify_all()
+
+    @Property(bool, notify=surfaceChanged)
+    def canPasteLastTranscription(self) -> bool:
+        return bool(self._last_transcription and self._paste_runner and not self.busy)
+
+    @Slot(result=bool)
+    def pasteLastTranscription(self) -> bool:
+        if not self.canPasteLastTranscription:
+            return False
+        self._quick_feedback = ""
+        self._quick_paste_busy = True
+        self._notify_all()
+        try:
+            self._paste_runner(self._last_transcription, self.quickPasteCompleted.emit)
+        except Exception:
+            self.quickPasteCompleted.emit("failed")
+        return True
+
+    @Slot(str)
+    def showQuickNotice(self, text: str) -> None:
+        self._quick_feedback_id -= 1
+        self._quick_feedback = text
+        self._notify_all()
+
+    @Slot(str)
+    def _finish_quick_paste(self, result: str) -> None:
+        self._quick_paste_busy = False
+        if result != "pasted":
+            self._quick_feedback_id -= 1
+            if result == "copied":
+                self._quick_feedback = (
+                    "Texto copiado. Use Ctrl+V para colar"
+                    if self._language == "pt"
+                    else "Text copied. Press Ctrl+V to paste"
+                )
+            else:
+                self._quick_feedback = (
+                    "Não foi possível colar a transcrição"
+                    if self._language == "pt"
+                    else "Could not paste the transcript"
+                )
         self._notify_all()

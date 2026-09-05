@@ -31,6 +31,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QFont, QFontDatabase, QKeyEvent
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuick import QQuickWindow
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
@@ -311,8 +312,57 @@ def main():
             window = engine.rootObjects()[0]
             window.show()
             shot("home")
+            microphone_button = visible_item("microphoneButton")
+            assert microphone_button.property("text") == ""
+            assert (
+                microphone_button.property("iconSource").toString().endswith("mic.svg")
+            )
+            assert window.width() < 270
+            for name in (
+                "microphoneButton",
+                "languageButton",
+                "modeButton",
+                "settingsButton",
+                "closeButton",
+            ):
+                control = visible_item(name)
+                left = control.mapToScene(QPointF(0, 0)).x()
+                right = control.mapToScene(QPointF(control.width(), 0)).x()
+                assert 0 <= left < right <= window.width(), (name, left, right)
+            with patch.object(bridge, "_submit", side_effect=lambda action: action()):
+                with patch.object(service, "dispatch", create=True) as dispatch:
+                    click(microphone_button)
+                    assert dispatch.call_count == 1
+                    assert type(dispatch.call_args.args[0]).__name__ == "StartDictation"
             assert window.findChild(QObject, "fileButton") is None
-            bridge.openSettings()
+            click(visible_item("settingsButton"))
+            quick_menu = window.findChild(QObject, "quickMenu")
+            assert quick_menu.property("visible")
+            assert bridge.surface == "idle"
+            quick_settings = window.findChild(QObject, "quickSettingsItem")
+            menu_window = quick_settings.window()
+            assert isinstance(menu_window, QQuickWindow)
+            assert menu_window != window, "menu must extend outside the compact bar"
+            if output:
+                assert menu_window.grabWindow().save(str(output / "quick-menu.png"))
+            assert not window.findChild(QObject, "quickPasteItem").property("enabled")
+            QTest.keyClick(menu_window, Qt.Key.Key_Down)
+            QTest.keyClick(menu_window, Qt.Key.Key_Right)
+            settle()
+            microphone_menu = window.findChild(QObject, "quickMicrophoneMenu")
+            assert microphone_menu.property("visible")
+            microphone_option = microphone_menu.findChild(
+                QObject, "quickMicrophoneOption1"
+            )
+            assert microphone_option is not None
+            microphone_option.triggered.emit()
+            settle()
+            assert repositories.config.load().microphone.selected_id == "fixture-usb"
+            click(visible_item("settingsButton"))
+            settle()
+            menu_window = quick_settings.window()
+            click(quick_settings, menu_window)
+            assert bridge.surface == "settings"
             settings_page = window.findChild(QObject, "settingsPage")
             shot("general")
             initial_config = controller._config

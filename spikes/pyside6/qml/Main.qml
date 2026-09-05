@@ -60,6 +60,86 @@ ApplicationWindow {
     Theme { id: theme }
     property Theme visualTheme: theme
 
+    QuickMenu {
+        id: quickMenu
+        objectName: "quickMenu"
+        visualTheme: root.visualTheme
+        onAboutToShow: settings.refreshMicrophoneInventory()
+        property var pendingAction: null
+        function runAfterClose(action) {
+            pendingAction = action
+            close()
+        }
+        onClosed: {
+            var action = pendingAction
+            pendingAction = null
+            if (action) Qt.callLater(action)
+        }
+
+        QuickMenu {
+            id: microphoneMenu
+            objectName: "quickMicrophoneMenu"
+            visualTheme: root.visualTheme
+            title: "Microphone"
+            icon.source: "icons/mic.svg"
+            width: 360
+            Instantiator {
+                model: settings.microphoneDevices
+                delegate: QuickMenuItem {
+                    required property var modelData
+                    required property int index
+                    objectName: "quickMicrophoneOption" + index
+                    visualTheme: root.visualTheme
+                    text: modelData.label
+                    checkable: true
+                    checked: settings.quickMicrophoneId === modelData.id
+                    onTriggered: {
+                        microphoneMenu.close()
+                        quickMenu.close()
+                        if (!settings.selectQuickMicrophone(modelData.id))
+                            workflow.showQuickNotice("Could not change microphone")
+                    }
+                }
+                onObjectAdded: function(index, object) { microphoneMenu.insertItem(index, object) }
+                onObjectRemoved: function(index, object) { microphoneMenu.removeItem(object) }
+            }
+        }
+        QuickMenuItem {
+            objectName: "quickPasteItem"
+            visualTheme: root.visualTheme
+            text: "Paste last transcript"
+            icon.source: "icons/paste.svg"
+            enabled: workflow.canPasteLastTranscription
+            onTriggered: quickMenu.runAfterClose(function() { workflow.pasteLastTranscription() })
+            ToolTip.visible: hovered && !enabled
+            ToolTip.text: "Available after your first transcription this session"
+        }
+        QuickMenuItem {
+            objectName: "quickFilesItem"
+            visualTheme: root.visualTheme
+            text: "Import audio files"
+            icon.source: "icons/audio-lines.svg"
+            onTriggered: quickMenu.runAfterClose(function() {
+                workflow.openFiles()
+                root.requestActivate()
+            })
+        }
+        MenuSeparator {
+            topPadding: 4; bottomPadding: 4
+            contentItem: Rectangle { implicitHeight: 1; color: theme.controlPressed }
+        }
+        QuickMenuItem {
+            objectName: "quickSettingsItem"
+            visualTheme: root.visualTheme
+            text: "Settings"
+            icon.source: "icons/settings.svg"
+            onTriggered: quickMenu.runAfterClose(function() {
+                workflow.openSettings()
+                root.requestActivate()
+            })
+        }
+    }
+
     Shortcut {
         sequence: "Escape"
         onActivated: {
@@ -156,7 +236,7 @@ ApplicationWindow {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 15
+                    anchors.leftMargin: 10
                     anchors.rightMargin: 8
                     spacing: 5
 
@@ -164,12 +244,10 @@ ApplicationWindow {
                         id: statusArea
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        Layout.minimumWidth: 0
+                        Layout.minimumWidth: 32
                         Layout.alignment: Qt.AlignVCenter
 
-                        // The shell is frameless, so keep the status area
-                        // draggable without taking pointer ownership away
-                        // from the controls to its right.
+                        // Keep dragging available around the microphone button.
                         DragHandler {
                             id: windowDragHandler
                             target: null
@@ -179,33 +257,23 @@ ApplicationWindow {
                             }
                         }
 
-                        RowLayout {
-                            anchors.fill: parent
-                            spacing: 6
-
-                            Label {
-                                id: statusLabel
-                                Layout.fillWidth: true
-                                text: workflow.surface === "idle" ? "Ready"
-                                      : workflow.surface === "recording" ? "Recording"
-                                      : workflow.surface === "processing" ? "Processing…"
-                                      : workflow.surface === "voice_processing" ? workflow.status
-                                      : workflow.status
-                                color: theme.text
-                                font.pixelSize: 13
-                                font.weight: Font.Bold
-                                elide: Text.ElideRight
-                                verticalAlignment: Text.AlignVCenter
-                                Accessible.name: workflow.status
-                            }
-
-                        }
-
-                        TapHandler {
+                        AppButton {
+                            objectName: "microphoneButton"
+                            anchors.centerIn: parent
+                            width: 32
+                            height: 32
+                            theme: root.visualTheme
+                            iconSource: "icons/mic.svg"
+                            iconSize: 18
+                            quiet: true
                             enabled: workflow.surface === "idle"
                                      || workflow.surface === "recording"
-                            gesturePolicy: TapHandler.ReleaseWithinBounds
-                            onTapped: {
+                            Accessible.name: workflow.surface === "recording"
+                                             ? "Stop recording" : "Start recording"
+                            ToolTip.visible: hovered
+                            ToolTip.delay: 600
+                            ToolTip.text: Accessible.name
+                            onClicked: {
                                 if (workflow.surface === "recording")
                                     workflow.stopRecording()
                                 else
@@ -326,8 +394,13 @@ ApplicationWindow {
                             quiet: true
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
-                            Accessible.name: "Open settings"
-                            onClicked: workflow.openSettings()
+                            Accessible.name: "Open quick actions"
+                            onClicked: {
+                                var position = mapToItem(root.contentItem, width, height)
+                                quickMenu.x = Math.max(0, position.x - quickMenu.width)
+                                quickMenu.y = position.y + 6
+                                quickMenu.open()
+                            }
                         }
 
                         AppButton {
