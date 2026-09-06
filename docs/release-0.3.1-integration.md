@@ -25,3 +25,5 @@ while the release retains the newer active implementation.
 
 The release uses `main`, the live default branch, and the existing community
 portable workflow. It does not change signing infrastructure or enable MSI updates.
+
+Validation: 1,086 native-path Windows regression tests passed (5 skipped). The executable was rebuilt and restarted at the existing installation path. The deployment script now matches that path, so legacy executable names are also stopped correctly.

@@ -14,6 +14,8 @@ Notable user-facing changes are documented here. This project follows
 
 ## [0.3.1] - 2026-09-06
 
+- Local deployment now stops the executable at the installation path, including legacy ClarifyVoice.exe installs.
+
 ### Fixed
 
 - Preserve the exact original transcript when optional refinement fails, with a brief status warning and partial history record.
