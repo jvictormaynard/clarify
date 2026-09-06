@@ -96,7 +96,7 @@ function Invoke-PyInstaller {
 
 # Both builds use the same isolated environment, output root, and PyInstaller
 # mode. The production scripts and dist/ directory are never called.
-Invoke-PyInstaller "ClarifyVoice-customtkinter" (Join-Path $repoRoot "app.py") $customOutput @(
+Invoke-PyInstaller "Clarify-customtkinter" (Join-Path $repoRoot "app.py") $customOutput @(
     "--add-data", "$(Join-Path $repoRoot 'extra');extra",
     "--add-data", "$(Join-Path $repoRoot 'assets');assets",
     "--hidden-import", "sounddevice",
@@ -104,7 +104,7 @@ Invoke-PyInstaller "ClarifyVoice-customtkinter" (Join-Path $repoRoot "app.py") $
     "--exclude-module", "numpy",
     "--exclude-module", "keyboard"
 )
-Invoke-PyInstaller "ClarifyVoice-pyside6" (Join-Path $spikeRoot "app.py") $qtOutput
+Invoke-PyInstaller "Clarify-pyside6" (Join-Path $spikeRoot "app.py") $qtOutput
 
 if (-not $EnvironmentManifest) {
     $EnvironmentManifest = Join-Path $outputRoot "build-environment.txt"
@@ -152,8 +152,8 @@ $artifactManifest = [ordered]@{
         SHA256 = Get-Sha256 $EnvironmentManifest
     }
     Artifacts = @(
-        Get-ArtifactRecord "CustomTkinter" (Join-Path $customOutput "ClarifyVoice-customtkinter.exe")
-        Get-ArtifactRecord "PySide6" (Join-Path $qtOutput "ClarifyVoice-pyside6.exe")
+        Get-ArtifactRecord "CustomTkinter" (Join-Path $customOutput "Clarify-customtkinter.exe")
+        Get-ArtifactRecord "PySide6" (Join-Path $qtOutput "Clarify-pyside6.exe")
     )
 }
 $artifactManifestPath = Join-Path $outputRoot "artifacts-manifest.json"

@@ -1,4 +1,4 @@
-"""UI-independent orchestration for ClarifyVoice desktop workflows.
+"""UI-independent orchestration for Clarify desktop workflows.
 
 The desktop view dispatches commands and renders :class:`WorkflowState` values.
 All provider, audio, clipboard, configuration, statistics, scheduling, and
@@ -7,6 +7,8 @@ worker completion and cancellation rules testable without constructing Tk.
 """
 
 from __future__ import annotations
+
+from transcription_performance import safe_timings
 
 import threading
 import time
@@ -70,6 +72,7 @@ class RecordingSnapshot:
     # is handed to a provider.  Consumers that do not own a recorder can leave
     # it unset and use their own bounded fallback.
     duration_seconds: float | None = None
+    pretranscribed: Any = None
 
 
 @dataclass(frozen=True)
@@ -283,6 +286,8 @@ class _Session:
     language: str = ""
     started_at: float = 0.0
     elapsed_seconds: float = 0.0
+    processing_started: float | None = None
+    timings_ms: dict[str, float] = field(default_factory=dict)
     selection: SelectionCapture | None = None
     target_language: str = ""
     usage_context: dict[str, Any] = field(default_factory=dict)
@@ -615,7 +620,11 @@ class WorkflowService:
         try:
             if session.recording is None:
                 raise RuntimeError("Recording session was not created")
+            session.recording.transcription_language = session.language
             session.recording.start()
+            prepare = getattr(self._provider, "prepare_dictation", None)
+            if callable(prepare) and self._is_current(session.operation_id):
+                self._run_recording(session.recording, lambda: prepare(session.recording))
         except Exception as error:
             should_fail = False
             with self._lock:
@@ -658,6 +667,7 @@ class WorkflowService:
             ):
                 return False
             recording = session.recording
+        session.processing_started = self._clock.monotonic()
         elapsed = self._clock.time() - session.started_at
         self._transition(session, WorkflowPhase.PROCESSING)
         self._run_recording(
@@ -676,9 +686,13 @@ class WorkflowService:
             if not self._is_current(session.operation_id):
                 return
             audio_source = session.recording.stop()
+            provider_started = self._clock.monotonic()
+            session.timings_ms["capture_finalize_ms"] = max(0.0, provider_started - (session.processing_started if session.processing_started is not None else provider_started)) * 1000
             provider_result = self._provider.transcribe(
                 audio_source, session.mode, session.language
             )
+            session.timings_ms.update(safe_timings(getattr(provider_result, "timings_ms", {})))
+            session.timings_ms["provider_ms"] = (self._clock.monotonic() - provider_started) * 1000
             result = provider_result.text
             if not self._is_current(session.operation_id):
                 return
@@ -699,6 +713,9 @@ class WorkflowService:
                 session,
                 WorkflowPhase.COMPLETED,
                 result_text=result,
+                status_key=(
+                    "refinement_failed" if provider_result.refinement_failed else None
+                ),
                 source_text=(
                     getattr(provider_result, "raw_text", None)
                     if getattr(provider_result, "raw_text", None) is not None
@@ -765,15 +782,25 @@ class WorkflowService:
         # suppresses both effects; cancellation after it cannot create a
         # duplicate or deadlock behind an external clipboard operation.
         try:
+            delivery_started = self._clock.monotonic()
+            delivered = False
             try:
-                self._statistics.record_dictation(
-                    usage_context,
-                    session.elapsed_seconds if elapsed is None else elapsed,
-                    result,
-                )
-            except OSError:
-                pass
-            self._clipboard.write_dictation_result(target, result)
+                self._clipboard.write_dictation_result(target, result)
+                delivered = True
+            finally:
+                finished = self._clock.monotonic()
+                session.timings_ms["delivery_ms"] = (finished - delivery_started) * 1000
+                if delivered and session.processing_started is not None:
+                    session.timings_ms["stop_to_delivery_ms"] = (finished - session.processing_started) * 1000
+                usage_context["latency_ms"] = safe_timings(session.timings_ms)
+                try:
+                    self._statistics.record_dictation(
+                        usage_context,
+                        session.elapsed_seconds if elapsed is None else elapsed,
+                        result,
+                    )
+                except OSError:
+                    pass
         except Exception:
             # A terminal result remains visible even when the best-effort
             # clipboard adapter is unavailable during shutdown.

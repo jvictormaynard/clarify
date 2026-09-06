@@ -1,4 +1,4 @@
-"""Presentation/lifecycle seams for ClarifyVoice local audio imports.
+"""Presentation/lifecycle seams for Clarify local audio imports.
 
 The transcription service deliberately does not know about Tk.  This module
 keeps the small amount of state needed by a file-picker separate from the

@@ -5,50 +5,49 @@ import QtQuick.Layouts 6.5
 import QtQuick.Window 6.5
 
 ApplicationWindow {
+    readonly property var settingsController: settings
     id: root
-    objectName: "clarifyVoiceMainWindow"
+    objectName: "clarifyMainWindow"
     width: workflow.surface === "result"
            || workflow.surface === "voice_result"
            || workflow.surface === "voice_error" ? theme.resultWidth
-           : (workflow.surface === "settings"
-              || workflow.surface === "files"
+           : workflow.surface === "settings" ? theme.settingsWidth
+           : (workflow.surface === "files"
               || workflow.surface === "translation_picker")
              ? theme.panelWidth : theme.windowWidth
     height: workflow.surface === "result"
             || workflow.surface === "voice_result"
             || workflow.surface === "voice_error"
             ? theme.resultHeight
-            : (workflow.surface === "settings"
-               || workflow.surface === "files"
+            : workflow.surface === "settings" ? theme.settingsHeight
+            : (workflow.surface === "files"
                || workflow.surface === "translation_picker")
               ? theme.panelHeight : theme.windowHeight
     minimumWidth: theme.windowWidth
     minimumHeight: theme.windowHeight
-    visible: true
-    title: "ClarifyVoice"
+    visible: false
+    title: "Clarify"
     color: "transparent"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
 
+    palette.window: theme.card
+    palette.windowText: theme.text
+    palette.base: theme.control
+    palette.alternateBase: theme.controlHover
+    palette.text: theme.text
+    palette.button: theme.control
+    palette.buttonText: theme.subtleText
+    palette.highlight: theme.controlHover
+    palette.highlightedText: theme.text
+    palette.placeholderText: theme.dim
+    palette.light: theme.controlHover
+    palette.mid: theme.border
+    palette.dark: theme.resultSurface
+    palette.toolTipBase: theme.control
+    palette.toolTipText: theme.text
+
     Theme { id: theme }
     property Theme visualTheme: theme
-
-    // The production shell uses the 380x48 card as its idle surface and a
-    // separate 142x42 transient pill while recording/processing. Keep that
-    // relationship visible in the production shell without introducing a dashboard.
-    StatusPill {
-        id: pill
-        theme: theme
-        x: root.x + (root.width - width) / 2
-        y: root.y + root.height + 12
-
-        Connections {
-            target: root
-            function onXChanged() { pill.x = root.x + (root.width - pill.width) / 2 }
-            function onYChanged() { pill.y = root.y + root.height + 12 }
-            function onWidthChanged() { pill.x = root.x + (root.width - pill.width) / 2 }
-            function onHeightChanged() { pill.y = root.y + root.height + 12 }
-        }
-    }
 
     Shortcut {
         sequence: "Escape"
@@ -156,6 +155,7 @@ ApplicationWindow {
                     Item {
                         id: statusArea
                         Layout.fillWidth: true
+                        Layout.fillHeight: true
                         Layout.minimumWidth: 0
                         Layout.alignment: Qt.AlignVCenter
 
@@ -188,19 +188,17 @@ ApplicationWindow {
                                 font.pixelSize: 13
                                 font.weight: Font.Bold
                                 elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
                                 Accessible.name: workflow.status
                             }
 
                         }
 
-                        MouseArea {
-                            anchors.fill: parent
+                        TapHandler {
                             enabled: workflow.surface === "idle"
                                      || workflow.surface === "recording"
-                            hoverEnabled: true
-                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            Accessible.name: workflow.status
-                            onClicked: {
+                            gesturePolicy: TapHandler.ReleaseWithinBounds
+                            onTapped: {
                                 if (workflow.surface === "recording")
                                     workflow.stopRecording()
                                 else
@@ -261,12 +259,23 @@ ApplicationWindow {
                                 "ru": "Russian"
                             })
                             property string languageCode: workflow.language.toUpperCase()
-                            text: languageCode
+                            text: ""
                             theme: theme
                             Layout.preferredWidth: 32
                             Layout.preferredHeight: 26
                             Accessible.name: "Language: "
                                               + languageNames[workflow.language]
+
+                            Image {
+                                anchors.centerIn: parent
+                                width: 20
+                                height: 14
+                                sourceSize.width: 20
+                                sourceSize.height: 14
+                                source: "flags/" + workflow.language + ".svg"
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
+                            }
                             onClicked: {
                                 var currentIndex = supportedLanguages.indexOf(workflow.language)
                                 var nextIndex = (currentIndex + 1) % supportedLanguages.length
@@ -321,7 +330,7 @@ ApplicationWindow {
                             quiet: true
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
-                            Accessible.name: "Close ClarifyVoice"
+                            Accessible.name: "Close Clarify"
                             onClicked: root.close()
                         }
                     }
@@ -477,6 +486,16 @@ ApplicationWindow {
                 id: settingsPage
                 objectName: "settingsPage"
                 focus: workflow.surface === "settings"
+                property string settingsTab: "models"
+                onSettingsTabChanged: settingsScroll.contentItem.contentY = 0
+
+                onVisibleChanged: {
+                    if (visible) {
+                        Qt.callLater(function() {
+                            settingsScroll.contentItem.contentY = 0
+                        })
+                    }
+                }
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -485,6 +504,15 @@ ApplicationWindow {
 
                     RowLayout {
                         Layout.fillWidth: true
+
+                        DragHandler {
+                            id: settingsWindowDragHandler
+                            target: null
+                            onActiveChanged: {
+                                if (active)
+                                    root.startSystemMove()
+                            }
+                        }
 
                         Label {
                             text: "Settings"
@@ -512,6 +540,23 @@ ApplicationWindow {
                         color: theme.border
                     }
 
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Repeater {
+                            model: ["Models", "Connections", "Preferences"]
+                            AppButton {
+                                required property string modelData
+                                theme: root.visualTheme
+                                text: modelData
+                                primary: settingsPage.settingsTab === modelData.toLowerCase()
+                                Layout.preferredHeight: 34
+                                onClicked: settingsPage.settingsTab = modelData.toLowerCase()
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+
                     ScrollView {
                         id: settingsScroll
                         objectName: "settingsScroll"
@@ -537,6 +582,18 @@ ApplicationWindow {
                             width: Math.max(0, settingsScroll.availableWidth)
                             spacing: 8
 
+                            ModelSettings {
+                                Layout.fillWidth: true
+                                visible: settingsPage.settingsTab === "models"
+                                theme: root.visualTheme
+                                settings: root.settingsController
+                                onConnectProvider: settingsPage.settingsTab = "connections"
+                            }
+                            ColumnLayout {
+                                id: preferencesContent
+                                Layout.fillWidth: true
+                                visible: settingsPage.settingsTab === "preferences"
+                                spacing: 8
                             Label {
                                 text: "General"
                                 color: theme.secondaryText
@@ -602,13 +659,72 @@ ApplicationWindow {
                                     model: settings.languages
                                     currentIndex: Math.max(0, settings.languages.indexOf(settings.language))
                                     onActivated: settings.setLanguage(currentText)
-                                    contentItem: Label {
-                                        leftPadding: 8
-                                        rightPadding: 24
-                                        text: settingsLanguageBox.currentText.toUpperCase()
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
+                                    contentItem: RowLayout {
+                                        x: 8
+                                        width: Math.max(0, parent.width - 32)
+                                        height: parent.height
+                                        spacing: 7
+
+                                        Image {
+                                            Layout.preferredWidth: 20
+                                            Layout.preferredHeight: 14
+                                            Layout.alignment: Qt.AlignVCenter
+                                            sourceSize.width: 20
+                                            sourceSize.height: 14
+                                            source: "flags/" + settingsLanguageBox.currentText + ".svg"
+                                            fillMode: Image.PreserveAspectFit
+                                            smooth: true
+                                        }
+
+                                        Label {
+                                            Layout.alignment: Qt.AlignVCenter
+                                            text: settingsLanguageBox.currentText.toUpperCase()
+                                            color: theme.text
+                                            font.pixelSize: 11
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+                                    }
+                                    delegate: ItemDelegate {
+                                        id: languageDelegate
+                                        required property var modelData
+                                        width: settingsLanguageBox.width
+                                        height: 30
+                                        hoverEnabled: true
+
+                                        contentItem: RowLayout {
+                                            x: 8
+                                            width: Math.max(0, parent.width - 16)
+                                            height: parent.height
+                                            spacing: 7
+
+                                            Image {
+                                                Layout.preferredWidth: 20
+                                                Layout.preferredHeight: 14
+                                                Layout.alignment: Qt.AlignVCenter
+                                                sourceSize.width: 20
+                                                sourceSize.height: 14
+                                                source: "flags/" + modelData + ".svg"
+                                                fillMode: Image.PreserveAspectFit
+                                                smooth: true
+                                            }
+
+                                            Label {
+                                                Layout.alignment: Qt.AlignVCenter
+                                                text: String(modelData).toUpperCase()
+                                                color: theme.text
+                                                font.pixelSize: 11
+                                            }
+
+                                            Item { Layout.fillWidth: true }
+                                        }
+
+                                        background: Rectangle {
+                                            color: languageDelegate.down ? theme.controlPressed
+                                                   : languageDelegate.hovered
+                                                     || languageDelegate.highlighted
+                                                     ? theme.controlHover : theme.card
+                                        }
                                     }
                                     indicator: Label {
                                         x: settingsLanguageBox.width - width - 8
@@ -623,6 +739,13 @@ ApplicationWindow {
                                         color: theme.control
                                         border.color: theme.border
                                         border.width: 1
+                                    }
+
+                                    popup.background: Rectangle {
+                                        color: theme.card
+                                        border.color: theme.border
+                                        border.width: 1
+                                        radius: 8
                                     }
                                 }
 
@@ -752,7 +875,7 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
-                                text: "Configure the global ClarifyVoice actions. Changes apply when you save Settings."
+                                text: "Configure the global Clarify actions. Changes apply when you save Settings."
                                 color: theme.dim
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
@@ -1047,7 +1170,7 @@ ApplicationWindow {
                                           ? "" : String(settings.recordingControls["max_duration_seconds"])
                                     placeholderText: "Blank = unlimited"
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                    onEditingFinished: settingsContent.updateRecordingControls()
+                                    onEditingFinished: preferencesContent.updateRecordingControls()
                                     color: theme.text
                                     placeholderTextColor: theme.dim
                                     font.pixelSize: 11
@@ -1073,7 +1196,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: String(settings.recordingControls["warning_seconds"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                    onEditingFinished: settingsContent.updateRecordingControls()
+                                    onEditingFinished: preferencesContent.updateRecordingControls()
                                     color: theme.text
                                     font.pixelSize: 11
                                     selectByMouse: true
@@ -1092,7 +1215,7 @@ ApplicationWindow {
                                     Layout.columnSpan: 2
                                     checked: settings.recordingControls["vad"]["enabled"]
                                     text: "Stop after speech and silence"
-                                    onToggled: settingsContent.updateRecordingControls()
+                                    onToggled: preferencesContent.updateRecordingControls()
                                     contentItem: Label {
                                         leftPadding: 24
                                         text: vadEnabledBox.text
@@ -1132,7 +1255,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: String(settings.recordingControls["vad"]["level_threshold"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                    onEditingFinished: settingsContent.updateRecordingControls()
+                                    onEditingFinished: preferencesContent.updateRecordingControls()
                                     color: theme.text
                                     font.pixelSize: 11
                                     selectByMouse: true
@@ -1157,7 +1280,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: String(settings.recordingControls["vad"]["minimum_speech_seconds"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                    onEditingFinished: settingsContent.updateRecordingControls()
+                                    onEditingFinished: preferencesContent.updateRecordingControls()
                                     color: theme.text
                                     font.pixelSize: 11
                                     selectByMouse: true
@@ -1182,7 +1305,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: String(settings.recordingControls["vad"]["silence_duration_seconds"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                    onEditingFinished: settingsContent.updateRecordingControls()
+                                    onEditingFinished: preferencesContent.updateRecordingControls()
                                     color: theme.text
                                     font.pixelSize: 11
                                     selectByMouse: true
@@ -1214,463 +1337,13 @@ ApplicationWindow {
                                 color: theme.border
                             }
 
-                            Label {
-                                text: "Providers"
-                                color: theme.secondaryText
-                                font.pixelSize: 10
-                                font.weight: Font.DemiBold
-                                font.letterSpacing: 0.7
                             }
-
-                            GridLayout {
+                            ProviderSettings {
                                 Layout.fillWidth: true
-                                columns: 2
-                                columnSpacing: 12
-                                rowSpacing: 6
-
-                                Label {
-                                    text: "Provider"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                ComboBox {
-                                    id: onboardingProviderBox
-                                    objectName: "onboardingProviderBox"
-                                    Layout.fillWidth: true
-                                    model: settings.providerIds
-                                    currentIndex: Math.max(
-                                        0, settings.providerIds.indexOf(
-                                            settings.selectedProviderId))
-                                    onActivated: settings.selectProvider(currentText)
-                                    contentItem: Label {
-                                        leftPadding: 8
-                                        rightPadding: 24
-                                        text: settings.providerName(
-                                            onboardingProviderBox.currentText)
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                    indicator: Label {
-                                        x: onboardingProviderBox.width - width - 8
-                                        y: (onboardingProviderBox.height - height) / 2
-                                        text: "⌄"
-                                        color: theme.dim
-                                        font.pixelSize: 12
-                                    }
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                }
-
-                                Label {
-                                    text: "API key"
-                                    visible: settings.selectedProviderId !== "local_asr"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                TextField {
-                                    id: providerApiKeyField
-                                    objectName: "providerApiKeyField"
-                                    visible: settings.selectedProviderId !== "local_asr"
-                                    Layout.fillWidth: true
-                                    text: settings.providerApiKey
-                                    placeholderText: settings.providerHasApiKey
-                                                     ? "Saved key; leave blank to keep it"
-                                                     : "Paste API key"
-                                    echoMode: TextInput.Password
-                                    onEditingFinished: settings.setProviderApiKey(text)
-                                    color: theme.text
-                                    placeholderTextColor: theme.dim
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                }
-
-                                Label {
-                                    text: "Base URL"
-                                    visible: settings.selectedProviderId !== "local_asr"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                TextField {
-                                    id: providerBaseUrlField
-                                    objectName: "providerBaseUrlField"
-                                    visible: settings.selectedProviderId !== "local_asr"
-                                    enabled: settings.providerSupportsCustomEndpoint
-                                    Layout.fillWidth: true
-                                    text: settings.providerBaseUrl
-                                    onEditingFinished: settings.setProviderBaseUrl(text)
-                                    color: theme.text
-                                    placeholderText: "Provider endpoint"
-                                    placeholderTextColor: theme.dim
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                }
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                visible: settings.selectedProviderId !== "local_asr"
-                                text: "Status: " + settings.providerStatus
-                                      + (settings.providerError !== ""
-                                         ? " — " + settings.providerError : "")
-                                color: settings.providerError !== ""
-                                       ? theme.secondaryText : theme.dim
-                                font.pixelSize: 10
-                                wrapMode: Text.WordWrap
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                visible: settings.selectedProviderId !== "local_asr"
-                                spacing: 5
-
-                                Item { Layout.fillWidth: true }
-
-                                AppButton {
-                                    text: settings.providerBusy ? "Validating…"
-                                          : "Validate & save"
-                                    theme: theme
-                                    enabled: !settings.providerBusy
-                                    Layout.preferredWidth: 108
-                                    Layout.preferredHeight: 26
-                                    Accessible.name: "Validate and save provider"
-                                    onClicked: settings.validateProvider()
-                                }
-
-                                AppButton {
-                                    text: "Clear key"
-                                    theme: theme
-                                    quiet: true
-                                    enabled: settings.providerHasApiKey
-                                    Layout.preferredWidth: 68
-                                    Layout.preferredHeight: 26
-                                    Accessible.name: "Clear provider API key"
-                                    onClicked: settings.clearProvider()
-                                }
-                            }
-
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                visible: settings.selectedProviderId === "local_asr"
-                                spacing: 5
-
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: settings.localAsrRequirements
-                                    color: theme.dim
-                                    font.pixelSize: 10
-                                    wrapMode: Text.WordWrap
-                                }
-
-                                ProgressBar {
-                                    Layout.fillWidth: true
-                                    visible: settings.localAsrBusy
-                                    value: settings.localAsrProgress
-                                    from: 0
-                                    to: 1
-                                }
-
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: settings.localAsrStatus
-                                          + (settings.localAsrDetail !== ""
-                                             ? " — " + settings.localAsrDetail : "")
-                                    color: settings.localAsrStatus === "error"
-                                           || settings.localAsrStatus === "invalid"
-                                           ? theme.secondaryText : theme.dim
-                                    font.pixelSize: 10
-                                    wrapMode: Text.WordWrap
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 5
-
-                                    AppButton {
-                                        text: settings.localAsrBusy ? "Cancel"
-                                              : settings.localAsrStatus === "installed"
-                                                ? "Installed" : "Download local ASR"
-                                        theme: theme
-                                        enabled: settings.localAsrBusy
-                                                  || settings.localAsrStatus !== "installed"
-                                        Layout.preferredWidth: 126
-                                        Layout.preferredHeight: 26
-                                        Accessible.name: "Install Local Whisper"
-                                        onClicked: settings.localAsrBusy
-                                                   ? settings.cancelLocalAsr()
-                                                   : settings.installLocalAsr()
-                                    }
-
-                                    AppButton {
-                                        text: "Remove assets"
-                                        theme: theme
-                                        quiet: true
-                                        enabled: !settings.localAsrBusy
-                                                  && settings.localAsrStatus === "installed"
-                                        Layout.preferredWidth: 86
-                                        Layout.preferredHeight: 26
-                                        Accessible.name: "Remove Local Whisper assets"
-                                        onClicked: settings.removeLocalAsr()
-                                    }
-
-                                    CheckBox {
-                                        id: localRefinementBox
-                                        visible: settings.localAsrStatus === "installed"
-                                        checked: settings.localAsrCloudRefinement
-                                        text: "Allow cloud refinement"
-                                        onToggled: settings.setLocalAsrCloudRefinement(checked)
-                                        contentItem: Label {
-                                            leftPadding: 24
-                                            text: localRefinementBox.text
-                                            color: theme.dim
-                                            font.pixelSize: 10
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
-                                    }
-                                }
-                            }
-
-                            Label {
-                                text: "Workflow route"
-                                color: theme.secondaryText
-                                font.pixelSize: 10
-                                font.weight: Font.DemiBold
-                                font.letterSpacing: 0.7
-                            }
-
-                            function scopeLabel(scope) {
-                                var labels = {
-                                    "transcription": "Transcription",
-                                    "refinement": "Refinement",
-                                    "rewrite": "Rewrite",
-                                    "translation": "Translation",
-                                    "local_asr_refinement": "Local ASR refinement"
-                                }
-                                return labels[scope] || scope
-                            }
-
-                            GridLayout {
-                                Layout.fillWidth: true
-                                columns: 2
-                                columnSpacing: 12
-                                rowSpacing: 6
-
-                                Label {
-                                    text: "Scope"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                ComboBox {
-                                    id: scopeBox
-                                    objectName: "workflowScopeBox"
-                                    Layout.fillWidth: true
-                                    model: settings.workflowScopes
-                                    currentIndex: Math.max(0, settings.workflowScopes.indexOf(settings.selectedScope))
-                                    onActivated: settings.selectWorkflow(currentText)
-                                    contentItem: Label {
-                                        leftPadding: 8
-                                        rightPadding: 24
-                                        text: settingsContent.scopeLabel(scopeBox.currentText)
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                        elide: Text.ElideRight
-                                    }
-                                    indicator: Label {
-                                        x: scopeBox.width - width - 8
-                                        y: (scopeBox.height - height) / 2
-                                        text: "⌄"
-                                        color: theme.dim
-                                        font.pixelSize: 12
-                                    }
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                }
-
-                                Label {
-                                    text: "Provider"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                ComboBox {
-                                    id: providerBox
-                                    objectName: "workflowProviderBox"
-                                    Layout.fillWidth: true
-                                    model: settings.providersForScope(settings.selectedScope)
-                                    currentIndex: Math.max(0, model.indexOf(settings.routeProviderId))
-                                    onActivated: settings.setRouteProviderId(currentText)
-                                    contentItem: Label {
-                                        leftPadding: 8
-                                        rightPadding: 24
-                                        text: providerBox.currentText || "Select provider"
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                        elide: Text.ElideRight
-                                    }
-                                    indicator: Label {
-                                        x: providerBox.width - width - 8
-                                        y: (providerBox.height - height) / 2
-                                        text: "⌄"
-                                        color: theme.dim
-                                        font.pixelSize: 12
-                                    }
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                }
-
-                                Label {
-                                    text: "Model"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                TextField {
-                                    id: routeModelField
-                                    objectName: "workflowModelField"
-                                    Layout.fillWidth: true
-                                    text: settings.routeModelId
-                                    onEditingFinished: settings.setRouteModelId(text)
-                                    color: theme.text
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                }
-
-                                Label {
-                                    text: "Endpoint"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                TextField {
-                                    id: routeEndpointField
-                                    objectName: "workflowEndpointField"
-                                    Layout.fillWidth: true
-                                    text: settings.routeCustomEndpoint
-                                    placeholderText: "Optional custom endpoint"
-                                    onEditingFinished: settings.setRouteCustomEndpoint(text)
-                                    color: theme.text
-                                    placeholderTextColor: theme.dim
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                }
-
-                                Label {
-                                    text: "Enabled"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                CheckBox {
-                                    id: routeEnabledBox
-                                    objectName: "workflowEnabledBox"
-                                    Layout.fillWidth: true
-                                    checked: settings.routeEnabled
-                                    text: "Use this route"
-                                    onToggled: settings.setRouteEnabled(checked)
-                                    contentItem: Label {
-                                        leftPadding: 24
-                                        text: routeEnabledBox.text
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                    indicator: Rectangle {
-                                        x: 0
-                                        y: (routeEnabledBox.height - height) / 2
-                                        implicitWidth: 16
-                                        implicitHeight: 16
-                                        radius: 3
-                                        color: routeEnabledBox.checked ? theme.text : theme.control
-                                        border.color: routeEnabledBox.checked ? theme.text : theme.border
-                                        border.width: 1
-
-                                        Label {
-                                            anchors.centerIn: parent
-                                            visible: routeEnabledBox.checked
-                                            text: "✓"
-                                            color: theme.card
-                                            font.pixelSize: 11
-                                        }
-                                    }
-                                }
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: "Prompt"
-                                color: theme.dim
-                                font.pixelSize: 11
-                            }
-
-                            TextArea {
-                                id: routePromptField
-                                objectName: "workflowPromptField"
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 52
-                                text: settings.routePrompt
-                                placeholderText: "Optional route instruction"
-                                onEditingFinished: settings.setRoutePrompt(text)
-                                color: theme.text
-                                placeholderTextColor: theme.dim
-                                font.pixelSize: 11
-                                wrapMode: TextArea.Wrap
-                                selectByMouse: true
-                                background: Rectangle {
-                                    implicitHeight: 52
-                                    radius: theme.controlRadius
-                                    color: theme.control
-                                    border.color: theme.border
-                                    border.width: 1
-                                }
+                                visible: settingsPage.settingsTab === "connections"
+                                theme: root.visualTheme
+                                settings: root.settingsController
+                                onModelSelected: settingsPage.settingsTab = "models"
                             }
 
                             Label {
@@ -1700,10 +1373,10 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
 
                         AppButton {
-                            text: "Load"
+                            text: "Undo changes"
                             theme: theme
                             quiet: true
-                            Layout.preferredWidth: 52
+                            Layout.preferredWidth: 90
                             Layout.preferredHeight: 26
                             Accessible.name: "Reload settings"
                             onClicked: settings.load()
@@ -1712,6 +1385,7 @@ ApplicationWindow {
                         AppButton {
                             text: "Save"
                             theme: theme
+                            primary: true
                             enabled: settings.dirty
                             Layout.preferredWidth: 52
                             Layout.preferredHeight: 26

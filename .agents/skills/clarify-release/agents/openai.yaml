@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clarify Release"
+  short_description: "Publicar releases verificadas do Clarify"
+  default_prompt: "Use $clarify-release to prepare and publish the next verified Clarify release."

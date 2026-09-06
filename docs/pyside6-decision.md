@@ -35,7 +35,7 @@ The comparable-build protocol in `spikes/pyside6/package.ps1` is historical
 evidence tooling. It can still compare the old widget build with the Qt
 implementation, but it is not the production build path. Production packaging
 uses `scripts/build.ps1`, which packages the QML entrypoint and its QML assets
-as the single `ClarifyVoice.exe` artifact. The scripts write
+as the single `Clarify.exe` artifact. The scripts write
 `build-environment.txt` and
 `artifacts-manifest.json` containing the commit, dependency-file hashes, tool
 versions, package sizes, and SHA-256 hashes. This makes a later CSV row
@@ -125,7 +125,7 @@ the exact PySide6/Qt wheels and plugins selected by the package manifest. The
 release checklist must identify whether the distribution follows the community
 LGPLv3/GPLv3 path or a commercial Qt agreement, include the applicable notices,
 and document how users can replace/relink the LGPL-covered components. The
-MIT-licensed ClarifyVoice code remains independent of those obligations.
+MIT-licensed Clarify code remains independent of those obligations.
 
 ## Migration result and remaining acceptance
 

@@ -1236,11 +1236,11 @@ class HistoryStore:
             chunks.append("")
             chunks.append("=" * 72)
             chunks.append("")
-        return "\n".join(chunks) if chunks else "ClarifyVoice transcription history\n"
+        return "\n".join(chunks) if chunks else "Clarify transcription history\n"
 
     @classmethod
     def _as_markdown(cls, records: list[HistoryRecord]) -> str:
-        chunks = ["# ClarifyVoice transcription history", ""]
+        chunks = ["# Clarify transcription history", ""]
         for index, record in enumerate(records, 1):
             chunks.extend([
                 f"## {index}. {_format_timestamp(record.timestamp)} — {record.status}",

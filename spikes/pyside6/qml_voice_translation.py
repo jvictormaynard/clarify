@@ -449,7 +449,7 @@ class QtVoiceTranslationRecording(VoiceTranslationRecording):
 
         worker = threading.Thread(
             target=wait_for_boundary,
-            name="ClarifyVoiceQmlVoiceTranslationVAD",
+            name="ClarifyQmlVoiceTranslationVAD",
             daemon=True,
         )
         with self._boundary_lock:

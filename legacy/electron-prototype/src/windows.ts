@@ -109,7 +109,7 @@ function createTrayIcon(isRed: boolean = false) {
 export function updateTrayIcon(recording: boolean) {
   if (tray) {
     tray.setImage(createTrayIcon(recording));
-    tray.setToolTip(recording ? 'ClarifyVoice - Recording...' : 'ClarifyVoice');
+    tray.setToolTip(recording ? 'Clarify - Recording...' : 'Clarify');
   }
 }
 
@@ -135,7 +135,7 @@ export function createTray() {
     }
   ]);
 
-  newTray.setToolTip('ClarifyVoice');
+  newTray.setToolTip('Clarify');
   newTray.setContextMenu(contextMenu);
 
   newTray.on('click', () => toggleMainWindow());

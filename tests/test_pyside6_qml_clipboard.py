@@ -128,6 +128,64 @@ class QmlClipboardGatewayTests(unittest.TestCase):
         self.assertEqual(self.clipboard.text(), "user wins")
         self.assertEqual(len(self.clipboard.restores), 1)
 
+    def test_selection_capture_retries_one_swallowed_ctrl_c(self):
+        clock = {"now": 0.0}
+        copy_attempts = []
+
+        def sleep(seconds):
+            clock["now"] += seconds
+
+        def copy_selected():
+            copy_attempts.append(clock["now"])
+            if len(copy_attempts) == 2:
+                self.clipboard.sequence_value += 1
+                self.clipboard.state = self.clipboard._snapshot(
+                    "selected", self.clipboard.sequence_value
+                )
+            return True
+
+        gateway = QmlClipboardGateway(
+            adapter=self.clipboard,
+            is_windows=True,
+            platform_name="Windows",
+            foreground_window=lambda: self.foreground["window"],
+            executable_for_window=lambda _window: "editor.exe",
+            send_ctrl_c=copy_selected,
+            sleep=sleep,
+            monotonic=lambda: clock["now"],
+            copy_timeout=0.4,
+        )
+
+        capture = gateway.capture_selection(self.target)
+
+        self.assertIsNotNone(capture)
+        self.assertEqual(capture.text, "selected")
+        self.assertEqual(len(copy_attempts), 2)
+
+    def test_selection_capture_does_not_retry_after_focus_changes(self):
+        clock = {"now": 0.0}
+        copy_attempts = []
+
+        def sleep(seconds):
+            clock["now"] += seconds
+            if clock["now"] >= 0.08:
+                self.foreground["window"] = 88
+
+        gateway = QmlClipboardGateway(
+            adapter=self.clipboard,
+            is_windows=True,
+            platform_name="Windows",
+            foreground_window=lambda: self.foreground["window"],
+            executable_for_window=lambda _window: "editor.exe",
+            send_ctrl_c=lambda: copy_attempts.append(clock["now"]) or True,
+            sleep=sleep,
+            monotonic=lambda: clock["now"],
+            copy_timeout=0.4,
+        )
+
+        self.assertIsNone(gateway.capture_selection(self.target))
+        self.assertEqual(len(copy_attempts), 1)
+
     def test_unsafe_paste_downgrades_to_copy_only_and_keeps_result_available(self):
         self.gateway._send_ctrl_v = lambda _text: None
         capture = self.gateway.capture_selection(self.target)

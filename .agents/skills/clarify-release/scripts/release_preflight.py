@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only preflight checks for a ClarifyVoice release candidate."""
+"""Read-only preflight checks for a Clarify release candidate."""
 
 from __future__ import annotations
 
@@ -43,14 +43,14 @@ REQUIRED_FILES = (
 )
 
 REQUIRED_ASSETS = (
-    "ClarifyVoice.exe",
-    "ClarifyVoice.exe.sha256",
-    "ClarifyVoice.sbom.json",
-    "ClarifyVoice-windows-x64.msi",
-    "ClarifyVoice-windows-x64.msi.sha256",
-    "ClarifyVoice-release-manifest.cab",
-    "ClarifyVoice-release-manifest.cab.sha256",
-    "ClarifyVoice-windows-x64.zip",
+    "Clarify.exe",
+    "Clarify.exe.sha256",
+    "Clarify.sbom.json",
+    "Clarify-windows-x64.msi",
+    "Clarify-windows-x64.msi.sha256",
+    "Clarify-release-manifest.cab",
+    "Clarify-release-manifest.cab.sha256",
+    "Clarify-windows-x64.zip",
     "sox-14.4.2-source.tar.gz",
 )
 
@@ -153,7 +153,7 @@ def main() -> int:
     if not re.search(heading_pattern, changelog, re.MULTILINE):
         failures.append(f"CHANGELOG.md has no dated [{version}] section")
 
-    owner_url = "https://github.com/jvictormaynard/clarify-voice"
+    owner_url = "https://github.com/jvictormaynard/clarify"
     expected_unreleased = f"[Unreleased]: {owner_url}/compare/{tag}...HEAD"
     if expected_unreleased not in changelog:
         failures.append("Unreleased comparison does not start at the new tag")
@@ -221,7 +221,7 @@ def main() -> int:
             print(f"FAIL: {failure}")
         return 1
 
-    print(f"OK: ClarifyVoice {tag} release preflight passed")
+    print(f"OK: Clarify {tag} release preflight passed")
     print(f"Repository: {repo}")
     print(f"Branch: {current_branch}")
     print(f"HEAD: {head}")

@@ -1,7 +1,7 @@
 # PySide6 decision-spike evidence record
 
 Copy this file outside the repository for the Windows run and attach the
-completed copy to issue [#24](https://github.com/jvictormaynard/clarify-voice/issues/24).
+completed copy to issue [#24](https://github.com/jvictormaynard/clarify/issues/24).
 Do not commit executable artifacts, screenshots, recordings, or machine
 identifiers to the source repository. The benchmark's `HostId` is a one-way
 SHA-256 digest intended only to prove that both targets used the same machine.
@@ -38,14 +38,14 @@ powershell -ExecutionPolicy Bypass -File spikes\pyside6\package.ps1
 # Round 1: CustomTkinter first, then reboot before PySide6.
 powershell -ExecutionPolicy Bypass -File spikes\pyside6\benchmark.ps1 `
   -Target CustomTkinter `
-  -Executable spikes\pyside6\artifacts\customtkinter\ClarifyVoice-customtkinter.exe `
+  -Executable spikes\pyside6\artifacts\customtkinter\Clarify-customtkinter.exe `
   -ArtifactManifest spikes\pyside6\artifacts\artifacts-manifest.json `
   -RunId round-1-ctk -Round 1 -OutputCsv measurements\round-1-ctk.csv
 
 # Round 2: PySide6 first, then reboot before CustomTkinter.
 powershell -ExecutionPolicy Bypass -File spikes\pyside6\benchmark.ps1 `
   -Target PySide6 `
-  -Executable spikes\pyside6\artifacts\pyside6\ClarifyVoice-pyside6.exe `
+  -Executable spikes\pyside6\artifacts\pyside6\Clarify-pyside6.exe `
   -ArtifactManifest spikes\pyside6\artifacts\artifacts-manifest.json `
   -RunId round-2-qt -Round 2 -OutputCsv measurements\round-2-qt.csv
 ```

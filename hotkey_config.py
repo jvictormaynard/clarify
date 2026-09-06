@@ -56,7 +56,7 @@ class HotkeyValidationError(ValueError):
 
 
 class HotkeyConflictError(HotkeyValidationError):
-    """Two ClarifyVoice actions use the same key combination."""
+    """Two Clarify actions use the same key combination."""
 
     def __init__(self, conflicts: Mapping[str, tuple[str, ...]]) -> None:
         self.conflicts = dict(conflicts)
@@ -64,7 +64,7 @@ class HotkeyConflictError(HotkeyValidationError):
             f"{combo}: {', '.join(actions)}"
             for combo, actions in sorted(self.conflicts.items()))
         super().__init__(
-            f"Hotkey conflict between ClarifyVoice actions ({details})",
+            f"Hotkey conflict between Clarify actions ({details})",
             code="conflict",
         )
 
@@ -378,7 +378,7 @@ class HotkeySettingsController:
     """Small settings-facing capture/reset facade.
 
     The UI can keep this object as a draft. A candidate is validated against
-    every other ClarifyVoice binding before it is returned, so persistence and
+    every other Clarify binding before it is returned, so persistence and
     native registration never observe a conflicting intermediate state.
     """
 

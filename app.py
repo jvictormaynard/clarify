@@ -1,4 +1,4 @@
-"""ClarifyVoice – voice transcription with Gemini, OpenAI, or Groq."""
+"""Clarify – voice transcription with Gemini, OpenAI, or Groq."""
 
 import argparse
 from collections.abc import Mapping
@@ -223,7 +223,7 @@ if not _RUN_SECRET_STORE_SELF_TEST:
 
 IS_WIN = platform.system() == "Windows"
 IS_MAC = platform.system() == "Darwin"
-DATA_DIR = (Path(os.environ.get("APPDATA", Path.home())) / "ClarifyVoice") if IS_WIN else (Path.home() / ".clarifyvoice")
+DATA_DIR = (Path(os.environ.get("APPDATA", Path.home())) / "Clarify") if IS_WIN else (Path.home() / ".clarify")
 AUDIO_PATH = DATA_DIR / "temp_recording.wav"
 CONFIG_PATH = DATA_DIR / "config.json"
 STATS_PATH = DATA_DIR / "usage_stats.json"
@@ -1001,7 +1001,7 @@ def _is_msi_installed_build(registry=None, executable=None) -> bool:
 
     try:
         with registry.OpenKey(
-                registry.HKEY_CURRENT_USER, r"Software\ClarifyVoice") as key:
+                registry.HKEY_CURRENT_USER, r"Software\Clarify") as key:
             install_location, value_type = registry.QueryValueEx(
                 key, "InstallLocation")
     except OSError:
@@ -1015,7 +1015,7 @@ def _is_msi_installed_build(registry=None, executable=None) -> bool:
             or not ntpath.isabs(current_executable)):
         return False
 
-    expected_executable = ntpath.join(location, "ClarifyVoice.exe")
+    expected_executable = ntpath.join(location, "Clarify.exe")
     return ntpath.normcase(ntpath.normpath(current_executable)) == ntpath.normcase(
         ntpath.normpath(expected_executable))
 
@@ -1030,10 +1030,10 @@ def _set_autostart(enabled: bool, registry=None):
     with registry.CreateKey(registry.HKEY_CURRENT_USER, path) as key:
         if enabled:
             registry.SetValueEx(
-                key, "ClarifyVoice", 0, registry.REG_SZ, _autostart_command())
+                key, "Clarify", 0, registry.REG_SZ, _autostart_command())
         else:
             try:
-                registry.DeleteValue(key, "ClarifyVoice")
+                registry.DeleteValue(key, "Clarify")
             except FileNotFoundError:
                 pass
 
@@ -1047,7 +1047,7 @@ def _autostart_registry_state(registry=None):
     path = r"Software\Microsoft\Windows\CurrentVersion\Run"
     try:
         with registry.OpenKey(registry.HKEY_CURRENT_USER, path) as key:
-            value, kind = registry.QueryValueEx(key, "ClarifyVoice")
+            value, kind = registry.QueryValueEx(key, "Clarify")
         return True, value, kind
     except OSError:
         return False, None, None
@@ -1063,10 +1063,10 @@ def _restore_autostart_registry_state(state, registry=None):
     path = r"Software\Microsoft\Windows\CurrentVersion\Run"
     with registry.CreateKey(registry.HKEY_CURRENT_USER, path) as key:
         if exists:
-            registry.SetValueEx(key, "ClarifyVoice", 0, kind, value)
+            registry.SetValueEx(key, "Clarify", 0, kind, value)
         else:
             try:
-                registry.DeleteValue(key, "ClarifyVoice")
+                registry.DeleteValue(key, "Clarify")
             except FileNotFoundError:
                 pass
 
@@ -1579,8 +1579,8 @@ class _WindowsSingleInstanceApi:
 class SingleInstanceGuard:
     """Allow one UI process and let later launches reveal the hidden instance."""
 
-    MUTEX_NAME = "Local\\ClarifyVoice.SingleInstance.v1"
-    EVENT_NAME = "Local\\ClarifyVoice.ShowExisting.v1"
+    MUTEX_NAME = "Local\\Clarify.SingleInstance.v1"
+    EVENT_NAME = "Local\\Clarify.ShowExisting.v1"
 
     def __init__(self, api=None, event_handle=None, mutex_handle=None):
         self.api = api
@@ -1691,7 +1691,7 @@ class WindowsTrayIcon:
             return True
         self._ready.clear()
         self._thread = threading.Thread(
-            target=self._message_loop, name="ClarifyVoiceTray", daemon=True)
+            target=self._message_loop, name="ClarifyTray", daemon=True)
         self._thread.start()
         self._ready.wait(2.0)
         return self._running
@@ -2060,7 +2060,7 @@ class WindowsTrayIcon:
 
         self._wndproc = WNDPROC(window_proc)
         instance = kernel32.GetModuleHandleW(None)
-        self._class_name = f"ClarifyVoiceTray.{os.getpid()}"
+        self._class_name = f"ClarifyTray.{os.getpid()}"
         window_class = WNDCLASSW()
         window_class.lpfnWndProc = self._wndproc
         window_class.hInstance = instance
@@ -2074,7 +2074,7 @@ class WindowsTrayIcon:
             self._taskbar_created = self._user32.RegisterWindowMessageW(
                 "TaskbarCreated")
             hwnd = self._user32.CreateWindowExW(
-                0, self._class_name, "ClarifyVoice Tray", 0,
+                0, self._class_name, "Clarify Tray", 0,
                 0, 0, 0, 0, None, None, instance, None)
             if not hwnd:
                 self._ready.set()
@@ -2103,7 +2103,7 @@ class WindowsTrayIcon:
             notify_data.uFlags = 0x0001 | 0x0002 | 0x0004  # MESSAGE|ICON|TIP
             notify_data.uCallbackMessage = self.WM_TRAY
             notify_data.hIcon = self._icon_handle
-            notify_data.szTip = "ClarifyVoice"
+            notify_data.szTip = "Clarify"
             self._notify_data = ctypes.pointer(notify_data)
             self._icon_added = self._add_icon()
             self._running = bool(self._registered_hotkeys or self._icon_added)
@@ -2670,7 +2670,7 @@ STRINGS = {
         "dictionary_error": "Could not save: {error}",
         "dictionary_file": "Dictionary JSON",
         "statistics_title": "Usage overview",
-        "statistics_subtitle": "Local totals from successful ClarifyVoice actions",
+        "statistics_subtitle": "Local totals from successful Clarify actions",
         "stat_recordings": "Recordings", "stat_recording_time": "Recording time",
         "stat_estimated_cost": "Estimated cost", "stat_words": "Words transcribed",
         "most_used_models": "Most used models", "no_statistics": "No usage recorded yet",
@@ -2682,10 +2682,10 @@ STRINGS = {
         "autostart_subtitle": "Run in the background and start hidden when you sign in to Windows.",
         "check_updates": "Check for updates",
         "checking_updates": "Checking and verifying the latest release…",
-        "updates_current": "ClarifyVoice is up to date.",
+        "updates_current": "Clarify is up to date.",
         "updates_windows_only": "Secure updates are available in the packaged Windows app.",
         "update_ready": "Verified update {version} is ready.",
-        "update_confirm": "Install verified ClarifyVoice {version} now? The app will close.",
+        "update_confirm": "Install verified Clarify {version} now? The app will close.",
         "update_failed": "Update blocked: {error}",
         "choose_model": "Models", "model_subtitle": "Configure transcription and text processing",
         "transcription_model": "Transcription",
@@ -2711,7 +2711,7 @@ STRINGS = {
         "gemini_proxy_hint": "Proxy requires /v1beta/models/{model}:generateContent",
         "diagnostic_export": "Export diagnostics",
         "diagnostic_export_hint": "Save safe version, environment, and recent error metadata. No audio or text is included.",
-        "diagnostic_exported": "Diagnostic file saved in the ClarifyVoice data folder.",
+        "diagnostic_exported": "Diagnostic file saved in the Clarify data folder.",
         "diagnostic_export_failed": "Could not export diagnostics.",
         "workflows_title": "Workflow routes",
         "workflows_subtitle": "Choose an independent provider, model, prompt, and endpoint for each operation.",
@@ -2778,7 +2778,7 @@ STRINGS = {
         "models_section": "Modelos",
         "providers_section": "Provedores", "statistics_section": "Estatísticas",
         "statistics_title": "Visão geral de uso",
-        "statistics_subtitle": "Totais locais de ações concluídas no ClarifyVoice",
+        "statistics_subtitle": "Totais locais de ações concluídas no Clarify",
         "stat_recordings": "Gravações", "stat_recording_time": "Tempo de gravação",
         "stat_estimated_cost": "Custo estimado", "stat_words": "Palavras transcritas",
         "most_used_models": "Modelos mais utilizados", "no_statistics": "Nenhum uso registrado ainda",
@@ -2790,10 +2790,10 @@ STRINGS = {
         "autostart_subtitle": "Executar em segundo plano e iniciar oculto ao entrar no Windows.",
         "check_updates": "Verificar atualizações",
         "checking_updates": "Verificando e validando a versão mais recente…",
-        "updates_current": "O ClarifyVoice está atualizado.",
+        "updates_current": "O Clarify está atualizado.",
         "updates_windows_only": "Atualizações seguras estão disponíveis no app Windows empacotado.",
         "update_ready": "A atualização verificada {version} está pronta.",
-        "update_confirm": "Instalar agora o ClarifyVoice {version} verificado? O app será fechado.",
+        "update_confirm": "Instalar agora o Clarify {version} verificado? O app será fechado.",
         "update_failed": "Atualização bloqueada: {error}",
         "choose_model": "Modelos", "model_subtitle": "Configure a transcri\u00e7\u00e3o e o processamento do texto",
         "transcription_model": "Transcri\u00e7\u00e3o",
@@ -2820,7 +2820,7 @@ STRINGS = {
         "gemini_proxy_hint": "O proxy precisa expor /v1beta/models/{model}:generateContent",
         "diagnostic_export": "Exportar diagnóstico",
         "diagnostic_export_hint": "Salva versão, ambiente e erros recentes seguros. Nenhum áudio ou texto é incluído.",
-        "diagnostic_exported": "Arquivo de diagnóstico salvo na pasta de dados do ClarifyVoice.",
+        "diagnostic_exported": "Arquivo de diagnóstico salvo na pasta de dados do Clarify.",
         "diagnostic_export_failed": "Não foi possível exportar o diagnóstico.",
         "workflows_title": "Rotas dos fluxos",
         "workflows_subtitle": "Escolha provedor, modelo, prompt e endpoint independentes para cada operação.",
@@ -2887,7 +2887,7 @@ STRINGS = {
         "models_section": "Modelos",
         "providers_section": "Proveedores", "statistics_section": "Estadísticas",
         "statistics_title": "Resumen de uso",
-        "statistics_subtitle": "Totales locales de las acciones completadas en ClarifyVoice",
+        "statistics_subtitle": "Totales locales de las acciones completadas en Clarify",
         "stat_recordings": "Grabaciones", "stat_recording_time": "Tiempo de grabación",
         "stat_estimated_cost": "Coste estimado", "stat_words": "Palabras transcritas",
         "most_used_models": "Modelos más utilizados", "no_statistics": "Aún no hay uso registrado",
@@ -2899,10 +2899,10 @@ STRINGS = {
         "autostart_subtitle": "Ejecutar en segundo plano e iniciar oculto al entrar en Windows.",
         "check_updates": "Buscar actualizaciones",
         "checking_updates": "Buscando y verificando la versión más reciente…",
-        "updates_current": "ClarifyVoice está actualizado.",
+        "updates_current": "Clarify está actualizado.",
         "updates_windows_only": "Las actualizaciones seguras están disponibles en la aplicación de Windows.",
         "update_ready": "La actualización verificada {version} está lista.",
-        "update_confirm": "¿Instalar ahora ClarifyVoice {version} verificado? La aplicación se cerrará.",
+        "update_confirm": "¿Instalar ahora Clarify {version} verificado? La aplicación se cerrará.",
         "update_failed": "Actualización bloqueada: {error}",
         "choose_model": "Modelos", "model_subtitle": "Configura la transcripción y el procesamiento de texto",
         "transcription_model": "Transcripción",
@@ -2929,7 +2929,7 @@ STRINGS = {
         "gemini_proxy_hint": "El proxy debe exponer /v1beta/models/{model}:generateContent",
         "diagnostic_export": "Exportar diagnóstico",
         "diagnostic_export_hint": "Guarda versión, entorno y errores recientes seguros. No incluye audio ni texto.",
-        "diagnostic_exported": "Archivo de diagnóstico guardado en la carpeta de datos de ClarifyVoice.",
+        "diagnostic_exported": "Archivo de diagnóstico guardado en la carpeta de datos de Clarify.",
         "diagnostic_export_failed": "No se pudo exportar el diagnóstico.",
         "workflows_title": "Rutas de flujo", "workflows_subtitle": "Elige un proveedor, modelo, prompt y endpoint independientes para cada operación.",
         "workflow_scope": "Operación", "workflow_provider": "Proveedor",
@@ -2958,7 +2958,7 @@ STRINGS = {
         "models_section": "Modelle",
         "providers_section": "Anbieter", "statistics_section": "Statistik",
         "statistics_title": "Nutzungsübersicht",
-        "statistics_subtitle": "Lokale Summen erfolgreicher ClarifyVoice-Aktionen",
+        "statistics_subtitle": "Lokale Summen erfolgreicher Clarify-Aktionen",
         "stat_recordings": "Aufnahmen", "stat_recording_time": "Aufnahmezeit",
         "stat_estimated_cost": "Geschätzte Kosten", "stat_words": "Transkribierte Wörter",
         "most_used_models": "Meistgenutzte Modelle", "no_statistics": "Noch keine Nutzung erfasst",
@@ -2970,10 +2970,10 @@ STRINGS = {
         "autostart_subtitle": "Im Hintergrund und bei der Windows-Anmeldung ausgeblendet starten.",
         "check_updates": "Nach Updates suchen",
         "checking_updates": "Neueste Version wird gesucht und geprüft…",
-        "updates_current": "ClarifyVoice ist aktuell.",
+        "updates_current": "Clarify ist aktuell.",
         "updates_windows_only": "Sichere Updates sind in der gepackten Windows-App verfügbar.",
         "update_ready": "Das geprüfte Update {version} ist bereit.",
-        "update_confirm": "Geprüftes ClarifyVoice {version} jetzt installieren? Die App wird geschlossen.",
+        "update_confirm": "Geprüftes Clarify {version} jetzt installieren? Die App wird geschlossen.",
         "update_failed": "Update blockiert: {error}",
         "choose_model": "Modelle", "model_subtitle": "Transkription und Textverarbeitung konfigurieren",
         "transcription_model": "Transkription",
@@ -3000,7 +3000,7 @@ STRINGS = {
         "gemini_proxy_hint": "Der Proxy muss /v1beta/models/{model}:generateContent bereitstellen",
         "diagnostic_export": "Diagnosedaten exportieren",
         "diagnostic_export_hint": "Speichert sichere Versions-, Umgebungs- und Fehlermetadaten. Audio und Text sind nicht enthalten.",
-        "diagnostic_exported": "Diagnosedatei im ClarifyVoice-Datenordner gespeichert.",
+        "diagnostic_exported": "Diagnosedatei im Clarify-Datenordner gespeichert.",
         "diagnostic_export_failed": "Diagnosedaten konnten nicht exportiert werden.",
         "workflows_title": "Workflow-Routen", "workflows_subtitle": "Unabhängigen Anbieter, Modell, Prompt und Endpunkt für jede Operation wählen.",
         "workflow_scope": "Operation", "workflow_provider": "Anbieter",
@@ -3029,7 +3029,7 @@ STRINGS = {
         "models_section": "Модели",
         "providers_section": "Провайдеры", "statistics_section": "Статистика",
         "statistics_title": "Обзор использования",
-        "statistics_subtitle": "Локальные итоги успешных действий ClarifyVoice",
+        "statistics_subtitle": "Локальные итоги успешных действий Clarify",
         "stat_recordings": "Записи", "stat_recording_time": "Время записи",
         "stat_estimated_cost": "Расчётная стоимость", "stat_words": "Распознанные слова",
         "most_used_models": "Самые используемые модели", "no_statistics": "Данных об использовании пока нет",
@@ -3041,10 +3041,10 @@ STRINGS = {
         "autostart_subtitle": "Работать в фоне и запускаться скрытым при входе в Windows.",
         "check_updates": "Проверить обновления",
         "checking_updates": "Поиск и проверка последней версии…",
-        "updates_current": "Установлена последняя версия ClarifyVoice.",
+        "updates_current": "Установлена последняя версия Clarify.",
         "updates_windows_only": "Безопасные обновления доступны в сборке для Windows.",
         "update_ready": "Проверенное обновление {version} готово.",
-        "update_confirm": "Установить проверенный ClarifyVoice {version}? Приложение закроется.",
+        "update_confirm": "Установить проверенный Clarify {version}? Приложение закроется.",
         "update_failed": "Обновление заблокировано: {error}",
         "choose_model": "Модели", "model_subtitle": "Настройка транскрипции и обработки текста",
         "transcription_model": "Транскрипция",
@@ -3071,7 +3071,7 @@ STRINGS = {
         "gemini_proxy_hint": "Прокси должен предоставлять /v1beta/models/{model}:generateContent",
         "diagnostic_export": "Экспорт диагностики",
         "diagnostic_export_hint": "Сохраняет безопасные сведения о версии, среде и ошибках. Аудио и текст не включаются.",
-        "diagnostic_exported": "Файл диагностики сохранён в папке данных ClarifyVoice.",
+        "diagnostic_exported": "Файл диагностики сохранён в папке данных Clarify.",
         "diagnostic_export_failed": "Не удалось экспортировать диагностику.",
         "workflows_title": "Маршруты сценариев", "workflows_subtitle": "Выберите независимые провайдер, модель, промпт и endpoint для каждой операции.",
         "workflow_scope": "Операция", "workflow_provider": "Провайдер",
@@ -3094,7 +3094,7 @@ STRINGS = {
 _HOTKEY_TRANSLATIONS = {
     "en": {
         "hotkeys_section": "Keyboard shortcuts",
-        "hotkeys_subtitle": "Configure the five ClarifyVoice global actions.",
+        "hotkeys_subtitle": "Configure the five Clarify global actions.",
         "hotkey_recording": "Record / stop",
         "hotkey_rewrite": "Rewrite selected text",
         "hotkey_translation": "Translate selected text",
@@ -3117,7 +3117,7 @@ _HOTKEY_TRANSLATIONS = {
     },
     "pt": {
         "hotkeys_section": "Atalhos de teclado",
-        "hotkeys_subtitle": "Configure as cinco ações globais do ClarifyVoice.",
+        "hotkeys_subtitle": "Configure as cinco ações globais do Clarify.",
         "hotkey_recording": "Gravar / parar",
         "hotkey_rewrite": "Reescrever texto selecionado",
         "hotkey_translation": "Traduzir texto selecionado",
@@ -3140,7 +3140,7 @@ _HOTKEY_TRANSLATIONS = {
     },
     "es": {
         "hotkeys_section": "Atajos de teclado",
-        "hotkeys_subtitle": "Configura las cinco acciones globales de ClarifyVoice.",
+        "hotkeys_subtitle": "Configura las cinco acciones globales de Clarify.",
         "hotkey_recording": "Grabar / detener",
         "hotkey_rewrite": "Reescribir texto seleccionado",
         "hotkey_translation": "Traducir texto seleccionado",
@@ -3163,7 +3163,7 @@ _HOTKEY_TRANSLATIONS = {
     },
     "de": {
         "hotkeys_section": "Tastenkürzel",
-        "hotkeys_subtitle": "Die fünf globalen ClarifyVoice-Aktionen konfigurieren.",
+        "hotkeys_subtitle": "Die fünf globalen Clarify-Aktionen konfigurieren.",
         "hotkey_recording": "Aufnehmen / stoppen",
         "hotkey_rewrite": "Ausgewählten Text umschreiben",
         "hotkey_translation": "Ausgewählten Text übersetzen",
@@ -3186,7 +3186,7 @@ _HOTKEY_TRANSLATIONS = {
     },
     "ru": {
         "hotkeys_section": "Сочетания клавиш",
-        "hotkeys_subtitle": "Настройте пять глобальных действий ClarifyVoice.",
+        "hotkeys_subtitle": "Настройте пять глобальных действий Clarify.",
         "hotkey_recording": "Запись / остановка",
         "hotkey_rewrite": "Переписать выделенный текст",
         "hotkey_translation": "Перевести выделенный текст",
@@ -3374,7 +3374,7 @@ def export_safe_diagnostics(destination: Path | None = None) -> Path:
     """Create a user-requested export with safe runtime/error metadata."""
     if destination is None:
         stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
-        destination = DATA_DIR / f"clarifyvoice-diagnostics-{stamp}.json"
+        destination = DATA_DIR / f"clarify-diagnostics-{stamp}.json"
     return export_diagnostics(
         destination, log_directory=HTTP_LOG_DIR,
         application_version=__version__)
@@ -3776,7 +3776,7 @@ SESSION_WORKER_GRACE_SECONDS = TRANSCRIPTION_REQUEST_TIMEOUT_SECONDS
 def _new_recording_path() -> Path:
     """Reserve a unique, app-owned path without leaving an empty WAV behind."""
     descriptor, raw_path = tempfile.mkstemp(
-        prefix="clarifyvoice-recording-", suffix=".wav", dir=str(DATA_DIR))
+        prefix="clarify-recording-", suffix=".wav", dir=str(DATA_DIR))
     os.close(descriptor)
     path = Path(raw_path)
     path.unlink(missing_ok=True)
@@ -4046,7 +4046,7 @@ class Recorder:
 
         worker = threading.Thread(
             target=observe_boundaries,
-            name="ClarifyVoiceRecordingBoundaryPolicy",
+            name="ClarifyRecordingBoundaryPolicy",
             daemon=True,
         )
         self._boundary_worker = worker
@@ -4277,7 +4277,7 @@ class Recorder:
         if not IS_WIN:
             return
         if audio_path is None:
-            targets = [AUDIO_PATH, DATA_DIR / "clarifyvoice-recording-"]
+            targets = [AUDIO_PATH, DATA_DIR / "clarify-recording-"]
             target_literals = ", ".join(
                 "'" + str(target).replace("'", "''") + "'"
                 for target in targets)
@@ -4320,8 +4320,8 @@ class Recorder:
             if (legacy_path.name == "temp_recording.wav"
                     and legacy_path.parent.resolve() == data_dir):
                 candidates.append(legacy_path)
-            for path in data_dir.glob("clarifyvoice-recording-*.wav"):
-                if (path.name.startswith("clarifyvoice-recording-")
+            for path in data_dir.glob("clarify-recording-*.wav"):
+                if (path.name.startswith("clarify-recording-")
                         and path.name.endswith(".wav")
                         and path.parent.resolve() == data_dir):
                     candidates.append(path)
@@ -4490,7 +4490,7 @@ class RecordingSession:
                     self._boundary_monitor = None
 
         worker = threading.Thread(
-            target=monitor, name="ClarifyVoiceRecordingBoundary", daemon=True)
+            target=monitor, name="ClarifyRecordingBoundary", daemon=True)
         self._boundary_monitor = worker
         worker.start()
 
@@ -4696,7 +4696,7 @@ class RecordingSession:
                     self._shutdown_watcher_started = True
                     rearm_watcher = threading.Thread(
                         target=self._finish_shutdown,
-                        name="ClarifyVoiceShutdown",
+                        name="ClarifyShutdown",
                         daemon=False,
                     )
                     self._shutdown_watcher = rearm_watcher
@@ -4724,7 +4724,7 @@ class RecordingSession:
         # handle closes. The grace period follows the shared provider HTTP
         # transcription connect/read budget.
         self._shutdown_watcher = threading.Thread(
-            target=self._finish_shutdown, name="ClarifyVoiceShutdown", daemon=False)
+            target=self._finish_shutdown, name="ClarifyShutdown", daemon=False)
         self._shutdown_watcher.start()
 
     def wait_for_shutdown(self, timeout=None):
@@ -4902,7 +4902,7 @@ def _paste_generated_text(text, *, should_paste=True,
         restore_delay=CLIPBOARD_RESTORE_DELAY_SECONDS, paste_predicate=None):
     """Write, optionally paste, and conditionally restore one result.
 
-    The lock covers the bounded restore window so a second ClarifyVoice
+    The lock covers the bounded restore window so a second Clarify
     operation cannot restore an older snapshot over a newer result.
     """
     with _CLIPBOARD_PASTE_LOCK:
@@ -5072,7 +5072,7 @@ class AppWorkflowScheduler:
 
     def run_in_background(self, callback):
         threading.Thread(
-            target=callback, name="ClarifyVoiceWorkflow", daemon=True
+            target=callback, name="ClarifyWorkflow", daemon=True
         ).start()
 
     def run_recording(self, recording, callback):
@@ -5090,7 +5090,7 @@ class AppWorkflowScheduler:
                 recording.detach_worker(threading.current_thread())
 
         worker = threading.Thread(
-            target=run, name="ClarifyVoiceRecording", daemon=True
+            target=run, name="ClarifyRecording", daemon=True
         )
         attach = getattr(
             recording, "attach_workflow_worker", recording.attach_worker)
@@ -5732,7 +5732,7 @@ def _apply_windows_round_region(widget, width, height, radius):
 
 
 def _configure_windows_tool_window(widget, no_activate=False):
-    """Hide a ClarifyVoice window from Alt+Tab, optionally preserving selection."""
+    """Hide a Clarify window from Alt+Tab, optionally preserving selection."""
     if not IS_WIN:
         return
     try:
@@ -5843,7 +5843,7 @@ def _next_translation_language_index(current_index, step, language_count):
 
 
 def _draw_checkmark(draw, center_x, center_y, scale, progress, color):
-    """Draw the rounded ClarifyVoice completion mark at any size or color."""
+    """Draw the rounded Clarify completion mark at any size or color."""
     progress = max(0.0, min(1.0, float(progress)))
     points = [
         (center_x - 9 * scale, center_y),
@@ -6528,7 +6528,7 @@ class App(ctk.CTk):
         self._clarify_visibility_target = not start_hidden
         if start_hidden:
             self.withdraw()
-        self.title("ClarifyVoice")
+        self.title("Clarify")
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.configure(fg_color=TRANSPARENT)
@@ -6640,7 +6640,7 @@ class App(ctk.CTk):
             self.withdraw()
 
     def _configure_overlay_window(self):
-        """Keep ClarifyVoice out of Alt+Tab and prevent it stealing focus."""
+        """Keep Clarify out of Alt+Tab and prevent it stealing focus."""
         if not IS_WIN:
             return
         try:
@@ -6837,7 +6837,7 @@ class App(ctk.CTk):
 
         watcher = threading.Thread(
             target=release_when_done,
-            name="ClarifyVoiceAudioImportShutdown",
+            name="ClarifyAudioImportShutdown",
             daemon=True,
         )
         watcher.start()
@@ -8579,7 +8579,7 @@ class App(ctk.CTk):
             return
         if getattr(self, "result_frame", None) is not None and self.result_frame.winfo_manager():
             self._hide_result()
-        # Capture the target before showing ClarifyVoice can affect foreground focus.
+        # Capture the target before showing Clarify can affect foreground focus.
         self._update_focused_icon(target_executable)
         self._recording_target_window = target_window
         self._was_hidden_before_recording = not self.winfo_viewable()
@@ -11249,7 +11249,7 @@ class App(ctk.CTk):
             preferences_inner, fg_color="transparent")
         update_section.pack(fill="x", pady=(28, 0))
         ctk.CTkLabel(
-            update_section, text=f"ClarifyVoice {__version__}",
+            update_section, text=f"Clarify {__version__}",
             text_color=TEXT, font=font_body, anchor="w").pack(fill="x")
         update_status = ctk.CTkLabel(
             update_section, text="", text_color=DIM, font=font_caption,
@@ -11278,7 +11278,7 @@ class App(ctk.CTk):
                 text=self._t("update_ready").format(version=version),
                 text_color="#69c58a")
             if messagebox is None or not messagebox.askyesno(
-                    "ClarifyVoice",
+                    "Clarify",
                     self._t("update_confirm").format(version=version),
                     parent=win):
                 return
@@ -12956,7 +12956,7 @@ class App(ctk.CTk):
 
 
 def _build_cli_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="ClarifyVoice")
+    parser = argparse.ArgumentParser(description="Clarify")
     subparsers = parser.add_subparsers(dest="command")
 
     transcribe = subparsers.add_parser("transcribe", help="Transcribe an existing audio file")
@@ -13017,12 +13017,12 @@ def _run_secret_store_self_test(result_file: str | None = None) -> int:
     """
 
     expected = {
-        provider: f"clarifyvoice-self-test-{provider}"
+        provider: f"clarify-self-test-{provider}"
         for provider in SUPPORTED_SECRET_PROVIDERS
     }
     try:
         with tempfile.TemporaryDirectory(
-                prefix="clarifyvoice-secret-store-test-") as directory:
+                prefix="clarify-secret-store-test-") as directory:
             config_path = Path(directory) / "config.json"
             first = LocalConfigRepository(
                 config_path, defaults={}, environment={},

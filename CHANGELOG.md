@@ -16,6 +16,9 @@ Notable user-facing changes are documented here. This project follows
 
 ### Fixed
 
+- Preserved the original dictation when optional text refinement fails or
+  returns no text. The normal focus-safe delivery remains in use, with a brief
+  status warning and a partial record when local history is enabled.
 - Gave each recording an explicit session owner with unique temporary audio,
   bounded SoX shutdown, cancellation, stale-worker protection, and cleanup on
   success, failure, cancellation, and application exit
@@ -85,7 +88,7 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify-voice/compare/v0.1.2...HEAD
-[0.1.2]: https://github.com/jvictormaynard/clarify-voice/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/jvictormaynard/clarify-voice/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/jvictormaynard/clarify-voice/releases/tag/v0.1.0
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/jvictormaynard/clarify/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/jvictormaynard/clarify/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/jvictormaynard/clarify/releases/tag/v0.1.0

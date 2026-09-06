@@ -15,7 +15,7 @@ $timestampInspectorSource = @'
 using System;
 using System.Runtime.InteropServices;
 
-public static class ClarifyVoiceTimestampInspector
+public static class ClarifyTimestampInspector
 {
     private const uint CertQueryObjectFile = 1;
     private const uint CertQueryContentPkcs7SignedEmbed = 10;
@@ -293,7 +293,7 @@ foreach ($candidate in $Path) {
         throw "SignTool rejected the signature or TSA chain for $resolved (exit $signToolExitCode)."
     }
 
-    $timestampProtocol = [ClarifyVoiceTimestampInspector]::GetTimestampProtocol(
+    $timestampProtocol = [ClarifyTimestampInspector]::GetTimestampProtocol(
         $resolved)
     $timestampStatus = if ($timestampProtocol -ceq "RFC3161") {
         "Valid"

@@ -1,5 +1,8 @@
 import ast
+import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,12 +24,18 @@ try:
         _qml_root,
         _record_voice_translation_usage,
         _register_qml_context,
+        _WorkflowWindowVisibility,
         _hidden_start_requested,
         _show_translation_picker_if_needed,
         _sync_recording_escape_hotkey,
         _start_shell_if_available,
     )
     from spikes.pyside6.qml_bridge import QmlWorkflowBridge
+    from spikes.pyside6.qml_status import (
+        QmlStatusPillController,
+        _packaged_app_icon,
+        _pillow_data_url,
+    )
     from spikes.pyside6.qml_settings import QmlSettingsController
 except (ImportError, ModuleNotFoundError):
     PYSIDE6_AVAILABLE = False
@@ -44,9 +53,20 @@ QML_ROOT = SPIKE / "qml"
 
 
 class PySide6QmlFrontendTests(unittest.TestCase):
+    @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is required")
+    def test_model_settings_render_and_interactions_offscreen(self):
+        environment = dict(os.environ, QT_QPA_PLATFORM="offscreen")
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tests/qml_model_settings_smoke.py")],
+            cwd=ROOT, env=environment, capture_output=True, text=True, timeout=90,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS: full QML settings render", result.stdout)
+
     def test_qml_entrypoint_and_assets_are_present(self):
         entrypoint = SPIKE / "qml_app.py"
         self.assertTrue(entrypoint.is_file())
+        entrypoint_source = entrypoint.read_text(encoding="utf-8")
 
         qml_files = sorted(QML_ROOT.rglob("*.qml"))
         self.assertTrue(qml_files, "the QML frontend must contain QML assets")
@@ -72,7 +92,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("readonly property int windowHeight: 48", theme_source)
 
         main_source = (QML_ROOT / "Main.qml").read_text(encoding="utf-8")
-        self.assertIn('objectName: "clarifyVoiceMainWindow"', main_source)
+        self.assertIn('objectName: "clarifyMainWindow"', main_source)
         self.assertIn('objectName: "appPages"', main_source)
         self.assertNotIn("PilotButton", main_source)
         status_pill_source = (QML_ROOT / "StatusPill.qml").read_text(encoding="utf-8")
@@ -86,7 +106,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("Layout.preferredWidth: 26", main_source)
         self.assertNotIn("#72a7ff", qml_source)
         self.assertNotIn("#4f83e8", qml_source)
-        self.assertIn("text: languageCode", main_source)
+        self.assertIn('source: "flags/" + workflow.language + ".svg"', main_source)
         self.assertIn('Accessible.name: "Language: "', main_source)
         self.assertIn(
             "readonly property var supportedLanguages: [\n"
@@ -122,12 +142,39 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("homePage.promptMode = !homePage.promptMode", main_source)
         self.assertIn('Accessible.name: "Mode: "', main_source)
         self.assertIn("root.startSystemMove()", main_source)
-        self.assertIn("DragHandler", main_source)
+        self.assertGreaterEqual(main_source.count("DragHandler"), 2)
+        self.assertIn("TapHandler", main_source)
+        self.assertIn("Layout.fillHeight: true", main_source)
+        self.assertIn("settingsScroll.contentItem.contentY = 0", main_source)
+        self.assertIn("palette.highlightedText: theme.text", main_source)
+        self.assertIn('QQuickStyle.setStyle("Basic")', entrypoint_source)
         self.assertIn("property bool successVisible: false", status_pill_source)
-        self.assertIn("interval: 850", status_pill_source)
+        self.assertIn("interval: pill.refinementWarning ? 5000 : 850", status_pill_source)
         self.assertIn(
             'workflow.surface === "success" && successVisible', status_pill_source
         )
+        self.assertIn("pillStatus.audioLevel", status_pill_source)
+        self.assertIn("pillStatus.targetIcon", status_pill_source)
+        self.assertIn("Screen.devicePixelRatio", status_pill_source)
+        self.assertIn("scale: pill.dpiCompensation", status_pill_source)
+        self.assertIn(
+            "readonly property int designWidth: refinementWarning ? 330 : 142",
+            status_pill_source,
+        )
+        self.assertIn("readonly property int designHeight: 42", status_pill_source)
+        self.assertIn("sourceSize.width: 64", status_pill_source)
+        self.assertIn("Theme { id: theme }", status_pill_source)
+        self.assertIn("Repeater", status_pill_source)
+        self.assertIn("model: 12", status_pill_source)
+        self.assertIn('workflow.surface === "recording"', status_pill_source)
+        self.assertIn('workflow.surface === "processing"', status_pill_source)
+        self.assertIn("Qt.WindowDoesNotAcceptFocus", status_pill_source)
+        self.assertIn("Screen.height - height - 80", status_pill_source)
+        self.assertNotIn("StatusPill {", main_source)
+        self.assertIn('qml_root / "StatusPill.qml"', entrypoint_source)
+        self.assertIn('root.objectName() == "workflowStatusPill"', entrypoint_source)
+        self.assertIn("visible: false", main_source)
+        self.assertIn("else:\n        window.show()", entrypoint_source)
         self.assertIn("copyResetTimer", main_source)
         self.assertIn("copyResetTimer.restart()", main_source)
         self.assertIn("function onCopyCompleted(success)", main_source)
@@ -187,7 +234,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             "settings.setHotkeyActivationMode",
             "hotkeyCaptureItem.forceActiveFocus()",
         ):
-            self.assertIn(binding, main_source)
+            self.assertIn(binding, qml_source)
         self.assertIn(
             "def hotkeyDefinitions",
             (SPIKE / "qml_settings.py").read_text(encoding="utf-8"),
@@ -225,7 +272,9 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("QSystemTrayIcon", source)
         self.assertIn("QIcon", source)
         self.assertIn("_branding_icon_path", source)
-        self.assertIn("icon=_load_branding_icon()", source)
+        self.assertIn("branding_icon = _load_branding_icon()", source)
+        self.assertIn("icon=branding_icon", source)
+        self.assertIn("QmlStatusPillController", source)
         self.assertIn("_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]", source)
         self.assertIn("sys.path.insert(0, str(_REPOSITORY_ROOT))", source)
         self.assertIn("create_real_workflow_runtime", source)
@@ -344,7 +393,9 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn('getattr(ui_preferences, "language", "en")', bridge_source)
         self.assertIn("def mode(self) -> str:", bridge_source)
         self.assertIn("def language(self) -> str:", bridge_source)
-        self.assertIn("StartDictation(None, self._mode, self._language)", bridge_source)
+        self.assertIn(
+            "StartDictation(target, self._mode, self._language)", bridge_source
+        )
 
         main_source = (QML_ROOT / "Main.qml").read_text(encoding="utf-8")
         self.assertIn(
@@ -395,8 +446,8 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn('normalized == "recording_hotkey"', bridge_source)
         self.assertIn('normalized == "rewrite_hotkey"', bridge_source)
         self.assertIn('normalized == "translation_hotkey"', bridge_source)
-        self.assertIn("StartRewrite()", bridge_source)
-        self.assertIn("StartTranslation()", bridge_source)
+        self.assertIn("StartRewrite(target)", bridge_source)
+        self.assertIn("StartTranslation(target)", bridge_source)
         self.assertIn("CancelTranslation()", bridge_source)
         self.assertIn("ChooseTranslationLanguage", bridge_source)
         self.assertIn(
@@ -578,6 +629,130 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
 
         self.assertIs(engine.rootContext().contextProperty("workflow"), workflow)
         self.assertIs(engine.rootContext().contextProperty("settings"), settings)
+
+    def test_registers_status_pill_context_when_available(self):
+        engine = QQmlApplicationEngine()
+        workflow = QObject()
+        settings = QObject()
+        status_pill = QObject()
+
+        _register_qml_context(
+            engine,
+            workflow,
+            settings,
+            status_pill=status_pill,
+        )
+
+        self.assertIs(
+            engine.rootContext().contextProperty("pillStatus"),
+            status_pill,
+        )
+
+    def test_status_pill_samples_live_level_and_refreshes_target_icon(self):
+        class Bridge(QObject):
+            recordingChanged = Signal()
+            targetExecutableChanged = Signal()
+
+            def __init__(self):
+                super().__init__()
+                self.recording = False
+                self.targetExecutable = ""
+
+        bridge = Bridge()
+        recorder = SimpleNamespace(mic_level=0.0)
+        resolved = []
+        controller = QmlStatusPillController(
+            bridge,
+            recorder,
+            fallback_icon=QIcon(),
+            icon_resolver=lambda executable: (
+                resolved.append(executable) or f"icon:{executable}"
+            ),
+        )
+
+        bridge.targetExecutable = "C:/Windows/notepad.exe"
+        bridge.targetExecutableChanged.emit()
+        self.assertEqual(controller.targetIcon, "icon:C:/Windows/notepad.exe")
+
+        bridge.recording = True
+        bridge.recordingChanged.emit()
+        recorder.mic_level = 0.8
+        controller._sample_level()
+        self.assertGreater(controller.audioLevel, 0.0)
+
+        bridge.recording = False
+        bridge.recordingChanged.emit()
+        self.assertEqual(controller.audioLevel, 0.0)
+
+    def test_status_pill_prefers_packaged_high_resolution_icon_asset(self):
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory) / "Example.Package"
+            executable = package / "bin" / "Example.exe"
+            assets = package / "assets"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"MZ")
+            assets.mkdir()
+            source = assets / "Square44x44Logo.targetsize-64_altform-unplated.png"
+            Image.new("RGBA", (128, 128), (24, 96, 220, 255)).save(source)
+
+            icon = _packaged_app_icon(str(executable))
+
+        self.assertIsNotNone(icon)
+        assert icon is not None
+        self.assertEqual(icon.size, (64, 64))
+        self.assertEqual(icon.getchannel("A").getbbox(), (4, 4, 60, 60))
+        self.assertTrue(_pillow_data_url(icon).startswith("data:image/png;base64,"))
+
+    def test_transient_workflow_hides_and_restores_visible_main_window(self):
+        class Bridge(QObject):
+            surfaceChanged = Signal()
+
+            def __init__(self):
+                super().__init__()
+                self.surface = "idle"
+
+        class Window:
+            def __init__(self):
+                self.visible = True
+                self.hide_calls = 0
+
+            def isVisible(self):
+                return self.visible
+
+            def hide(self):
+                self.visible = False
+                self.hide_calls += 1
+
+        class Shell:
+            def __init__(self, window):
+                self.window = window
+                self.show_calls = 0
+
+            def show_window(self):
+                self.window.visible = True
+                self.show_calls += 1
+
+        bridge = Bridge()
+        window = Window()
+        shell = Shell(window)
+        coordinator = _WorkflowWindowVisibility(bridge, shell, window)
+
+        bridge.surface = "recording"
+        bridge.surfaceChanged.emit()
+        self.assertEqual(window.hide_calls, 1)
+        self.assertFalse(window.visible)
+
+        bridge.surface = "processing"
+        bridge.surfaceChanged.emit()
+        self.assertEqual(shell.show_calls, 0)
+
+        bridge.surface = "success"
+        bridge.surfaceChanged.emit()
+        self.assertEqual(shell.show_calls, 1)
+        self.assertTrue(window.visible)
+        self.assertIsNotNone(coordinator)
 
     def test_shutdown_connections_stop_shell_before_runtime(self):
         events = []

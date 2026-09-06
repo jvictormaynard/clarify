@@ -103,10 +103,10 @@ def add_component(path: Path, runtime_root: Path, manifest_path: Path) -> None:
                 "licenses": [{"license": {"id": license_id}}],
                 "name": runtime_file.name,
                 "properties": [
-                    {"name": "clarifyvoice:bundled-by", "value": "SoX 14.4.2"},
-                    {"name": "clarifyvoice:vendored-project", "value": project},
+                    {"name": "clarify:bundled-by", "value": "SoX 14.4.2"},
+                    {"name": "clarify:vendored-project", "value": project},
                     {
-                        "name": "clarifyvoice:version-scope",
+                        "name": "clarify:version-scope",
                         "value": "SoX distribution bundle",
                     },
                 ],

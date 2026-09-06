@@ -34,7 +34,7 @@ $icon = Join-Path $assets "branding\clarify.ico"
 $workDir = Join-Path $repoRoot "build\pyinstaller"
 $specDir = Join-Path $repoRoot "build\spec"
 $packageInput = Join-Path $repoRoot "build\package-input"
-$payloadIdentityFile = Join-Path $packageInput "clarifyvoice-build-identity.txt"
+$payloadIdentityFile = Join-Path $packageInput "clarify-build-identity.txt"
 $soxManifestPath = Join-Path $PSScriptRoot "sox-runtime-manifest.json"
 $extra = Join-Path $packageInput "extra"
 $packageSox = Join-Path $extra "sox-14.4.2"
@@ -46,6 +46,14 @@ function ConvertTo-ProcessArgument {
         return $Value
     }
     return '"' + $Value.Replace('"', '\"') + '"'
+}
+
+function Get-IsolatedBuildPath {
+    param([string]$PathValue)
+
+    return (($PathValue -split ";") | Where-Object {
+        $_ -and $_ -notmatch '[\\/]\.cache[\\/]codex-runtimes[\\/]'
+    }) -join ";"
 }
 
 foreach ($requiredPath in @(
@@ -80,7 +88,7 @@ foreach ($runtimeFile in @($soxManifest.runtime_files + "LICENSE.GPL.txt", "READ
 
 $pyInstallerArgs = @(
     "--noconfirm", "--clean", "--onefile", "--windowed",
-    "--name", "ClarifyVoice",
+    "--name", "Clarify",
     "--icon", $icon,
     "--distpath", $OutputDirectory,
     "--workpath", $workDir,
@@ -120,20 +128,42 @@ if ($PayloadIdentity) {
 }
 $pyInstallerArgs += $entryPoint
 
-Write-Host "Building portable ClarifyVoice executable..."
+Write-Host "Building portable Clarify executable..."
 $arguments = @("-m", "PyInstaller") + $pyInstallerArgs
 $argumentLine = ($arguments | ForEach-Object {
     ConvertTo-ProcessArgument ([string]$_)
 }) -join " "
-$builder = Start-Process -FilePath $python -ArgumentList $argumentLine `
-    -Wait -PassThru -NoNewWindow
+$inheritedPath = $env:PATH
+$env:PATH = Get-IsolatedBuildPath $inheritedPath
+try {
+    $builder = Start-Process -FilePath $python -ArgumentList $argumentLine `
+        -Wait -PassThru -NoNewWindow
+} finally {
+    $env:PATH = $inheritedPath
+}
 if ($builder.ExitCode -ne 0) {
-    throw "ClarifyVoice build failed."
+    throw "Clarify build failed."
 }
 
-$executable = Join-Path $OutputDirectory "ClarifyVoice.exe"
+$executable = Join-Path $OutputDirectory "Clarify.exe"
 if (-not (Test-Path $executable)) {
     throw "PyInstaller completed without producing $executable."
+}
+
+$smokeOutLog = Join-Path $workDir "smoke.stdout.log"
+$smokeErrLog = Join-Path $workDir "smoke.stderr.log"
+$previousSmokeTest = $env:CLARIFY_IMPORT_SMOKE_TEST
+$env:CLARIFY_IMPORT_SMOKE_TEST = "1"
+try {
+    $smoke = Start-Process -FilePath $executable -Wait -PassThru `
+        -WindowStyle Hidden -RedirectStandardOutput $smokeOutLog `
+        -RedirectStandardError $smokeErrLog
+} finally {
+    $env:CLARIFY_IMPORT_SMOKE_TEST = $previousSmokeTest
+}
+if ($smoke.ExitCode -ne 0) {
+    Get-Content $smokeOutLog, $smokeErrLog -ErrorAction SilentlyContinue
+    throw "Clarify import smoke test failed."
 }
 
 Write-Host "Build complete: $executable"

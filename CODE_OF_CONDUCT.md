@@ -2,7 +2,7 @@
 
 ## Our standard
 
-ClarifyVoice should be a welcoming place to learn, build, review, and disagree
+Clarify should be a welcoming place to learn, build, review, and disagree
 constructively. Contributors and maintainers are expected to:
 
 - communicate with respect and patience;
@@ -17,7 +17,7 @@ doxxing, and deliberate disruption are not acceptable in project spaces.
 ## Scope
 
 This standard applies in issues, pull requests, discussions, code review, and
-other spaces where someone is representing ClarifyVoice.
+other spaces where someone is representing Clarify.
 
 ## Reporting and enforcement
 

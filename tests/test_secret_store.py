@@ -162,7 +162,7 @@ class SecretStoreContractTests(unittest.TestCase):
         self.assertTrue(payload["restart_read"])
         self.assertTrue(payload["provider_connections_ready"])
         self.assertTrue(payload["delete_verified"])
-        self.assertNotIn("clarifyvoice-self-test", output.getvalue())
+        self.assertNotIn("clarify-self-test", output.getvalue())
 
     def test_secret_store_cli_can_write_result_file(self):
         import app
@@ -183,7 +183,7 @@ class SecretStoreContractTests(unittest.TestCase):
             self.assertTrue(payload["restart_read"])
             self.assertTrue(payload["provider_connections_ready"])
             self.assertTrue(payload["delete_verified"])
-            self.assertNotIn("clarifyvoice-self-test", result_file.read_text(
+            self.assertNotIn("clarify-self-test", result_file.read_text(
                 encoding="utf-8"))
 
     def test_secret_store_cli_succeeds_without_stdout(self):

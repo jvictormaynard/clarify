@@ -116,8 +116,8 @@ class PrototypeWindow(QMainWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMinimumSize(520, 360)
         self.resize(620, 430)
-        self.setWindowTitle("ClarifyVoice · PySide6 spike")
-        self.setAccessibleName("ClarifyVoice PySide6 decision spike")
+        self.setWindowTitle("Clarify · PySide6 spike")
+        self.setAccessibleName("Clarify PySide6 decision spike")
         self._drag_frame = DragFrame(self._move_window, self)
         self.setCentralWidget(self._drag_frame)
         self._layout = QVBoxLayout(self._drag_frame)
@@ -137,7 +137,7 @@ class PrototypeWindow(QMainWindow):
 
     def _build_header(self) -> None:
         row = QHBoxLayout()
-        title = QLabel("ClarifyVoice")
+        title = QLabel("Clarify")
         title.setStyleSheet("font-size: 24px; font-weight: 700;")
         subtitle = QLabel("PySide6 decision spike · fake workflow")
         subtitle.setStyleSheet("color: #9aa5b5;")
@@ -295,7 +295,7 @@ class PrototypeWindow(QMainWindow):
 def _build_tray(window: PrototypeWindow) -> QSystemTrayIcon:
     tray = QSystemTrayIcon(window)
     tray.setIcon(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
-    tray.setToolTip("ClarifyVoice PySide6 spike")
+    tray.setToolTip("Clarify PySide6 spike")
     menu = tray.contextMenu()
     if menu is None:
         from PySide6.QtWidgets import QMenu
@@ -315,7 +315,7 @@ def _build_tray(window: PrototypeWindow) -> QSystemTrayIcon:
 def main() -> int:
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
-    app.setApplicationName("ClarifyVoice PySide6 spike")
+    app.setApplicationName("Clarify PySide6 spike")
     window = PrototypeWindow()
     _tray = _build_tray(window)
     window.show()

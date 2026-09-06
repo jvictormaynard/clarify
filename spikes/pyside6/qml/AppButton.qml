@@ -14,11 +14,12 @@ Button {
         text: control.text
         color: !control.enabled
                ? control.theme.dim
-               : control.quiet ? control.theme.dim : control.theme.text
+               : control.primary ? control.theme.card
+               : control.quiet ? control.theme.dim : control.theme.subtleText
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         font.pixelSize: 11
-        font.weight: Font.Normal
+        font.weight: control.primary ? Font.DemiBold : Font.Normal
         elide: Text.ElideRight
     }
 
@@ -26,10 +27,14 @@ Button {
         radius: control.theme.controlRadius
         color: !control.enabled
                ? control.theme.controlDisabled
+               : control.primary ? (control.down ? control.theme.secondaryText : control.theme.text)
                : control.quiet
-                 ? (control.hovered ? control.theme.controlHover : "transparent")
-                 : (control.hovered ? control.theme.controlHover : control.theme.control)
-        border.width: 0
+                 ? (control.down ? control.theme.controlPressed
+                    : control.hovered ? control.theme.controlHover : "transparent")
+                 : (control.down ? control.theme.controlPressed
+                    : control.hovered ? control.theme.controlHover : control.theme.control)
+        border.width: control.activeFocus ? 1 : 0
+        border.color: control.theme.secondaryText
 
         Behavior on color {
             ColorAnimation { duration: 110; easing.type: Easing.OutCubic }

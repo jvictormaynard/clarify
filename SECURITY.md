@@ -12,7 +12,7 @@ exposure.
 
 Use GitHub's private vulnerability reporting at:
 
-<https://github.com/jvictormaynard/clarify-voice/security/advisories/new>
+<https://github.com/jvictormaynard/clarify/security/advisories/new>
 
 If private reporting is unavailable, contact the maintainer through the links
 on [their GitHub profile](https://github.com/jvictormaynard) and share only the
@@ -32,15 +32,15 @@ be coordinated after impact and remediation are understood.
 
 ## Security model and known limitations
 
-- ClarifyVoice sends audio or selected text directly to the configured AI
+- Clarify sends audio or selected text directly to the configured AI
   provider or custom endpoint. That provider's retention and privacy terms
   apply.
 - Provider API keys are encrypted with current-user Windows DPAPI and stored in
-  `%APPDATA%\ClarifyVoice\secrets.dpapi.json`; ordinary settings remain in
+  `%APPDATA%\Clarify\secrets.dpapi.json`; ordinary settings remain in
   `config.json`. Copying the encrypted file to another Windows user or machine
   does not make it decryptable.
 - Linux and macOS source runs are experimental and use a separately documented
-  plaintext `~/.clarifyvoice/secrets.json` fallback with owner-only permissions
+  plaintext `~/.clarify/secrets.json` fallback with owner-only permissions
   where the filesystem supports them. Do not share that file.
 - Portable executables are not currently code-signed. Verify the SHA-256 file
   attached to a release.
@@ -64,8 +64,8 @@ Accidental key exposure should be handled by revoking the key at the provider,
 creating a replacement, removing it from local files or logs, and checking the
 Git history before publication.
 
-Deleting only `ClarifyVoice.exe` leaves local data in place. Remove the secret
-file or the whole ClarifyVoice data directory to erase stored credentials.
+Deleting only `Clarify.exe` leaves local data in place. Remove the secret
+file or the whole Clarify data directory to erase stored credentials.
 
 For a suspected release-signing compromise, immediately disable the federated
 release identity and signer role, revoke the affected Artifact Signing profile,

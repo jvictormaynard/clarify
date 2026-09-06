@@ -1,6 +1,6 @@
 # Qt Quick frontend
 
-This directory contains the production Qt Quick/QML frontend for ClarifyVoice.
+This directory contains the production Qt Quick/QML frontend for Clarify.
 The QML process uses the real `WorkflowService` and does not construct the old
 widget frontend or show a Tk window. Provider, recording, clipboard,
 configuration, statistics, voice translation, file import, and Qt scheduling
@@ -61,13 +61,13 @@ the other target first after the next reboot:
 ```powershell
 powershell -ExecutionPolicy Bypass -File spikes\pyside6\benchmark.ps1 `
   -Target CustomTkinter `
-  -Executable spikes\pyside6\artifacts\customtkinter\ClarifyVoice-customtkinter.exe `
+  -Executable spikes\pyside6\artifacts\customtkinter\Clarify-customtkinter.exe `
   -ArtifactManifest spikes\pyside6\artifacts\artifacts-manifest.json `
   -RunId round-1-ctk -Round 1 -OutputCsv measurements\round-1-ctk.csv
 
 powershell -ExecutionPolicy Bypass -File spikes\pyside6\benchmark.ps1 `
   -Target PySide6 `
-  -Executable spikes\pyside6\artifacts\pyside6\ClarifyVoice-pyside6.exe `
+  -Executable spikes\pyside6\artifacts\pyside6\Clarify-pyside6.exe `
   -ArtifactManifest spikes\pyside6\artifacts\artifacts-manifest.json `
   -RunId round-2-qt -Round 2 -OutputCsv measurements\round-2-qt.csv
 ```
@@ -104,4 +104,4 @@ machine-specific artifacts to the repository.
 
 ## Manual behavior matrix
 
-Record pass/fail notes for always-on-top, no-activate behavior, transparency, rounded corners, dragging, tray show/quit, DPI scaling, keyboard navigation/accessibility, animation smoothness, and coexistence with ClarifyVoice's production global hotkeys. The spike intentionally does not claim hotkey compatibility until that manual check is performed.
+Record pass/fail notes for always-on-top, no-activate behavior, transparency, rounded corners, dragging, tray show/quit, DPI scaling, keyboard navigation/accessibility, animation smoothness, and coexistence with Clarify's production global hotkeys. The spike intentionally does not claim hotkey compatibility until that manual check is performed.

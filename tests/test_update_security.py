@@ -34,10 +34,10 @@ from update_security import (
 
 
 POLICY = UpdatePolicy(
-    repository="jvictormaynard/clarify-voice",
+    repository="jvictormaynard/clarify",
     channel="stable",
-    manifest_asset="ClarifyVoice-release-manifest.cab",
-    installer_asset="ClarifyVoice-windows-x64.msi",
+    manifest_asset="Clarify-release-manifest.cab",
+    installer_asset="Clarify-windows-x64.msi",
     publisher_common_name="Joao Victor Maynard Mota",
     require_rfc3161_timestamp=True,
     maximum_download_bytes=1024 * 1024,
@@ -48,7 +48,7 @@ def manifest_bytes(version="0.2.0", **asset_overrides):
     asset = {
         "name": POLICY.installer_asset,
         "url": (
-            "https://github.com/jvictormaynard/clarify-voice/"
+            "https://github.com/jvictormaynard/clarify/"
             f"releases/download/v{version}/{POLICY.installer_asset}"
         ),
         "sha256": "a" * 64,
@@ -343,7 +343,7 @@ class SignatureValidationTests(unittest.TestCase):
         """Exercise CryptoAPI against a real temporary Authenticode fixture."""
 
         with tempfile.TemporaryDirectory() as directory:
-            fixture = Path(directory) / "clarifyvoice-inspector-fixture.ps1"
+            fixture = Path(directory) / "clarify-inspector-fixture.ps1"
             fixture.write_text("Write-Output signed-fixture\n", encoding="utf-16")
             command = (
                 "$ErrorActionPreference='Stop';"
@@ -360,16 +360,16 @@ class SignatureValidationTests(unittest.TestCase):
                 "New-SelfSignedCertificate -ErrorAction Stop;"
                 "if(-not (Get-PSDrive -Name Cert -ErrorAction SilentlyContinue)){"
                 "throw 'Certificate provider is unavailable'};"
-                "$fixture=$env:CLARIFYVOICE_INSPECTOR_FIXTURE;"
+                "$fixture=$env:CLARIFY_INSPECTOR_FIXTURE;"
                 "$certificate=$null;"
                 "try{"
                 "$certificate=& $newCertificateCommand.Name "
-                "-Subject 'CN=ClarifyVoice Inspector Fixture' "
+                "-Subject 'CN=Clarify Inspector Fixture' "
                 "-Type CodeSigningCert -CertStoreLocation Cert:\\CurrentUser\\My;"
                 "$signed=& $setSignatureCommand.Name -LiteralPath $fixture "
                 "-Certificate $certificate;"
                 "if($signed.Status -eq 'NotSigned'){throw 'fixture was not signed'};"
-                "$protocol=[ClarifyVoiceTimestampInspector]::"
+                "$protocol=[ClarifyTimestampInspector]::"
                 "GetTimestampProtocol($fixture);"
                 "if($protocol -cne 'Missing'){throw "
                 "('unexpected protocol: ' + $protocol)};"
@@ -382,7 +382,7 @@ class SignatureValidationTests(unittest.TestCase):
                 "}"
             )
             environment = os.environ.copy()
-            environment["CLARIFYVOICE_INSPECTOR_FIXTURE"] = str(fixture)
+            environment["CLARIFY_INSPECTOR_FIXTURE"] = str(fixture)
             # PowerShell 7 is the default GitHub Actions shell, but the
             # Authenticode cmdlets used by this fixture are provided by the
             # Windows PowerShell 5.1 Security module.  Invoke that binary

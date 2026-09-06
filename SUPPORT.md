@@ -10,7 +10,7 @@ Before opening an issue:
 4. Confirm that the selected provider key validates in **Models**.
 
 If the problem remains, open a bug report with your Windows version,
-ClarifyVoice version or commit, installation method, provider, model ID, and
+Clarify version or commit, installation method, provider, model ID, and
 sanitized error text.
 
 ## Keep secrets out of support requests
@@ -18,7 +18,7 @@ sanitized error text.
 Never post:
 
 - API keys or authorization headers;
-- `%APPDATA%\ClarifyVoice\config.json` without fully redacting keys;
+- `%APPDATA%\Clarify\config.json` without fully redacting keys;
 - private transcripts or selected text;
 - provider request or response bodies containing personal content;
 - personal Windows paths when they are not necessary.

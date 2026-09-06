@@ -1,15 +1,15 @@
 <p align="center">
-  <img src="assets/branding/clarify-logo.png" alt="ClarifyVoice logo" width="112">
+  <img src="assets/branding/clarify-logo.png" alt="Clarify logo" width="112">
 </p>
 
-<h1 align="center">ClarifyVoice</h1>
+<h1 align="center">Clarify</h1>
 
 <p align="center">
   A lightweight desktop voice assistant that turns speech into polished text in any Windows app.
 </p>
 
 <p align="center">
-  <a href="https://github.com/jvictormaynard/clarify-voice/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/jvictormaynard/clarify-voice/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/jvictormaynard/clarify/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/jvictormaynard/clarify/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0b7285.svg"></a>
   <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078d4.svg">
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776ab.svg">
@@ -22,13 +22,13 @@
   <a href="SECURITY.md">Security</a>
 </p>
 
-ClarifyVoice records from a global shortcut, transcribes with Gemini, OpenAI,
+Clarify records from a global shortcut, transcribes with Gemini, OpenAI,
 Groq, or the optional Local Whisper provider, optionally improves the text, and
 pastes the result back into the app you were using. It can also rewrite or
 translate selected text without opening a separate editor.
 
 > [!IMPORTANT]
-> ClarifyVoice supports bring-your-own-key cloud providers. Cloud transcription
+> Clarify supports bring-your-own-key cloud providers. Cloud transcription
 > or text refinement requires an API key. The optional Local Whisper provider
 > does not require an API key for local transcription; it downloads its
 > runtime/model only after an explicit action, and its packaged Windows/offline
@@ -48,7 +48,7 @@ translate selected text without opening a separate editor.
 - English, Portuguese, Spanish, German, and Russian interface languages
 - Local-only usage statistics without storing transcripts
 - Bundled SoX runtime in the portable Windows build
-- No ClarifyVoice account, hosted backend, or telemetry service
+- No Clarify account, hosted backend, or telemetry service
 
 ## Installation
 
@@ -58,18 +58,18 @@ The repository now contains the fail-closed MSI and authenticated-update
 contract, but it is not enabled for public use until managed signing,
 credential-storage, provenance, and manual acceptance gates are complete. When
 an MSI is attached to a future release, install only
-`ClarifyVoice-windows-x64.msi` whose Authenticode publisher and published
+`Clarify-windows-x64.msi` whose Authenticode publisher and published
 SHA-256 match that release. See [Windows distribution and update
 security](docs/windows-distribution.md) for the exact install, upgrade, repair,
 rollback, uninstall, signing, and incident behavior.
 
 ### Portable Windows app
 
-The release workflow produces a self-contained `ClarifyVoice.exe`, so end users
+The release workflow produces a self-contained `Clarify.exe`, so end users
 do not need Python, Node.js, or SoX.
 
-1. Open the [latest release](https://github.com/jvictormaynard/clarify-voice/releases/latest).
-2. Download `ClarifyVoice.exe` and place it in a folder you control.
+1. Open the [latest release](https://github.com/jvictormaynard/clarify/releases/latest).
+2. Download `Clarify.exe` and place it in a folder you control.
 3. Double-click the executable.
 4. Open **Providers** first and choose one explicit onboarding path:
    - **Cloud setup (credential required):** in **Providers**, select Gemini,
@@ -99,13 +99,13 @@ Requirements: Windows 10 or 11, [Python 3.11 or newer](https://www.python.org/do
 and a working microphone.
 
 ```powershell
-git clone https://github.com/jvictormaynard/clarify-voice.git
-cd clarify-voice
+git clone https://github.com/jvictormaynard/clarify.git
+cd clarify
 .\start.bat
 ```
 
 On the first run, `start.bat` creates an isolated `.venv`, installs the Python
-dependencies from the checked-in lock, and launches ClarifyVoice. Later runs
+dependencies from the checked-in lock, and launches Clarify. Later runs
 reuse that environment.
 You can refresh it at any time with:
 
@@ -132,7 +132,7 @@ their current limitations.
 | `Esc` | Cancel an active recording |
 | `Alt + K` (default) | Rewrite the selected text |
 | `Alt + T` (default) | Translate the selected text |
-| `Alt + R` (default) | Show or hide ClarifyVoice |
+| `Alt + R` (default) | Show or hide Clarify |
 
 All four global shortcuts can be captured, validated, and reset in **Settings**.
 The packaged native layer currently supports safe toggle activation only;
@@ -140,10 +140,10 @@ push-to-talk remains visibly unavailable until a key-release-capable adapter is
 implemented.
 
 The floating bar remains available through the Windows system tray. Click the
-tray icon to restore it, or right-click the icon to open ClarifyVoice or quit.
+tray icon to restore it, or right-click the icon to open Clarify or quit.
 The minimize button hides the app to the tray instead of closing it.
 
-For rewrite and translation, ClarifyVoice only pastes when the original window
+For rewrite and translation, Clarify only pastes when the original window
 and selection are still active. If focus changed while the provider was
 processing, the result stays in the clipboard and appears in the result panel.
 Automatic paste temporarily writes the result and restores the user's Unicode
@@ -159,7 +159,7 @@ endpoint: use **Providers → Local Whisper → Download local ASR** explicitly 
 install its verified optional assets. After a provider is active or Local
 Whisper is installed, open **Models** only to select among the active
 transcription and refinement models. Ordinary settings are stored in
-`%APPDATA%\ClarifyVoice\config.json`; cloud API keys are kept separately with
+`%APPDATA%\Clarify\config.json`; cloud API keys are kept separately with
 Windows Data Protection API (DPAPI).
 
 | Provider | Transcription | Text refinement | Default endpoint |
@@ -182,16 +182,16 @@ selected cloud model. The Windows/offline product acceptance remains pending.
 
 ## Privacy and local data
 
-ClarifyVoice has no project-owned server. Cloud provider requests go from your
+Clarify has no project-owned server. Cloud provider requests go from your
 computer to the endpoint you select; Local Whisper sends audio only to its own
 randomized loopback sidecar. The app stores:
 
-- provider settings in `%APPDATA%\ClarifyVoice\config.json`;
+- provider settings in `%APPDATA%\Clarify\config.json`;
 - DPAPI-encrypted provider keys in
-  `%APPDATA%\ClarifyVoice\secrets.dpapi.json`, decryptable only by the same
+  `%APPDATA%\Clarify\secrets.dpapi.json`, decryptable only by the same
   Windows user on the same machine;
-- anonymous usage counters in `%APPDATA%\ClarifyVoice\usage_stats.json`;
-- optional Local ASR assets below `%LOCALAPPDATA%\ClarifyVoice\local-asr` after
+- anonymous usage counters in `%APPDATA%\Clarify\usage_stats.json`;
+- optional Local ASR assets below `%LOCALAPPDATA%\Clarify\local-asr` after
   an explicit download; the runtime and model are not bundled in the executable;
 - a unique temporary WAV file while processing a recording. It is deleted after
   the provider no longer needs it, including cancellation, failure, and app
@@ -203,7 +203,7 @@ Environment variables remain runtime-only overrides and are never copied into
 either settings or secret storage.
 
 Removing the portable executable does not remove its data. Delete
-`%APPDATA%\ClarifyVoice\secrets.dpapi.json` (or the whole ClarifyVoice data
+`%APPDATA%\Clarify\secrets.dpapi.json` (or the whole Clarify data
 directory after preserving any settings you want) to remove stored keys.
 Transcript and selected-text contents are not written to usage statistics.
 Read [Security](SECURITY.md) for responsible reporting guidance.
@@ -214,7 +214,7 @@ Read [Security](SECURITY.md) for responsible reporting guidance.
 .\build.bat
 ```
 
-The output is `dist\ClarifyVoice.exe`. The build deliberately does **not**
+The output is `dist\Clarify.exe`. The build deliberately does **not**
 bundle `.env` or any local API key. See [Development](docs/development.md) for
 the full setup, checks, release process, and WSL maintainer workflow.
 
@@ -225,7 +225,7 @@ npm run installer
 ```
 
 This installs the pinned WiX compiler into ignored `build\tools`, writes only
-inside the repository, and does not install or replace ClarifyVoice. Public
+inside the repository, and does not install or replace Clarify. Public
 MSIs must come from the protected signing workflow.
 
 ## Project structure
@@ -288,7 +288,7 @@ visual validation expectations, and pull-request checklist.
 
 ## License
 
-ClarifyVoice source code is available under the [MIT License](LICENSE).
+Clarify source code is available under the [MIT License](LICENSE).
 Bundled third-party software and provider marks remain under their respective
 licenses and terms. Tagged releases attach the corresponding SoX 14.4.2 source
 archive alongside the portable binary. See

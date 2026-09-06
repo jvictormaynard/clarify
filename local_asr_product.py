@@ -141,7 +141,7 @@ class LocalASRProductController:
             self._publish(state)
 
         worker = threading.Thread(
-            target=run, name="ClarifyVoiceLocalASRStatus", daemon=True)
+            target=run, name="ClarifyLocalASRStatus", daemon=True)
         with self._lock:
             if self._worker is not None and self._worker.is_alive():
                 return False
@@ -234,7 +234,7 @@ class LocalASRProductController:
                     self._worker = None
 
         worker = threading.Thread(
-            target=run, name="ClarifyVoiceLocalASRInstall", daemon=True)
+            target=run, name="ClarifyLocalASRInstall", daemon=True)
         with self._lock:
             self._worker = worker
         worker.start()
@@ -281,7 +281,7 @@ class LocalASRProductController:
                     self._worker = None
 
         worker = threading.Thread(
-            target=run, name="ClarifyVoiceLocalASRRemove", daemon=True)
+            target=run, name="ClarifyLocalASRRemove", daemon=True)
         with self._lock:
             self._worker = worker
         worker.start()

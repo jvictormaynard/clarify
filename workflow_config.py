@@ -1,4 +1,4 @@
-"""Typed, UI-free provider routing for each ClarifyVoice workflow.
+"""Typed, UI-free provider routing for each Clarify workflow.
 
 This module deliberately has no persistence or desktop imports.  It validates
 provider capabilities and normalizes route IDs before a caller starts a
@@ -429,11 +429,11 @@ def validate_workflow_route(
                 normalized_scope, "The audio model is not valid for this provider.",
                 provider_id=provider, capability=capability, field="model_id",
             ) from error
-        pinned_model = str(metadata.default_audio_model or "").strip()
-        if provider == "local_asr" and model != pinned_model:
+        from local_asr_catalog import MODELS
+        if provider == "local_asr" and model not in MODELS:
             raise WorkflowConfigurationError(
                 normalized_scope,
-                f"Local Whisper supports only the pinned {pinned_model} model.",
+                "Local Whisper requires a model from the pinned profile catalog.",
                 provider_id=provider, capability=capability, field="model_id",
             )
     endpoint = str(route.custom_endpoint or "").strip().rstrip("/")

@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import platform
 import queue
 import secrets
@@ -27,6 +28,8 @@ from typing import Callable, Mapping, Protocol, runtime_checkable
 
 import requests
 
+from transcription_performance import memory_bytes, model_idle_seconds
+
 from provider_adapters import ProviderAdapter
 from provider_types import (
     ProviderCapability,
@@ -42,7 +45,7 @@ from provider_types import (
 PROVIDER_ID = "local_asr"
 MODEL_ID = "ggml-small"
 MANIFEST_FILENAME = "local_asr_manifest.json"
-ROOT_MARKER = ".clarifyvoice-local-asr-root"
+ROOT_MARKER = ".clarify-local-asr-root"
 ProgressCallback = Callable[[str, int, int], None]
 LOCAL_ASR_METADATA = ProviderMetadata(
     provider_id=PROVIDER_ID,
@@ -240,9 +243,9 @@ def default_manifest_path() -> Path:
 def default_install_root() -> Path:
     if platform.system() == "Windows":
         parent = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-        return parent / "ClarifyVoice" / "local-asr"
+        return parent / "Clarify" / "local-asr"
     parent = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return parent / "ClarifyVoice" / "local-asr"
+    return parent / "Clarify" / "local-asr"
 
 
 def _sha256(
@@ -357,7 +360,7 @@ def load_manifest(path: Path | None = None) -> dict:
     extracted = payload.get("extracted_files")
     if not isinstance(assets, Mapping) or not isinstance(extracted, list):
         raise LocalASRIntegrityError("Manifest assets are incomplete")
-    for name in ("runtime", "model"):
+    for name in ("runtime", "model", *(("cublas",) if "cublas" in assets else ())):
         value = assets.get(name)
         if not isinstance(value, Mapping):
             raise LocalASRIntegrityError(f"Manifest asset is missing: {name}")
@@ -375,6 +378,8 @@ def load_manifest(path: Path | None = None) -> dict:
                 or not _valid_digest(value.get("sha256"))):
             raise LocalASRIntegrityError("Manifest extracted-file entry is invalid")
         _safe_relative_path(str(value.get("archive_path", "")))
+        if value.get("asset", "runtime") not in ("runtime", "cublas") or value.get("asset", "runtime") not in assets:
+            raise LocalASRIntegrityError("Unknown extracted-file asset")
         destination = str(value.get("path", ""))
         _safe_relative_path(destination)
         if destination in seen_paths:
@@ -554,7 +559,7 @@ class LocalASRInstaller:
         try:
             response = self._session.get(
                 asset.url, stream=True, timeout=(10, 60),
-                headers={"User-Agent": "ClarifyVoice-local-asr/1"})
+                headers={"User-Agent": "Clarify-local-asr/1"})
             response.raise_for_status()
             with destination.open("wb") as stream:
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
@@ -619,7 +624,7 @@ class LocalASRInstaller:
             raise LocalASRError(
                 "Cannot resolve the local-ASR asset root for locking; retry the operation."
             ) from error
-        lock_path = root.parent / f".{root.name}.clarifyvoice-local-asr.lock"
+        lock_path = root.parent / f".{root.name}.clarify-local-asr.lock"
         return _AssetRootInstallLock(lock_path)
 
     def _assert_owned_root(self) -> None:
@@ -699,10 +704,12 @@ class LocalASRInstaller:
         archive_path: Path,
         staging: Path,
         cancel_event: threading.Event | None = None,
+        asset_name: str = "runtime",
     ) -> None:
         expected = {
             str(entry["archive_path"]): entry
             for entry in self.manifest["extracted_files"]
+            if entry.get("asset", "runtime") == asset_name
         }
         try:
             with zipfile.ZipFile(archive_path) as archive:
@@ -874,6 +881,12 @@ class LocalASRInstaller:
                         "Cannot remove the downloaded local-ASR runtime archive; "
                         "retry the install.") from error
                 self._report(callback, "extract:runtime", 1, 1)
+
+                if "cublas" in self.manifest["assets"]:
+                    extra_archive = staging / self.asset("cublas").filename
+                    self._download(self.asset("cublas"), extra_archive, callback, cancel_event)
+                    self._extract_runtime(extra_archive, staging, cancel_event, asset_name="cublas")
+                    extra_archive.unlink(missing_ok=True)
 
                 model = self.asset("model")
                 model_path = staging / "models" / model.filename
@@ -1231,7 +1244,7 @@ def _require_unelevated_windows_process(
     if elevation is True:
         raise LocalASRSidecarError(
             "Local ASR refuses to start from an elevated Windows process. "
-            "Restart ClarifyVoice without administrator privileges.")
+            "Restart Clarify without administrator privileges.")
     if elevation is None:
         raise LocalASRSidecarError(
             "Local ASR could not verify Windows process privileges and refused "
@@ -1245,15 +1258,19 @@ class LocalASRSidecarManager:
         self,
         installer: LocalASRInstaller | None = None,
         *,
-        idle_seconds: float = 60.0,
+        idle_seconds: float | None = None,
         startup_timeout: float = 45.0,
         request_timeout: float = 120.0,
         session=None,
         popen_factory=None,
         elevation_checker=None,
+        compute_device="cpu",
     ):
+        self.compute_device = str(compute_device)
+        if self.compute_device != "cpu" and not re.fullmatch(r"cuda:[0-9]{1,2}", self.compute_device):
+            raise ValueError("Invalid compute device")
         self.installer = installer or LocalASRInstaller()
-        self.idle_seconds = float(idle_seconds)
+        self.idle_seconds = None if idle_seconds is None else float(idle_seconds)
         self.startup_timeout = float(startup_timeout)
         self.request_timeout = float(request_timeout)
         self._session = session or requests.Session()
@@ -1329,7 +1346,7 @@ class LocalASRSidecarManager:
                 "Cannot prepare the local-ASR sidecar lock; retry the operation."
             ) from error
         return _AssetRootInstallLock(
-            root.parent / f".{root.name}.clarifyvoice-local-asr.lock")
+            root.parent / f".{root.name}.clarify-local-asr.lock")
 
     def _release_sidecar_lock_locked(self) -> None:
         lock = self._sidecar_lock
@@ -1444,6 +1461,12 @@ class LocalASRSidecarManager:
                     "--no-timestamps",
                     "--no-gpu",
                 ]
+                gpu_ready = threading.Event()
+                gpu = self.compute_device.startswith("cuda:")
+                extra = {}
+                if gpu:
+                    command.remove("--no-gpu")
+                    extra["env"] = dict(os.environ, CUDA_VISIBLE_DEVICES=self.compute_device.split(":")[1])
                 flags = 0x08000000 if platform.system() == "Windows" else 0
                 started = time.perf_counter()
                 process = None
@@ -1458,10 +1481,20 @@ class LocalASRSidecarManager:
                             cwd=str(self.installer.executable_path.parent),
                             stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE if gpu else subprocess.DEVNULL,
                             creationflags=flags,
+                            **extra,
                         )
                         self._process = process
+                        if gpu:
+                            def drain(stderr=process.stderr, ready=gpu_ready):
+                                try:
+                                    for line in iter(stderr.readline, b""):
+                                        if b"whisper_backend_init_gpu: using CUDA" in line:
+                                            ready.set()
+                                finally:
+                                    stderr.close()
+                            threading.Thread(target=drain, daemon=True, name="LocalASRGpuProbe").start()
                         self._record_process()
                 except LocalASRCancelledError:
                     raise
@@ -1479,6 +1512,10 @@ class LocalASRSidecarManager:
                             self._stop_locked(expected_process=process)
                         raise LocalASRCancelledError("Local ASR startup was cancelled")
                     if self._health(expected_process=process):
+                        if gpu and not gpu_ready.wait(1.0):
+                            with self._lock:
+                                self._stop_locked(expected_process=process)
+                            raise LocalASRSidecarError("CUDA offload could not be verified. Select CPU or install a compatible NVIDIA driver.")
                         elapsed = time.perf_counter() - started
                         with self._lock:
                             self._raise_if_cancelled(startup_cancel)
@@ -1514,10 +1551,16 @@ class LocalASRSidecarManager:
             self._idle_timer.cancel()
             self._idle_timer = None
 
-    def _schedule_idle_shutdown_locked(self) -> None:
+    def _schedule_idle_shutdown_locked(self, idle_since: float | None = None) -> None:
         self._cancel_idle_shutdown_locked()
-        if self.idle_seconds <= 0:
+        if self.idle_seconds is not None and self.idle_seconds <= 0:
             return
+        if idle_since is None:
+            idle_since = time.monotonic()
+        limit = (model_idle_seconds(memory_bytes()) if self.idle_seconds is None
+                 else self.idle_seconds)
+        remaining = max(0.0, limit - (time.monotonic() - idle_since))
+        delay = min(15.0, remaining) if self.idle_seconds is None else remaining
         if (self._active_cancellations or self._shutdown_event.is_set()
                 or self._process is None or self._process.poll() is not None):
             return
@@ -1528,9 +1571,14 @@ class LocalASRSidecarManager:
                     return
                 self._idle_timer = None
                 if not self._active_cancellations:
-                    self._stop_locked()
+                    current_limit = (model_idle_seconds(memory_bytes())
+                                     if self.idle_seconds is None else self.idle_seconds)
+                    if time.monotonic() - idle_since >= current_limit:
+                        self._stop_locked()
+                    else:
+                        self._schedule_idle_shutdown_locked(idle_since)
 
-        timer = threading.Timer(self.idle_seconds, idle_shutdown)
+        timer = threading.Timer(delay, idle_shutdown)
         timer.daemon = True
         self._idle_timer = timer
         timer.start()
@@ -1586,6 +1634,28 @@ class LocalASRSidecarManager:
         self._shutdown_event.set()
         self.cancel()
 
+    def prepare(self, recording_done: threading.Event, cancel_event=None) -> None:
+        """Load while recording, with a lease preventing idle unload mid-dictation."""
+        memory = memory_bytes()
+        if memory is not None and memory[1] < 1024 ** 3:
+            return  # Do not compete with capture on a memory-constrained host.
+        operation_cancel = threading.Event()
+        combined = _CancellationView(operation_cancel, cancel_event, self._shutdown_event)
+        with self._lock:
+            if recording_done.is_set() or combined.is_set():
+                return
+            self._active_cancellations.add(operation_cancel)
+            self._cancel_idle_shutdown_locked()
+        try:
+            self.start(cancel_event=combined)
+            while not recording_done.wait(0.1):
+                if combined.is_set():
+                    return
+        finally:
+            with self._lock:
+                self._active_cancellations.discard(operation_cancel)
+                self._schedule_idle_shutdown_locked()
+
     def _post_inference(
         self,
         audio_name: str,
@@ -1623,8 +1693,13 @@ class LocalASRSidecarManager:
         audio_bytes: bytes,
         language: str,
         cancel_event: threading.Event | None,
+        timings: dict[str, float] | None = None,
     ) -> str:
+        started = time.perf_counter()
         self.start(cancel_event=cancel_event)
+        ready = time.perf_counter()
+        if timings is not None:
+            timings["model_start_ms"] = timings.get("model_start_ms", 0.0) + (ready - started) * 1000
         result: queue.Queue = queue.Queue(maxsize=1)
         worker = threading.Thread(
             target=self._post_inference,
@@ -1648,6 +1723,8 @@ class LocalASRSidecarManager:
             self.stop()
             raise LocalASRCancelledError("Local transcription was cancelled")
         text, error = result.get_nowait()
+        if timings is not None:
+            timings["inference_ms"] = timings.get("inference_ms", 0.0) + (time.perf_counter() - ready) * 1000
         if error is not None:
             if isinstance(error, LocalASRError):
                 raise error
@@ -1661,6 +1738,7 @@ class LocalASRSidecarManager:
         cancel_event: threading.Event | None = None,
         *,
         audio_bytes: bytes | None = None,
+        timings: dict[str, float] | None = None,
     ) -> str:
         audio_path = Path(audio_path)
         operation_cancel = threading.Event()
@@ -1699,7 +1777,8 @@ class LocalASRSidecarManager:
             for attempt in range(2):
                 try:
                     return self._transcribe_once(
-                        audio_path.name, audio_snapshot, language, combined_cancel)
+                        audio_path.name, audio_snapshot, language, combined_cancel,
+                        timings=timings)
                 except (LocalASRCancelledError, LocalASRInstallRequiredError,
                         LocalASRIntegrityError):
                     raise
@@ -1738,24 +1817,42 @@ class LocalASRProviderAdapter(ProviderAdapter):
     def __init__(self, backend: LocalTranscriptionBackend | None = None):
         super().__init__(LOCAL_ASR_METADATA, requests)
         self.backend = backend or LocalASRSidecarManager()
+        from local_asr_catalog import EnginePool
+        self.engines = EnginePool(self.backend)
+
+    def select_backend(self, model, device="auto"):
+        return self.engines.get(model or MODEL_ID, device)
 
     def transcribe(self, request: TranscriptionRequest,
             connection: ProviderConnection, cancel_token=None) -> TranscriptionResult:
         del connection
         self.require(ProviderCapability.AUDIO_TRANSCRIPTION)
         model = str(request.model or "").strip() or MODEL_ID
-        if model != MODEL_ID:
+        from local_asr_catalog import MODELS
+        if model not in MODELS:
             raise ProviderConfigurationError(
                 PROVIDER_ID,
-                f"Local Whisper supports only the pinned {MODEL_ID} model",
+                "Local Whisper requires a model from the pinned profile catalog",
                 ProviderCapability.AUDIO_TRANSCRIPTION,
             )
         try:
+            backend = self.select_backend(model, request.execution_device)
+            timings: dict[str, float] = {}
             backend_kwargs = {"audio_bytes": request.audio_bytes}
+            if isinstance(backend, LocalASRSidecarManager):
+                backend_kwargs["timings"] = timings
             if cancel_token is not None:
                 backend_kwargs["cancel_event"] = cancel_token
-            text = self.backend.transcribe(
-                request.audio_path, request.language, **backend_kwargs)
+            try:
+                text = backend.transcribe(
+                    request.audio_path, request.language, **backend_kwargs)
+            except (LocalASRSidecarError, LocalASRInstallRequiredError, LocalASRIntegrityError):
+                if not getattr(backend, "compute_device", "cpu").startswith("cuda:"):
+                    raise
+                backend.stop()
+                backend = self.select_backend(model, "cpu")
+                timings.clear()
+                text = backend.transcribe(request.audio_path, request.language, **backend_kwargs)
         except (LocalASRInstallRequiredError, LocalASRIntegrityError) as error:
             raise ProviderConfigurationError(
                 PROVIDER_ID, str(error),
@@ -1768,10 +1865,10 @@ class LocalASRProviderAdapter(ProviderAdapter):
                 PROVIDER_ID, str(error),
                 ProviderCapability.AUDIO_TRANSCRIPTION,
             ) from error
-        return TranscriptionResult(text, PROVIDER_ID, model)
+        return TranscriptionResult(text, PROVIDER_ID, model, timings_ms=timings)
 
     def cancel(self) -> None:
-        self.backend.cancel()
+        self.engines.cancel()
 
     def shutdown(self) -> None:
-        self.backend.shutdown()
+        self.engines.shutdown()

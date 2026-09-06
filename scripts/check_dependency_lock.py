@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
         f"#    pip-compile {allow_unsafe}--output-file="
         f"{Path(args.lock_file).name} --strip-extras {args.requirements_file}"
     )
-    with tempfile.TemporaryDirectory(prefix="clarify-voice-lock-") as directory:
+    with tempfile.TemporaryDirectory(prefix="clarify-lock-") as directory:
         generated = Path(directory) / Path(args.lock_file).name
         # Seed the output with the committed pins. Without this, pip-tools may
         # select newer versions allowed by the intent ranges and make an old

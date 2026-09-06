@@ -164,6 +164,8 @@ class AppConfig:
     ui: UIPreferences = field(default_factory=UIPreferences)
     startup: StartupSettings = field(default_factory=StartupSettings)
     local_asr_cloud_refinement: bool = False
+    local_asr_device: str = "auto"
+    local_asr_streaming: bool = False
     history_enabled: bool = False
     history_retention_days: int | None = 30
     hotkeys: HotkeySettings = field(default_factory=HotkeySettings.defaults)
@@ -487,6 +489,8 @@ class AppConfig:
             ui=UIPreferences(mode, language),
             startup=StartupSettings(autostart),
             local_asr_cloud_refinement=local_asr_cloud_refinement,
+            local_asr_device=__import__("local_asr_catalog").normalize_device(source.get("local_asr_device")),
+            local_asr_streaming=source.get("local_asr_streaming") is True,
             history_enabled=history_enabled,
             history_retention_days=history_retention_days,
             hotkeys=hotkeys,
@@ -515,6 +519,8 @@ class AppConfig:
             "groq_text_model": self.groq.text_model,
             "local_asr_model": self.local_asr.audio_model,
             "local_asr_cloud_refinement": self.local_asr_cloud_refinement,
+            "local_asr_device": self.local_asr_device,
+            "local_asr_streaming": self.local_asr_streaming,
             "refinement_provider": self.selection.refinement_provider,
             "refinement_model": self.selection.refinement_model,
             "ui_mode": self.ui.mode,

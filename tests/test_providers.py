@@ -13,8 +13,8 @@ from unittest.mock import ANY, Mock, call, patch
 
 import requests
 
-# Keep Windows test runs isolated from the developer's real ClarifyVoice config.
-_TEST_APPDATA = tempfile.TemporaryDirectory(prefix="clarifyvoice-tests-")
+# Keep Windows test runs isolated from the developer's real Clarify config.
+_TEST_APPDATA = tempfile.TemporaryDirectory(prefix="clarify-tests-")
 os.environ["APPDATA"] = _TEST_APPDATA.name
 os.environ["HOME"] = _TEST_APPDATA.name
 for _provider_variable in (
@@ -1197,12 +1197,12 @@ class ProviderTests(unittest.TestCase):
 
         registry = Registry()
         with patch.object(app.sys, "frozen", True, create=True), patch.object(
-                app.sys, "executable", r"C:\Apps\ClarifyVoice.exe"):
+                app.sys, "executable", r"C:\Apps\Clarify.exe"):
             app._set_autostart(True, registry)
 
         self.assertTrue(app._is_autostart_enabled(registry))
-        self.assertIn(r"C:\Apps\ClarifyVoice.exe", registry.values["ClarifyVoice"])
-        self.assertTrue(registry.values["ClarifyVoice"].endswith("--hidden"))
+        self.assertIn(r"C:\Apps\Clarify.exe", registry.values["Clarify"])
+        self.assertTrue(registry.values["Clarify"].endswith("--hidden"))
 
         app._set_autostart(False, registry)
         self.assertFalse(app._is_autostart_enabled(registry))
@@ -1222,18 +1222,18 @@ class ProviderTests(unittest.TestCase):
 
             @staticmethod
             def OpenKey(_root, path):
-                self.assertEqual(path, r"Software\ClarifyVoice")
+                self.assertEqual(path, r"Software\Clarify")
                 return Key()
 
             @staticmethod
             def QueryValueEx(_key, name):
                 self.assertEqual(name, "InstallLocation")
-                return "C:\\Users\\runner\\AppData\\Local\\Programs\\ClarifyVoice\\", 1
+                return "C:\\Users\\runner\\AppData\\Local\\Programs\\Clarify\\", 1
 
         with patch.object(app.sys, "frozen", True, create=True):
             self.assertTrue(app._is_msi_installed_build(
                 Registry(),
-                r"c:\users\RUNNER\AppData\Local\Programs\ClarifyVoice\ClarifyVoice.exe",
+                r"c:\users\RUNNER\AppData\Local\Programs\Clarify\Clarify.exe",
             ))
 
     @patch("app.IS_WIN", True)
@@ -1255,11 +1255,11 @@ class ProviderTests(unittest.TestCase):
 
             @staticmethod
             def QueryValueEx(_key, _name):
-                return r"C:\Users\runner\AppData\Local\Programs\ClarifyVoice", 1
+                return r"C:\Users\runner\AppData\Local\Programs\Clarify", 1
 
         with patch.object(app.sys, "frozen", True, create=True):
             self.assertFalse(app._is_msi_installed_build(
-                Registry(), r"D:\Portable\ClarifyVoice.exe"))
+                Registry(), r"D:\Portable\Clarify.exe"))
 
         class MissingRegistry(Registry):
             @staticmethod
@@ -1268,7 +1268,7 @@ class ProviderTests(unittest.TestCase):
 
         with patch.object(app.sys, "frozen", True, create=True):
             self.assertFalse(app._is_msi_installed_build(
-                MissingRegistry(), r"D:\Portable\ClarifyVoice.exe"))
+                MissingRegistry(), r"D:\Portable\Clarify.exe"))
 
     def test_models_and_settings_labels_follow_interface_language(self):
         self.assertEqual(app.STRINGS["en"]["models_section"], "Models")

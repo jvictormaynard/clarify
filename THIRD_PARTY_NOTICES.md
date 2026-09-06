@@ -1,6 +1,6 @@
 # Third-party notices
 
-ClarifyVoice includes or depends on third-party software. Each component remains
+Clarify includes or depends on third-party software. Each component remains
 under its own license; the project MIT license does not replace those terms.
 
 ## Bundled in the Windows executable
@@ -19,7 +19,7 @@ PyInstaller is a build dependency. Its bootloader becomes part of the portable
 executable under PyInstaller's documented exception.
 
 The SoX runtime is invoked as a separate process and is not linked into the
-ClarifyVoice source. Every tagged release provides `sox-14.4.2-source.tar.gz`
+Clarify source. Every tagged release provides `sox-14.4.2-source.tar.gz`
 next to the Windows binary. The release workflow downloads the archive from the
 [official SoX 14.4.2 files](https://sourceforge.net/projects/sox/files/sox/14.4.2/)
 and requires this SHA-256 before publication:
@@ -36,7 +36,7 @@ the portable package.
 
 The local-ASR groundwork can explicitly download the following assets through
 the maintainer harness. They are not imported, downloaded, installed, or
-included in the default ClarifyVoice runtime or release artifact.
+included in the default Clarify runtime or release artifact.
 
 | Component | Purpose | Version/model | License |
 | --- | --- | --- | --- |
@@ -46,12 +46,12 @@ included in the default ClarifyVoice runtime or release artifact.
 Exact URLs, sizes, SHA-256 digests, and extracted runtime file hashes are in
 `local_asr_manifest.json`. These permissive licenses do not require a
 corresponding-source offer. Their copyright and license notices must remain in
-distributed ClarifyVoice documentation if the optional installer becomes a
+distributed Clarify documentation if the optional installer becomes a
 user-facing feature. The complete notices are preserved in
 `licenses/whisper.cpp-MIT.txt` and `licenses/openai-whisper-MIT.txt`; the
 maintainer harness copies them beside an isolated installation. The upstream
 warning not to run the example HTTP server with administrative privileges
-applies; ClarifyVoice binds it only to loopback.
+applies; Clarify binds it only to loopback.
 
 ## Provider marks
 

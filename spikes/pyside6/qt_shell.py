@@ -12,6 +12,7 @@ import ctypes
 import sys
 import tempfile
 import threading
+import time
 from collections.abc import Callable, Mapping
 from ctypes import wintypes
 from pathlib import Path
@@ -42,8 +43,8 @@ from windows_hotkeys import (
 )
 
 
-DEFAULT_INSTANCE_NAME = "clarifyvoice"
-ACTIVATION_EVENT_NAME = r"Local\ClarifyVoice.ShowExisting.v1"
+DEFAULT_INSTANCE_NAME = "clarify"
+ACTIVATION_EVENT_NAME = r"Local\Clarify.ShowExisting.v1"
 _WINDOWS_NATIVE_EVENT_TYPES = frozenset(
     {"windows_generic_MSG", "windows_dispatcher_MSG"}
 )
@@ -280,7 +281,7 @@ class QtSingleInstanceGuard:
 
         worker = threading.Thread(
             target=wait_loop,
-            name="ClarifyVoiceSingleInstanceActivation",
+            name="ClarifySingleInstanceActivation",
             daemon=True,
         )
         self._activation_listener_thread = worker
@@ -320,24 +321,39 @@ class QtSingleInstanceGuard:
 class WindowsHotkeyEventFilter(QAbstractNativeEventFilter):
     """Decode WM_HOTKEY messages and forward their canonical action names."""
 
+    _DUPLICATE_WINDOW_SECONDS = 0.02
+
     def __init__(
         self,
         on_hotkey_id: Callable[[int], None],
         *,
         message_decoder: Callable[[Any, Any], int | None] | None = None,
         action_for_id: Callable[[int], str | None] = action_for_hotkey_id,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         super().__init__()
         self._on_hotkey_id = on_hotkey_id
         self._message_decoder = message_decoder or decode_windows_hotkey_message
         self._action_for_id = action_for_id
+        self._monotonic = monotonic
+        self._last_hotkey_id: int | None = None
+        self._last_hotkey_at = 0.0
 
     def nativeEventFilter(self, event_type: Any, message: Any) -> tuple[bool, int]:
         """Observe a native event without consuming it from Qt."""
 
         hotkey_id = self._message_decoder(event_type, message)
         if hotkey_id is not None and self._action_for_id(int(hotkey_id)) is not None:
-            self._on_hotkey_id(int(hotkey_id))
+            hotkey_id = int(hotkey_id)
+            now = self._monotonic()
+            duplicate = (
+                hotkey_id == self._last_hotkey_id
+                and now - self._last_hotkey_at < self._DUPLICATE_WINDOW_SECONDS
+            )
+            self._last_hotkey_id = hotkey_id
+            self._last_hotkey_at = now
+            if not duplicate:
+                self._on_hotkey_id(hotkey_id)
         return False, 0
 
 
@@ -572,9 +588,9 @@ class QtShell(QObject):
         hotkeys: GlobalHotkeyBackend | None = None,
         application: Any | None = None,
         tray_icon_factory: Callable[[QIcon, QObject | None], Any] = QSystemTrayIcon,
-        menu_factory: Callable[[QObject | None], Any] = QMenu,
+        menu_factory: Callable[[], Any] = QMenu,
         icon: QIcon | None = None,
-        title: str = "ClarifyVoice",
+        title: str = "Clarify",
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -702,7 +718,10 @@ class QtShell(QObject):
     def _create_tray(self) -> None:
         tray = self._tray_icon_factory(self._icon, self)
         self._tray = tray
-        menu = self._menu_factory(self)
+        # QMenu is a QWidget and therefore cannot use this QObject shell as
+        # its parent.  Keep the menu alive through the explicit ``_menu``
+        # reference and release it alongside the tray during shell cleanup.
+        menu = self._menu_factory()
         self._menu = menu
         show_action = menu.addAction(f"Show {self._title}")
         quit_action = menu.addAction(f"Quit {self._title}")
@@ -760,9 +779,9 @@ class QtShell(QObject):
 
     def _handle_hotkey(self, action: str) -> None:
         normalized = str(action)
-        self.hotkeyTriggered.emit(normalized)
         if normalized == HotkeyAction.VISIBILITY.value:
             self.toggle_window()
+        self.hotkeyTriggered.emit(normalized)
 
     def _request_activation(self) -> None:
         """Queue a primary-window activation on Qt's GUI thread."""

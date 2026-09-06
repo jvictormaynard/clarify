@@ -69,27 +69,27 @@ $currentPayloadHash = $CurrentPayloadSha256.ToLowerInvariant()
 if ($baselinePayloadHash -ceq $currentPayloadHash) {
     throw "Baseline and current payload digests must be different."
 }
-$installDirectory = Join-Path $env:LOCALAPPDATA "Programs\ClarifyVoice"
-$installedExe = Join-Path $installDirectory "ClarifyVoice.exe"
-$configDirectory = Join-Path $env:APPDATA "ClarifyVoice"
+$installDirectory = Join-Path $env:LOCALAPPDATA "Programs\Clarify"
+$installedExe = Join-Path $installDirectory "Clarify.exe"
+$configDirectory = Join-Path $env:APPDATA "Clarify"
 $sentinel = Join-Path $configDirectory "config.json"
 $sentinelContent = '{"schema_version":1,"openai_api_key":"test-only-sentinel"}'
-$desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "ClarifyVoice.lnk"
-$menuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\ClarifyVoice\ClarifyVoice.lnk"
+$desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Clarify.lnk"
+$menuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Clarify\Clarify.lnk"
 $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-$metadataKey = "HKCU:\Software\ClarifyVoice"
+$metadataKey = "HKCU:\Software\Clarify"
 
 function Assert-CleanSmokeTarget {
     foreach ($path in @($installDirectory, $configDirectory, $desktopShortcut, $menuShortcut)) {
         if (Test-Path $path) {
-            throw "Refusing destructive installer smoke test: pre-existing ClarifyVoice state at $path"
+            throw "Refusing destructive installer smoke test: pre-existing Clarify state at $path"
         }
     }
     if (Test-Path $metadataKey) {
-        throw "Refusing destructive installer smoke test: pre-existing ClarifyVoice installer metadata."
+        throw "Refusing destructive installer smoke test: pre-existing Clarify installer metadata."
     }
-    if (Get-ItemProperty -Path $runKey -Name ClarifyVoice -ErrorAction SilentlyContinue) {
-        throw "Refusing destructive installer smoke test: pre-existing ClarifyVoice autostart entry."
+    if (Get-ItemProperty -Path $runKey -Name Clarify -ErrorAction SilentlyContinue) {
+        throw "Refusing destructive installer smoke test: pre-existing Clarify autostart entry."
     }
 }
 
@@ -119,7 +119,7 @@ function Assert-Installed([string]$Operation, [string]$ExpectedPayloadHash) {
 }
 
 function Assert-AutostartPreserved([string]$Operation) {
-    $entry = Get-ItemPropertyValue -Path $runKey -Name ClarifyVoice `
+    $entry = Get-ItemPropertyValue -Path $runKey -Name Clarify `
         -ErrorAction SilentlyContinue
     if (-not $entry -or $entry -notlike "*$installedExe*") {
         throw "$Operation did not preserve the user-controlled autostart entry."
@@ -134,7 +134,7 @@ try {
     Invoke-MsiExec @('/i', $baseline, '/qn', '/norestart') "clean install"
     Assert-Installed "clean install" $baselinePayloadHash
     New-Item $runKey -Force | Out-Null
-    Set-ItemProperty -Path $runKey -Name ClarifyVoice `
+    Set-ItemProperty -Path $runKey -Name Clarify `
         -Value ('"' + $installedExe + '" --hidden')
 
     Invoke-MsiExec @('/i', $current, '/qn', '/norestart') "upgrade"
@@ -155,12 +155,12 @@ try {
         throw "Uninstall left the installed executable behind."
     }
     if ((Test-Path $desktopShortcut) -or (Test-Path $menuShortcut)) {
-        throw "Uninstall left a ClarifyVoice shortcut behind."
+        throw "Uninstall left a Clarify shortcut behind."
     }
     if (-not (Test-Path $sentinel -PathType Leaf)) {
         throw "Uninstall removed user configuration."
     }
-    if (Get-ItemProperty -Path $runKey -Name ClarifyVoice -ErrorAction SilentlyContinue) {
+    if (Get-ItemProperty -Path $runKey -Name Clarify -ErrorAction SilentlyContinue) {
         throw "Uninstall left the autostart entry behind."
     }
 } finally {

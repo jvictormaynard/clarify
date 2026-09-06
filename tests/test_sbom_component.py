@@ -36,7 +36,7 @@ class SbomComponentTests(unittest.TestCase):
                 for item in document["components"]
                 if item.get("properties")
                 and any(
-                    prop.get("name") == "clarifyvoice:bundled-by"
+                    prop.get("name") == "clarify:bundled-by"
                     for prop in item["properties"]
                 )
             }

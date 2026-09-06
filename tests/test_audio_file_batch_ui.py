@@ -103,7 +103,7 @@ class AudioFileBatchUiSeamTests(unittest.TestCase):
     def test_invalid_service_fallback_updates_original_and_is_retryable(self):
         gateway = _Gateway()
         updates = []
-        source = Path("~clarifyvoice-missing-user/input.wav")
+        source = Path("~clarify-missing-user/input.wav")
         service = AudioFileBatchService(gateway, max_workers=1)
         controller = AudioFileImportController(
             service, on_update=updates.append)

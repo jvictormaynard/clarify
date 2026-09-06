@@ -899,7 +899,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
         )
 
     def test_frozen_autostart_command_does_not_append_source_script(self):
-        executable = r"C:\Program Files\ClarifyVoice\ClarifyVoice.exe"
+        executable = r"C:\Program Files\Clarify\Clarify.exe"
 
         with patch.object(qml_settings.sys, "frozen", True, create=True):
             command = qml_settings._autostart_command(executable)
@@ -923,8 +923,8 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 self.assertTrue(controller.save())
 
             apply.assert_called_once()
-            self.assertIn("qml_app.py", registry.values["ClarifyVoice"])
-            self.assertIn("--hidden", registry.values["ClarifyVoice"])
+            self.assertIn("qml_app.py", registry.values["Clarify"])
+            self.assertIn("--hidden", registry.values["Clarify"])
             self.assertTrue(repositories.config.load().startup.autostart)
             self.assertFalse(controller.dirty)
 
@@ -976,22 +976,22 @@ class QmlSettingsControllerTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             repositories = _repositories(directory)
             registry = _Registry()
-            registry.values["ClarifyVoice"] = r"C:\Legacy\ClarifyVoice.exe --old"
+            registry.values["Clarify"] = r"C:\Legacy\Clarify.exe --old"
             controller = QmlSettingsController(repositories, registry=registry)
 
             with patch("spikes.pyside6.qml_settings._is_windows", return_value=True):
                 self.assertTrue(controller.save())
 
-            self.assertNotIn("ClarifyVoice", registry.values)
-            self.assertNotIn("ClarifyVoice", registry.types)
+            self.assertNotIn("Clarify", registry.values)
+            self.assertNotIn("Clarify", registry.types)
             self.assertFalse(repositories.config.load().startup.autostart)
 
     def test_windows_save_restores_registry_when_apply_fails(self):
         with TemporaryDirectory() as directory:
             repositories = _repositories(directory)
             registry = _Registry()
-            registry.values["ClarifyVoice"] = r"C:\Legacy\ClarifyVoice.exe --old"
-            registry.types["ClarifyVoice"] = 42
+            registry.values["Clarify"] = r"C:\Legacy\Clarify.exe --old"
+            registry.types["Clarify"] = 42
             controller = QmlSettingsController(repositories, registry=registry)
             controller.setAutostart(True)
             with (
@@ -1005,10 +1005,10 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 self.assertFalse(controller.save())
 
             self.assertEqual(
-                registry.values["ClarifyVoice"],
-                r"C:\Legacy\ClarifyVoice.exe --old",
+                registry.values["Clarify"],
+                r"C:\Legacy\Clarify.exe --old",
             )
-            self.assertEqual(registry.types["ClarifyVoice"], 42)
+            self.assertEqual(registry.types["Clarify"], 42)
             self.assertFalse(repositories.config.load().startup.autostart)
             self.assertTrue(controller.dirty)
             self.assertIn("simulated config write failure", controller.lastError)
@@ -1114,6 +1114,101 @@ class QmlSettingsControllerTests(unittest.TestCase):
             check=True,
         )
         self.assertEqual(result.stdout.strip(), "False")
+
+    def _wait_models(self, controller):
+        for _ in range(200):
+            self.qt_app.processEvents()
+            if controller.routeModelStatus != "loading":
+                return
+            time.sleep(0.01)
+        self.fail("Model discovery did not finish")
+
+    def test_model_discovery_filters_task_and_preserves_saved_custom_model(self):
+        with TemporaryDirectory() as directory:
+            repositories = _repositories(directory)
+            repositories.config.save(AppConfig.from_mapping({"openai_api_key": "test-key"}))
+            controller = QmlSettingsController(repositories)
+            try:
+                controller.setRouteProviderId("openai")
+                controller.setRouteModelId("custom-saved")
+                before = repositories.config.load()
+                with patch.object(qml_settings.PROVIDER_REGISTRY, "discover_models", return_value=ModelCatalog(
+                    audio_models=("whisper-1", "whisper-1"), text_models=("text-model",)
+                )) as discover:
+                    self.assertTrue(controller.loadRouteModels())
+                    self._wait_models(controller)
+                    self.assertEqual(controller.routeModelOptions, [{"id": "whisper-1", "label": "whisper-1"}])
+                    self.assertEqual(controller.routeModelId, "custom-saved")
+                    controller.selectWorkflow("rewrite")
+                    controller.setRouteProviderId("openai")
+                    self.assertFalse(controller.loadRouteModels())
+                    self.assertEqual(controller.routeModelOptions[0]["id"], "text-model")
+                    self.assertEqual(discover.call_count, 1)
+                self.assertEqual(repositories.config.load(), before)
+            finally:
+                controller.shutdown()
+
+    def test_model_discovery_handles_missing_credentials_empty_and_failure(self):
+        with TemporaryDirectory() as directory:
+            repositories = _repositories(directory)
+            controller = QmlSettingsController(repositories)
+            try:
+                controller.setRouteProviderId("openai")
+                self.assertEqual(controller.routeModelStatus, "not_configured")
+                self.assertFalse(controller.refreshRouteModels())
+                repositories.config.save(AppConfig.from_mapping({"openai_api_key": "test-key"}))
+                controller.load()
+                controller.setRouteProviderId("openai")
+                with patch.object(qml_settings.PROVIDER_REGISTRY, "discover_models", return_value=ModelCatalog()):
+                    controller.refreshRouteModels()
+                    self._wait_models(controller)
+                    self.assertEqual(controller.routeModelStatus, "empty")
+                saved_model = controller.routeModelId
+                with patch.object(qml_settings.PROVIDER_REGISTRY, "discover_models", side_effect=RuntimeError("secret")):
+                    controller.refreshRouteModels()
+                    self._wait_models(controller)
+                    self.assertEqual(controller.routeModelStatus, "error")
+                    self.assertEqual(controller.routeModelId, saved_model)
+                    self.assertNotIn("secret", controller.lastError)
+            finally:
+                controller.shutdown()
+
+    def test_model_discovery_ignores_stale_connection_results(self):
+        with TemporaryDirectory() as directory:
+            controller = QmlSettingsController(_repositories(directory))
+            try:
+                controller._model_generation = 2
+                controller._finish_model_discovery(1, ("openai", "https://old", "old-key"), ModelCatalog(audio_models=("stale",)))
+                self.assertEqual(controller._model_catalogs, {})
+                controller.setRouteProviderId("openai")
+                controller.setRouteModelId("old-provider-model")
+                controller.setRouteCustomEndpoint("https://example.com/v1")
+                controller.setRouteProviderId("groq")
+                self.assertEqual(controller.routeCustomEndpoint, "")
+                self.assertNotEqual(controller.routeModelId, "old-provider-model")
+            finally:
+                controller.shutdown()
+
+    def test_local_model_selection_is_explicit_and_preserves_privacy(self):
+        from local_asr_product import LocalASRProductState
+        with TemporaryDirectory() as directory:
+            controller = QmlSettingsController(_repositories(directory))
+            try:
+                controller._apply_local_state(LocalASRProductState("missing"))
+                self.assertFalse(controller.useLocalAsr())
+                controller._apply_local_state(LocalASRProductState("installing", "download:model", 50, 100))
+                self.assertTrue(controller.localAsrBusy)
+                self.assertIn("4 of 5", controller.localAsrStep)
+                self.assertEqual(controller.localAsrProgress, 0.5)
+                controller._apply_local_state(LocalASRProductState("installed"))
+                self.assertFalse(controller.localAsrBusy)
+                self.assertTrue(controller.useLocalAsr())
+                self.assertEqual(controller.routeProviderId, "local_asr")
+                self.assertEqual(controller.routeModelId, "ggml-small")
+                self.assertFalse(controller.localAsrCloudRefinement)
+                self.assertTrue(controller.dirty)
+            finally:
+                controller.shutdown()
 
 
 if __name__ == "__main__":

@@ -265,8 +265,8 @@ def build_provider_registry(
 
 def _provider_data_directory() -> Path:
     if platform.system() == "Windows":
-        return Path(os.environ.get("APPDATA", Path.home())) / "ClarifyVoice"
-    return Path.home() / ".clarifyvoice"
+        return Path(os.environ.get("APPDATA", Path.home())) / "Clarify"
+    return Path.home() / ".clarify"
 
 
 PROVIDER_HTTP = ProviderHttpClient(

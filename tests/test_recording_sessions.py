@@ -1167,7 +1167,7 @@ class RecordingSessionTests(unittest.TestCase):
 
     def test_stale_process_cleanup_targets_session_path(self):
         command_runner = Mock()
-        session_path = Path("C:/Users/test/AppData/Local/ClarifyVoice/recording-42.wav")
+        session_path = Path("C:/Users/test/AppData/Local/Clarify/recording-42.wav")
         with patch.object(app, "IS_WIN", True), patch.object(
                 app.subprocess, "run", command_runner):
             app.Recorder._stop_stale_windows_recorders(session_path)
@@ -1181,10 +1181,10 @@ class RecordingSessionTests(unittest.TestCase):
                 tempfile.TemporaryDirectory() as outside:
             data_dir = Path(directory)
             legacy = data_dir / "temp_recording.wav"
-            session_wav = data_dir / "clarifyvoice-recording-ab12CD.wav"
+            session_wav = data_dir / "clarify-recording-ab12CD.wav"
             unrelated = data_dir / "meeting.wav"
-            wrong_suffix = data_dir / "clarifyvoice-recording-ab12CD.mp3"
-            outside_wav = Path(outside) / "clarifyvoice-recording-outside.wav"
+            wrong_suffix = data_dir / "clarify-recording-ab12CD.mp3"
+            outside_wav = Path(outside) / "clarify-recording-outside.wav"
             for path in (legacy, session_wav, unrelated, wrong_suffix, outside_wav):
                 path.write_bytes(b"audio")
 
@@ -1218,7 +1218,7 @@ class RecordingSessionTests(unittest.TestCase):
     def test_unix_startup_does_not_remove_another_instance_session(self):
         with tempfile.TemporaryDirectory() as directory:
             data_dir = Path(directory)
-            session_wav = data_dir / "clarifyvoice-recording-active123.wav"
+            session_wav = data_dir / "clarify-recording-active123.wav"
             session_wav.write_bytes(b"active audio")
             with patch.object(app, "IS_WIN", False), patch.object(
                     app, "DATA_DIR", data_dir), patch.object(
@@ -1242,7 +1242,7 @@ class RecordingSessionTests(unittest.TestCase):
             recorder = app.Recorder()
             cleanup.assert_called_once_with()
             cleanup.reset_mock()
-            recorder.start(Path(directory) / "clarifyvoice-recording-unique.wav")
+            recorder.start(Path(directory) / "clarify-recording-unique.wav")
 
         cleanup.assert_not_called()
 

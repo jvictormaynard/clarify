@@ -1,9 +1,9 @@
 # Local dictionary and snippets
 
-ClarifyVoice keeps user vocabulary and snippets in a non-secret profile file:
+Clarify keeps user vocabulary and snippets in a non-secret profile file:
 
-- Windows: `%APPDATA%\ClarifyVoice\dictionary.json`
-- Linux/macOS development runs: `~/.clarifyvoice/dictionary.json`
+- Windows: `%APPDATA%\Clarify\dictionary.json`
+- Linux/macOS development runs: `~/.clarify/dictionary.json`
 
 The file is independent from `config.json` and the provider secret store.  It
 contains no API credentials and is never added to usage statistics.  Writes are

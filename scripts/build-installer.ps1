@@ -21,14 +21,14 @@ if (-not $Version) {
     $Version = $match.Groups[1].Value
 }
 if (-not $SourceExe) {
-    $SourceExe = Join-Path $repoRoot "dist\ClarifyVoice.exe"
+    $SourceExe = Join-Path $repoRoot "dist\Clarify.exe"
 }
 if (-not $OutputPath) {
-    $OutputPath = Join-Path $repoRoot "dist\ClarifyVoice-windows-x64.msi"
+    $OutputPath = Join-Path $repoRoot "dist\Clarify-windows-x64.msi"
 }
 $source = (Resolve-Path $SourceExe).Path
 $outputDirectory = Split-Path -Parent $OutputPath
-$installerSource = Join-Path $repoRoot "installer\ClarifyVoice.wxs"
+$installerSource = Join-Path $repoRoot "installer\Clarify.wxs"
 $license = Join-Path $repoRoot "LICENSE"
 $notices = Join-Path $repoRoot "THIRD_PARTY_NOTICES.md"
 $icon = Join-Path $repoRoot "assets\branding\clarify.ico"
@@ -61,7 +61,7 @@ Remove-Item $OutputPath -Force -ErrorAction SilentlyContinue
     -d "IconFile=$icon" `
     -o $OutputPath
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $OutputPath -PathType Leaf)) {
-    throw "WiX did not produce the ClarifyVoice MSI."
+    throw "WiX did not produce the Clarify MSI."
 }
 
 Write-Host "Installer complete: $OutputPath"

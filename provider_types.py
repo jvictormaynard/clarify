@@ -1,8 +1,8 @@
-"""Typed contracts shared by ClarifyVoice provider adapters."""
+"""Typed contracts shared by Clarify provider adapters."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Mapping, Protocol
@@ -90,6 +90,7 @@ class TranscriptionRequest:
     # transcription prompts may forward it; local/offline adapters can ignore
     # it without adding a provider-specific workflow branch.
     dictionary_context: str = ""
+    execution_device: str = "auto"
 
     def effective_prompt(self) -> str:
         """Return the prompt with optional local vocabulary context appended."""
@@ -117,6 +118,9 @@ class TranscriptionResult:
     refined_text: str | None = None
     refinement_provider_id: str | None = None
     refinement_model: str | None = None
+    timings_ms: dict[str, float] = field(default_factory=dict, compare=False)
+    # Content-free signal: optional refinement failed, but ASR text is usable.
+    refinement_failed: bool = False
 
 
 @dataclass(frozen=True)

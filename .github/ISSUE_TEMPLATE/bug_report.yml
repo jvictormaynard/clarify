@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible ClarifyVoice problem
+description: Report a reproducible Clarify problem
 title: "[Bug]: "
 labels:
   - bug
@@ -20,7 +20,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: ClarifyVoice version
+      label: Clarify version
       description: Release tag or commit hash
       placeholder: v0.1.0 or abc1234
     validations:
@@ -61,7 +61,7 @@ body:
     attributes:
       label: Reproduction steps
       placeholder: |
-        1. Open ClarifyVoice...
+        1. Open Clarify...
         2. Press...
         3. Observe...
     validations:

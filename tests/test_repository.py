@@ -63,6 +63,21 @@ class RepositorySafetyTests(unittest.TestCase):
         )
         self.assertIn("'PySide6'", content)
 
+    def test_windows_builds_isolate_host_dll_paths_and_smoke_test_imports(self):
+        entrypoint = (ROOT / "spikes" / "pyside6" / "qml_app.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('CLARIFY_IMPORT_SMOKE_TEST") == "1"', entrypoint)
+
+        for name in ("build.ps1", "deploy.ps1"):
+            content = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+            with self.subTest(script=name):
+                self.assertIn("function Get-IsolatedBuildPath", content)
+                self.assertIn("codex-runtimes", content)
+                self.assertIn("$env:PATH = Get-IsolatedBuildPath", content)
+                self.assertIn('$env:CLARIFY_IMPORT_SMOKE_TEST = "1"', content)
+                self.assertIn("Clarify import smoke test failed", content)
+
     def test_production_entrypoint_and_dependencies_are_qml_only(self):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
@@ -119,8 +134,8 @@ class RepositorySafetyTests(unittest.TestCase):
             "azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2",
             "scripts\\verify-signature.ps1",
             "actions/attest-build-provenance@",
-            "ClarifyVoice-windows-x64.msi.sha256",
-            "ClarifyVoice-release-manifest.cab.sha256",
+            "Clarify-windows-x64.msi.sha256",
+            "Clarify-release-manifest.cab.sha256",
         ):
             self.assertIn(required, content)
         policy = (ROOT / "distribution" / "update-policy.json").read_text(
@@ -180,9 +195,9 @@ class RepositorySafetyTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("scripts\\test-installer.ps1", content)
-        self.assertIn("ClarifyVoice-windows-x64-baseline.msi", content)
+        self.assertIn("Clarify-windows-x64-baseline.msi", content)
         self.assertIn("-PayloadIdentity baseline-msi-0.1.1", content)
-        self.assertIn("-SourceExe dist\\baseline\\ClarifyVoice.exe", content)
+        self.assertIn("-SourceExe dist\\baseline\\Clarify.exe", content)
         self.assertIn("-BaselinePayloadSha256", content)
         self.assertIn("-CurrentPayloadSha256", content)
         self.assertIn("payloads must be byte-distinct", content)
@@ -205,8 +220,8 @@ class RepositorySafetyTests(unittest.TestCase):
             'RUNNER_OS = "Windows"',
             "GITHUB_WORKSPACE",
             "RUNNER_TEMP",
-            "pre-existing ClarifyVoice state",
-            "pre-existing ClarifyVoice autostart entry",
+            "pre-existing Clarify state",
+            "pre-existing Clarify autostart entry",
             "no longer the smoke-test sentinel",
         ):
             self.assertIn(required, content)
@@ -224,7 +239,7 @@ class RepositorySafetyTests(unittest.TestCase):
     def test_installer_and_update_contract_files_exist(self):
         required = [
             "distribution/update-policy.json",
-            "installer/ClarifyVoice.wxs",
+            "installer/Clarify.wxs",
             "scripts/build-installer.ps1",
             "scripts/test-installer.ps1",
             "scripts/create_release_manifest.py",
@@ -239,9 +254,7 @@ class RepositorySafetyTests(unittest.TestCase):
         build = (ROOT / "scripts" / "build.ps1").read_text(encoding="utf-8")
         self.assertIn("${distribution};distribution", build)
 
-        installer = (ROOT / "installer" / "ClarifyVoice.wxs").read_text(
-            encoding="utf-8"
-        )
+        installer = (ROOT / "installer" / "Clarify.wxs").read_text(encoding="utf-8")
         self.assertIn('Id="RemoveAutostartOnUninstall"', installer)
         self.assertIn(
             'Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"',
@@ -299,6 +312,7 @@ class RepositorySafetyTests(unittest.TestCase):
         for workflow in (ci, release):
             self.assertIn("spikes/pyside6/qml_app.py", workflow)
             self.assertIn("spikes/pyside6/qml_runtime.py", workflow)
+            self.assertIn("spikes/pyside6/qml_status.py", workflow)
             self.assertIn("spikes/pyside6/qml_audio_batch.py", workflow)
             self.assertIn("spikes/pyside6/qml_clipboard.py", workflow)
             self.assertIn("spikes/pyside6/qml_voice_translation.py", workflow)
@@ -322,7 +336,7 @@ class RepositorySafetyTests(unittest.TestCase):
             self.assertTrue((ROOT / relative_path).is_file(), relative_path)
 
     def test_release_skill_is_repository_local_and_complete(self):
-        skill_root = ROOT / ".agents" / "skills" / "clarifyvoice-release"
+        skill_root = ROOT / ".agents" / "skills" / "clarify-release"
         required = [
             "SKILL.md",
             "agents/openai.yaml",
@@ -333,8 +347,8 @@ class RepositorySafetyTests(unittest.TestCase):
             self.assertTrue((skill_root / relative_path).is_file(), relative_path)
 
         skill = (skill_root / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("name: clarifyvoice-release", skill)
-        self.assertIn("ClarifyVoice.exe.sha256", skill)
+        self.assertIn("name: clarify-release", skill)
+        self.assertIn("Clarify.exe.sha256", skill)
         self.assertNotIn("/mnt/c/Users/Work/.codex/skills", skill)
 
     def test_dependency_contract_files_exist_and_have_review_policy(self):
@@ -493,7 +507,7 @@ class RepositorySafetyTests(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(
             encoding="utf-8"
         )
-        self.assertIn("ClarifyVoice.sbom.json", workflow)
+        self.assertIn("Clarify.sbom.json", workflow)
         self.assertIn("actions/attest-build-provenance@", workflow)
         self.assertIn("id-token: write", workflow)
         self.assertIn("attestations: write", workflow)

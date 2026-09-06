@@ -57,8 +57,8 @@ Build the current executable from the reviewed checkout and record its hash:
 .\scripts\build.ps1 -OutputDirectory $run\dist
 $python = Join-Path (Get-Location) ".venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { throw "Build did not prepare the project Python environment" }
-Get-FileHash $run\dist\ClarifyVoice.exe -Algorithm SHA256 |
-    ConvertTo-Json | Set-Content $evidence\ClarifyVoice.exe.sha256.json
+Get-FileHash $run\dist\Clarify.exe -Algorithm SHA256 |
+    ConvertTo-Json | Set-Content $evidence\Clarify.exe.sha256.json
 ```
 
 For the product UI, use a profile isolated to the run. Set these variables in
@@ -68,9 +68,9 @@ Settings config and local-ASR asset root disposable:
 ```powershell
 $env:APPDATA = Join-Path $run "roaming"
 $env:LOCALAPPDATA = Join-Path $run "local"
-$assetRoot = Join-Path $env:LOCALAPPDATA "ClarifyVoice\local-asr"
+$assetRoot = Join-Path $env:LOCALAPPDATA "Clarify\local-asr"
 if (Test-Path $assetRoot) { throw "Fresh run already has local-ASR assets" }
-Start-Process $run\dist\ClarifyVoice.exe
+Start-Process $run\dist\Clarify.exe
 ```
 
 ### Acceptance matrix
