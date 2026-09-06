@@ -992,10 +992,11 @@ class QtProviderGatewayTests(unittest.TestCase):
                             "prompt",
                             "pt",
                         )
-                        self.assertEqual(result.text, "original transcript expanded")
+                        self.assertEqual(result.text, "original transcript")
                         self.assertEqual(result.raw_text, "original transcript")
                         self.assertIsNone(result.refined_text)
-                        self.assertIsNone(result.refinement_provider_id)
+                        self.assertEqual(result.refinement_provider_id, "groq")
+                        self.assertTrue(result.refinement_failed)
                     self.assertEqual(rewrite.call_count, 1)
 
     def test_transcription_network_errors_allow_explicit_recovery(self):

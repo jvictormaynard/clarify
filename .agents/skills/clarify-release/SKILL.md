@@ -31,11 +31,11 @@ release inspection, downloads, and gaps in connector coverage.
    - minor for backward-compatible user features;
    - major only for intentional breaking changes.
 5. Stop if the proposed tag already exists or the target commits are not on the
-   canonical `master`.
+   canonical `main`.
 
 ### 2. Prepare release documentation
 
-Create `agent/release-vX.Y.Z` from current `origin/master`.
+Create `codex/release-vX.Y.Z` from current `origin/main`.
 
 Update `CHANGELOG.md`:
 
@@ -86,7 +86,7 @@ Never treat unit tests or a successful PyInstaller build as visual acceptance.
 1. Stage only release-preparation files.
 2. Commit tersely, for example `docs: prepare vX.Y.Z release`.
 3. Push the branch with upstream tracking.
-4. Open a draft PR against `master` explaining scope, version choice,
+4. Open a draft PR against `main` explaining scope, version choice,
    documentation changes, validation, and expected assets.
 5. Mark ready only after local gates pass.
 6. Require all PR checks:
@@ -95,16 +95,16 @@ Never treat unit tests or a successful PyInstaller build as visual acceptance.
   - `Package Windows executable` (including MSI lifecycle and manifest smoke
     tests).
 7. Merge without rewriting existing contributor history.
-8. Wait for the post-merge `master` CI, including Windows packaging.
+8. Wait for the post-merge `main` CI, including Windows packaging.
 
 Do not tag an unmerged branch or a commit whose post-merge CI is failing.
 
 ### 5. Tag and publish
 
-Resolve the exact green `origin/master` SHA. Create an annotated tag:
+Resolve the exact green `origin/main` SHA. Create an annotated tag:
 
 ```bash
-git tag -a vX.Y.Z <master-sha> -m "Clarify vX.Y.Z"
+git tag -a vX.Y.Z <main-sha> -m "Clarify vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
@@ -125,7 +125,7 @@ Do not create a second manual release while the workflow is running.
 Require all of the following:
 
 - release is published, not draft or prerelease;
-- tag resolves to the intended green `master` commit;
+- tag resolves to the intended green `main` commit;
 - release is the current latest release;
 - all required assets from the contract exist exactly once;
 - downloaded `Clarify.exe` matches `Clarify.exe.sha256`;
@@ -148,14 +148,14 @@ Report:
 
 - version, tag, release URL, and commit SHA;
 - PR and merge result;
-- local, PR, `master`, and release-workflow validation;
+- local, PR, `main`, and release-workflow validation;
 - exact published assets and checksum result;
 - documentation files updated;
 - any remaining signing or SmartScreen limitation.
 - manual installer acceptance evidence and any unmet rollout gate from
   `docs/windows-distribution.md`.
 
-Keep the local checkout on clean, synchronized `master`. Prune merged temporary
+Keep the local checkout on clean, synchronized `main`. Prune merged temporary
 branches from remote-tracking refs.
 
 ## Stop conditions

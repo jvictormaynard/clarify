@@ -308,3 +308,5 @@ weights are reused between runtimes. Existing installations can select Optimize
 CPU/GPU. Base, Small and Medium trade speed for capacity; accuracy depends on
 language and audio. Pause processing is experimental and off by default.
 Cloud refinement of local transcripts remains an explicit option.
+
+If optional dictation refinement fails, Clarify keeps the original transcript, shows a brief warning and records a partial result when local history is enabled.

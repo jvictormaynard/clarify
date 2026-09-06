@@ -593,6 +593,10 @@ class QtProviderGateway:
                 transcript = refined.text
                 refinement_used = True
 
+        if audio_source.cancel_token is not None:
+            audio_source.cancel_token.raise_if_cancelled()
+
+        refinement_failed = refinement_requested and not refinement_used
         if refinement_requested:
             # Record outcomes only: never audio, text, exception messages or keys.
             from provider_registry import PROVIDER_HTTP
@@ -619,7 +623,8 @@ class QtProviderGateway:
             else 0.0
         )
         cleanup_started = time.perf_counter()
-        transcript = self.dictionary_service.expand(transcript)
+        if not refinement_failed:
+            transcript = self.dictionary_service.expand(transcript)
         timings["text_cleanup_ms"] = (time.perf_counter() - cleanup_started) * 1000
         return TranscriptionResult(
             transcript,
@@ -628,8 +633,13 @@ class QtProviderGateway:
             timings_ms=safe_timings(timings),
             raw_text=raw_transcript if refinement_requested else None,
             refined_text=transcript if refinement_used else None,
-            refinement_provider_id=(refined.provider_id if refinement_used else None),
-            refinement_model=(refined.model if refinement_used else None),
+            refinement_failed=refinement_failed,
+            refinement_provider_id=(
+                refinement_route.provider_id if refinement_requested else None
+            ),
+            refinement_model=(
+                refinement_route.model_id if refinement_requested else None
+            ),
         )
 
     def _refine_transcript(
@@ -1705,7 +1715,12 @@ class QtHistoryRecorder:
                     model=model,
                     refinement_provider=getattr(state, "refinement_provider_id", None),
                     refinement_model=getattr(state, "refinement_model", None),
-                    status="success",
+                    status="partial"
+                    if state.status_key == "refinement_failed"
+                    else "success",
+                    error="refinement_failed"
+                    if state.status_key == "refinement_failed"
+                    else None,
                 )
             else:
                 self.store.add(

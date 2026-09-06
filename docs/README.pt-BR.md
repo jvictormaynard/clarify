@@ -144,3 +144,5 @@ modelo e reutilizado entre os modos. Instalacoes existentes podem usar Optimize
 CPU/GPU. Base, Small e Medium oferecem perfis diferentes de velocidade e memoria.
 O processamento durante pausas e experimental e fica desativado por padrao.
 O refinamento na nuvem da transcricao local continua sendo uma opcao explicita.
+
+Se a revisão opcional do ditado falhar, o Clarify preserva a transcrição original, mostra um aviso breve e registra resultado parcial quando o histórico local está ativado.

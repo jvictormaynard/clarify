@@ -8,6 +8,7 @@ Window {
     readonly property real dpiCompensation: 1.0 / Math.max(1.0,
                                                            Screen.devicePixelRatio)
     readonly property int designWidth: 156
+    readonly property bool refinementWarning: workflow.refinementFailed === true
     readonly property int designHeight: 50
     readonly property bool feedback: workflow.feedbackVisible
     property string feedbackCaption: ""
@@ -62,7 +63,8 @@ Window {
 
     Timer {
         id: feedbackTimer
-        interval: workflow.cancellationVisible ? 5000 : 3200
+        objectName: "statusDismissTimer"
+        interval: workflow.cancellationVisible || pill.refinementWarning ? 5000 : 3200
         property int operationId: 0
         onTriggered: workflow.dismissFeedback(operationId)
     }

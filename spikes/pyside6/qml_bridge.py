@@ -98,6 +98,7 @@ class QmlWorkflowBridge(QObject):
     _STATUS_KEYS = {
         "error": "The dictation could not be completed",
         "no_audio": "No usable audio was captured",
+        "refinement_failed": "Refinement failed. Original text is available.",
         "transcription_network": "Could not connect to the transcription service",
         "no_selection": "No text selected. Select text and try again.",
         "rewrite_failed": "Could not rewrite the selected text. Try again.",
@@ -256,6 +257,14 @@ class QmlWorkflowBridge(QObject):
             "The dictation could not be completed",
         )
 
+    @Property(bool, notify=statusChanged)
+    def refinementFailed(self) -> bool:
+        return (
+            not self._finishing
+            and self._state.phase is WorkflowPhase.COMPLETED
+            and self._state.status_key == "refinement_failed"
+        )
+
     @Property(str, notify=resultChanged)
     def result(self) -> str:
         voice_result = self._voice_result()
@@ -323,6 +332,7 @@ class QmlWorkflowBridge(QObject):
             and not self._finishing
             and (
                 self._state.phase in self._ERROR_PHASES
+                or self.refinementFailed
                 or self.cancellationVisible
                 or bool(self._quick_feedback)
             )
@@ -342,10 +352,15 @@ class QmlWorkflowBridge(QObject):
 
     @Property(str, notify=statusChanged)
     def feedbackTitle(self) -> str:
+        if self.refinementFailed:
+            return self.status
         return self._quick_feedback or self.status.partition(". ")[0].rstrip(".")
 
     @Slot(int)
     def dismissFeedback(self, operation_id: int) -> None:
+        if operation_id == self._state.operation_id and self.refinementFailed:
+            self.finish()
+            return
         if operation_id == self._state.operation_id and self.cancellationVisible:
             self.finish()
             return

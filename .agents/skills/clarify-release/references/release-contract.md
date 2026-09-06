@@ -3,14 +3,14 @@
 ## Canonical state
 
 - Repository: `jvictormaynard/clarify`
-- Release branch base: `master`
+- Release branch base: `main`
 - Versioning: Semantic Versioning with `v`-prefixed Git tags
-- Maintained application: Python `app.py`
+- Maintained application: Python/Qt `spikes/pyside6/qml_app.py`
 - Historical code: `legacy/electron-prototype/` is not packaged
 - Public platform: Windows 10/11, x64 portable executable
 
 The tag, release, and executable must all originate from the same green
-`master` commit.
+`main` commit.
 
 ## Required repository files
 
@@ -131,7 +131,7 @@ Portuguese installation instructions behaviorally equivalent.
 ## Security and provenance
 
 - Never bundle `.env`, API keys, `%APPDATA%` config, or local credentials.
-- Keep provider credentials in `%APPDATA%\Clarify\config.json`.
+- Keep provider credentials in the DPAPI secret store; never in plain config.json.
 - Preserve contributor attribution and existing Git history.
 - Never force-update or reuse a published tag.
 - Never overwrite a published asset to conceal provenance drift; publish a new
