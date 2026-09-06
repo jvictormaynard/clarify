@@ -299,3 +299,12 @@ Bundled third-party software and provider marks remain under their respective
 licenses and terms. Tagged releases attach the corresponding SoX 14.4.2 source
 archive alongside the portable binary. See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+### Local model performance
+
+Install a local model once to prepare CPU and compatible NVIDIA GPU support.
+Automatic measures this computer and uses the fastest available device. Model
+weights are reused between runtimes. Existing installations can select Optimize
+CPU/GPU. Base, Small and Medium trade speed for capacity; accuracy depends on
+language and audio. Pause processing is experimental and off by default.
+Cloud refinement of local transcripts remains an explicit option.

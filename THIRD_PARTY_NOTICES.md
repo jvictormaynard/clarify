@@ -67,3 +67,10 @@ reviewed and documented before distribution.
 
 Maintainers should update this file whenever a distributed dependency or
 third-party asset changes.
+
+## Optional NVIDIA CUDA runtime
+
+Local GPU setup downloads the pinned CUDA runtime and cuBLAS package. Their
+license is retained in `licenses/NVIDIA-CUDA-runtime.txt`; NVIDIA terms apply.
+The runtime packages and model weights are downloaded only during explicit local
+model installation and are not bundled in the portable executable.

@@ -1,10 +1,47 @@
 # Provider HTTP reliability and diagnostics
 
 `provider_http.py` is the common transport policy for provider adapters. It
-owns the HTTP session, connect/read timeouts, retry decisions, typed failures,
+owns the HTTP connection lifecycle, connect/read timeouts, retry decisions, typed failures,
 cooperative cancellation, redacted rotating logs, and diagnostic exports.
 Provider adapters own request payload construction and successful response
 parsing; they must not add a second retry layer or log request/response bodies.
+
+## Connection lifecycle
+
+The default client creates and closes a Requests session for each HTTP attempt.
+It does not reuse idle TCP/TLS connections between desktop operations. This
+prevents a stale connection retained from an earlier operation from breaking
+the next transcription or text-generation POST. It also avoids sharing mutable
+session state between concurrent desktop workers. TLS verification, proxy
+handling, and request timeouts remain enabled. Explicitly injected sessions
+remain the caller's responsibility.
+
+Requests documents automatic connection reuse within a session in its
+[advanced usage guide](https://requests.readthedocs.io/en/stable/user/advanced/#keep-alive).
+The per-call session lifecycle is implemented by its
+[request API](https://requests.readthedocs.io/en/latest/_modules/requests/api/#request).
+
+This adds a connection/TLS handshake per attempt. An unauthenticated GET probe
+to Groq on the affected Windows host measured about 0.6–0.8 seconds of added
+latency compared with an open pooled connection. The probe did not reproduce
+the production interruption at idle intervals up to 125 seconds. A local HTTP
+integration test reproduces a server dropping a reused socket: the old pooled
+client fails and the default per-attempt client succeeds. This establishes the
+mechanism and the fix's coverage, not the remote cause of every historical error.
+
+On September 5, 2026, local diagnostics recorded `ConnectionError` wrapping
+`ProtocolError` for Groq text generation at 06:47:19 UTC. Usage records show a
+local transcription completed at 06:47:08, a preceding cloud rewrite at
+06:34:31, and a successful rewrite at 06:47:26. Thus this occurrence affected
+cloud text generation after an idle interval, not local audio capture. The
+older records lack the nested socket exception needed to distinguish a remote
+close, reset, proxy, or another transport failure.
+
+Optional dictation cleanup fails open: if cleanup cannot return usable text,
+the already completed transcript proceeds through dictionary expansion and
+publication. Cancellation still aborts the operation. A failed cleanup is not
+reported as a successfully refined result. Standalone rewrite and translation
+failures retain their error state and show a specific message in the pill.
 
 ## Timeout and retry policy
 
@@ -64,7 +101,8 @@ late result.
 Provider errors are written as JSON lines to a rotating `provider.log`. The
 default rotation is 512 KiB with three backups. Log records contain only
 transport metadata: timestamp, provider, operation, method, host, attempt,
-status, local operation ID, error type, and selected retry delay.
+status, local operation ID, error type, selected retry delay, elapsed time,
+connection policy, nested exception class names, and numeric OS error codes.
 The URL path/query, headers, request/response bodies, audio path, source text,
 transcript, and rewritten text are not logged.
 

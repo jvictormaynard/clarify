@@ -532,7 +532,7 @@ class WorkflowConfigurationTests(unittest.TestCase):
                 {
                     "transcription": {
                         "provider_id": "local_asr",
-                        "model_id": "ggml-medium",
+                        "model_id": "ggml-unsupported",
                     },
                 },
             )
@@ -872,7 +872,7 @@ class WorkflowConfigurationTests(unittest.TestCase):
                 "workflows": {
                     "transcription": {
                         "provider_id": "local_asr",
-                        "model_id": "ggml-medium",
+                        "model_id": "ggml-unsupported",
                     },
                 },
             }).workflows)

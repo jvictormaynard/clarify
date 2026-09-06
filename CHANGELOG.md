@@ -5,6 +5,28 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-06
+
+### Added
+
+- Local Whisper Base, Small and Medium profiles with CPU and compatible NVIDIA GPU support.
+- One model installation prepares available devices, reuses verified model files and measures the fastest device for Automatic mode.
+- Experimental processing during speech pauses, disabled by default.
+- Explicit transcription retry, cancellation undo and focus-safe quick actions.
+
+### Changed
+
+- Renamed the application and downloads to Clarify.
+- Reduced local startup delay with model preparation during recording and idle retention.
+- Improved refinement instructions for spoken corrections and lists.
+- Buttons and selectors use the hover background for click, selection and focus without a bright focus border.
+
+### Fixed
+
+- Restored the compact settings interface and reliable Settings navigation.
+- Kept the destination field focused when the toolbar returns before pasting.
+- Added content-free refinement outcome and stage latency diagnostics.
+
 ## [0.2.2] - 2026-08-09
 
 ### Added
@@ -131,10 +153,12 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.3.0...HEAD
 [0.2.2]: https://github.com/jvictormaynard/clarify/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/jvictormaynard/clarify/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jvictormaynard/clarify/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/jvictormaynard/clarify/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jvictormaynard/clarify/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jvictormaynard/clarify/releases/tag/v0.1.0
+
+[0.3.0]: https://github.com/jvictormaynard/clarify/compare/v0.2.2...v0.3.0

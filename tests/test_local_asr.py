@@ -2114,6 +2114,12 @@ class LocalASRHarnessTests(unittest.TestCase):
 
 
 class LocalASRProviderAdapterTests(unittest.TestCase):
+    def setUp(self):
+        # Unit tests must not select the host GPU from its saved calibration.
+        selection = patch("local_asr_catalog.measured_device", return_value="cpu")
+        selection.start()
+        self.addCleanup(selection.stop)
+
     def test_adapter_forwards_registry_cancellation_token(self):
         with tempfile.TemporaryDirectory() as directory:
             audio = Path(directory) / "input.wav"

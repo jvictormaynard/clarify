@@ -252,21 +252,46 @@ class _WorkflowWindowVisibility:
         self._shell = shell
         self._window = window
         self._restore_visible: bool | None = None
+        self._last_surface = bridge.surface
         bridge.surfaceChanged.connect(self.sync)
 
     def sync(self) -> None:
-        pill_active = self._bridge.surface in self._PILL_SURFACES
+        surface = self._bridge.surface
+        previous_surface = self._last_surface
+        self._last_surface = surface
+        feedback = bool(getattr(self._bridge, "feedbackVisible", False))
+        pill_active = (
+            self._bridge.surface in self._PILL_SURFACES
+            or feedback
+            or bool(getattr(self._bridge, "transitionPending", False))
+        )
         if pill_active:
             if self._restore_visible is None:
                 self._restore_visible = bool(self._window.isVisible())
+            if feedback:
+                # An error is handled in the pill. Restoring the main window
+                # on dismissal would steal the next shortcut's selection.
+                self._restore_visible = False
             self._shell.hide_window()
-            return
-        if self._restore_visible is None:
             return
         restore_visible = self._restore_visible
         self._restore_visible = None
-        if restore_visible:
+        # COMPLETED is delivered before the clipboard write. Restore the
+        # compact card with native activation disabled, preserving the target.
+        # Only navigation to a panel may explicitly request keyboard focus.
+        explicit_navigation = surface in {"settings", "files"}
+        restore_panel = restore_visible and surface in {
+            "result",
+            "voice_result",
+            "voice_error",
+            "translation_picker",
+        }
+        if surface != previous_surface and (explicit_navigation or restore_panel):
             self._shell.show_window()
+        elif restore_visible and surface in {"idle", "success"}:
+            restore = getattr(self._shell, "show_window_without_activation", None)
+            if callable(restore):
+                restore()
 
 
 def _sync_recording_escape_hotkey(bridge, hotkeys) -> None:
@@ -378,6 +403,18 @@ def main(argv: list[str] | None = None) -> int:
         bridge.setTargetExecutable(target.executable or "")
         return voice_translation.startForTarget(target)
 
+    try:
+        from .qml_quick_paste import QuickPasteController
+    except ImportError:
+        from qml_quick_paste import QuickPasteController
+
+    quick_paste = QuickPasteController(
+        runtime.clipboard,
+        scheduler.run_dispatch,
+        app.allWindows,
+        lambda: shell.hide_window(),
+        parent=app,
+    )
     bridge = QmlWorkflowBridge(
         workflow_service,
         app_config=loaded_config,
@@ -386,7 +423,8 @@ def main(argv: list[str] | None = None) -> int:
         voice_translation_handler=toggle_voice_translation,
         voice_translation_controller=voice_translation,
         audio_batch_controller=audio_batch,
-        target_provider=runtime.clipboard.capture_target,
+        target_provider=quick_paste.capture_target,
+        paste_runner=quick_paste.paste,
         parent=app,
     )
     hotkeys = None
@@ -458,6 +496,7 @@ def main(argv: list[str] | None = None) -> int:
         parent=app,
     )
     shell.hotkeyTriggered.connect(bridge.handleHotkey)
+    bridge.resultRequested.connect(shell.show_window)
     bridge.surfaceChanged.connect(
         lambda: _show_translation_picker_if_needed(bridge, shell)
     )

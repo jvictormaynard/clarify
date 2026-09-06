@@ -103,6 +103,7 @@ $pyInstallerArgs = @(
     # license notices must travel inside the signed executable so an attacker
     # cannot redirect the product to an unreviewed asset definition.
     "--add-data", "${localAsrManifest};.",
+    "--add-data", "$(Join-Path $repoRoot 'local_asr_manifests');local_asr_manifests",
     "--add-data", "${localAsrLicenses};licenses",
     "--hidden-import", "version",
     "--hidden-import", "qml_bridge",

@@ -135,3 +135,12 @@ internacional:
 O código do Clarify usa a [Licença MIT](../LICENSE). O SoX e outras
 dependências mantêm suas próprias licenças, documentadas em
 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+
+### Desempenho dos modelos locais
+
+Instale o modelo uma vez para preparar CPU e GPU NVIDIA compativel. O modo
+Automatic mede este computador e usa o dispositivo mais rapido. O arquivo do
+modelo e reutilizado entre os modos. Instalacoes existentes podem usar Optimize
+CPU/GPU. Base, Small e Medium oferecem perfis diferentes de velocidade e memoria.
+O processamento durante pausas e experimental e fica desativado por padrao.
+O refinamento na nuvem da transcricao local continua sendo uma opcao explicita.

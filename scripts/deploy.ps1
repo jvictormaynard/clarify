@@ -184,6 +184,9 @@ foreach ($backendModule in @(
     "history_store.py",
     "hotkey_config.py",
     "local_asr.py",
+    "local_asr_catalog.py",
+    "local_asr_streaming.py",
+    "transcription_performance.py",
     "local_asr_product.py",
     "microphone_controls.py",
     "provider_adapters.py",
@@ -209,6 +212,7 @@ Copy-Item $repoExtra $extra -Recurse -Force
 Copy-Item $repoAssets $assets -Recurse -Force
 Copy-Item $repoDistribution $distribution -Recurse -Force
 Copy-Item $repoLocalAsrManifest $localAsrManifest -Force
+Copy-Item (Join-Path $repoRoot "local_asr_manifests") (Join-Path $sourceDir "local_asr_manifests") -Recurse -Force
 Copy-Item $repoLocalAsrLicenses $localAsrLicenses -Recurse -Force
 # Keep the linked SoX runtime intact, but omit files unused by the app.
 Remove-Item (Join-Path $extra "sox.zip") -Force -ErrorAction SilentlyContinue
@@ -224,6 +228,7 @@ Remove-Item (Join-Path $soxDir "*.pdf"),
 $pyinstallerArgs = @(
     "-m", "PyInstaller",
     "--noconfirm", "--onefile", "--windowed",
+    "--add-data", "$(Join-Path $sourceDir 'local_asr_manifests');local_asr_manifests",
     "--name", "Clarify",
     "--icon", (Join-Path $assets "branding\clarify.ico"),
     "--distpath", $distDir,
@@ -304,5 +309,5 @@ try {
     throw
 }
 
-Start-Process $targetExe -WorkingDirectory $targetDir
+Start-Process $targetExe -WorkingDirectory $targetDir -WindowStyle Hidden
 Write-Host "Clarify was updated and restarted successfully."

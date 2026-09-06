@@ -475,17 +475,56 @@ class QtRecordingSessionTests(unittest.TestCase):
         recorder = QtRecorder(None, InventorySource())
         selection = inventory.resolve("selected")
         fake_sounddevice = SimpleNamespace(RawInputStream=Stream)
+        levels = []
+        cancelled = threading.Event()
+
+        def receive_level(level):
+            levels.append(level)
+            cancelled.set()
+
         with (
             patch.object(qml_runtime, "_sounddevice", fake_sounddevice),
             patch.object(qml_runtime.platform, "system", return_value="Windows"),
             patch.object(qml_runtime.time, "sleep"),
         ):
-            peak = recorder.test_microphone(selection, inventory)
+            peak = recorder.test_microphone(
+                selection,
+                inventory,
+                on_level=receive_level,
+                cancel_event=cancelled,
+                duration=30,
+            )
 
         self.assertGreater(peak, 0.0)
+        self.assertEqual(levels, [peak])
         self.assertEqual(Stream.instance.kwargs["device"], 4)
         self.assertTrue(Stream.instance.started)
         self.assertTrue(Stream.instance.stopped)
+        self.assertTrue(Stream.instance.closed)
+
+        # Closing the input must still happen when stopping the driver fails.
+        cancelled.clear()
+        with (
+            patch.object(qml_runtime, "_sounddevice", fake_sounddevice),
+            patch.object(qml_runtime.platform, "system", return_value="Windows"),
+            patch.object(Stream, "stop", side_effect=RuntimeError("driver stopped")),
+        ):
+            recorder.test_microphone(
+                selection, inventory, on_level=receive_level, cancel_event=cancelled
+            )
+        self.assertTrue(Stream.instance.closed)
+
+        # A disconnected device must end the live test rather than leave a
+        # stationary waveform showing an old, nonzero level.
+        with (
+            patch.object(qml_runtime, "_sounddevice", fake_sounddevice),
+            patch.object(qml_runtime.platform, "system", return_value="Windows"),
+            patch.object(Stream, "active", False, create=True),
+        ):
+            with self.assertRaisesRegex(Exception, "disconnected"):
+                recorder.test_microphone(
+                    selection, inventory, cancel_event=threading.Event(), duration=30
+                )
         self.assertTrue(Stream.instance.closed)
 
     def test_recording_session_stops_at_configured_max_duration(self):
@@ -530,6 +569,24 @@ class QtRecordingSessionTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional spike dependency")
 class QmlWorkflowBridgeTests(unittest.TestCase):
+    def test_pill_reports_specific_errors_in_the_selected_language(self):
+        service = DeterministicWorkflowService()
+        bridge = QmlWorkflowBridge(service)
+        for key, phrase in (
+            ("no_selection", "Nenhum texto selecionado"),
+            ("provider_network", "Conexão interrompida"),
+            ("provider_authentication", "Chave de API inválida"),
+            ("no_audio", "Nenhum áudio"),
+        ):
+            bridge.setLanguage("pt")
+            service.publish(WorkflowState(phase=WorkflowPhase.FAILED, status_key=key))
+            self.assertTrue(bridge.feedbackVisible)
+            self.assertIn(phrase, bridge.status)
+            self.assertFalse(bridge.canRetryTranscription)
+            bridge.setLanguage("en")
+            self.assertNotIn(phrase, bridge.status)
+            self.assertNotEqual(bridge.status, "The dictation could not be completed")
+
     def test_bridge_hydrates_saved_mode_and_language(self):
         service = DeterministicWorkflowService()
         service._config = SimpleNamespace(
@@ -545,7 +602,7 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
         self.assertEqual(service.commands[0].mode, "transcription")
         self.assertEqual(service.commands[0].language, "pt")
 
-    def test_bridge_maps_real_state_and_opens_terminal_result(self):
+    def test_bridge_maps_real_state_without_opening_terminal_result(self):
         service = DeterministicWorkflowService()
         copied = []
         completed = []
@@ -564,7 +621,8 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
 
         bridge.stopRecording()
         self.assertIsInstance(service.commands[1], StopDictation)
-        self.assertEqual(bridge.surface, "result")
+        self.assertEqual(bridge.surface, "idle")
+        self.assertFalse(bridge.feedbackVisible)
         self.assertEqual(bridge.result, "Real result")
         self.assertTrue(bridge.canShowResult)
 
@@ -863,6 +921,116 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional spike dependency")
 class QtProviderGatewayTests(unittest.TestCase):
+    def test_cleanup_failure_preserves_transcript_but_cancellation_propagates(self):
+        from provider_http import (
+            NetworkError,
+            ProviderCancelledError,
+            AuthenticationError,
+        )
+
+        for provider in ("groq", "local_asr"):
+            config = AppConfig.from_mapping(
+                {
+                    "groq_api_key": "offline-fixture",
+                    "local_asr_cloud_refinement": True,
+                    "workflows": {
+                        "transcription": {
+                            "provider_id": provider,
+                            "model_id": "fixture",
+                            "enabled": True,
+                        },
+                        "refinement": {
+                            "provider_id": "groq",
+                            "model_id": "editor",
+                            "enabled": True,
+                        },
+                        "local_asr_refinement": {
+                            "provider_id": "groq",
+                            "model_id": "editor",
+                            "enabled": True,
+                        },
+                    },
+                }
+            )
+            gateway = QtProviderGateway(
+                SimpleNamespace(current=lambda: config, workflow=config.workflow),
+                SimpleNamespace(
+                    apply_context=lambda request: request,
+                    expand=lambda text: text + " expanded",
+                ),
+            )
+            for failure in (
+                NetworkError(),
+                AuthenticationError(),
+                RuntimeError("bad cleanup"),
+                RewriteResult("  ", "groq", "editor"),
+                ProviderCancelledError(),
+            ):
+                with (
+                    self.subTest(provider=provider, failure=type(failure).__name__),
+                    patch(
+                        "spikes.pyside6.qml_runtime.PROVIDER_REGISTRY.transcribe",
+                        return_value=TranscriptionResult(
+                            "original transcript", provider, "fixture"
+                        ),
+                    ),
+                    patch(
+                        "spikes.pyside6.qml_runtime.PROVIDER_REGISTRY.rewrite",
+                        side_effect=[failure],
+                    ) as rewrite,
+                ):
+                    if isinstance(failure, ProviderCancelledError):
+                        with self.assertRaises(ProviderCancelledError):
+                            gateway.transcribe(
+                                RecordingSnapshot(Path("unused.wav"), b"fixture"),
+                                "prompt",
+                                "pt",
+                            )
+                    else:
+                        result = gateway.transcribe(
+                            RecordingSnapshot(Path("unused.wav"), b"fixture"),
+                            "prompt",
+                            "pt",
+                        )
+                        self.assertEqual(result.text, "original transcript expanded")
+                        self.assertEqual(result.raw_text, "original transcript")
+                        self.assertIsNone(result.refined_text)
+                        self.assertIsNone(result.refinement_provider_id)
+                    self.assertEqual(rewrite.call_count, 1)
+
+    def test_transcription_network_errors_allow_explicit_recovery(self):
+        from provider_http import NetworkError, ProviderTimeoutError
+        from workflows import TranscriptionTransportError
+
+        config = AppConfig.from_mapping(
+            {
+                "groq_api_key": "offline-fixture",
+                "workflows": {
+                    "transcription": {
+                        "provider_id": "groq",
+                        "model_id": "whisper-large-v3-turbo",
+                        "enabled": True,
+                    }
+                },
+            }
+        )
+        gateway = QtProviderGateway(
+            SimpleNamespace(current=lambda: config, workflow=config.workflow),
+            SimpleNamespace(
+                apply_context=lambda request: request, expand=lambda text: text
+            ),
+        )
+        snapshot = RecordingSnapshot(Path("removed.wav"), b"audio")
+        for error_type in (NetworkError, ProviderTimeoutError):
+            with patch(
+                "spikes.pyside6.qml_runtime.PROVIDER_REGISTRY.transcribe",
+                side_effect=error_type(provider="groq", operation="transcription"),
+            ) as send:
+                with self.assertRaises(TranscriptionTransportError):
+                    gateway.transcribe(snapshot, "transcription", "pt")
+                self.assertEqual(send.call_count, 1)
+                self.assertEqual(send.call_args.args[1].audio_bytes, b"audio")
+
     def test_prompt_mode_keeps_refinement_and_dictionary_processing(self):
         class ConfigRepository:
             path = Path("/tmp/qml-provider-config.json")
