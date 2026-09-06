@@ -23,6 +23,8 @@ try:
         StartRewrite,
         StartTranslation,
         StopDictation,
+        RetryDictation,
+        UndoCancelDictation,
         WorkflowPhase,
         WorkflowState,
     )
@@ -36,6 +38,8 @@ except ImportError:  # PyInstaller may analyze the spike as a standalone file.
         StartRewrite,
         StartTranslation,
         StopDictation,
+        RetryDictation,
+        UndoCancelDictation,
         WorkflowPhase,
         WorkflowState,
     )
@@ -67,6 +71,8 @@ class QmlWorkflowBridge(QObject):
     modeChanged = Signal()
     languageChanged = Signal()
     copyCompleted = Signal(bool)
+    resultRequested = Signal()
+    quickPasteCompleted = Signal(str)
 
     _TRANSLATION_OPTIONS = (
         {"code": "en", "label": "English"},
@@ -92,6 +98,39 @@ class QmlWorkflowBridge(QObject):
     _STATUS_KEYS = {
         "error": "The dictation could not be completed",
         "no_audio": "No usable audio was captured",
+        "transcription_network": "Could not connect to the transcription service",
+        "no_selection": "No text selected. Select text and try again.",
+        "rewrite_failed": "Could not rewrite the selected text. Try again.",
+        "translation_failed": "Could not translate the selected text. Try again.",
+        "provider_network": "Connection interrupted. Check your connection and try again.",
+        "provider_timeout": "The service took too long to respond. Try again.",
+        "provider_authentication": "Invalid API key. Check the provider connection in settings.",
+        "provider_quota": "Provider quota exceeded. Check your balance or plan.",
+        "provider_rate_limit": "Too many requests. Wait a moment and try again.",
+        "provider_unavailable": "Service temporarily unavailable. Try again later.",
+        "provider_invalid_model": "Model unavailable. Select another model in settings.",
+        "provider_invalid_request": "The service rejected the request. Check the model settings.",
+        "provider_invalid_response": "The service returned an invalid response. Try again.",
+        "provider_cancelled": "Operation cancelled.",
+    }
+    _ERROR_MESSAGES_PT = {
+        "error": "Não foi possível concluir a operação. Tente novamente.",
+        "no_audio": "Nenhum áudio foi capturado. Verifique o microfone.",
+        "no_selection": "Nenhum texto selecionado. Selecione um texto e tente novamente.",
+        "rewrite_failed": "Não foi possível reescrever o texto. Tente novamente.",
+        "translation_failed": "Não foi possível traduzir o texto. Tente novamente.",
+        "transcription_network": "Falha de conexão com o serviço de transcrição.",
+        "microphone_unavailable": "Microfone indisponível. Verifique a conexão e selecione um microfone.",
+        "provider_network": "Conexão interrompida. Verifique sua conexão e tente novamente.",
+        "provider_timeout": "O serviço demorou para responder. Tente novamente.",
+        "provider_authentication": "Chave de API inválida. Verifique a conexão do provedor nas configurações.",
+        "provider_quota": "Limite do provedor atingido. Verifique seu saldo ou plano.",
+        "provider_rate_limit": "Muitas solicitações. Aguarde um pouco e tente novamente.",
+        "provider_unavailable": "Serviço temporariamente indisponível. Tente novamente mais tarde.",
+        "provider_invalid_model": "Modelo indisponível. Selecione outro modelo nas configurações.",
+        "provider_invalid_request": "O serviço recusou a solicitação. Verifique a configuração do modelo.",
+        "provider_invalid_response": "O serviço retornou uma resposta inválida. Tente novamente.",
+        "provider_cancelled": "Operação cancelada.",
     }
     _ERROR_PHASES = frozenset(
         {
@@ -122,6 +161,7 @@ class QmlWorkflowBridge(QObject):
         voice_translation_controller: Any | None = None,
         audio_batch_controller: Any | None = None,
         target_provider: Callable[[], Any | None] | None = None,
+        paste_runner: Callable | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -135,6 +175,12 @@ class QmlWorkflowBridge(QObject):
         self._voice_translation_controller = voice_translation_controller
         self._audio_batch_controller = audio_batch_controller
         self._target_provider = target_provider
+        self._paste_runner = paste_runner
+        self._last_transcription = ""
+        self._quick_paste_busy = False
+        self._quick_feedback = ""
+        self._quick_feedback_id = 0
+        self.quickPasteCompleted.connect(self._finish_quick_paste)
         self._voice_state = (
             getattr(voice_translation_controller, "state", None)
             if voice_translation_controller is not None
@@ -185,11 +231,24 @@ class QmlWorkflowBridge(QObject):
 
     @Property(str, notify=statusChanged)
     def status(self) -> str:
+        if self.cancellationVisible:
+            return (
+                "Transcrição cancelada"
+                if self._language == "pt"
+                else "Transcript cancelled"
+            )
         voice_status = self._voice_status()
         if voice_status:
             return voice_status
         if self._finishing:
             return self._STATUS[WorkflowPhase.READY]
+        if self._state.phase in self._ERROR_PHASES and self._language == "pt":
+            key = (
+                "microphone_unavailable"
+                if self._state.phase is WorkflowPhase.MICROPHONE_UNAVAILABLE
+                else self._state.status_key or "error"
+            )
+            return self._ERROR_MESSAGES_PT.get(key, self._ERROR_MESSAGES_PT["error"])
         if self._state.status_key in self._STATUS_KEYS:
             return self._STATUS_KEYS[self._state.status_key]
         return self._STATUS.get(
@@ -208,6 +267,7 @@ class QmlWorkflowBridge(QObject):
     def busy(self) -> bool:
         return bool(
             self._state.phase in self._BUSY_PHASES
+            or self._quick_paste_busy
             or getattr(self._voice_translation_controller, "active", False)
             or getattr(self._audio_batch_controller, "running", False)
         )
@@ -230,6 +290,87 @@ class QmlWorkflowBridge(QObject):
         return self._state.phase is WorkflowPhase.COMPLETED and bool(
             self._state.result_text
         )
+
+    @Property(bool, notify=surfaceChanged)
+    def canRetryTranscription(self) -> bool:
+        return self._state.phase is WorkflowPhase.FAILED and self._state.can_retry
+
+    @Property(bool, notify=surfaceChanged)
+    def cancellationVisible(self) -> bool:
+        return self._state.phase is WorkflowPhase.CANCELLED and not self._finishing
+
+    @Property(bool, notify=surfaceChanged)
+    def canUndoCancellation(self) -> bool:
+        return self.cancellationVisible and self._state.can_undo
+
+    @Slot(result=bool)
+    def undoCancellation(self) -> bool:
+        if not self.canUndoCancellation:
+            return False
+        operation_id = self._state.operation_id
+        self._submit(
+            lambda: self._workflow_service.dispatch(UndoCancelDictation(operation_id))
+        )
+        return True
+
+    @Property(bool, notify=surfaceChanged)
+    def feedbackVisible(self) -> bool:
+        return (
+            not self._settings_visible
+            and not self._files_visible
+            and not self._voice_surface()
+            and not self._result_visible
+            and not self._finishing
+            and (
+                self._state.phase in self._ERROR_PHASES
+                or self.cancellationVisible
+                or bool(self._quick_feedback)
+            )
+        )
+
+    @Property(bool, notify=surfaceChanged)
+    def transitionPending(self) -> bool:
+        return self._pending_workflow_action is not None
+
+    @Property(int, notify=surfaceChanged)
+    def feedbackOperationId(self) -> int:
+        return (
+            self._quick_feedback_id
+            if self._quick_feedback
+            else self._state.operation_id
+        )
+
+    @Property(str, notify=statusChanged)
+    def feedbackTitle(self) -> str:
+        return self._quick_feedback or self.status.partition(". ")[0].rstrip(".")
+
+    @Slot(int)
+    def dismissFeedback(self, operation_id: int) -> None:
+        if operation_id == self._state.operation_id and self.cancellationVisible:
+            self.finish()
+            return
+        if self._quick_feedback and operation_id == self._quick_feedback_id:
+            self._quick_feedback = ""
+            self._notify_all()
+            return
+        # An old animation/timer must never dismiss a newer operation or
+        # discard audio that the user can still explicitly resend.
+        if (
+            operation_id == self._state.operation_id
+            and self._state.phase in self._ERROR_PHASES
+            and not self.canRetryTranscription
+        ):
+            self.reset()
+
+    @Slot(result=bool)
+    def retryTranscription(self) -> bool:
+        if not self.canRetryTranscription:
+            return False
+        operation_id = self._state.operation_id
+        self._submit(
+            lambda: self._workflow_service.dispatch(RetryDictation(operation_id))
+        )
+        return True
 
     @Property(str, notify=modeChanged)
     def mode(self) -> str:
@@ -275,7 +416,8 @@ class QmlWorkflowBridge(QObject):
         if bool(getattr(controller, "active", False)):
             return "voice_processing"
         if phase is VoiceTranslationPhase.COMPLETED:
-            return "voice_result" if self._voice_result() else "voice_error"
+            # Publication already copied/pasted the result. Success is silent.
+            return ""
         if phase is VoiceTranslationPhase.FAILED:
             return "voice_result" if self._voice_result() else "voice_error"
         return ""
@@ -316,7 +458,8 @@ class QmlWorkflowBridge(QObject):
         ):
             return "processing"
         if phase is WorkflowPhase.COMPLETED:
-            return "result"
+            # Keep the text available to quick paste without opening a panel.
+            return "idle"
         if phase in QmlWorkflowBridge._ERROR_PHASES:
             return "error"
         return "idle"
@@ -333,6 +476,13 @@ class QmlWorkflowBridge(QObject):
     @Slot(object)
     def _on_workflow_state(self, state: WorkflowState) -> None:
         self._state = state
+        self._quick_feedback = ""
+        if (
+            state.phase is WorkflowPhase.COMPLETED
+            and state.kind == "dictation"
+            and state.result_text
+        ):
+            self._last_transcription = state.result_text
         if state.target_executable:
             self.setTargetExecutable(state.target_executable)
         self._finishing = False
@@ -374,6 +524,7 @@ class QmlWorkflowBridge(QObject):
         if self._state.phase not in (
             WorkflowPhase.COMPLETED,
             WorkflowPhase.FAILED,
+            WorkflowPhase.CANCELLED,
         ):
             return False
         if self._pending_workflow_action is not None:
@@ -425,6 +576,7 @@ class QmlWorkflowBridge(QObject):
         if normalized and normalized != self._language:
             self._language = normalized
             self.languageChanged.emit()
+            self.statusChanged.emit()
 
     @Slot(str, result=bool)
     def chooseTranslation(self, language: str) -> bool:
@@ -454,9 +606,12 @@ class QmlWorkflowBridge(QObject):
 
     @Slot()
     def startRecording(self) -> None:
+        if self._quick_paste_busy:
+            return
         if self._state.phase in (
             WorkflowPhase.COMPLETED,
             WorkflowPhase.FAILED,
+            WorkflowPhase.CANCELLED,
         ):
             self._run_when_ready(self.startRecording)
             return
@@ -481,7 +636,9 @@ class QmlWorkflowBridge(QObject):
     def cancelRecording(self) -> None:
         if self._state.phase is not WorkflowPhase.RECORDING:
             return
-        self._submit(lambda: self._workflow_service.dispatch(CancelDictation()))
+        self._submit(
+            lambda: self._workflow_service.dispatch(CancelDictation(retain_audio=True))
+        )
 
     def _dismiss_files_before_workflow(self) -> bool:
         if not self._files_visible:
@@ -493,6 +650,8 @@ class QmlWorkflowBridge(QObject):
     def handleHotkey(self, action: str) -> bool:
         """Dispatch a native-shell action through the real workflow service."""
 
+        if self._quick_paste_busy:
+            return False
         normalized = str(action or "").strip().lower()
         if normalized == "voice_translation_hotkey":
             # Dedicated voice translation intentionally lives outside
@@ -501,6 +660,10 @@ class QmlWorkflowBridge(QObject):
             # translation as dictation or selected-text translation.
             if self._voice_translation_handler is None:
                 return False
+            if self._state.phase is WorkflowPhase.CANCELLED:
+                return self._run_when_ready(
+                    lambda: self.handleHotkey("voice_translation_hotkey")
+                )
             voice_active = bool(
                 getattr(self._voice_translation_controller, "active", False)
             )
@@ -520,6 +683,7 @@ class QmlWorkflowBridge(QObject):
             if self._state.phase in (
                 WorkflowPhase.COMPLETED,
                 WorkflowPhase.FAILED,
+                WorkflowPhase.CANCELLED,
             ):
                 return self._run_when_ready(self.startRecording)
             if self._state.phase is WorkflowPhase.READY:
@@ -535,6 +699,7 @@ class QmlWorkflowBridge(QObject):
             if self._state.phase in (
                 WorkflowPhase.COMPLETED,
                 WorkflowPhase.FAILED,
+                WorkflowPhase.CANCELLED,
             ):
                 return self._run_when_ready(lambda: self.handleHotkey("rewrite_hotkey"))
             if self._state.phase is not WorkflowPhase.READY:
@@ -551,6 +716,7 @@ class QmlWorkflowBridge(QObject):
             if self._state.phase in (
                 WorkflowPhase.COMPLETED,
                 WorkflowPhase.FAILED,
+                WorkflowPhase.CANCELLED,
             ):
                 return self._run_when_ready(
                     lambda: self.handleHotkey("translation_hotkey")
@@ -580,6 +746,7 @@ class QmlWorkflowBridge(QObject):
         self._result_visible = True
         self._settings_visible = False
         self._notify_all()
+        self.resultRequested.emit()
 
     @Slot(result=bool)
     def copyResult(self) -> bool:
@@ -603,6 +770,7 @@ class QmlWorkflowBridge(QObject):
         if self._state.phase not in (
             WorkflowPhase.COMPLETED,
             WorkflowPhase.FAILED,
+            WorkflowPhase.CANCELLED,
         ):
             return
         operation_id = self._state.operation_id
@@ -614,6 +782,9 @@ class QmlWorkflowBridge(QObject):
 
     @Slot()
     def reset(self) -> None:
+        if self._quick_feedback:
+            self.dismissFeedback(self._quick_feedback_id)
+            return
         controller = self._voice_translation_controller
         if controller is not None:
             voice_surface = self._voice_surface()
@@ -643,17 +814,26 @@ class QmlWorkflowBridge(QObject):
         if self._state.phase in (
             WorkflowPhase.COMPLETED,
             WorkflowPhase.FAILED,
+            WorkflowPhase.CANCELLED,
         ):
             self.finish()
 
     @Slot()
     def openSettings(self) -> None:
-        if self.busy or self._state.phase is not WorkflowPhase.READY:
+        if self.busy:
             return
-        self._files_visible = False
-        self._settings_visible = True
-        self._result_visible = False
-        self._notify_all()
+
+        def show_settings() -> None:
+            self._files_visible = False
+            self._settings_visible = True
+            self._result_visible = False
+            self._notify_all()
+
+        if self._state.phase in (WorkflowPhase.FAILED, WorkflowPhase.CANCELLED):
+            # Editing settings must not discard retained audio or undo state.
+            show_settings()
+        else:
+            self._run_when_ready(show_settings)
 
     @Slot()
     def closeSettings(self) -> None:
@@ -678,4 +858,46 @@ class QmlWorkflowBridge(QObject):
         if bool(getattr(self._audio_batch_controller, "running", False)):
             return
         self._files_visible = False
+        self._notify_all()
+
+    @Property(bool, notify=surfaceChanged)
+    def canPasteLastTranscription(self) -> bool:
+        return bool(self._last_transcription and self._paste_runner and not self.busy)
+
+    @Slot(result=bool)
+    def pasteLastTranscription(self) -> bool:
+        if not self.canPasteLastTranscription:
+            return False
+        self._quick_feedback = ""
+        self._quick_paste_busy = True
+        self._notify_all()
+        try:
+            self._paste_runner(self._last_transcription, self.quickPasteCompleted.emit)
+        except Exception:
+            self.quickPasteCompleted.emit("failed")
+        return True
+
+    @Slot(str)
+    def showQuickNotice(self, text: str) -> None:
+        self._quick_feedback_id -= 1
+        self._quick_feedback = text
+        self._notify_all()
+
+    @Slot(str)
+    def _finish_quick_paste(self, result: str) -> None:
+        self._quick_paste_busy = False
+        if result != "pasted":
+            self._quick_feedback_id -= 1
+            if result == "copied":
+                self._quick_feedback = (
+                    "Texto copiado. Use Ctrl+V para colar"
+                    if self._language == "pt"
+                    else "Text copied. Press Ctrl+V to paste"
+                )
+            else:
+                self._quick_feedback = (
+                    "Não foi possível colar a transcrição"
+                    if self._language == "pt"
+                    else "Could not paste the transcript"
+                )
         self._notify_all()

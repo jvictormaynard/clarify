@@ -1,6 +1,9 @@
 import json
 import tempfile
+import socket
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -49,8 +52,92 @@ class FakeResponse:
 
 
 class ProviderHttpPolicyTests(unittest.TestCase):
-    def make_client(self, *, get=None, post=None, sleeper=None, random_fn=None,
-                    logger=None):
+    def test_fresh_connections_avoid_failure_on_a_reused_socket(self):
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def setup(self):
+                super().setup()
+                self.requests_seen = 0
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                self.requests_seen += 1
+                if self.requests_seen > 1:
+                    # Reproduce an upstream that drops a reused connection
+                    # after the client has checked it, before replying.
+                    self.close_connection = True
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+                self.wfile.flush()
+
+            def log_message(self, *_args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        url = f"http://127.0.0.1:{server.server_port}/fixture"
+        try:
+            with requests.Session() as pooled:
+                old = ProviderHttpClient(session=pooled)
+                self.assertEqual(
+                    old.request(
+                        "POST", url, provider="fixture", operation="text_generation"
+                    ).status_code,
+                    200,
+                )
+                with self.assertRaises(NetworkError):
+                    old.request(
+                        "POST", url, provider="fixture", operation="text_generation"
+                    )
+            client = ProviderHttpClient()
+            for operation in ("transcription", "text_generation", "text_generation"):
+                self.assertEqual(
+                    client.request(
+                        "POST", url, provider="fixture", operation=operation
+                    ).status_code,
+                    200,
+                )
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=2)
+
+    def test_nested_transport_diagnostics_contain_types_and_codes_only(self):
+        from urllib3.exceptions import ProtocolError
+
+        logger = Mock()
+        error = requests.ConnectionError(
+            ProtocolError(
+                "private request body",
+                ConnectionResetError(10054, "private server message"),
+            )
+        )
+        client, _ = self.make_client(post=[error], logger=logger)
+        with self.assertRaises(NetworkError):
+            client.request(
+                "POST",
+                "https://api.example/private",
+                provider="groq",
+                operation="text_generation",
+            )
+        record = logger.write.call_args.args[0]
+        self.assertEqual(
+            record["exception_chain"],
+            ["ConnectionError", "ProtocolError", "ConnectionResetError"],
+        )
+        self.assertIn(10054, record["os_error_codes"])
+        self.assertNotIn("private", json.dumps(record))
+        self.assertGreaterEqual(record["elapsed_ms"], 0)
+
+    def make_client(
+        self, *, get=None, post=None, sleeper=None, random_fn=None, logger=None
+    ):
         session = Mock()
         session.get.side_effect = get
         session.post.side_effect = post
@@ -66,9 +153,15 @@ class ProviderHttpPolicyTests(unittest.TestCase):
         response = FakeResponse()
         client, session = self.make_client(get=[response])
 
-        self.assertIs(client.request(
-            "GET", "https://api.example/models", provider="openai",
-            operation="model_discovery"), response)
+        self.assertIs(
+            client.request(
+                "GET",
+                "https://api.example/models",
+                provider="openai",
+                operation="model_discovery",
+            ),
+            response,
+        )
 
         self.assertEqual(
             session.get.call_args.kwargs["timeout"],
@@ -80,21 +173,32 @@ class ProviderHttpPolicyTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "timeouts are owned"):
             client.request(
-                "GET", "https://api.example/models", provider="openai",
-                operation="validation", timeout=999)
+                "GET",
+                "https://api.example/models",
+                provider="openai",
+                operation="validation",
+                timeout=999,
+            )
 
         session.get.assert_not_called()
 
     def test_safe_get_retries_transient_connection_failures_with_capped_backoff(self):
         sleeps = []
         client, session = self.make_client(
-            get=[requests.ConnectionError(), requests.ConnectionError(), FakeResponse()],
+            get=[
+                requests.ConnectionError(),
+                requests.ConnectionError(),
+                FakeResponse(),
+            ],
             sleeper=sleeps.append,
         )
 
         response = client.request(
-            "GET", "https://api.example/models", provider="openai",
-            operation="model_discovery")
+            "GET",
+            "https://api.example/models",
+            provider="openai",
+            operation="model_discovery",
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(session.get.call_count, 3)
@@ -104,11 +208,12 @@ class ProviderHttpPolicyTests(unittest.TestCase):
         sleeps = []
         first = FakeResponse(429, headers={"Retry-After": "30"})
         client, session = self.make_client(
-            get=[first, FakeResponse()], sleeper=sleeps.append)
+            get=[first, FakeResponse()], sleeper=sleeps.append
+        )
 
         client.request(
-            "GET", "https://api.example/models", provider="groq",
-            operation="validation")
+            "GET", "https://api.example/models", provider="groq", operation="validation"
+        )
 
         self.assertEqual(session.get.call_count, 2)
         self.assertEqual(sleeps, [BACKOFF_CAP_SECONDS])
@@ -118,8 +223,7 @@ class ProviderHttpPolicyTests(unittest.TestCase):
         now = datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc)
 
         self.assertEqual(
-            _retry_after_seconds(
-                "Sun, 02 Aug 2026 12:00:03 GMT", now=now),
+            _retry_after_seconds("Sun, 02 Aug 2026 12:00:03 GMT", now=now),
             3.0,
         )
 
@@ -131,25 +235,34 @@ class ProviderHttpPolicyTests(unittest.TestCase):
 
     def test_permanent_authentication_failure_fails_immediately(self):
         client, session = self.make_client(
-            get=[FakeResponse(401, {"error": {"message": "bad key"}})])
+            get=[FakeResponse(401, {"error": {"message": "bad key"}})]
+        )
 
         with self.assertRaises(AuthenticationError):
             client.request(
-                "GET", "https://api.example/models", provider="openai",
-                operation="validation")
+                "GET",
+                "https://api.example/models",
+                provider="openai",
+                operation="validation",
+            )
 
         self.assertEqual(session.get.call_count, 1)
 
     def test_exhausted_quota_is_not_retried_even_when_reported_as_429(self):
-        client, session = self.make_client(get=[
-            FakeResponse(429, {"error": {"code": "insufficient_quota"}}),
-            FakeResponse(200),
-        ])
+        client, session = self.make_client(
+            get=[
+                FakeResponse(429, {"error": {"code": "insufficient_quota"}}),
+                FakeResponse(200),
+            ]
+        )
 
         with self.assertRaises(QuotaError):
             client.request(
-                "GET", "https://api.example/models", provider="openai",
-                operation="validation")
+                "GET",
+                "https://api.example/models",
+                provider="openai",
+                operation="validation",
+            )
 
         self.assertEqual(session.get.call_count, 1)
 
@@ -158,14 +271,20 @@ class ProviderHttpPolicyTests(unittest.TestCase):
             with self.subTest(operation=operation):
                 sleeps = []
                 first = FakeResponse(
-                    429, {"error": {"status": "RESOURCE_EXHAUSTED"}},
-                    headers={"Retry-After": "2"})
+                    429,
+                    {"error": {"status": "RESOURCE_EXHAUSTED"}},
+                    headers={"Retry-After": "2"},
+                )
                 client, session = self.make_client(
-                    get=[first, FakeResponse(200)], sleeper=sleeps.append)
+                    get=[first, FakeResponse(200)], sleeper=sleeps.append
+                )
 
                 response = client.request(
-                    "GET", "https://api.example/models", provider="gemini",
-                    operation=operation)
+                    "GET",
+                    "https://api.example/models",
+                    provider="gemini",
+                    operation=operation,
+                )
 
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(session.get.call_count, 2)
@@ -173,40 +292,52 @@ class ProviderHttpPolicyTests(unittest.TestCase):
                 self.assertTrue(first.closed)
 
     def test_resource_exhausted_429_is_not_retried_for_unsafe_post(self):
-        first = FakeResponse(
-            429, {"error": {"status": "RESOURCE_EXHAUSTED"}})
-        client, session = self.make_client(
-            post=[first, FakeResponse(200)])
+        first = FakeResponse(429, {"error": {"status": "RESOURCE_EXHAUSTED"}})
+        client, session = self.make_client(post=[first, FakeResponse(200)])
 
         with self.assertRaises(RateLimitError):
             client.request(
-                "POST", "https://api.example/generate", provider="gemini",
-                operation="text_generation")
+                "POST",
+                "https://api.example/generate",
+                provider="gemini",
+                operation="text_generation",
+            )
 
         self.assertEqual(session.post.call_count, 1)
         self.assertTrue(first.closed)
 
     def test_unsafe_post_typed_error_preserves_retry_after_for_outer_retries(self):
-        for status, error_type in ((429, RateLimitError), (503, ServiceUnavailableError)):
+        for status, error_type in (
+            (429, RateLimitError),
+            (503, ServiceUnavailableError),
+        ):
             with self.subTest(status=status):
                 first = FakeResponse(status, headers={"Retry-After": "30"})
                 client, session = self.make_client(post=[first])
                 with self.assertRaises(error_type) as raised:
                     client.request(
-                        "POST", "https://api.example/transcribe",
-                        provider="openai", operation="transcription")
+                        "POST",
+                        "https://api.example/transcribe",
+                        provider="openai",
+                        operation="transcription",
+                    )
                 self.assertEqual(raised.exception.retry_after_seconds, 30.0)
                 self.assertEqual(session.post.call_count, 1)
 
     def test_generic_quota_text_is_rate_limit_not_permanent_quota(self):
         first = FakeResponse(
-            429, {"error": {"message": "quota temporarily exceeded; retry later"}})
+            429, {"error": {"message": "quota temporarily exceeded; retry later"}}
+        )
         client, session = self.make_client(
-            get=[first, FakeResponse(200)], sleeper=lambda _delay: None)
+            get=[first, FakeResponse(200)], sleeper=lambda _delay: None
+        )
 
         response = client.request(
-            "GET", "https://api.example/models", provider="gemini",
-            operation="validation")
+            "GET",
+            "https://api.example/models",
+            provider="gemini",
+            operation="validation",
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(session.get.call_count, 2)
@@ -225,58 +356,75 @@ class ProviderHttpPolicyTests(unittest.TestCase):
         for payload, text in cases:
             with self.subTest(payload=payload):
                 client, session = self.make_client(
-                    get=[FakeResponse(429, payload, text=text), FakeResponse(200)])
+                    get=[FakeResponse(429, payload, text=text), FakeResponse(200)]
+                )
 
                 with self.assertRaises(QuotaError):
                     client.request(
-                        "GET", "https://api.example/models", provider="openai",
-                        operation="validation")
+                        "GET",
+                        "https://api.example/models",
+                        provider="openai",
+                        operation="validation",
+                    )
 
                 self.assertEqual(session.get.call_count, 1)
 
     def test_unsafe_post_is_never_retried_for_transient_http_failure(self):
-        client, session = self.make_client(
-            post=[FakeResponse(503), FakeResponse(200)])
+        client, session = self.make_client(post=[FakeResponse(503), FakeResponse(200)])
 
         with self.assertRaises(ServiceUnavailableError):
             client.request(
-                "POST", "https://api.example/generate", provider="gemini",
-                operation="text_generation", json={"contents": ["private"]})
+                "POST",
+                "https://api.example/generate",
+                provider="gemini",
+                operation="text_generation",
+                json={"contents": ["private"]},
+            )
 
         self.assertEqual(session.post.call_count, 1)
 
     def test_caller_cannot_force_retry_for_an_unsafe_method(self):
-        client, session = self.make_client(
-            post=[FakeResponse(503), FakeResponse(200)])
+        client, session = self.make_client(post=[FakeResponse(503), FakeResponse(200)])
 
         with self.assertRaises(ServiceUnavailableError):
             client.request(
-                "POST", "https://api.example/generate", provider="gemini",
-                operation="text_generation", safe_to_retry=True)
+                "POST",
+                "https://api.example/generate",
+                provider="gemini",
+                operation="text_generation",
+                safe_to_retry=True,
+            )
 
         self.assertEqual(session.post.call_count, 1)
 
     def test_unsafe_post_is_never_retried_for_connection_failure(self):
         client, session = self.make_client(
-            post=[requests.ConnectionError(), FakeResponse(200)])
+            post=[requests.ConnectionError(), FakeResponse(200)]
+        )
 
         with self.assertRaises(NetworkError):
             client.request(
-                "POST", "https://api.example/transcribe", provider="groq",
-                operation="transcription", files={"file": object()})
+                "POST",
+                "https://api.example/transcribe",
+                provider="groq",
+                operation="transcription",
+                files={"file": object()},
+            )
 
         self.assertEqual(session.post.call_count, 1)
 
     def test_permanent_request_exception_is_not_retried(self):
-        client, session = self.make_client(get=[
-            requests.exceptions.InvalidURL("invalid endpoint"),
-            FakeResponse(200),
-        ])
+        client, session = self.make_client(
+            get=[
+                requests.exceptions.InvalidURL("invalid endpoint"),
+                FakeResponse(200),
+            ]
+        )
 
         with self.assertRaises(NetworkError):
             client.request(
-                "GET", "invalid-endpoint", provider="openai",
-                operation="validation")
+                "GET", "invalid-endpoint", provider="openai", operation="validation"
+            )
 
         self.assertEqual(session.get.call_count, 1)
 
@@ -289,8 +437,8 @@ class ProviderHttpPolicyTests(unittest.TestCase):
 
         with self.assertRaises(NetworkError):
             client.request(
-                "GET", "https://[bad", provider="openai",
-                operation="validation")
+                "GET", "https://[bad", provider="openai", operation="validation"
+            )
 
         self.assertEqual(session.get.call_count, 1)
         logger.write.assert_called_once()
@@ -300,7 +448,10 @@ class ProviderHttpPolicyTests(unittest.TestCase):
         cases = (
             (FakeResponse(429, {"error": {"code": "rate_limit"}}), RateLimitError),
             (FakeResponse(429, {"error": {"code": "insufficient_quota"}}), QuotaError),
-            (FakeResponse(404, {"error": {"code": "model_not_found"}}), InvalidModelError),
+            (
+                FakeResponse(404, {"error": {"code": "model_not_found"}}),
+                InvalidModelError,
+            ),
             (FakeResponse(422, {"error": {"message": "bad"}}), InvalidRequestError),
             (FakeResponse(504), ServiceUnavailableError),
         )
@@ -309,27 +460,35 @@ class ProviderHttpPolicyTests(unittest.TestCase):
                 client, _session = self.make_client(post=[response])
                 with self.assertRaises(expected):
                     client.request(
-                        "POST", "https://api.example/generate",
-                        provider="openai", operation="text_generation")
+                        "POST",
+                        "https://api.example/generate",
+                        provider="openai",
+                        operation="text_generation",
+                    )
 
     def test_model_list_route_404_is_not_an_invalid_model(self):
         for operation in ("validation", "model_discovery"):
             with self.subTest(operation=operation):
                 response = FakeResponse(
                     404,
-                    {"error": {
-                        "code": "model_not_found",
-                        "status": "NOT_FOUND",
-                        "message": "model endpoint not found",
-                    }},
+                    {
+                        "error": {
+                            "code": "model_not_found",
+                            "status": "NOT_FOUND",
+                            "message": "model endpoint not found",
+                        }
+                    },
                     text="model endpoint not found",
                 )
                 client, session = self.make_client(get=[response])
 
                 with self.assertRaises(InvalidRequestError):
                     client.request(
-                        "GET", "https://custom.example/provider/models",
-                        provider="openai", operation=operation)
+                        "GET",
+                        "https://custom.example/provider/models",
+                        provider="openai",
+                        operation=operation,
+                    )
 
                 self.assertEqual(session.get.call_count, 1)
 
@@ -352,14 +511,16 @@ class ProviderHttpPolicyTests(unittest.TestCase):
         )
         for operation, error, text in cases:
             with self.subTest(operation=operation, error=error, text=text):
-                response = FakeResponse(
-                    404, {"error": error}, text=text)
+                response = FakeResponse(404, {"error": error}, text=text)
                 client, session = self.make_client(post=[response])
 
                 with self.assertRaises(InvalidModelError):
                     client.request(
-                        "POST", "https://api.example/model",
-                        provider="openai", operation=operation)
+                        "POST",
+                        "https://api.example/model",
+                        provider="openai",
+                        operation=operation,
+                    )
 
                 self.assertEqual(session.post.call_count, 1)
 
@@ -367,15 +528,22 @@ class ProviderHttpPolicyTests(unittest.TestCase):
         timeout_client, _session = self.make_client(post=[requests.ReadTimeout()])
         with self.assertRaises(ProviderTimeoutError):
             timeout_client.request(
-                "POST", "https://api.example/generate",
-                provider="openai", operation="text_generation")
+                "POST",
+                "https://api.example/generate",
+                provider="openai",
+                operation="text_generation",
+            )
 
         network_client, _session = self.make_client(
-            post=[requests.exceptions.ProxyError()])
+            post=[requests.exceptions.ProxyError()]
+        )
         with self.assertRaises(NetworkError):
             network_client.request(
-                "POST", "https://api.example/generate",
-                provider="openai", operation="text_generation")
+                "POST",
+                "https://api.example/generate",
+                provider="openai",
+                operation="text_generation",
+            )
 
     def test_logging_failure_before_retry_preserves_attempts(self):
         logger = Mock()
@@ -388,8 +556,11 @@ class ProviderHttpPolicyTests(unittest.TestCase):
         )
 
         response = client.request(
-            "GET", "https://api.example/models", provider="openai",
-            operation="validation")
+            "GET",
+            "https://api.example/models",
+            provider="openai",
+            operation="validation",
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(session.get.call_count, 2)
@@ -398,15 +569,18 @@ class ProviderHttpPolicyTests(unittest.TestCase):
     def test_log_creation_failure_preserves_typed_error(self):
         with tempfile.TemporaryDirectory() as directory:
             logger = SafeRotatingLogger(Path(directory) / "logs")
-            client, session = self.make_client(
-                get=[FakeResponse(401)], logger=logger)
+            client, session = self.make_client(get=[FakeResponse(401)], logger=logger)
 
-            with patch("provider_http.Path.mkdir",
-                       side_effect=OSError("profile is read-only")):
+            with patch(
+                "provider_http.Path.mkdir", side_effect=OSError("profile is read-only")
+            ):
                 with self.assertRaises(AuthenticationError):
                     client.request(
-                        "GET", "https://api.example/models",
-                        provider="openai", operation="validation")
+                        "GET",
+                        "https://api.example/models",
+                        provider="openai",
+                        operation="validation",
+                    )
 
             self.assertEqual(session.get.call_count, 1)
 
@@ -425,16 +599,19 @@ class ProviderHttpPolicyTests(unittest.TestCase):
                     if isinstance(failure, FakeResponse)
                     else {"post": [failure]}
                 )
-                client, session = self.make_client(
-                    logger=logger, **method_responses)
+                client, session = self.make_client(logger=logger, **method_responses)
 
                 with self.assertRaises(expected_error):
                     client.request(
                         "GET" if isinstance(failure, FakeResponse) else "POST",
                         "https://api.example/models",
-                        provider="openai", operation="validation")
+                        provider="openai",
+                        operation="validation",
+                    )
 
-                sender = session.get if isinstance(failure, FakeResponse) else session.post
+                sender = (
+                    session.get if isinstance(failure, FakeResponse) else session.post
+                )
                 self.assertEqual(sender.call_count, 1)
 
     def test_log_rotation_failure_preserves_retry_policy_and_typed_result(self):
@@ -447,12 +624,17 @@ class ProviderHttpPolicyTests(unittest.TestCase):
                 sleeper=sleeps.append,
             )
 
-            with patch("provider_http.RotatingFileHandler.doRollover",
-                       side_effect=OSError("disk full")):
+            with patch(
+                "provider_http.RotatingFileHandler.doRollover",
+                side_effect=OSError("disk full"),
+            ):
                 with self.assertRaises(ServiceUnavailableError):
                     client.request(
-                        "GET", "https://api.example/models",
-                        provider="openai", operation="validation")
+                        "GET",
+                        "https://api.example/models",
+                        provider="openai",
+                        operation="validation",
+                    )
 
             logger.close()
             self.assertEqual(session.get.call_count, 3)
@@ -463,8 +645,11 @@ class ProviderHttpPolicyTests(unittest.TestCase):
         client, _session = self.make_client(get=[response])
 
         result = client.request(
-            "GET", "https://api.example/models", provider="gemini",
-            operation="model_discovery")
+            "GET",
+            "https://api.example/models",
+            provider="gemini",
+            operation="model_discovery",
+        )
         with self.assertRaises(InvalidResponseError) as raised:
             client.json(result, provider="gemini", operation="model_discovery")
 
@@ -477,19 +662,22 @@ class ProviderHttpPolicyTests(unittest.TestCase):
         client, _session = self.make_client(get=[response], logger=logger)
 
         error = client.invalid_response(
-            response, provider="openai", operation="transcription")
+            response, provider="openai", operation="transcription"
+        )
 
         self.assertIsInstance(error, InvalidResponseError)
         self.assertEqual(error.operation_id, "abc123")
         self.assertEqual(error.status_code, 200)
-        logger.write.assert_called_once_with({
-            "event": "provider_http_error",
-            "provider": "openai",
-            "operation": "transcription",
-            "operation_id": "abc123",
-            "status_code": 200,
-            "error_type": "invalid_response",
-        })
+        logger.write.assert_called_once_with(
+            {
+                "event": "provider_http_error",
+                "provider": "openai",
+                "operation": "transcription",
+                "operation_id": "abc123",
+                "status_code": 200,
+                "error_type": "invalid_response",
+            }
+        )
 
     def test_cancellation_before_send_prevents_the_request(self):
         token = CancellationToken()
@@ -498,8 +686,12 @@ class ProviderHttpPolicyTests(unittest.TestCase):
 
         with self.assertRaises(ProviderCancelledError):
             client.request(
-                "GET", "https://api.example/models", provider="openai",
-                operation="validation", cancel_token=token)
+                "GET",
+                "https://api.example/models",
+                provider="openai",
+                operation="validation",
+                cancel_token=token,
+            )
 
         session.get.assert_not_called()
 
@@ -515,8 +707,12 @@ class ProviderHttpPolicyTests(unittest.TestCase):
 
         with self.assertRaises(ProviderCancelledError):
             client.request(
-                "GET", "https://api.example/models", provider="openai",
-                operation="validation", cancel_token=token)
+                "GET",
+                "https://api.example/models",
+                provider="openai",
+                operation="validation",
+                cancel_token=token,
+            )
 
         self.assertEqual(session.get.call_count, 1)
         self.assertTrue(late_response.closed)
@@ -528,13 +724,17 @@ class ProviderHttpPolicyTests(unittest.TestCase):
             token.cancel()
 
         client, session = self.make_client(
-            get=[FakeResponse(503), FakeResponse(200)],
-            sleeper=cancel_in_sleep)
+            get=[FakeResponse(503), FakeResponse(200)], sleeper=cancel_in_sleep
+        )
 
         with self.assertRaises(ProviderCancelledError):
             client.request(
-                "GET", "https://api.example/models", provider="openai",
-                operation="validation", cancel_token=token)
+                "GET",
+                "https://api.example/models",
+                provider="openai",
+                operation="validation",
+                cancel_token=token,
+            )
 
         self.assertEqual(session.get.call_count, 1)
 
@@ -549,8 +749,9 @@ class DiagnosticsTests(unittest.TestCase):
     def test_log_sink_creation_failure_is_best_effort(self):
         logger = SafeRotatingLogger(Path("/read-only/provider-logs"))
 
-        with patch("provider_http.Path.mkdir",
-                   side_effect=OSError("profile is read-only")):
+        with patch(
+            "provider_http.Path.mkdir", side_effect=OSError("profile is read-only")
+        ):
             logger.write({"event": "provider_http_error"})
 
     def test_log_sink_write_failure_is_best_effort(self):
@@ -566,8 +767,10 @@ class DiagnosticsTests(unittest.TestCase):
             logger = SafeRotatingLogger(Path(directory), max_bytes=1)
             logger.write({"event": "seed"})
 
-            with patch("provider_http.RotatingFileHandler.doRollover",
-                       side_effect=OSError("cannot rotate")):
+            with patch(
+                "provider_http.RotatingFileHandler.doRollover",
+                side_effect=OSError("cannot rotate"),
+            ):
                 logger.write({"event": "provider_http_error"})
 
             logger.close()
@@ -589,30 +792,36 @@ class DiagnosticsTests(unittest.TestCase):
         redacted = json.dumps(redact_sensitive(sensitive), sort_keys=True)
 
         for prohibited in (
-                "top-secret", "gemini-secret", "private selected text",
-                "private transcript", "private rewrite", "recording.wav",
-                "another-secret", "audio.flac"):
+            "top-secret",
+            "gemini-secret",
+            "private selected text",
+            "private transcript",
+            "private rewrite",
+            "recording.wav",
+            "another-secret",
+            "audio.flac",
+        ):
             self.assertNotIn(prohibited, redacted)
         self.assertIn("openai", redacted)
 
     def test_rotating_log_contains_only_safe_metadata(self):
         with tempfile.TemporaryDirectory() as directory:
-            logger = SafeRotatingLogger(
-                Path(directory), max_bytes=180, backup_count=2)
+            logger = SafeRotatingLogger(Path(directory), max_bytes=180, backup_count=2)
             for index in range(12):
-                logger.write({
-                    "event": "provider_http_error",
-                    "provider": "openai",
-                    "attempt": index,
-                    "Authorization": "Bearer secret-token",
-                    "source_text": "never log me",
-                    "audio_path": "/tmp/private.wav",
-                })
+                logger.write(
+                    {
+                        "event": "provider_http_error",
+                        "provider": "openai",
+                        "attempt": index,
+                        "Authorization": "Bearer secret-token",
+                        "source_text": "never log me",
+                        "audio_path": "/tmp/private.wav",
+                    }
+                )
             logger.close()
 
             paths = list(Path(directory).glob("provider.log*"))
-            combined = "\n".join(
-                path.read_text(encoding="utf-8") for path in paths)
+            combined = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
         self.assertGreater(len(paths), 1)
         self.assertNotIn("secret-token", combined)
@@ -624,43 +833,58 @@ class DiagnosticsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             logger = SafeRotatingLogger(Path(directory))
             client = ProviderHttpClient(
-                session=Mock(), logger=logger, sleeper=lambda _delay: None)
-            client.session.post.side_effect = [FakeResponse(
-                401, {"error": {"message": "echoed private source"}},
-                text="echoed private source",
-            )]
+                session=Mock(), logger=logger, sleeper=lambda _delay: None
+            )
+            client.session.post.side_effect = [
+                FakeResponse(
+                    401,
+                    {"error": {"message": "echoed private source"}},
+                    text="echoed private source",
+                )
+            ]
 
             with self.assertRaises(AuthenticationError):
                 client.request(
-                    "POST", "https://api.example/v1/private/model:generate?key=secret",
-                    provider="gemini", operation="text_generation",
+                    "POST",
+                    "https://api.example/v1/private/model:generate?key=secret",
+                    provider="gemini",
+                    operation="text_generation",
                     headers={"Authorization": "Bearer secret"},
-                    json={"source_text": "private source"})
+                    json={"source_text": "private source"},
+                )
             logger.close()
             contents = (Path(directory) / "provider.log").read_text(encoding="utf-8")
 
         self.assertIn('"host":"api.example"', contents)
         for prohibited in (
-                "echoed private source", "private source", "model:generate",
-                "key=secret", "Bearer secret"):
+            "echoed private source",
+            "private source",
+            "model:generate",
+            "key=secret",
+            "Bearer secret",
+        ):
             self.assertNotIn(prohibited, contents)
 
     def test_user_initiated_export_contains_only_safe_metadata_and_errors(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             logger = SafeRotatingLogger(root / "logs")
-            logger.write({
-                "event": "provider_http_error",
-                "provider": "groq",
-                "error_type": "rate_limit",
-                "api_key": "secret",
-                "transcript": "private words",
-            })
+            logger.write(
+                {
+                    "event": "provider_http_error",
+                    "provider": "groq",
+                    "error_type": "rate_limit",
+                    "api_key": "secret",
+                    "transcript": "private words",
+                }
+            )
             logger.close()
 
             destination = export_diagnostics(
-                root / "diagnostics.json", log_directory=root / "logs",
-                application_version=__version__)
+                root / "diagnostics.json",
+                log_directory=root / "logs",
+                application_version=__version__,
+            )
             payload = json.loads(destination.read_text(encoding="utf-8"))
             serialized = json.dumps(payload, sort_keys=True)
 

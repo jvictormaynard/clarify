@@ -1,4 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="20" height="14" viewBox="0 0 20 14">
-  <defs><clipPath id="r"><rect width="20" height="14" rx="4"/></clipPath></defs>
-  <g clip-path="url(#r)"><path fill="#fff" d="M0 0h20v4.67H0z"/><path fill="#0039a6" d="M0 4.67h20v4.66H0z"/><path fill="#d52b1e" d="M0 9.33h20V14H0z"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" id="flag-icons-ru" viewBox="0 0 640 480">
+  <path fill="#fff" d="M0 0h640v160H0z"/>
+  <path fill="#0039a6" d="M0 160h640v160H0z"/>
+  <path fill="#d52b1e" d="M0 320h640v160H0z"/>
 </svg>

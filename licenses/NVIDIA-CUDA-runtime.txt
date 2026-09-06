@@ -1,0 +1,9 @@
+Optional NVIDIA runtime
+
+The optional whisper.cpp CUDA archive contains NVIDIA proprietary runtime libraries. These are not covered by the whisper.cpp MIT license. The installer downloads the original archive from the upstream release.
+
+CUDA 11.8 license terms:
+https://docs.nvidia.com/cuda/archive/11.8.0/eula/index.html
+
+Upstream release:
+https://github.com/ggml-org/whisper.cpp/releases/tag/v1.9.1

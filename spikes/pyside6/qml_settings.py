@@ -9,6 +9,7 @@ autostart is handled by a small, local Run-key boundary.
 
 from __future__ import annotations
 
+import math
 import platform
 import subprocess
 import sys
@@ -264,6 +265,10 @@ def _default_local_asr_product() -> LocalASRProductController:
     adapter = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID)
     backend = getattr(adapter, "backend", None)
     installer = getattr(backend, "installer", None)
+    if hasattr(adapter, "engines"):
+        from local_asr_catalog import ModelInstaller
+
+        installer = ModelInstaller("ggml-small", adapter.engines)
     return LocalASRProductController(installer=installer, backend=backend)
 
 
@@ -309,12 +314,18 @@ class QmlSettingsController(QObject):
     loaded = Signal()
     saved = Signal()
     providerStateChanged = Signal()
+    modelCatalogChanged = Signal()
+    _modelDiscoveryFinished = Signal(int, object, object)
     microphoneChanged = Signal()
     microphoneTestChanged = Signal()
+    microphoneLevelChanged = Signal()
     hotkeyChanged = Signal()
     _providerValidationFinished = Signal(str, int, bool, object)
     _localStatePublished = Signal(object)
+    _localDevicesPublished = Signal(object)
+    _localBenchmarkPublished = Signal(str)
     _microphoneTestFinished = Signal(int, bool, object)
+    _microphoneLevelPublished = Signal(int, float)
 
     def __init__(
         self,
@@ -333,6 +344,16 @@ class QmlSettingsController(QObject):
         self._autostart_registry = registry
         self._local_product = local_product or _default_local_asr_product()
         self._local_state: LocalASRProductState = self._local_product.state
+        self._local_profile = "ggml-small"
+        self._local_device = "cpu"
+        self._local_generation = 0
+        self._local_benchmark_busy = False
+        self._local_benchmark_detail = ""
+        self._local_benchmark_token = None
+        self._local_devices = [
+            {"id": "auto", "label": "Automatic"},
+            {"id": "cpu", "label": "CPU"},
+        ]
         self._hotkey_applier = hotkey_applier
         self._microphone_backend = microphone_backend
         self._microphone_inventory_source = (
@@ -343,11 +364,19 @@ class QmlSettingsController(QObject):
         self._microphone_inventory = MicrophoneInventory.unavailable("not_refreshed")
         self._microphone_test_generation = 0
         self._microphone_test_busy = False
+        self._microphone_test_level = 0.0
+        self._microphone_test_cancel = threading.Event()
+        self._microphone_test_thread: threading.Thread | None = None
         self._microphone_test_status = ""
         self._microphone_test_kind = "info"
         self._provider_activity: dict[str, dict[str, Any]] = {}
         self._provider_tokens: dict[str, CancellationToken] = {}
         self._provider_generations: dict[str, int] = {}
+        self._model_catalogs: dict[tuple[str, str, str], Any] = {}
+        self._model_generation = 0
+        self._model_token: CancellationToken | None = None
+        self._model_loading_key = None
+        self._model_error_key = None
         self._selected_scope = WorkflowScope.TRANSCRIPTION.value
         self._config = self._config_repository.load()
         configured_provider = (
@@ -383,8 +412,47 @@ class QmlSettingsController(QObject):
             self._finish_microphone_test,
             Qt.ConnectionType.QueuedConnection,
         )
-        self._local_product.subscribe(self._publish_local_state)
-        self._local_product.refresh_async()
+        self._microphoneLevelPublished.connect(
+            self._apply_microphone_level, Qt.ConnectionType.QueuedConnection
+        )
+        self._local_product.subscribe(
+            lambda state: self._localStatePublished.emit((0, state))
+        )
+        self._localBenchmarkPublished.connect(
+            self._finish_local_benchmark, Qt.ConnectionType.QueuedConnection
+        )
+        self._localDevicesPublished.connect(
+            self._apply_local_devices, Qt.ConnectionType.QueuedConnection
+        )
+
+        def inventory():
+            from local_asr_catalog import devices
+
+            values = devices()
+            try:
+                self._localDevicesPublished.emit(values)
+            except RuntimeError:
+                pass
+
+        self._local_inventory_thread = threading.Thread(
+            target=inventory, daemon=True, name="LocalASRDevices"
+        )
+        self._local_inventory_thread.start()
+        self._modelDiscoveryFinished.connect(
+            self._finish_model_discovery, Qt.ConnectionType.QueuedConnection
+        )
+        self.routeChanged.connect(self.modelCatalogChanged.emit)
+        self.providerStateChanged.connect(self.modelCatalogChanged.emit)
+        if local_product is None:
+            from local_asr_catalog import MODELS
+
+            model = self._config.local_asr.audio_model
+            if model in MODELS:
+                self._browse_local(model, self._config.local_asr_device)
+            else:
+                self._local_product.refresh_async()
+        else:
+            self._local_product.refresh_async()
         self.refreshMicrophoneInventory()
 
     @Property("QStringList", constant=True)
@@ -513,7 +581,8 @@ class QmlSettingsController(QObject):
 
     @Property(bool, notify=providerStateChanged)
     def localAsrBusy(self) -> bool:
-        return self._local_product.busy
+        # Terminal state can arrive before the worker's finally block clears busy.
+        return self._local_state.status in {"checking", "installing", "removing"}
 
     @Property(str, notify=configChanged)
     def mode(self) -> str:
@@ -629,6 +698,14 @@ class QmlSettingsController(QObject):
     @Property(bool, notify=microphoneTestChanged)
     def microphoneTestBusy(self) -> bool:
         return self._microphone_test_busy
+
+    @Property(float, notify=microphoneLevelChanged)
+    def microphoneTestLevel(self) -> float:
+        return self._microphone_test_level
+
+    @Property(bool, notify=microphoneTestChanged)
+    def microphoneTestStopping(self) -> bool:
+        return self._microphone_test_busy and self._microphone_test_cancel.is_set()
 
     @Property("QVariantMap", notify=microphoneChanged)
     def recordingControls(self) -> dict[str, Any]:
@@ -762,7 +839,7 @@ class QmlSettingsController(QObject):
     def setHistoryEnabled(self, value: bool) -> bool:
         return self._update_config(replace(self._config, history_enabled=bool(value)))
 
-    @Slot(object, result=bool)
+    @Slot("QVariant", result=bool)
     def setHistoryRetentionDays(self, value: object) -> bool:
         try:
             if value is not None:
@@ -869,7 +946,7 @@ class QmlSettingsController(QObject):
             return False
         return self._update_config(replace(self._config, hotkeys=settings))
 
-    @Slot(object, result=bool)
+    @Slot("QVariant", result=bool)
     def setMicrophone(self, value: object) -> bool:
         """Update only the stable microphone preference in the draft."""
 
@@ -891,13 +968,34 @@ class QmlSettingsController(QObject):
             return False
         return self._update_config(replace(self._config, microphone=microphone))
 
-    @Slot(object, result=bool)
+    @Slot("QVariant", result=bool)
     def selectMicrophone(self, value: object) -> bool:
         """QML-friendly alias for the explicit selection action."""
 
         return self.setMicrophone(value)
 
-    @Slot(object, result=bool)
+    @Property(str, notify=microphoneChanged)
+    def quickMicrophoneId(self) -> str:
+        return self._config_repository.load().microphone.selected_id or ""
+
+    @Slot(str, result=bool)
+    def selectQuickMicrophone(self, value: str) -> bool:
+        """Apply only this preference; preserve unrelated settings drafts."""
+        if value not in {option["id"] for option in self.microphoneDevices}:
+            self._set_error(ValueError("Microphone unavailable"))
+            return False
+        microphone = MicrophoneSettings(value or None)
+        if not self._persist_ui_preference(
+            lambda config: replace(config, microphone=microphone)
+        ):
+            return False
+        self.stopMicrophoneTest()
+        self._config = replace(self._config, microphone=microphone)
+        self.configChanged.emit()
+        self.microphoneChanged.emit()
+        return True
+
+    @Slot("QVariantMap", result=bool)
     def setRecordingControls(self, value: object) -> bool:
         """Validate boundary settings through the shared typed policy."""
 
@@ -912,6 +1010,7 @@ class QmlSettingsController(QObject):
     def refreshMicrophoneInventory(self) -> bool:
         """Refresh one inventory snapshot without changing the saved draft."""
 
+        self.stopMicrophoneTest()
         try:
             inventory = self._snapshot_microphone_inventory()
         except Exception as error:
@@ -934,7 +1033,7 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def testMicrophone(self) -> bool:
-        """Run a short local-only input-level test off the Qt GUI thread."""
+        """Stream local input levels for up to 30 seconds off the GUI thread."""
 
         if self._microphone_test_busy:
             return False
@@ -954,15 +1053,29 @@ class QmlSettingsController(QObject):
 
         self._microphone_test_generation += 1
         generation = self._microphone_test_generation
+        cancel_event = threading.Event()
+        self._microphone_test_cancel = cancel_event
         self._microphone_test_busy = True
-        self._microphone_test_status = "Listening…"
+        self._microphone_test_level = 0.0
+        self.microphoneLevelChanged.emit()
+        self._microphone_test_status = "Speak into this microphone · stops after 30 seconds. Audio is not saved or sent."
         self._microphone_test_kind = "info"
         self.microphoneTestChanged.emit()
         inventory = self._microphone_inventory
 
         def run() -> None:
             try:
-                peak = float(backend_test(selection, inventory))
+                peak = float(
+                    backend_test(
+                        selection,
+                        inventory,
+                        on_level=lambda level: self._microphoneLevelPublished.emit(
+                            generation, level
+                        ),
+                        cancel_event=cancel_event,
+                        duration=30.0,
+                    )
+                )
             except Exception as error:
                 self._microphoneTestFinished.emit(
                     generation,
@@ -972,12 +1085,36 @@ class QmlSettingsController(QObject):
                 return
             self._microphoneTestFinished.emit(generation, True, peak)
 
-        threading.Thread(
+        self._microphone_test_thread = threading.Thread(
             target=run,
             name="ClarifyQmlMicrophoneTest",
             daemon=True,
-        ).start()
+        )
+        self._microphone_test_thread.start()
         return True
+
+    @Slot()
+    def stopMicrophoneTest(self) -> None:
+        if not self._microphone_test_busy or self._microphone_test_cancel.is_set():
+            return
+        self._microphone_test_cancel.set()
+        self._microphone_test_level = 0.0
+        self._microphone_test_status = "Stopping microphone test…"
+        self.microphoneLevelChanged.emit()
+        self.microphoneTestChanged.emit()
+
+    @Slot(int, float)
+    def _apply_microphone_level(self, generation: int, level: float) -> None:
+        if (
+            generation != self._microphone_test_generation
+            or not self._microphone_test_busy
+            or self._microphone_test_cancel.is_set()
+        ):
+            return
+        self._microphone_test_level = (
+            min(1.0, max(0.0, level)) if math.isfinite(level) else 0.0
+        )
+        self.microphoneLevelChanged.emit()
 
     @Slot(str, str, str, str, str, bool, result=bool)
     def setRoute(
@@ -1015,9 +1152,326 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setRouteProviderId(self, value: str) -> bool:
-        return self._update_selected_route(
-            lambda route: replace(route, provider_id=str(value or "").strip().lower())
+        provider_id = str(value or "").strip().lower()
+        if provider_id == self.routeProviderId:
+            return True
+        if provider_id not in self.providersForScope(self._selected_scope):
+            self._set_error(ValueError("This provider does not support this task"))
+            return False
+        metadata = PROVIDER_REGISTRY.describe(provider_id)
+        audio = (
+            WORKFLOW_CAPABILITIES[self._selected_scope]
+            == ProviderCapability.AUDIO_TRANSCRIPTION
         )
+        return self._update_selected_route(
+            lambda route: replace(
+                route,
+                provider_id=provider_id,
+                custom_endpoint="",
+                model_id=metadata.default_audio_model
+                if audio
+                else metadata.default_text_model,
+            )
+        )
+
+    def _model_connection_key(self) -> tuple[str, str, str]:
+        provider = self.routeProviderId
+        if provider == LOCAL_ASR_PROVIDER_ID:
+            return (provider, "", "")
+        config = self._provider_config(provider)
+        return (
+            provider,
+            self.routeCustomEndpoint or self._config_provider_base_url(provider),
+            config.api_key.strip(),
+        )
+
+    @Property(str, notify=modelCatalogChanged)
+    def routeModelStatus(self) -> str:
+        key = self._model_connection_key()
+        if key[0] == LOCAL_ASR_PROVIDER_ID:
+            return "ready" if self.localAsrStatus == "installed" else "local_missing"
+        if not key[2]:
+            return "not_configured"
+        if key == self._model_loading_key:
+            return "loading"
+        if key == self._model_error_key:
+            return "error"
+        if key in self._model_catalogs:
+            return "ready" if self.routeModelOptions else "empty"
+        return "idle"
+
+    @Property("QVariantList", notify=modelCatalogChanged)
+    def routeModelOptions(self) -> list[dict[str, str]]:
+        key = self._model_connection_key()
+        if key[0] == LOCAL_ASR_PROVIDER_ID:
+            models = (
+                [PROVIDER_REGISTRY.describe(key[0]).default_audio_model]
+                if self.localAsrStatus == "installed"
+                else []
+            )
+        else:
+            catalog = self._model_catalogs.get(key)
+            if catalog is None:
+                return []
+            audio = (
+                WORKFLOW_CAPABILITIES[self._selected_scope]
+                == ProviderCapability.AUDIO_TRANSCRIPTION
+            )
+            models = catalog.audio_models if audio else catalog.text_models
+        return [
+            {
+                "id": model,
+                "label": "Whisper Small" if key[0] == LOCAL_ASR_PROVIDER_ID else model,
+            }
+            for model in sorted(set(models))
+        ]
+
+    @Slot(result=bool)
+    def loadRouteModels(self) -> bool:
+        if self.routeModelStatus != "idle":
+            return False
+        return self.refreshRouteModels()
+
+    @Slot(result=bool)
+    def refreshRouteModels(self) -> bool:
+        """Discover models without saving credentials or changing the route."""
+        key = self._model_connection_key()
+        if (
+            key[0] == LOCAL_ASR_PROVIDER_ID
+            or not key[2]
+            or key == self._model_loading_key
+        ):
+            return False
+        if self._model_token is not None:
+            self._model_token.cancel()
+        self._model_generation += 1
+        generation = self._model_generation
+        token = CancellationToken()
+        self._model_token = token
+        self._model_loading_key = key
+        self._model_error_key = None
+        self.modelCatalogChanged.emit()
+
+        def discover() -> None:
+            try:
+                catalog = PROVIDER_REGISTRY.discover_models(
+                    key[0], ProviderConnection(key[2], key[1]), token
+                )
+            except Exception:
+                # Provider errors can contain URLs or credentials. Do not expose them.
+                catalog = None
+            self._modelDiscoveryFinished.emit(generation, key, catalog)
+
+        threading.Thread(
+            target=discover, name="ClarifyModelDiscovery", daemon=True
+        ).start()
+        return True
+
+    @Slot(int, object, object)
+    def _finish_model_discovery(
+        self, generation: int, key: object, catalog: object
+    ) -> None:
+        if generation != self._model_generation:
+            return
+        self._model_loading_key = None
+        self._model_token = None
+        if catalog is None:
+            self._model_error_key = key
+        else:
+            self._model_catalogs[key] = catalog
+        self.modelCatalogChanged.emit()
+
+    @Property(str, notify=providerStateChanged)
+    def localAsrStep(self) -> str:
+        state = self._local_state
+        labels = {
+            "checking": "Checking installed files",
+            "preparing": "Preparing download",
+            "download:runtime": "1 of 5 · Downloading engine",
+            "verify:runtime": "2 of 5 · Verifying engine",
+            "extract:runtime": "3 of 5 · Installing engine",
+            "download:model": "4 of 5 · Downloading Whisper Small",
+            "verify:model": "5 of 5 · Verifying model",
+            "complete": "Ready to use",
+        }
+        label = labels.get(state.stage, "Preparing local model")
+        if state.stage.startswith("download:") and state.total > 0:
+            label += f" · {format_requirement_bytes(state.current)} / {format_requirement_bytes(state.total)}"
+        return label
+
+    @Property(bool, notify=providerStateChanged)
+    def localAsrCanInstall(self) -> bool:
+        checker = getattr(self._local_product.installer, "platform_supported", None)
+        try:
+            return bool(checker()) if callable(checker) else True
+        except Exception:
+            return False
+
+    @Property("QVariantList", notify=providerStateChanged)
+    def localAsrRequirementsList(self) -> list[str]:
+        values = self._local_state.requirements or {}
+        return [
+            f"{format_requirement_bytes(values.get('download_bytes', 0))} maximum download",
+            f"{format_requirement_bytes(values.get('disk_bytes', 0))} free disk",
+            f"{format_requirement_bytes(values.get('memory_bytes', 0))} RAM",
+            str(values.get("platform", "Windows x64")),
+            str(values.get("compute", "")),
+            str(values.get("runtime", "")),
+        ]
+
+    @Property(bool, notify=providerStateChanged)
+    def localBenchmarkBusy(self):
+        return self._local_benchmark_busy
+
+    @Property(str, notify=providerStateChanged)
+    def localBenchmarkDetail(self):
+        return self._local_benchmark_detail
+
+    @Slot()
+    def cancelLocalMeasurement(self):
+        if self._local_benchmark_token is not None:
+            self._local_benchmark_token.cancel()
+
+    @Slot(result=bool)
+    def measureLocalDevice(self):
+        if self.localAsrBusy or self._local_benchmark_busy:
+            return False
+        from local_asr import default_manifest_path
+        from local_asr_catalog import calibrate
+
+        token = CancellationToken()
+        self._local_benchmark_token = token
+        self._local_benchmark_busy = True
+        self._local_benchmark_detail = (
+            "Measuring installed engines with local sample audio..."
+        )
+        model = self._local_profile
+        audio = default_manifest_path().parent / "assets" / "asr-benchmark.wav"
+        pool = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID).engines
+
+        def measure():
+            try:
+                result = calibrate(pool, model, audio, token)
+                detail = (
+                    "Measured: "
+                    + result["selected"]
+                    + ". Select Automatic and use this model to apply."
+                )
+            except Exception as error:
+                detail = str(error)
+            try:
+                self._localBenchmarkPublished.emit(detail)
+            except RuntimeError:
+                pass
+
+        threading.Thread(target=measure, daemon=True, name="LocalASRBenchmark").start()
+        self.providerStateChanged.emit()
+        return True
+
+    @Slot(str)
+    def _finish_local_benchmark(self, detail):
+        self._local_benchmark_busy = False
+        self._local_benchmark_detail = detail
+        self.providerStateChanged.emit()
+
+    @Property("QStringList", constant=True)
+    def localProfiles(self):
+        from local_asr_catalog import PROFILE_LABELS
+
+        return list(PROFILE_LABELS)
+
+    @Property(int, notify=providerStateChanged)
+    def localProfileIndex(self):
+        from local_asr_catalog import MODELS
+
+        return MODELS.index(self._local_profile)
+
+    @Property("QStringList", notify=providerStateChanged)
+    def localDevices(self):
+        return [item["label"] for item in self._local_devices]
+
+    @Property(int, notify=providerStateChanged)
+    def localDeviceIndex(self):
+        return next(
+            (
+                i
+                for i, item in enumerate(self._local_devices)
+                if item["id"] == self._local_device
+            ),
+            1,
+        )
+
+    @Property(bool, notify=configChanged)
+    def localStreaming(self):
+        return self._config.local_asr_streaming
+
+    @Slot(bool, result=bool)
+    def setLocalStreaming(self, enabled):
+        return self._update_config(
+            replace(self._config, local_asr_streaming=bool(enabled))
+        )
+
+    @Slot(object)
+    def _apply_local_devices(self, values):
+        self._local_devices = values
+        self.providerStateChanged.emit()
+
+    @Slot(int, result=bool)
+    def selectLocalProfile(self, index):
+        from local_asr_catalog import MODELS
+
+        if (
+            self.localAsrBusy
+            or self._local_benchmark_busy
+            or not 0 <= index < len(MODELS)
+        ):
+            return False
+        return self._browse_local(MODELS[index], self._local_device)
+
+    @Slot(int, result=bool)
+    def selectLocalDevice(self, index):
+        if (
+            self.localAsrBusy
+            or self._local_benchmark_busy
+            or not 0 <= index < len(self._local_devices)
+        ):
+            return False
+        return self._browse_local(self._local_profile, self._local_devices[index]["id"])
+
+    def _browse_local(self, model, device):
+        try:
+            from local_asr_catalog import ModelInstaller
+
+            adapter = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID)
+            backend = adapter.select_backend(model, "cpu")
+            product = LocalASRProductController(
+                installer=ModelInstaller(model, adapter.engines, self._local_devices),
+                backend=backend,
+            )
+        except Exception as error:
+            self._set_error(error)
+            return False
+        self._local_generation += 1
+        generation = self._local_generation
+        self._local_profile, self._local_device = model, device
+        self._local_product = product
+        self._local_state = product.state
+        product.subscribe(
+            lambda state: self._localStatePublished.emit((generation, state))
+        )
+        product.refresh_async()
+        self.providerStateChanged.emit()
+        return True
+
+    @Slot(result=bool)
+    def useLocalAsr(self) -> bool:
+        if self.localAsrStatus != "installed":
+            return False
+        self.selectWorkflow(WorkflowScope.TRANSCRIPTION.value)
+        self.setRouteProviderId(LOCAL_ASR_PROVIDER_ID)
+        self.setRouteModelId(self._local_profile)
+        self._update_config(replace(self._config, local_asr_device=self._local_device))
+        return self.setRouteEnabled(True)
 
     @Slot(str, result=bool)
     def setRouteModelId(self, value: str) -> bool:
@@ -1222,6 +1676,9 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def installLocalAsr(self) -> bool:
+        if self.localAsrBusy or self._local_benchmark_busy:
+            return False
+        self._local_device = "auto"
         try:
             self._local_product.install_async()
         except Exception as error:
@@ -1255,15 +1712,25 @@ class QmlSettingsController(QObject):
 
     @Slot()
     def shutdown(self) -> None:
+        self._local_inventory_thread.join(timeout=3.5)
+        if self._local_benchmark_token is not None:
+            self._local_benchmark_token.cancel()
+        self._model_generation += 1
+        if self._model_token is not None:
+            self._model_token.cancel()
         for token in tuple(self._provider_tokens.values()):
             token.cancel()
         self._provider_tokens.clear()
+        self.stopMicrophoneTest()
+        if self._microphone_test_thread is not None:
+            self._microphone_test_thread.join(timeout=1.0)
         self._microphone_test_generation += 1
         self._microphone_test_busy = False
         self._local_product.shutdown()
 
     @Slot(result=bool)
     def load(self) -> bool:
+        self.stopMicrophoneTest()
         try:
             loaded_config = self._config_repository.load()
         except Exception as error:  # Repository errors belong in the QML state.
@@ -1521,6 +1988,10 @@ class QmlSettingsController(QObject):
 
     @Slot(object)
     def _apply_local_state(self, state: object) -> None:
+        if isinstance(state, tuple):
+            generation, state = state
+            if generation != self._local_generation:
+                return
         if isinstance(state, LocalASRProductState):
             self._local_state = state
             self.providerStateChanged.emit()
@@ -1652,13 +2123,22 @@ class QmlSettingsController(QObject):
         if generation != self._microphone_test_generation:
             return
         self._microphone_test_busy = False
-        if success:
+        self._microphone_test_level = 0.0
+        self.microphoneLevelChanged.emit()
+        if self._microphone_test_cancel.is_set():
+            self._microphone_test_status = "Test stopped."
+            self._microphone_test_kind = "info"
+        elif success:
             try:
                 peak = float(payload)
             except (TypeError, ValueError):
                 peak = 0.0
-            self._microphone_test_status = f"Input level peak: {peak:.2f}"
-            self._microphone_test_kind = "ok"
+            self._microphone_test_status = (
+                "Microphone input detected."
+                if peak > 0.01
+                else "No input detected. Check your microphone or choose another input."
+            )
+            self._microphone_test_kind = "ok" if peak > 0.01 else "warning"
         else:
             message = str(payload or "Input test failed")
             self._microphone_test_status = f"Input test failed: {message}"
@@ -1720,6 +2200,8 @@ class QmlSettingsController(QObject):
             config.microphone != self._config.microphone
             or config.recording_controls != self._config.recording_controls
         )
+        if config.microphone != self._config.microphone:
+            self.stopMicrophoneTest()
         route_changed = config.workflow(self._selected_scope) != self._config.workflow(
             self._selected_scope
         )

@@ -680,10 +680,29 @@ class QtShell(QObject):
 
     @Slot()
     def show_window(self) -> None:
+        self._set_passive_presentation(False)
         self._set_presentation_visible(True)
         self._window.show()
         self._window.raise_()
         self._window.requestActivate()
+
+    @Slot()
+    def show_window_without_activation(self) -> None:
+        """Restore the compact card without changing the native paste target."""
+        if not self._set_passive_presentation(True):
+            # Older windows cannot guarantee a non-activating show. Stay hidden.
+            return
+        self._set_presentation_visible(True)
+        self._window.show()
+
+    def _set_passive_presentation(self, passive: bool) -> bool:
+        setter = getattr(self._window, "setProperty", None)
+        if not callable(setter):
+            return False
+        try:
+            return bool(setter("passivePresentation", bool(passive)))
+        except (RuntimeError, TypeError):
+            return False
 
     @Slot()
     def hide_window(self) -> None:

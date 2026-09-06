@@ -7,23 +7,26 @@ import QtQuick.Window 6.5
 ApplicationWindow {
     id: root
     objectName: "clarifyMainWindow"
-    width: (workflow.surface === "result"
-            || workflow.surface === "voice_result"
-            || workflow.surface === "voice_error" ? theme.resultWidth
-            : workflow.surface === "settings" ? theme.settingsWidth
-            : (workflow.surface === "files"
-               || workflow.surface === "translation_picker")
+    property string displayedSurface: workflow.surface
+    property real surfaceOpacity: 1
+    width: (displayedSurface === "result"
+            || displayedSurface === "voice_result"
+            || displayedSurface === "voice_error" ? theme.resultWidth
+            : displayedSurface === "settings" ? theme.settingsWidth
+            : (displayedSurface === "files"
+               || displayedSurface === "translation_picker")
               ? theme.panelWidth : theme.windowWidth) * theme.uiScale
-    height: (workflow.surface === "result"
-             || workflow.surface === "voice_result"
-             || workflow.surface === "voice_error"
+    height: (displayedSurface === "result"
+             || displayedSurface === "voice_result"
+             || displayedSurface === "voice_error"
              ? theme.resultHeight
-             : workflow.surface === "settings" ? theme.settingsHeight
-             : (workflow.surface === "files"
-                || workflow.surface === "translation_picker")
+             : displayedSurface === "settings" ? theme.settingsHeight
+             : (displayedSurface === "files"
+                || displayedSurface === "translation_picker")
                ? theme.panelHeight : theme.windowHeight) * theme.uiScale
     minimumWidth: theme.windowWidth * theme.uiScale
     minimumHeight: theme.windowHeight * theme.uiScale
+    property bool passivePresentation: false
     property bool presentationVisible: false
     visible: presentationVisible || opacity > 0.001
     opacity: presentationVisible ? 1.0 : 0.0
@@ -34,8 +37,13 @@ ApplicationWindow {
         }
     }
     title: "Clarify"
+    onVisibilityChanged: {
+        if (visibility === Window.Hidden || visibility === Window.Minimized)
+            settings.stopMicrophoneTest()
+    }
     color: "transparent"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+           | (passivePresentation ? Qt.WindowDoesNotAcceptFocus : 0)
 
     palette.window: theme.card
     palette.windowText: theme.text
@@ -55,6 +63,115 @@ ApplicationWindow {
 
     Theme { id: theme }
     property Theme visualTheme: theme
+    Component.onCompleted: displayedSurface = workflow.surface
+    Connections {
+        target: workflow
+        function onSurfaceChanged() {
+            if (workflow.surface !== "idle") quickMenu.close()
+            if (workflow.surface === root.displayedSurface) return
+            surfaceTransition.stop()
+            if (workflow.surface === "files" || root.displayedSurface === "files") {
+                surfaceTransition.start()
+            } else {
+                root.displayedSurface = workflow.surface
+                root.surfaceOpacity = 1
+            }
+        }
+    }
+    SequentialAnimation {
+        id: surfaceTransition
+        NumberAnimation { target: root; property: "surfaceOpacity"; to: 0; duration: theme.fadeDuration; easing.type: Easing.OutCubic }
+        ScriptAction { script: root.displayedSurface = workflow.surface }
+        NumberAnimation { target: root; property: "surfaceOpacity"; to: 1; duration: theme.fadeDuration; easing.type: Easing.OutCubic }
+    }
+
+    QuickMenu {
+        id: quickMenu
+        objectName: "quickMenu"
+        parent: root.contentItem
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+        visualTheme: root.visualTheme
+        onAboutToShow: settings.refreshMicrophoneInventory()
+        property var pendingAction: null
+        function dispatchPendingAction() {
+            var action = pendingAction
+            pendingAction = null
+            if (action) Qt.callLater(action)
+        }
+        function runAfterClose(action) {
+            pendingAction = action
+            close()
+            // MenuItem may emit triggered after the popup has already closed.
+            // Consume the action once in either signal ordering.
+            Qt.callLater(function() {
+                if (!quickMenu.visible) quickMenu.dispatchPendingAction()
+            })
+        }
+        onClosed: dispatchPendingAction()
+
+        QuickMenu {
+            id: microphoneMenu
+            objectName: "quickMicrophoneMenu"
+            visualTheme: root.visualTheme
+            title: "Microphone"
+            icon.source: "icons/mic.svg"
+            width: 360
+            Instantiator {
+                model: settings.microphoneDevices
+                delegate: QuickMenuItem {
+                    required property var modelData
+                    required property int index
+                    objectName: "quickMicrophoneOption" + index
+                    visualTheme: root.visualTheme
+                    text: modelData.label
+                    checkable: true
+                    checked: settings.quickMicrophoneId === modelData.id
+                    onTriggered: {
+                        microphoneMenu.close()
+                        quickMenu.close()
+                        if (!settings.selectQuickMicrophone(modelData.id))
+                            workflow.showQuickNotice("Could not change microphone")
+                    }
+                }
+                onObjectAdded: function(index, object) { microphoneMenu.insertItem(index, object) }
+                onObjectRemoved: function(index, object) { microphoneMenu.removeItem(object) }
+            }
+        }
+        QuickMenuItem {
+            objectName: "quickPasteItem"
+            visualTheme: root.visualTheme
+            text: "Paste last transcript"
+            icon.source: "icons/paste.svg"
+            enabled: workflow.canPasteLastTranscription
+            onTriggered: quickMenu.runAfterClose(function() { workflow.pasteLastTranscription() })
+            ToolTip.visible: hovered && !enabled
+            ToolTip.text: "Available after your first transcription this session"
+        }
+        QuickMenuItem {
+            objectName: "quickFilesItem"
+            visualTheme: root.visualTheme
+            text: "Import audio files"
+            icon.source: "icons/audio-lines.svg"
+            onTriggered: quickMenu.runAfterClose(function() {
+                workflow.openFiles()
+                root.requestActivate()
+            })
+        }
+        MenuSeparator {
+            topPadding: 4; bottomPadding: 4
+            contentItem: Rectangle { implicitHeight: 1; color: theme.controlPressed }
+        }
+        QuickMenuItem {
+            objectName: "quickSettingsItem"
+            visualTheme: root.visualTheme
+            text: "Settings"
+            icon.source: "icons/settings.svg"
+            onTriggered: quickMenu.runAfterClose(function() {
+                workflow.openSettings()
+                root.requestActivate()
+            })
+        }
+    }
 
     Shortcut {
         sequence: "Escape"
@@ -102,15 +219,17 @@ ApplicationWindow {
     Rectangle {
         id: card
         objectName: "mainCard"
+        opacity: root.surfaceOpacity
+        enabled: !surfaceTransition.running
         width: root.width / theme.uiScale
         height: root.height / theme.uiScale
         anchors.centerIn: parent
         scale: theme.uiScale
         transformOrigin: Item.Center
-        radius: workflow.surface === "idle"
-                || workflow.surface === "recording"
-                || workflow.surface === "processing"
-                || workflow.surface === "voice_processing"
+        radius: root.displayedSurface === "idle"
+                || root.displayedSurface === "recording"
+                || root.displayedSurface === "processing"
+                || root.displayedSurface === "voice_processing"
             ? height / 2 : theme.panelRadius
         color: theme.card
         border.color: theme.border
@@ -137,22 +256,35 @@ ApplicationWindow {
             id: pages
             objectName: "appPages"
             anchors.fill: parent
-            currentIndex: workflow.surface === "result"
+            currentIndex: root.displayedSurface === "result"
                           ? 1
-                          : workflow.surface === "settings" ? 2
-                          : workflow.surface === "files" ? 3
-                          : workflow.surface === "translation_picker" ? 4
-                          : (workflow.surface === "voice_result"
-                             || workflow.surface === "voice_error") ? 1 : 0
+                          : root.displayedSurface === "settings" ? 2
+                          : root.displayedSurface === "files" ? 3
+                          : root.displayedSurface === "translation_picker" ? 4
+                          : (root.displayedSurface === "voice_result"
+                             || root.displayedSurface === "voice_error") ? 1 : 0
 
             Item {
                 id: homePage
                 objectName: "homePage"
                 property bool promptMode: workflow.mode === "prompt"
+                DragHandler {
+                    id: windowDragHandler
+                    objectName: "homeWindowDragHandler"
+                    target: null
+                    acceptedButtons: Qt.LeftButton
+                    grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.CanTakeOverFromHandlersOfDifferentType
+                    onActiveChanged: {
+                        if (active) {
+                            quickMenu.close()
+                            root.startSystemMove()
+                        }
+                    }
+                }
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 15
+                    anchors.leftMargin: 10
                     anchors.rightMargin: 8
                     spacing: 5
 
@@ -160,94 +292,27 @@ ApplicationWindow {
                         id: statusArea
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        Layout.minimumWidth: 0
+                        Layout.minimumWidth: 32
                         Layout.alignment: Qt.AlignVCenter
 
-                        // The shell is frameless, so keep the status area
-                        // draggable without taking pointer ownership away
-                        // from the controls to its right.
-                        DragHandler {
-                            id: windowDragHandler
-                            target: null
-                            onActiveChanged: {
-                                if (active)
-                                    root.startSystemMove()
-                            }
-                        }
-
-                        RowLayout {
-                            anchors.fill: parent
-                            spacing: 6
-
-                            Label {
-                                id: statusLabel
-                                Layout.fillWidth: true
-                                text: workflow.surface === "idle" ? "Ready"
-                                      : workflow.surface === "recording" ? "Recording"
-                                      : workflow.surface === "processing" ? "Processing…"
-                                      : workflow.surface === "voice_processing" ? workflow.status
-                                      : workflow.status
-                                color: theme.text
-                                font.pixelSize: 13
-                                font.weight: Font.Bold
-                                elide: Text.ElideRight
-                                verticalAlignment: Text.AlignVCenter
-                                Accessible.name: workflow.status
-                            }
-
-                        }
-
-                        TapHandler {
+                        AppButton {
+                            objectName: "microphoneButton"
+                            anchors.centerIn: parent
+                            width: 26
+                            height: 26
+                            theme: root.visualTheme
+                            iconSource: "icons/mic.svg"
+                            quiet: true
                             enabled: workflow.surface === "idle"
                                      || workflow.surface === "recording"
-                            gesturePolicy: TapHandler.ReleaseWithinBounds
-                            onTapped: {
+                            Accessible.name: workflow.surface === "recording"
+                                             ? "Stop recording" : "Start recording"
+                            onClicked: {
                                 if (workflow.surface === "recording")
                                     workflow.stopRecording()
                                 else
                                     workflow.startRecording()
                             }
-                        }
-                    }
-
-                    Item {
-                        id: busyIndicator
-                        property bool fadeShown: workflow.busy
-                        visible: fadeShown || opacity > 0.001
-                        opacity: fadeShown ? 1.0 : 0.0
-                        Behavior on opacity {
-                            NumberAnimation {
-                                duration: theme.fadeDuration
-                                easing.type: Easing.OutCubic
-                            }
-                        }
-                        Layout.preferredWidth: 14
-                        Layout.preferredHeight: 14
-                        Layout.alignment: Qt.AlignVCenter
-
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: width / 2
-                            color: "transparent"
-                            border.color: theme.dim
-                            border.width: 1
-                        }
-
-                        Rectangle {
-                            width: 4
-                            height: 4
-                            radius: 2
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            y: 0
-                            color: theme.text
-                        }
-
-                        RotationAnimation on rotation {
-                            running: workflow.busy
-                            from: 0
-                            to: 360
-                            duration: 760
-                            loops: Animation.Infinite
                         }
                     }
 
@@ -279,19 +344,20 @@ ApplicationWindow {
                             })
                             property string languageCode: workflow.language.toUpperCase()
                             text: ""
-                            theme: theme
-                            Layout.preferredWidth: 32
+                            theme: root.visualTheme
+                            Layout.preferredWidth: 36
                             Layout.preferredHeight: 26
                             Accessible.name: "Language: "
                                               + languageNames[workflow.language]
 
                             RoundedFlag {
                                 anchors.centerIn: parent
-                                width: 20
-                                height: 14
+                                width: implicitWidth
+                                height: implicitHeight
                                 source: "flags/" + workflow.language + ".svg"
                             }
                             onClicked: {
+                                quickMenu.close()
                                 var currentIndex = supportedLanguages.indexOf(workflow.language)
                                 var nextIndex = (currentIndex + 1) % supportedLanguages.length
                                 workflow.setLanguage(supportedLanguages[nextIndex])
@@ -302,46 +368,45 @@ ApplicationWindow {
                             id: modeButton
                             objectName: "modeButton"
                             text: homePage.promptMode ? "Prompt" : "Transcribe"
-                            theme: theme
+                            theme: root.visualTheme
                             Layout.preferredWidth: 78
                             Layout.preferredHeight: 26
                             Accessible.name: "Mode: "
                                               + (homePage.promptMode
                                                  ? "Prompt" : "Transcribe")
                             onClicked: {
+                                quickMenu.close()
                                 workflow.setMode(homePage.promptMode
                                                  ? "transcription" : "prompt")
                             }
                         }
 
                         AppButton {
-                            id: fileButton
-                            objectName: "fileButton"
-                            text: "Files"
-                            theme: theme
-                            Layout.preferredWidth: 48
-                            Layout.preferredHeight: 26
-                            Accessible.name: "Import audio files"
-                            onClicked: workflow.openFiles()
-                        }
-
-                        AppButton {
                             id: settingsButton
                             objectName: "settingsButton"
                             iconSource: "icons/settings.svg"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
-                            Accessible.name: "Open settings"
-                            onClicked: workflow.openSettings()
+                            Accessible.name: "Open quick actions"
+                            onClicked: {
+                                if (quickMenu.visible) {
+                                    quickMenu.close()
+                                    return
+                                }
+                                var position = mapToItem(root.contentItem, width, height)
+                                quickMenu.x = Math.max(0, position.x - quickMenu.width)
+                                quickMenu.y = root.height + 8
+                                quickMenu.open()
+                            }
                         }
 
                         AppButton {
                             id: closeButton
                             objectName: "closeButton"
                             iconSource: "icons/x.svg"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
@@ -364,8 +429,18 @@ ApplicationWindow {
                         spacing: 4
 
                         AppButton {
+                            text: "Retry"
+                            theme: root.visualTheme
+                            visible: workflow.canRetryTranscription
+                            Layout.preferredWidth: 60
+                            Layout.preferredHeight: 26
+                            Accessible.name: "Retry transcription with the same audio"
+                            onClicked: workflow.retryTranscription()
+                        }
+
+                        AppButton {
                             text: "Dismiss"
-                            theme: theme
+                            theme: root.visualTheme
                             Layout.preferredWidth: 60
                             Layout.preferredHeight: 26
                             Accessible.name: "Dismiss workflow error"
@@ -433,7 +508,7 @@ ApplicationWindow {
 
                         AppButton {
                             iconSource: "icons/x.svg"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
@@ -449,9 +524,7 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         Layout.minimumHeight: 64
                         radius: 10
-                        color: theme.resultSurface
-                        border.color: theme.border
-                        border.width: 1
+                        color: "transparent"
 
                         Label {
                             anchors.fill: parent
@@ -472,7 +545,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: resultPage.copyLabel
-                            theme: theme
+                            theme: root.visualTheme
                             Layout.preferredWidth: 52
                             Layout.preferredHeight: 26
                             Accessible.name: "Copy result"
@@ -481,7 +554,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Dismiss"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             Layout.preferredWidth: 56
                             Layout.preferredHeight: 26
@@ -499,27 +572,19 @@ ApplicationWindow {
                 objectName: "settingsPage"
                 focus: workflow.surface === "settings"
                 property int selectedSection: 0
-                property string speechWorkflowScope: "transcription"
                 property string textWorkflowScope: "refinement"
                 readonly property var sectionItems: [
                     { "label": "General", "icon": "settings.svg" },
+                    { "label": "Dictation", "icon": "mic.svg" },
+                    { "label": "Text", "icon": "sparkles.svg" },
                     { "label": "Shortcuts", "icon": "keyboard.svg" },
-                    { "label": "Recording", "icon": "audio-lines.svg" },
-                    { "label": "Speech-to-text", "icon": "mic.svg" },
-                    { "label": "Text processing", "icon": "sparkles.svg" },
-                    { "label": "Integrations", "icon": "server.svg" }
-                ]
-                readonly property var speechWorkflowItems: [
-                    { "scope": "transcription", "label": "Dictation" }
+                    { "label": "Models & services", "icon": "server.svg" }
                 ]
                 readonly property var textWorkflowItems: [
                     { "scope": "refinement", "label": "Cleanup" },
                     { "scope": "rewrite", "label": "Rewrite" },
-                    { "scope": "translation", "label": "Translation" },
-                    { "scope": "local_asr_refinement", "label": "Local refinement" }
+                    { "scope": "translation", "label": "Translation" }
                 ]
-                readonly property var workflowTabItems:
-                    selectedSection === 3 ? speechWorkflowItems : textWorkflowItems
 
                 function workflowScopeLabel(scope) {
                     var labels = {
@@ -527,7 +592,7 @@ ApplicationWindow {
                         "refinement": "Cleanup",
                         "rewrite": "Rewrite",
                         "translation": "Translation",
-                        "local_asr_refinement": "Local refinement"
+                        "local_asr_refinement": "Cleanup after local transcription"
                     }
                     return labels[scope] || scope
                 }
@@ -538,7 +603,7 @@ ApplicationWindow {
                         "refinement": "Improve dictated text while preserving its meaning.",
                         "rewrite": "Rewrite selected text while preserving its requirements.",
                         "translation": "Translate selected text using the configured language model.",
-                        "local_asr_refinement": "Optionally refine text produced by the local speech recognizer."
+                        "local_asr_refinement": "Optional cleanup after on-device transcription. If enabled, the transcript is sent to the selected service. Audio stays on your computer."
                     }
                     return descriptions[scope] || "Configure this workflow."
                 }
@@ -549,7 +614,7 @@ ApplicationWindow {
                         "refinement": "Enable cleanup",
                         "rewrite": "Enable rewrite",
                         "translation": "Enable translation",
-                        "local_asr_refinement": "Enable local refinement"
+                        "local_asr_refinement": "Clean up local transcripts"
                     }
                     return labels[scope] || "Enable this feature"
                 }
@@ -557,9 +622,7 @@ ApplicationWindow {
                 function selectWorkflowScope(scope) {
                     if (!settings.selectWorkflow(scope))
                         return
-                    if (scope === "transcription")
-                        speechWorkflowScope = scope
-                    else
+                    if (scope !== "transcription")
                         textWorkflowScope = scope
                 }
 
@@ -567,14 +630,18 @@ ApplicationWindow {
                     if (index >= 0 && index < sectionItems.length
                             && index !== selectedSection) {
                         selectedSection = index
-                        if (index === 3)
-                            selectWorkflowScope(speechWorkflowScope)
-                        else if (index === 4)
+                        if (index === 1)
+                            selectWorkflowScope("transcription")
+                        else if (index === 2)
                             selectWorkflowScope(textWorkflowScope)
+                        else if (index === 4 && settings.selectedProviderId === "local_asr")
+                            settings.selectProvider("openai")
                     }
                 }
 
                 onVisibleChanged: {
+                    if (!visible)
+                        settings.stopMicrophoneTest()
                     if (visible) {
                         Qt.callLater(function() {
                             settingsScroll.contentItem.contentY = 0
@@ -583,6 +650,8 @@ ApplicationWindow {
                 }
 
                 onSelectedSectionChanged: {
+                    if (selectedSection !== 1)
+                        settings.stopMicrophoneTest()
                     Qt.callLater(function() {
                         settingsScroll.contentItem.contentY = 0
                     })
@@ -616,7 +685,7 @@ ApplicationWindow {
 
                         AppButton {
                             iconSource: "icons/x.svg"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
@@ -640,7 +709,7 @@ ApplicationWindow {
                         Item {
                             id: settingsSidebar
                             objectName: "settingsSidebar"
-                            Layout.preferredWidth: 118
+                            Layout.preferredWidth: 145
                             Layout.fillHeight: true
 
                             ColumnLayout {
@@ -654,6 +723,7 @@ ApplicationWindow {
                                     delegate: AppButton {
                                         required property int index
                                         required property var modelData
+                                        objectName: "settingsSection" + index
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 28
                                         text: modelData.label
@@ -704,22 +774,16 @@ ApplicationWindow {
                         ColumnLayout {
                             id: settingsContent
                             width: Math.max(0, settingsScroll.availableWidth)
-                            spacing: 8
+                            spacing: 12
 
-                            ColumnLayout {
+                            SettingsGroup {
                                 id: generalSettingsSection
                                 objectName: "generalSettingsSection"
+                                visualTheme: root.visualTheme
+                                title: "General"
+                                description: "App behavior and local history."
                                 Layout.fillWidth: true
-                                spacing: 8
                                 visible: settingsPage.selectedSection === 0
-
-                            Label {
-                                text: "General"
-                                color: theme.secondaryText
-                                font.pixelSize: 10
-                                font.weight: Font.DemiBold
-                                font.letterSpacing: 0.7
-                            }
 
                             GridLayout {
                                 Layout.fillWidth: true
@@ -728,148 +792,21 @@ ApplicationWindow {
                                 rowSpacing: 6
 
                                 Label {
-                                    text: "Mode"
+                                    text: "Default mode"
                                     color: theme.dim
                                     font.pixelSize: 11
                                 }
 
-                                ComboBox {
+                                SearchSelect {
                                     id: settingsModeBox
                                     objectName: "settingsModeBox"
+                                    visualTheme: theme
                                     Layout.fillWidth: true
-                                    model: settings.modes
-                                    currentIndex: Math.max(0, settings.modes.indexOf(settings.mode))
-                                    onActivated: settings.setMode(currentText)
-                                    delegate: ComboPopupDelegate {
-                                        visualTheme: theme
-                                        comboBox: settingsModeBox
-                                    }
-                                    contentItem: Label {
-                                        leftPadding: 8
-                                        rightPadding: 24
-                                        text: settingsModeBox.currentText
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                        elide: Text.ElideRight
-                                    }
-                                    indicator: DropdownIndicator {
-                                        x: settingsModeBox.width - width - 8
-                                        y: (settingsModeBox.height - height) / 2
-                                    }
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                    popup.padding: 4
-                                    popup.background: Rectangle {
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                        radius: 9
-                                    }
-                                }
-
-                                Label {
-                                    text: "Language"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                ComboBox {
-                                    id: settingsLanguageBox
-                                    objectName: "settingsLanguageBox"
-                                    Layout.fillWidth: true
-                                    model: settings.languages
-                                    currentIndex: Math.max(0, settings.languages.indexOf(settings.language))
-                                    onActivated: settings.setLanguage(currentText)
-                                    contentItem: RowLayout {
-                                        x: 0
-                                        width: Math.max(0, parent.width - 32)
-                                        height: parent.height
-                                        spacing: 7
-
-                                        RoundedFlag {
-                                            Layout.preferredWidth: 20
-                                            Layout.preferredHeight: 14
-                                            Layout.alignment: Qt.AlignVCenter
-                                            Layout.leftMargin: 8
-                                            source: "flags/" + settingsLanguageBox.currentText + ".svg"
-                                        }
-
-                                        Label {
-                                            Layout.alignment: Qt.AlignVCenter
-                                            text: settingsLanguageBox.currentText.toUpperCase()
-                                            color: theme.text
-                                            font.pixelSize: 11
-                                        }
-
-                                        Item { Layout.fillWidth: true }
-                                    }
-                                    delegate: ItemDelegate {
-                                        id: languageDelegate
-                                        required property var modelData
-                                        width: Math.max(
-                                            0,
-                                            settingsLanguageBox.popup.width
-                                            - settingsLanguageBox.popup.leftPadding
-                                            - settingsLanguageBox.popup.rightPadding)
-                                        height: 30
-                                        hoverEnabled: true
-
-                                        contentItem: RowLayout {
-                                            x: 0
-                                            width: Math.max(0, parent.width - 16)
-                                            height: parent.height
-                                            spacing: 7
-
-                                            RoundedFlag {
-                                                Layout.preferredWidth: 20
-                                                Layout.preferredHeight: 14
-                                                Layout.alignment: Qt.AlignVCenter
-                                                Layout.leftMargin: 8
-                                                source: "flags/" + modelData + ".svg"
-                                            }
-
-                                            Label {
-                                                Layout.alignment: Qt.AlignVCenter
-                                                text: String(modelData).toUpperCase()
-                                                color: theme.text
-                                                font.pixelSize: 11
-                                            }
-
-                                            Item { Layout.fillWidth: true }
-                                        }
-
-                                        background: Rectangle {
-                                            color: languageDelegate.down ? theme.controlPressed
-                                                   : languageDelegate.hovered
-                                                     || languageDelegate.highlighted
-                                                     ? theme.controlHover : "transparent"
-                                        }
-                                    }
-                                    indicator: DropdownIndicator {
-                                        x: settingsLanguageBox.width - width - 8
-                                        y: (settingsLanguageBox.height - height) / 2
-                                    }
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-
-                                    popup.padding: 4
-                                    popup.background: Rectangle {
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                        radius: 9
-                                    }
+                                    caption: "Mode"
+                                    searchable: false
+                                    options: settings.modes.map(function(id) { return {id: id, label: id === "prompt" ? "Prompt" : "Transcription"} })
+                                    value: settings.mode
+                                    onActivated: function(value) { settings.setMode(value) }
                                 }
 
                                 Label {
@@ -878,46 +815,14 @@ ApplicationWindow {
                                     font.pixelSize: 11
                                 }
 
-                                CheckBox {
+                                SettingsSwitch {
+                                    visualTheme: theme
                                     id: autostartBox
                                     objectName: "autostartBox"
                                     Layout.fillWidth: true
                                     checked: settings.autostart
-                                    text: "Autostart"
+                                    Accessible.name: "Start with Windows"
                                     onToggled: settings.setAutostart(checked)
-                                    contentItem: Label {
-                                        leftPadding: 24
-                                        text: autostartBox.text
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                    indicator: Rectangle {
-                                        x: 0
-                                        y: (autostartBox.height - height) / 2
-                                        implicitWidth: 16
-                                        implicitHeight: 16
-                                        radius: 3
-                                        color: autostartBox.checked ? theme.text : theme.control
-                                        border.color: autostartBox.checked ? theme.text : theme.border
-                                        border.width: 1
-
-                                        Label {
-                                            anchors.centerIn: parent
-                                            property bool fadeShown: autostartBox.checked
-                                            visible: fadeShown || opacity > 0.001
-                                            opacity: fadeShown ? 1.0 : 0.0
-                                            Behavior on opacity {
-                                                NumberAnimation {
-                                                    duration: theme.fadeDuration
-                                                    easing.type: Easing.OutCubic
-                                                }
-                                            }
-                                            text: "✓"
-                                            color: theme.card
-                                            font.pixelSize: 11
-                                        }
-                                    }
                                 }
 
                                 Label {
@@ -930,56 +835,20 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     spacing: 8
 
-                                    CheckBox {
+                                    SettingsSwitch {
+                                        visualTheme: theme
                                         id: historyBox
                                         objectName: "historyBox"
                                         checked: settings.historyEnabled
                                         text: "Keep local history"
                                         onToggled: settings.setHistoryEnabled(checked)
-                                        contentItem: Label {
-                                            leftPadding: 24
-                                            text: historyBox.text
-                                            color: theme.text
-                                            font.pixelSize: 11
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
-                                        indicator: Rectangle {
-                                            x: 0
-                                            y: (historyBox.height - height) / 2
-                                            implicitWidth: 16
-                                            implicitHeight: 16
-                                            radius: 3
-                                            color: historyBox.checked ? theme.text : theme.control
-                                            border.color: historyBox.checked ? theme.text : theme.border
-                                            border.width: 1
-
-                                            Label {
-                                                anchors.centerIn: parent
-                                                property bool fadeShown: historyBox.checked
-                                                visible: fadeShown || opacity > 0.001
-                                                opacity: fadeShown ? 1.0 : 0.0
-                                                Behavior on opacity {
-                                                    NumberAnimation {
-                                                        duration: theme.fadeDuration
-                                                        easing.type: Easing.OutCubic
-                                                    }
-                                                }
-                                                text: "✓"
-                                                color: theme.card
-                                                font.pixelSize: 11
-                                            }
-                                        }
                                     }
 
-                                    Label {
-                                        text: "days"
-                                        color: theme.dim
-                                        font.pixelSize: 11
-                                    }
-
-                                    TextField {
+                                    SettingsField {
+                                        visualTheme: theme
                                         id: historyRetentionField
                                         objectName: "historyRetentionField"
+                                        Accessible.name: "History retention in days"
                                         Layout.preferredWidth: 62
                                         enabled: historyBox.checked
                                         text: settings.historyRetentionDays === null
@@ -990,36 +859,24 @@ ApplicationWindow {
                                         onEditingFinished: settings.setHistoryRetentionDays(
                                             text.trim() === "" ? null : Number(text)
                                         )
-                                        color: theme.text
+                                    }
+                                    Label {
+                                        text: "days"
+                                        color: theme.dim
                                         font.pixelSize: 11
-                                        selectByMouse: true
-                                        background: Rectangle {
-                                            implicitHeight: 26
-                                            radius: theme.controlRadius
-                                            color: theme.control
-                                            border.color: theme.border
-                                            border.width: 1
-                                        }
                                     }
                                 }
                             }
 
                             }
 
-                            ColumnLayout {
+                            SettingsGroup {
                                 id: shortcutSettingsSection
                                 objectName: "shortcutSettingsSection"
+                                visualTheme: root.visualTheme
+                                title: "Shortcuts"
                                 Layout.fillWidth: true
-                                spacing: 8
-                                visible: settingsPage.selectedSection === 1
-
-                            Label {
-                                text: "Keyboard shortcuts"
-                                color: theme.secondaryText
-                                font.pixelSize: 10
-                                font.weight: Font.DemiBold
-                                font.letterSpacing: 0.7
-                            }
+                                visible: settingsPage.selectedSection === 3
 
                             Label {
                                 Layout.fillWidth: true
@@ -1048,7 +905,7 @@ ApplicationWindow {
 
                                 AppButton {
                                     text: "Reset all"
-                                    theme: theme
+                                    theme: root.visualTheme
                                     quiet: true
                                     Layout.preferredWidth: 70
                                     Layout.preferredHeight: 26
@@ -1069,50 +926,16 @@ ApplicationWindow {
                                     font.pixelSize: 11
                                 }
 
-                                ComboBox {
+                                SearchSelect {
                                     id: hotkeyActivationBox
                                     objectName: "hotkeyActivationBox"
+                                    visualTheme: theme
                                     Layout.fillWidth: true
-                                    model: settings.hotkeyActivationModes
-                                    currentIndex: Math.max(
-                                        0, settings.hotkeyActivationModes.indexOf(
-                                            settings.hotkeyActivationMode))
-                                    onActivated: settings.setHotkeyActivationMode(currentText)
-                                    delegate: ComboPopupDelegate {
-                                        visualTheme: theme
-                                        comboBox: hotkeyActivationBox
-                                        displayTextForIndex: function(index, value) {
-                                            return value === "push_to_talk"
-                                                   ? "Push-to-talk" : "Toggle"
-                                        }
-                                    }
-                                    contentItem: Label {
-                                        leftPadding: 8
-                                        rightPadding: 24
-                                        text: hotkeyActivationBox.currentText === "push_to_talk"
-                                              ? "Push-to-talk" : "Toggle"
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                    indicator: DropdownIndicator {
-                                        x: hotkeyActivationBox.width - width - 8
-                                        y: (hotkeyActivationBox.height - height) / 2
-                                    }
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                    popup.padding: 4
-                                    popup.background: Rectangle {
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                        radius: 9
-                                    }
+                                    caption: "Recording activation"
+                                    searchable: false
+                                    options: settings.hotkeyActivationModes.map(function(id) { return {id: id, label: id === "push_to_talk" ? "Push-to-talk" : "Toggle"} })
+                                    value: settings.hotkeyActivationMode
+                                    onActivated: function(value) { settings.setHotkeyActivationMode(value) }
                                 }
 
                                 ColumnLayout {
@@ -1168,28 +991,13 @@ ApplicationWindow {
 
                             }
 
-                            ColumnLayout {
+                            SettingsGroup {
                                 id: recordingSettingsSection
                                 objectName: "recordingSettingsSection"
+                                visualTheme: root.visualTheme
+                                title: "Audio"
                                 Layout.fillWidth: true
-                                spacing: 8
-                                visible: settingsPage.selectedSection === 2
-
-                            Label {
-                                text: "Microphone and recording"
-                                color: theme.secondaryText
-                                font.pixelSize: 10
-                                font.weight: Font.DemiBold
-                                font.letterSpacing: 0.7
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: "Choose a stable input endpoint. A missing endpoint can be recovered with System default."
-                                color: theme.dim
-                                font.pixelSize: 10
-                                wrapMode: Text.WordWrap
-                            }
+                                visible: settingsPage.selectedSection === 1
 
                             function recordingControlsDraft() {
                                 var current = settings.recordingControls
@@ -1227,61 +1035,21 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     spacing: 5
 
-                                    ComboBox {
+                                    SearchSelect {
                                         id: microphoneBox
                                         objectName: "microphoneBox"
+                                        visualTheme: theme
                                         Layout.fillWidth: true
-                                        model: settings.microphoneDevices
-                                        textRole: "label"
-                                        currentIndex: Math.max(
-                                            0,
-                                            Math.min(settings.microphoneSelectionIndex, count - 1))
-                                        onActivated: settings.selectMicrophone(
-                                            microphoneBox.model[index]["id"])
-                                        delegate: ComboPopupDelegate {
-                                            visualTheme: theme
-                                            comboBox: microphoneBox
-                                        }
-                                        contentItem: Label {
-                                            leftPadding: 8
-                                            rightPadding: 24
-                                            text: microphoneBox.currentText
-                                            color: theme.text
-                                            font.pixelSize: 11
-                                            verticalAlignment: Text.AlignVCenter
-                                            elide: Text.ElideRight
-                                        }
-                                        indicator: DropdownIndicator {
-                                            x: microphoneBox.width - width - 8
-                                            y: (microphoneBox.height - height) / 2
-                                        }
-                                        background: Rectangle {
-                                            implicitHeight: 26
-                                            radius: theme.controlRadius
-                                            color: theme.control
-                                            border.color: theme.border
-                                            border.width: 1
-                                        }
-                                        popup.padding: 4
-                                        popup.background: Rectangle {
-                                            color: theme.control
-                                            border.color: theme.border
-                                            border.width: 1
-                                            radius: 9
-                                        }
+                                        caption: "Microphone"
+                                        searchPlaceholder: "Search microphones"
+                                        options: settings.microphoneDevices
+                                        value: options.length ? options[Math.max(0, settings.microphoneSelectionIndex)].id : ""
+                                        refreshable: true
+                                        busy: settings.microphoneTestBusy
+                                        onRefreshRequested: settings.refreshMicrophoneInventory()
+                                        onActivated: function(value) { settings.selectMicrophone(value) }
                                     }
 
-                                    AppButton {
-                                        iconSource: "icons/refresh.svg"
-                                        iconSize: 18
-                                        theme: root.visualTheme
-                                        quiet: true
-                                        Layout.preferredWidth: 28
-                                        Layout.preferredHeight: 26
-                                        Accessible.name: "Refresh microphone inventory"
-                                        enabled: !settings.microphoneTestBusy
-                                        onClicked: settings.refreshMicrophoneInventory()
-                                    }
                                 }
 
                                 Label {
@@ -1307,7 +1075,7 @@ ApplicationWindow {
 
                                     AppButton {
                                         text: "Use default"
-                                        theme: theme
+                                        theme: root.visualTheme
                                         quiet: true
                                         property bool fadeShown: settings.selectedMicrophoneId !== null
                                         visible: fadeShown || opacity > 0.001
@@ -1325,25 +1093,62 @@ ApplicationWindow {
                                     }
 
                                     AppButton {
-                                        text: settings.microphoneTestBusy ? "Listening…" : "Test"
-                                        theme: theme
-                                        enabled: !settings.microphoneTestBusy
-                                        Layout.preferredWidth: 62
+                                        objectName: "microphoneTestButton"
+                                        text: settings.microphoneTestStopping ? "Stopping…" : settings.microphoneTestBusy ? "Stop" : "Test"
+                                        theme: root.visualTheme
+                                        enabled: !settings.microphoneTestStopping
+                                        Layout.preferredWidth: 78
                                         Layout.preferredHeight: 26
-                                        Accessible.name: "Test microphone input"
-                                        onClicked: settings.testMicrophone()
+                                        Accessible.name: settings.microphoneTestBusy ? "Stop microphone test" : "Test microphone input"
+                                        onClicked: {
+                                            if (settings.microphoneTestBusy) settings.stopMicrophoneTest()
+                                            else settings.testMicrophone()
+                                        }
                                     }
                                 }
 
+                            }
+
+                            MicrophoneWaveform {
+                                objectName: "microphoneTestWaveform"
+                                Layout.fillWidth: true
+                                visualTheme: root.visualTheme
+                                visible: settings.microphoneTestBusy
+                                running: settings.microphoneTestBusy && !settings.microphoneTestStopping
+                                level: settings.microphoneTestLevel
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                visible: settings.microphoneTestStatus !== ""
+                                text: settings.microphoneTestStatus
+                                color: theme.subtleText
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
+                            }
+
+                            SettingsGroup {
+                                objectName: "advancedRecordingGroup"
+                                visualTheme: root.visualTheme
+                                Layout.fillWidth: true
+                                title: "Advanced recording"
+                                collapsible: true
+                                description: "Duration limits and automatic stop after speech."
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columns: 2
+                                    columnSpacing: 12
+                                    rowSpacing: 8
                                 Label {
                                     text: "Maximum seconds"
                                     color: theme.dim
                                     font.pixelSize: 11
                                 }
 
-                                TextField {
+                                SettingsField {
+                                    visualTheme: theme
                                     id: maximumDurationField
                                     objectName: "maximumDurationField"
+                                    Accessible.name: "Maximum recording seconds"
                                     Layout.fillWidth: true
                                     text: settings.recordingControls["max_duration_seconds"] === null
                                           || settings.recordingControls["max_duration_seconds"] === undefined
@@ -1351,17 +1156,6 @@ ApplicationWindow {
                                     placeholderText: "Blank = unlimited"
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                                     onEditingFinished: recordingSettingsSection.updateRecordingControls()
-                                    color: theme.text
-                                    placeholderTextColor: theme.dim
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
                                 }
 
                                 Label {
@@ -1370,65 +1164,25 @@ ApplicationWindow {
                                     font.pixelSize: 11
                                 }
 
-                                TextField {
+                                SettingsField {
+                                    visualTheme: theme
                                     id: warningSecondsField
                                     objectName: "warningSecondsField"
+                                    Accessible.name: "Recording warning seconds"
                                     Layout.fillWidth: true
                                     text: String(settings.recordingControls["warning_seconds"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                                     onEditingFinished: recordingSettingsSection.updateRecordingControls()
-                                    color: theme.text
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
                                 }
 
-                                CheckBox {
+                                SettingsSwitch {
+                                    visualTheme: theme
                                     id: vadEnabledBox
                                     objectName: "vadEnabledBox"
                                     Layout.columnSpan: 2
                                     checked: settings.recordingControls["vad"]["enabled"]
                                     text: "Stop after speech and silence"
                                     onToggled: recordingSettingsSection.updateRecordingControls()
-                                    contentItem: Label {
-                                        leftPadding: 24
-                                        text: vadEnabledBox.text
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                    indicator: Rectangle {
-                                        x: 0
-                                        y: (vadEnabledBox.height - height) / 2
-                                        implicitWidth: 16
-                                        implicitHeight: 16
-                                        radius: 3
-                                        color: vadEnabledBox.checked ? theme.text : theme.control
-                                        border.color: vadEnabledBox.checked ? theme.text : theme.border
-                                        border.width: 1
-
-                                        Label {
-                                            anchors.centerIn: parent
-                                            property bool fadeShown: vadEnabledBox.checked
-                                            visible: fadeShown || opacity > 0.001
-                                            opacity: fadeShown ? 1.0 : 0.0
-                                            Behavior on opacity {
-                                                NumberAnimation {
-                                                    duration: theme.fadeDuration
-                                                    easing.type: Easing.OutCubic
-                                                }
-                                            }
-                                            text: "✓"
-                                            color: theme.card
-                                            font.pixelSize: 11
-                                        }
-                                    }
                                 }
 
                                 Label {
@@ -1437,23 +1191,16 @@ ApplicationWindow {
                                     font.pixelSize: 11
                                 }
 
-                                TextField {
+                                SettingsField {
+                                    visualTheme: theme
                                     id: vadLevelField
                                     objectName: "vadLevelField"
+                                    Accessible.name: "Speech level threshold"
                                     Layout.fillWidth: true
+                                    enabled: vadEnabledBox.checked
                                     text: String(settings.recordingControls["vad"]["level_threshold"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                                     onEditingFinished: recordingSettingsSection.updateRecordingControls()
-                                    color: theme.text
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
                                 }
 
                                 Label {
@@ -1462,23 +1209,16 @@ ApplicationWindow {
                                     font.pixelSize: 11
                                 }
 
-                                TextField {
+                                SettingsField {
+                                    visualTheme: theme
                                     id: minimumSpeechField
                                     objectName: "minimumSpeechField"
+                                    Accessible.name: "Minimum speech seconds"
                                     Layout.fillWidth: true
+                                    enabled: vadEnabledBox.checked
                                     text: String(settings.recordingControls["vad"]["minimum_speech_seconds"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                                     onEditingFinished: recordingSettingsSection.updateRecordingControls()
-                                    color: theme.text
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
                                 }
 
                                 Label {
@@ -1487,50 +1227,19 @@ ApplicationWindow {
                                     font.pixelSize: 11
                                 }
 
-                                TextField {
+                                SettingsField {
+                                    visualTheme: theme
                                     id: silenceDurationField
                                     objectName: "silenceDurationField"
+                                    Accessible.name: "Silence seconds"
                                     Layout.fillWidth: true
+                                    enabled: vadEnabledBox.checked
                                     text: String(settings.recordingControls["vad"]["silence_duration_seconds"])
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                                     onEditingFinished: recordingSettingsSection.updateRecordingControls()
-                                    color: theme.text
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
                                 }
                             }
 
-                            Label {
-                                Layout.fillWidth: true
-                                property bool fadeShown: settings.microphoneTestStatus !== ""
-                                visible: fadeShown || opacity > 0.001
-                                opacity: fadeShown ? 1.0 : 0.0
-                                Behavior on opacity {
-                                    NumberAnimation {
-                                        duration: theme.fadeDuration
-                                        easing.type: Easing.OutCubic
-                                    }
-                                }
-                                text: settings.microphoneTestStatus
-                                color: settings.microphoneTestStatusKind === "error"
-                                       ? theme.secondaryText
-                                       : settings.microphoneTestStatusKind === "ok"
-                                         ? "#69c58a" : theme.dim
-                                font.pixelSize: 10
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 1
-                                color: theme.border
                             }
 
                             }
@@ -1540,10 +1249,10 @@ ApplicationWindow {
                                 objectName: "integrationsSettingsSection"
                                 Layout.fillWidth: true
                                 spacing: 8
-                                visible: settingsPage.selectedSection === 5
+                                visible: settingsPage.selectedSection === 4
 
                             Label {
-                                text: "Integrations"
+                                text: "Models & services"
                                 color: theme.secondaryText
                                 font.pixelSize: 10
                                 font.weight: Font.DemiBold
@@ -1558,6 +1267,12 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                             }
 
+                            SettingsGroup {
+                                Layout.fillWidth: true
+                                visualTheme: root.visualTheme
+                                title: "Connected services"
+                                description: "Credentials are shared by your tasks. Validate & save applies to this service only."
+
                             GridLayout {
                                 Layout.fillWidth: true
                                 columns: 2
@@ -1570,49 +1285,16 @@ ApplicationWindow {
                                     font.pixelSize: 11
                                 }
 
-                                ComboBox {
+                                SearchSelect {
                                     id: onboardingProviderBox
                                     objectName: "onboardingProviderBox"
+                                    visualTheme: theme
                                     Layout.fillWidth: true
-                                    model: settings.providerIds
-                                    currentIndex: Math.max(
-                                        0, settings.providerIds.indexOf(
-                                            settings.selectedProviderId))
-                                    onActivated: settings.selectProvider(currentText)
-                                    delegate: ComboPopupDelegate {
-                                        visualTheme: theme
-                                        comboBox: onboardingProviderBox
-                                        displayTextForIndex: function(index, value) {
-                                            return settings.providerName(value)
-                                        }
-                                    }
-                                    contentItem: Label {
-                                        leftPadding: 8
-                                        rightPadding: 24
-                                        text: settings.providerName(
-                                            onboardingProviderBox.currentText)
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                    indicator: DropdownIndicator {
-                                        x: onboardingProviderBox.width - width - 8
-                                        y: (onboardingProviderBox.height - height) / 2
-                                    }
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                    popup.padding: 4
-                                    popup.background: Rectangle {
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                        radius: 9
-                                    }
+                                    caption: "Service"
+                                    searchable: false
+                                    options: settings.providerIds.filter(function(id) { return id !== "local_asr" }).map(function(id) { return {id: id, label: settings.providerName(id)} })
+                                    value: settings.selectedProviderId
+                                    onActivated: function(value) { settings.selectProvider(value) }
                                 }
 
                                 Label {
@@ -1630,9 +1312,11 @@ ApplicationWindow {
                                     font.pixelSize: 11
                                 }
 
-                                TextField {
+                                SettingsField {
+                                    visualTheme: theme
                                     id: providerApiKeyField
                                     objectName: "providerApiKeyField"
+                                    Accessible.name: "Service API key"
                                     property bool fadeShown: settings.selectedProviderId !== "local_asr"
                                     visible: fadeShown || opacity > 0.001
                                     opacity: fadeShown ? 1.0 : 0.0
@@ -1649,17 +1333,6 @@ ApplicationWindow {
                                                      : "Paste API key"
                                     echoMode: TextInput.Password
                                     onEditingFinished: settings.setProviderApiKey(text)
-                                    color: theme.text
-                                    placeholderTextColor: theme.dim
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
                                 }
 
                                 Label {
@@ -1677,9 +1350,11 @@ ApplicationWindow {
                                     font.pixelSize: 11
                                 }
 
-                                TextField {
+                                SettingsField {
+                                    visualTheme: theme
                                     id: providerBaseUrlField
                                     objectName: "providerBaseUrlField"
+                                    Accessible.name: "Service base URL"
                                     property bool fadeShown: settings.selectedProviderId !== "local_asr"
                                     visible: fadeShown || opacity > 0.001
                                     opacity: fadeShown ? 1.0 : 0.0
@@ -1693,18 +1368,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: settings.providerBaseUrl
                                     onEditingFinished: settings.setProviderBaseUrl(text)
-                                    color: theme.text
                                     placeholderText: "Service endpoint"
-                                    placeholderTextColor: theme.dim
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
                                 }
                             }
 
@@ -1746,7 +1410,7 @@ ApplicationWindow {
                                 AppButton {
                                     text: settings.providerBusy ? "Validating…"
                                           : "Validate & save"
-                                    theme: theme
+                                    theme: root.visualTheme
                                     enabled: !settings.providerBusy
                                     Layout.preferredWidth: 108
                                     Layout.preferredHeight: 26
@@ -1756,7 +1420,7 @@ ApplicationWindow {
 
                                 AppButton {
                                     text: "Clear key"
-                                    theme: theme
+                                    theme: root.visualTheme
                                     quiet: true
                                     enabled: settings.providerHasApiKey
                                     Layout.preferredWidth: 68
@@ -1766,153 +1430,46 @@ ApplicationWindow {
                                 }
                             }
 
-                            ColumnLayout {
+                            }
+
+                            LocalModelCard {
+                                id: localModelsGroup
                                 Layout.fillWidth: true
-                                property bool fadeShown: settings.selectedProviderId === "local_asr"
-                                visible: fadeShown || opacity > 0.001
-                                opacity: fadeShown ? 1.0 : 0.0
-                                Behavior on opacity {
-                                    NumberAnimation {
-                                        duration: theme.fadeDuration
-                                        easing.type: Easing.OutCubic
-                                    }
-                                }
-                                spacing: 5
-
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: settings.localAsrRequirements
-                                    color: theme.dim
-                                    font.pixelSize: 10
-                                    wrapMode: Text.WordWrap
-                                }
-
-                                ProgressBar {
-                                    Layout.fillWidth: true
-                                    property bool fadeShown: settings.localAsrBusy
-                                    visible: fadeShown || opacity > 0.001
-                                    opacity: fadeShown ? 1.0 : 0.0
-                                    Behavior on opacity {
-                                        NumberAnimation {
-                                            duration: theme.fadeDuration
-                                            easing.type: Easing.OutCubic
-                                        }
-                                    }
-                                    value: settings.localAsrProgress
-                                    from: 0
-                                    to: 1
-                                }
-
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: settings.localAsrStatus
-                                          + (settings.localAsrDetail !== ""
-                                             ? " — " + settings.localAsrDetail : "")
-                                    color: settings.localAsrStatus === "error"
-                                           || settings.localAsrStatus === "invalid"
-                                           ? theme.secondaryText : theme.dim
-                                    font.pixelSize: 10
-                                    wrapMode: Text.WordWrap
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 5
-
-                                    AppButton {
-                                        text: settings.localAsrBusy ? "Cancel"
-                                              : settings.localAsrStatus === "installed"
-                                                ? "Installed" : "Download local ASR"
-                                        theme: theme
-                                        enabled: settings.localAsrBusy
-                                                  || settings.localAsrStatus !== "installed"
-                                        Layout.preferredWidth: 126
-                                        Layout.preferredHeight: 26
-                                        Accessible.name: "Install Local Whisper"
-                                        onClicked: settings.localAsrBusy
-                                                   ? settings.cancelLocalAsr()
-                                                   : settings.installLocalAsr()
-                                    }
-
-                                    AppButton {
-                                        text: "Remove assets"
-                                        theme: theme
-                                        quiet: true
-                                        enabled: !settings.localAsrBusy
-                                                  && settings.localAsrStatus === "installed"
-                                        Layout.preferredWidth: 86
-                                        Layout.preferredHeight: 26
-                                        Accessible.name: "Remove Local Whisper assets"
-                                        onClicked: settings.removeLocalAsr()
-                                    }
-
-                                    CheckBox {
-                                        id: localRefinementBox
-                                        property bool fadeShown: settings.localAsrStatus === "installed"
-                                        visible: fadeShown || opacity > 0.001
-                                        opacity: fadeShown ? 1.0 : 0.0
-                                        Behavior on opacity {
-                                            NumberAnimation {
-                                                duration: theme.fadeDuration
-                                                easing.type: Easing.OutCubic
-                                            }
-                                        }
-                                        checked: settings.localAsrCloudRefinement
-                                        text: "Allow cloud refinement"
-                                        onToggled: settings.setLocalAsrCloudRefinement(checked)
-                                        contentItem: Label {
-                                            leftPadding: 24
-                                            text: localRefinementBox.text
-                                            color: theme.dim
-                                            font.pixelSize: 10
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
-                                    }
-                                }
+                                visualTheme: root.visualTheme
+                                settingsController: settings
+                                onModelSelected: settingsPage.selectSection(1)
                             }
 
                             }
 
-                            ColumnLayout {
+                            SettingsGroup {
                                 id: workflowSettingsSection
                                 objectName: "workflowSettingsSection"
+                                visualTheme: root.visualTheme
+                                title: settingsPage.selectedSection === 1 ? "Transcription" : "Text"
                                 Layout.fillWidth: true
-                                spacing: 8
-                                visible: settingsPage.selectedSection === 3
-                                         || settingsPage.selectedSection === 4
-
-                            Label {
-                                text: settingsPage.selectedSection === 3
-                                      ? "Speech-to-text" : "Text processing"
-                                color: theme.secondaryText
-                                font.pixelSize: 10
-                                font.weight: Font.DemiBold
-                                font.letterSpacing: 0.7
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: settingsPage.workflowDescription(settings.selectedScope)
-                                color: theme.dim
-                                font.pixelSize: 10
-                                wrapMode: Text.WordWrap
-                            }
+                                visible: settingsPage.selectedSection === 1
+                                         || settingsPage.selectedSection === 2
 
                             RowLayout {
+                                objectName: "textWorkflowTabs"
+                                visible: settingsPage.selectedSection === 2
                                 Layout.alignment: Qt.AlignLeft
                                 spacing: 4
 
                                 Repeater {
-                                    model: settingsPage.workflowTabItems
+                                    model: settingsPage.textWorkflowItems
 
                                     delegate: AppButton {
                                         required property var modelData
+                                        objectName: "workflowTab" + modelData.scope
                                         Layout.preferredHeight: 30
                                         Layout.preferredWidth: tabTextMetrics.advanceWidth + 20
                                         text: settingsPage.workflowScopeLabel(modelData.scope)
                                         theme: root.visualTheme
                                         primary: settings.selectedScope === modelData.scope
-                                        quiet: settings.selectedScope !== modelData.scope
+                                                 || (modelData.scope === "refinement" && settings.selectedScope === "local_asr_refinement")
+                                        quiet: !primary
                                         contentAlignment: Text.AlignHCenter
                                         Accessible.name: "Open " + modelData.label + " settings"
                                         onClicked: settingsPage.selectWorkflowScope(modelData.scope)
@@ -1927,187 +1484,89 @@ ApplicationWindow {
                                 }
                             }
 
-                            GridLayout {
+                            SettingsRow {
                                 Layout.fillWidth: true
-                                columns: 2
-                                columnSpacing: 12
-                                rowSpacing: 6
-
-                                Label {
-                                    text: "Service"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                ComboBox {
-                                    id: providerBox
-                                    objectName: "workflowProviderBox"
+                                visualTheme: root.visualTheme
+                                title: "Cleanup for"
+                                visible: settingsPage.selectedSection === 2 && (settings.selectedScope === "refinement" || settings.selectedScope === "local_asr_refinement")
+                                SearchSelect {
+                                    objectName: "cleanupContextBox"
                                     Layout.fillWidth: true
-                                    model: settings.providersForScope(settings.selectedScope)
-                                    currentIndex: Math.max(0, model.indexOf(settings.routeProviderId))
-                                    onActivated: settings.setRouteProviderId(currentText)
-                                    delegate: ComboPopupDelegate {
-                                        visualTheme: theme
-                                        comboBox: providerBox
-                                        displayTextForIndex: function(index, value) {
-                                            return settings.providerName(value)
-                                        }
-                                    }
-                                    contentItem: Label {
-                                        leftPadding: 8
-                                        rightPadding: 24
-                                        text: settings.providerName(providerBox.currentText)
-                                              || "Select service"
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                        elide: Text.ElideRight
-                                    }
-                                    indicator: DropdownIndicator {
-                                        x: providerBox.width - width - 8
-                                        y: (providerBox.height - height) / 2
-                                    }
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                    popup.padding: 4
-                                    popup.background: Rectangle {
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                        radius: 9
-                                    }
-                                }
-
-                                Label {
-                                    text: "Model"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                TextField {
-                                    id: routeModelField
-                                    objectName: "workflowModelField"
-                                    Layout.fillWidth: true
-                                    text: settings.routeModelId
-                                    onEditingFinished: settings.setRouteModelId(text)
-                                    color: theme.text
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                }
-
-                                Label {
-                                    text: "Endpoint"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                TextField {
-                                    id: routeEndpointField
-                                    objectName: "workflowEndpointField"
-                                    Layout.fillWidth: true
-                                    text: settings.routeCustomEndpoint
-                                    placeholderText: "Optional custom endpoint"
-                                    onEditingFinished: settings.setRouteCustomEndpoint(text)
-                                    color: theme.text
-                                    placeholderTextColor: theme.dim
-                                    font.pixelSize: 11
-                                    selectByMouse: true
-                                    background: Rectangle {
-                                        implicitHeight: 26
-                                        radius: theme.controlRadius
-                                        color: theme.control
-                                        border.color: theme.border
-                                        border.width: 1
-                                    }
-                                }
-
-                                Label {
-                                    text: "Status"
-                                    color: theme.dim
-                                    font.pixelSize: 11
-                                }
-
-                                CheckBox {
-                                    id: routeEnabledBox
-                                    objectName: "workflowEnabledBox"
-                                    Layout.fillWidth: true
-                                    checked: settings.routeEnabled
-                                    text: settingsPage.workflowToggleLabel(settings.selectedScope)
-                                    onToggled: settings.setRouteEnabled(checked)
-                                    contentItem: Label {
-                                        leftPadding: 24
-                                        text: routeEnabledBox.text
-                                        color: theme.text
-                                        font.pixelSize: 11
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                    indicator: Rectangle {
-                                        x: 0
-                                        y: (routeEnabledBox.height - height) / 2
-                                        implicitWidth: 16
-                                        implicitHeight: 16
-                                        radius: 3
-                                        color: routeEnabledBox.checked ? theme.text : theme.control
-                                        border.color: routeEnabledBox.checked ? theme.text : theme.border
-                                        border.width: 1
-
-                                        Label {
-                                            anchors.centerIn: parent
-                                            property bool fadeShown: routeEnabledBox.checked
-                                            visible: fadeShown || opacity > 0.001
-                                            opacity: fadeShown ? 1.0 : 0.0
-                                            Behavior on opacity {
-                                                NumberAnimation {
-                                                    duration: theme.fadeDuration
-                                                    easing.type: Easing.OutCubic
-                                                }
-                                            }
-                                            text: "✓"
-                                            color: theme.card
-                                            font.pixelSize: 11
-                                        }
-                                    }
+                                    visualTheme: root.visualTheme
+                                    searchable: false
+                                    caption: "Cleanup context"
+                                    value: settings.selectedScope
+                                    options: [
+                                        {id: "refinement", label: "Standard dictation"},
+                                        {id: "local_asr_refinement", label: "Local transcription"}
+                                    ]
+                                    onActivated: function(value) { settingsPage.selectWorkflowScope(value) }
                                 }
                             }
 
                             Label {
                                 Layout.fillWidth: true
-                                text: "Instructions"
-                                color: theme.dim
+                                text: settingsPage.workflowDescription(settings.selectedScope)
+                                color: theme.subtleText
                                 font.pixelSize: 11
+                                wrapMode: Text.WordWrap
                             }
 
-                            TextArea {
-                                id: routePromptField
-                                objectName: "workflowPromptField"
+                            SettingsRow {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 52
-                                text: settings.routePrompt
-                                placeholderText: "Optional instructions for this feature"
-                                onEditingFinished: settings.setRoutePrompt(text)
-                                color: theme.text
-                                placeholderTextColor: theme.dim
-                                font.pixelSize: 11
-                                wrapMode: TextArea.Wrap
-                                selectByMouse: true
-                                background: Rectangle {
-                                    implicitHeight: 52
-                                    radius: theme.controlRadius
-                                    color: theme.control
-                                    border.color: theme.border
-                                    border.width: 1
+                                visualTheme: root.visualTheme
+                                title: "Language"
+                                visible: settingsPage.selectedSection === 1
+                                SearchSelect {
+                                    id: settingsLanguageBox
+                                    objectName: "settingsLanguageBox"
+                                    visualTheme: root.visualTheme
+                                    Layout.fillWidth: true
+                                    caption: "Language"
+                                    searchPlaceholder: "Search languages"
+                                    options: settings.languages.map(function(id) {
+                                        var names = {"en": "English", "pt": "Portuguese", "es": "Spanish", "de": "German", "ru": "Russian"}
+                                        return {id: id, label: names[id] || id.toUpperCase(), icon: "flags/" + id + ".svg"}
+                                    })
+                                    value: settings.language
+                                    onActivated: function(value) { settings.setLanguage(value) }
+                                }
+                            }
+
+                            WorkflowModelForm {
+                                Layout.fillWidth: true
+                                visualTheme: root.visualTheme
+                                settingsController: settings
+                                enabledLabel: settingsPage.workflowToggleLabel(settings.selectedScope)
+                                onConnectProvider: {
+                                    settings.selectProvider(settings.routeProviderId)
+                                    settingsPage.selectSection(4)
+                                }
+                                onManageLocalModels: {
+                                    settingsPage.selectSection(4)
+                                    Qt.callLater(function() {
+                                        var flickable = settingsScroll.contentItem
+                                        var position = localModelsGroup.mapToItem(settingsContent, 0, 0).y
+                                        flickable.contentY = Math.max(0, Math.min(position, flickable.contentHeight - flickable.height))
+                                    })
+                                }
+                            }
+
+                            }
+
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                visualTheme: root.visualTheme
+                                title: "Audio files"
+                                visible: settingsPage.selectedSection === 1
+                                AppButton {
+                                    objectName: "settingsImportFilesButton"
+                                    Layout.preferredWidth: 136
+                                    text: "Import audio files"
+                                    theme: root.visualTheme
+                                    quiet: true
+                                    Accessible.name: "Import audio files"
+                                    onClicked: workflow.openFiles()
                                 }
                             }
 
@@ -2129,7 +1588,6 @@ ApplicationWindow {
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
                             }
-                            }
                         }
                     }
 
@@ -2150,7 +1608,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Load"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             Layout.preferredWidth: 52
                             Layout.preferredHeight: 26
@@ -2160,7 +1618,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Save"
-                            theme: theme
+                            theme: root.visualTheme
                             enabled: settings.dirty
                             Layout.preferredWidth: 52
                             Layout.preferredHeight: 26
@@ -2170,7 +1628,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Close"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             Layout.preferredWidth: 56
                             Layout.preferredHeight: 26
@@ -2198,6 +1656,7 @@ ApplicationWindow {
                 property string batchModelId:
                     persistedTranscriptionRoute.modelId || ""
                 property bool batchRouteTouched: false
+                property bool manualBatchModel: false
                 readonly property var defaultAudioModels: ({
                     "gemini": "gemini-2.5-flash",
                     "openai": "whisper-1",
@@ -2245,6 +1704,7 @@ ApplicationWindow {
                 }
 
                 function initializeBatchRoute() {
+                    manualBatchModel = false
                     var route = persistedTranscriptionRoute
                     var providerId = route && route.providerId
                             ? route.providerId : ""
@@ -2260,6 +1720,7 @@ ApplicationWindow {
                 }
 
                 function selectBatchExecution(execution) {
+                    manualBatchModel = false
                     var providers = providerIdsForExecution(execution)
                     var providerId = providers.indexOf(batchProviderId) >= 0
                             ? batchProviderId
@@ -2274,6 +1735,7 @@ ApplicationWindow {
                     if (providerIdsForExecution(batchExecution).indexOf(providerId) < 0)
                         return
                     batchProviderId = providerId
+                    manualBatchModel = false
                     batchModelId = defaultModelForProvider(providerId)
                     batchRouteTouched = true
                 }
@@ -2285,8 +1747,8 @@ ApplicationWindow {
 
                 function commitBatchModel() {
                     var value = batchModelId
-                    if (batchModelBox.editable)
-                        value = batchModelBox.editText
+                    if (manualBatchModel)
+                        value = batchModelField.text
                     batchModelId = String(value || "").trim()
                     batchRouteTouched = true
                 }
@@ -2352,6 +1814,7 @@ ApplicationWindow {
                             spacing: 1
 
                             Label {
+                                Layout.fillWidth: true
                                 text: "Import audio"
                                 color: theme.text
                                 font.pixelSize: 13
@@ -2359,6 +1822,7 @@ ApplicationWindow {
                             }
 
                             Label {
+                                Layout.fillWidth: true
                                 text: audioBatch.running
                                       ? "Transcribing selected files"
                                       : "Select local files to transcribe"
@@ -2369,7 +1833,7 @@ ApplicationWindow {
 
                         AppButton {
                             iconSource: "icons/x.svg"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             enabled: !audioBatch.running
                             Layout.preferredWidth: 26
@@ -2397,50 +1861,17 @@ ApplicationWindow {
                             font.pixelSize: 10
                         }
 
-                        ComboBox {
+                        SearchSelect {
                             id: batchExecutionBox
                             objectName: "batchExecutionBox"
-                            enabled: !audioBatch.running
+                            visualTheme: theme
                             Layout.fillWidth: true
-                            model: ["local", "cloud"]
-                            currentIndex: Math.max(
-                                0, model.indexOf(filesPage.batchExecution))
-                            onActivated: filesPage.selectBatchExecution(currentText)
-                            delegate: ComboPopupDelegate {
-                                visualTheme: theme
-                                comboBox: batchExecutionBox
-                                displayTextForIndex: function(index, value) {
-                                    return value === "local" ? "Local Whisper" : "Cloud"
-                                }
-                            }
-                            contentItem: Label {
-                                leftPadding: 8
-                                rightPadding: 24
-                                text: batchExecutionBox.currentText === "local"
-                                      ? "Local Whisper" : "Cloud"
-                                color: theme.text
-                                font.pixelSize: 10
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                            }
-                            indicator: DropdownIndicator {
-                                x: batchExecutionBox.width - width - 8
-                                y: (batchExecutionBox.height - height) / 2
-                            }
-                            background: Rectangle {
-                                implicitHeight: 26
-                                radius: theme.controlRadius
-                                color: theme.control
-                                border.color: theme.border
-                                border.width: 1
-                            }
-                            popup.padding: 4
-                            popup.background: Rectangle {
-                                color: theme.control
-                                border.color: theme.border
-                                border.width: 1
-                                radius: 9
-                            }
+                            enabled: !audioBatch.running
+                            caption: "Transcription route"
+                            searchable: false
+                            options: [{id: "local", label: "Local Whisper"}, {id: "cloud", label: "Cloud"}]
+                            value: filesPage.batchExecution
+                            onActivated: function(value) { filesPage.selectBatchExecution(value) }
                         }
 
                         Label {
@@ -2449,51 +1880,17 @@ ApplicationWindow {
                             font.pixelSize: 10
                         }
 
-                        ComboBox {
+                        SearchSelect {
                             id: batchProviderBox
                             objectName: "batchProviderBox"
-                            enabled: !audioBatch.running
+                            visualTheme: theme
                             Layout.fillWidth: true
-                            model: filesPage.providerIdsForExecution(
-                                filesPage.batchExecution)
-                            currentIndex: Math.max(
-                                0, model.indexOf(filesPage.batchProviderId))
-                            onActivated: filesPage.selectBatchProvider(currentText)
-                            delegate: ComboPopupDelegate {
-                                visualTheme: theme
-                                comboBox: batchProviderBox
-                                displayTextForIndex: function(index, value) {
-                                    return settings.providerName(value)
-                                }
-                            }
-                            contentItem: Label {
-                                leftPadding: 8
-                                rightPadding: 24
-                                text: settings.providerName(
-                                    batchProviderBox.currentText)
-                                color: theme.text
-                                font.pixelSize: 10
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                            }
-                            indicator: DropdownIndicator {
-                                x: batchProviderBox.width - width - 8
-                                y: (batchProviderBox.height - height) / 2
-                            }
-                            background: Rectangle {
-                                implicitHeight: 26
-                                radius: theme.controlRadius
-                                color: theme.control
-                                border.color: theme.border
-                                border.width: 1
-                            }
-                            popup.padding: 4
-                            popup.background: Rectangle {
-                                color: theme.control
-                                border.color: theme.border
-                                border.width: 1
-                                radius: 9
-                            }
+                            enabled: !audioBatch.running
+                            caption: "Transcription service"
+                            searchable: false
+                            options: filesPage.providerIdsForExecution(filesPage.batchExecution).map(function(id) { return {id: id, label: settings.providerName(id)} })
+                            value: filesPage.batchProviderId
+                            onActivated: function(value) { filesPage.selectBatchProvider(value) }
                         }
 
                         Label {
@@ -2502,41 +1899,43 @@ ApplicationWindow {
                             font.pixelSize: 10
                         }
 
-                        ComboBox {
+                        SearchSelect {
                             id: batchModelBox
                             objectName: "batchModelBox"
+                            visualTheme: theme
+                            Layout.fillWidth: true
+                            enabled: !audioBatch.running
+                            Layout.columnSpan: 3
+                            caption: "Transcription model"
+                            searchPlaceholder: "Search models"
+                            options: filesPage.modelIdsForProvider(filesPage.batchProviderId).map(function(id) { return {id: id, label: id} })
+                            value: filesPage.batchModelId
+                            secondaryActionText: filesPage.batchExecution === "cloud" ? "Use model ID…" : ""
+                            onSecondaryRequested: {
+                                filesPage.manualBatchModel = true
+                                Qt.callLater(function() { batchModelField.forceActiveFocus(); batchModelField.selectAll() })
+                            }
+                            onActivated: function(value) { filesPage.manualBatchModel = false; filesPage.selectBatchModel(value) }
+                        }
+
+                        Label {
+                            visible: filesPage.manualBatchModel
+                            text: "Model ID"
+                            color: theme.dim
+                            font.pixelSize: 10
+                        }
+                        SettingsField {
+                            id: batchModelField
+                            objectName: "batchModelField"
+                            visualTheme: theme
+                            visible: filesPage.manualBatchModel
                             enabled: !audioBatch.running
                             Layout.columnSpan: 3
                             Layout.fillWidth: true
-                            editable: true
-                            model: filesPage.modelIdsForProvider(
-                                filesPage.batchProviderId)
-                            currentIndex: Math.max(
-                                0, model.indexOf(filesPage.batchModelId))
-                            onActivated: filesPage.selectBatchModel(currentText)
-                            onAccepted: filesPage.commitBatchModel()
-                            delegate: ComboPopupDelegate {
-                                visualTheme: theme
-                                comboBox: batchModelBox
-                            }
-                            indicator: DropdownIndicator {
-                                x: batchModelBox.width - width - 8
-                                y: (batchModelBox.height - height) / 2
-                            }
-                            background: Rectangle {
-                                implicitHeight: 26
-                                radius: theme.controlRadius
-                                color: theme.control
-                                border.color: theme.border
-                                border.width: 1
-                            }
-                            popup.padding: 4
-                            popup.background: Rectangle {
-                                color: theme.control
-                                border.color: theme.border
-                                border.width: 1
-                                radius: 9
-                            }
+                            text: filesPage.batchModelId
+                            placeholderText: "For models not listed by your service"
+                            Accessible.name: "Custom transcription model ID"
+                            onEditingFinished: filesPage.selectBatchModel(text)
                         }
                     }
 
@@ -2546,7 +1945,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Choose files"
-                            theme: theme
+                            theme: root.visualTheme
                             enabled: !audioBatch.running
                             Layout.preferredWidth: 94
                             Layout.preferredHeight: 26
@@ -2565,13 +1964,9 @@ ApplicationWindow {
                         }
                     }
 
-                    Rectangle {
+                    Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        radius: 10
-                        color: theme.resultSurface
-                        border.color: theme.border
-                        border.width: 1
                         clip: true
 
                         ScrollView {
@@ -2595,7 +1990,15 @@ ApplicationWindow {
                                         width: parent.width
                                         height: hasTranscript ? 166 : 34
                                         radius: 7
-                                        color: theme.control
+                                        color: "transparent"
+
+                                        Rectangle {
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.bottom: parent.bottom
+                                            height: 1
+                                            color: theme.border
+                                        }
 
                                         Timer {
                                             id: transcriptCopyResetTimer
@@ -2654,22 +2057,16 @@ ApplicationWindow {
                                                 Layout.preferredHeight: 88
                                                 clip: true
 
-                                                TextArea {
+                                                SettingsArea {
                                                     id: transcriptText
+                                                    visualTheme: theme
+                                                    flat: true
                                                     width: parent.width
                                                     height: Math.max(implicitHeight, 88)
                                                     text: fileResultRow.modelData.text
                                                     readOnly: true
-                                                    selectByMouse: true
-                                                    wrapMode: TextEdit.Wrap
                                                     color: theme.secondaryText
-                                                    selectionColor: theme.dim
-                                                    selectedTextColor: theme.text
                                                     font.pixelSize: 10
-                                                    padding: 0
-                                                    background: Rectangle {
-                                                        color: "transparent"
-                                                    }
                                                     Accessible.name: "Transcript for "
                                                                       + fileResultRow.modelData.name
                                                 }
@@ -2699,7 +2096,7 @@ ApplicationWindow {
 
                                                 AppButton {
                                                     text: fileResultRow.copyLabel
-                                                    theme: theme
+                                                    theme: root.visualTheme
                                                     enabled: !audioBatch.running
                                                     Layout.preferredWidth: 58
                                                     Layout.preferredHeight: 24
@@ -2758,7 +2155,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Start"
-                            theme: theme
+                            theme: root.visualTheme
                             enabled: !audioBatch.running
                                      && audioBatch.selectedFiles.length > 0
                             Layout.preferredWidth: 54
@@ -2769,7 +2166,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Cancel"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             enabled: audioBatch.running
                             Layout.preferredWidth: 58
@@ -2780,7 +2177,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Retry"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             enabled: !audioBatch.running && audioBatch.canRetry
                             Layout.preferredWidth: 52
@@ -2793,7 +2190,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Close"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             enabled: !audioBatch.running
                             Layout.preferredWidth: 56
@@ -2837,7 +2234,7 @@ ApplicationWindow {
 
                         AppButton {
                             iconSource: "icons/x.svg"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
@@ -2882,7 +2279,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Cancel"
-                            theme: theme
+                            theme: root.visualTheme
                             quiet: true
                             Layout.preferredWidth: 56
                             Layout.preferredHeight: 26

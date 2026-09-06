@@ -71,8 +71,10 @@ class _MicrophoneBackend:
     def selectable_microphone_devices(self, inventory):
         return inventory.available_devices
 
-    def test_microphone(self, selection, inventory):
+    def test_microphone(self, selection, inventory, **options):
         self.test_started.set()
+        if options.get("on_level"):
+            options["on_level"](0.42)
         return 0.42
 
 
@@ -244,10 +246,68 @@ class QmlSettingsControllerTests(unittest.TestCase):
                     time.sleep(0.01)
                 self.assertFalse(controller.microphoneTestBusy)
                 self.assertEqual(
-                    controller.microphoneTestStatus, "Input level peak: 0.42"
+                    controller.microphoneTestStatus, "Microphone input detected."
                 )
                 self.assertEqual(controller.microphoneTestStatusKind, "ok")
                 self.assertFalse((Path(directory) / "recording.wav").exists())
+            finally:
+                controller.shutdown()
+
+    def test_live_microphone_levels_cancel_and_ignore_stale_callbacks(self):
+        with TemporaryDirectory() as directory:
+            backend = _MicrophoneBackend(self._microphone_inventory())
+            callbacks = []
+            closed = threading.Event()
+
+            def preview(selection, inventory, *, on_level, cancel_event, duration):
+                callbacks.append(on_level)
+                self.assertEqual(duration, 30.0)
+                on_level(0.6)
+                cancel_event.wait(2)
+                on_level(0.9)  # A queued callback after Stop must not revive the wave.
+                closed.set()
+                return 0.9
+
+            backend.test_microphone = preview
+            controller = QmlSettingsController(
+                _repositories(directory), microphone_backend=backend
+            )
+
+            def until(predicate):
+                for _ in range(100):
+                    self.qt_app.processEvents()
+                    if predicate():
+                        return
+                    time.sleep(0.01)
+                self.fail("Microphone preview did not reach the expected state")
+
+            try:
+                original = controller._config
+                self.assertTrue(controller.testMicrophone())
+                until(lambda: controller.microphoneTestLevel == 0.6)
+                self.assertFalse(controller.testMicrophone())
+                controller.stopMicrophoneTest()
+                self.assertEqual(controller.microphoneTestLevel, 0)
+                self.assertTrue(closed.wait(1))
+                until(lambda: not controller.microphoneTestBusy)
+                self.assertEqual(controller.microphoneTestStatus, "Test stopped.")
+                self.assertEqual(controller._config, original)
+                old_callback = callbacks[0]
+                self.assertTrue(controller.testMicrophone())
+                until(lambda: controller.microphoneTestLevel == 0.6)
+                old_callback(1.0)
+                self.qt_app.processEvents()
+                self.assertEqual(controller.microphoneTestLevel, 0.6)
+                controller.refreshMicrophoneInventory()
+                until(lambda: not controller.microphoneTestBusy)
+                self.assertEqual(controller.microphoneTestLevel, 0)
+                self.assertTrue(controller.testMicrophone())
+                until(lambda: controller.microphoneTestLevel == 0.6)
+                controller.load()
+                until(lambda: not controller.microphoneTestBusy)
+                self.assertTrue(controller.testMicrophone())
+                controller.shutdown()
+                self.assertFalse(controller._microphone_test_thread.is_alive())
             finally:
                 controller.shutdown()
 
@@ -1114,6 +1174,130 @@ class QmlSettingsControllerTests(unittest.TestCase):
             check=True,
         )
         self.assertEqual(result.stdout.strip(), "False")
+
+    def _wait_models(self, controller):
+        for _ in range(200):
+            self.qt_app.processEvents()
+            if controller.routeModelStatus != "loading":
+                return
+            time.sleep(0.01)
+        self.fail("Model discovery did not finish")
+
+    def test_model_discovery_filters_task_and_preserves_saved_custom_model(self):
+        with TemporaryDirectory() as directory:
+            repositories = _repositories(directory)
+            repositories.config.save(
+                AppConfig.from_mapping({"openai_api_key": "test-key"})
+            )
+            controller = QmlSettingsController(repositories)
+            try:
+                controller.setRouteProviderId("openai")
+                controller.setRouteModelId("custom-saved")
+                before = repositories.config.load()
+                with patch.object(
+                    qml_settings.PROVIDER_REGISTRY,
+                    "discover_models",
+                    return_value=ModelCatalog(
+                        audio_models=("whisper-1", "whisper-1"),
+                        text_models=("text-model",),
+                    ),
+                ) as discover:
+                    self.assertTrue(controller.loadRouteModels())
+                    self._wait_models(controller)
+                    self.assertEqual(
+                        controller.routeModelOptions,
+                        [{"id": "whisper-1", "label": "whisper-1"}],
+                    )
+                    self.assertEqual(controller.routeModelId, "custom-saved")
+                    controller.selectWorkflow("rewrite")
+                    controller.setRouteProviderId("openai")
+                    self.assertFalse(controller.loadRouteModels())
+                    self.assertEqual(
+                        controller.routeModelOptions[0]["id"], "text-model"
+                    )
+                    self.assertEqual(discover.call_count, 1)
+                self.assertEqual(repositories.config.load(), before)
+            finally:
+                controller.shutdown()
+
+    def test_model_discovery_handles_missing_credentials_empty_and_failure(self):
+        with TemporaryDirectory() as directory:
+            repositories = _repositories(directory)
+            controller = QmlSettingsController(repositories)
+            try:
+                controller.setRouteProviderId("openai")
+                self.assertEqual(controller.routeModelStatus, "not_configured")
+                self.assertFalse(controller.refreshRouteModels())
+                repositories.config.save(
+                    AppConfig.from_mapping({"openai_api_key": "test-key"})
+                )
+                controller.load()
+                controller.setRouteProviderId("openai")
+                with patch.object(
+                    qml_settings.PROVIDER_REGISTRY,
+                    "discover_models",
+                    return_value=ModelCatalog(),
+                ):
+                    controller.refreshRouteModels()
+                    self._wait_models(controller)
+                    self.assertEqual(controller.routeModelStatus, "empty")
+                saved_model = controller.routeModelId
+                with patch.object(
+                    qml_settings.PROVIDER_REGISTRY,
+                    "discover_models",
+                    side_effect=RuntimeError("secret"),
+                ):
+                    controller.refreshRouteModels()
+                    self._wait_models(controller)
+                    self.assertEqual(controller.routeModelStatus, "error")
+                    self.assertEqual(controller.routeModelId, saved_model)
+                    self.assertNotIn("secret", controller.lastError)
+            finally:
+                controller.shutdown()
+
+    def test_model_discovery_ignores_stale_connection_results(self):
+        with TemporaryDirectory() as directory:
+            controller = QmlSettingsController(_repositories(directory))
+            try:
+                controller._model_generation = 2
+                controller._finish_model_discovery(
+                    1,
+                    ("openai", "https://old", "old-key"),
+                    ModelCatalog(audio_models=("stale",)),
+                )
+                self.assertEqual(controller._model_catalogs, {})
+                controller.setRouteProviderId("openai")
+                controller.setRouteModelId("old-provider-model")
+                controller.setRouteCustomEndpoint("https://example.com/v1")
+                controller.setRouteProviderId("groq")
+                self.assertEqual(controller.routeCustomEndpoint, "")
+                self.assertNotEqual(controller.routeModelId, "old-provider-model")
+            finally:
+                controller.shutdown()
+
+    def test_local_model_selection_is_explicit_and_preserves_privacy(self):
+        from local_asr_product import LocalASRProductState
+
+        with TemporaryDirectory() as directory:
+            controller = QmlSettingsController(_repositories(directory))
+            try:
+                controller._apply_local_state(LocalASRProductState("missing"))
+                self.assertFalse(controller.useLocalAsr())
+                controller._apply_local_state(
+                    LocalASRProductState("installing", "download:model", 50, 100)
+                )
+                self.assertTrue(controller.localAsrBusy)
+                self.assertIn("4 of 5", controller.localAsrStep)
+                self.assertEqual(controller.localAsrProgress, 0.5)
+                controller._apply_local_state(LocalASRProductState("installed"))
+                self.assertFalse(controller.localAsrBusy)
+                self.assertTrue(controller.useLocalAsr())
+                self.assertEqual(controller.routeProviderId, "local_asr")
+                self.assertEqual(controller.routeModelId, "ggml-small")
+                self.assertFalse(controller.localAsrCloudRefinement)
+                self.assertTrue(controller.dirty)
+            finally:
+                controller.shutdown()
 
 
 if __name__ == "__main__":

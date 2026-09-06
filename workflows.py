@@ -8,6 +8,8 @@ worker completion and cancellation rules testable without constructing Tk.
 
 from __future__ import annotations
 
+from transcription_performance import safe_timings
+
 import threading
 import time
 from dataclasses import dataclass, field
@@ -15,7 +17,31 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from provider_types import RewriteResult, TranscriptionResult, TranslationResult
+from provider_types import (
+    ProviderError,
+    RewriteResult,
+    TranscriptionResult,
+    TranslationResult,
+)
+
+
+def _failure_status(error: Exception, fallback: str) -> str:
+    """Expose only known error categories, never provider error messages."""
+    code = getattr(error, "code", None)
+    if isinstance(error, ProviderError) and code in {
+        "authentication",
+        "quota",
+        "rate_limit",
+        "timeout",
+        "network",
+        "unavailable",
+        "invalid_model",
+        "invalid_request",
+        "invalid_response",
+        "cancelled",
+    }:
+        return f"provider_{code}"
+    return fallback
 
 
 class WorkflowKind(str, Enum):
@@ -27,6 +53,7 @@ class WorkflowKind(str, Enum):
 class WorkflowPhase(str, Enum):
     READY = "ready"
     RECORDING = "recording"
+    CANCELLED = "cancelled"
     PROCESSING = "processing"
     REWRITING = "rewriting"
     PREPARING_TRANSLATION = "preparing_translation"
@@ -47,6 +74,10 @@ class SelectionDisposition(str, Enum):
 
 class NoUsableAudioError(RuntimeError):
     """The recording session finished without a provider-ready audio source."""
+
+
+class TranscriptionTransportError(RuntimeError):
+    """The transcription request failed; explicit resend may duplicate work."""
 
 
 class MicrophoneUnavailableError(RuntimeError):
@@ -70,6 +101,7 @@ class RecordingSnapshot:
     # is handed to a provider.  Consumers that do not own a recorder can leave
     # it unset and use their own bounded fallback.
     duration_seconds: float | None = None
+    pretranscribed: Any = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +129,8 @@ class WorkflowState:
     target_executable: str | None = None
     result_text: str | None = None
     status_key: str | None = None
+    can_retry: bool = False
+    can_undo: bool = False
     # Optional source/route metadata lets the desktop runtime persist an
     # opt-in history entry without coupling the orchestration layer to a
     # storage implementation.  Existing consumers can ignore these fields.
@@ -121,8 +155,18 @@ class StopDictation:
 
 
 @dataclass(frozen=True)
+class RetryDictation:
+    operation_id: int
+
+
+@dataclass(frozen=True)
 class CancelDictation:
-    pass
+    retain_audio: bool = False
+
+
+@dataclass(frozen=True)
+class UndoCancelDictation:
+    operation_id: int
 
 
 @dataclass(frozen=True)
@@ -154,6 +198,8 @@ WorkflowCommand = (
     StartDictation
     | StopDictation
     | CancelDictation
+    | RetryDictation
+    | UndoCancelDictation
     | DismissMicrophoneUnavailable
     | StartRewrite
     | StartTranslation
@@ -173,9 +219,7 @@ class ProviderGateway(Protocol):
         self, audio_source: RecordingSnapshot, mode: str, language: str
     ) -> TranscriptionResult: ...
     def rewrite(self, text: str) -> RewriteResult: ...
-    def translate(
-        self, text: str, target_language: str
-    ) -> TranslationResult: ...
+    def translate(self, text: str, target_language: str) -> TranslationResult: ...
 
 
 class RecordingSessionGateway(Protocol):
@@ -188,6 +232,7 @@ class RecordingSessionGateway(Protocol):
     def wait_until_started(self) -> None:
         """Wait for startup to finish, raising its failure or cancellation."""
         ...
+
     def stop(self) -> RecordingSnapshot: ...
     def cancel(self) -> None: ...
     def complete(self) -> bool | None: ...
@@ -211,9 +256,7 @@ class ClipboardGateway(Protocol):
 
     def capture_target(self) -> SelectionTarget | None: ...
     def is_target_current(self, target: SelectionTarget) -> bool: ...
-    def capture_selection(
-        self, target: SelectionTarget
-    ) -> SelectionCapture | None: ...
+    def capture_selection(self, target: SelectionTarget) -> SelectionCapture | None: ...
     def restore(self, capture: SelectionCapture) -> None: ...
     def apply_result(
         self, capture: SelectionCapture, result: str
@@ -283,10 +326,14 @@ class _Session:
     language: str = ""
     started_at: float = 0.0
     elapsed_seconds: float = 0.0
+    processing_started: float | None = None
+    timings_ms: dict[str, float] = field(default_factory=dict)
     selection: SelectionCapture | None = None
     target_language: str = ""
     usage_context: dict[str, Any] = field(default_factory=dict)
     recording: RecordingSessionGateway | None = None
+    retry_audio: RecordingSnapshot | None = None
+    cancel_capture_pending: bool = False
     # A publication is claimed under the service lock, then all gateway calls
     # happen after the lock is released.  This makes cancellation a clear
     # winner while a publication is still queued, while still preventing
@@ -335,8 +382,12 @@ class WorkflowService:
             return self._start_dictation(command)
         if isinstance(command, StopDictation):
             return self._stop_dictation()
+        if isinstance(command, RetryDictation):
+            return self._retry_dictation(command.operation_id)
         if isinstance(command, CancelDictation):
-            return self._cancel_dictation()
+            return self._cancel_dictation(retain_audio=command.retain_audio)
+        if isinstance(command, UndoCancelDictation):
+            return self._resume_dictation(command.operation_id, cancelled=True)
         if isinstance(command, DismissMicrophoneUnavailable):
             return self._dismiss_microphone_unavailable()
         if isinstance(command, StartRewrite):
@@ -360,11 +411,13 @@ class WorkflowService:
             if self._state.phase not in (
                 WorkflowPhase.COMPLETED,
                 WorkflowPhase.FAILED,
+                WorkflowPhase.CANCELLED,
             ):
                 return False
-            if not session.publication_finished:
+            if not session.publication_finished or session.cancel_capture_pending:
                 session.finish_requested = True
                 return True
+            session.retry_audio = None
             self._session = None
             self._state = WorkflowState()
         self._scheduler.call_soon(lambda: self._deliver_ready())
@@ -390,6 +443,7 @@ class WorkflowService:
                 self._session = None
                 self._state = WorkflowState()
         if session and session.recording is not None:
+            session.retry_audio = None
             self._run_recording(session.recording, session.recording.cancel)
         if not deferred_release:
             self._scheduler.call_soon(lambda: self._deliver_ready())
@@ -416,7 +470,10 @@ class WorkflowService:
         target_executable: str | None = None,
     ) -> _Session | None:
         with self._lock:
-            if self._session is not None or self._state.phase is not WorkflowPhase.READY:
+            if (
+                self._session is not None
+                or self._state.phase is not WorkflowPhase.READY
+            ):
                 return None
             session = _Session(
                 operation_id=self._next_operation_id,
@@ -431,10 +488,7 @@ class WorkflowService:
             return session
 
     def _is_current_locked(self, operation_id: int) -> bool:
-        return (
-            self._session is not None
-            and self._session.operation_id == operation_id
-        )
+        return self._session is not None and self._session.operation_id == operation_id
 
     def _is_current(self, operation_id: int) -> bool:
         with self._lock:
@@ -447,6 +501,8 @@ class WorkflowService:
         *,
         result_text: str | None = None,
         status_key: str | None = None,
+        can_retry: bool = False,
+        can_undo: bool = False,
         source_text: str | None = None,
         refined_text: str | None = None,
         provider_id: str | None = None,
@@ -465,6 +521,8 @@ class WorkflowService:
                 target_executable=session.target_executable,
                 result_text=result_text,
                 status_key=status_key,
+                can_retry=can_retry,
+                can_undo=can_undo,
                 source_text=source_text,
                 refined_text=refined_text,
                 provider_id=provider_id,
@@ -473,6 +531,7 @@ class WorkflowService:
                 refinement_model=refinement_model,
             )
             self._state = state
+
         def deliver_then_publish() -> None:
             if self._deliver(state) and after_delivery is not None:
                 after_delivery()
@@ -510,9 +569,8 @@ class WorkflowService:
         return not self._clipboard.alt_pressed()
 
     def _target_is_current(self, session: _Session) -> bool:
-        return (
-            session.target is not None
-            and self._clipboard.is_target_current(session.target)
+        return session.target is not None and self._clipboard.is_target_current(
+            session.target
         )
 
     def _run_recording(
@@ -563,9 +621,7 @@ class WorkflowService:
             )
             if session is None:
                 return False
-            self._transition(
-                session, WorkflowPhase.MICROPHONE_UNAVAILABLE
-            )
+            self._transition(session, WorkflowPhase.MICROPHONE_UNAVAILABLE)
             return True
         except Exception:
             session = self._new_session(
@@ -606,16 +662,18 @@ class WorkflowService:
 
             set_boundary_callback(automatic_stop)
         self._transition(session, WorkflowPhase.RECORDING)
-        self._run_recording(
-            recording, lambda: self._start_audio(session)
-        )
+        self._run_recording(recording, lambda: self._start_audio(session))
         return True
 
     def _start_audio(self, session: _Session) -> None:
         try:
             if session.recording is None:
                 raise RuntimeError("Recording session was not created")
+            session.recording.transcription_language = session.language
             session.recording.start()
+            prepare = getattr(self._provider, "prepare_dictation", None)
+            if callable(prepare) and self._is_current(session.operation_id):
+                self._run_recording(session.recording, lambda: prepare(session.recording))
         except Exception as error:
             should_fail = False
             with self._lock:
@@ -630,13 +688,9 @@ class WorkflowService:
                     except Exception:
                         pass
                 if isinstance(error, MicrophoneUnavailableError):
-                    self._transition(
-                        session, WorkflowPhase.MICROPHONE_UNAVAILABLE
-                    )
+                    self._transition(session, WorkflowPhase.MICROPHONE_UNAVAILABLE)
                 else:
-                    self._transition(
-                        session, WorkflowPhase.FAILED, status_key="error"
-                    )
+                    self._transition(session, WorkflowPhase.FAILED, status_key="error")
         finally:
             if (
                 not self._is_current(session.operation_id)
@@ -658,34 +712,74 @@ class WorkflowService:
             ):
                 return False
             recording = session.recording
-        elapsed = self._clock.time() - session.started_at
-        self._transition(session, WorkflowPhase.PROCESSING)
+            session.processing_started = self._clock.monotonic()
+            elapsed = self._clock.time() - session.started_at
+            self._transition(session, WorkflowPhase.PROCESSING)
         self._run_recording(
             recording,
             lambda: self._process_dictation(session, elapsed),
         )
         return True
 
-    def _process_dictation(self, session: _Session, elapsed: float) -> None:
+    def _retry_dictation(self, operation_id: int) -> bool:
+        return self._resume_dictation(operation_id, cancelled=False)
+
+    def _resume_dictation(self, operation_id: int, *, cancelled: bool) -> bool:
+        with self._lock:
+            session = self._session
+            phase = WorkflowPhase.CANCELLED if cancelled else WorkflowPhase.FAILED
+            allowed = self._state.can_undo if cancelled else self._state.can_retry
+            if (
+                session is None
+                or session.operation_id != operation_id
+                or self._state.phase is not phase
+                or not allowed
+                or session.finish_requested
+                or session.retry_audio is None
+                or session.recording is None
+            ):
+                return False
+            audio_source = session.retry_audio
+            session.retry_audio = None
+            session.processing_started = self._clock.monotonic()
+            session.timings_ms.clear()
+            self._transition(session, WorkflowPhase.PROCESSING)
+        self._run_recording(
+            session.recording,
+            lambda: self._process_dictation(
+                session, session.elapsed_seconds, audio_source
+            ),
+        )
+        return True
+
+    def _process_dictation(
+        self,
+        session: _Session,
+        elapsed: float,
+        audio_source: RecordingSnapshot | None = None,
+    ) -> None:
         try:
             if not self._is_current(session.operation_id):
                 return
             if session.recording is None:
                 raise RuntimeError("Recording session was not created")
-            session.recording.wait_until_started()
-            if not self._is_current(session.operation_id):
-                return
-            audio_source = session.recording.stop()
+            if audio_source is None:
+                session.recording.wait_until_started()
+                if not self._is_current(session.operation_id):
+                    return
+                audio_source = session.recording.stop()
+            provider_started = self._clock.monotonic()
+            session.timings_ms["capture_finalize_ms"] = max(0.0, provider_started - (session.processing_started if session.processing_started is not None else provider_started)) * 1000
             provider_result = self._provider.transcribe(
                 audio_source, session.mode, session.language
             )
+            session.timings_ms.update(safe_timings(getattr(provider_result, "timings_ms", {})))
+            session.timings_ms["provider_ms"] = (self._clock.monotonic() - provider_started) * 1000
             result = provider_result.text
             if not self._is_current(session.operation_id):
                 return
             if self._provider_failed(result):
-                session.recording.fail(
-                    RuntimeError("Transcription returned no text")
-                )
+                session.recording.fail(RuntimeError("Transcription returned no text"))
                 self._transition(session, WorkflowPhase.FAILED, status_key="error")
                 return
             if not self._is_current(session.operation_id):
@@ -708,16 +802,37 @@ class WorkflowService:
                 provider_id=provider_result.provider_id,
                 model=provider_result.model,
                 refinement_provider_id=getattr(
-                    provider_result, "refinement_provider_id", None),
-                refinement_model=getattr(
-                    provider_result, "refinement_model", None),
+                    provider_result, "refinement_provider_id", None
+                ),
+                refinement_model=getattr(provider_result, "refinement_model", None),
                 after_delivery=lambda: self._scheduler.run_in_background(
-                    lambda: self._write_dictation_if_current(
-                        session, result, elapsed
-                    )
+                    lambda: self._write_dictation_if_current(session, result, elapsed)
                 ),
             ):
                 return
+        except TranscriptionTransportError:
+            # Keep only the detached bytes. The recorder still removes its
+            # temporary file and releases its resources on failure.
+            with self._lock:
+                if not self._is_current_locked(session.operation_id):
+                    return
+                session.retry_audio = audio_source
+                session.elapsed_seconds = elapsed
+            if session.recording is not None:
+                try:
+                    # Do not let the recorder retain the request traceback:
+                    # its frames also reference the detached audio bytes.
+                    session.recording.fail(
+                        TranscriptionTransportError("Transcription transport failed")
+                    )
+                except Exception:
+                    pass
+            self._transition(
+                session,
+                WorkflowPhase.FAILED,
+                status_key="transcription_network",
+                can_retry=audio_source is not None,
+            )
         except MicrophoneUnavailableError as error:
             if not self._is_current(session.operation_id):
                 return
@@ -744,7 +859,11 @@ class WorkflowService:
                     session.recording.fail(error)
                 except Exception:
                     pass
-            self._transition(session, WorkflowPhase.FAILED, status_key="error")
+            self._transition(
+                session,
+                WorkflowPhase.FAILED,
+                status_key=_failure_status(error, "error"),
+            )
 
     def _write_dictation_if_current(
         self, session: _Session, result: str, elapsed: float | None = None
@@ -765,15 +884,25 @@ class WorkflowService:
         # suppresses both effects; cancellation after it cannot create a
         # duplicate or deadlock behind an external clipboard operation.
         try:
+            delivery_started = self._clock.monotonic()
+            delivered = False
             try:
-                self._statistics.record_dictation(
-                    usage_context,
-                    session.elapsed_seconds if elapsed is None else elapsed,
-                    result,
-                )
-            except OSError:
-                pass
-            self._clipboard.write_dictation_result(target, result)
+                self._clipboard.write_dictation_result(target, result)
+                delivered = True
+            finally:
+                finished = self._clock.monotonic()
+                session.timings_ms["delivery_ms"] = (finished - delivery_started) * 1000
+                if delivered and session.processing_started is not None:
+                    session.timings_ms["stop_to_delivery_ms"] = (finished - session.processing_started) * 1000
+                usage_context["latency_ms"] = safe_timings(session.timings_ms)
+                try:
+                    self._statistics.record_dictation(
+                        usage_context,
+                        session.elapsed_seconds if elapsed is None else elapsed,
+                        result,
+                    )
+                except OSError:
+                    pass
         except Exception:
             # A terminal result remains visible even when the best-effort
             # clipboard adapter is unavailable during shutdown.
@@ -783,7 +912,7 @@ class WorkflowService:
                 session.publication_finished = True
             self._release_terminal_if_requested(session)
 
-    def _cancel_dictation(self) -> bool:
+    def _cancel_dictation(self, *, retain_audio: bool = False) -> bool:
         with self._lock:
             session = self._session
             if (
@@ -792,12 +921,62 @@ class WorkflowService:
                 or self._state.phase is not WorkflowPhase.RECORDING
             ):
                 return False
-            self._session = None
-            self._state = WorkflowState()
+            if retain_audio and session.recording is not None:
+                session.cancel_capture_pending = True
+                session.elapsed_seconds = max(
+                    0.0, self._clock.time() - session.started_at
+                )
+                self._transition(session, WorkflowPhase.CANCELLED)
+            else:
+                self._session = None
+                self._state = WorkflowState()
+        if retain_audio and session.recording is not None:
+            self._run_recording(
+                session.recording, lambda: self._capture_cancelled_audio(session)
+            )
+            return True
         if session.recording is not None:
             self._run_recording(session.recording, session.recording.cancel)
         self._scheduler.call_soon(lambda: self._deliver_ready())
         return True
+
+    def _capture_cancelled_audio(self, session: _Session) -> None:
+        """Stop capture without calling a provider; keep detached bytes for Undo."""
+        audio_source = None
+        recording = session.recording
+        try:
+            recording.wait_until_started()
+            if self._is_current(session.operation_id):
+                audio_source = recording.stop()
+                # Delete the temporary WAV and release the microphone now.
+                recording.complete()
+        except Exception:
+            # Cancellation must remain cancellation, including an empty capture.
+            audio_source = None
+            recording.cancel()
+        finally:
+            with self._lock:
+                session.cancel_capture_pending = False
+                if not self._is_current_locked(session.operation_id):
+                    return
+                if not session.finish_requested:
+                    session.retry_audio = audio_source
+                    if (
+                        audio_source is not None
+                        and audio_source.duration_seconds is not None
+                    ):
+                        session.elapsed_seconds = audio_source.duration_seconds
+                    self._transition(
+                        session,
+                        WorkflowPhase.CANCELLED,
+                        can_undo=audio_source is not None,
+                    )
+                    return
+                # Dismiss/new shortcut arrived while capture was still stopping.
+                session.retry_audio = None
+                self._session = None
+                self._state = WorkflowState()
+            self._scheduler.call_soon(lambda: self._deliver_ready())
 
     def _dismiss_microphone_unavailable(self) -> bool:
         with self._lock:
@@ -896,9 +1075,11 @@ class WorkflowService:
                     rewritten,
                 ),
             )
-        except Exception:
+        except Exception as error:
             self._transition(
-                session, WorkflowPhase.FAILED, status_key="rewrite_failed"
+                session,
+                WorkflowPhase.FAILED,
+                status_key=_failure_status(error, "rewrite_failed"),
             )
         finally:
             if not capture_restored:
@@ -920,9 +1101,7 @@ class WorkflowService:
         # The state is explicit even though the current presentation keeps this
         # preparation step visually silent until the picker is ready.
         self._transition(session, WorkflowPhase.PREPARING_TRANSLATION)
-        self._scheduler.run_in_background(
-            lambda: self._prepare_translation(session)
-        )
+        self._scheduler.run_in_background(lambda: self._prepare_translation(session))
         return True
 
     def _prepare_translation(self, session: _Session) -> None:
@@ -969,9 +1148,11 @@ class WorkflowService:
                     return
                 session.selection = capture
             self._transition(session, WorkflowPhase.TRANSLATION_PICKER)
-        except Exception:
+        except Exception as error:
             self._transition(
-                session, WorkflowPhase.FAILED, status_key="translation_failed"
+                session,
+                WorkflowPhase.FAILED,
+                status_key=_failure_status(error, "translation_failed"),
             )
         finally:
             if not capture_restored:
@@ -1003,9 +1184,7 @@ class WorkflowService:
                 return False
         if not self._transition(session, WorkflowPhase.TRANSLATING):
             return False
-        self._scheduler.run_in_background(
-            lambda: self._translation_worker(session)
-        )
+        self._scheduler.run_in_background(lambda: self._translation_worker(session))
         return True
 
     def _translation_worker(self, session: _Session) -> None:
@@ -1041,9 +1220,11 @@ class WorkflowService:
                     session.target_language,
                 ),
             )
-        except Exception:
+        except Exception as error:
             self._transition(
-                session, WorkflowPhase.FAILED, status_key="translation_failed"
+                session,
+                WorkflowPhase.FAILED,
+                status_key=_failure_status(error, "translation_failed"),
             )
 
     def _cancel_translation(self) -> bool:
@@ -1143,16 +1324,12 @@ class WorkflowService:
                     if session.kind is WorkflowKind.REWRITE
                     else "translation_failed"
                 ),
-                after_delivery=lambda: self._release_terminal_if_requested(
-                    session
-                ),
+                after_delivery=lambda: self._release_terminal_if_requested(session),
             )
             return
         else:
             status_key = (
-                None
-                if disposition is SelectionDisposition.PASTED
-                else copied_status
+                None if disposition is SelectionDisposition.PASTED else copied_status
             )
             with self._lock:
                 session.publication_finished = True
@@ -1164,9 +1341,7 @@ class WorkflowService:
                 source_text=capture.text,
                 provider_id=provider_id,
                 model=model,
-                after_delivery=lambda: self._release_terminal_if_requested(
-                    session
-                ),
+                after_delivery=lambda: self._release_terminal_if_requested(session),
             )
         finally:
             with self._lock:

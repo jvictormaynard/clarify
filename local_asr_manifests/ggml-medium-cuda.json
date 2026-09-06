@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "provider": "local_asr",
+  "engine": {
+    "name": "whisper.cpp-cuda",
+    "version": "v1.9.1",
+    "source_url": "https://github.com/ggml-org/whisper.cpp/tree/v1.9.1",
+    "license": "MIT"
+  },
+  "recommended_model": {
+    "id": "ggml-medium",
+    "display_name": "Whisper Medium",
+    "source_url": "https://huggingface.co/ggerganov/whisper.cpp/blob/80da2d8bfee42b0e836fc3a9890373e5defc00a6/ggml-medium.bin",
+    "license": "MIT"
+  },
+  "requirements": {
+    "platform": "Windows 10 or newer, x64",
+    "compute": "Compatible NVIDIA GPU and driver; CPU fallback is separate",
+    "runtime": "Microsoft Visual C++ 2015-2022 Redistributable (x64)",
+    "memory_bytes": 8589934592,
+    "disk_bytes": 4466341476,
+    "download_bytes": 2233170738
+  },
+  "license_files": [
+    "licenses/whisper.cpp-MIT.txt",
+    "licenses/openai-whisper-MIT.txt",
+    "licenses/NVIDIA-CUDA-runtime.txt"
+  ],
+  "assets": {
+    "runtime": {
+      "filename": "whisper-cublas-11.8.0-bin-x64.zip",
+      "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-cublas-11.8.0-bin-x64.zip",
+      "size": 278557654,
+      "sha256": "aecdce0e4d4bb758a7c72a31f3f9f19a7b6d861405fd2da743cd86398633c963",
+      "license": "MIT and NVIDIA CUDA runtime terms",
+      "source_url": "https://github.com/ggml-org/whisper.cpp/releases/tag/v1.9.1",
+      "archive": "zip"
+    },
+    "model": {
+      "filename": "ggml-medium.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/80da2d8bfee42b0e836fc3a9890373e5defc00a6/ggml-medium.bin?download=true",
+      "size": 1533763059,
+      "sha256": "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
+      "license": "MIT",
+      "source_url": "https://huggingface.co/ggerganov/whisper.cpp/blob/80da2d8bfee42b0e836fc3a9890373e5defc00a6/ggml-medium.bin"
+    },
+    "cublas": {
+      "filename": "libcublas-windows-x86_64-11.11.3.6-archive.zip",
+      "url": "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip",
+      "size": 420850025,
+      "sha256": "67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9",
+      "license": "NVIDIA CUDA Toolkit",
+      "source_url": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_11.8.0.json",
+      "archive": "zip"
+    }
+  },
+  "extracted_files": [
+    {
+      "archive_path": "Release/cudart32_110.dll",
+      "path": "runtime/cudart32_110.dll",
+      "size": 467456,
+      "sha256": "b8bfc244dd0916ddf7b45e39c101f165a0d9f4846616eaf34336a2c374409408"
+    },
+    {
+      "archive_path": "Release/cudart64_110.dll",
+      "path": "runtime/cudart64_110.dll",
+      "size": 526848,
+      "sha256": "ba5c2fb526c4ee4bb218ceb3fa5e8bfde89ce474f38711fdcce802549bf9fc6f"
+    },
+    {
+      "archive_path": "Release/cuinj64_118.dll",
+      "path": "runtime/cuinj64_118.dll",
+      "size": 1317376,
+      "sha256": "b97f3becdfa7d5652b456377ced74766f5e21cb52d2d6edac5bc6114d786f040"
+    },
+    {
+      "archive_path": "Release/ggml-base.dll",
+      "path": "runtime/ggml-base.dll",
+      "size": 641024,
+      "sha256": "efa68e57d9c039b9e7b9e757fa32b11f12c804664c48edf967b941cc42b713a6"
+    },
+    {
+      "archive_path": "Release/ggml-cpu-alderlake.dll",
+      "path": "runtime/ggml-cpu-alderlake.dll",
+      "size": 789504,
+      "sha256": "a1ef7c4c6e95b2633ae0a0573c70312ace32806be04edd7b67bc1484e8a0b872"
+    },
+    {
+      "archive_path": "Release/ggml-cpu-cannonlake.dll",
+      "path": "runtime/ggml-cpu-cannonlake.dll",
+      "size": 833536,
+      "sha256": "55f4eeba819a8f0c008359616afd85c5c2bd724ffae4e749143bb016d8b6cffa"
+    },
+    {
+      "archive_path": "Release/ggml-cpu-cascadelake.dll",
+      "path": "runtime/ggml-cpu-cascadelake.dll",
+      "size": 830976,
+      "sha256": "227ae54524e58637aacff9ed211b9ec1fbf8293670a74667e99c215ff8528254"
+    },
+    {
+      "archive_path": "Release/ggml-cpu-haswell.dll",
+      "path": "runtime/ggml-cpu-haswell.dll",
+      "size": 790528,
+      "sha256": "86c7cadc4412c69f4375ef2992cfdd7f5d3350eaacb33b297d7e35279945c0ce"
+    },
+    {
+      "archive_path": "Release/ggml-cpu-icelake.dll",
+      "path": "runtime/ggml-cpu-icelake.dll",
+      "size": 830976,
+      "sha256": "c56f9b7468c65c2e1887b3625d56b5d45a497eda4b02846d1d66a602c0d73dc3"
+    },
+    {
+      "archive_path": "Release/ggml-cpu-sandybridge.dll",
+      "path": "runtime/ggml-cpu-sandybridge.dll",
+      "size": 763904,
+      "sha256": "53e88f728ef28b26863a94c2ba6f1aea1eda8ca531a383052c9de220da03c2ae"
+    },
+    {
+      "archive_path": "Release/ggml-cpu-skylakex.dll",
+      "path": "runtime/ggml-cpu-skylakex.dll",
+      "size": 833536,
+      "sha256": "ac4d8e42767a186ccb71b5c55064fdd5b17ff1b3304deb5b4b8b41d64637c5ad"
+    },
+    {
+      "archive_path": "Release/ggml-cpu-sse42.dll",
+      "path": "runtime/ggml-cpu-sse42.dll",
+      "size": 751104,
+      "sha256": "4d426c67a6b91e33d4609a0fa0454bebb8d2d6054de1e9a800b65a85924fa611"
+    },
+    {
+      "archive_path": "Release/ggml-cpu-x64.dll",
+      "path": "runtime/ggml-cpu-x64.dll",
+      "size": 752128,
+      "sha256": "a401aaf2f3f5e945bb4f00a0e1ebc5aa75acd004d7f500576a1f1e4a9d237ac6"
+    },
+    {
+      "archive_path": "Release/ggml-cuda.dll",
+      "path": "runtime/ggml-cuda.dll",
+      "size": 562600960,
+      "sha256": "24af2cd89090175beffdf77cd25c176d76f09c4018644915f302d2de64d67631"
+    },
+    {
+      "archive_path": "Release/ggml.dll",
+      "path": "runtime/ggml.dll",
+      "size": 66560,
+      "sha256": "868c1abc732c1616cac141c940bf15d3169591cc666e4006747bf20a7b7df032"
+    },
+    {
+      "archive_path": "Release/nvrtc-builtins64_118.dll",
+      "path": "runtime/nvrtc-builtins64_118.dll",
+      "size": 7909888,
+      "sha256": "8642cd940445f0eb79ae73c04b3dfb8c8e61fc3aca191dc2239b28a9cb6964d8"
+    },
+    {
+      "archive_path": "Release/nvrtc64_112_0.dll",
+      "path": "runtime/nvrtc64_112_0.dll",
+      "size": 40629248,
+      "sha256": "7a1d6c894d9db5f043e7cca5ea328bc4f29c45aa7af3f0dd1bde1f31f02b41bd"
+    },
+    {
+      "archive_path": "Release/parakeet.dll",
+      "path": "runtime/parakeet.dll",
+      "size": 526336,
+      "sha256": "3208ca00518839ba8bd0dfd64644ad8f50e1c56ec73b1bd9c6129562673f9739"
+    },
+    {
+      "archive_path": "Release/SDL2.dll",
+      "path": "runtime/SDL2.dll",
+      "size": 2500096,
+      "sha256": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677"
+    },
+    {
+      "archive_path": "Release/whisper-server.exe",
+      "path": "runtime/whisper-server.exe",
+      "size": 728576,
+      "sha256": "9c10e0ae868b45a95b168bcf7380657f1f21f069d11f7b4681bac2e4de03f459"
+    },
+    {
+      "archive_path": "Release/whisper.dll",
+      "path": "runtime/whisper.dll",
+      "size": 1308160,
+      "sha256": "b95d3d4d0fcbf419fd45ab2ba4cd7f39df1ecaa93effacdc7a90b18c6e282cb7"
+    },
+    {
+      "archive_path": "libcublas-windows-x86_64-11.11.3.6-archive/LICENSE",
+      "path": "licenses/nvidia-LICENSE",
+      "size": 61498,
+      "sha256": "b9ee12782ca117b887588d99ae1b8c24deb59105e05417fe28ffbd7a55896dd1",
+      "asset": "cublas"
+    },
+    {
+      "archive_path": "libcublas-windows-x86_64-11.11.3.6-archive/bin/cublas64_11.dll",
+      "path": "runtime/cublas64_11.dll",
+      "size": 88668160,
+      "sha256": "8ca516b96b29c2fba2344909a896bc1cd7951f6cd11fe595a8a3929c02cccbed",
+      "asset": "cublas"
+    },
+    {
+      "archive_path": "libcublas-windows-x86_64-11.11.3.6-archive/bin/cublasLt64_11.dll",
+      "path": "runtime/cublasLt64_11.dll",
+      "size": 544070144,
+      "sha256": "3d06ca4e4893adb7a153ecd23a540e92817c967312b44646d8c3f91b089196e6",
+      "asset": "cublas"
+    },
+    {
+      "archive_path": "libcublas-windows-x86_64-11.11.3.6-archive/bin/nvblas64_11.dll",
+      "path": "runtime/nvblas64_11.dll",
+      "size": 322560,
+      "sha256": "44dd1b4cd2f0cfada7097ebd0b59761dbc4593f86f3015e5e4528499f56914a6",
+      "asset": "cublas"
+    }
+  ]
+}
