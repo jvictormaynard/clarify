@@ -293,7 +293,11 @@ if ($smoke.ExitCode -ne 0) {
 }
 
 Write-Host "Updating $targetExe..."
-Get-Process Clarify -ErrorAction SilentlyContinue | Stop-Process -Force
+# Match the installed path, including legacy ClarifyVoice.exe names.
+$resolvedTargetExe = [System.IO.Path]::GetFullPath($targetExe)
+Get-Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and $_.Path -eq $resolvedTargetExe } |
+    Stop-Process -Force
 New-Item $targetDir -ItemType Directory -Force | Out-Null
 
 try {
