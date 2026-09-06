@@ -54,13 +54,11 @@ Button {
         radius: control.theme.fieldRadius
         color: !control.enabled
                ? control.theme.controlDisabled
-               : control.quiet
-                 ? (control.down ? control.theme.controlPressed
-                    : control.hovered ? control.theme.controlHover : "transparent")
-                 : (control.down ? control.theme.controlPressed
-                    : control.hovered ? control.theme.controlHover : control.theme.control)
-        border.width: control.activeFocus || !control.quiet ? 1 : 0
-        border.color: control.activeFocus ? control.theme.secondaryText : control.theme.border
+               : control.hovered || control.down || control.checked || control.activeFocus
+                 ? control.theme.controlHover
+                 : control.quiet ? "transparent" : control.theme.control
+        border.width: control.quiet ? 0 : 1
+        border.color: control.theme.border
 
         Behavior on color {
             ColorAnimation { duration: 110; easing.type: Easing.OutCubic }

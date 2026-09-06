@@ -822,10 +822,12 @@ class WorkflowServiceTests(unittest.TestCase):
                 )
             ],
         )
-        self.assertEqual(
-            self.statistics.dictations,
-            [({"mode": "prompt", "provider": "gemini"}, 2.5, "Transcribed")],
-        )
+        self.assertEqual(len(self.statistics.dictations), 1)
+        context, duration, result = self.statistics.dictations[0]
+        self.assertEqual((duration, result), (2.5, "Transcribed"))
+        self.assertEqual(context["provider"], "gemini")
+        self.assertEqual(context["mode"], "prompt")
+        self.assertIn("stop_to_delivery_ms", context["latency_ms"])
         self.assertEqual(self.service.state.source_text, "Transcribed")
         self.assertIsNone(self.service.state.refined_text)
         self.assertIsNone(self.service.state.refinement_provider_id)

@@ -265,6 +265,9 @@ def _default_local_asr_product() -> LocalASRProductController:
     adapter = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID)
     backend = getattr(adapter, "backend", None)
     installer = getattr(backend, "installer", None)
+    if hasattr(adapter, "engines"):
+        from local_asr_catalog import ModelInstaller
+        installer = ModelInstaller("ggml-small", adapter.engines)
     return LocalASRProductController(installer=installer, backend=backend)
 
 
@@ -318,6 +321,8 @@ class QmlSettingsController(QObject):
     hotkeyChanged = Signal()
     _providerValidationFinished = Signal(str, int, bool, object)
     _localStatePublished = Signal(object)
+    _localDevicesPublished = Signal(object)
+    _localBenchmarkPublished = Signal(str)
     _microphoneTestFinished = Signal(int, bool, object)
     _microphoneLevelPublished = Signal(int, float)
 
@@ -338,6 +343,13 @@ class QmlSettingsController(QObject):
         self._autostart_registry = registry
         self._local_product = local_product or _default_local_asr_product()
         self._local_state: LocalASRProductState = self._local_product.state
+        self._local_profile = "ggml-small"
+        self._local_device = "cpu"
+        self._local_generation = 0
+        self._local_benchmark_busy = False
+        self._local_benchmark_detail = ""
+        self._local_benchmark_token = None
+        self._local_devices = [{"id": "auto", "label": "Automatic"}, {"id": "cpu", "label": "CPU"}]
         self._hotkey_applier = hotkey_applier
         self._microphone_backend = microphone_backend
         self._microphone_inventory_source = (
@@ -399,13 +411,32 @@ class QmlSettingsController(QObject):
         self._microphoneLevelPublished.connect(
             self._apply_microphone_level, Qt.ConnectionType.QueuedConnection
         )
-        self._local_product.subscribe(self._publish_local_state)
+        self._local_product.subscribe(lambda state: self._localStatePublished.emit((0, state)))
+        self._localBenchmarkPublished.connect(self._finish_local_benchmark, Qt.ConnectionType.QueuedConnection)
+        self._localDevicesPublished.connect(self._apply_local_devices, Qt.ConnectionType.QueuedConnection)
+        def inventory():
+            from local_asr_catalog import devices
+            values = devices()
+            try:
+                self._localDevicesPublished.emit(values)
+            except RuntimeError:
+                pass
+        self._local_inventory_thread = threading.Thread(target=inventory, daemon=True, name="LocalASRDevices")
+        self._local_inventory_thread.start()
         self._modelDiscoveryFinished.connect(
             self._finish_model_discovery, Qt.ConnectionType.QueuedConnection
         )
         self.routeChanged.connect(self.modelCatalogChanged.emit)
         self.providerStateChanged.connect(self.modelCatalogChanged.emit)
-        self._local_product.refresh_async()
+        if local_product is None:
+            from local_asr_catalog import MODELS
+            model = self._config.local_asr.audio_model
+            if model in MODELS:
+                self._browse_local(model, self._config.local_asr_device)
+            else:
+                self._local_product.refresh_async()
+        else:
+            self._local_product.refresh_async()
         self.refreshMicrophoneInventory()
 
     @Property("QStringList", constant=True)
@@ -1264,13 +1295,122 @@ class QmlSettingsController(QObject):
     def localAsrRequirementsList(self) -> list[str]:
         values = self._local_state.requirements or {}
         return [
-            f"{format_requirement_bytes(values.get('download_bytes', 0))} download",
+            f"{format_requirement_bytes(values.get('download_bytes', 0))} maximum download",
             f"{format_requirement_bytes(values.get('disk_bytes', 0))} free disk",
             f"{format_requirement_bytes(values.get('memory_bytes', 0))} RAM",
             str(values.get("platform", "Windows x64")),
             str(values.get("compute", "")),
             str(values.get("runtime", "")),
         ]
+
+    @Property(bool, notify=providerStateChanged)
+    def localBenchmarkBusy(self):
+        return self._local_benchmark_busy
+
+    @Property(str, notify=providerStateChanged)
+    def localBenchmarkDetail(self):
+        return self._local_benchmark_detail
+
+    @Slot()
+    def cancelLocalMeasurement(self):
+        if self._local_benchmark_token is not None:
+            self._local_benchmark_token.cancel()
+
+    @Slot(result=bool)
+    def measureLocalDevice(self):
+        if self.localAsrBusy or self._local_benchmark_busy:
+            return False
+        from local_asr import default_manifest_path
+        from local_asr_catalog import calibrate
+        token = CancellationToken()
+        self._local_benchmark_token = token
+        self._local_benchmark_busy = True
+        self._local_benchmark_detail = "Measuring installed engines with local sample audio..."
+        model = self._local_profile
+        audio = default_manifest_path().parent / "assets" / "asr-benchmark.wav"
+        pool = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID).engines
+        def measure():
+            try:
+                result = calibrate(pool, model, audio, token)
+                detail = "Measured: " + result["selected"] + ". Select Automatic and use this model to apply."
+            except Exception as error:
+                detail = str(error)
+            try:
+                self._localBenchmarkPublished.emit(detail)
+            except RuntimeError:
+                pass
+        threading.Thread(target=measure, daemon=True, name="LocalASRBenchmark").start()
+        self.providerStateChanged.emit()
+        return True
+
+    @Slot(str)
+    def _finish_local_benchmark(self, detail):
+        self._local_benchmark_busy = False
+        self._local_benchmark_detail = detail
+        self.providerStateChanged.emit()
+
+    @Property("QStringList", constant=True)
+    def localProfiles(self):
+        from local_asr_catalog import PROFILE_LABELS
+        return list(PROFILE_LABELS)
+
+    @Property(int, notify=providerStateChanged)
+    def localProfileIndex(self):
+        from local_asr_catalog import MODELS
+        return MODELS.index(self._local_profile)
+
+    @Property("QStringList", notify=providerStateChanged)
+    def localDevices(self):
+        return [item["label"] for item in self._local_devices]
+
+    @Property(int, notify=providerStateChanged)
+    def localDeviceIndex(self):
+        return next((i for i, item in enumerate(self._local_devices) if item["id"] == self._local_device), 1)
+
+    @Property(bool, notify=configChanged)
+    def localStreaming(self):
+        return self._config.local_asr_streaming
+
+    @Slot(bool, result=bool)
+    def setLocalStreaming(self, enabled):
+        return self._update_config(replace(self._config, local_asr_streaming=bool(enabled)))
+
+    @Slot(object)
+    def _apply_local_devices(self, values):
+        self._local_devices = values
+        self.providerStateChanged.emit()
+
+    @Slot(int, result=bool)
+    def selectLocalProfile(self, index):
+        from local_asr_catalog import MODELS
+        if self.localAsrBusy or self._local_benchmark_busy or not 0 <= index < len(MODELS):
+            return False
+        return self._browse_local(MODELS[index], self._local_device)
+
+    @Slot(int, result=bool)
+    def selectLocalDevice(self, index):
+        if self.localAsrBusy or self._local_benchmark_busy or not 0 <= index < len(self._local_devices):
+            return False
+        return self._browse_local(self._local_profile, self._local_devices[index]["id"])
+
+    def _browse_local(self, model, device):
+        try:
+            from local_asr_catalog import ModelInstaller
+            adapter = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID)
+            backend = adapter.select_backend(model, "cpu")
+            product = LocalASRProductController(installer=ModelInstaller(model, adapter.engines, self._local_devices), backend=backend)
+        except Exception as error:
+            self._set_error(error)
+            return False
+        self._local_generation += 1
+        generation = self._local_generation
+        self._local_profile, self._local_device = model, device
+        self._local_product = product
+        self._local_state = product.state
+        product.subscribe(lambda state: self._localStatePublished.emit((generation, state)))
+        product.refresh_async()
+        self.providerStateChanged.emit()
+        return True
 
     @Slot(result=bool)
     def useLocalAsr(self) -> bool:
@@ -1279,8 +1419,9 @@ class QmlSettingsController(QObject):
         self.selectWorkflow(WorkflowScope.TRANSCRIPTION.value)
         self.setRouteProviderId(LOCAL_ASR_PROVIDER_ID)
         self.setRouteModelId(
-            PROVIDER_REGISTRY.describe(LOCAL_ASR_PROVIDER_ID).default_audio_model
+            self._local_profile
         )
+        self._update_config(replace(self._config, local_asr_device=self._local_device))
         return self.setRouteEnabled(True)
 
     @Slot(str, result=bool)
@@ -1486,6 +1627,9 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def installLocalAsr(self) -> bool:
+        if self.localAsrBusy or self._local_benchmark_busy:
+            return False
+        self._local_device = "auto"
         try:
             self._local_product.install_async()
         except Exception as error:
@@ -1519,6 +1663,9 @@ class QmlSettingsController(QObject):
 
     @Slot()
     def shutdown(self) -> None:
+        self._local_inventory_thread.join(timeout=3.5)
+        if self._local_benchmark_token is not None:
+            self._local_benchmark_token.cancel()
         self._model_generation += 1
         if self._model_token is not None:
             self._model_token.cancel()
@@ -1792,6 +1939,10 @@ class QmlSettingsController(QObject):
 
     @Slot(object)
     def _apply_local_state(self, state: object) -> None:
+        if isinstance(state, tuple):
+            generation, state = state
+            if generation != self._local_generation:
+                return
         if isinstance(state, LocalASRProductState):
             self._local_state = state
             self.providerStateChanged.emit()

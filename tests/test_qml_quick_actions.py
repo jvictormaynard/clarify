@@ -163,7 +163,8 @@ class QuickActionsTests(unittest.TestCase):
             restored_surfaces = []
             shell = SimpleNamespace(
                 hide_window=Mock(),
-                show_window=lambda: restored_surfaces.append(bridge.surface),
+                show_window=Mock(),
+                show_window_without_activation=lambda: restored_surfaces.append(bridge.surface),
             )
             coordinator = _WorkflowWindowVisibility(
                 bridge, shell, SimpleNamespace(isVisible=lambda: True)

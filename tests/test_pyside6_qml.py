@@ -962,7 +962,7 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
         self.assertEqual(icon.getchannel("A").getbbox(), (4, 4, 60, 60))
         self.assertTrue(_pillow_data_url(icon).startswith("data:image/png;base64,"))
 
-    def test_transient_workflow_hides_and_restores_visible_main_window(self):
+    def test_transient_workflow_does_not_restore_focus_on_completion(self):
         class Bridge(QObject):
             surfaceChanged = Signal()
 
@@ -986,9 +986,14 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
             def __init__(self, window):
                 self.window = window
                 self.show_calls = 0
+                self.passive_calls = 0
 
             def hide_window(self):
                 self.window.hide()
+
+            def show_window_without_activation(self):
+                self.window.visible = True
+                self.passive_calls += 1
 
             def show_window(self):
                 self.window.visible = True
@@ -1010,8 +1015,9 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
 
         bridge.surface = "success"
         bridge.surfaceChanged.emit()
-        self.assertEqual(shell.show_calls, 1)
+        self.assertEqual(shell.show_calls, 0)
         self.assertTrue(window.visible)
+        self.assertEqual(shell.passive_calls, 1)
         self.assertIsNotNone(coordinator)
 
     def test_shutdown_connections_stop_shell_before_runtime(self):

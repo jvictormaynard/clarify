@@ -252,9 +252,13 @@ class _WorkflowWindowVisibility:
         self._shell = shell
         self._window = window
         self._restore_visible: bool | None = None
+        self._last_surface = bridge.surface
         bridge.surfaceChanged.connect(self.sync)
 
     def sync(self) -> None:
+        surface = self._bridge.surface
+        previous_surface = self._last_surface
+        self._last_surface = surface
         feedback = bool(getattr(self._bridge, "feedbackVisible", False))
         pill_active = (
             self._bridge.surface in self._PILL_SURFACES
@@ -270,12 +274,21 @@ class _WorkflowWindowVisibility:
                 self._restore_visible = False
             self._shell.hide_window()
             return
-        if self._restore_visible is None:
-            return
         restore_visible = self._restore_visible
         self._restore_visible = None
-        if restore_visible:
+        # COMPLETED is delivered before the clipboard write. Restore the
+        # compact card with native activation disabled, preserving the target.
+        # Only navigation to a panel may explicitly request keyboard focus.
+        explicit_navigation = surface in {"settings", "files"}
+        restore_panel = restore_visible and surface in {
+            "result", "voice_result", "voice_error", "translation_picker",
+        }
+        if surface != previous_surface and (explicit_navigation or restore_panel):
             self._shell.show_window()
+        elif restore_visible and surface in {"idle", "success"}:
+            restore = getattr(self._shell, "show_window_without_activation", None)
+            if callable(restore):
+                restore()
 
 
 def _sync_recording_escape_hotkey(bridge, hotkeys) -> None:

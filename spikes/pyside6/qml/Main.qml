@@ -26,6 +26,7 @@ ApplicationWindow {
                ? theme.panelHeight : theme.windowHeight) * theme.uiScale
     minimumWidth: theme.windowWidth * theme.uiScale
     minimumHeight: theme.windowHeight * theme.uiScale
+    property bool passivePresentation: false
     property bool presentationVisible: false
     visible: presentationVisible || opacity > 0.001
     opacity: presentationVisible ? 1.0 : 0.0
@@ -42,6 +43,7 @@ ApplicationWindow {
     }
     color: "transparent"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+           | (passivePresentation ? Qt.WindowDoesNotAcceptFocus : 0)
 
     palette.window: theme.card
     palette.windowText: theme.text
@@ -91,15 +93,21 @@ ApplicationWindow {
         visualTheme: root.visualTheme
         onAboutToShow: settings.refreshMicrophoneInventory()
         property var pendingAction: null
-        function runAfterClose(action) {
-            pendingAction = action
-            close()
-        }
-        onClosed: {
+        function dispatchPendingAction() {
             var action = pendingAction
             pendingAction = null
             if (action) Qt.callLater(action)
         }
+        function runAfterClose(action) {
+            pendingAction = action
+            close()
+            // MenuItem may emit triggered after the popup has already closed.
+            // Consume the action once in either signal ordering.
+            Qt.callLater(function() {
+                if (!quickMenu.visible) quickMenu.dispatchPendingAction()
+            })
+        }
+        onClosed: dispatchPendingAction()
 
         QuickMenu {
             id: microphoneMenu

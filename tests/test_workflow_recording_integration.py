@@ -86,6 +86,9 @@ class Clock:
     def time(self):
         return self.now
 
+    def monotonic(self):
+        return self.now
+
 
 class Recorder:
     def __init__(self, *, block_start=False):

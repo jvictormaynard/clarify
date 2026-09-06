@@ -820,12 +820,20 @@ class QmlWorkflowBridge(QObject):
 
     @Slot()
     def openSettings(self) -> None:
-        if self.busy or self._state.phase is not WorkflowPhase.READY:
+        if self.busy:
             return
-        self._files_visible = False
-        self._settings_visible = True
-        self._result_visible = False
-        self._notify_all()
+
+        def show_settings() -> None:
+            self._files_visible = False
+            self._settings_visible = True
+            self._result_visible = False
+            self._notify_all()
+
+        if self._state.phase in (WorkflowPhase.FAILED, WorkflowPhase.CANCELLED):
+            # Editing settings must not discard retained audio or undo state.
+            show_settings()
+        else:
+            self._run_when_ready(show_settings)
 
     @Slot()
     def closeSettings(self) -> None:

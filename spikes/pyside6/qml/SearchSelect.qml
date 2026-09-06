@@ -72,8 +72,9 @@ Button {
     background: Rectangle {
         radius: control.visualTheme.fieldRadius
         color: !control.enabled ? control.visualTheme.controlDisabled
-            : control.hovered ? control.visualTheme.controlHover : control.visualTheme.control
-        border.color: control.activeFocus || menu.visible ? control.visualTheme.secondaryText : control.visualTheme.border
+            : control.hovered || control.down || control.activeFocus || menu.visible
+              ? control.visualTheme.controlHover : control.visualTheme.control
+        border.color: control.visualTheme.border
         Behavior on border.color { ColorAnimation { duration: 100 } }
     }
     function choose(index) {
