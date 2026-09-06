@@ -119,6 +119,8 @@ class TranscriptionResult:
     refinement_provider_id: str | None = None
     refinement_model: str | None = None
     timings_ms: dict[str, float] = field(default_factory=dict, compare=False)
+    # Content-free signal: optional refinement failed, but ASR text is usable.
+    refinement_failed: bool = False
 
 
 @dataclass(frozen=True)

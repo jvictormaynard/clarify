@@ -793,6 +793,7 @@ class WorkflowService:
                 session,
                 WorkflowPhase.COMPLETED,
                 result_text=result,
+                status_key=("refinement_failed" if provider_result.refinement_failed else None),
                 source_text=(
                     getattr(provider_result, "raw_text", None)
                     if getattr(provider_result, "raw_text", None) is not None

@@ -5,6 +5,18 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-06
+
+### Fixed
+
+- Preserve the exact original transcript when optional refinement fails, with a brief status warning and partial history record.
+- Respect cancellation after refinement and keep existing same-audio retry, cancellation undo and focus-safe delivery.
+
+### Changed
+
+- Reconciled pending local work with the published local-model and interface improvements.
+- Updated release instructions to use the current main branch and Qt entrypoint.
+
 ## [0.3.0] - 2026-09-06
 
 ### Added
@@ -153,7 +165,7 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.3.1...HEAD
 [0.2.2]: https://github.com/jvictormaynard/clarify/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/jvictormaynard/clarify/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jvictormaynard/clarify/compare/v0.1.2...v0.2.0
@@ -162,3 +174,5 @@ Notable user-facing changes are documented here. This project follows
 [0.1.0]: https://github.com/jvictormaynard/clarify/releases/tag/v0.1.0
 
 [0.3.0]: https://github.com/jvictormaynard/clarify/compare/v0.2.2...v0.3.0
+
+[0.3.1]: https://github.com/jvictormaynard/clarify/compare/v0.3.0...v0.3.1
