@@ -32,8 +32,11 @@ ApplicationWindow {
 
 
     readonly property string inputError: {
-        if (historyBox.checked && historyRetentionField.text.trim() !== ""
-                && !historyRetentionField.acceptableInput)
+        var retentionText = historyRetentionField.text.trim()
+        var retention = Number(retentionText)
+        if (historyBox.checked && retentionText !== ""
+                && (!isFinite(retention) || retention !== Math.floor(retention)
+                    || retention < 0 || retention > 3650))
             return "History retention must be between 0 and 3650 days."
         var maximumText = maximumDurationField.text.trim()
         var maximum = Number(maximumText)
@@ -67,6 +70,7 @@ ApplicationWindow {
             workflow.closeSettings()
         }
     }
+    ButtonGroup { id: sectionButtons; exclusive: true }
     property string pendingProvider: ""
     function changeProvider(value) {
         if (value === settings.selectedProviderId) return
@@ -131,7 +135,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         title: "Unsaved changes"
         modal: true
-        closePolicy: Popup.NoAutoClose
+        closePolicy: Popup.CloseOnEscape
         standardButtons: Dialog.Save | Dialog.Discard | Dialog.Cancel
         Label {
             width: 340
@@ -303,6 +307,9 @@ ApplicationWindow {
                                 iconSource: "icons/" + modelData.icon
                                 theme: root.visualTheme
                                 primary: index === settingsPage.selectedSection
+                                checkable: true
+                                ButtonGroup.group: sectionButtons
+                                checked: index === settingsPage.selectedSection
                                 quiet: true
                                 contentAlignment: Text.AlignLeft
                                 leftPadding: 8
@@ -431,8 +438,7 @@ ApplicationWindow {
                                       || settings.historyRetentionDays === undefined
                                       ? "" : String(settings.historyRetentionDays)
                                 inputMethodHints: Qt.ImhDigitsOnly
-                                validator: IntValidator { bottom: 0; top: 3650 }
-                                onEditingFinished: settings.setHistoryRetentionDays(
+                                        onEditingFinished: settings.setHistoryRetentionDays(
                                     text.trim() === "" ? null : Number(text)
                                 )
                             }

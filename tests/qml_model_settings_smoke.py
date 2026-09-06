@@ -511,6 +511,11 @@ def main():
                     repositories.config.load().recording_controls.max_duration_seconds
                     == 120
                 )
+                settings_page.selectSection(0)
+                controller.setHistoryEnabled(True)
+                edit("historyRetentionField", "")
+                click(visible_item("saveSettingsButton"))
+                assert repositories.config.load().history_retention_days is None
                 panel.close()
                 settle()
                 assert not panel.isVisible()
