@@ -438,7 +438,7 @@ ApplicationWindow {
                                       || settings.historyRetentionDays === undefined
                                       ? "" : String(settings.historyRetentionDays)
                                 inputMethodHints: Qt.ImhDigitsOnly
-                                        onEditingFinished: settings.setHistoryRetentionDays(
+                                onEditingFinished: settings.setHistoryRetentionDays(
                                     text.trim() === "" ? null : Number(text)
                                 )
                             }

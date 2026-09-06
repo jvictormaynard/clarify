@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtCore import (
     QObject,
     QEvent,
+    QCoreApplication,
     QPointF,
     Qt,
     QUrl,
@@ -137,6 +138,7 @@ class LocalProduct:
 def main():
     QQuickStyle.setStyle("Basic")
     app = QApplication([])
+    app.setQuitOnLastWindowClosed(False)
     # The Windows offscreen plugin has no system font database.
     font_path = Path("C:/Windows/Fonts/segoeui.ttf")
     if font_path.exists():
@@ -300,6 +302,8 @@ def main():
             QTest.keyClick(
                 input_window(), Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier
             )
+            if not value:
+                QTest.keyClick(input_window(), Qt.Key.Key_Backspace)
             type_text(value)
             QTest.keyClick(input_window(), Qt.Key.Key_Return)
             QTest.keyClick(input_window(), Qt.Key.Key_Tab)
@@ -955,6 +959,7 @@ def main():
         )
         window.close()
         engine.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         app.processEvents()
         qInstallMessageHandler(None)
 

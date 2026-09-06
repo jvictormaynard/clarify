@@ -445,6 +445,7 @@ def main(argv: list[str] | None = None) -> int:
         hotkey_applier=apply_qml_hotkeys,
     )
     branding_icon = _load_branding_icon()
+    app.setWindowIcon(branding_icon)
     status_pill = QmlStatusPillController(
         bridge,
         runtime.recording_audio.recorder,

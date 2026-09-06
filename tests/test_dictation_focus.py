@@ -1,4 +1,5 @@
 """Completion must not activate Clarify before the guarded clipboard write."""
+
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -9,6 +10,7 @@ from spikes.pyside6.qml_clipboard import QmlClipboardGateway
 from workflows import WorkflowState, WorkflowPhase, SelectionDisposition
 from test_pyside6_qml_clipboard import FakeClipboardAdapter
 
+
 class DictationFocusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -17,7 +19,9 @@ class DictationFocusTests(unittest.TestCase):
     def setUp(self):
         self.foreground = 77
         self.visible = True
-        self.service = SimpleNamespace(state=WorkflowState(), subscribe=lambda listener: None, finish=Mock())
+        self.service = SimpleNamespace(
+            state=WorkflowState(), subscribe=lambda listener: None, finish=Mock()
+        )
         self.bridge = QmlWorkflowBridge(self.service)
         self.window = Mock()
         self.window.isVisible.side_effect = lambda: self.visible
@@ -25,11 +29,19 @@ class DictationFocusTests(unittest.TestCase):
         self.shell.hide_window.side_effect = self.hide
         self.shell.show_window.side_effect = self.show
         self.shell.show_window_without_activation.side_effect = self.restore
-        self.coordinator = _WorkflowWindowVisibility(self.bridge, self.shell, self.window)
+        self.coordinator = _WorkflowWindowVisibility(
+            self.bridge, self.shell, self.window
+        )
         self.paste = Mock(return_value=True)
-        self.clipboard = QmlClipboardGateway(adapter=FakeClipboardAdapter(), is_windows=True,
-            foreground_window=lambda: self.foreground, executable_for_window=lambda _: "editor.exe",
-            send_ctrl_v=self.paste, sleep=lambda _: None, alt_pressed=lambda: False)
+        self.clipboard = QmlClipboardGateway(
+            adapter=FakeClipboardAdapter(),
+            is_windows=True,
+            foreground_window=lambda: self.foreground,
+            executable_for_window=lambda _: "editor.exe",
+            send_ctrl_v=self.paste,
+            sleep=lambda _: None,
+            alt_pressed=lambda: False,
+        )
 
     def hide(self):
         self.visible = False
@@ -44,11 +56,20 @@ class DictationFocusTests(unittest.TestCase):
     def complete(self, switch_to=None):
         target = self.clipboard.capture_target()
         for phase in (WorkflowPhase.RECORDING, WorkflowPhase.PROCESSING):
-            self.bridge._on_workflow_state(WorkflowState(phase=phase, operation_id="dictation"))
+            self.bridge._on_workflow_state(
+                WorkflowState(phase=phase, operation_id="dictation")
+            )
         if switch_to is not None:
             self.foreground = switch_to
         # WorkflowService delivers COMPLETED before scheduling clipboard publication.
-        self.bridge._on_workflow_state(WorkflowState(phase=WorkflowPhase.COMPLETED, operation_id="dictation", kind="dictation", result_text="Synthetic test"))
+        self.bridge._on_workflow_state(
+            WorkflowState(
+                phase=WorkflowPhase.COMPLETED,
+                operation_id="dictation",
+                kind="dictation",
+                result_text="Synthetic test",
+            )
+        )
         return self.clipboard.write_dictation_result(target, "Synthetic test")
 
     def test_completion_keeps_editor_focus_and_pastes(self):
@@ -71,16 +92,18 @@ class DictationFocusTests(unittest.TestCase):
         self.assertEqual(self.foreground, 77)
         self.assertEqual(self.paste.call_count, 2)
 
-    def test_explicit_settings_request_still_shows_window(self):
+    def test_explicit_settings_request_hides_toolbar_for_native_settings(self):
         self.complete()
         self.bridge.openSettings()
         self.bridge._on_workflow_state(WorkflowState())
         self.assertEqual(self.bridge.surface, "settings")
-        self.shell.show_window.assert_called_once()
-        self.assertTrue(self.visible)
+        self.shell.show_window.assert_not_called()
+        self.shell.hide_window.assert_called()
+        self.assertFalse(self.visible)
 
     def test_shell_passive_restore_never_requests_activation(self):
         from spikes.pyside6.qt_shell import QtShell
+
         window = Mock()
         window.setProperty.return_value = True
         shell = QtShell(window, application=self.app)
@@ -95,6 +118,7 @@ class DictationFocusTests(unittest.TestCase):
 
     def test_shell_keeps_unsupported_window_hidden(self):
         from spikes.pyside6.qt_shell import QtShell
+
         window = Mock()
         window.setProperty.return_value = False
         shell = QtShell(window, application=self.app)
