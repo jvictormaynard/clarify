@@ -255,10 +255,11 @@ class _SettingsWindowVisibility:
         if self._bridge.surface != "settings":
             self._window.hide()
             return
-        if self._window.visibility() == self._window.Visibility.Minimized:
-            self._window.showNormal()
+        # Explicit state avoids inheriting SW_HIDE from a Windows hidden launch.
+        if self._window.visibility() == self._window.Visibility.Maximized:
+            self._window.showMaximized()
         else:
-            self._window.show()
+            self._window.showNormal()
         self._window.raise_()
         self._window.requestActivate()
 
