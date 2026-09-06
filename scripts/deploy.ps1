@@ -313,5 +313,6 @@ try {
     throw
 }
 
-Start-Process $targetExe -WorkingDirectory $targetDir -WindowStyle Hidden
+# Launch the interactive app normally. SW_HIDE can also hide later Qt windows.
+Start-Process $targetExe -WorkingDirectory $targetDir -WindowStyle Normal
 Write-Host "Clarify was updated and restarted successfully."
