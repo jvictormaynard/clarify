@@ -584,6 +584,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 self.assertTrue(controller.selectProvider("openai"))
                 self.assertFalse(controller.providerHasApiKey)
                 controller.setProviderApiKey("onboarding-test-key")
+                self.assertTrue(controller.providerDirty)
 
                 with patch.object(
                     qml_settings.PROVIDER_REGISTRY,
@@ -604,6 +605,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 self.assertTrue(controller.providerHasApiKey)
                 self.assertEqual(secret_store.get("openai"), "onboarding-test-key")
                 self.assertEqual(controller.providerApiKey, "")
+                self.assertFalse(controller.providerDirty)
                 self.assertNotIn(
                     "onboarding-test-key",
                     (root / "config.json").read_text(encoding="utf-8"),

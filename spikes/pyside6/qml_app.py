@@ -259,6 +259,11 @@ class _WorkflowWindowVisibility:
         surface = self._bridge.surface
         previous_surface = self._last_surface
         self._last_surface = surface
+        if surface == "settings":
+            if self._restore_visible is None:
+                self._restore_visible = bool(self._window.isVisible())
+            self._shell.hide_window()
+            return
         feedback = bool(getattr(self._bridge, "feedbackVisible", False))
         pill_active = (
             self._bridge.surface in self._PILL_SURFACES
@@ -279,7 +284,7 @@ class _WorkflowWindowVisibility:
         # COMPLETED is delivered before the clipboard write. Restore the
         # compact card with native activation disabled, preserving the target.
         # Only navigation to a panel may explicitly request keyboard focus.
-        explicit_navigation = surface in {"settings", "files"}
+        explicit_navigation = surface == "files"
         restore_panel = restore_visible and surface in {
             "result",
             "voice_result",

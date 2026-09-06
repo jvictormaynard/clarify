@@ -7,7 +7,7 @@ QtObject {
     readonly property color border: "#1c1c1c"
     readonly property color text: "#ffffff"
     readonly property color secondaryText: "#cccccc"
-    readonly property color dim: "#666666"
+    property color dim: "#666666"
     readonly property color control: "#151515"
     readonly property color controlHover: "#222222"
     readonly property color controlPressed: "#2b2b2b"
@@ -19,9 +19,9 @@ QtObject {
     readonly property int panelRadius: 18
     readonly property int controlRadius: 13
     readonly property int controlHeight: 26
-    readonly property int fieldHeight: 34
+    property int fieldHeight: 34
     readonly property int fieldRadius: 8
-    readonly property int fieldFontSize: 11
+    property int fieldFontSize: 11
     readonly property int windowWidth: 236
     readonly property int windowHeight: 48
     readonly property int resultWidth: 400

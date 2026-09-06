@@ -5,6 +5,13 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+### Changed
+- Settings now open in a separate, resizable Windows taskbar window with native minimize and maximize controls.
+- Increased settings spacing and control sizes, aligned form columns, and kept errors and save actions outside the scroll area.
+- Added explicit handling for unsaved preferences and service credentials; invalid recording values cannot be saved.
+
+## [Unreleased]
+
 ## [0.3.1] - 2026-09-06
 
 ### Fixed

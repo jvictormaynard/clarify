@@ -529,6 +529,13 @@ class QmlSettingsController(QObject):
     def providerApiKey(self, value: str) -> None:
         self.setProviderApiKey(value)
 
+    @Property(bool, notify=providerStateChanged)
+    def providerDirty(self) -> bool:
+        return bool(self._provider_api_key_draft) or (
+            self._provider_base_url_draft
+            != self._config_provider_base_url(self._selected_provider_id)
+        )
+
     @Property(str, notify=providerStateChanged)
     def providerBaseUrl(self) -> str:
         return self._provider_base_url_draft

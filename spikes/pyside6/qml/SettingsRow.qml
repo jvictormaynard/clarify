@@ -16,14 +16,14 @@ Pane {
             Layout.minimumWidth: 90
             text: row.title
             color: row.visualTheme.secondaryText
-            font.pixelSize: 11
+            font.pixelSize: row.visualTheme.fieldFontSize
             wrapMode: Text.WordWrap
         }
         RowLayout {
             id: controlArea
-            Layout.preferredWidth: row.availableWidth * 0.62
-            Layout.minimumWidth: row.availableWidth * 0.62
-            Layout.maximumWidth: row.availableWidth * 0.62
+            Layout.preferredWidth: Math.max(0, row.availableWidth - 180)
+            Layout.minimumWidth: Math.max(0, row.availableWidth - 180)
+            Layout.maximumWidth: Math.max(0, row.availableWidth - 180)
             spacing: 8
         }
     }

@@ -3,6 +3,9 @@ import QtQuick.Controls 6.5
 
 TextArea {
     id: field
+    property string focusText: ""
+    readonly property bool pendingEdit: activeFocus && text !== focusText
+    onActiveFocusChanged: if (activeFocus) focusText = text
     required property Theme visualTheme
     property bool flat: false
     implicitHeight: Math.max(80, contentHeight + topPadding + bottomPadding)

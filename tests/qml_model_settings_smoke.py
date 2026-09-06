@@ -146,7 +146,9 @@ def main():
             app.setFont(QFont(families[0], 10))
     messages = []
     qInstallMessageHandler(lambda _kind, _context, message: messages.append(message))
-    output = Path(sys.argv[1]) if len(sys.argv) > 1 else None
+    output = next(
+        (Path(value) for value in sys.argv[1:] if not value.startswith("--")), None
+    )
     if output:
         output.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory() as directory:
@@ -154,9 +156,7 @@ def main():
         # Stage assets locally, as the Windows packager does. Qt resolves some
         # relative image URLs incorrectly when Main.qml is loaded from WSL UNC.
         qml_source = Path(
-            os.environ.get(
-                "CLARIFY_TEST_QML_ROOT", str(ROOT / "spikes/pyside6/qml")
-            )
+            os.environ.get("CLARIFY_TEST_QML_ROOT", str(ROOT / "spikes/pyside6/qml"))
         )
         qml_root = Path(shutil.copytree(qml_source, base / "qml"))
         repositories = ApplicationRepositories(
@@ -217,12 +217,18 @@ def main():
                 app.processEvents()
                 time.sleep(0.01)
 
+        def input_window():
+            panel = window.findChild(QQuickWindow, "clarifySettingsWindow")
+            return panel if panel and panel.isVisible() else window
+
         def shot(name):
             settle()
             if output:
-                assert window.grabWindow().save(str(output / f"{name}.png"))
+                assert input_window().grabWindow().save(str(output / f"{name}.png"))
 
         def click(item, target_window=None):
+            (target_window or item.window()).requestActivate()
+            app.processEvents()
             ancestor = item.parentItem()
             while ancestor is not None:
                 if ancestor.inherits("QQuickFlickable"):
@@ -244,7 +250,7 @@ def main():
                 QPointF(item.width() / 2, item.height() / 2)
             ).toPoint()
             QTest.mouseClick(
-                target_window or window,
+                target_window or item.window(),
                 Qt.MouseButton.LeftButton,
                 Qt.KeyboardModifier.NoModifier,
                 position,
@@ -254,7 +260,9 @@ def main():
         def visible_item(name):
             # Repeater delegates can have different QObject and visual parents.
             candidates = list(window.findChildren(QObject, name))
-            pending = [window.contentItem()]
+            pending = [window.contentItem()] + [
+                panel.contentItem() for panel in window.findChildren(QQuickWindow)
+            ]
             while pending:
                 item = pending.pop()
                 if item.objectName() == name:
@@ -265,10 +273,10 @@ def main():
         def choose(name, index):
             control = visible_item(name)
             click(control)
-            QTest.keyClick(window, Qt.Key.Key_Home)
+            QTest.keyClick(input_window(), Qt.Key.Key_Home)
             for _ in range(index):
-                QTest.keyClick(window, Qt.Key.Key_Down)
-            QTest.keyClick(window, Qt.Key.Key_Return)
+                QTest.keyClick(input_window(), Qt.Key.Key_Down)
+            QTest.keyClick(input_window(), Qt.Key.Key_Return)
             settle()
             assert not control.property("popupVisible"), name
 
@@ -277,7 +285,7 @@ def main():
             for character in value:
                 for kind in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
                     app.sendEvent(
-                        window,
+                        input_window(),
                         QKeyEvent(
                             kind,
                             ord(character.upper()),
@@ -289,10 +297,12 @@ def main():
         def edit(name, value):
             field = visible_item(name)
             click(field)
-            QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+            QTest.keyClick(
+                input_window(), Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier
+            )
             type_text(value)
-            QTest.keyClick(window, Qt.Key.Key_Return)
-            QTest.keyClick(window, Qt.Key.Key_Tab)
+            QTest.keyClick(input_window(), Qt.Key.Key_Return)
+            QTest.keyClick(input_window(), Qt.Key.Key_Tab)
             settle()
 
         with patch(
@@ -435,7 +445,95 @@ def main():
             click(quick_settings, menu_window)
             assert bridge.surface == "settings"
             settings_page = window.findChild(QObject, "settingsPage")
+            panel = window.findChild(QQuickWindow, "clarifySettingsWindow")
+            assert panel and panel.isVisible()
+            assert panel.transientParent() is None
+            assert panel.flags() & Qt.WindowType.WindowType_Mask == Qt.WindowType.Window
+            assert not panel.flags() & Qt.WindowType.WindowStaysOnTopHint
+            if sys.platform == "win32" and app.platformName() == "windows":
+                import ctypes
+                from ctypes import wintypes
+
+                user32 = ctypes.windll.user32
+                user32.GetWindow.argtypes = (wintypes.HWND, wintypes.UINT)
+                user32.GetWindow.restype = wintypes.HWND
+                hwnd = int(panel.winId())
+                assert not user32.GetWindow(hwnd, 4), (
+                    "Settings must have no native owner"
+                )
+                assert not user32.GetWindowLongW(hwnd, -20) & 0x80, (
+                    "Settings must not be a tool window"
+                )
+                style = user32.GetWindowLongW(hwnd, -16)
+                assert style & 0x10000, "Maximize button must be enabled"
+                assert style & 0x40000, "Native resize border must be enabled"
+
+            panel.showMaximized()
+            settle()
+            assert panel.visibility() == QQuickWindow.Visibility.Maximized
+            panel.showNormal()
+            panel.resize(1040, 760)
+            panel.requestActivate()
             shot("general")
+            if "--window-only" in sys.argv:
+                for index, name in enumerate(
+                    ("general", "dictation", "text", "shortcuts", "services")
+                ):
+                    settings_page.selectSection(index)
+                    shot("window-" + name)
+                panel.resize(820, 560)
+                shot("window-minimum")
+                panel.resize(1440, 900)
+                shot("window-large")
+                panel.resize(1040, 760)
+                controller.load()
+                controller.setHistoryEnabled(not controller.historyEnabled)
+                panel.close()
+                settle()
+                assert bridge.surface == "settings"
+                assert visible_item("unsavedSettingsDialog").property("visible")
+                shot("window-unsaved")
+                click(visible_item("discardSettingsDialogButton"))
+                assert bridge.surface != "settings"
+                assert not controller.dirty
+                bridge.openSettings()
+                settle()
+                settings_page.selectSection(1)
+                click(visible_item("advancedRecordingGroupToggle"))
+                edit("maximumDurationField", "-1")
+                assert panel.property("inputError")
+                assert not visible_item("saveSettingsButton").property("enabled")
+                shot("window-invalid")
+                edit("maximumDurationField", "120")
+                assert not panel.property("inputError"), panel.property("inputError")
+                click(visible_item("saveSettingsButton"))
+                assert (
+                    repositories.config.load().recording_controls.max_duration_seconds
+                    == 120
+                )
+                panel.close()
+                settle()
+                assert not panel.isVisible()
+                assert bridge.surface != "settings"
+                assert not [
+                    m
+                    for m in messages
+                    if any(
+                        word in m
+                        for word in (
+                            "Error:",
+                            "Binding loop",
+                            "Unable to assign",
+                            "is not defined",
+                            "Cannot assign",
+                        )
+                    )
+                ], messages
+                controller.shutdown()
+                print(
+                    "PASS: native settings window, sizes, unsaved close, numeric validation and persistence"
+                )
+                return
             initial_config = controller._config
             for index in (1, 2, 3, 4, 0):
                 click(visible_item(f"settingsSection{index}"))
@@ -457,8 +555,8 @@ def main():
             assert picker is not None and picker.property("count") == 3
             click(picker)
             shot("model-picker-open")
-            QTest.keyClick(window, Qt.Key.Key_Home)
-            QTest.keyClick(window, Qt.Key.Key_Return)
+            QTest.keyClick(input_window(), Qt.Key.Key_Home)
+            QTest.keyClick(input_window(), Qt.Key.Key_Return)
             settle()
             assert controller.routeModelId == "gpt-4o-mini-transcribe", (
                 controller.routeModelId
@@ -474,7 +572,7 @@ def main():
             search.setProperty("text", "audio-7")
             settle()
             assert picker.property("count") == 1
-            QTest.keyClick(window, Qt.Key.Key_Return)
+            QTest.keyClick(input_window(), Qt.Key.Key_Return)
             settle()
             assert controller.routeModelId == "fixture-audio-7"
             assert not picker.property("popupVisible")
@@ -482,9 +580,9 @@ def main():
             search.setProperty("text", "does-not-exist")
             settle()
             assert picker.property("count") == 0
-            QTest.keyClick(window, Qt.Key.Key_Return)
+            QTest.keyClick(input_window(), Qt.Key.Key_Return)
             assert controller.routeModelId == "fixture-audio-7"
-            QTest.keyClick(window, Qt.Key.Key_Escape)
+            QTest.keyClick(input_window(), Qt.Key.Key_Escape)
             settle()
             assert not picker.property("popupVisible")
             assert bridge.surface == "settings"
@@ -509,12 +607,12 @@ def main():
             settle()
             click(visible_item("settingsLanguageBox"))
             type_text("Portuguese")
-            QTest.keyClick(window, Qt.Key.Key_Return)
+            QTest.keyClick(input_window(), Qt.Key.Key_Return)
             settle()
             assert controller.language == "pt"
             click(visible_item("settingsLanguageBox"))
             shot("language-picker")
-            QTest.keyClick(window, Qt.Key.Key_Escape)
+            QTest.keyClick(input_window(), Qt.Key.Key_Escape)
             settle()
             assert bridge.surface == "settings"
             assert not visible_item("settingsLanguageBox").property("popupVisible")
@@ -553,7 +651,7 @@ def main():
             shot("shortcuts")
             # Escape must dismiss a non-searchable selector without closing settings.
             click(visible_item("hotkeyActivationBox"))
-            QTest.keyClick(window, Qt.Key.Key_Escape)
+            QTest.keyClick(input_window(), Qt.Key.Key_Escape)
             settle()
             assert bridge.surface == "settings"
             assert not visible_item("hotkeyActivationBox").property("popupVisible")
@@ -565,7 +663,7 @@ def main():
             click(visible_item("microphoneBoxRefresh"))
             settle()
             type_text("USB")
-            QTest.keyClick(window, Qt.Key.Key_Return)
+            QTest.keyClick(input_window(), Qt.Key.Key_Return)
             settle()
             assert controller.selectedMicrophoneId == "fixture-usb"
             click(visible_item("microphoneTestButton"))
@@ -597,14 +695,20 @@ def main():
             settle()
             assert preview.closed and not controller.microphoneTestBusy
             click(visible_item("microphoneTestButton"))
-            window.hide()
+            panel = input_window()
+            panel.hide()
             settle()
             assert preview.closed and not controller.microphoneTestBusy
-            window.show()
+            panel.show()
+            panel.requestActivate()
             settle()
             click(visible_item("advancedRecordingGroupToggle"))
             edit("maximumDurationField", "120")
-            assert controller.recordingControls["max_duration_seconds"] == 120
+            assert controller.recordingControls["max_duration_seconds"] == 120, (
+                controller.recordingControls,
+                visible_item("maximumDurationField").property("text"),
+                controller.lastError,
+            )
             previous_vad = controller.recordingControls["vad"]["enabled"]
             click(visible_item("vadEnabledBox"))
             assert controller.recordingControls["vad"]["enabled"] is not previous_vad

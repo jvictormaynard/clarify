@@ -87,10 +87,27 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             env=dict(os.environ, QT_QPA_PLATFORM="offscreen"),
             capture_output=True,
             text=True,
-            timeout=90,
+            timeout=150,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("PASS: full QML settings render", result.stdout)
+
+    @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is required")
+    def test_settings_window_close_validation_and_persistence(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "tests/qml_model_settings_smoke.py"),
+                "--window-only",
+            ],
+            cwd=ROOT,
+            env=dict(os.environ, QT_QPA_PLATFORM="offscreen"),
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS: native settings window", result.stdout)
 
     def test_qml_entrypoint_and_assets_are_present(self):
         entrypoint = SPIKE / "qml_app.py"
@@ -133,6 +150,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("readonly property real uiScale: 1.1", theme_source)
 
         main_source = (QML_ROOT / "Main.qml").read_text(encoding="utf-8")
+        main_source += (QML_ROOT / "SettingsWindow.qml").read_text(encoding="utf-8")
         self.assertIn('objectName: "clarifyMainWindow"', main_source)
         self.assertIn('objectName: "appPages"', main_source)
         self.assertNotIn("PilotButton", main_source)
@@ -599,6 +617,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         )
 
         main_source = (QML_ROOT / "Main.qml").read_text(encoding="utf-8")
+        main_source += (QML_ROOT / "SettingsWindow.qml").read_text(encoding="utf-8")
         self.assertIn(
             'property bool promptMode: workflow.mode === "prompt"', main_source
         )
@@ -1038,6 +1057,26 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
         self.app.exec()
 
         self.assertEqual(events[-2:], ["shell", "runtime"])
+
+    def test_settings_uses_its_own_window_and_restores_toolbar_without_focus(self):
+        from workflows import WorkflowState
+
+        service = SimpleNamespace(state=WorkflowState(), subscribe=lambda fn: None)
+        bridge = QmlWorkflowBridge(service)
+        shell = SimpleNamespace(
+            hide_window=Mock(),
+            show_window=Mock(),
+            show_window_without_activation=Mock(),
+        )
+        coordinator = _WorkflowWindowVisibility(
+            bridge, shell, SimpleNamespace(isVisible=lambda: True)
+        )
+        bridge.openSettings()
+        shell.hide_window.assert_called_once()
+        shell.show_window.assert_not_called()
+        bridge.closeSettings()
+        shell.show_window_without_activation.assert_called_once()
+        self.assertIsNotNone(coordinator)
 
     def test_terminal_feedback_does_not_activate_main_window(self):
         from workflows import WorkflowState, WorkflowPhase

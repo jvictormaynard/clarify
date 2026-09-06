@@ -3,6 +3,9 @@ import QtQuick.Controls 6.5
 
 TextField {
     id: field
+    property string focusText: ""
+    readonly property bool pendingEdit: activeFocus && text !== focusText
+    onActiveFocusChanged: if (activeFocus) focusText = text
     required property Theme visualTheme
     implicitHeight: visualTheme.fieldHeight
     leftPadding: 11

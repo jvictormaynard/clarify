@@ -21,7 +21,7 @@ Pane {
             visible: group.title !== "" && !group.collapsible
             text: group.title
             color: group.visualTheme.secondaryText
-            font.pixelSize: 12
+            font.pixelSize: group.visualTheme.fieldFontSize + 5
             font.weight: Font.DemiBold
         }
         AppButton {
@@ -41,7 +41,7 @@ Pane {
             contentItem: Label {
                 text: group.title
                 color: group.visualTheme.secondaryText
-                font.pixelSize: 11
+                font.pixelSize: group.visualTheme.fieldFontSize
                 verticalAlignment: Text.AlignVCenter
             }
             DropdownIndicator {
@@ -56,7 +56,7 @@ Pane {
             visible: group.description !== "" && group.expanded
             text: group.description
             color: group.visualTheme.subtleText
-            font.pixelSize: 11
+            font.pixelSize: group.visualTheme.fieldFontSize
             wrapMode: Text.WordWrap
         }
         ColumnLayout {
