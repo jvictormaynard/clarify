@@ -7,13 +7,14 @@ Window {
     objectName: "workflowStatusPill"
     readonly property real dpiCompensation: 1.0 / Math.max(1.0,
                                                            Screen.devicePixelRatio)
-    readonly property int designWidth: 156
+    readonly property int designWidth: 168
     readonly property bool refinementWarning: workflow.refinementFailed === true
     readonly property int designHeight: 50
     readonly property bool feedback: workflow.feedbackVisible
     property string feedbackCaption: ""
+    readonly property int horizontalInset: 6
     readonly property real feedbackWidth: Math.min(620, Math.max(230,
-        feedbackLabel.implicitWidth + feedbackActions.width + 66))
+        feedbackLabel.implicitWidth + feedbackActions.width + 66)) + 2 * horizontalInset
     property real animatedWidth: feedback ? feedbackWidth : designWidth
     Behavior on animatedWidth {
         NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
@@ -117,232 +118,238 @@ Window {
             border.width: 1
             Accessible.name: workflow.status
 
-            Image {
-                id: targetIcon
-                x: 8
-                anchors.verticalCenter: parent.verticalCenter
-                width: 26
-                height: 26
-                source: pillStatus.targetIcon
-                sourceSize.width: 64
-                sourceSize.height: 64
-                fillMode: Image.PreserveAspectFit
-                smooth: true
-                mipmap: true
-                Accessible.name: "Target application"
-            }
-
             Item {
-                id: waveform
-                x: 42
-                y: 0
-                width: 104
+                x: pill.horizontalInset
+                width: parent.width - 2 * pill.horizontalInset
                 height: parent.height
-                property bool fadeShown: pill.recording
-                visible: fadeShown || opacity > 0.001
-                opacity: fadeShown ? 1.0 : 0.0
-                Behavior on opacity {
-                    NumberAnimation {
-                        duration: theme.fadeDuration
-                        easing.type: Easing.OutCubic
+
+                Image {
+                    id: targetIcon
+                    x: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 26
+                    height: 26
+                    source: pillStatus.targetIcon
+                    sourceSize.width: 64
+                    sourceSize.height: 64
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+                    Accessible.name: "Target application"
+                }
+
+                Item {
+                    id: waveform
+                    x: 42
+                    y: 0
+                    width: 104
+                    height: parent.height
+                    property bool fadeShown: pill.recording
+                    visible: fadeShown || opacity > 0.001
+                    opacity: fadeShown ? 1.0 : 0.0
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: theme.fadeDuration
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    Repeater {
+                        model: 12
+
+                        Rectangle {
+                            required property int index
+                            readonly property real position: index / 11
+                            readonly property real envelope: 0.58
+                                                             + 0.42 * Math.sin(position * Math.PI)
+                            readonly property real motion: 0.12
+                                                           * Math.sin(pill.motionPhase + index * 0.82)
+                            readonly property real amplitude: Math.max(
+                                0.22,
+                                Math.min(
+                                    0.98,
+                                    (pillStatus.audioLevel * 1.45 + 0.24 + motion)
+                                    * envelope
+                                )
+                            )
+                            x: index * (waveform.width / 12)
+                               + (waveform.width / 12 - width) / 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 3
+                            height: Math.max(6.4, (waveform.height - 16) * amplitude)
+                            radius: width / 2
+                            color: theme.text
+
+                            Behavior on height {
+                                NumberAnimation { duration: 45; easing.type: Easing.OutCubic }
+                            }
+                        }
                     }
                 }
 
-                Repeater {
-                    model: 12
+                Item {
+                    id: progress
+                    x: 50
+                    width: 90
+                    height: parent.height
+                    property bool fadeShown: pill.processing
+                    visible: fadeShown || opacity > 0.001
+                    opacity: fadeShown ? 1.0 : 0.0
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: theme.fadeDuration
+                            easing.type: Easing.OutCubic
+                        }
+                    }
 
                     Rectangle {
-                        required property int index
-                        readonly property real position: index / 11
-                        readonly property real envelope: 0.58
-                                                         + 0.42 * Math.sin(position * Math.PI)
-                        readonly property real motion: 0.12
-                                                       * Math.sin(pill.motionPhase + index * 0.82)
-                        readonly property real amplitude: Math.max(
-                            0.22,
-                            Math.min(
-                                0.98,
-                                (pillStatus.audioLevel * 1.45 + 0.24 + motion)
-                                * envelope
-                            )
-                        )
-                        x: index * (waveform.width / 12)
-                           + (waveform.width / 12 - width) / 2
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 3
-                        height: Math.max(6.4, (waveform.height - 16) * amplitude)
-                        radius: width / 2
-                        color: theme.text
+                        width: parent.width
+                        height: 2
+                        radius: 1
+                        color: theme.border
+                    }
 
-                        Behavior on height {
-                            NumberAnimation { duration: 45; easing.type: Easing.OutCubic }
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width * 0.32
+                        height: 2
+                        radius: 1
+                        color: theme.text
+                        x: (parent.width - width)
+                           * (Math.sin(pill.motionPhase * 0.62 - Math.PI / 2) + 1) / 2
+                    }
+                }
+
+                Label {
+                    anchors.centerIn: progress
+                    property bool fadeShown: workflow.surface === "success"
+                                             && pill.successVisible
+                    visible: fadeShown || opacity > 0.001
+                    opacity: fadeShown ? 1.0 : 0.0
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: theme.fadeDuration
+                            easing.type: Easing.OutCubic
                         }
                     }
-                }
-            }
-
-            Item {
-                id: progress
-                x: 50
-                width: 90
-                height: parent.height
-                property bool fadeShown: pill.processing
-                visible: fadeShown || opacity > 0.001
-                opacity: fadeShown ? 1.0 : 0.0
-                Behavior on opacity {
-                    NumberAnimation {
-                        duration: theme.fadeDuration
-                        easing.type: Easing.OutCubic
-                    }
+                    text: "✓"
+                    color: "#30d158"
+                    font.pixelSize: 25
+                    font.weight: Font.DemiBold
+                    Accessible.name: "Completed"
                 }
 
-                Rectangle {
+                Label {
+                    id: feedbackLabel
+                    objectName: "pillFeedbackLabel"
+                    x: 47 + (1 - opacity) * 6
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width
-                    height: 2
-                    radius: 1
-                    color: theme.border
-                }
-
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width * 0.32
-                    height: 2
-                    radius: 1
+                    width: parent.width - 47 - feedbackActions.width - 17
+                    text: pill.feedbackCaption
+                    font.pixelSize: 16
                     color: theme.text
-                    x: (parent.width - width)
-                       * (Math.sin(pill.motionPhase * 0.62 - Math.PI / 2) + 1) / 2
+                    elide: Text.ElideRight
+                    opacity: pill.feedback ? 1 : 0
+                    visible: opacity > 0.001
+                    Behavior on opacity {
+                        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                    }
+                    Accessible.name: workflow.status
                 }
-            }
 
-            Label {
-                anchors.centerIn: progress
-                property bool fadeShown: workflow.surface === "success"
-                                         && pill.successVisible
-                visible: fadeShown || opacity > 0.001
-                opacity: fadeShown ? 1.0 : 0.0
-                Behavior on opacity {
-                    NumberAnimation {
-                        duration: theme.fadeDuration
-                        easing.type: Easing.OutCubic
+                Row {
+                    id: feedbackActions
+                    anchors.right: parent.right
+                    anchors.rightMargin: 7
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+                    opacity: pill.feedback ? 1 : 0
+                    visible: opacity > 0.001
+                    enabled: pill.feedback
+                    Behavior on opacity {
+                        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
                     }
-                }
-                text: "✓"
-                color: "#30d158"
-                font.pixelSize: 25
-                font.weight: Font.DemiBold
-                Accessible.name: "Completed"
-            }
-
-            Label {
-                id: feedbackLabel
-                objectName: "pillFeedbackLabel"
-                x: 47 + (1 - opacity) * 6
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 47 - feedbackActions.width - 17
-                text: pill.feedbackCaption
-                font.pixelSize: 16
-                color: theme.text
-                elide: Text.ElideRight
-                opacity: pill.feedback ? 1 : 0
-                visible: opacity > 0.001
-                Behavior on opacity {
-                    NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-                }
-                Accessible.name: workflow.status
-            }
-
-            Row {
-                id: feedbackActions
-                anchors.right: parent.right
-                anchors.rightMargin: 7
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
-                opacity: pill.feedback ? 1 : 0
-                visible: opacity > 0.001
-                enabled: pill.feedback
-                Behavior on opacity {
-                    NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-                }
-                ToolButton {
-                    id: undoButton
-                    objectName: "undoCancellationButton"
-                    visible: workflow.cancellationVisible
-                    enabled: workflow.canUndoCancellation
-                    width: Math.max(64, contentItem.implicitWidth + 24)
-                    height: 32
-                    padding: 0
-                    text: workflow.language === "pt" ? "Desfazer" : "Undo"
-                    focusPolicy: Qt.NoFocus
-                    contentItem: Label {
-                        text: undoButton.text
-                        color: undoButton.enabled ? theme.text : theme.subtleText
-                        font.pixelSize: 16
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 8
-                        color: undoButton.hovered ? "#30ffffff" : "#18ffffff"
-                    }
-                    Accessible.name: text
-                    onClicked: workflow.undoCancellation()
-                }
-                ToolButton {
-                    objectName: "retryTranscriptionButton"
-                    visible: workflow.canRetryTranscription
-                    width: 32
-                    height: 32
-                    padding: 0
-                    text: "↻"
-                    focusPolicy: Qt.NoFocus
-                    contentItem: Label {
-                        text: parent.text
-                        color: theme.text
-                        font.pixelSize: 19
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: height / 2
-                        color: parent.hovered ? "#20ffffff" : "transparent"
-                    }
-                    Accessible.name: "Retry transcription with the same audio"
-                    Accessible.description: workflow.language === "pt"
-                        ? "Reenviar o mesmo áudio. Pode gerar outra cobrança."
-                        : "Resend the same audio. May incur another charge."
-                    onClicked: workflow.retryTranscription()
-                }
-                ToolButton {
-                    objectName: "dismissFeedbackButton"
-                    visible: !workflow.cancellationVisible
-                    width: 32
-                    height: 32
-                    padding: 0
-                    text: "×"
-                    focusPolicy: Qt.NoFocus
-                    contentItem: Item {
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: 10; height: 1.5; radius: 0.75
-                            color: theme.subtleText
-                            rotation: 45
-                            antialiasing: true
+                    ToolButton {
+                        id: undoButton
+                        objectName: "undoCancellationButton"
+                        visible: workflow.cancellationVisible
+                        enabled: workflow.canUndoCancellation
+                        width: Math.max(64, contentItem.implicitWidth + 24)
+                        height: 32
+                        padding: 0
+                        text: workflow.language === "pt" ? "Desfazer" : "Undo"
+                        focusPolicy: Qt.NoFocus
+                        contentItem: Label {
+                            text: undoButton.text
+                            color: undoButton.enabled ? theme.text : theme.subtleText
+                            font.pixelSize: 16
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
                         }
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: 10; height: 1.5; radius: 0.75
-                            color: theme.subtleText
-                            rotation: -45
-                            antialiasing: true
+                        background: Rectangle {
+                            radius: 8
+                            color: undoButton.hovered ? "#30ffffff" : "#18ffffff"
                         }
+                        Accessible.name: text
+                        onClicked: workflow.undoCancellation()
                     }
-                    background: Rectangle {
-                        radius: height / 2
-                        color: parent.hovered ? "#20ffffff" : "transparent"
+                    ToolButton {
+                        objectName: "retryTranscriptionButton"
+                        visible: workflow.canRetryTranscription
+                        width: 32
+                        height: 32
+                        padding: 0
+                        text: "↻"
+                        focusPolicy: Qt.NoFocus
+                        contentItem: Label {
+                            text: parent.text
+                            color: theme.text
+                            font.pixelSize: 19
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            radius: height / 2
+                            color: parent.hovered ? "#20ffffff" : "transparent"
+                        }
+                        Accessible.name: "Retry transcription with the same audio"
+                        Accessible.description: workflow.language === "pt"
+                            ? "Reenviar o mesmo áudio. Pode gerar outra cobrança."
+                            : "Resend the same audio. May incur another charge."
+                        onClicked: workflow.retryTranscription()
                     }
-                    Accessible.name: workflow.language === "pt" ? "Fechar aviso" : "Close feedback"
-                    onClicked: workflow.reset()
+                    ToolButton {
+                        objectName: "dismissFeedbackButton"
+                        visible: !workflow.cancellationVisible
+                        width: 32
+                        height: 32
+                        padding: 0
+                        text: "×"
+                        focusPolicy: Qt.NoFocus
+                        contentItem: Item {
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 10; height: 1.5; radius: 0.75
+                                color: theme.subtleText
+                                rotation: 45
+                                antialiasing: true
+                            }
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 10; height: 1.5; radius: 0.75
+                                color: theme.subtleText
+                                rotation: -45
+                                antialiasing: true
+                            }
+                        }
+                        background: Rectangle {
+                            radius: height / 2
+                            color: parent.hovered ? "#20ffffff" : "transparent"
+                        }
+                        Accessible.name: workflow.language === "pt" ? "Fechar aviso" : "Close feedback"
+                        onClicked: workflow.reset()
+                    }
                 }
             }
         }

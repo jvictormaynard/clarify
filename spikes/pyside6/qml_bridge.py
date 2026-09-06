@@ -570,8 +570,7 @@ class QmlWorkflowBridge(QObject):
 
     @staticmethod
     def _normalize_mode(mode: Any) -> str:
-        normalized = str(mode or "").strip().lower()
-        return normalized if normalized in {"prompt", "transcription"} else "prompt"
+        return "prompt"
 
     @staticmethod
     def _normalize_language(language: Any) -> str:
@@ -580,8 +579,8 @@ class QmlWorkflowBridge(QObject):
 
     @Slot(str)
     def setMode(self, mode: str) -> None:
-        normalized = str(mode or "").strip().lower()
-        if normalized in {"prompt", "transcription"} and normalized != self._mode:
+        normalized = self._normalize_mode(mode)
+        if normalized != self._mode:
             self._mode = normalized
             self.modeChanged.emit()
 

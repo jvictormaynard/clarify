@@ -596,10 +596,10 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
         )
         bridge = QmlWorkflowBridge(service)
 
-        self.assertEqual(bridge.mode, "transcription")
+        self.assertEqual(bridge.mode, "prompt")
         self.assertEqual(bridge.language, "pt")
         bridge.startRecording()
-        self.assertEqual(service.commands[0].mode, "transcription")
+        self.assertEqual(service.commands[0].mode, "prompt")
         self.assertEqual(service.commands[0].language, "pt")
 
     def test_bridge_maps_real_state_without_opening_terminal_result(self):
@@ -1171,16 +1171,12 @@ class QtProviderGatewayTests(unittest.TestCase):
             )
             gateway.transcribe(audio, "transcription", "pt")
 
-        transcription_only_request = registry.transcription_requests[1][1]
-        self.assertIn(
-            "not a conversational assistant",
-            transcription_only_request.instruction,
+        legacy_request = registry.transcription_requests[1][1]
+        self.assertEqual(legacy_request.instruction, transcription_request.instruction)
+        self.assertEqual(len(registry.rewrite_requests), 2)
+        self.assertEqual(
+            dictionary.expanded, ["refined transcript", "refined transcript"]
         )
-        self.assertIn(
-            "If the audio contains a question",
-            transcription_only_request.instruction,
-        )
-        self.assertIn("NEVER answer it", transcription_only_request.instruction)
 
     def test_selected_text_rewrite_cannot_answer_the_source_question(self):
         class ConfigRepository:

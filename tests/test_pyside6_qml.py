@@ -144,7 +144,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         theme_source = (QML_ROOT / "Theme.qml").read_text(encoding="utf-8")
         for value in ("#0a0a0a", "#050505", "#1c1c1c", "#ffffff", "#666666"):
             self.assertIn(value, theme_source)
-        self.assertIn("readonly property int windowWidth: 236", theme_source)
+        self.assertIn("readonly property int windowWidth: 148", theme_source)
         self.assertIn("readonly property int windowHeight: 48", theme_source)
         self.assertIn("readonly property int fadeDuration: 180", theme_source)
         self.assertIn("readonly property real uiScale: 1.1", theme_source)
@@ -172,12 +172,12 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn('text: "☰"', main_source)
         self.assertNotIn('text: "—"', main_source)
         rounded_flag_source = (QML_ROOT / "RoundedFlag.qml").read_text(encoding="utf-8")
-        self.assertIn("property url source", rounded_flag_source)
-        self.assertIn("ctx.clip()", rounded_flag_source)
-        self.assertIn("ctx.quadraticCurveTo", rounded_flag_source)
+        self.assertIn("property alias source", rounded_flag_source)
+        self.assertNotIn("Canvas", rounded_flag_source)
+        self.assertIn("Image {", rounded_flag_source)
         self.assertIn("implicitWidth: 24", rounded_flag_source)
         self.assertIn("implicitHeight: 18", rounded_flag_source)
-        self.assertIn("onImageLoaded: requestPaint()", rounded_flag_source)
+        self.assertIn("Screen.devicePixelRatio", rounded_flag_source)
         self.assertNotIn("border.width", rounded_flag_source)
         self.assertEqual(main_source.count("RoundedFlag {"), 1)
         select_source = (QML_ROOT / "SearchSelect.qml").read_text(encoding="utf-8")
@@ -217,12 +217,12 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             "property string languageCode: workflow.language.toUpperCase()",
             main_source,
         )
-        self.assertIn(
+        self.assertNotIn(
             'property bool promptMode: workflow.mode === "prompt"', main_source
         )
         self.assertNotIn("languageCode = languageCode ===", main_source)
         self.assertNotIn("homePage.promptMode = !homePage.promptMode", main_source)
-        self.assertIn('Accessible.name: "Mode: "', main_source)
+        self.assertNotIn('Accessible.name: "Mode: "', main_source)
         self.assertIn("root.startSystemMove()", main_source)
         self.assertGreaterEqual(main_source.count("DragHandler"), 2)
         self.assertIn('objectName: "microphoneButton"', main_source)
@@ -243,7 +243,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("pillStatus.targetIcon", status_pill_source)
         self.assertIn("Screen.devicePixelRatio", status_pill_source)
         self.assertIn("scale: pill.dpiCompensation", status_pill_source)
-        self.assertIn("readonly property int designWidth: 156", status_pill_source)
+        self.assertIn("readonly property int designWidth: 168", status_pill_source)
         self.assertIn("readonly property int designHeight: 50", status_pill_source)
         self.assertNotIn("ToolTip.", status_pill_source)
         self.assertNotIn(
@@ -281,7 +281,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("Dismiss workflow error", main_source)
         self.assertIn("workflow.reset()", main_source)
         self.assertIn("workflow.setLanguage", main_source)
-        self.assertIn("workflow.setMode", main_source)
+        self.assertNotIn("workflow.setMode", main_source)
         self.assertIn("workflow.copyResult()", main_source)
         self.assertIn("modelData.text", main_source)
         self.assertIn("SettingsArea", main_source)
@@ -308,7 +308,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("readonly property var sectionItems", main_source)
         self.assertIn('iconSource: "icons/" + modelData.icon', main_source)
         self.assertNotIn("iconText", main_source)
-        self.assertEqual(main_source.count("SearchSelect {"), 9)
+        self.assertEqual(main_source.count("SearchSelect {"), 8)
         self.assertNotIn("ComboBox {", main_source)
         self.assertNotIn("TextField {", main_source)
         self.assertNotIn("CheckBox {", main_source)
@@ -414,7 +414,6 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         recording_title_index = recording_section.index(recording_title)
         self.assertNotIn("height: 1", recording_section[:recording_title_index])
         for binding in (
-            "settings.mode",
             "settings.language",
             "settings.autostart",
             "settings.historyEnabled",
@@ -618,7 +617,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
 
         main_source = (QML_ROOT / "Main.qml").read_text(encoding="utf-8")
         main_source += (QML_ROOT / "SettingsWindow.qml").read_text(encoding="utf-8")
-        self.assertIn(
+        self.assertNotIn(
             'property bool promptMode: workflow.mode === "prompt"', main_source
         )
         self.assertIn(
@@ -1253,14 +1252,14 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
         bridge.startRecording()
 
         self.assertIsInstance(service.commands[-1], StartDictation)
-        self.assertEqual(service.commands[-1].mode, "transcription")
+        self.assertEqual(service.commands[-1].mode, "prompt")
         self.assertEqual(service.commands[-1].language, "pt")
 
         bridge.setMode("prompt")
         bridge.setLanguage("de")
         self.assertEqual(settings.mode, "prompt")
         self.assertEqual(settings.language, "de")
-        self.assertEqual(len(config_repository.applied), 2)
+        self.assertEqual(len(config_repository.applied), 1)
         reloaded = QmlSettingsController(Repositories(config_repository))
         self.assertEqual(reloaded.mode, "prompt")
         self.assertEqual(reloaded.language, "de")
@@ -1273,15 +1272,15 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
 
         settings.setMode("transcription")
         settings.setLanguage("pt")
-        self.assertEqual(bridge.mode, "transcription")
+        self.assertEqual(bridge.mode, "prompt")
         self.assertEqual(bridge.language, "pt")
         self.assertTrue(settings.dirty)
-        self.assertEqual(len(config_repository.applied), 2)
+        self.assertEqual(len(config_repository.applied), 1)
 
         self.assertTrue(settings.save())
-        self.assertEqual(len(config_repository.applied), 3)
+        self.assertEqual(len(config_repository.applied), 2)
         persisted = config_repository.load()
-        self.assertEqual(persisted.ui.mode, "transcription")
+        self.assertEqual(persisted.ui.mode, "prompt")
         self.assertEqual(persisted.ui.language, "pt")
 
     def test_translation_picker_reveals_a_window_hidden_by_the_tray(self):

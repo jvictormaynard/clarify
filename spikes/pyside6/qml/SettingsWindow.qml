@@ -374,25 +374,6 @@ ApplicationWindow {
                         rowSpacing: 14
 
                         Label {
-                            Layout.preferredWidth: 164
-                            text: "Default mode"
-                            color: theme.dim
-                            font.pixelSize: 13
-                        }
-
-                        SearchSelect {
-                            id: settingsModeBox
-                            objectName: "settingsModeBox"
-                            visualTheme: theme
-                            Layout.fillWidth: true
-                            caption: "Mode"
-                            searchable: false
-                            options: settings.modes.map(function(id) { return {id: id, label: id === "prompt" ? "Prompt" : "Transcription"} })
-                            value: settings.mode
-                            onActivated: function(value) { settings.setMode(value) }
-                        }
-
-                        Label {
                             text: "Start with Windows"
                             color: theme.dim
                             font.pixelSize: 13

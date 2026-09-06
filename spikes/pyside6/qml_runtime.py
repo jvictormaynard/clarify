@@ -8,6 +8,7 @@ legacy frontend or any Tk/CustomTkinter module.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 import os
 import platform
 import shutil
@@ -31,9 +32,7 @@ except (ImportError, OSError):
 try:
     from audio_file_batch import (
         AudioFileBatchService,
-        DictionaryAwareAudioTranscriptionGateway,
         FileTranscriptionSelection,
-        RegistryAudioTranscriptionGateway,
         SoxAudioConverter,
     )
     from dictionary_snippets import (
@@ -83,9 +82,7 @@ try:
 except ImportError:  # PyInstaller analyzes this file as a standalone entry point.
     from ...audio_file_batch import (  # type: ignore[no-redef]
         AudioFileBatchService,
-        DictionaryAwareAudioTranscriptionGateway,
         FileTranscriptionSelection,
-        RegistryAudioTranscriptionGateway,
         SoxAudioConverter,
     )
     from ...dictionary_snippets import (  # type: ignore[no-redef]
@@ -426,6 +423,21 @@ class QtWorkflowConfig:
         }
 
 
+class QtAudioFileGateway:
+    """Use the dictation refinement pipeline for imported audio as well."""
+
+    def __init__(self, provider):
+        self.provider = provider
+
+    def transcribe(self, request, selection, cancel_token):
+        return self.provider.transcribe(
+            RecordingSnapshot(request.audio_path, request.audio_bytes, cancel_token),
+            "prompt",
+            selection.language,
+            selection=selection,
+        )
+
+
 class QtProviderGateway:
     """Provider registry facade with no desktop toolkit dependency."""
 
@@ -502,8 +514,17 @@ class QtProviderGateway:
         audio_source: RecordingSnapshot,
         mode: str,
         language: str,
+        *,
+        selection: FileTranscriptionSelection | None = None,
     ) -> TranscriptionResult:
         route = self._route(WorkflowScope.TRANSCRIPTION)
+        if selection is not None:
+            route = replace(
+                route,
+                provider_id=selection.normalized_provider,
+                model_id=selection.model,
+                prompt=selection.prompt,
+            )
         provider = route.provider_id
         metadata = PROVIDER_REGISTRY.describe(provider)
         language = str(language or "auto").strip().lower()
@@ -511,7 +532,7 @@ class QtProviderGateway:
         provider_language = (
             "" if language in {"", "auto"} else language.split("-", 1)[0]
         )
-        mode = str(mode or "prompt").strip().lower()
+        mode = "prompt"
         instruction = (
             TRANSCRIPTION_INSTRUCTION if mode == "transcription" else PROMPT_INSTRUCTION
         ).format(lang=language_label)
@@ -539,7 +560,9 @@ class QtProviderGateway:
                 result = PROVIDER_REGISTRY.transcribe(
                     provider,
                     request,
-                    self._connection(route),
+                    selection.connection
+                    if selection is not None
+                    else self._connection(route),
                     audio_source.cancel_token,
                 )
         except (NetworkError, ProviderTimeoutError) as error:
@@ -1767,7 +1790,7 @@ class QtWorkflowRuntime:
         provider_id: str = "",
         model: str = "",
         language: str = "",
-        mode: str = "transcription",
+        mode: str = "prompt",
     ) -> FileTranscriptionSelection:
         """Build the current persisted transcription route for file imports."""
 
@@ -1784,9 +1807,7 @@ class QtWorkflowRuntime:
             .strip()
             .lower()
         )
-        selected_mode = str(mode or "transcription").strip().lower()
-        if selected_mode not in {"prompt", "transcription"}:
-            selected_mode = "transcription"
+        selected_mode = "prompt"
         metadata = self.provider_registry.describe(selected_provider)
         provider_config = getattr(current, selected_provider)
         connection = ProviderConnection(
@@ -1861,17 +1882,15 @@ def create_real_workflow_runtime(
     )
     recording_audio = QtRecordingAudioGateway(QtRecorder(config), config)
     clipboard = QtClipboardGateway()
-    audio_batch_gateway = DictionaryAwareAudioTranscriptionGateway(
-        RegistryAudioTranscriptionGateway(PROVIDER_REGISTRY),
-        dictionary_service,
-    )
+    provider = QtProviderGateway(config, dictionary_service)
+    audio_batch_gateway = QtAudioFileGateway(provider)
     audio_batch_service = AudioFileBatchService(
         audio_batch_gateway,
         SoxAudioConverter(),
     )
     history_recorder = QtHistoryRecorder(active, scheduler)
     service = WorkflowService(
-        QtProviderGateway(config, dictionary_service),
+        provider,
         recording_audio,
         clipboard,
         config,

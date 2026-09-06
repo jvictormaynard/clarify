@@ -27,7 +27,11 @@ from secret_store import (
     SecretStoreCorruptedError,
     SecretStoreUnavailableError,
 )
-from voice_translation import VoiceTranslationConfig, VoiceTranslationLanguages, VoiceTranslationRoute
+from voice_translation import (
+    VoiceTranslationConfig,
+    VoiceTranslationLanguages,
+    VoiceTranslationRoute,
+)
 
 
 _TEST_HOME = tempfile.TemporaryDirectory(prefix="clarify-repository-tests-")
@@ -37,8 +41,7 @@ os.environ["APPDATA"] = _TEST_HOME.name
 
 class DeleteUnavailableStore(MemorySecretStore):
     def delete(self, _provider):
-        raise SecretStoreUnavailableError(
-            "The credential store could not be updated")
+        raise SecretStoreUnavailableError("The credential store could not be updated")
 
 
 class DeleteReadbackStore(MemorySecretStore):
@@ -65,16 +68,18 @@ class ConfigurationRepositoryTests(unittest.TestCase):
             LoadAndSaveOnly()
 
     def test_voice_translation_preferences_survive_repository_round_trip(self):
-        config = AppConfig.from_mapping({
-            "voice_translation": VoiceTranslationConfig(
-                languages=VoiceTranslationLanguages("pt-BR", "de-DE"),
-                route=VoiceTranslationRoute(
-                    provider_id="groq",
-                    model_id="llama-3.3-70b-versatile",
-                    prompt="Translate literally.",
-                ),
-            ).to_mapping(),
-        })
+        config = AppConfig.from_mapping(
+            {
+                "voice_translation": VoiceTranslationConfig(
+                    languages=VoiceTranslationLanguages("pt-BR", "de-DE"),
+                    route=VoiceTranslationRoute(
+                        provider_id="groq",
+                        model_id="llama-3.3-70b-versatile",
+                        prompt="Translate literally.",
+                    ),
+                ).to_mapping(),
+            }
+        )
         with tempfile.TemporaryDirectory() as directory:
             repository = LocalConfigRepository(Path(directory) / "config.json")
             repository.save(config)
@@ -86,19 +91,21 @@ class ConfigurationRepositoryTests(unittest.TestCase):
         )
 
     def test_microphone_and_recording_controls_round_trip(self):
-        config = AppConfig.from_mapping({
-            "microphone": {"selected_id": "mic-v1-usb"},
-            "recording_controls": {
-                "max_duration_seconds": 120,
-                "warning_seconds": 15,
-                "vad": {
-                    "enabled": True,
-                    "level_threshold": 0.12,
-                    "minimum_speech_seconds": 0.4,
-                    "silence_duration_seconds": 1.1,
+        config = AppConfig.from_mapping(
+            {
+                "microphone": {"selected_id": "mic-v1-usb"},
+                "recording_controls": {
+                    "max_duration_seconds": 120,
+                    "warning_seconds": 15,
+                    "vad": {
+                        "enabled": True,
+                        "level_threshold": 0.12,
+                        "minimum_speech_seconds": 0.4,
+                        "silence_duration_seconds": 1.1,
+                    },
                 },
-            },
-        })
+            }
+        )
 
         self.assertEqual(config.microphone, MicrophoneSettings("mic-v1-usb"))
         self.assertEqual(
@@ -118,17 +125,18 @@ class ConfigurationRepositoryTests(unittest.TestCase):
         )
 
     def test_invalid_microphone_controls_fall_back_to_safe_defaults(self):
-        config = AppConfig.from_mapping({
-            "microphone": {"schema_version": 99, "selected_id": "bad"},
-            "recording_controls": {
-                "max_duration_seconds": 1,
-                "warning_seconds": 2,
-            },
-        })
+        config = AppConfig.from_mapping(
+            {
+                "microphone": {"schema_version": 99, "selected_id": "bad"},
+                "recording_controls": {
+                    "max_duration_seconds": 1,
+                    "warning_seconds": 2,
+                },
+            }
+        )
 
         self.assertEqual(config.microphone, MicrophoneSettings.defaults())
-        self.assertEqual(
-            config.recording_controls, RecordingControls.defaults())
+        self.assertEqual(config.recording_controls, RecordingControls.defaults())
 
     def test_legacy_microphone_id_is_migrated_to_typed_mapping(self):
         config = AppConfig.from_mapping({"microphone_id": "mic-v1-legacy"})
@@ -145,11 +153,11 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                         encoding="utf-8",
                     )
                     repository = LocalConfigRepository(
-                        path, defaults=repositories.environment_defaults({}))
+                        path, defaults=repositories.environment_defaults({})
+                    )
 
                     loaded = repository.load()
-                    self.assertEqual(
-                        loaded.microphone.selected_id, "mic-v1-legacy")
+                    self.assertEqual(loaded.microphone.selected_id, "mic-v1-legacy")
 
                     repository.save({"ui_language": "pt"})
                     persisted = json.loads(path.read_text(encoding="utf-8"))
@@ -159,8 +167,7 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                     )
                     self.assertNotIn(legacy_key, persisted)
                     saved = repository.load()
-                    self.assertEqual(
-                        saved.microphone.selected_id, "mic-v1-legacy")
+                    self.assertEqual(saved.microphone.selected_id, "mic-v1-legacy")
 
     def test_local_repository_defaults_do_not_mask_legacy_recording_controls(self):
         legacy_recording = {
@@ -180,7 +187,8 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             repository = LocalConfigRepository(
-                path, defaults=repositories.environment_defaults({}))
+                path, defaults=repositories.environment_defaults({})
+            )
 
             loaded = repository.load()
             self.assertEqual(
@@ -192,7 +200,8 @@ class ConfigurationRepositoryTests(unittest.TestCase):
             persisted = json.loads(path.read_text(encoding="utf-8"))
             self.assertNotIn("recording", persisted)
             self.assertEqual(
-                persisted["recording_controls"]["max_duration_seconds"], 45.0)
+                persisted["recording_controls"]["max_duration_seconds"], 45.0
+            )
             self.assertEqual(
                 persisted["recording_controls"]["vad"]["silence_duration_seconds"],
                 1.2,
@@ -201,11 +210,13 @@ class ConfigurationRepositoryTests(unittest.TestCase):
             self.assertEqual(saved.recording_controls, loaded.recording_controls)
 
     def test_local_asr_selection_and_cloud_refinement_opt_in_round_trip(self):
-        config = AppConfig.from_mapping({
-            "transcription_provider": "local_asr",
-            "local_asr_model": "ggml-small",
-            "local_asr_cloud_refinement": True,
-        })
+        config = AppConfig.from_mapping(
+            {
+                "transcription_provider": "local_asr",
+                "local_asr_model": "ggml-small",
+                "local_asr_cloud_refinement": True,
+            }
+        )
 
         self.assertEqual(config.selection.transcription_provider, "local_asr")
         self.assertEqual(config.local_asr.audio_model, "ggml-small")
@@ -215,65 +226,95 @@ class ConfigurationRepositoryTests(unittest.TestCase):
         self.assertTrue(values["local_asr_cloud_refinement"])
 
     def test_missing_refinement_preserves_legacy_capability_defaults(self):
-        gemini = AppConfig.from_mapping({
-            "transcription_provider": "gemini",
-        })
-        groq = AppConfig.from_mapping({
-            "transcription_provider": "groq",
-        })
+        gemini = AppConfig.from_mapping(
+            {
+                "transcription_provider": "gemini",
+            }
+        )
+        groq = AppConfig.from_mapping(
+            {
+                "transcription_provider": "groq",
+            }
+        )
 
         self.assertEqual(gemini.selection.refinement_provider, "openai")
         self.assertEqual(groq.selection.refinement_provider, "groq")
 
     def test_local_asr_is_rejected_as_refinement_provider(self):
-        config = AppConfig.from_mapping({
-            "transcription_provider": "local_asr",
-            "refinement_provider": "local_asr",
-            "refinement_model": "ggml-small",
-        })
+        config = AppConfig.from_mapping(
+            {
+                "transcription_provider": "local_asr",
+                "refinement_provider": "local_asr",
+                "refinement_model": "ggml-small",
+            }
+        )
 
         self.assertEqual(config.selection.refinement_provider, "openai")
         self.assertEqual(config.selection.refinement_model, "gpt-4o-mini")
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({
-                "transcription_provider": "local_asr",
-                "refinement_provider": "local_asr",
-                "refinement_model": "ggml-small",
-            }), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "transcription_provider": "local_asr",
+                        "refinement_provider": "local_asr",
+                        "refinement_model": "ggml-small",
+                    }
+                ),
+                encoding="utf-8",
+            )
             loaded = LocalConfigRepository(path).load()
 
         self.assertEqual(loaded.selection.refinement_provider, "openai")
         self.assertEqual(loaded.selection.refinement_model, "gpt-4o-mini")
 
-    def test_asr_only_provider_uses_openai_refinement_fallback_on_mapping_and_load(self):
+    def test_asr_only_provider_uses_openai_refinement_fallback_on_mapping_and_load(
+        self,
+    ):
         registry = build_provider_registry()
-        registry.register(OpenAICompatibleAdapter(ProviderMetadata(
-            provider_id="asr-only",
-            display_name="ASR Only",
-            capabilities=frozenset({
-                ProviderCapability.AUDIO_TRANSCRIPTION,
-            }),
-            default_base_url="https://asr-only.example/v1",
-            audio_model_key="asr-only_audio_model",
-            text_model_key="asr-only_text_model",
-            default_audio_model="asr-only-v1",
-            default_text_model="",
-        ), object()))
+        registry.register(
+            OpenAICompatibleAdapter(
+                ProviderMetadata(
+                    provider_id="asr-only",
+                    display_name="ASR Only",
+                    capabilities=frozenset(
+                        {
+                            ProviderCapability.AUDIO_TRANSCRIPTION,
+                        }
+                    ),
+                    default_base_url="https://asr-only.example/v1",
+                    audio_model_key="asr-only_audio_model",
+                    text_model_key="asr-only_text_model",
+                    default_audio_model="asr-only-v1",
+                    default_text_model="",
+                ),
+                object(),
+            )
+        )
 
-        with patch.object(repositories, "PROVIDER_REGISTRY", registry), patch.object(
-                repositories, "SUPPORTED_PROVIDERS", registry.provider_ids):
-            mapped = AppConfig.from_mapping({
-                "transcription_provider": "asr-only",
-            })
+        with (
+            patch.object(repositories, "PROVIDER_REGISTRY", registry),
+            patch.object(repositories, "SUPPORTED_PROVIDERS", registry.provider_ids),
+        ):
+            mapped = AppConfig.from_mapping(
+                {
+                    "transcription_provider": "asr-only",
+                }
+            )
             with tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "config.json"
-                path.write_text(json.dumps({
-                    "transcription_provider": "asr-only",
-                }), encoding="utf-8")
+                path.write_text(
+                    json.dumps(
+                        {
+                            "transcription_provider": "asr-only",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
                 loaded = LocalConfigRepository(
-                    path, defaults={"refinement_provider": ""}).load()
+                    path, defaults={"refinement_provider": ""}
+                ).load()
 
         self.assertEqual(mapped.selection.transcription_provider, "asr-only")
         self.assertEqual(mapped.selection.refinement_provider, "openai")
@@ -293,8 +334,7 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                 "stored-test-credential",
             )
             self.assertEqual(
-                app._provider_key_candidate(
-                    "openai", "replacement-test-credential"),
+                app._provider_key_candidate("openai", "replacement-test-credential"),
                 "replacement-test-credential",
             )
         finally:
@@ -307,24 +347,26 @@ class ConfigurationRepositoryTests(unittest.TestCase):
             secrets = MemorySecretStore()
             repository = LocalConfigRepository(path, secret_store=secrets)
 
-            repository.save({
-                "openai_api_key": "test-openai-credential",
-                "ui_language": "pt",
-            })
+            repository.save(
+                {
+                    "openai_api_key": "test-openai-credential",
+                    "ui_language": "pt",
+                }
+            )
             payload = json.loads(path.read_text(encoding="utf-8"))
 
             self.assertNotIn("openai_api_key", payload)
-            self.assertEqual(
-                secrets.get("openai"), "test-openai-credential")
-            self.assertEqual(
-                repository.load().openai.api_key, "test-openai-credential")
+            self.assertEqual(secrets.get("openai"), "test-openai-credential")
+            self.assertEqual(repository.load().openai.api_key, "test-openai-credential")
 
     def test_submitted_environment_key_is_not_persisted_after_override_removal(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            secrets = MemorySecretStore({
-                "openai": "stored-test-credential",
-            })
+            secrets = MemorySecretStore(
+                {
+                    "openai": "stored-test-credential",
+                }
+            )
             repository = LocalConfigRepository(
                 path,
                 environment={"OPENAI_API_KEY": "environment-test-credential"},
@@ -334,14 +376,12 @@ class ConfigurationRepositoryTests(unittest.TestCase):
             loaded = repository.load()
             repository.save(loaded)
             restarted = LocalConfigRepository(
-                path, environment={}, secret_store=secrets).load()
+                path, environment={}, secret_store=secrets
+            ).load()
 
-            self.assertEqual(
-                loaded.openai.api_key, "environment-test-credential")
-            self.assertEqual(
-                secrets.get("openai"), "stored-test-credential")
-            self.assertEqual(
-                restarted.openai.api_key, "stored-test-credential")
+            self.assertEqual(loaded.openai.api_key, "environment-test-credential")
+            self.assertEqual(secrets.get("openai"), "stored-test-credential")
+            self.assertEqual(restarted.openai.api_key, "stored-test-credential")
             self.assertNotIn(
                 "openai_api_key",
                 json.loads(path.read_text(encoding="utf-8")),
@@ -350,12 +390,10 @@ class ConfigurationRepositoryTests(unittest.TestCase):
     def test_environment_override_does_not_erase_unmigrated_legacy_key(self):
         class UnavailableStore(MemorySecretStore):
             def get(self, _provider):
-                raise SecretStoreUnavailableError(
-                    "The credential store is unavailable")
+                raise SecretStoreUnavailableError("The credential store is unavailable")
 
             def set(self, _provider, _secret):
-                raise SecretStoreUnavailableError(
-                    "The credential store is unavailable")
+                raise SecretStoreUnavailableError("The credential store is unavailable")
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
@@ -375,8 +413,7 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                 repository.save(loaded)
 
             payload = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(
-                payload["openai_api_key"], "recoverable-test-credential")
+            self.assertEqual(payload["openai_api_key"], "recoverable-test-credential")
             self.assertEqual(payload["ui_language"], "de")
 
     def test_unexpected_backend_failure_is_sanitized_and_preserves_legacy(self):
@@ -389,22 +426,26 @@ class ConfigurationRepositoryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({
-                "openai_api_key": "recoverable-test-credential",
-            }), encoding="utf-8")
-            repository = LocalConfigRepository(
-                path, secret_store=ExplodingStore())
+            path.write_text(
+                json.dumps(
+                    {
+                        "openai_api_key": "recoverable-test-credential",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            repository = LocalConfigRepository(path, secret_store=ExplodingStore())
 
             loaded = repository.load()
-            self.assertEqual(
-                loaded.openai.api_key, "recoverable-test-credential")
+            self.assertEqual(loaded.openai.api_key, "recoverable-test-credential")
             with self.assertRaises(SecretStoreUnavailableError) as raised:
-                repository.save({
-                    "openai_api_key": "replacement-test-credential",
-                })
+                repository.save(
+                    {
+                        "openai_api_key": "replacement-test-credential",
+                    }
+                )
 
-            self.assertNotIn(
-                "must-not-escape", str(raised.exception))
+            self.assertNotIn("must-not-escape", str(raised.exception))
             self.assertEqual(
                 json.loads(path.read_text(encoding="utf-8"))["openai_api_key"],
                 "recoverable-test-credential",
@@ -413,9 +454,11 @@ class ConfigurationRepositoryTests(unittest.TestCase):
     def test_explicit_key_different_from_environment_persists_for_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            secrets = MemorySecretStore({
-                "openai": "stored-test-credential",
-            })
+            secrets = MemorySecretStore(
+                {
+                    "openai": "stored-test-credential",
+                }
+            )
             repository = LocalConfigRepository(
                 path,
                 environment={"OPENAI_API_KEY": "environment-test-credential"},
@@ -427,10 +470,10 @@ class ConfigurationRepositoryTests(unittest.TestCase):
             repository.save(submitted)
             while_environment_is_present = repository.load()
             after_environment_removal = LocalConfigRepository(
-                path, environment={}, secret_store=secrets).load()
+                path, environment={}, secret_store=secrets
+            ).load()
 
-            self.assertEqual(
-                secrets.get("openai"), "explicit-test-credential")
+            self.assertEqual(secrets.get("openai"), "explicit-test-credential")
             self.assertEqual(
                 while_environment_is_present.openai.api_key,
                 "environment-test-credential",
@@ -449,16 +492,20 @@ class ConfigurationRepositoryTests(unittest.TestCase):
         from repositories import ApplicationRepositories
 
         for store_type in (DeleteUnavailableStore, DeleteReadbackStore):
-            with self.subTest(store=store_type.__name__), \
-                    tempfile.TemporaryDirectory() as directory:
+            with (
+                self.subTest(store=store_type.__name__),
+                tempfile.TemporaryDirectory() as directory,
+            ):
                 path = Path(directory) / "config.json"
                 secrets = store_type({"openai": "stored-test-credential"})
                 repository = LocalConfigRepository(
-                    path, environment={}, secret_store=secrets)
+                    path, environment={}, secret_store=secrets
+                )
                 bundle = ApplicationRepositories(
                     config=repository,
                     usage_stats=LocalUsageStatsRepository(
-                        Path(directory) / "stats.json"),
+                        Path(directory) / "stats.json"
+                    ),
                 )
                 original = app.APP_CONFIG.copy()
                 try:
@@ -477,24 +524,37 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                     feedback = "Could not update credentials. Try again."
 
                     succeeded = app._deactivate_provider_for_ui(
-                        "openai", "https://api.openai.com/v1",
-                        provider_state, feedback, bundle)
+                        "openai",
+                        "https://api.openai.com/v1",
+                        provider_state,
+                        feedback,
+                        bundle,
+                    )
 
                     self.assertFalse(succeeded)
                     self.assertEqual(app.APP_CONFIG, before)
                     self.assertEqual(
-                        {key: value for key, value in provider_state.items()
-                         if key != "feedback"},
-                        {key: value for key, value in before_state.items()
-                         if key != "feedback"},
+                        {
+                            key: value
+                            for key, value in provider_state.items()
+                            if key != "feedback"
+                        },
+                        {
+                            key: value
+                            for key, value in before_state.items()
+                            if key != "feedback"
+                        },
                     )
                     self.assertEqual(provider_state["feedback"], feedback)
-                    self.assertEqual(
-                        secrets.get("openai"), "stored-test-credential")
+                    self.assertEqual(secrets.get("openai"), "stored-test-credential")
                     self.assertEqual(
                         LocalConfigRepository(
-                            path, environment={}, secret_store=secrets,
-                        ).load().openai.api_key,
+                            path,
+                            environment={},
+                            secret_store=secrets,
+                        )
+                        .load()
+                        .openai.api_key,
                         "stored-test-credential",
                     )
                 finally:
@@ -504,9 +564,11 @@ class ConfigurationRepositoryTests(unittest.TestCase):
     def test_failed_config_write_restores_previous_secret(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            secrets = MemorySecretStore({
-                "groq": "original-test-credential",
-            })
+            secrets = MemorySecretStore(
+                {
+                    "groq": "original-test-credential",
+                }
+            )
             repository = LocalConfigRepository(path, secret_store=secrets)
 
             with patch(
@@ -514,24 +576,32 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                 side_effect=OSError("simulated config write failure"),
             ):
                 with self.assertRaises(OSError):
-                    repository.save({
-                        "groq_api_key": "replacement-test-credential",
-                    })
+                    repository.save(
+                        {
+                            "groq_api_key": "replacement-test-credential",
+                        }
+                    )
 
-            self.assertEqual(
-                secrets.get("groq"), "original-test-credential")
+            self.assertEqual(secrets.get("groq"), "original-test-credential")
             self.assertFalse(path.exists())
 
     def test_blank_mapping_value_clears_secure_and_legacy_storage(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({
-                "schema_version": CONFIG_SCHEMA_VERSION,
-                "openai_api_key": "legacy-test-credential",
-            }), encoding="utf-8")
-            secrets = MemorySecretStore({
-                "openai": "stored-test-credential",
-            })
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": CONFIG_SCHEMA_VERSION,
+                        "openai_api_key": "legacy-test-credential",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            secrets = MemorySecretStore(
+                {
+                    "openai": "stored-test-credential",
+                }
+            )
             repository = LocalConfigRepository(path, secret_store=secrets)
 
             repository.save({"openai_api_key": ""})
@@ -545,12 +615,17 @@ class ConfigurationRepositoryTests(unittest.TestCase):
     def test_legacy_flat_config_loads_and_unknown_fields_are_ignored(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({
-                "transcription_provider": "openai",
-                "openai_api_key": "secret",
-                "openai_audio_model": "whisper 1",
-                "unknown_future_setting": {"unsafe": True},
-            }), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "transcription_provider": "openai",
+                        "openai_api_key": "secret",
+                        "openai_audio_model": "whisper 1",
+                        "unknown_future_setting": {"unsafe": True},
+                    }
+                ),
+                encoding="utf-8",
+            )
 
             config = LocalConfigRepository(path).load()
 
@@ -565,31 +640,39 @@ class ConfigurationRepositoryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({
-                "transcription_provider": "openai",
-                "ui_language": "en",
-            }), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "transcription_provider": "openai",
+                        "ui_language": "en",
+                    }
+                ),
+                encoding="utf-8",
+            )
 
-            config = LocalConfigRepository(
-                path, defaults=app.DEFAULT_CONFIG).load()
+            config = LocalConfigRepository(path, defaults=app.DEFAULT_CONFIG).load()
 
         self.assertNotIn(HotkeyAction.VOICE_TRANSLATION, config.hotkeys.hotkeys)
 
     def test_first_run_defaults_include_voice_hotkey(self):
         with tempfile.TemporaryDirectory() as directory:
-            config = LocalConfigRepository(
-                Path(directory) / "config.json").load()
+            config = LocalConfigRepository(Path(directory) / "config.json").load()
 
         self.assertIn(HotkeyAction.VOICE_TRANSLATION, config.hotkeys.hotkeys)
 
     def test_invalid_values_fall_back_without_crashing(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({
-                "transcription_provider": {"not": "a string"},
-                "ui_language": 42,
-                "autostart": "yes",
-            }), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "transcription_provider": {"not": "a string"},
+                        "ui_language": 42,
+                        "autostart": "yes",
+                    }
+                ),
+                encoding="utf-8",
+            )
             config = LocalConfigRepository(path).load()
 
         self.assertEqual(config.selection.transcription_provider, "gemini")
@@ -600,15 +683,19 @@ class ConfigurationRepositoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
             repository = LocalConfigRepository(path)
-            repository.save(AppConfig.from_mapping({
-                "ui_mode": "transcription",
-                "ui_language": "pt",
-            }))
+            repository.save(
+                AppConfig.from_mapping(
+                    {
+                        "ui_mode": "transcription",
+                        "ui_language": "pt",
+                    }
+                )
+            )
             payload = json.loads(path.read_text(encoding="utf-8"))
             loaded = repository.load()
 
         self.assertEqual(payload["schema_version"], CONFIG_SCHEMA_VERSION)
-        self.assertEqual(loaded.ui.mode, "transcription")
+        self.assertEqual(loaded.ui.mode, "prompt")
         self.assertEqual(loaded.ui.language, "pt")
         self.assertNotIn("unknown_future_setting", payload)
 
@@ -633,18 +720,22 @@ class ConfigurationRepositoryTests(unittest.TestCase):
             default = LocalConfigRepository(default_path)
             injected = LocalConfigRepository(injected_path)
             default.save({"transcription_provider": "gemini", "ui_mode": "prompt"})
-            injected.save({
-                "transcription_provider": "openai",
-                "openai_api_key": "injected-key",
-                "ui_mode": "transcription",
-            })
+            injected.save(
+                {
+                    "transcription_provider": "openai",
+                    "openai_api_key": "injected-key",
+                    "ui_mode": "transcription",
+                }
+            )
             bundle = ApplicationRepositories(
                 config=injected,
                 usage_stats=LocalUsageStatsRepository(Path(directory) / "stats.json"),
             )
             default_bundle = ApplicationRepositories(
                 config=default,
-                usage_stats=LocalUsageStatsRepository(Path(directory) / "default-stats.json"),
+                usage_stats=LocalUsageStatsRepository(
+                    Path(directory) / "default-stats.json"
+                ),
             )
             original = app.APP_CONFIG.copy()
             try:
@@ -652,10 +743,11 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                     app._activate_repositories(bundle)
                     self.assertEqual(app.APP_CONFIG["transcription_provider"], "openai")
                     self.assertEqual(app.APP_CONFIG["openai_api_key"], "injected-key")
-                    self.assertEqual(app.APP_CONFIG["ui_mode"], "transcription")
+                    self.assertEqual(app.APP_CONFIG["ui_mode"], "prompt")
                     app._save_app_config(bundle)
                     self.assertEqual(
-                        injected.load().selection.transcription_provider, "openai")
+                        injected.load().selection.transcription_provider, "openai"
+                    )
 
                     # This is the lifecycle used by a later App() with no
                     # explicit bundle: the default repository must be loaded
@@ -665,7 +757,8 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                     self.assertEqual(app.APP_CONFIG["ui_mode"], "prompt")
                     self.assertEqual(app.APP_CONFIG["openai_api_key"], "")
                     self.assertEqual(
-                        default.load().selection.transcription_provider, "gemini")
+                        default.load().selection.transcription_provider, "gemini"
+                    )
             finally:
                 app.APP_CONFIG.clear()
                 app.APP_CONFIG.update(original)
@@ -735,7 +828,9 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                 # absent. A failed Apply must preserve that divergence.
                 with patch.object(app, "IS_WIN", True):
                     with self.assertRaises(OSError):
-                        app._persist_autostart_preference(False, failing_bundle, registry)
+                        app._persist_autostart_preference(
+                            False, failing_bundle, registry
+                        )
                 self.assertTrue(app.APP_CONFIG["autostart"])
                 self.assertNotIn("Clarify", registry.values)
                 self.assertTrue(config_repository.load().startup.autostart)
@@ -757,7 +852,9 @@ class ConfigurationRepositoryTests(unittest.TestCase):
                 registry.types["Clarify"] = 42
                 with patch.object(app, "IS_WIN", True):
                     with self.assertRaises(OSError):
-                        app._persist_autostart_preference(False, failing_bundle, registry)
+                        app._persist_autostart_preference(
+                            False, failing_bundle, registry
+                        )
                 self.assertEqual(registry.values["Clarify"], custom_command)
                 self.assertEqual(registry.types["Clarify"], 42)
             finally:
@@ -775,13 +872,15 @@ class ConfigurationRepositoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
             seed = LocalConfigRepository(path)
-            seed.save({
-                "transcription_provider": "gemini",
-                "gemini_model": "gemini-2.5-flash",
-                "refinement_provider": "openai",
-                "refinement_model": "gpt-4o-mini",
-                "autostart": False,
-            })
+            seed.save(
+                {
+                    "transcription_provider": "gemini",
+                    "gemini_model": "gemini-2.5-flash",
+                    "refinement_provider": "openai",
+                    "refinement_model": "gpt-4o-mini",
+                    "autostart": False,
+                }
+            )
             repository = FailingConfigRepository(path)
             bundle = ApplicationRepositories(
                 config=repository,
@@ -813,40 +912,45 @@ class ConfigurationMigrationTests(unittest.TestCase):
     def test_plaintext_keys_migrate_after_verified_readback(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({
-                "gemini_api_key": "test-gemini-credential",
-                "openai_api_key": "test-openai-credential",
-                "groq_api_key": "test-groq-credential",
-                "ui_language": "de",
-            }), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "gemini_api_key": "test-gemini-credential",
+                        "openai_api_key": "test-openai-credential",
+                        "groq_api_key": "test-groq-credential",
+                        "ui_language": "de",
+                    }
+                ),
+                encoding="utf-8",
+            )
             secrets = MemorySecretStore()
             repository = LocalConfigRepository(path, secret_store=secrets)
 
             loaded = repository.load()
             payload = json.loads(path.read_text(encoding="utf-8"))
 
-            self.assertEqual(
-                loaded.gemini.api_key, "test-gemini-credential")
-            self.assertEqual(
-                loaded.openai.api_key, "test-openai-credential")
+            self.assertEqual(loaded.gemini.api_key, "test-gemini-credential")
+            self.assertEqual(loaded.openai.api_key, "test-openai-credential")
             self.assertEqual(loaded.groq.api_key, "test-groq-credential")
-            self.assertFalse({
-                "gemini_api_key", "openai_api_key", "groq_api_key",
-            } & payload.keys())
+            self.assertFalse(
+                {
+                    "gemini_api_key",
+                    "openai_api_key",
+                    "groq_api_key",
+                }
+                & payload.keys()
+            )
 
     def test_failed_migration_leaves_plaintext_recoverable(self):
         class UnavailableStore(SecretStore):
             def get(self, _provider):
-                raise SecretStoreUnavailableError(
-                    "The credential store is unavailable")
+                raise SecretStoreUnavailableError("The credential store is unavailable")
 
             def set(self, _provider, _secret):
-                raise SecretStoreUnavailableError(
-                    "The credential store is unavailable")
+                raise SecretStoreUnavailableError("The credential store is unavailable")
 
             def delete(self, _provider):
-                raise SecretStoreUnavailableError(
-                    "The credential store is unavailable")
+                raise SecretStoreUnavailableError("The credential store is unavailable")
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
@@ -855,15 +959,15 @@ class ConfigurationMigrationTests(unittest.TestCase):
                 "ui_language": "es",
             }
             path.write_text(json.dumps(original), encoding="utf-8")
-            repository = LocalConfigRepository(
-                path, secret_store=UnavailableStore())
+            repository = LocalConfigRepository(path, secret_store=UnavailableStore())
 
             loaded = repository.load()
 
-            self.assertEqual(
-                loaded.openai.api_key, "recoverable-test-credential")
-            self.assertEqual(
-                json.loads(path.read_text(encoding="utf-8")), original)
+            self.assertEqual(loaded.openai.api_key, "recoverable-test-credential")
+            persisted = json.loads(path.read_text(encoding="utf-8"))
+            for key, value in original.items():
+                self.assertEqual(persisted[key], value)
+            self.assertEqual(persisted["ui_mode"], "prompt")
 
             repository.save({"ui_language": "de"})
             after_partial_save = json.loads(path.read_text(encoding="utf-8"))
@@ -873,9 +977,11 @@ class ConfigurationMigrationTests(unittest.TestCase):
             )
             self.assertEqual(after_partial_save["ui_language"], "de")
             with self.assertRaises(SecretStoreUnavailableError):
-                repository.save({
-                    "openai_api_key": "replacement-test-credential",
-                })
+                repository.save(
+                    {
+                        "openai_api_key": "replacement-test-credential",
+                    }
+                )
             self.assertEqual(
                 json.loads(path.read_text(encoding="utf-8")),
                 after_partial_save,
@@ -889,16 +995,19 @@ class ConfigurationMigrationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({
-                "groq_api_key": "recoverable-test-credential",
-            }), encoding="utf-8")
-            repository = LocalConfigRepository(
-                path, secret_store=MismatchedStore())
+            path.write_text(
+                json.dumps(
+                    {
+                        "groq_api_key": "recoverable-test-credential",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            repository = LocalConfigRepository(path, secret_store=MismatchedStore())
 
             loaded = repository.load()
 
-            self.assertEqual(
-                loaded.groq.api_key, "recoverable-test-credential")
+            self.assertEqual(loaded.groq.api_key, "recoverable-test-credential")
             self.assertEqual(
                 json.loads(path.read_text(encoding="utf-8"))["groq_api_key"],
                 "recoverable-test-credential",
@@ -921,31 +1030,33 @@ class ConfigurationMigrationTests(unittest.TestCase):
             ):
                 loaded = repository.load()
 
-            self.assertEqual(
-                loaded.openai.api_key, "recoverable-test-credential")
-            self.assertEqual(
-                json.loads(path.read_text(encoding="utf-8")), original)
-            self.assertEqual(
-                secrets.get("openai"), "recoverable-test-credential")
+            self.assertEqual(loaded.openai.api_key, "recoverable-test-credential")
+            persisted = json.loads(path.read_text(encoding="utf-8"))
+            for key, value in original.items():
+                self.assertEqual(persisted[key], value)
+            self.assertEqual(persisted, original)
+            self.assertEqual(secrets.get("openai"), "recoverable-test-credential")
 
     def test_corrupted_store_preserves_legacy_key(self):
         class CorruptedStore(MemorySecretStore):
             def get(self, _provider):
-                raise SecretStoreCorruptedError(
-                    "A credential-store entry is invalid")
+                raise SecretStoreCorruptedError("A credential-store entry is invalid")
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({
-                "gemini_api_key": "recoverable-test-credential",
-            }), encoding="utf-8")
-            repository = LocalConfigRepository(
-                path, secret_store=CorruptedStore())
+            path.write_text(
+                json.dumps(
+                    {
+                        "gemini_api_key": "recoverable-test-credential",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            repository = LocalConfigRepository(path, secret_store=CorruptedStore())
 
             loaded = repository.load()
 
-            self.assertEqual(
-                loaded.gemini.api_key, "recoverable-test-credential")
+            self.assertEqual(loaded.gemini.api_key, "recoverable-test-credential")
             self.assertIn(
                 "gemini_api_key",
                 json.loads(path.read_text(encoding="utf-8")),
@@ -959,8 +1070,11 @@ class ConfigurationMigrationTests(unittest.TestCase):
         self.assertEqual(migrate_config_payload(migrated), migrated)
 
     def test_future_schema_is_read_compatibly(self):
-        future = {"schema_version": CONFIG_SCHEMA_VERSION + 10, "ui_language": "es",
-                  "unknown": object()}
+        future = {
+            "schema_version": CONFIG_SCHEMA_VERSION + 10,
+            "ui_language": "es",
+            "unknown": object(),
+        }
         migrated = migrate_config_payload(future)
 
         self.assertEqual(migrated["schema_version"], CONFIG_SCHEMA_VERSION + 10)
@@ -969,11 +1083,16 @@ class ConfigurationMigrationTests(unittest.TestCase):
     def test_future_schema_loads_but_save_refuses_a_downgrade(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({
-                "schema_version": CONFIG_SCHEMA_VERSION + 1,
-                "ui_language": "es",
-                "future_setting": {"keep": "me"},
-            }), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": CONFIG_SCHEMA_VERSION + 1,
+                        "ui_language": "es",
+                        "future_setting": {"keep": "me"},
+                    }
+                ),
+                encoding="utf-8",
+            )
             original = path.read_bytes()
             repository = LocalConfigRepository(path)
             config = repository.load()
@@ -987,10 +1106,15 @@ class ConfigurationMigrationTests(unittest.TestCase):
     def test_future_schema_save_is_refused_without_prior_load(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({
-                "schema_version": CONFIG_SCHEMA_VERSION + 1,
-                "future_setting": {"keep": "me"},
-            }), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": CONFIG_SCHEMA_VERSION + 1,
+                        "future_setting": {"keep": "me"},
+                    }
+                ),
+                encoding="utf-8",
+            )
             original = path.read_bytes()
 
             with self.assertRaises(UnsupportedSchemaVersionError):
@@ -1001,14 +1125,20 @@ class ConfigurationMigrationTests(unittest.TestCase):
     def test_future_schema_change_between_load_and_save_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            path.write_text(json.dumps({"schema_version": CONFIG_SCHEMA_VERSION}),
-                            encoding="utf-8")
+            path.write_text(
+                json.dumps({"schema_version": CONFIG_SCHEMA_VERSION}), encoding="utf-8"
+            )
             repository = LocalConfigRepository(path)
             config = repository.load()
-            path.write_text(json.dumps({
-                "schema_version": CONFIG_SCHEMA_VERSION + 1,
-                "future_setting": {"keep": "me"},
-            }), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": CONFIG_SCHEMA_VERSION + 1,
+                        "future_setting": {"keep": "me"},
+                    }
+                ),
+                encoding="utf-8",
+            )
             original = path.read_bytes()
 
             with self.assertRaises(UnsupportedSchemaVersionError):
@@ -1021,8 +1151,9 @@ class UsageStatisticsRepositoryTests(unittest.TestCase):
     def test_invalid_payload_and_unknown_events_are_safe(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "usage_stats.json"
-            path.write_text(json.dumps({"events": [{"type": "recording"}, "bad"]}),
-                            encoding="utf-8")
+            path.write_text(
+                json.dumps({"events": [{"type": "recording"}, "bad"]}), encoding="utf-8"
+            )
             repository = LocalUsageStatsRepository(path)
             self.assertEqual(repository.load_events(), [{"type": "recording"}])
 
@@ -1035,18 +1166,24 @@ class UsageStatisticsRepositoryTests(unittest.TestCase):
             payload = json.loads(path.read_text(encoding="utf-8"))
 
         self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual([event["type"] for event in payload["events"]],
-                         ["recording", "rewrite"])
+        self.assertEqual(
+            [event["type"] for event in payload["events"]], ["recording", "rewrite"]
+        )
         self.assertFalse(list(Path(directory).glob("*.tmp")))
 
     def test_future_schema_append_is_refused_without_rewriting_file(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "usage_stats.json"
-            path.write_text(json.dumps({
-                "schema_version": 2,
-                "future_setting": {"keep": "me"},
-                "events": [],
-            }), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 2,
+                        "future_setting": {"keep": "me"},
+                        "events": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
             original = path.read_bytes()
 
             with self.assertRaises(UnsupportedSchemaVersionError):

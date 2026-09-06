@@ -22,7 +22,7 @@ QtObject {
     property int fieldHeight: 34
     readonly property int fieldRadius: 8
     property int fieldFontSize: 11
-    readonly property int windowWidth: 236
+    readonly property int windowWidth: 148
     readonly property int windowHeight: 48
     readonly property int resultWidth: 400
     readonly property int resultHeight: 148

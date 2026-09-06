@@ -59,7 +59,6 @@ ApplicationWindow {
     palette.toolTipBase: theme.control
     palette.toolTipText: theme.text
 
-    SettingsWindow { id: settingsWindow; transientParent: null }
 
     Theme { id: theme }
     property Theme visualTheme: theme
@@ -234,16 +233,14 @@ ApplicationWindow {
             anchors.fill: parent
             currentIndex: root.displayedSurface === "result"
                           ? 1
-                          : root.displayedSurface === "settings" ? 2
-                          : root.displayedSurface === "files" ? 3
-                          : root.displayedSurface === "translation_picker" ? 4
+                          : root.displayedSurface === "files" ? 2
+                          : root.displayedSurface === "translation_picker" ? 3
                           : (root.displayedSurface === "voice_result"
                              || root.displayedSurface === "voice_error") ? 1 : 0
 
             Item {
                 id: homePage
                 objectName: "homePage"
-                property bool promptMode: workflow.mode === "prompt"
                 DragHandler {
                     id: windowDragHandler
                     objectName: "homeWindowDragHandler"
@@ -259,16 +256,17 @@ ApplicationWindow {
                 }
 
                 RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 8
-                    spacing: 5
+                    anchors.centerIn: parent
+                    width: workflow.surface === "idle" ? implicitWidth : parent.width - 18
+                    height: parent.height
+                    spacing: 4
 
                     Item {
                         id: statusArea
-                        Layout.fillWidth: true
+                        Layout.fillWidth: workflow.surface !== "idle"
                         Layout.fillHeight: true
-                        Layout.minimumWidth: 32
+                        Layout.preferredWidth: 26
+                        Layout.minimumWidth: 26
                         Layout.alignment: Qt.AlignVCenter
 
                         AppButton {
@@ -321,15 +319,17 @@ ApplicationWindow {
                             property string languageCode: workflow.language.toUpperCase()
                             text: ""
                             theme: root.visualTheme
+                            quiet: true
                             Layout.preferredWidth: 36
                             Layout.preferredHeight: 26
                             Accessible.name: "Language: "
                                               + languageNames[workflow.language]
 
                             RoundedFlag {
+                                displayScale: theme.uiScale
                                 anchors.centerIn: parent
-                                width: implicitWidth
-                                height: implicitHeight
+                                width: 21.333
+                                height: 16
                                 source: "flags/" + workflow.language + ".svg"
                             }
                             onClicked: {
@@ -341,23 +341,7 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            id: modeButton
-                            objectName: "modeButton"
-                            text: homePage.promptMode ? "Prompt" : "Transcribe"
-                            theme: root.visualTheme
-                            Layout.preferredWidth: 78
-                            Layout.preferredHeight: 26
-                            Accessible.name: "Mode: "
-                                              + (homePage.promptMode
-                                                 ? "Prompt" : "Transcribe")
-                            onClicked: {
-                                quickMenu.close()
-                                workflow.setMode(homePage.promptMode
-                                                 ? "transcription" : "prompt")
-                            }
-                        }
-
-                        AppButton {
+                            checked: quickMenu.visible
                             id: settingsButton
                             objectName: "settingsButton"
                             iconSource: "icons/settings.svg"
@@ -543,7 +527,6 @@ ApplicationWindow {
                 }
             }
 
-            Item { } // Settings has its own native window.
 
             Item {
                 id: filesPage

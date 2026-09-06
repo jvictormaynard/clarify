@@ -146,3 +146,6 @@ O processamento durante pausas e experimental e fica desativado por padrao.
 O refinamento na nuvem da transcricao local continua sendo uma opcao explicita.
 
 Se a revisão opcional do ditado falhar, o Clarify preserva a transcrição original, mostra um aviso breve e registra resultado parcial quando o histórico local está ativado.
+O ditado usa o refinamento fiel como comportamento padrão, sem seletor de modo.
+Configurações antigas de modo são migradas automaticamente. O refinamento em
+nuvem de transcrições locais continua dependendo da autorização nas configurações.

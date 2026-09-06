@@ -46,6 +46,7 @@ Button {
     contentItem: RowLayout {
         spacing: 8
         RoundedFlag {
+                    displayScale: control.sceneScale
             visible: control.selectedIcon !== ""
             source: control.selectedIcon
             Layout.preferredWidth: implicitWidth; Layout.preferredHeight: implicitHeight
@@ -72,7 +73,7 @@ Button {
     background: Rectangle {
         radius: control.visualTheme.fieldRadius
         color: !control.enabled ? control.visualTheme.controlDisabled
-            : control.hovered || control.down || control.activeFocus || menu.visible
+            : control.hovered || control.down || control.visualFocus || menu.visible
               ? control.visualTheme.controlHover : control.visualTheme.control
         border.color: control.visualTheme.border
         Behavior on border.color { ColorAnimation { duration: 100 } }
@@ -205,6 +206,7 @@ Button {
                     contentItem: RowLayout {
                         spacing: 8
                         RoundedFlag {
+                    displayScale: control.sceneScale
                             visible: Boolean(option.modelData.icon)
                             source: option.modelData.icon || ""
                             Layout.preferredWidth: implicitWidth; Layout.preferredHeight: implicitHeight

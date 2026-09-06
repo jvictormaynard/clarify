@@ -181,9 +181,10 @@ instead of using an unreliable estimate.
 
 Local Whisper is transcription-only and is not bundled with the executable. Its
 `whisper.cpp` runtime and model are downloaded only after the user authorizes the
-action and are verified against the pinned manifest. Prompt mode returns the
-local transcript without refinement by default; the **Allow cloud refinement for
-Prompt mode** setting is the only route that sends that transcript to the
+action and are verified against the pinned manifest. Dictation uses faithful
+refinement by default, with no mode selector. Existing mode settings migrate
+automatically. Local transcripts stay on the computer unless **Allow cloud
+refinement** is enabled; this setting sends that transcript to the
 selected cloud model. The Windows/offline product acceptance remains pending.
 
 ## Privacy and local data

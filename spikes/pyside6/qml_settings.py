@@ -811,7 +811,8 @@ class QmlSettingsController(QObject):
     @Slot(str, result=bool)
     def setMode(self, value: str) -> bool:
         try:
-            normalized = self._choice(value, SUPPORTED_UI_MODES, "mode")
+            self._choice(value, (*SUPPORTED_UI_MODES, "transcription"), "mode")
+            normalized = "prompt"
         except ValueError as error:
             self._set_error(error)
             return False
@@ -1784,7 +1785,8 @@ class QmlSettingsController(QObject):
         """Persist only the UI mode without applying the editable Settings draft."""
 
         try:
-            normalized = self._choice(value, SUPPORTED_UI_MODES, "mode")
+            self._choice(value, (*SUPPORTED_UI_MODES, "transcription"), "mode")
+            normalized = "prompt"
         except ValueError as error:
             self._set_error(error)
             return False

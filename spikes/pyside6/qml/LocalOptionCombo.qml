@@ -18,7 +18,7 @@ ComboBox {
     background: Rectangle {
         radius: control.visualTheme.fieldRadius
         color: !control.enabled ? control.visualTheme.controlDisabled
-            : control.hovered || control.down || control.activeFocus || control.popup.visible
+            : control.hovered || control.down || control.visualFocus || control.popup.visible
               ? control.visualTheme.controlHover : control.visualTheme.control
         border.color: control.visualTheme.border
     }

@@ -54,7 +54,7 @@ Button {
         radius: control.theme.fieldRadius
         color: !control.enabled
                ? control.theme.controlDisabled
-               : control.hovered || control.down || control.checked || control.activeFocus
+               : control.hovered || control.down || control.checked || control.visualFocus
                  ? control.theme.controlHover
                  : control.quiet ? "transparent" : control.theme.control
         border.width: control.quiet ? 0 : 1

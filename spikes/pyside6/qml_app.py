@@ -466,6 +466,7 @@ def main(argv: list[str] | None = None) -> int:
     qml_root = _qml_root()
     engine.addImportPath(str(qml_root))
     engine.load(QUrl.fromLocalFile(str(qml_root / "Main.qml")))
+    engine.load(QUrl.fromLocalFile(str(qml_root / "SettingsWindow.qml")))
     engine.load(QUrl.fromLocalFile(str(qml_root / "StatusPill.qml")))
     roots = engine.rootObjects()
     window = next(
@@ -476,7 +477,10 @@ def main(argv: list[str] | None = None) -> int:
         (root for root in roots if root.objectName() == "workflowStatusPill"),
         None,
     )
-    if window is None or pill_window is None:
+    settings_window = next(
+        (root for root in roots if root.objectName() == "clarifySettingsWindow"), None
+    )
+    if window is None or pill_window is None or settings_window is None:
         runtime.shutdown()
         return 1
 

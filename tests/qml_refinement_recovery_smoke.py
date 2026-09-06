@@ -72,7 +72,7 @@ service.publish(WorkflowState(phase=WorkflowPhase.RECORDING, operation_id=2))
 app.processEvents()
 QTest.qWait(350)
 assert not label.property("visible")
-assert pill.property("designWidth") == 156
+assert pill.property("designWidth") == 168
 service.publish(
     WorkflowState(phase=WorkflowPhase.COMPLETED, operation_id=2, result_text="OK")
 )

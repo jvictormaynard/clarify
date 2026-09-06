@@ -362,7 +362,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
 
             controller = QmlSettingsController(repositories)
 
-            self.assertEqual(controller.mode, "transcription")
+            self.assertEqual(controller.mode, "prompt")
             self.assertEqual(controller.language, "pt")
             self.assertTrue(controller.autostart)
             self.assertTrue(controller.historyEnabled)
@@ -834,7 +834,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
             )
 
             self.assertTrue(controller.dirty)
-            self.assertEqual(controller.mode, "transcription")
+            self.assertEqual(controller.mode, "prompt")
             self.assertEqual(controller.language, "de")
             self.assertTrue(controller.autostart)
             self.assertTrue(controller.historyEnabled)
@@ -1020,7 +1020,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
             self.assertTrue(controller.persistMode("transcription"))
 
             persisted = repositories.config.load()
-            self.assertEqual(persisted.ui.mode, "transcription")
+            self.assertEqual(persisted.ui.mode, "prompt")
             self.assertEqual(persisted.ui.language, "en")
             self.assertFalse(persisted.startup.autostart)
             self.assertFalse(persisted.history_enabled)

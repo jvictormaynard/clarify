@@ -22,6 +22,8 @@ from PySide6.QtCore import (
     QObject,
     QEvent,
     QCoreApplication,
+    QMetaObject,
+    Q_ARG,
     QPointF,
     Qt,
     QUrl,
@@ -36,6 +38,7 @@ from PySide6.QtQuick import QQuickWindow
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
+from shiboken6 import isValid
 
 from local_asr_product import LocalASRProductState
 from microphone_controls import MicrophoneDevice, MicrophoneInventory
@@ -219,8 +222,25 @@ def main():
                 app.processEvents()
                 time.sleep(0.01)
 
+        def find_item(kind, name):
+            for root in engine.rootObjects():
+                if isinstance(root, kind) and root.objectName() == name:
+                    return root
+                result = root.findChild(kind, name)
+                if result is not None:
+                    return result
+            return None
+
+        def select_section(index):
+            QMetaObject.invokeMethod(
+                find_item(QObject, "settingsPage"),
+                "selectSection",
+                Qt.ConnectionType.DirectConnection,
+                Q_ARG("QVariant", index),
+            )
+
         def input_window():
-            panel = window.findChild(QQuickWindow, "clarifySettingsWindow")
+            panel = find_item(QQuickWindow, "clarifySettingsWindow")
             return panel if panel and panel.isVisible() else window
 
         def shot(name):
@@ -261,16 +281,28 @@ def main():
 
         def visible_item(name):
             # Repeater delegates can have different QObject and visual parents.
-            candidates = list(window.findChildren(QObject, name))
-            pending = [window.contentItem()] + [
-                panel.contentItem() for panel in window.findChildren(QQuickWindow)
+            candidates = [
+                item
+                for root in engine.rootObjects()
+                for item in root.findChildren(QObject, name)
+            ]
+            pending = [
+                root.contentItem()
+                for root in engine.rootObjects()
+                if isinstance(root, QQuickWindow)
             ]
             while pending:
                 item = pending.pop()
+                if not isValid(item):
+                    continue
                 if item.objectName() == name:
                     candidates.append(item)
                 pending.extend(item.childItems())
-            return next(item for item in candidates if item.property("visible"))
+            return next(
+                item
+                for item in candidates
+                if isValid(item) and item.property("visible")
+            )
 
         def choose(name, index):
             control = visible_item(name)
@@ -321,6 +353,7 @@ def main():
             ),
         ) as discovery:
             engine.load(QUrl.fromLocalFile(str(qml_root / "Main.qml")))
+            engine.load(QUrl.fromLocalFile(str(qml_root / "SettingsWindow.qml")))
             if not engine.rootObjects():
                 raise AssertionError("\n".join(messages))
             window = engine.rootObjects()[0]
@@ -348,7 +381,6 @@ def main():
             for name in (
                 "microphoneButton",
                 "languageButton",
-                "modeButton",
                 "settingsButton",
                 "closeButton",
             ):
@@ -361,8 +393,8 @@ def main():
                     click(microphone_button)
                     assert dispatch.call_count == 1
                     assert type(dispatch.call_args.args[0]).__name__ == "StartDictation"
-            assert window.findChild(QObject, "fileButton") is None
-            drag = window.findChild(QObject, "homeWindowDragHandler")
+            assert find_item(QObject, "fileButton") is None
+            drag = find_item(QObject, "homeWindowDragHandler")
             assert drag is not None
             with patch.object(service, "dispatch", create=True) as dispatch:
                 for start in (
@@ -383,13 +415,30 @@ def main():
                     )
                 dispatch.assert_not_called()
             click(visible_item("settingsButton"))
-            quick_menu = window.findChild(QObject, "quickMenu")
+            quick_menu = find_item(QObject, "quickMenu")
             assert quick_menu.property("visible")
+            assert visible_item("settingsButton").property("checked")
             click(visible_item("settingsButton"))
             assert not quick_menu.property("visible"), (
                 "second gear click must close the menu"
             )
             gear = visible_item("settingsButton")
+            QTest.mouseMove(window, QPointF(1, 1).toPoint())
+            settle()
+            assert not gear.property("hovered")
+            assert not gear.property("checked")
+            assert gear.property("background").property("color").alpha() == 0, (
+                "mouse focus must not leave the gear highlighted after closing"
+            )
+            window.requestActivate()
+            microphone_button.forceActiveFocus(Qt.MouseFocusReason)
+            settle()
+            gear.forceActiveFocus(Qt.TabFocusReason)
+            settle()
+            assert gear.property("visualFocus")
+            assert gear.property("background").property("color").name() == "#222222"
+            gear.forceActiveFocus(Qt.MouseFocusReason)
+            settle()
             gear_point = gear.mapToScene(
                 QPointF(gear.width() / 2, gear.height() / 2)
             ).toPoint()
@@ -398,7 +447,7 @@ def main():
             assert 0 < quick_menu.property("opacity") < 1, "menu must fade in"
             settle()
             assert bridge.surface == "idle"
-            quick_settings = window.findChild(QObject, "quickSettingsItem")
+            quick_settings = find_item(QObject, "quickSettingsItem")
             menu_window = quick_settings.window()
             assert isinstance(menu_window, QQuickWindow)
             assert menu_window != window, "menu must extend outside the compact bar"
@@ -406,7 +455,7 @@ def main():
             assert 7 <= menu_gap <= 10, ("menu must sit below the pill", menu_gap)
             if output:
                 assert menu_window.grabWindow().save(str(output / "quick-menu.png"))
-            assert not window.findChild(QObject, "quickPasteItem").property("enabled")
+            assert not find_item(QObject, "quickPasteItem").property("enabled")
             QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, gear_point)
             QTest.qWait(60)
             assert quick_menu.property("visible")
@@ -435,7 +484,7 @@ def main():
             QTest.keyClick(menu_window, Qt.Key.Key_Down)
             QTest.keyClick(menu_window, Qt.Key.Key_Right)
             settle()
-            microphone_menu = window.findChild(QObject, "quickMicrophoneMenu")
+            microphone_menu = find_item(QObject, "quickMicrophoneMenu")
             assert microphone_menu.property("visible")
             microphone_option = microphone_menu.findChild(
                 QObject, "quickMicrophoneOption1"
@@ -449,8 +498,8 @@ def main():
             menu_window = quick_settings.window()
             click(quick_settings, menu_window)
             assert bridge.surface == "settings"
-            settings_page = window.findChild(QObject, "settingsPage")
-            panel = window.findChild(QQuickWindow, "clarifySettingsWindow")
+            settings_page = find_item(QObject, "settingsPage")
+            panel = find_item(QQuickWindow, "clarifySettingsWindow")
             if "--window-only" in sys.argv:
                 from spikes.pyside6.qt_shell import QtShell
                 from spikes.pyside6.qml_app import _WorkflowWindowVisibility
@@ -464,9 +513,9 @@ def main():
                 assert not window.isVisible(), "Toolbar must finish hiding"
                 integration_shell.show_window()
                 settle()
-                assert (
-                    window.findChild(QObject, "appPages").property("currentIndex") == 0
-                ), "Tray must never restore an empty toolbar"
+                assert find_item(QObject, "appPages").property("currentIndex") == 0, (
+                    "Tray must never restore an empty toolbar"
+                )
 
             assert panel and panel.isVisible()
             assert panel.transientParent() is None
@@ -501,7 +550,7 @@ def main():
                 for index, name in enumerate(
                     ("general", "dictation", "text", "shortcuts", "services")
                 ):
-                    settings_page.selectSection(index)
+                    select_section(index)
                     shot("window-" + name)
                 panel.resize(820, 560)
                 shot("window-minimum")
@@ -520,7 +569,7 @@ def main():
                 assert not controller.dirty
                 bridge.openSettings()
                 settle()
-                settings_page.selectSection(1)
+                select_section(1)
                 click(visible_item("advancedRecordingGroupToggle"))
                 edit("maximumDurationField", "-1")
                 assert panel.property("inputError")
@@ -533,7 +582,7 @@ def main():
                     repositories.config.load().recording_controls.max_duration_seconds
                     == 120
                 )
-                settings_page.selectSection(0)
+                select_section(0)
                 controller.setHistoryEnabled(True)
                 edit("historyRetentionField", "")
                 click(visible_item("saveSettingsButton"))
@@ -568,17 +617,15 @@ def main():
             assert controller._config == initial_config
             click(visible_item("settingsSection1"))
             shot("models-cloud")
-            assert not window.findChild(QObject, "textWorkflowTabs").property("visible")
-            assert not window.findChild(QObject, "maximumDurationField").property(
-                "visible"
-            )
+            assert not find_item(QObject, "textWorkflowTabs").property("visible")
+            assert not find_item(QObject, "maximumDurationField").property("visible")
             if "--baseline" in sys.argv:
-                settings_page.selectSection(4)
+                select_section(4)
                 shot("local-install")
                 controller.shutdown()
                 return
             assert controller.routeModelStatus == "ready", controller.routeModelStatus
-            picker = window.findChild(QObject, "workflowModelPicker")
+            picker = find_item(QObject, "workflowModelPicker")
             assert picker is not None and picker.property("count") == 3
             click(picker)
             shot("model-picker-open")
@@ -623,14 +670,15 @@ def main():
             assert prompt.property("implicitHeight") > 96
             prompt.editingFinished.emit()
             assert controller.routePrompt == ("A longer instruction.\n" * 12).strip()
-            settings_page = window.findChild(QObject, "settingsPage")
-            settings_page.selectSection(4)
+            settings_page = find_item(QObject, "settingsPage")
+            select_section(4)
             shot("connections")
-            settings_page.selectSection(0)
+            select_section(0)
             shot("preferences")
-            choose("settingsModeBox", controller.modes.index("transcription"))
-            assert controller.mode == "transcription"
-            settings_page.selectSection(1)
+            assert find_item(QObject, "settingsModeBox") is None
+            assert find_item(QObject, "modeButton") is None
+            assert controller.mode == "prompt"
+            select_section(1)
             settle()
             click(visible_item("settingsLanguageBox"))
             type_text("Portuguese")
@@ -643,7 +691,7 @@ def main():
             settle()
             assert bridge.surface == "settings"
             assert not visible_item("settingsLanguageBox").property("popupVisible")
-            settings_page.selectSection(0)
+            select_section(0)
             settle()
             was_autostart = controller.autostart
             click(visible_item("autostartBox"))
@@ -660,7 +708,7 @@ def main():
             )
             shot("general-edited")
 
-            settings_page.selectSection(3)
+            select_section(3)
             settle()
             choose(
                 "hotkeyActivationBox",
@@ -683,7 +731,7 @@ def main():
             assert bridge.surface == "settings"
             assert not visible_item("hotkeyActivationBox").property("popupVisible")
 
-            settings_page.selectSection(1)
+            select_section(1)
             settle()
             click(visible_item("microphoneBox"))
             shot("microphone-picker")
@@ -712,10 +760,10 @@ def main():
             assert preview.closed and not controller.microphoneTestBusy
             assert not wave.property("visible")
             click(visible_item("microphoneTestButton"))
-            settings_page.selectSection(0)
+            select_section(0)
             settle()
             assert preview.closed and not controller.microphoneTestBusy
-            settings_page.selectSection(1)
+            select_section(1)
             settle()
             click(visible_item("microphoneTestButton"))
             controller.selectMicrophone("")
@@ -742,7 +790,7 @@ def main():
             shot("recording")
             click(visible_item("advancedRecordingGroupToggle"))
 
-            settings_page.selectSection(4)
+            select_section(4)
             settle()
             services = [
                 provider
@@ -761,7 +809,7 @@ def main():
             # Restore defaults before subsequent mocked catalog checks.
             controller.setProviderBaseUrl("")
 
-            settings_page.selectSection(1)
+            select_section(1)
             settle()
             click(visible_item("settingsImportFilesButton"))
             assert bridge.surface == "files"
@@ -800,7 +848,7 @@ def main():
             audio_batch.busy = False
             audio_batch.changed.emit()
             bridge.openSettings()
-            settings_page.selectSection(1)
+            select_section(1)
             controller.setRouteProviderId("local_asr")
             shot("local-selection")
             click(visible_item("manageLocalModelsButton"))
@@ -818,7 +866,7 @@ def main():
             shot("local-ready")
             assert not controller.localAsrCloudRefinement
             # Context navigation must preserve separate routes and cloud consent.
-            settings_page.selectSection(2)
+            select_section(2)
             settle()
             for scope in ("rewrite", "translation", "refinement"):
                 click(visible_item(f"workflowTab{scope}"))
@@ -847,7 +895,7 @@ def main():
             choose("cleanupContextBox", 1)
             assert controller.routePrompt == "Local cleanup fixture"
             assert not controller.localAsrCloudRefinement
-            settings_page.selectSection(4)
+            select_section(4)
             settle()
             assert controller.useLocalAsr()
             assert controller.routeModelId == "ggml-small"
@@ -865,7 +913,7 @@ def main():
             settle()
             assert local.remove_calls == 1
             assert controller.localAsrStatus == "missing"
-            settings_page.selectSection(1)
+            select_section(1)
             controller.setRouteProviderId("groq")
             shot("provider-not-connected")
             assert controller.routeModelStatus == "not_configured"
@@ -875,8 +923,8 @@ def main():
             pill_status = PillStatus()
             engine.rootContext().setContextProperty("pillStatus", pill_status)
             engine.load(QUrl.fromLocalFile(str(qml_root / "StatusPill.qml")))
-            assert len(engine.rootObjects()) == 2, messages
-            pill = engine.rootObjects()[1]
+            assert len(engine.rootObjects()) == 3, messages
+            pill = engine.rootObjects()[2]
             window.hide()
             commands = []
 
@@ -920,7 +968,7 @@ def main():
             assert not bridge.feedbackVisible
             assert not pill.property("requestedVisible")
             assert bridge.surface == "idle"
-            assert window.findChild(QObject, "appPages").property("currentIndex") == 0
+            assert find_item(QObject, "appPages").property("currentIndex") == 0
             assert not pill.isVisible()
             assert not window.isVisible()
             bridge._on_workflow_state(

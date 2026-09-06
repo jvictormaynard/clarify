@@ -11,10 +11,12 @@ Vendored from [lipis/flag-icons](https://github.com/lipis/flag-icons) at commit
 | de.svg | de.svg (Germany) |
 | ru.svg | ru.svg (Russia) |
 
-Country artwork is unchanged. RoundedFlag.qml applies a Qt Quick Canvas clip
-with a 3-pixel radius, without an inner border or SVG clipPath (unsupported by
-Qt SVG). Flags display at 24 by 18 pixels, preserving the 4:3 aspect ratio. Filenames retain the
-existing language mapping; language labels remain visible and accessible.
+The outer contours have been adapted to rounded corners directly in the SVG
+paths. US stripe and star geometry is clipped into those paths at authoring time;
+no runtime SVG clipPath or Canvas is required. RoundedFlag.qml uses Qt Quick
+Image with an explicit source size based on display density and shell scale.
+The flags retain their 4:3 artwork and the existing language mapping. Language
+labels remain visible and accessible.
 
 Only these five SVGs are included. No npm package, CSS, CDN or runtime download
 is required. Copyright and permission notice: `licenses/flag-icons-MIT.txt`
