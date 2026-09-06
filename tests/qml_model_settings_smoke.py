@@ -324,6 +324,7 @@ def main():
             if not engine.rootObjects():
                 raise AssertionError("\n".join(messages))
             window = engine.rootObjects()[0]
+            window.setProperty("presentationVisible", True)
             window.show()
             shot("home")
             microphone_button = visible_item("microphoneButton")
@@ -450,6 +451,23 @@ def main():
             assert bridge.surface == "settings"
             settings_page = window.findChild(QObject, "settingsPage")
             panel = window.findChild(QQuickWindow, "clarifySettingsWindow")
+            if "--window-only" in sys.argv:
+                from spikes.pyside6.qt_shell import QtShell
+                from spikes.pyside6.qml_app import _WorkflowWindowVisibility
+
+                integration_shell = QtShell(window)
+                coordinator = _WorkflowWindowVisibility(
+                    bridge, integration_shell, window
+                )
+                coordinator.sync()
+                settle()
+                assert not window.isVisible(), "Toolbar must finish hiding"
+                integration_shell.show_window()
+                settle()
+                assert (
+                    window.findChild(QObject, "appPages").property("currentIndex") == 0
+                ), "Tray must never restore an empty toolbar"
+
             assert panel and panel.isVisible()
             assert panel.transientParent() is None
             assert panel.flags() & Qt.WindowType.WindowType_Mask == Qt.WindowType.Window
