@@ -96,21 +96,6 @@ ApplicationWindow {
         closeAfterDiscard = false
         unsavedDialog.open()
     }
-    function syncVisibility() {
-        if (workflow.surface === "settings") {
-            if (visibility === Window.Minimized) showNormal()
-            visible = true
-            raise()
-            requestActivate()
-        } else {
-            visible = false
-        }
-    }
-    Component.onCompleted: syncVisibility()
-    Connections {
-        target: workflow
-        function onSurfaceChanged() { root.syncVisibility() }
-    }
     onClosing: function(event) { event.accepted = false; requestClose() }
     onVisibleChanged: {
         if (!visible) {

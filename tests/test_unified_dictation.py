@@ -8,7 +8,8 @@ from unittest.mock import patch
 from repositories import AppConfig, LocalConfigRepository
 from secret_store import MemorySecretStore
 from audio_file_batch import FileTranscriptionSelection
-from provider_types import CancellationToken, ProviderConnection, TranscriptionResult
+from provider_types import ProviderConnection, TranscriptionResult
+from provider_http import CancellationToken
 from spikes.pyside6.qml_runtime import QtAudioFileGateway, QtProviderGateway
 
 

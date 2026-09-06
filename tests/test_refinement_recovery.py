@@ -123,7 +123,7 @@ class RefinementRecoveryTests(unittest.TestCase):
             self.gateway.transcribe(self.audio, "prompt", "pt")
         self.rewrite.assert_not_called()
 
-    def test_success_and_transcription_only_keep_normal_behavior(self):
+    def test_legacy_transcription_mode_uses_unified_refinement(self):
         self.rewrite.side_effect = None
         self.rewrite.return_value = RewriteResult("Reviewed", "openai", "editor")
         result = self.gateway.transcribe(self.audio, "prompt", "pt")
@@ -132,8 +132,8 @@ class RefinementRecoveryTests(unittest.TestCase):
         self.rewrite.reset_mock()
         result = self.gateway.transcribe(self.audio, "transcription", "pt")
         self.assertFalse(result.refinement_failed)
-        self.assertIsNone(result.refined_text)
-        self.rewrite.assert_not_called()
+        self.assertEqual(result.refined_text, "Reviewed expanded")
+        self.rewrite.assert_called_once()
 
     def test_local_asr_refinement_still_requires_opt_in(self):
         self.current = replace(

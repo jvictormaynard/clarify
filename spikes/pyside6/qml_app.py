@@ -242,6 +242,27 @@ def _show_translation_picker_if_needed(bridge, shell) -> None:
         shell.show_window()
 
 
+class _SettingsWindowVisibility:
+    """Own native settings presentation independently of menu and toolbar state."""
+
+    def __init__(self, bridge, window):
+        self._bridge = bridge
+        self._window = window
+        bridge.surfaceChanged.connect(self.sync)
+        self.sync()
+
+    def sync(self):
+        if self._bridge.surface != "settings":
+            self._window.hide()
+            return
+        if self._window.visibility() == self._window.Visibility.Minimized:
+            self._window.showNormal()
+        else:
+            self._window.show()
+        self._window.raise_()
+        self._window.requestActivate()
+
+
 class _WorkflowWindowVisibility:
     """Hide the main card while a transient pill owns workflow feedback."""
 
@@ -512,7 +533,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     workflow_window_visibility = _WorkflowWindowVisibility(bridge, shell, window)
     # Keep the coordinator strongly referenced for the lifetime of app.exec().
-    _ = workflow_window_visibility
+    settings_window_visibility = _SettingsWindowVisibility(bridge, settings_window)
+    _ = workflow_window_visibility, settings_window_visibility
     _connect_shutdown(app, shell, runtime, voice_translation, audio_batch)
     app.aboutToQuit.connect(settings.shutdown)
 

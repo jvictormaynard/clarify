@@ -222,13 +222,22 @@ def main():
                 app.processEvents()
                 time.sleep(0.01)
 
+        # Keep visual-parent wrappers alive: dropping them can invalidate child
+        # wrappers in PySide while the QML objects themselves remain alive.
+        discovered_objects = []
+
         def find_item(kind, name):
             for root in engine.rootObjects():
+                discovered_objects.append(root)
+                if not isValid(root):
+                    continue
                 if isinstance(root, kind) and root.objectName() == name:
                     return root
-                result = root.findChild(kind, name)
-                if result is not None:
-                    return result
+                children = root.findChildren(kind)
+                discovered_objects.extend(children)
+                for result in children:
+                    if isValid(result) and result.objectName() == name:
+                        return result
             return None
 
         def select_section(index):
@@ -238,6 +247,7 @@ def main():
                 Qt.ConnectionType.DirectConnection,
                 Q_ARG("QVariant", index),
             )
+            settle()
 
         def input_window():
             panel = find_item(QQuickWindow, "clarifySettingsWindow")
@@ -284,15 +294,17 @@ def main():
             candidates = [
                 item
                 for root in engine.rootObjects()
+                if isValid(root)
                 for item in root.findChildren(QObject, name)
             ]
             pending = [
                 root.contentItem()
                 for root in engine.rootObjects()
-                if isinstance(root, QQuickWindow)
+                if isValid(root) and isinstance(root, QQuickWindow)
             ]
             while pending:
                 item = pending.pop()
+                discovered_objects.append(item)
                 if not isValid(item):
                     continue
                 if item.objectName() == name:
@@ -354,9 +366,16 @@ def main():
         ) as discovery:
             engine.load(QUrl.fromLocalFile(str(qml_root / "Main.qml")))
             engine.load(QUrl.fromLocalFile(str(qml_root / "SettingsWindow.qml")))
-            if not engine.rootObjects():
+            root_windows = engine.rootObjects()
+            if not root_windows:
                 raise AssertionError("\n".join(messages))
             window = engine.rootObjects()[0]
+            from spikes.pyside6.qml_app import _SettingsWindowVisibility
+
+            settings_presenter = _SettingsWindowVisibility(
+                bridge, engine.rootObjects()[1]
+            )
+            assert settings_presenter._window is not None
             window.setProperty("presentationVisible", True)
             window.show()
             shot("home")
@@ -498,7 +517,6 @@ def main():
             menu_window = quick_settings.window()
             click(quick_settings, menu_window)
             assert bridge.surface == "settings"
-            settings_page = find_item(QObject, "settingsPage")
             panel = find_item(QQuickWindow, "clarifySettingsWindow")
             if "--window-only" in sys.argv:
                 from spikes.pyside6.qt_shell import QtShell
@@ -612,12 +630,17 @@ def main():
                 return
             initial_config = controller._config
             for index in (1, 2, 3, 4, 0):
-                click(visible_item(f"settingsSection{index}"))
-                assert settings_page.property("selectedSection") == index
+                item = visible_item(f"settingsSection{index}")
+                click(item)
+                assert (
+                    find_item(QObject, "settingsPage").property("selectedSection")
+                    == index
+                )
             assert controller._config == initial_config
             click(visible_item("settingsSection1"))
             shot("models-cloud")
-            assert not find_item(QObject, "textWorkflowTabs").property("visible")
+            tab = find_item(QObject, "textWorkflowTabs")
+            assert not tab.property("visible")
             assert not find_item(QObject, "maximumDurationField").property("visible")
             if "--baseline" in sys.argv:
                 select_section(4)
@@ -670,7 +693,6 @@ def main():
             assert prompt.property("implicitHeight") > 96
             prompt.editingFinished.emit()
             assert controller.routePrompt == ("A longer instruction.\n" * 12).strip()
-            settings_page = find_item(QObject, "settingsPage")
             select_section(4)
             shot("connections")
             select_section(0)
@@ -852,7 +874,7 @@ def main():
             controller.setRouteProviderId("local_asr")
             shot("local-selection")
             click(visible_item("manageLocalModelsButton"))
-            assert settings_page.property("selectedSection") == 4
+            assert find_item(QObject, "settingsPage").property("selectedSection") == 4
             shot("local-install")
             assert local.install_calls == 0
             click(visible_item("localInstallButton"))
