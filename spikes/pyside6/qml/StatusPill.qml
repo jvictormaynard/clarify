@@ -15,7 +15,8 @@ Window {
     readonly property int horizontalInset: 6
     readonly property real feedbackWidth: Math.min(620, Math.max(230,
         feedbackLabel.implicitWidth + feedbackActions.width + 66)) + 2 * horizontalInset
-    property real animatedWidth: feedback ? feedbackWidth : designWidth
+    property real animatedWidth: feedback ? feedbackWidth
+                                 : starting || !requestedVisible ? 88 : designWidth
     Behavior on animatedWidth {
         NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
     }
@@ -46,6 +47,7 @@ Window {
     property bool successVisible: false
     property real motionPhase: 0.0
     readonly property bool recording: workflow.recording
+    readonly property bool starting: recording && !pillStatus.recordingReady
     readonly property bool processing: requestedVisible && !recording
                                       && !feedback
                                       && workflow.surface !== "success"
@@ -139,12 +141,44 @@ Window {
                 }
 
                 Item {
+                    id: captureSpinner
+                    objectName: "captureStartupSpinner"
+                    x: 48
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 18
+                    height: 18
+                    opacity: pill.starting ? 1 : 0
+                    visible: opacity > 0.001
+                    Behavior on opacity { NumberAnimation { duration: 180 } }
+                    Canvas {
+                        anchors.fill: parent
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.clearRect(0, 0, width, height)
+                            ctx.lineWidth = 1.8
+                            ctx.lineCap = "round"
+                            ctx.strokeStyle = theme.text
+                            ctx.beginPath()
+                            ctx.arc(width / 2, height / 2, 7, 0, Math.PI * 1.45)
+                            ctx.stroke()
+                        }
+                    }
+                    RotationAnimator on rotation {
+                        from: 0; to: 360; duration: 900
+                        loops: Animation.Infinite
+                        running: pill.visible && pill.starting
+                    }
+                    Accessible.name: "Starting microphone"
+                }
+
+                Item {
                     id: waveform
+                    objectName: "captureWaveform"
                     x: 42
                     y: 0
                     width: 104
                     height: parent.height
-                    property bool fadeShown: pill.recording
+                    property bool fadeShown: pill.recording && !pill.starting
                     visible: fadeShown || opacity > 0.001
                     opacity: fadeShown ? 1.0 : 0.0
                     Behavior on opacity {

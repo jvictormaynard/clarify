@@ -5,7 +5,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from PySide6.QtCore import QObject, Property, QPointF, Qt, QUrl, qInstallMessageHandler
+from PySide6.QtCore import (
+    QObject,
+    Property,
+    QPointF,
+    Qt,
+    QUrl,
+    Signal,
+    qInstallMessageHandler,
+)
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
@@ -42,6 +50,9 @@ class Service:
 
 
 class Status(QObject):
+    readyChanged = Signal()
+    ready = True
+    recordingReady = Property(bool, lambda self: self.ready, notify=readyChanged)
     audioLevel = Property(float, lambda self: 0.25, constant=True)
     targetIcon = Property(
         str,
@@ -89,6 +100,26 @@ def main():
         QTest.mouseClick(pill, Qt.LeftButton, Qt.NoModifier, point.toPoint())
         QTest.qWait(350)
 
+    status.ready = False
+    service.publish(WorkflowPhase.RECORDING)
+    QTest.qWait(350)
+    spinner = pill.findChild(QObject, "captureStartupSpinner")
+    waveform = pill.findChild(QObject, "captureWaveform")
+    assert spinner.property("visible") and not waveform.property("visible")
+    compact_width = pill.width()
+    startup_id = pill.winId()
+    shot("00-microphone-starting")
+    QTest.qWait(500)
+    assert spinner.property("visible") and pill.width() == compact_width
+    status.ready = True
+    status.readyChanged.emit()
+    QTest.qWait(75)
+    assert compact_width < pill.width()
+    assert 0 < waveform.property("opacity") < 1
+    QTest.qWait(350)
+    assert waveform.property("visible") and not spinner.property("visible")
+    assert pill.winId() == startup_id
+    shot("00-microphone-active")
     service.publish(WorkflowPhase.PROCESSING)
     QTest.qWait(350)
     native_id = pill.winId()

@@ -823,8 +823,35 @@ class QtRecorder:
         self.process: subprocess.Popen[bytes] | None = None
         self.mic_stream: Any | None = None
         self.mic_level = 0.0
+        self._capture_path: Path | None = None
+        self._capture_has_frames = False
         self._level_stream_device: Any | None = None
         self._lock = threading.RLock()
+
+    @property
+    def capture_active(self) -> bool:
+        """Confirm PCM bytes from SoX, not merely a launched input process."""
+        with self._lock:
+            process, path = self.process, self._capture_path
+            if process is None or process.poll() is not None or path is None:
+                return False
+            if self._capture_has_frames:
+                return True
+            try:
+                with path.open("rb") as source:
+                    header = source.read(4096)
+                if header[:4] != b"RIFF" or header[8:12] != b"WAVE":
+                    return False
+                offset = 12
+                while offset + 8 <= len(header):
+                    size = int.from_bytes(header[offset + 4 : offset + 8], "little")
+                    if header[offset : offset + 4] == b"data":
+                        self._capture_has_frames = len(header) >= offset + 10
+                        return self._capture_has_frames
+                    offset += 8 + size + (size % 2)
+            except OSError:
+                pass
+            return False
 
     def _microphone_input_name(self, system: str) -> str:
         self._level_stream_device = None
@@ -1068,6 +1095,9 @@ class QtRecorder:
         return peak
 
     def start(self, path: Path, cancel_event: threading.Event) -> None:
+        with self._lock:
+            self._capture_path = None
+            self._capture_has_frames = False
         if not self.sox:
             raise QtRuntimeError("SoX was not found in the Clarify runtime")
         if cancel_event.is_set():
@@ -1099,6 +1129,7 @@ class QtRecorder:
             kwargs["cwd"] = str(Path(self.sox).parent)
         with self._lock:
             self.process = subprocess.Popen(args, **kwargs)
+            self._capture_path = path
         time.sleep(0.18)
         if cancel_event.is_set():
             self.cancel()

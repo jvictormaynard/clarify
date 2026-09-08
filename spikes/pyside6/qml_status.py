@@ -286,6 +286,7 @@ class QmlStatusPillController(QObject):
     """
 
     audioLevelChanged = Signal()
+    recordingReadyChanged = Signal()
     targetIconChanged = Signal()
 
     def __init__(
@@ -301,6 +302,7 @@ class QmlStatusPillController(QObject):
         self._bridge = bridge
         self._recorder = recorder
         self._audio_level = 0.0
+        self._recording_ready = False
         self._fallback_icon = fallback_icon
         self._file_icons = QFileIconProvider()
         self._icon_resolver = icon_resolver or self._resolve_icon
@@ -329,6 +331,15 @@ class QmlStatusPillController(QObject):
     def audioLevel(self) -> float:
         return self._audio_level
 
+    @Property(bool, notify=recordingReadyChanged)
+    def recordingReady(self) -> bool:
+        return self._recording_ready
+
+    def _set_recording_ready(self, ready: bool) -> None:
+        if ready != self._recording_ready:
+            self._recording_ready = ready
+            self.recordingReadyChanged.emit()
+
     @Property(str, notify=targetIconChanged)
     def targetIcon(self) -> str:
         return self._target_icon
@@ -341,6 +352,12 @@ class QmlStatusPillController(QObject):
         self.audioLevelChanged.emit()
 
     def _sample_level(self) -> None:
+        self._set_recording_ready(
+            bool(
+                self._bridge.recording
+                and getattr(self._recorder, "capture_active", False)
+            )
+        )
         try:
             target = float(getattr(self._recorder, "mic_level", 0.0) or 0.0)
         except (TypeError, ValueError):
@@ -354,6 +371,7 @@ class QmlStatusPillController(QObject):
                 self._level_timer.start()
             return
         self._level_timer.stop()
+        self._set_recording_ready(False)
         self._set_audio_level(0.0)
 
     def _sync_target_icon(self) -> None:
