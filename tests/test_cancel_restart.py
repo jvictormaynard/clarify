@@ -188,6 +188,61 @@ class CancelRestartTests(unittest.TestCase):
         queued.pop(0)()
         self.assertTrue(bridge.recording)
 
+    def test_repeated_cancel_and_other_shortcuts_do_not_need_dismiss(self):
+        from test_workflows import FakeClipboard, FakeStatistics
+
+        with (
+            TemporaryDirectory() as directory,
+            patch(
+                "spikes.pyside6.qml_runtime._data_directory",
+                return_value=Path(directory),
+            ),
+        ):
+            scheduler = QtWorkflowScheduler()
+            audio = QtRecordingAudioGateway(Recorder())
+            clipboard = FakeClipboard()
+            service = WorkflowService(
+                FakeProvider(),
+                audio,
+                clipboard,
+                Config(),
+                FakeStatistics(),
+                scheduler,
+                FakeClock(),
+            )
+            bridge = QmlWorkflowBridge(
+                service,
+                dispatch_runner=scheduler.run_dispatch,
+                target_provider=clipboard.capture_target,
+            )
+            try:
+                for _ in range(10):
+                    self.assertTrue(bridge.handleHotkey("recording_hotkey"))
+                    self.wait(
+                        lambda: (
+                            bridge.recording and audio._active.start_finished.is_set()
+                        )
+                    )
+                    self.assertTrue(bridge.handleHotkey("escape"))
+                    self.wait(lambda: bridge.canUndoCancellation)
+                self.assertTrue(bridge.handleHotkey("rewrite_hotkey"))
+                self.wait(lambda: bridge._state.phase == WorkflowPhase.COMPLETED)
+                self.assertTrue(bridge.handleHotkey("recording_hotkey"))
+                self.wait(
+                    lambda: bridge.recording and audio._active.start_finished.is_set()
+                )
+                bridge.handleHotkey("escape")
+                self.wait(lambda: bridge.canUndoCancellation)
+                self.assertTrue(bridge.handleHotkey("translation_hotkey"))
+                self.wait(
+                    lambda: service.state.phase == WorkflowPhase.TRANSLATION_PICKER
+                )
+            finally:
+                service.cancel_active()
+                audio.wait_for_shutdown(2)
+                scheduler.wait_for_dispatches(2)
+                self.app.processEvents()
+
 
 if __name__ == "__main__":
     unittest.main()
