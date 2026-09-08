@@ -972,7 +972,8 @@ class WorkflowService:
         try:
             recording.wait_until_started()
             if self._is_current(session.operation_id):
-                audio_source = recording.stop()
+                stop_capture = getattr(recording, "stop_for_cancel", recording.stop)
+                audio_source = stop_capture()
                 # Delete the temporary WAV and release the microphone now.
                 recording.complete()
         except Exception:
@@ -980,28 +981,38 @@ class WorkflowService:
             audio_source = None
             recording.cancel()
         finally:
-            with self._lock:
-                session.cancel_capture_pending = False
-                if not self._is_current_locked(session.operation_id):
-                    return
-                if not session.finish_requested:
-                    session.retry_audio = audio_source
-                    if (
-                        audio_source is not None
-                        and audio_source.duration_seconds is not None
-                    ):
-                        session.elapsed_seconds = audio_source.duration_seconds
-                    self._transition(
-                        session,
-                        WorkflowPhase.CANCELLED,
-                        can_undo=audio_source is not None,
-                    )
-                    return
-                # Dismiss/new shortcut arrived while capture was still stopping.
-                session.retry_audio = None
-                self._session = None
-                self._state = WorkflowState()
-            self._scheduler.call_soon(lambda: self._deliver_ready())
+            # READY must not race the worker's final detach: the audio gateway
+            # rejects new capture until that ownership barrier is released.
+            released = getattr(recording, "when_shutdown_complete", None)
+
+            def callback():
+                self._finish_cancel_capture(session, audio_source)
+
+            if callable(released):
+                released(callback)
+            else:
+                callback()
+
+    def _finish_cancel_capture(self, session, audio_source) -> None:
+        with self._lock:
+            session.cancel_capture_pending = False
+            if not self._is_current_locked(session.operation_id):
+                return
+            if not session.finish_requested:
+                session.retry_audio = audio_source
+                if (
+                    audio_source is not None
+                    and audio_source.duration_seconds is not None
+                ):
+                    session.elapsed_seconds = audio_source.duration_seconds
+                self._transition(
+                    session, WorkflowPhase.CANCELLED, can_undo=audio_source is not None
+                )
+                return
+            session.retry_audio = None
+            self._session = None
+            self._state = WorkflowState()
+        self._scheduler.call_soon(lambda: self._deliver_ready())
 
     def _dismiss_microphone_unavailable(self) -> bool:
         with self._lock:

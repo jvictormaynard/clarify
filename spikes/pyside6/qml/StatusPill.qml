@@ -28,6 +28,7 @@ Window {
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
            | Qt.WindowDoesNotAcceptFocus
     readonly property bool requestedVisible: workflow.surface === "recording"
+                                             || workflow.transitionPending
                                              || feedback
                                              || workflow.surface === "processing"
                                              || workflow.surface === "voice_processing"
@@ -47,8 +48,10 @@ Window {
     property bool successVisible: false
     property real motionPhase: 0.0
     readonly property bool recording: workflow.recording
-    readonly property bool starting: recording && !pillStatus.recordingReady
+    readonly property bool starting: workflow.transitionPending
+                                     || (recording && !pillStatus.recordingReady)
     readonly property bool processing: requestedVisible && !recording
+                                      && !starting
                                       && !feedback
                                       && workflow.surface !== "success"
 

@@ -460,6 +460,10 @@ class QtProviderGateway:
     def prepare_dictation(self, recording) -> None:
         """Best-effort local preparation; never contact a cloud provider."""
         try:
+            with recording._lock:
+                if recording.preparation_done.is_set():
+                    return
+                preparation_token = recording.provider_cancel_token
             route = self._route(WorkflowScope.TRANSCRIPTION)
             if route.provider_id != LOCAL_ASR_PROVIDER_ID:
                 return
@@ -480,7 +484,7 @@ class QtProviderGateway:
                     backend,
                     route.model_id,
                     language,
-                    recording.provider_cancel_token,
+                    preparation_token,
                 )
                 with recording._lock:
                     if not recording.preparation_done.is_set():
@@ -490,7 +494,7 @@ class QtProviderGateway:
                             stream.worker
                         )
                         stream.start()
-            backend.prepare(recording.preparation_done, recording.provider_cancel_token)
+            backend.prepare(recording.preparation_done, preparation_token)
         except Exception:
             # The real request owns user-visible errors and explicit retries.
             return
@@ -1189,6 +1193,7 @@ class QtRecordingSession(RecordingSessionGateway):
         self.provider_cancel_token = CancellationToken()
         self.start_finished = threading.Event()
         self.shutdown_complete = threading.Event()
+        self._shutdown_callbacks: list[Callable[[], None]] = []
         self._workers: set[threading.Thread] = set()
         self._lock = threading.RLock()
         self._started = False
@@ -1288,10 +1293,22 @@ class QtRecordingSession(RecordingSessionGateway):
     attach_workflow_worker = attach_worker
 
     def detach_worker(self, worker: Any) -> None:
+        callbacks = []
         with self._lock:
             self._workers.discard(worker)
             if self._terminal and not self._workers:
                 self.shutdown_complete.set()
+                callbacks, self._shutdown_callbacks = self._shutdown_callbacks, []
+        for callback in callbacks:
+            callback()
+
+    def when_shutdown_complete(self, callback: Callable[[], None]) -> None:
+        """Publish availability after the audio owner releases every worker."""
+        with self._lock:
+            if not self.shutdown_complete.is_set():
+                self._shutdown_callbacks.append(callback)
+                return
+        callback()
 
     def start(self) -> None:
         try:
@@ -1313,7 +1330,23 @@ class QtRecordingSession(RecordingSessionGateway):
         if self._error is not None:
             raise self._error
 
+    def stop_for_cancel(self) -> RecordingSnapshot:
+        """Retain audio for Undo without waiting for speculative ASR results."""
+        with self._lock:
+            self.preparation_done.set()
+            self.provider_cancel_token.cancel()
+            # Undo is a new explicit request. It must not inherit cancellation
+            # from speculative inference that was running during capture.
+            self.provider_cancel_token = CancellationToken()
+            stream = getattr(self, "local_stream", None)
+        if stream is not None:
+            stream.cancel()
+        return self._snapshot(finalize_stream=False)
+
     def stop(self) -> RecordingSnapshot:
+        return self._snapshot(finalize_stream=True)
+
+    def _snapshot(self, *, finalize_stream: bool) -> RecordingSnapshot:
         self.wait_until_started()
         self._stop_boundary_monitor()
         self.recorder.stop()
@@ -1338,7 +1371,7 @@ class QtRecordingSession(RecordingSessionGateway):
             duration_seconds=duration_seconds,
             pretranscribed=(
                 self.local_stream.finish(audio_bytes)
-                if getattr(self, "local_stream", None) is not None
+                if finalize_stream and getattr(self, "local_stream", None) is not None
                 else None
             ),
         )
@@ -1371,10 +1404,14 @@ class QtRecordingSession(RecordingSessionGateway):
         self.audio_path.unlink(missing_ok=True)
 
     def _mark_terminal(self) -> None:
+        callbacks = []
         with self._lock:
             self._terminal = True
             if not self._workers:
                 self.shutdown_complete.set()
+                callbacks, self._shutdown_callbacks = self._shutdown_callbacks, []
+        for callback in callbacks:
+            callback()
 
 
 class QtRecordingAudioGateway:

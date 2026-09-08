@@ -193,6 +193,7 @@ class QmlWorkflowBridge(QObject):
         self._files_visible = False
         self._finishing = False
         self._pending_workflow_action: Callable[[], None] | None = None
+        self._cancel_requested = False
         self._target_executable = ""
         saved_config = app_config
         if saved_config is None:
@@ -491,6 +492,8 @@ class QmlWorkflowBridge(QObject):
     @Slot(object)
     def _on_workflow_state(self, state: WorkflowState) -> None:
         self._state = state
+        if state.phase is not WorkflowPhase.RECORDING:
+            self._cancel_requested = False
         self._quick_feedback = ""
         if (
             state.phase is WorkflowPhase.COMPLETED
@@ -504,6 +507,11 @@ class QmlWorkflowBridge(QObject):
         if state.phase is not WorkflowPhase.COMPLETED:
             self._result_visible = False
         self._notify_all()
+        if (
+            state.phase is WorkflowPhase.CANCELLED
+            and self._pending_workflow_action is not None
+        ):
+            self.finish()
         if state.phase is WorkflowPhase.READY:
             pending_action = self._pending_workflow_action
             self._pending_workflow_action = None
@@ -648,8 +656,9 @@ class QmlWorkflowBridge(QObject):
 
     @Slot()
     def cancelRecording(self) -> None:
-        if self._state.phase is not WorkflowPhase.RECORDING:
+        if self._state.phase is not WorkflowPhase.RECORDING or self._cancel_requested:
             return
+        self._cancel_requested = True
         self._submit(
             lambda: self._workflow_service.dispatch(CancelDictation(retain_audio=True))
         )
@@ -667,6 +676,21 @@ class QmlWorkflowBridge(QObject):
         if self._quick_paste_busy:
             return False
         normalized = str(action or "").strip().lower()
+        if self._cancel_requested and self._state.phase is WorkflowPhase.RECORDING:
+            if normalized == "escape":
+                return True
+            if normalized in {
+                "recording_hotkey",
+                "rewrite_hotkey",
+                "translation_hotkey",
+                "voice_translation_hotkey",
+            }:
+                if self._pending_workflow_action is None:
+                    self._pending_workflow_action = lambda: self.handleHotkey(
+                        normalized
+                    )
+                    self._notify_all()
+                return True
         if normalized == "voice_translation_hotkey":
             # Dedicated voice translation intentionally lives outside
             # WorkflowService.  Keep the old runtime's toggle command as an
