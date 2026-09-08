@@ -22,7 +22,7 @@ SearchSelect {
         var status = settingsController.routeModelStatus
         if (settingsController.routeProviderId === "local_asr") {
             if (status === "loading") return "Checking installed models…"
-            if (status === "empty") return "No installed models. Open Manage model to install one."
+            if (status === "empty") return "No installed models. Install one in Integrations."
             if (status === "error") return "Could not check local models. Try refresh."
         }
         if (status === "loading") return "Loading models…"

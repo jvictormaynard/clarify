@@ -85,6 +85,9 @@ ApplicationWindow {
                     window = engine.rootObjects()[0]
                     QTest.qWait(350)
                     self.assertIsInstance(window, QQuickWindow)
+                    self.assertIsNone(
+                        window.findChild(QQuickItem, "manageLocalModelsButton")
+                    )
                     picker = window.findChild(QQuickItem, "workflowModelPicker")
                     self.assertTrue(picker.property("visible"))
                     point = picker.mapToScene(

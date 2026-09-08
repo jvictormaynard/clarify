@@ -67,25 +67,6 @@ ColumnLayout {
             }
         }
     }
-    SettingsRow {
-        Layout.fillWidth: true
-        visualTheme: form.visualTheme
-        visible: settingsController.routeProviderId === "local_asr"
-        title: "On device"
-        Label {
-            text: "Select an installed model above"
-            color: form.visualTheme.subtleText
-            font.pixelSize: 10
-        }
-        AppButton {
-            objectName: "manageLocalModelsButton"
-            theme: form.visualTheme
-            text: "Manage model"
-            Layout.preferredHeight: 30
-            Accessible.name: "Manage local models"
-            onClicked: form.manageLocalModels()
-        }
-    }
     Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: form.visualTheme.border }
     AppButton {
         id: advanced
