@@ -45,7 +45,7 @@ from microphone_controls import (
 )
 from provider_http import CancellationToken
 from provider_registry import PROVIDER_REGISTRY
-from provider_types import ProviderCapability, ProviderConnection
+from provider_types import ModelCatalog, ProviderCapability, ProviderConnection
 from repositories import (
     AppConfig,
     ApplicationRepositories,
@@ -1196,9 +1196,7 @@ class QmlSettingsController(QObject):
     @Property(str, notify=modelCatalogChanged)
     def routeModelStatus(self) -> str:
         key = self._model_connection_key()
-        if key[0] == LOCAL_ASR_PROVIDER_ID:
-            return "ready" if self.localAsrStatus == "installed" else "local_missing"
-        if not key[2]:
+        if key[0] != LOCAL_ASR_PROVIDER_ID and not key[2]:
             return "not_configured"
         if key == self._model_loading_key:
             return "loading"
@@ -1211,25 +1209,23 @@ class QmlSettingsController(QObject):
     @Property("QVariantList", notify=modelCatalogChanged)
     def routeModelOptions(self) -> list[dict[str, str]]:
         key = self._model_connection_key()
-        if key[0] == LOCAL_ASR_PROVIDER_ID:
-            models = (
-                [PROVIDER_REGISTRY.describe(key[0]).default_audio_model]
-                if self.localAsrStatus == "installed"
-                else []
-            )
-        else:
-            catalog = self._model_catalogs.get(key)
-            if catalog is None:
-                return []
-            audio = (
-                WORKFLOW_CAPABILITIES[self._selected_scope]
-                == ProviderCapability.AUDIO_TRANSCRIPTION
-            )
-            models = catalog.audio_models if audio else catalog.text_models
+        catalog = self._model_catalogs.get(key)
+        if catalog is None:
+            return []
+        audio = (
+            WORKFLOW_CAPABILITIES[self._selected_scope]
+            == ProviderCapability.AUDIO_TRANSCRIPTION
+        )
+        models = catalog.audio_models if audio else catalog.text_models
+        from local_asr_catalog import MODELS, PROFILE_LABELS
+
+        local_labels = dict(zip(MODELS, PROFILE_LABELS))
         return [
             {
                 "id": model,
-                "label": "Whisper Small" if key[0] == LOCAL_ASR_PROVIDER_ID else model,
+                "label": local_labels.get(model, model)
+                if key[0] == LOCAL_ASR_PROVIDER_ID
+                else model,
             }
             for model in sorted(set(models))
         ]
@@ -1245,10 +1241,8 @@ class QmlSettingsController(QObject):
         """Discover models without saving credentials or changing the route."""
         key = self._model_connection_key()
         if (
-            key[0] == LOCAL_ASR_PROVIDER_ID
-            or not key[2]
-            or key == self._model_loading_key
-        ):
+            key[0] != LOCAL_ASR_PROVIDER_ID and not key[2]
+        ) or key == self._model_loading_key:
             return False
         if self._model_token is not None:
             self._model_token.cancel()
@@ -1262,9 +1256,19 @@ class QmlSettingsController(QObject):
 
         def discover() -> None:
             try:
-                catalog = PROVIDER_REGISTRY.discover_models(
-                    key[0], ProviderConnection(key[2], key[1]), token
-                )
+                if key[0] == LOCAL_ASR_PROVIDER_ID:
+                    from local_asr_catalog import MODELS, installer_for
+
+                    installed = []
+                    for model in MODELS:
+                        token.raise_if_cancelled()
+                        if installer_for(model, "cpu").status()["state"] == "installed":
+                            installed.append(model)
+                    catalog = ModelCatalog(audio_models=tuple(installed))
+                else:
+                    catalog = PROVIDER_REGISTRY.discover_models(
+                        key[0], ProviderConnection(key[2], key[1]), token
+                    )
             except Exception:
                 # Provider errors can contain URLs or credentials. Do not expose them.
                 catalog = None
@@ -2003,6 +2007,7 @@ class QmlSettingsController(QObject):
                 return
         if isinstance(state, LocalASRProductState):
             self._local_state = state
+            self._model_catalogs.pop((LOCAL_ASR_PROVIDER_ID, "", ""), None)
             self.providerStateChanged.emit()
 
     def _microphone_supports_explicit_selection(self) -> bool:

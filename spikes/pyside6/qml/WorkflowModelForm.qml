@@ -56,7 +56,6 @@ ColumnLayout {
         Layout.fillWidth: true
         visualTheme: form.visualTheme
         title: "Model"
-        visible: settingsController.routeProviderId !== "local_asr"
         ModelPicker {
             Layout.fillWidth: true
             visualTheme: form.visualTheme
@@ -72,10 +71,9 @@ ColumnLayout {
         Layout.fillWidth: true
         visualTheme: form.visualTheme
         visible: settingsController.routeProviderId === "local_asr"
-        title: "Whisper Small"
+        title: "On device"
         Label {
-            text: settingsController.localAsrStatus === "installed" ? "Ready · On device"
-                : settingsController.localAsrBusy ? "Installing…" : "Not installed"
+            text: "Select an installed model above"
             color: form.visualTheme.subtleText
             font.pixelSize: 10
         }

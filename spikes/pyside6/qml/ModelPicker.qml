@@ -15,10 +15,16 @@ SearchSelect {
     searchPlaceholder: "Search models…"
     refreshable: settingsController.routeModelStatus !== "not_configured"
     busy: settingsController.routeModelStatus === "loading"
-    secondaryActionText: settingsController.routeModelStatus === "not_configured"
+    secondaryActionText: settingsController.routeProviderId === "local_asr" ? ""
+                        : settingsController.routeModelStatus === "not_configured"
                         || settingsController.routeModelStatus === "error" ? "Connect service" : "Use model ID…"
     statusText: {
         var status = settingsController.routeModelStatus
+        if (settingsController.routeProviderId === "local_asr") {
+            if (status === "loading") return "Checking installed models…"
+            if (status === "empty") return "No installed models. Open Manage model to install one."
+            if (status === "error") return "Could not check local models. Try refresh."
+        }
         if (status === "loading") return "Loading models…"
         if (status === "not_configured") return "Connect this service to browse its models."
         if (status === "error") return "Could not load models. Check the connection and retry."
