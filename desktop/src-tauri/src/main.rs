@@ -42,6 +42,11 @@ fn main() {
     tauri::Builder::default()
         .manage(Bridge { pending, next: AtomicU64::new(1) })
         .setup(move |app| {
+          // ICO decoding uses its first (16px) frame. Supply the full-resolution
+          // original so Windows can scale the taskbar icon for the display DPI.
+          if let Some(window) = app.get_webview_window("main") {
+              window.set_icon(tauri::include_image!("icons/clarify.png"))?;
+          }
           let handle = app.handle().clone();
           std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines() {

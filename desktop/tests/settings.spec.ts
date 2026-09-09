@@ -80,3 +80,42 @@ test("microphone preview stops on navigation and all pages fit", async ({ page }
     }
   }
 });
+
+test("navigation preserves the page container, brightness and horizontal geometry", async ({ page }) => {
+  await expect(page.locator("fieldset")).toBeEnabled();
+  await page.evaluate(() => {
+    (window as any).__originalPage = document.querySelector(".page");
+    (window as any).__navFrames = [];
+    (window as any).__sampling = true;
+    const sample = () => {
+      if (!(window as any).__sampling) return;
+      const button = document.querySelector("nav button")!;
+      const area = document.querySelector(".page")!;
+      (window as any).__navFrames.push({
+        opacity: getComputedStyle(button).opacity,
+        same: area === (window as any).__originalPage,
+        width: area.getBoundingClientRect().width,
+        animation: getComputedStyle(area).animationName,
+      });
+      requestAnimationFrame(sample);
+    };
+    sample();
+  });
+  for (const name of ["Texto", "Geral", "Modelos e serviços", "Ditado", "Texto"]) {
+    await page.getByRole("button", { name, exact: true }).click();
+    await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+    await expect(page.locator("fieldset")).toBeEnabled();
+  }
+  for (const name of ["Reescrita", "Tradução", "Revisão"]) {
+    await page.getByRole("button", { name, exact: true }).click();
+    await expect(page.getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("fieldset")).toBeEnabled();
+  }
+  const frames = await page.evaluate(() => {
+    (window as any).__sampling = false;
+    return (window as any).__navFrames as { opacity: string; same: boolean; width: number; animation: string }[];
+  });
+  expect(frames.length).toBeGreaterThan(5);
+  expect(frames.every(f => f.same && f.opacity === "1" && f.animation === "none")).toBe(true);
+  expect(new Set(frames.map(f => f.width)).size).toBe(1);
+});

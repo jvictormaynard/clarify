@@ -11,7 +11,11 @@ await mkdir(process.env.CLARIFY_TEST_OUTPUT, { recursive: true });
 const started = performance.now();
 const child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, "--native"], {
   windowsHide: true,
-  env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: "--remote-debugging-port=9223 --remote-debugging-address=127.0.0.1" },
+  env: {
+    ...process.env,
+    WEBVIEW2_USER_DATA_FOLDER: `${process.env.CLARIFY_TEST_OUTPUT}/webview-${process.pid}`,
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: "--remote-debugging-port=9223 --remote-debugging-address=127.0.0.1",
+  },
 });
 child.stderr.on("data", data => process.stderr.write(data));
 const exited = new Promise(resolve => child.once("exit", code => resolve(code)));

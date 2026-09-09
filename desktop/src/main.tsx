@@ -21,6 +21,7 @@ function App() {
   const [page, setPage] = useState("dictation");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [navigating, setNavigating] = useState(false);
   const [saved, setSaved] = useState(false);
   const [closing, setClosing] = useState(false);
   const [discarding, setDiscarding] = useState(false);
@@ -88,18 +89,25 @@ function App() {
     if (retention !== String(state.historyRetentionDays ?? "") && !await run("setHistoryRetentionDays", retention === "" ? null : Number(retention))) return false;
     const s = await run("save"); if (s) setSaved(true); return !!s;
   };
-  const navigate = async (id: string) => {
-    if (state && prompt !== state.routePrompt && !await run("setRoutePrompt", prompt)) return;
-    if (state?.microphoneTestBusy) await run("stopMicrophoneTest");
-    setPage(id);
-    if (id === "dictation" || id === "text") {
-      await run("selectWorkflow", id === "dictation" ? "transcription" : "refinement");
-      await run("loadRouteModels");
-    }
-    if (id === "models" && state?.selectedProviderId === "local_asr") {
-      const provider = state.providers.find(p => p.id !== "local_asr");
-      if (provider) await run("selectProvider", provider.id);
-    }
+  const navigate = async (id: string, scope = id === "dictation" ? "transcription" : "refinement") => {
+    if (!state || busy || (id === page && (id !== "text" || scope === state.selectedScope))) return;
+    pending.current = true; setBusy(true); setNavigating(true); setError("");
+    try {
+      let next = state;
+      if (prompt !== state.routePrompt) next = await call("setRoutePrompt", prompt);
+      if (next.microphoneTestBusy) next = await call("stopMicrophoneTest");
+      if (id === "dictation" || id === "text") {
+        next = await call("selectWorkflow", scope);
+        next = await call("loadRouteModels");
+      }
+      if (id === "models" && next.selectedProviderId === "local_asr") {
+        const provider = next.providers.find(p => p.id !== "local_asr");
+        if (provider) next = await call("selectProvider", provider.id);
+      }
+      // Commit the destination and its data together. Never paint the previous route.
+      setState(next); setPrompt(next.routePrompt); setPage(id);
+    } catch (e) { setError(String(e)); }
+    finally { pending.current = false; setBusy(false); setNavigating(false); }
   };
   useEffect(() => {
     if (!state) return;
@@ -113,7 +121,7 @@ function App() {
     {["empty", "not_configured", "error"].includes(state.routeModelStatus) && <button className="text-button" onClick={() => void navigate("models")}>{state.routeModelStatus === "not_configured" ? "Conectar serviço" : "Gerenciar modelos e serviços"} <ArrowRight size={15} /></button>}
   </>;
   const info = pages.find(item => item.id === page)!;
-  return <div className="app">
+  return <div className="app" data-navigating={navigating || undefined}>
     <aside><div className="brand"><AudioLines size={23} strokeWidth={1.6} /><span>Clarify</span></div>
       <span className="nav-heading">CONFIGURAÇÕES</span>
       <nav aria-label="Configurações">{pages.map(({ id, label, icon: Icon }) => <button key={id} disabled={busy} aria-label={label} aria-current={id === page ? "page" : undefined} onClick={() => void navigate(id)}><Icon size={18} strokeWidth={1.6} /><span>{label}</span></button>)}</nav>
@@ -123,7 +131,7 @@ function App() {
       }}>Opções avançadas <ArrowRight size={13} /></button></div>
     </aside>
     <main><header><h1>{info.label}</h1><p>{info.description}</p></header>
-      <div className="scroll-area"><div className="page" key={page}>
+      <div className="scroll-area"><div className="page">
       {!state ? <div className="connection" role="status"><LoaderCircle className="spin" size={22} />Conectando ao Clarify…</div> : <fieldset disabled={busy}>
         {page === "general" && <>
           <section><h2>Preferências</h2><Row title="Idioma do texto"><Picker label="Idioma" value={state.language} options={state.languages.map(id => ({ id, label: languageNames[id] || id }))} onChange={v => void run("setLanguage", v)} /></Row>
@@ -140,7 +148,7 @@ function App() {
           {state.routeProviderId === "local_asr" && <section><h2>Acabamento do texto</h2><Toggle title="Revisar com IA na nuvem" hint="Após a transcrição local, envie o texto ao serviço de revisão configurado." checked={state.localAsrCloudRefinement} onChange={v => void run("setLocalAsrCloudRefinement", v)} /></section>}
         </>}
         {page === "text" && <>
-          <div className="segmented" aria-label="Fluxo de texto">{[{ id: "refinement", label: "Revisão" }, { id: "rewrite", label: "Reescrita" }, { id: "translation", label: "Tradução" }].map(item => <button key={item.id} aria-pressed={state.selectedScope === item.id} onClick={async () => { if (prompt !== state.routePrompt) await run("setRoutePrompt", prompt); await run("selectWorkflow", item.id); await run("loadRouteModels"); }}>{item.label}</button>)}</div>
+          <div className="segmented" aria-label="Fluxo de texto">{[{ id: "refinement", label: "Revisão" }, { id: "rewrite", label: "Reescrita" }, { id: "translation", label: "Tradução" }].map(item => <button key={item.id} aria-pressed={state.selectedScope === item.id} onClick={() => void navigate("text", item.id)}>{item.label}</button>)}</div>
           <section>{route}<Toggle title="Ativar este fluxo" checked={state.routeEnabled} onChange={v => void run("setRouteEnabled", v)} /></section>
           <section><h2>Instruções</h2><p className="hint">Defina o tom e as alterações que a IA deve aplicar.</p><textarea className="control prompt" aria-label="Instruções" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Como o texto deve ser revisado?" /></section>
         </>}
@@ -167,7 +175,7 @@ function App() {
       </fieldset>}
       </div></div>
       <footer>{error ? <div role="alert" className="error"><AlertCircle size={17} /><span>{error}</span></div> : <span className="save-status" role="status">{saved ? <><Check size={16} />Alterações salvas</> : state?.dirty || localDirty || state?.providerDirty ? "Alterações não salvas" : "Tudo em dia"}</span>}
-        <div className="footer-actions"><button className="button ghost" disabled={busy || !dirtyRef.current} onClick={() => setDiscarding(true)}>Descartar</button><button className="button primary" disabled={busy || !dirtyRef.current || !state} onClick={() => void save()}>{busy ? <LoaderCircle size={15} className="spin" /> : null}Salvar alterações</button></div>
+        <div className="footer-actions"><button className="button ghost" disabled={busy || !dirtyRef.current} onClick={() => setDiscarding(true)}>Descartar</button><button className="button primary" disabled={busy || !dirtyRef.current || !state} onClick={() => void save()}>{busy && !navigating ? <LoaderCircle size={15} className="spin" /> : null}Salvar alterações</button></div>
       </footer>
     </main>
     <Confirm open={closing && dirtyRef.current || discarding} onOpenChange={value => { if (!value) { setClosing(false); setDiscarding(false); } }} title="Alterações não salvas" description="Salve suas alterações ou descarte-as para continuar.">
