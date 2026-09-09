@@ -88,6 +88,7 @@ try:
     from .qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from .qml_bridge import QmlWorkflowBridge  # noqa: E402
     from .qml_settings import QmlSettingsController  # noqa: E402
+    from .qml_web_settings import WebSettingsProcess  # noqa: E402
     from .qml_status import QmlStatusPillController  # noqa: E402
     from .qml_voice_translation import (  # noqa: E402
         create_qml_voice_translation_controller,
@@ -103,6 +104,7 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from qml_bridge import QmlWorkflowBridge  # noqa: E402
     from qml_settings import QmlSettingsController  # noqa: E402
+    from qml_web_settings import WebSettingsProcess  # noqa: E402
     from qml_status import QmlStatusPillController  # noqa: E402
     from qml_voice_translation import (  # noqa: E402
         create_qml_voice_translation_controller,
@@ -245,16 +247,30 @@ def _show_translation_picker_if_needed(bridge, shell) -> None:
 class _SettingsWindowVisibility:
     """Own native settings presentation independently of menu and toolbar state."""
 
-    def __init__(self, bridge, window):
+    def __init__(self, bridge, window, web_settings=None):
         self._bridge = bridge
         self._window = window
+        self._web_settings = web_settings
         bridge.surfaceChanged.connect(self.sync)
         self.sync()
 
     def sync(self):
         if self._bridge.surface != "settings":
             self._window.hide()
+            if self._web_settings is not None:
+                self._web_settings.hide()
+                self._web_settings.handoff = False
             return
+        if (
+            self._web_settings is not None
+            and not self._web_settings.handoff
+            and self._web_settings.show()
+        ):
+            self._window.hide()
+            return
+        self.show_native()
+
+    def show_native(self):
         # Restore minimized settings without losing an existing maximized state.
         if self._window.visibility() == self._window.Visibility.Maximized:
             self._window.showMaximized()
@@ -534,7 +550,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     workflow_window_visibility = _WorkflowWindowVisibility(bridge, shell, window)
     # Keep the coordinator strongly referenced for the lifetime of app.exec().
-    settings_window_visibility = _SettingsWindowVisibility(bridge, settings_window)
+    web_settings = WebSettingsProcess(
+        settings, bridge, lambda: settings_window_visibility.show_native(), app
+    )
+    settings_window_visibility = _SettingsWindowVisibility(
+        bridge, settings_window, web_settings
+    )
+    bridge.settingsRequested.connect(web_settings.activate)
+    app.aboutToQuit.connect(web_settings.shutdown)
     _ = workflow_window_visibility, settings_window_visibility
     _connect_shutdown(app, shell, runtime, voice_translation, audio_batch)
     app.aboutToQuit.connect(settings.shutdown)

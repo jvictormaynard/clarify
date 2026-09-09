@@ -1,10 +1,14 @@
 [CmdletBinding()]
 param(
-    [string]$InstallPath = $env:CLARIFY_INSTALL_PATH
+    [string]$InstallPath = $env:CLARIFY_INSTALL_PATH,
+    [string]$SettingsExecutable
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+if ($SettingsExecutable -and -not (Test-Path -LiteralPath $SettingsExecutable -PathType Leaf)) {
+    throw 'The requested settings executable does not exist.'
+}
 $repoVersion = Join-Path $repoRoot "version.py"
 $repoExtra = Join-Path $repoRoot "extra"
 $repoAssets = Join-Path $repoRoot "assets"
@@ -262,6 +266,9 @@ foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File))
 
 # Never copy or bundle the repository .env. Public and local executables read
 # provider credentials from the user's Clarify config directory instead.
+if ($SettingsExecutable) {
+    $pyinstallerArgs += @('--add-binary', "${SettingsExecutable};.")
+}
 $pyinstallerArgs += $source
 
 $inheritedPath = $env:PATH

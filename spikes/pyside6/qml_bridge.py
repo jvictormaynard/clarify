@@ -61,6 +61,7 @@ class QmlWorkflowBridge(QObject):
     """
 
     surfaceChanged = Signal()
+    settingsRequested = Signal()
     statusChanged = Signal()
     resultChanged = Signal()
     busyChanged = Signal()
@@ -866,6 +867,7 @@ class QmlWorkflowBridge(QObject):
             self._settings_visible = True
             self._result_visible = False
             self._notify_all()
+            self.settingsRequested.emit()
 
         if self._state.phase in (WorkflowPhase.FAILED, WorkflowPhase.CANCELLED):
             # Editing settings must not discard retained audio or undo state.

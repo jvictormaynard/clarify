@@ -1,0 +1,6 @@
+{
+  "identifier": "settings",
+  "description": "Only the settings window can use the close lifecycle.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-close", "core:window:allow-destroy"]
+}

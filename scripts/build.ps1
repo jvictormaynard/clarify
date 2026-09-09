@@ -2,13 +2,17 @@
 param(
     [string]$OutputDirectory,
     [ValidatePattern('^[a-z0-9][a-z0-9.-]{0,63}$')]
-    [string]$PayloadIdentity
+    [string]$PayloadIdentity,
+    [string]$SettingsExecutable
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+if ($SettingsExecutable -and -not (Test-Path -LiteralPath $SettingsExecutable -PathType Leaf)) {
+    throw 'The requested settings executable does not exist.'
+}
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repoRoot "dist"
 } elseif (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {
@@ -126,6 +130,9 @@ if ($PayloadIdentity) {
     # This test-only build marker is bundled inside the one-file archive, so CI
     # gets a valid but byte-distinct historical payload without mutating source.
     $pyInstallerArgs += @("--add-data", "${payloadIdentityFile};.")
+}
+if ($SettingsExecutable) {
+    $pyInstallerArgs += @('--add-binary', "${SettingsExecutable};.")
 }
 $pyInstallerArgs += $entryPoint
 

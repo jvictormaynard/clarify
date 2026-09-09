@@ -1,5 +1,9 @@
 # Settings window
 
+Builds that include `clarify-settings.exe` use the React/Tauri settings window.
+See `desktop/README.md` for the private-pipe integration, build and tests.
+The QML window described below remains the fallback and advanced-options screen.
+
 Settings use a dedicated Qt Quick Controls ApplicationWindow. The compact dictation toolbar remains a separate tool window. The settings window has no transient parent, uses Qt.Window, and supports the Windows taskbar, native resizing, minimization, and maximization.
 
 The existing Basic controls and shared monochrome theme are retained. No Electron runtime or new UI dependency is needed. Form columns align across pages; the footer and errors stay visible while the page scrolls.
