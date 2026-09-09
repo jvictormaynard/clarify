@@ -8,3 +8,5 @@
 .scroll-area{scrollbar-gutter:stable}
 .page{animation:none}
 .app[data-navigating] nav button:disabled,.app[data-navigating] fieldset button:disabled{opacity:1}
+.inline-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin:10px 0}
+details .row-label{font-size:14px;color:#eeeeec}

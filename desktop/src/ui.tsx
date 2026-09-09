@@ -7,13 +7,13 @@ import { Check, ChevronDown, Search, RefreshCw, X } from "lucide-react";
 import type { Option } from "./bridge";
 
 // Composable Radix + cmdk primitives, as used by shadcn/ui. Styling stays local.
-export function Picker({ label, value, options, onChange, onRefresh, busy, empty = "Nenhuma opção disponível." }: {
+export function Picker({ label, value, options, onChange, onRefresh, busy, disabled, empty = "Nenhuma opção disponível." }: {
   label: string; value: string; options: Option[]; onChange: (value: string) => void;
-  onRefresh?: () => void; busy?: boolean; empty?: string;
+  onRefresh?: () => void; busy?: boolean; disabled?: boolean; empty?: string;
 }) {
   const [open, setOpen] = useState(false);
   return <Popover.Root open={open} onOpenChange={setOpen}>
-    <Popover.Trigger className="control picker" role="combobox" aria-label={label} aria-expanded={open}>
+    <Popover.Trigger className="control picker" role="combobox" aria-label={label} aria-expanded={open} disabled={disabled}>
       <span>{options.find(item => item.id === value)?.label || value || "Selecionar…"}</span>
       <ChevronDown size={16} aria-hidden />
     </Popover.Trigger>

@@ -2,7 +2,8 @@
 
 Builds that include `clarify-settings.exe` use the React/Tauri settings window.
 See `desktop/README.md` for the private-pipe integration, build and tests.
-The QML window described below remains the fallback and advanced-options screen.
+The QML window described below remains only a launch-failure fallback for web builds
+and the settings screen for QML-only builds. Normal navigation stays in React.
 
 Settings use a dedicated Qt Quick Controls ApplicationWindow. The compact dictation toolbar remains a separate tool window. The settings window has no transient parent, uses Qt.Window, and supports the Windows taskbar, native resizing, minimization, and maximization.
 

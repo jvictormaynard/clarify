@@ -88,19 +88,40 @@ class WebSettingsTests(unittest.TestCase):
         self.assertIn("result", self.request("loadRouteModels"))
         self.assertIn("result", self.request("refreshRouteModels"))
 
-    def test_window_fallback_and_advanced_handoff_keep_bridge_consistent(self):
+    def test_advanced_recording_validates_and_persists_only_on_save(self):
+        original = self.settings.repositories.config.load().recording_controls
+        controls = self.settings.recordingControls
+        controls["max_duration_seconds"] = 120
+        controls["vad"]["enabled"] = True
+        controls["vad"]["silence_duration_seconds"] = 1.5
+        self.assertIn("result", self.request("setRecordingControls", controls))
+        self.assertEqual(
+            self.settings.repositories.config.load().recording_controls, original
+        )
+        self.assertIn("result", self.request("save"))
+        persisted = self.settings.repositories.config.load().recording_controls
+        self.assertEqual(persisted.max_duration_seconds, 120)
+        self.assertEqual(persisted.vad.silence_duration_seconds, 1.5)
+        controls["max_duration_seconds"] = -1
+        self.assertIn("error", self.request("setRecordingControls", controls))
+        self.assertEqual(self.settings.recordingControls["max_duration_seconds"], 120)
+
+    def test_local_maintenance_uses_existing_controller(self):
+        self.assertIn("result", self.request("removeLocalAsr"))
+        self.settings._local_product.remove_async.assert_called_once()
+        self.assertIn("result", self.request("setLocalStreaming", True))
+        self.assertIn("result", self.request("resetAllHotkeys"))
+
+    def test_window_close_does_not_open_legacy_settings(self):
         from types import SimpleNamespace
         from spikes.pyside6.qml_web_settings import WebSettingsProcess
 
         bridge = SimpleNamespace(surface="settings", closeSettings=Mock())
         fallback = Mock()
         host = WebSettingsProcess(self.settings, bridge, fallback)
-        host.handoff = True
         host._finished(0, None)
-        fallback.assert_called_once()
-        bridge.closeSettings.assert_not_called()
-        host.handoff = False
-        host._finished(0, None)
+        fallback.assert_not_called()
+        self.assertIn("error", self.request("openLegacy"))
         bridge.closeSettings.assert_called_once()
         host._failed(None)
         self.assertTrue(host.failed)

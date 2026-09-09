@@ -2,7 +2,7 @@
 
 React/TypeScript with Radix and cmdk primitives, hosted by Tauri 2 / WebView2.
 Components follow the composition approach used by shadcn/ui and are maintained
-here without a shadcn runtime dependency. This is a staged settings migration;
+here without a shadcn runtime dependency. Settings use the web UI;
 the recording engine and pill remain in Python/Qt.
 
 The Python engine remains the sole owner of configuration, secrets, audio,
@@ -37,8 +37,13 @@ a minimized window. Starting a workflow hides settings without discarding drafts
 Closing settings prompts about unsaved edits and terminates the separate host.
 
 General, Dictation, Text, Shortcuts, and Models & services are in the web UI.
-**Advanced options** opens QML for controls not yet migrated, including dictionary,
-recording boundaries and diagnostics. These features have not been removed.
+Recording boundaries and silence detection are under Dictation. Text includes
+the local-transcription cleanup route. Custom model IDs/endpoints, shortcut resets,
+credential removal, local-model removal/use/measurement and experimental streaming
+are integrated into their relevant sections. There is no advanced-options handoff.
+Audio file import remains in the pill's quick menu. Dictionary and diagnostic
+pages were not part of the QML SettingsWindow; the earlier description was wrong.
+QML is retained only as a launch-failure fallback and for QML-only builds.
 
 ## Tests
 

@@ -116,6 +116,56 @@ test("navigation preserves the page container, brightness and horizontal geometr
     return (window as any).__navFrames as { opacity: string; same: boolean; width: number; animation: string }[];
   });
   expect(frames.length).toBeGreaterThan(5);
-  expect(frames.every(f => f.same && f.opacity === "1" && f.animation === "none")).toBe(true);
+  expect(frames.filter(f => !f.same || f.opacity !== "1" || f.animation !== "none")).toEqual([]);
   expect(new Set(frames.map(f => f.width)).size).toBe(1);
+});
+
+test("recording options stay in the new window and preserve drafts until save", async ({ page }) => {
+  await expect(page.getByRole("button", { name: "Opções avançadas" })).toHaveCount(0);
+  await page.getByText("Limites e parada automática", { exact: true }).click();
+  await page.getByRole("spinbutton", { name: "Duração máxima", exact: true }).fill("5");
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("alert")).toContainText("aviso");
+  await page.getByRole("spinbutton", { name: "Duração máxima", exact: true }).fill("120");
+  await page.getByRole("switch", { name: "Parar após fala e silêncio" }).click();
+  await page.getByRole("spinbutton", { name: "Tempo de silêncio", exact: true }).fill("1.5");
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await page.getByRole("button", { name: "Ditado", exact: true }).click();
+  await page.getByText("Limites e parada automática", { exact: true }).click();
+  await expect(page.getByRole("spinbutton", { name: "Duração máxima", exact: true })).toHaveValue("120");
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeDisabled();
+  await page.getByRole("spinbutton", { name: "Duração máxima", exact: true }).fill("180");
+  await page.getByRole("button", { name: "Descartar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Descartar", exact: true }).click();
+  await expect(page.getByRole("spinbutton", { name: "Duração máxima", exact: true })).toHaveValue("120");
+});
+
+test("local cleanup and custom route settings are editable without legacy navigation", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await page.getByRole("combobox", { name: "Contexto da revisão", exact: true }).click();
+  await page.getByRole("option", { name: "Transcrição local", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Contexto da revisão", exact: true })).toContainText("Transcrição local");
+  await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Revisão local independente.");
+  await page.getByText("Modelo e endereço personalizados", { exact: true }).click();
+  await page.getByRole("textbox", { name: "ID do modelo", exact: true }).fill("custom-local-cleanup");
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Revisão local independente.");
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeDisabled();
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Revisão local independente.");
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await page.getByRole("combobox", { name: "Contexto da revisão", exact: true }).click();
+  await page.getByRole("option", { name: "Transcrição local", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Revisão local independente.");
+  await expect(page.getByRole("combobox", { name: "Modelo", exact: true })).toContainText("custom-local-cleanup");
+});
+
+test("local model removal requires confirmation and cancel keeps the model", async ({ page }) => {
+  await page.getByRole("button", { name: "Modelos e serviços", exact: true }).click();
+  await page.getByText("Opções do modelo local", { exact: true }).click();
+  await page.getByRole("button", { name: "Remover modelo", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("reinstalá-lo");
+  await page.getByRole("dialog").getByRole("button", { name: "Cancelar", exact: true }).click();
+  await expect(page.getByText("Pronto para usar", { exact: true })).toBeVisible();
 });

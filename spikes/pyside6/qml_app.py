@@ -259,13 +259,8 @@ class _SettingsWindowVisibility:
             self._window.hide()
             if self._web_settings is not None:
                 self._web_settings.hide()
-                self._web_settings.handoff = False
             return
-        if (
-            self._web_settings is not None
-            and not self._web_settings.handoff
-            and self._web_settings.show()
-        ):
+        if self._web_settings is not None and self._web_settings.show():
             self._window.hide()
             return
         self.show_native()

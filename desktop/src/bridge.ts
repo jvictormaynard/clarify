@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { RecordingControls } from "./recording";
 
 export type Option = { id: string; label: string };
 export interface Settings {
@@ -7,7 +8,7 @@ export interface Settings {
   autostart: boolean; historyEnabled: boolean; historyRetentionDays: number | null;
   microphoneDevices: Option[]; selectedMicrophoneId: string | null;
   microphoneStatus: string; microphoneTestBusy: boolean; microphoneTestLevel: number;
-  microphoneTestStatus: string; recordingControls: Record<string, number | boolean | null>;
+  microphoneTestStatus: string; recordingControls: RecordingControls;
   selectedScope: string; routeProviderId: string; routeModelId: string;
   routeModelOptions: Option[]; routeModelStatus: string; routePrompt: string;
   routeEnabled: boolean; routeCustomEndpoint: string;
@@ -19,6 +20,7 @@ export interface Settings {
   localDeviceIndex: number; localAsrStatus: string; localAsrDetail: string;
   localAsrProgress: number; localAsrBusy: boolean; localAsrCanInstall: boolean;
   localAsrRequirementsList: string[]; localStreaming: boolean; localAsrCloudRefinement: boolean;
+  localBenchmarkBusy: boolean; localBenchmarkDetail: string;
   hotkeyActions: { id: string; label: string; display: string; definition: { display: string } }[];
   hotkeyActivationMode: string; hotkeyPushToTalkSupported: boolean;
 }

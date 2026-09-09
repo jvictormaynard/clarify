@@ -34,6 +34,7 @@ try {
   page.on("pageerror", error => errors.push(error.message));
   await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Opções avançadas" })).toHaveCount(0);
   console.log(`Native ready after ${Math.round(performance.now() - started)} ms (includes isolated Python fixture startup)`);
   await page.screenshot({ path: `${process.env.CLARIFY_TEST_OUTPUT}/native-dictation.png` });
   const measured = spawnSync("powershell.exe", ["-NoProfile", "-Command", `$taskProcesses=Get-CimInstance Win32_Process; $taskFamily=@(${child.pid}); do { $taskPrevious=$taskFamily.Count; $taskFamily+=@($taskProcesses | Where-Object { $_.ParentProcessId -in $taskFamily -and $_.ProcessId -notin $taskFamily } | Select-Object -ExpandProperty ProcessId) } while ($taskFamily.Count -gt $taskPrevious); $taskNative=@($taskFamily | Where-Object { $_ -ne ${child.pid} }); $taskMemory=($taskNative | ForEach-Object { (Get-Process -Id $_ -ErrorAction SilentlyContinue).WorkingSet64 } | Measure-Object -Sum).Sum; [pscustomobject]@{Processes=$taskNative.Count; SummedWorkingSetMB=[math]::Round($taskMemory/1MB,1)} | ConvertTo-Json -Compress`], { encoding: "utf8", windowsHide: true });
@@ -44,6 +45,10 @@ try {
   await page.getByRole("option", { name: /Whisper Medium/ }).click();
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeDisabled();
+  await page.getByText("Limites e parada automática", { exact: true }).click();
+  await page.getByRole("spinbutton", { name: "Duração máxima", exact: true }).fill("120");
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByText("Alterações salvas", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Texto", exact: true }).click();
   await page.getByRole("textbox", { name: "Instruções" }).fill("Unsaved native test draft");
   await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("plugin:window|close", { label: "main" }));

@@ -34,6 +34,9 @@ class Dispatcher(QObject):
 
 
 def main():
+    # Match production's UTF-8 byte pipes, including non-ASCII instructions.
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8")
     app = QCoreApplication([])
     with (
         TemporaryDirectory() as directory,

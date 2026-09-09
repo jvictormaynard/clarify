@@ -56,6 +56,8 @@ PROPERTIES = (
     "localAsrCanInstall",
     "localAsrRequirementsList",
     "localStreaming",
+    "localBenchmarkBusy",
+    "localBenchmarkDetail",
     "localAsrCloudRefinement",
     "hotkeyActions",
     "hotkeyActivationMode",
@@ -96,6 +98,11 @@ METHODS = frozenset(
         "setHotkey",
         "setHotkeyActivationMode",
         "resetHotkey",
+        "resetAllHotkeys",
+        "clearProvider",
+        "removeLocalAsr",
+        "useLocalAsr",
+        "cancelLocalMeasurement",
         "save",
         "load",
     )
@@ -185,7 +192,6 @@ class WebSettingsProcess(QObject):
         self.process.errorOccurred.connect(self._failed)
         self.buffer = bytearray()
         self.failed = False
-        self.handoff = False
         self._visible = False
         self._shutting_down = False
         self.process.started.connect(lambda: self._window_command("show"))
@@ -205,7 +211,6 @@ class WebSettingsProcess(QObject):
             return False
         if self.process.state() == QProcess.ProcessState.NotRunning:
             self.buffer.clear()
-            self.handoff = False
             self._visible = True
             self.process.start(str(path), [])
             self.startup_timer.start()
@@ -221,7 +226,7 @@ class WebSettingsProcess(QObject):
             self._window_command("hide")
 
     def activate(self):
-        if not self.handoff and not self.failed:
+        if not self.failed:
             self._window_command("show")
 
     def _read(self):
@@ -237,20 +242,7 @@ class WebSettingsProcess(QObject):
             except (ValueError, UnicodeError):
                 continue
             self.startup_timer.stop()
-            if isinstance(request, dict) and request.get("method") == "openLegacy":
-                if self.settings.dirty or self.settings.providerDirty:
-                    reply = {
-                        "id": request.get("id"),
-                        "error": "Salve ou descarte as alterações primeiro.",
-                    }
-                else:
-                    self.handoff = True
-                    reply = {
-                        "id": request.get("id"),
-                        "result": self.protocol.snapshot(),
-                    }
-            else:
-                reply = self.protocol.dispatch(request)
+            reply = self.protocol.dispatch(request)
             self.process.write((json.dumps(reply, ensure_ascii=False) + "\n").encode())
 
     def _failed(self, error):
@@ -272,10 +264,7 @@ class WebSettingsProcess(QObject):
             if self.bridge.surface == "settings":
                 self.fallback()
         elif self.bridge.surface == "settings":
-            if self.handoff:
-                self.fallback()
-            else:
-                self.bridge.closeSettings()
+            self.bridge.closeSettings()
 
     def shutdown(self):
         self._shutting_down = True
