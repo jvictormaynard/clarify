@@ -40,7 +40,7 @@ cyclonedx-python-lib==11.11.0
     #   pip-audit
 defusedxml==0.7.1
     # via py-serializable
-filelock==3.32.2
+filelock==3.32.4
     # via cachecontrol
 fqdn==1.5.1
     # via jsonschema
