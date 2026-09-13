@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import gc
 import json
 import os
 import subprocess
@@ -10,6 +11,7 @@ import sys
 import threading
 import time
 import unittest
+import weakref
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -124,6 +126,18 @@ class QmlSettingsControllerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.qt_app = QApplication.instance() or QApplication([])
+
+    def test_shutdown_releases_local_subscription_and_controller(self):
+        with TemporaryDirectory() as directory:
+            controller = QmlSettingsController(_repositories(directory))
+            product = controller._local_product
+            reference = weakref.ref(controller)
+            controller.shutdown()
+            self.assertEqual(product._listeners, [])
+            del controller
+            self.qt_app.processEvents()
+            gc.collect()
+            self.assertIsNone(reference())
 
     @staticmethod
     def _microphone_inventory():

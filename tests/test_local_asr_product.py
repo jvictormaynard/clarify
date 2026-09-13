@@ -77,6 +77,15 @@ class FakeBackend:
 
 
 class LocalASRProductControllerTests(unittest.TestCase):
+    def test_unsubscribe_releases_listener_and_stops_delivery(self):
+        controller = LocalASRProductController(FakeInstaller())
+        states = []
+        controller.subscribe(states.append)
+        controller.unsubscribe(states.append)
+        controller.unsubscribe(states.append)
+        controller._publish(controller.state)
+        self.assertEqual(len(states), 1)
+
     def wait_for(self, predicate):
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
@@ -95,8 +104,8 @@ class LocalASRProductControllerTests(unittest.TestCase):
         self.assertEqual(controller.state.status, "checking")
         controller.refresh_async()
         self.wait_for(
-            lambda: controller.state.status == "not_installed"
-            and not controller.busy)
+            lambda: controller.state.status == "not_installed" and not controller.busy
+        )
         self.assertEqual(installer.status_calls, 1)
         controller.install_async()
         self.wait_for(lambda: installer.install_calls == 1)
@@ -144,8 +153,7 @@ class LocalASRProductControllerTests(unittest.TestCase):
         installer = FakeInstaller()
         installer._status = "installed"
         installer.block_remove = True
-        controller = LocalASRProductController(
-            installer, backend=FakeBackend())
+        controller = LocalASRProductController(installer, backend=FakeBackend())
         controller.remove_async()
         self.wait_for(lambda: installer.remove_started.is_set())
         controller.cancel()
@@ -154,14 +162,16 @@ class LocalASRProductControllerTests(unittest.TestCase):
         self.assertFalse(controller.busy)
 
     def test_requirement_summary_is_human_readable(self):
-        summary = format_requirements({
-            "platform": "Windows x64",
-            "compute": "CPU-only; AVX support",
-            "runtime": "Microsoft Visual C++ 2015-2022 Redistributable (x64)",
-            "memory_bytes": 852_000_000,
-            "disk_bytes": 510_000_000,
-            "download_bytes": 495_584_068,
-        })
+        summary = format_requirements(
+            {
+                "platform": "Windows x64",
+                "compute": "CPU-only; AVX support",
+                "runtime": "Microsoft Visual C++ 2015-2022 Redistributable (x64)",
+                "memory_bytes": 852_000_000,
+                "disk_bytes": 510_000_000,
+                "download_bytes": 495_584_068,
+            }
+        )
         self.assertIn("Windows x64", summary)
         self.assertIn("AVX support", summary)
         self.assertIn("Visual C++", summary)

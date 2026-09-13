@@ -14,6 +14,7 @@ import platform
 import subprocess
 import sys
 import threading
+import weakref
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -428,9 +429,8 @@ class QmlSettingsController(QObject):
         self._microphoneLevelPublished.connect(
             self._apply_microphone_level, Qt.ConnectionType.QueuedConnection
         )
-        self._local_product.subscribe(
-            lambda state: self._localStatePublished.emit((0, state))
-        )
+        self._local_state_listener = self._local_state_callback(0)
+        self._local_product.subscribe(self._local_state_listener)
         self._localBenchmarkPublished.connect(
             self._finish_local_benchmark, Qt.ConnectionType.QueuedConnection
         )
@@ -454,8 +454,9 @@ class QmlSettingsController(QObject):
         self._modelDiscoveryFinished.connect(
             self._finish_model_discovery, Qt.ConnectionType.QueuedConnection
         )
-        self.routeChanged.connect(self.modelCatalogChanged.emit)
-        self.providerStateChanged.connect(self.modelCatalogChanged.emit)
+        # Forward signals without retaining a Python bound emit callback.
+        self.routeChanged.connect(self.modelCatalogChanged)
+        self.providerStateChanged.connect(self.modelCatalogChanged)
         if local_product is None:
             from local_asr_catalog import MODELS
 
@@ -1505,11 +1506,12 @@ class QmlSettingsController(QObject):
         self._local_generation += 1
         generation = self._local_generation
         self._local_profile, self._local_device = model, device
+        self._unsubscribe_local_state()
+        self._local_product.cancel()
         self._local_product = product
         self._local_state = product.state
-        product.subscribe(
-            lambda state: self._localStatePublished.emit((generation, state))
-        )
+        self._local_state_listener = self._local_state_callback(generation)
+        product.subscribe(self._local_state_listener)
         product.refresh_async()
         self.providerStateChanged.emit()
         return True
@@ -1763,6 +1765,7 @@ class QmlSettingsController(QObject):
 
     @Slot()
     def shutdown(self) -> None:
+        self._unsubscribe_local_state()
         self._local_inventory_thread.join(timeout=3.5)
         if self._local_benchmark_token is not None:
             self._local_benchmark_token.cancel()
@@ -1778,6 +1781,21 @@ class QmlSettingsController(QObject):
         self._microphone_test_generation += 1
         self._microphone_test_busy = False
         self._local_product.shutdown()
+
+    def _unsubscribe_local_state(self) -> None:
+        unsubscribe = getattr(self._local_product, "unsubscribe", None)
+        if callable(unsubscribe):
+            unsubscribe(self._local_state_listener)
+
+    def _local_state_callback(self, generation):
+        reference = weakref.ref(self)
+
+        def publish(state):
+            controller = reference()
+            if controller is not None:
+                controller._localStatePublished.emit((generation, state))
+
+        return publish
 
     @Slot(result=bool)
     def load(self) -> bool:
