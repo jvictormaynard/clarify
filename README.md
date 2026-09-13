@@ -37,9 +37,9 @@ translate selected text without opening a separate editor.
 > Whisper keeps transcription local unless you explicitly enable cloud
 > refinement.
 
-> This README describes the current source, including unreleased Settings changes.
-> Downloads can differ. Check the [release notes](https://github.com/jvictormaynard/clarify/releases/latest)
-> for the features in a published executable. Release acceptance is tracked in
+> The Settings and dictionary described here are included in v0.4.0.
+> Check the [release notes](https://github.com/jvictormaynard/clarify/releases/latest)
+> before downloading; older releases have a different interface. Release acceptance is tracked in
 > [Release readiness](docs/release-readiness.md).
 
 ## Features
@@ -64,9 +64,9 @@ translate selected text without opening a separate editor.
 
 ![Personal dictionary in the current Settings frontend](docs/images/settings-dictionary.png)
 
-Current source, not a published-release screenshot. Captured from the real
-React frontend in an isolated browser test with synthetic data; native Windows
-frame behavior still requires separate acceptance.
+The v0.4.0 React frontend, captured in an isolated browser test with synthetic
+data. Native-window checks and untested scenarios are recorded in
+[Release readiness](docs/release-readiness.md).
 
 ## Installation
 
@@ -85,7 +85,8 @@ rollback, uninstall, signing, and incident behavior.
 
 The project also publishes a no-cost community release for the portable app.
 It contains `Clarify.exe`, its SHA-256 file, the runtime SBOM, a ZIP
-archive, and the verified SoX source archive. It is intentionally unsigned
+archive, and verified SoX and Qt/PySide source archives. License notices are
+included in the portable package and ZIP. It is intentionally unsigned
 until paid publisher signing is sponsored. Windows SmartScreen can therefore
 ask for confirmation on first launch. This release does not contain the MSI or
 the authenticated update manifest.

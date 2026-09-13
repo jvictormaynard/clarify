@@ -387,7 +387,7 @@ The signed installer/update contract, Azure OIDC configuration, manual
 acceptance matrix, rotation, and revocation procedure are documented in
 [Windows distribution and update security](windows-distribution.md). The
 community release workflow is the no-cost path: it publishes only an unsigned
-portable EXE, checksum, SBOM, ZIP, SoX source archive, and provenance. Do not
+portable EXE, checksum, SBOM, ZIP, SoX and Qt/PySide source archives, and provenance. Do not
 publish an MSI or authenticated manifest until every signed rollout gate there
 is complete.
 
@@ -406,7 +406,7 @@ not install it. The build requires a .NET SDK because
 
    ```bash
    python3 .agents/skills/clarify-release/scripts/release_preflight.py \
-     --repo . --version 0.1.1
+     --repo . --version X.Y.Z --track community
    ```
 
 5. Open and merge a focused release-preparation PR after local, Ubuntu,
@@ -414,7 +414,7 @@ not install it. The build requires a .NET SDK because
 6. Create an annotated `vX.Y.Z` tag on the exact green `main` commit and push
    only that tag.
 7. A community tag release builds the unsigned portable EXE, runtime-lock
-   CycloneDX SBOM, checksum, ZIP, SoX source archive, and provenance
+   CycloneDX SBOM, checksum, ZIP, SoX and Qt/PySide source archives, and provenance
    attestations. It publishes no MSI or update manifest.
 8. Download the published assets, verify the checksum and SBOM/ZIP contents,
    inspect attestations, and confirm that `/releases/latest` resolves to the

@@ -4,50 +4,57 @@ This is a release checklist, not a claim of acceptance. Local code, a passing
 test, a merged commit, and a published executable are different states. Record
 the commit SHA, Windows version, DPI, and evidence for each release candidate.
 
-## Local verification — 2026-09-13
+## Verified baseline for v0.4.0 — 2026-09-13
 
-Checked the working tree on `codex/settings-local`, not a release tag:
+Production changes were merged through [PR #96](https://github.com/jvictormaynard/clarify/pull/96)
+at `926b305879dee078c912e07a6afa0b569934e335`. Its
+[post-merge CI](https://github.com/jvictormaynard/clarify/actions/runs/34733753038)
+passed Linux and Windows tests and Windows packaging. A release-metadata
+preparation still needs its own PR, post-merge and tag checks.
 
-- Python discovery: 1,124 tests, no failures, 5 platform skips.
-- Settings: all 12 Playwright tests passed; the dictionary test also passed
-  after adding stable, animation-complete documentation screenshots.
-- TypeScript/Vite and the Rust 1.94.0 release build passed on Windows.
-- The configured Ruff checks, format gate, targeted mypy checks, PowerShell
-  syntax, YAML parsing, local documentation links, and `git diff --check` passed.
-- The production npm audit reported no vulnerabilities in the locked frontend
-  dependencies. This does not certify the Python or Rust dependency graphs.
-- Payload verification has matching, missing, and mismatched-input tests,
-  including a real PyInstaller archive round trip.
+- Python suite: 1,140 tests per OS, with 4 existing Linux and 5 Windows skips.
+- All 13 Settings browser tests passed; the rapid picker-reopen regression
+  also passed 10 repeated local runs. The native-crash reproduction passed
+  100 repetitions after the callback-lifetime correction.
+- TypeScript/Vite, locked Rust 1.94.0, configured lint/format/types, dependency
+  audits, packaged QML loading and embedded Settings/inventory checks passed.
+- The downloaded PR artifact passed independent Settings/SBOM hash checks,
+  Qt notice equality, unwanted-module policy and all six upstream source hashes.
+- Settings inventory includes 42 npm packages and 259 Cargo crates with license
+  texts; build-only crates are marked excluded. Its CycloneDX schema was checked.
+- Hosted Windows CI passed install, upgrade, repair, rollback and uninstall.
+  This is not a signed-installer or clean-user desktop acceptance claim.
+- The local portable build was installed with backup. The user confirmed
+  preserved settings/models, working recording and immediate restart after Esc.
+  The subsequent picker fix passed native WebView tests and was installed too.
+- Native checks covered dictionary/save/navigation, scroll isolation, window
+  controls and clean close. Synthetic screenshots were inspected at normal
+  WebView scale and forced factor 1.5, not at changed Windows system DPI.
 
-Follow-up packaging checks on the same development tree:
-
-- The full Windows portable build passed, including the embedded Settings hash
-  and byte-for-byte inventory checks. The installed application was not replaced.
-- The Settings inventory contains 42 npm packages and 259 Cargo crates, including
-  build-only crates marked as excluded. All have collected license texts.
-- The generated Settings SBOM passed CycloneDX 1.5 schema validation.
-
-Remote Actions and clean-user Windows acceptance are still required before
-publication. Local evidence does not replace those gates.
+The maintainer has no clean Windows machine/VM and accepted proceeding with
+that limitation. Clean-user/WebView2-absence tests, actual Windows-scaled DPI,
+network-blocked local ASR, broader cross-app focus tests and a full custom Qt
+rebuild remain unverified. Do not turn these gaps into passed checklist items.
+Settings localization beyond Portuguese and backlog/dependency triage are
+separate follow-up work, not additions to this release.
 
 ## Scope before publication
 
 See the [publication review](release-review-2026-09-13.md) for the optional Qt
 payload finding, corrective packaging policy, and still-open acceptance gates.
 
-- [ ] Review the existing Settings, dictionary, hotkey, and deployment changes
-  as focused groups. Do not stage an entire dirty worktree without review.
-- [ ] Align the English and Portuguese README with the candidate. Keep
-  unreleased work distinct from the latest download.
-- [ ] Pass both Python CI runners and Windows packaging, including the Settings
-  action and embedded-child hash check, on the exact candidate SHA.
-- [ ] Resolve any dependency audit or test failure; do not hide it with skips.
+- [x] Review and integrate the product/cleanup changes in PR #96.
+- [x] Align English and Portuguese documentation with the v0.4.0 scope.
+- [x] Resolve the native callback and picker-reopen failures without skips.
 - [x] Inventory the new bundled JavaScript and Rust dependencies and include
   their notices and SBOM coverage in the packaging and release workflows.
-- [ ] Review Qt module, source-availability, and distribution obligations.
-- [ ] Capture real app screenshots at normal and scaled DPI with an empty or
-  synthetic profile. Do not publish personal paths, keys, or transcripts.
-- [ ] Obtain Windows acceptance below before preparing a release tag.
+- [x] Remove unwanted Qt modules and supply pinned sources and notices;
+  document replacement instructions without claiming legal certification.
+- [x] Record available manual/native acceptance and the untested scenarios.
+- [ ] Pass release-preparation PR and post-merge CI on the exact release SHA.
+- [ ] Verify tag workflow, published files, checksums, source archives and
+  provenance before announcing the download. Record final evidence in the
+  release-preparation PR and release notes.
 
 ## Windows product acceptance
 
