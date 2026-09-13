@@ -5,7 +5,7 @@ import unittest
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
 
 try:
     from .test_pyside6_qml_settings import _repositories
@@ -19,7 +19,7 @@ from spikes.pyside6.qml_web_settings import SettingsProtocol
 class WebSettingsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QCoreApplication.instance() or QCoreApplication([])
+        cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
         self.windows = patch(
@@ -50,6 +50,46 @@ class WebSettingsTests(unittest.TestCase):
         self.assertNotIn("test-secret-never-render", serialized)
         self.assertNotIn("providerApiKey", serialized)
         self.assertEqual(response["id"], 7)
+
+    def test_dictionary_draft_save_discard_and_validation(self):
+        entry = {
+            "term": "Eva Desktop",
+            "aliases": ["Eva"],
+            "pronunciation": "",
+            "enabled": True,
+        }
+        state = self.request("setDictionaryEntries", [entry])["result"]
+        self.assertTrue(state["dirty"])
+        self.assertEqual(self.settings._dictionary_service.state.dictionary, ())
+        self.assertEqual(self.request("load")["result"]["dictionaryEntries"], [])
+        self.request("setDictionaryEntries", [entry])
+        self.assertFalse(self.request("save")["result"]["dirty"])
+        self.assertEqual(
+            self.settings._dictionary_service.reload().dictionary[0].term, "Eva Desktop"
+        )
+        self.assertIn("error", self.request("setDictionaryEntries", [entry, entry]))
+        self.assertEqual(
+            self.request("snapshot")["result"]["dictionaryEntries"], [entry]
+        )
+        self.request("setDictionaryEntries", [])
+        self.request("save")
+        self.assertEqual(self.settings._dictionary_service.reload().dictionary, ())
+
+    def test_failed_dictionary_save_keeps_draft_and_rolls_back_config(self):
+        original = self.settings.repositories.config.load()
+        self.request("setLanguage", "pt" if original.ui.language != "pt" else "en")
+        self.request("setDictionaryEntries", [{"term": "Railway"}])
+        with patch.object(
+            self.settings._dictionary_service.repository,
+            "save",
+            side_effect=OSError("disk full"),
+        ):
+            self.assertIn("error", self.request("save"))
+        self.assertTrue(self.settings.dirty)
+        self.assertEqual(
+            self.settings.repositories.config.load().ui.language, original.ui.language
+        )
+        self.assertEqual(self.settings._dictionary_service.state.dictionary, ())
 
     def test_draft_save_and_discard_use_repository(self):
         original = self.settings.language

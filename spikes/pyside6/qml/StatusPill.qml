@@ -16,7 +16,8 @@ Window {
     readonly property real feedbackWidth: Math.min(620, Math.max(230,
         feedbackLabel.implicitWidth + feedbackActions.width + 66)) + 2 * horizontalInset
     property real animatedWidth: feedback ? feedbackWidth
-                                 : starting || !requestedVisible ? 88 : designWidth
+                                 : (starting || !requestedVisible ? 88 : designWidth)
+                                   + (workflow.showRecordingStop ? 34 : 0)
     Behavior on animatedWidth {
         NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
     }
@@ -222,6 +223,34 @@ Window {
                             }
                         }
                     }
+                }
+
+                ToolButton {
+                    objectName: "stopRecordingButton"
+                    anchors.right: parent.right
+                    anchors.rightMargin: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 28
+                    height: 28
+                    padding: 0
+                    focusPolicy: Qt.NoFocus
+                    visible: opacity > 0.001
+                    enabled: workflow.showRecordingStop
+                    opacity: workflow.showRecordingStop ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 180 } }
+                    contentItem: Item {
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 10; height: 10; radius: 2
+                            color: theme.text
+                        }
+                    }
+                    background: Rectangle {
+                        radius: height / 2
+                        color: parent.hovered ? "#20ffffff" : "transparent"
+                    }
+                    Accessible.name: workflow.language === "pt" ? "Parar gravação" : "Stop recording"
+                    onClicked: workflow.stopRecording()
                 }
 
                 Item {

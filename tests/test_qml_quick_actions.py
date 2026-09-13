@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
 from spikes.pyside6.qml_bridge import QmlWorkflowBridge
 from spikes.pyside6.qml_quick_paste import QuickPasteController
 from workflows import (
@@ -23,7 +23,7 @@ from microphone_controls import MicrophoneDevice, MicrophoneInventory
 class QuickActionsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QCoreApplication.instance() or QCoreApplication([])
+        cls.app = QApplication.instance() or QApplication([])
 
     def test_only_completed_dictation_is_retained_in_memory(self):
         service = SimpleNamespace(
@@ -77,9 +77,7 @@ class QuickActionsTests(unittest.TestCase):
         try:
             controller.remember_target()
             own_window.isActive.return_value = True
-            clipboard.capture_target.return_value = SelectionTarget(
-                456, "Clarify.exe"
-            )
+            clipboard.capture_target.return_value = SelectionTarget(456, "Clarify.exe")
             controller.paste("Transcript", finished)
             hide.assert_called_once()
             clipboard.activate.assert_called_once_with(external)
@@ -164,7 +162,9 @@ class QuickActionsTests(unittest.TestCase):
             shell = SimpleNamespace(
                 hide_window=Mock(),
                 show_window=Mock(),
-                show_window_without_activation=lambda: restored_surfaces.append(bridge.surface),
+                show_window_without_activation=lambda: restored_surfaces.append(
+                    bridge.surface
+                ),
             )
             coordinator = _WorkflowWindowVisibility(
                 bridge, shell, SimpleNamespace(isVisible=lambda: True)

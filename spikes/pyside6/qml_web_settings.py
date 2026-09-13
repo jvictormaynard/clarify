@@ -13,6 +13,7 @@ from PySide6.QtCore import QObject, QProcess, QTimer
 # Never expose QObject reflection, repository access, saved API keys, or paths.
 PROPERTIES = (
     "dirty",
+    "dictionaryEntries",
     "lastError",
     "language",
     "languages",
@@ -67,6 +68,7 @@ PROPERTIES = (
 METHODS = frozenset(
     (
         "setLanguage",
+        "setDictionaryEntries",
         "setMode",
         "setAutostart",
         "setHistoryEnabled",

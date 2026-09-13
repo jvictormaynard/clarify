@@ -1,8 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
-import { AudioLines, Settings2, Mic, Sparkles, Keyboard, Cpu, Check, LoaderCircle, ArrowRight, Download, AlertCircle } from "lucide-react";
+import { Settings2, Mic, Sparkles, Keyboard, Cpu, Check, LoaderCircle, ArrowRight, Download, AlertCircle, BookOpen } from "lucide-react";
+import { Dictionary } from "./dictionary";
+import type { DictionaryEntry } from "./bridge";
+import { Titlebar } from "./titlebar";
 import { call, type Settings } from "./bridge";
 import { Picker, Row, Toggle, Confirm } from "./ui";
 import { RecordingOptions, recordingDraft, recordingValue, type RecordingDraft } from "./recording";
@@ -12,6 +15,7 @@ const pages = [
   { id: "general", label: "Geral", icon: Settings2, description: "Idioma, inicialização e privacidade." },
   { id: "dictation", label: "Ditado", icon: Mic, description: "Microfone, modelo e revisão do texto." },
   { id: "text", label: "Texto", icon: Sparkles, description: "Modelos e instruções para transformar o texto." },
+  { id: "dictionary", label: "Dicionário", icon: BookOpen, description: "Seu vocabulário." },
   { id: "shortcuts", label: "Atalhos", icon: Keyboard, description: "Acesse suas ações pelo teclado." },
   { id: "models", label: "Modelos e serviços", icon: Cpu, description: "Modelos locais e conexões com serviços de IA." },
 ];
@@ -19,6 +23,7 @@ const languageNames: Record<string, string> = { en: "English", pt: "Português",
 
 function App() {
   const [state, setState] = useState<Settings>();
+  const [dictionary, setDictionary] = useState<DictionaryEntry[] | null>(null);
   const [page, setPage] = useState("dictation");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,8 +42,10 @@ function App() {
   const current = useRef(state); current.current = state;
   const pending = useRef(false);
   const localDirty = !!state && (recording !== null || routeOverride !== null || prompt !== state.routePrompt || endpoint !== state.providerBaseUrl || apiKey !== "" || retention !== String(state.historyRetentionDays ?? ""));
-  const dirtyRef = useRef(false); dirtyRef.current = !!state?.dirty || !!state?.providerDirty || localDirty;
+  const dirtyRef = useRef(false); dirtyRef.current = !!state?.dirty || !!state?.providerDirty || localDirty || (dictionary !== null && JSON.stringify(dictionary) !== JSON.stringify(state?.dictionaryEntries));
   const allowClose = useRef(false);
+  const scrollArea = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => { if (scrollArea.current) scrollArea.current.scrollTop = 0; }, [page]);
 
   const run = useCallback(async (method: string, ...args: unknown[]) => {
     pending.current = true; setBusy(true); setError(""); setSaved(false);
@@ -89,6 +96,7 @@ function App() {
   }, [closing]);
   const reset = async () => {
     const s = await run("load");
+    if (s) setDictionary(null);
     if (s) { setPrompt(s.routePrompt); setEndpoint(s.providerBaseUrl); setRetention(String(s.historyRetentionDays ?? "")); setApiKey(""); setRecording(null); setRouteOverride(null); setDiscarding(false); }
     return !!s;
   };
@@ -98,6 +106,7 @@ function App() {
     if (apiKey || endpoint !== state.providerBaseUrl || state.providerDirty) { setError("Valide ou descarte as alterações do serviço antes de salvar."); return false; }
     pending.current = true; setBusy(true); setError(""); setSaved(false);
     try {
+      if (dictionary !== null) await call("setDictionaryEntries", dictionary.map(entry => ({ ...entry, term: entry.term.trim(), pronunciation: entry.pronunciation.trim(), aliases: entry.aliases.map(alias => alias.trim()).filter(Boolean) })));
       if (recording) await call("setRecordingControls", recordingValue(recording));
       if (routeOverride) {
         await call("setRouteModelId", routeOverride.model);
@@ -106,6 +115,7 @@ function App() {
       if (prompt !== state.routePrompt) await call("setRoutePrompt", prompt);
       if (retention !== String(state.historyRetentionDays ?? "")) await call("setHistoryRetentionDays", retention === "" ? null : Number(retention));
       const next = await call("save");
+      setDictionary(null);
       setState(next); setPrompt(next.routePrompt); setSaved(true); setRecording(null); setRouteOverride(null);
       return true;
     } catch (e) { setError(String(e)); return false; }
@@ -147,14 +157,15 @@ function App() {
     </details>}
   </>;
   const info = pages.find(item => item.id === page)!;
-  return <div className="app" data-navigating={navigating || undefined}>
-    <aside><div className="brand"><AudioLines size={23} strokeWidth={1.6} /><span>Clarify</span></div>
-      <span className="nav-heading">CONFIGURAÇÕES</span>
+  return <div className="settings-window"><Titlebar onClose={() => setClosing(true)} onError={setError} />
+    <div className="app" data-navigating={navigating || undefined}>
+    <aside>
       <nav aria-label="Configurações">{pages.map(({ id, label, icon: Icon }) => <button key={id} disabled={busy} aria-label={label} aria-current={id === page ? "page" : undefined} onClick={() => void navigate(id)}><Icon size={18} strokeWidth={1.6} /><span>{label}</span></button>)}</nav>
     </aside>
-    <main><header><h1>{info.label}</h1><p>{info.description}</p></header>
-      <div className="scroll-area"><div className="page">
+    <main><div className="scroll-area" ref={scrollArea}><header><h1>{info.label}</h1></header><div className="page">
+      {error && <div role="alert" className="error settings-error"><AlertCircle size={17} /><span>{error}</span></div>}
       {!state ? <div className="connection" role="status"><LoaderCircle className="spin" size={22} />Conectando ao Clarify…</div> : <fieldset disabled={busy}>
+        {page === "dictionary" && <Dictionary entries={dictionary ?? state.dictionaryEntries} onChange={setDictionary} />}
         {page === "general" && <>
           <section><h2>Preferências</h2><Row title="Idioma do texto"><Picker label="Idioma" value={state.language} options={state.languages.map(id => ({ id, label: languageNames[id] || id }))} onChange={v => void run("setLanguage", v)} /></Row>
             <Toggle title="Iniciar com o Windows" hint="Deixe o Clarify pronto quando você precisar." checked={state.autostart} onChange={v => void run("setAutostart", v)} /></section>
@@ -210,9 +221,11 @@ function App() {
         </>}
       </fieldset>}
       </div></div>
-      <footer>{error ? <div role="alert" className="error"><AlertCircle size={17} /><span>{error}</span></div> : <span className="save-status" role="status">{saved ? <><Check size={16} />Alterações salvas</> : state?.dirty || localDirty || state?.providerDirty ? "Alterações não salvas" : "Tudo em dia"}</span>}
-        <div className="footer-actions"><button className="button ghost" disabled={busy || !dirtyRef.current} onClick={() => setDiscarding(true)}>Descartar</button><button className="button primary" disabled={busy || !dirtyRef.current || !state} onClick={() => void save()}>{busy && !navigating ? <LoaderCircle size={15} className="spin" /> : null}Salvar alterações</button></div>
-      </footer>
+      <div className="floating-save" role="group" aria-label="Alterações pendentes" aria-hidden={!dirtyRef.current} data-visible={dirtyRef.current || undefined}>
+        <button className="button ghost" disabled={busy || !dirtyRef.current} onClick={() => setDiscarding(true)}>Descartar</button>
+        <button className="button primary" aria-label="Salvar alterações" disabled={busy || !dirtyRef.current || !state} onClick={() => void save()}>{busy && !navigating ? <LoaderCircle size={15} className="spin" /> : null}Salvar</button>
+      </div>
+      <span className="sr-only" role="status">{saved ? "Alterações salvas" : ""}</span>
     </main>
     <Confirm open={confirmAction !== null} onOpenChange={v => { if (!v) setConfirmAction(null); }} title={confirmAction === "clearProvider" ? "Remover chave salva?" : confirmAction === "removeLocalAsr" ? "Remover modelo local?" : "Restaurar atalhos?"} description={confirmAction === "clearProvider" ? "A chave será removida do armazenamento seguro agora. Será necessário adicioná-la novamente para usar este serviço." : confirmAction === "removeLocalAsr" ? "Os arquivos deste modelo serão removidos agora. Para usá-lo novamente, será necessário reinstalá-lo." : "Os atalhos voltarão ao padrão. Use Salvar alterações para aplicar ou Descartar para manter os atalhos atuais."}>
       <button className="button ghost" disabled={busy} onClick={() => setConfirmAction(null)}>Cancelar</button>
@@ -231,7 +244,7 @@ function App() {
         if (await run("setHotkey", capture, { modifiers, key: e.key === " " ? "SPACE" : e.key.toUpperCase() })) setCapture(undefined);
       }} />
     </Confirm>
-  </div>;
+  </div></div>;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

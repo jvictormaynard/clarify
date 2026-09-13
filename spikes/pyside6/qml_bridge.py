@@ -195,6 +195,12 @@ class QmlWorkflowBridge(QObject):
         self._finishing = False
         self._pending_workflow_action: Callable[[], None] | None = None
         self._cancel_requested = False
+        self._button_recording = False
+        self._hold_down = False
+        self._hold_start_pending = False
+        self._hold_cancel_pending = False
+        self._hold_generation = 0
+        self._stop_requested = False
         self._target_executable = ""
         saved_config = app_config
         if saved_config is None:
@@ -493,6 +499,18 @@ class QmlWorkflowBridge(QObject):
     @Slot(object)
     def _on_workflow_state(self, state: WorkflowState) -> None:
         self._state = state
+        if state.phase is WorkflowPhase.RECORDING:
+            if self._hold_cancel_pending:
+                self._hold_cancel_pending = False
+                self.cancelRecording()
+            elif self._hold_start_pending and not self._hold_down:
+                self._hold_start_pending = False
+                self.stopRecording()
+        else:
+            self._stop_requested = False
+            if state.phase is not WorkflowPhase.READY:
+                self._hold_start_pending = False
+                self._hold_cancel_pending = False
         if state.phase is not WorkflowPhase.RECORDING:
             self._cancel_requested = False
         self._quick_feedback = ""
@@ -629,6 +647,17 @@ class QmlWorkflowBridge(QObject):
 
     @Slot()
     def startRecording(self) -> None:
+        self._start_recording(False)
+
+    @Slot()
+    def startRecordingFromButton(self) -> None:
+        self._start_recording(True)
+
+    @Property(bool, notify=recordingChanged)
+    def showRecordingStop(self) -> bool:
+        return self._button_recording and self.recording and not self._stop_requested
+
+    def _start_recording(self, from_button: bool) -> None:
         if self._quick_paste_busy:
             return
         if self._state.phase in (
@@ -636,12 +665,13 @@ class QmlWorkflowBridge(QObject):
             WorkflowPhase.FAILED,
             WorkflowPhase.CANCELLED,
         ):
-            self._run_when_ready(self.startRecording)
+            self._run_when_ready(lambda: self._start_recording(from_button))
             return
         if self._state.phase is not WorkflowPhase.READY:
             return
         self._settings_visible = False
         self._result_visible = False
+        self._button_recording = from_button
         target = self._capture_target()
         self._submit(
             lambda: self._workflow_service.dispatch(
@@ -651,8 +681,11 @@ class QmlWorkflowBridge(QObject):
 
     @Slot()
     def stopRecording(self) -> None:
-        if self._state.phase is not WorkflowPhase.RECORDING:
+        if self._state.phase is not WorkflowPhase.RECORDING or self._stop_requested:
             return
+        self._stop_requested = True
+        self._hold_start_pending = False
+        self.recordingChanged.emit()
         self._submit(lambda: self._workflow_service.dispatch(StopDictation()))
 
     @Slot()
@@ -660,6 +693,9 @@ class QmlWorkflowBridge(QObject):
         if self._state.phase is not WorkflowPhase.RECORDING or self._cancel_requested:
             return
         self._cancel_requested = True
+        self._hold_down = False
+        self._hold_start_pending = False
+        self._hold_generation += 1
         self._submit(
             lambda: self._workflow_service.dispatch(CancelDictation(retain_audio=True))
         )
@@ -677,6 +713,39 @@ class QmlWorkflowBridge(QObject):
         if self._quick_paste_busy:
             return False
         normalized = str(action or "").strip().lower()
+        if normalized == "escape" and self._hold_down:
+            self._hold_down = False
+            self._hold_generation += 1
+            if not self.recording:
+                self._hold_cancel_pending = self._hold_start_pending
+                return True
+        if normalized == "recording_hold_release":
+            self._hold_down = False
+            if self._hold_start_pending and self.recording:
+                self.stopRecording()
+            return True
+        if normalized == "recording_hold_press":
+            if self._hold_down:
+                return True
+            if self.busy and not self._cancel_requested:
+                return False
+            if not self._dismiss_files_before_workflow():
+                return False
+            self._hold_down = True
+            self._hold_generation += 1
+            generation = self._hold_generation
+
+            def begin_hold():
+                if not self._hold_down or generation != self._hold_generation:
+                    return
+                self._hold_start_pending = True
+                self.startRecording()
+
+            if self._cancel_requested:
+                self._pending_workflow_action = begin_hold
+                self._notify_all()
+                return True
+            return self._run_when_ready(begin_hold)
         if self._cancel_requested and self._state.phase is WorkflowPhase.RECORDING:
             if normalized == "escape":
                 return True

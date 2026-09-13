@@ -47,6 +47,7 @@ class RefinementRecoveryTests(unittest.TestCase):
         self.repositories = SimpleNamespace(config=Mock(load=lambda: self.current))
         self.dictionary = Mock()
         self.dictionary.apply_context.side_effect = lambda request: request
+        self.dictionary.refinement_context.return_value = ""
         self.dictionary.expand.side_effect = lambda text: text + " expanded"
         self.gateway = QtProviderGateway(
             QtWorkflowConfig(self.repositories), self.dictionary

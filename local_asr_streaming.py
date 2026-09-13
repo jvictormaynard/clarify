@@ -3,6 +3,7 @@
 No partial text is delivered. Invalid/changed audio or processing failures discard
 all segments and leave the original full recording for normal transcription.
 """
+
 from __future__ import annotations
 from array import array
 import hashlib
@@ -17,15 +18,18 @@ RATE = 16000
 FRAME = 640  # 20 ms, mono signed 16-bit
 MAX_PENDING = RATE * 2 * 60
 
+
 def pcm_offset(header):
     if header[:4] != b"RIFF" or header[8:12] != b"WAVE":
         raise ValueError("Unsupported WAV")
     pos, valid = 12, False
     while pos + 8 <= len(header):
-        kind = header[pos:pos + 4]
+        kind = header[pos : pos + 4]
         size = struct.unpack_from("<I", header, pos + 4)[0]
         if kind == b"fmt " and size >= 16:
-            fmt, channels, rate, _, _, bits = struct.unpack_from("<HHIIHH", header, pos + 8)
+            fmt, channels, rate, _, _, bits = struct.unpack_from(
+                "<HHIIHH", header, pos + 8
+            )
             valid = (fmt, channels, rate, bits) == (1, 1, RATE, 16)
         if kind == b"data":
             if not valid:
@@ -33,6 +37,7 @@ def pcm_offset(header):
             return pos + 8
         pos += 8 + size + size % 2
     raise ValueError("Incomplete WAV header")
+
 
 def wav_bytes(pcm):
     output = io.BytesIO()
@@ -43,10 +48,14 @@ def wav_bytes(pcm):
         wav.writeframes(pcm)
     return output.getvalue()
 
+
 class PauseStream:
-    def __init__(self, path, backend, model, language, cancel_token):
+    def __init__(
+        self, path, backend, model, language, cancel_token, *, initial_prompt=""
+    ):
         self.path, self.backend = Path(path), backend
         self.model, self.language, self.cancel_token = model, language, cancel_token
+        self.initial_prompt = initial_prompt
         self.done = threading.Event()
         self.abort = threading.Event()
         self.on_finished = lambda: None
@@ -54,14 +63,24 @@ class PauseStream:
         self.parts = []
         self.committed = 0
         self.digest = hashlib.sha256()
-        self.worker = threading.Thread(target=self._run, daemon=True, name="LocalASRPauseStream")
+        self.worker = threading.Thread(
+            target=self._run, daemon=True, name="LocalASRPauseStream"
+        )
 
     def start(self):
         self.worker.start()
 
     def _decode(self, pcm):
         from local_asr import _CancellationView
-        return self.backend.transcribe(self.path, self.language, audio_bytes=wav_bytes(pcm), cancel_event=_CancellationView(self.cancel_token, self.abort)).strip()
+
+        kwargs = {"initial_prompt": self.initial_prompt} if self.initial_prompt else {}
+        return self.backend.transcribe(
+            self.path,
+            self.language,
+            audio_bytes=wav_bytes(pcm),
+            cancel_event=_CancellationView(self.cancel_token, self.abort),
+            **kwargs,
+        ).strip()
 
     def _run(self):
         pending = bytearray()
@@ -88,7 +107,7 @@ class PauseStream:
                 if len(pending) > MAX_PENDING:
                     raise ValueError("No safe pause within buffer limit")
                 while scanned + FRAME <= len(pending):
-                    samples = array("h", pending[scanned:scanned + FRAME])
+                    samples = array("h", pending[scanned : scanned + FRAME])
                     if sys.byteorder != "little":
                         samples.byteswap()
                     quiet = sum(v * v for v in samples) / len(samples) < 100 * 100
@@ -126,16 +145,27 @@ class PauseStream:
             return None
         try:
             with wave.open(io.BytesIO(audio), "rb") as wav:
-                if (wav.getnchannels(), wav.getsampwidth(), wav.getframerate()) != (1, 2, RATE):
+                if (wav.getnchannels(), wav.getsampwidth(), wav.getframerate()) != (
+                    1,
+                    2,
+                    RATE,
+                ):
                     return None
                 pcm = wav.readframes(wav.getnframes())
-            if len(pcm) < self.committed or hashlib.sha256(pcm[:self.committed]).digest() != self.digest.digest():
+            if (
+                len(pcm) < self.committed
+                or hashlib.sha256(pcm[: self.committed]).digest()
+                != self.digest.digest()
+            ):
                 return None
-            tail = pcm[self.committed:]
+            tail = pcm[self.committed :]
             # The retained silence still goes through the decoder, with the full tail.
             text = self._decode(tail) if tail else ""
             from provider_types import TranscriptionResult
-            return TranscriptionResult(" ".join(self.parts + ([text] if text else [])), "local_asr", self.model)
+
+            return TranscriptionResult(
+                " ".join(self.parts + ([text] if text else [])), "local_asr", self.model
+            )
         except Exception:
             return None
 

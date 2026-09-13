@@ -1237,6 +1237,9 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
             }
         )
         config_repository = ConfigRepository(initial)
+        config_repository.path = (
+            Path(self.enterContext(tempfile.TemporaryDirectory())) / "config.json"
+        )
         settings = QmlSettingsController(Repositories(config_repository))
         service = WorkflowService()
         bridge = QmlWorkflowBridge(service, app_config=initial)

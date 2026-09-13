@@ -20,6 +20,12 @@ from pathlib import Path
 from typing import Any, cast
 
 from PySide6.QtCore import Property, QObject, Qt, Signal, Slot
+from dictionary_snippets import (
+    DictionaryEntry,
+    DictionarySnippets,
+    DictionarySnippetService,
+    LocalDictionarySnippetsRepository,
+)
 
 from hotkey_config import (
     ActivationMode,
@@ -59,7 +65,7 @@ from workflow_config import (
     WorkflowRoute,
     WorkflowScope,
 )
-from windows_hotkeys import supports_push_to_talk
+from windows_hotkeys import supports_qt_push_to_talk as supports_push_to_talk
 
 
 AUTOSTART_REGISTRY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -337,10 +343,17 @@ class QmlSettingsController(QObject):
         microphone_backend: Any | None = None,
         microphone_inventory_source: Any | None = None,
         hotkey_applier: Callable[[HotkeySettings], Any] | None = None,
+        dictionary_service: DictionarySnippetService | None = None,
     ) -> None:
         super().__init__(parent)
         self.repositories = repositories
         self._config_repository: ConfigRepository = repositories.config
+        self._dictionary_service = dictionary_service or DictionarySnippetService(
+            LocalDictionarySnippetsRepository(
+                Path(repositories.config.path).parent / "dictionary.json"
+            )
+        )
+        self._dictionary_draft = self._dictionary_service.state
         self._autostart_registry = registry
         self._local_product = local_product or _default_local_asr_product()
         self._local_state: LocalASRProductState = self._local_product.state
@@ -787,7 +800,33 @@ class QmlSettingsController(QObject):
 
     @Property(bool, notify=dirtyChanged)
     def dirty(self) -> bool:
-        return self._dirty
+        return self._dirty or self._dictionary_draft != self._dictionary_service.state
+
+    @Property("QVariantList", notify=dirtyChanged)
+    def dictionaryEntries(self):
+        return [entry.to_mapping() for entry in self._dictionary_draft.dictionary]
+
+    @Slot("QVariantList", result=bool)
+    def setDictionaryEntries(self, entries) -> bool:
+        try:
+            if not isinstance(entries, list) or len(entries) > 512:
+                raise ValueError("Use até 512 termos no dicionário.")
+            self._dictionary_draft = DictionarySnippets(
+                dictionary=tuple(
+                    DictionaryEntry.from_mapping(entry) for entry in entries
+                ),
+                snippets=self._dictionary_draft.snippets,
+            )
+        except (TypeError, ValueError):
+            self._set_error(
+                ValueError(
+                    "Verifique os termos: use até 256 caracteres, sem duplicatas ou quebras de linha."
+                )
+            )
+            return False
+        self._set_error(None)
+        self.dirtyChanged.emit()
+        return True
 
     @Property(str, notify=errorChanged)
     def lastError(self) -> str:
@@ -1745,6 +1784,7 @@ class QmlSettingsController(QObject):
         self.stopMicrophoneTest()
         try:
             loaded_config = self._config_repository.load()
+            self._dictionary_draft = self._dictionary_service.state
         except Exception as error:  # Repository errors belong in the QML state.
             self._set_error(error)
             return False
@@ -1757,6 +1797,7 @@ class QmlSettingsController(QObject):
     def save(self) -> bool:
         persisted_before: AppConfig | None = None
         hotkeys_applied = False
+        persisted_config = None
         try:
             persisted_before = self._config_repository.load()
             if (
@@ -1770,7 +1811,21 @@ class QmlSettingsController(QObject):
                 self.repositories,
                 self._autostart_registry,
             )
+            if self._dictionary_draft != self._dictionary_service.state:
+                self._dictionary_service.replace(self._dictionary_draft)
         except Exception as error:  # Validation/storage errors are user-facing.
+            if persisted_config is not None and persisted_before is not None:
+                try:
+                    _apply_config_with_autostart_transaction(
+                        persisted_before, self.repositories, self._autostart_registry
+                    )
+                except Exception:
+                    self._set_error(
+                        ValueError(
+                            "Não foi possível salvar o dicionário nem restaurar todas as configurações. Verifique as opções antes de tentar novamente."
+                        )
+                    )
+                    return False
             if hotkeys_applied and self._hotkey_applier is not None:
                 try:
                     assert persisted_before is not None

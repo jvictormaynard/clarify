@@ -2,7 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type { RecordingControls } from "./recording";
 
 export type Option = { id: string; label: string };
+export type DictionaryEntry = { term: string; pronunciation: string; aliases: string[]; enabled: boolean };
 export interface Settings {
+  dictionaryEntries: DictionaryEntry[];
   dirty: boolean; lastError: string;
   language: string; languages: string[]; mode: string; modes: string[];
   autostart: boolean; historyEnabled: boolean; historyRetentionDays: number | null;

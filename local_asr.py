@@ -70,14 +70,11 @@ class LocalTranscriptionBackend(Protocol):
         cancel_event: threading.Event | None = None,
         *,
         audio_bytes: bytes | None = None,
-    ) -> str:
-        ...
+    ) -> str: ...
 
-    def cancel(self) -> None:
-        ...
+    def cancel(self) -> None: ...
 
-    def shutdown(self) -> None:
-        ...
+    def shutdown(self) -> None: ...
 
 
 class LocalASRError(RuntimeError):
@@ -112,8 +109,10 @@ class _AssetRootInstallLock:
     def _is_contention(error: OSError) -> bool:
         import errno
 
-        return isinstance(error, BlockingIOError) or getattr(
-            error, "errno", None) in (errno.EACCES, errno.EAGAIN)
+        return isinstance(error, BlockingIOError) or getattr(error, "errno", None) in (
+            errno.EACCES,
+            errno.EAGAIN,
+        )
 
     def acquire(self) -> "_AssetRootInstallLock":
         if self._fd is not None:
@@ -121,15 +120,18 @@ class _AssetRootInstallLock:
         try:
             if self.path.is_symlink():
                 raise LocalASRError(
-                    "Refusing symlinked or unverifiable local-ASR install lock")
+                    "Refusing symlinked or unverifiable local-ASR install lock"
+                )
             if self.path.exists():
                 reparse = _reparse_state(self.path)
                 if reparse is not False:
                     raise LocalASRError(
-                        "Refusing symlinked or unverifiable local-ASR install lock")
+                        "Refusing symlinked or unverifiable local-ASR install lock"
+                    )
         except OSError as error:
             raise LocalASRError(
-                "Cannot inspect the local-ASR install lock; retry the operation.") from error
+                "Cannot inspect the local-ASR install lock; retry the operation."
+            ) from error
         flags = os.O_RDWR | os.O_CREAT
         no_follow = getattr(os, "O_NOFOLLOW", 0)
         flags |= no_follow
@@ -139,7 +141,8 @@ class _AssetRootInstallLock:
             fd = os.open(self.path, flags, 0o600)
         except OSError as error:
             raise LocalASRError(
-                "Cannot open the local-ASR install lock; retry the operation.") from error
+                "Cannot open the local-ASR install lock; retry the operation."
+            ) from error
         try:
             try:
                 if os.name == "nt":
@@ -264,8 +267,12 @@ def _sha256(
 
 def _safe_relative_path(value: str) -> Path:
     pure = PurePosixPath(value)
-    if ("\\" in value or pure.is_absolute() or not pure.parts
-            or any(part in ("", ".", "..") for part in pure.parts)):
+    if (
+        "\\" in value
+        or pure.is_absolute()
+        or not pure.parts
+        or any(part in ("", ".", "..") for part in pure.parts)
+    ):
         raise LocalASRIntegrityError(f"Unsafe manifest path: {value}")
     for part in pure.parts:
         _safe_path_component(part, "relative path")
@@ -277,19 +284,26 @@ def _safe_path_component(value: object, field: str) -> str:
     if not isinstance(value, str):
         raise LocalASRIntegrityError(f"Manifest path component is invalid: {field}")
     allowed = frozenset(string.ascii_letters + string.digits + "._-")
-    if (not value or len(value) > 128 or value in (".", "..")
-            or any(character not in allowed for character in value)):
+    if (
+        not value
+        or len(value) > 128
+        or value in (".", "..")
+        or any(character not in allowed for character in value)
+    ):
         raise LocalASRIntegrityError(f"Manifest path component is unsafe: {field}")
     return value
 
 
 def _safe_staging_name(name: str) -> bool:
     prefix = ".install-"
-    suffix = name[len(prefix):] if name.startswith(prefix) else ""
+    suffix = name[len(prefix) :] if name.startswith(prefix) else ""
     allowed = frozenset(string.ascii_letters + string.digits + "_-")
-    return (bool(suffix) and len(name) <= 128
-            and name.startswith(prefix)
-            and all(character in allowed for character in suffix))
+    return (
+        bool(suffix)
+        and len(name) <= 128
+        and name.startswith(prefix)
+        and all(character in allowed for character in suffix)
+    )
 
 
 def _reparse_state(path: Path) -> bool | None:
@@ -318,8 +332,11 @@ def _reparse_state(path: Path) -> bool | None:
 
 
 def _valid_digest(value: object) -> bool:
-    return (isinstance(value, str) and len(value) == 64
-            and all(character in string.hexdigits for character in value))
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in string.hexdigits for character in value)
+    )
 
 
 def load_manifest(path: Path | None = None) -> dict:
@@ -327,16 +344,20 @@ def load_manifest(path: Path | None = None) -> dict:
     try:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError) as error:
-        raise LocalASRIntegrityError(f"Cannot read local-ASR manifest: {error}") from error
+        raise LocalASRIntegrityError(
+            f"Cannot read local-ASR manifest: {error}"
+        ) from error
     if not isinstance(payload, Mapping) or payload.get("schema_version") != 1:
         raise LocalASRIntegrityError("Unsupported local-ASR manifest schema")
     if payload.get("provider") != PROVIDER_ID:
         raise LocalASRIntegrityError("Manifest provider is not local_asr")
     for section in ("engine", "recommended_model"):
         value = payload.get(section)
-        if (not isinstance(value, Mapping)
-                or not str(value.get("license", "")).strip()
-                or not str(value.get("source_url", "")).startswith("https://")):
+        if (
+            not isinstance(value, Mapping)
+            or not str(value.get("license", "")).strip()
+            or not str(value.get("source_url", "")).startswith("https://")
+        ):
             raise LocalASRIntegrityError(f"Manifest section is invalid: {section}")
     engine = payload["engine"]
     model = payload["recommended_model"]
@@ -344,12 +365,15 @@ def load_manifest(path: Path | None = None) -> dict:
     _safe_path_component(engine.get("version"), "engine.version")
     _safe_path_component(model.get("id"), "recommended_model.id")
     requirements = payload.get("requirements")
-    if (not isinstance(requirements, Mapping)
-            or not str(requirements.get("platform", "")).strip()
-            or not str(requirements.get("compute", "")).strip()
-            or any(not isinstance(requirements.get(key), int)
-                   or requirements[key] <= 0
-                   for key in ("memory_bytes", "disk_bytes", "download_bytes"))):
+    if (
+        not isinstance(requirements, Mapping)
+        or not str(requirements.get("platform", "")).strip()
+        or not str(requirements.get("compute", "")).strip()
+        or any(
+            not isinstance(requirements.get(key), int) or requirements[key] <= 0
+            for key in ("memory_bytes", "disk_bytes", "download_bytes")
+        )
+    ):
         raise LocalASRIntegrityError("Manifest requirements are invalid")
     license_files = payload.get("license_files")
     if not isinstance(license_files, list) or not license_files:
@@ -364,21 +388,30 @@ def load_manifest(path: Path | None = None) -> dict:
         value = assets.get(name)
         if not isinstance(value, Mapping):
             raise LocalASRIntegrityError(f"Manifest asset is missing: {name}")
-        if (not isinstance(value.get("size"), int) or value["size"] <= 0
-                or not _valid_digest(value.get("sha256"))
-                or not str(value.get("url", "")).startswith("https://")
-                or not str(value.get("source_url", "")).startswith("https://")
-                or not str(value.get("license", "")).strip()):
+        if (
+            not isinstance(value.get("size"), int)
+            or value["size"] <= 0
+            or not _valid_digest(value.get("sha256"))
+            or not str(value.get("url", "")).startswith("https://")
+            or not str(value.get("source_url", "")).startswith("https://")
+            or not str(value.get("license", "")).strip()
+        ):
             raise LocalASRIntegrityError(f"Manifest asset is invalid: {name}")
         _safe_path_component(value.get("filename"), f"assets.{name}.filename")
     seen_paths: set[str] = set()
     for value in extracted:
-        if (not isinstance(value, Mapping)
-                or not isinstance(value.get("size"), int) or value["size"] <= 0
-                or not _valid_digest(value.get("sha256"))):
+        if (
+            not isinstance(value, Mapping)
+            or not isinstance(value.get("size"), int)
+            or value["size"] <= 0
+            or not _valid_digest(value.get("sha256"))
+        ):
             raise LocalASRIntegrityError("Manifest extracted-file entry is invalid")
         _safe_relative_path(str(value.get("archive_path", "")))
-        if value.get("asset", "runtime") not in ("runtime", "cublas") or value.get("asset", "runtime") not in assets:
+        if (
+            value.get("asset", "runtime") not in ("runtime", "cublas")
+            or value.get("asset", "runtime") not in assets
+        ):
             raise LocalASRIntegrityError("Unknown extracted-file asset")
         destination = str(value.get("path", ""))
         _safe_relative_path(destination)
@@ -420,10 +453,12 @@ class LocalASRInstaller:
             destination.relative_to(root)
         except (OSError, ValueError) as error:
             raise LocalASRIntegrityError(
-                "Local-ASR installation path escapes the asset root") from error
+                "Local-ASR installation path escapes the asset root"
+            ) from error
         if destination == root:
             raise LocalASRIntegrityError(
-                "Local-ASR installation path must be below the asset root")
+                "Local-ASR installation path must be below the asset root"
+            )
         return destination
 
     @property
@@ -447,7 +482,8 @@ class LocalASRInstaller:
         return ManifestAsset(
             name=name,
             filename=_safe_path_component(
-                value.get("filename"), f"assets.{name}.filename"),
+                value.get("filename"), f"assets.{name}.filename"
+            ),
             url=str(value["url"]),
             size=int(value["size"]),
             sha256=str(value["sha256"]).lower(),
@@ -483,40 +519,46 @@ class LocalASRInstaller:
                 source_digest = _sha256(source)
             except OSError as error:
                 raise LocalASRIntegrityError(
-                    f"Bundled license notice is missing: {relative}") from error
+                    f"Bundled license notice is missing: {relative}"
+                ) from error
             yield self.install_dir / relative, size, source_digest
 
     def verify(self, cancel_check: Callable[[], bool] | None = None) -> Path:
         if not self.install_dir.is_dir():
             raise LocalASRInstallRequiredError(
-                "Local ASR is not installed. Run the explicit installer first.")
+                "Local ASR is not installed. Run the explicit installer first."
+            )
         for path, expected_size, expected_digest in self._expected_installed_files():
             try:
                 actual_size = path.stat().st_size
             except FileNotFoundError as error:
                 raise LocalASRInstallRequiredError(
-                    f"Local ASR is incomplete; missing {path.name}. Reinstall it.") from error
+                    f"Local ASR is incomplete; missing {path.name}. Reinstall it."
+                ) from error
             except OSError as error:
                 raise LocalASRIntegrityError(
                     f"Cannot read installed {path.name}. Remove and reinstall Local ASR."
                 ) from error
             if actual_size != expected_size:
                 raise LocalASRIntegrityError(
-                    f"Integrity check failed for {path.name}. Remove and reinstall Local ASR.")
+                    f"Integrity check failed for {path.name}. Remove and reinstall Local ASR."
+                )
             try:
                 actual_digest = _sha256(path, cancel_check=cancel_check)
             except LocalASRCancelledError:
                 raise
             except FileNotFoundError as error:
                 raise LocalASRInstallRequiredError(
-                    f"Local ASR is incomplete; missing {path.name}. Reinstall it.") from error
+                    f"Local ASR is incomplete; missing {path.name}. Reinstall it."
+                ) from error
             except OSError as error:
                 raise LocalASRIntegrityError(
                     f"Cannot read installed {path.name}. Remove and reinstall Local ASR."
                 ) from error
             if actual_digest != expected_digest:
                 raise LocalASRIntegrityError(
-                    f"Integrity check failed for {path.name}. Remove and reinstall Local ASR.")
+                    f"Integrity check failed for {path.name}. Remove and reinstall Local ASR."
+                )
         return self.install_dir
 
     def status(self, cancel_check: Callable[[], bool] | None = None) -> dict:
@@ -541,7 +583,9 @@ class LocalASRInstaller:
         }
 
     @staticmethod
-    def _report(callback: ProgressCallback | None, stage: str, current: int, total: int):
+    def _report(
+        callback: ProgressCallback | None, stage: str, current: int, total: int
+    ):
         if callback is not None:
             callback(stage, current, total)
 
@@ -559,31 +603,40 @@ class LocalASRInstaller:
         downloaded = 0
         try:
             response = self._session.get(
-                asset.url, stream=True, timeout=(10, 60),
-                headers={"User-Agent": "Clarify-local-asr/1"})
+                asset.url,
+                stream=True,
+                timeout=(10, 60),
+                headers={"User-Agent": "Clarify-local-asr/1"},
+            )
             response.raise_for_status()
             with destination.open("wb") as stream:
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
                     if cancel_event is not None and cancel_event.is_set():
                         raise LocalASRCancelledError(
-                            "Local ASR installation was cancelled")
+                            "Local ASR installation was cancelled"
+                        )
                     if not chunk:
                         continue
                     downloaded += len(chunk)
                     if downloaded > asset.size:
                         raise LocalASRIntegrityError(
-                            f"{asset.filename} exceeded its published size")
+                            f"{asset.filename} exceeded its published size"
+                        )
                     stream.write(chunk)
                     digest.update(chunk)
                     self._report(
-                        callback, f"download:{asset.name}", downloaded, asset.size)
+                        callback, f"download:{asset.name}", downloaded, asset.size
+                    )
         except LocalASRError:
             raise
         except Exception as error:
-            raise LocalASRError(f"Could not download {asset.filename}: {error}") from error
+            raise LocalASRError(
+                f"Could not download {asset.filename}: {error}"
+            ) from error
         if downloaded != asset.size or digest.hexdigest() != asset.sha256:
             raise LocalASRIntegrityError(
-                f"SHA-256 or size mismatch for {asset.filename}; nothing was installed")
+                f"SHA-256 or size mismatch for {asset.filename}; nothing was installed"
+            )
         self._report(callback, f"verify:{asset.name}", downloaded, asset.size)
 
     def _claim_root(self) -> None:
@@ -593,20 +646,26 @@ class LocalASRInstaller:
             try:
                 has_contents = next(self.root.iterdir(), None) is not None
             except OSError as error:
-                raise LocalASRError(f"Cannot inspect asset root {self.root}: {error}") from error
+                raise LocalASRError(
+                    f"Cannot inspect asset root {self.root}: {error}"
+                ) from error
             if has_contents:
                 raise LocalASRError(
-                    f"Refusing to use non-empty unowned asset root: {self.root}")
+                    f"Refusing to use non-empty unowned asset root: {self.root}"
+                )
         try:
             self.root.mkdir(parents=True, exist_ok=True)
         except OSError as error:
             raise LocalASRError(
-                f"Cannot create local-ASR asset root: {self.root}") from error
+                f"Cannot create local-ASR asset root: {self.root}"
+            ) from error
         if marker.exists():
             try:
                 owner = marker.read_text(encoding="utf-8").strip()
             except OSError as error:
-                raise LocalASRError(f"Cannot verify asset-root ownership: {error}") from error
+                raise LocalASRError(
+                    f"Cannot verify asset-root ownership: {error}"
+                ) from error
             if owner != PROVIDER_ID:
                 raise LocalASRError(f"Asset root has an unknown owner: {self.root}")
         else:
@@ -614,7 +673,8 @@ class LocalASRInstaller:
                 marker.write_text(f"{PROVIDER_ID}\n", encoding="utf-8")
             except OSError as error:
                 raise LocalASRError(
-                    "Cannot record local-ASR asset-root ownership") from error
+                    "Cannot record local-ASR asset-root ownership"
+                ) from error
 
     def _acquire_install_lock(self) -> _AssetRootInstallLock:
         try:
@@ -634,13 +694,15 @@ class LocalASRInstaller:
         try:
             if not self.root.is_dir() or marker.is_symlink() or not marker.is_file():
                 raise LocalASRError(
-                    f"Refusing to use unowned local-ASR asset root: {self.root}")
+                    f"Refusing to use unowned local-ASR asset root: {self.root}"
+                )
             owner = marker.read_text(encoding="utf-8").strip()
         except LocalASRError:
             raise
         except OSError as error:
             raise LocalASRError(
-                "Cannot verify local-ASR asset-root ownership; retry the operation.") from error
+                "Cannot verify local-ASR asset-root ownership; retry the operation."
+            ) from error
         if owner != PROVIDER_ID:
             raise LocalASRError(f"Asset root has an unknown owner: {self.root}")
 
@@ -648,18 +710,21 @@ class LocalASRInstaller:
         try:
             if self.root.is_symlink():
                 raise LocalASRError(
-                    f"Refusing symlinked local-ASR asset root: {self.root}")
+                    f"Refusing symlinked local-ASR asset root: {self.root}"
+                )
             if not os.path.lexists(self.root):
                 return
         except LocalASRError:
             raise
         except OSError as error:
             raise LocalASRError(
-                "Cannot inspect the local-ASR asset root; retry the operation.") from error
+                "Cannot inspect the local-ASR asset root; retry the operation."
+            ) from error
         state = _reparse_state(self.root)
         if state is not False:
             raise LocalASRError(
-                "Refusing symlinked or unverifiable local-ASR asset root")
+                "Refusing symlinked or unverifiable local-ASR asset root"
+            )
 
     def _cleanup_orphaned_staging(self) -> None:
         try:
@@ -667,38 +732,43 @@ class LocalASRInstaller:
             children = tuple(self.root.iterdir())
         except OSError as error:
             raise LocalASRError(
-                "Cannot inspect local-ASR staging directories; retry the install.") from error
+                "Cannot inspect local-ASR staging directories; retry the install."
+            ) from error
         for child in children:
             if not child.name.startswith(".install-"):
                 continue
             if not _safe_staging_name(child.name):
                 raise LocalASRError(
                     "Refusing ambiguous local-ASR staging path; "
-                    "remove it manually after inspection.")
+                    "remove it manually after inspection."
+                )
             try:
                 if child.parent.resolve() != root:
                     raise LocalASRError(
-                        "Refusing local-ASR staging path outside the asset root")
+                        "Refusing local-ASR staging path outside the asset root"
+                    )
                 reparse = _reparse_state(child)
                 if reparse is not False:
                     raise LocalASRError(
-                        "Refusing symlinked or unverifiable local-ASR staging path")
+                        "Refusing symlinked or unverifiable local-ASR staging path"
+                    )
                 resolved = child.resolve()
                 if resolved.parent != root or not child.is_dir():
                     raise LocalASRError(
                         "Refusing ambiguous local-ASR staging path; "
-                        "remove it manually after inspection.")
+                        "remove it manually after inspection."
+                    )
                 shutil.rmtree(child)
                 if child.exists():
                     raise LocalASRError(
-                        "Cannot clean abandoned local-ASR staging; "
-                        "retry the install.")
+                        "Cannot clean abandoned local-ASR staging; retry the install."
+                    )
             except LocalASRError:
                 raise
             except OSError as error:
                 raise LocalASRError(
-                    "Cannot clean abandoned local-ASR staging; "
-                    "retry the install.") from error
+                    "Cannot clean abandoned local-ASR staging; retry the install."
+                ) from error
 
     def _extract_runtime(
         self,
@@ -718,23 +788,33 @@ class LocalASRInstaller:
                 missing = set(expected) - archive_names
                 if missing:
                     raise LocalASRIntegrityError(
-                        f"Runtime archive is missing {sorted(missing)[0]}")
+                        f"Runtime archive is missing {sorted(missing)[0]}"
+                    )
                 for archive_name, entry in expected.items():
                     if cancel_event is not None and cancel_event.is_set():
                         raise LocalASRCancelledError(
-                            "Local ASR installation was cancelled")
+                            "Local ASR installation was cancelled"
+                        )
                     destination = staging / _safe_relative_path(str(entry["path"]))
                     destination.parent.mkdir(parents=True, exist_ok=True)
-                    with archive.open(archive_name) as source, destination.open("wb") as output:
+                    with (
+                        archive.open(archive_name) as source,
+                        destination.open("wb") as output,
+                    ):
                         shutil.copyfileobj(source, output, length=1024 * 1024)
-                    if (destination.stat().st_size != int(entry["size"])
-                            or _sha256(destination) != str(entry["sha256"]).lower()):
+                    if (
+                        destination.stat().st_size != int(entry["size"])
+                        or _sha256(destination) != str(entry["sha256"]).lower()
+                    ):
                         raise LocalASRIntegrityError(
-                            f"Extracted runtime file failed verification: {destination.name}")
+                            f"Extracted runtime file failed verification: {destination.name}"
+                        )
         except LocalASRError:
             raise
         except (OSError, zipfile.BadZipFile, KeyError) as error:
-            raise LocalASRIntegrityError(f"Cannot extract verified runtime: {error}") from error
+            raise LocalASRIntegrityError(
+                f"Cannot extract verified runtime: {error}"
+            ) from error
 
     def _copy_license_notices(
         self,
@@ -746,8 +826,7 @@ class LocalASRInstaller:
             raise LocalASRIntegrityError("Manifest license_files must be a list")
         for value in notices:
             if cancel_event is not None and cancel_event.is_set():
-                raise LocalASRCancelledError(
-                    "Local ASR installation was cancelled")
+                raise LocalASRCancelledError("Local ASR installation was cancelled")
             relative = _safe_relative_path(str(value))
             source = _resource_root() / relative
             destination = staging / relative
@@ -756,7 +835,8 @@ class LocalASRInstaller:
                 shutil.copyfile(source, destination)
             except OSError as error:
                 raise LocalASRIntegrityError(
-                    f"Cannot preserve license notice {relative}: {error}") from error
+                    f"Cannot preserve license notice {relative}: {error}"
+                ) from error
 
     def _discard_published_installation(self) -> None:
         destination = self.install_dir
@@ -766,8 +846,8 @@ class LocalASRInstaller:
             return
         except OSError as error:
             raise LocalASRError(
-                "Cannot roll back the invalid local-ASR installation; "
-                "retry removal.") from error
+                "Cannot roll back the invalid local-ASR installation; retry removal."
+            ) from error
         try:
             os.lstat(destination)
         except FileNotFoundError:
@@ -775,10 +855,11 @@ class LocalASRInstaller:
         except OSError as error:
             raise LocalASRError(
                 "Cannot verify rollback of the invalid local-ASR installation; "
-                "retry removal.") from error
+                "retry removal."
+            ) from error
         raise LocalASRError(
-            "Cannot roll back the invalid local-ASR installation; "
-            "retry removal.")
+            "Cannot roll back the invalid local-ASR installation; retry removal."
+        )
 
     @staticmethod
     def _raise_remove_cancelled(cancel_event: threading.Event | None) -> None:
@@ -827,7 +908,8 @@ class LocalASRInstaller:
                 reparse = _reparse_state(child)
                 if reparse is not False:
                     raise LocalASRError(
-                        "Refusing symlinked or unverifiable local-ASR asset path")
+                        "Refusing symlinked or unverifiable local-ASR asset path"
+                    )
                 if entry.is_dir(follow_symlinks=False):
                     cls._remove_tree(child, cancel_event)
                 else:
@@ -851,7 +933,13 @@ class LocalASRInstaller:
             try:
                 if source.is_symlink() or source.stat().st_size != model.size:
                     continue
-                if _sha256(source, cancel_check=cancel_event.is_set if cancel_event else None) != model.sha256:
+                if (
+                    _sha256(
+                        source,
+                        cancel_check=cancel_event.is_set if cancel_event else None,
+                    )
+                    != model.sha256
+                ):
                     continue
                 try:
                     os.link(source, destination)
@@ -878,8 +966,11 @@ class LocalASRInstaller:
             self._assert_owned_root()
             if cancel_event is not None and cancel_event.is_set():
                 raise LocalASRCancelledError("Local ASR installation was cancelled")
-            existing = (self.status(cancel_check=cancel_event.is_set)
-                        if cancel_event is not None else self.status())
+            existing = (
+                self.status(cancel_check=cancel_event.is_set)
+                if cancel_event is not None
+                else self.status()
+            )
             if existing["state"] == "installed":
                 self._report(callback, "complete", 1, 1)
                 return existing
@@ -888,12 +979,13 @@ class LocalASRInstaller:
                 staging = Path(tempfile.mkdtemp(prefix=".install-", dir=self.root))
             except OSError as error:
                 raise LocalASRError(
-                    "Cannot create local-ASR staging directory; "
-                    "retry the install.") from error
+                    "Cannot create local-ASR staging directory; retry the install."
+                ) from error
             runtime_archive = staging / self.asset("runtime").filename
             try:
                 self._download(
-                    self.asset("runtime"), runtime_archive, callback, cancel_event)
+                    self.asset("runtime"), runtime_archive, callback, cancel_event
+                )
                 self._report(callback, "extract:runtime", 0, 1)
                 self._extract_runtime(runtime_archive, staging, cancel_event)
                 try:
@@ -901,13 +993,18 @@ class LocalASRInstaller:
                 except OSError as error:
                     raise LocalASRError(
                         "Cannot remove the downloaded local-ASR runtime archive; "
-                        "retry the install.") from error
+                        "retry the install."
+                    ) from error
                 self._report(callback, "extract:runtime", 1, 1)
 
                 if "cublas" in self.manifest["assets"]:
                     extra_archive = staging / self.asset("cublas").filename
-                    self._download(self.asset("cublas"), extra_archive, callback, cancel_event)
-                    self._extract_runtime(extra_archive, staging, cancel_event, asset_name="cublas")
+                    self._download(
+                        self.asset("cublas"), extra_archive, callback, cancel_event
+                    )
+                    self._extract_runtime(
+                        extra_archive, staging, cancel_event, asset_name="cublas"
+                    )
                     extra_archive.unlink(missing_ok=True)
 
                 model = self.asset("model")
@@ -917,15 +1014,15 @@ class LocalASRInstaller:
                 except OSError as error:
                     raise LocalASRError(
                         "Cannot create local-ASR model staging directory; "
-                        "retry the install.") from error
+                        "retry the install."
+                    ) from error
                 if self._reuse_model(model_path, cancel_event):
                     self._report(callback, "reuse:model", model.size, model.size)
                 else:
                     self._download(model, model_path, callback, cancel_event)
                 self._copy_license_notices(staging, cancel_event)
                 if cancel_event is not None and cancel_event.is_set():
-                    raise LocalASRCancelledError(
-                        "Local ASR installation was cancelled")
+                    raise LocalASRCancelledError("Local ASR installation was cancelled")
 
                 receipt = {
                     "schema_version": 1,
@@ -937,26 +1034,32 @@ class LocalASRInstaller:
                 try:
                     (staging / "receipt.json").write_text(
                         json.dumps(receipt, indent=2, ensure_ascii=False) + "\n",
-                        encoding="utf-8")
+                        encoding="utf-8",
+                    )
                 except OSError as error:
                     raise LocalASRError(
                         "Cannot write local-ASR installation receipt; "
-                        "retry the install.") from error
+                        "retry the install."
+                    ) from error
 
                 try:
                     if self.install_dir.exists():
                         cleanup_recorded_sidecar(
-                            self.process_record_path, self.executable_path, self.root)
+                            self.process_record_path, self.executable_path, self.root
+                        )
                         shutil.rmtree(self.install_dir)
                     os.replace(staging, self.install_dir)
                 except OSError as error:
                     raise LocalASRError(
-                        "Cannot publish local-ASR installation; "
-                        "retry the install.") from error
+                        "Cannot publish local-ASR installation; retry the install."
+                    ) from error
                 try:
                     self._raise_install_cancelled(cancel_event)
-                    result = (self.status(cancel_check=cancel_event.is_set)
-                              if cancel_event is not None else self.status())
+                    result = (
+                        self.status(cancel_check=cancel_event.is_set)
+                        if cancel_event is not None
+                        else self.status()
+                    )
                     self._raise_install_cancelled(cancel_event)
                     if result["state"] != "installed":
                         raise LocalASRIntegrityError(result["detail"])
@@ -966,7 +1069,8 @@ class LocalASRInstaller:
                     except LocalASRError as rollback_error:
                         raise LocalASRError(
                             "Published local-ASR installation failed verification and "
-                            "could not be rolled back; retry removal.") from rollback_error
+                            "could not be rolled back; retry removal."
+                        ) from rollback_error
                     raise error
                 self._report(callback, "complete", 1, 1)
                 return result
@@ -984,21 +1088,23 @@ class LocalASRInstaller:
             self._raise_remove_cancelled(cancel_event)
             try:
                 cleanup_recorded_sidecar(
-                    self.process_record_path, self.executable_path, self.root)
+                    self.process_record_path, self.executable_path, self.root
+                )
                 self._raise_remove_cancelled(cancel_event)
                 if cancel_event is None:
                     shutil.rmtree(self.root)
                 else:
-                    self._remove_tree(
-                        self.root, cancel_event, preserve_marker=True)
+                    self._remove_tree(self.root, cancel_event, preserve_marker=True)
                 if self.root.exists():
                     raise LocalASRError(
-                        "Cannot remove local-ASR assets completely; retry removal.")
+                        "Cannot remove local-ASR assets completely; retry removal."
+                    )
             except LocalASRError:
                 raise
             except OSError as error:
                 raise LocalASRError(
-                    "Cannot remove local-ASR assets completely; retry removal.") from error
+                    "Cannot remove local-ASR assets completely; retry removal."
+                ) from error
         return True
 
 
@@ -1013,7 +1119,9 @@ def _process_image_path(pid: int) -> Path | None:
         kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
         kernel32.OpenProcess.restype = wintypes.HANDLE
         kernel32.QueryFullProcessImageNameW.argtypes = [
-            wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
+            wintypes.HANDLE,
+            wintypes.DWORD,
+            wintypes.LPWSTR,
             ctypes.POINTER(wintypes.DWORD),
         ]
         kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
@@ -1026,7 +1134,8 @@ def _process_image_path(pid: int) -> Path | None:
             size = wintypes.DWORD(32768)
             buffer = ctypes.create_unicode_buffer(size.value)
             if not kernel32.QueryFullProcessImageNameW(
-                    process, 0, buffer, ctypes.byref(size)):
+                process, 0, buffer, ctypes.byref(size)
+            ):
                 return None
             return Path(buffer.value)
         finally:
@@ -1037,8 +1146,7 @@ def _process_image_path(pid: int) -> Path | None:
 
 def _is_native_kernel32(ctypes_module, kernel32) -> bool:
     win_dll_type = getattr(ctypes_module, "WinDLL", None)
-    return (isinstance(win_dll_type, type)
-            and isinstance(kernel32, win_dll_type))
+    return isinstance(win_dll_type, type) and isinstance(kernel32, win_dll_type)
 
 
 def _windows_kernel32_with_last_error(ctypes_module):
@@ -1160,8 +1268,7 @@ def _terminate_pid(pid: int) -> bool:
         process_terminate = 0x0001
         synchronize = 0x00100000
         wait_object_0 = 0
-        process = kernel32.OpenProcess(
-            process_terminate | synchronize, False, pid)
+        process = kernel32.OpenProcess(process_terminate | synchronize, False, pid)
         if not process:
             return False
         try:
@@ -1193,9 +1300,9 @@ def _owned_sidecar_executable(path: Path, asset_root: Path) -> Path | None:
 
 
 def cleanup_recorded_sidecar(
-        record_path: Path,
-        expected_executable: Path,
-        asset_root: Path | None = None,
+    record_path: Path,
+    expected_executable: Path,
+    asset_root: Path | None = None,
 ) -> None:
     """Terminate only a recorded PID whose image still matches its record."""
     record_path = Path(record_path)
@@ -1206,7 +1313,8 @@ def cleanup_recorded_sidecar(
     except OSError as error:
         raise LocalASRSidecarError(
             "Could not read the recorded local-ASR sidecar; "
-            "its process record was preserved") from error
+            "its process record was preserved"
+        ) from error
     try:
         record = json.loads(payload)
         pid = int(record["pid"])
@@ -1214,11 +1322,13 @@ def cleanup_recorded_sidecar(
     except (ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
         raise LocalASRSidecarError(
             "The recorded local-ASR sidecar ownership is invalid; "
-            "its process record was preserved") from error
+            "its process record was preserved"
+        ) from error
     if pid <= 0:
         raise LocalASRSidecarError(
             "The recorded local-ASR sidecar PID is invalid; "
-            "its process record was preserved")
+            "its process record was preserved"
+        )
 
     root = Path(asset_root) if asset_root is not None else record_path.parent
     expected = _owned_sidecar_executable(expected_executable, root)
@@ -1233,7 +1343,8 @@ def cleanup_recorded_sidecar(
             return
         raise LocalASRSidecarError(
             "Could not validate the recorded local-ASR sidecar image; "
-            "its process record was preserved")
+            "its process record was preserved"
+        )
 
     actual = _process_image_path(pid)
     if actual is None:
@@ -1241,21 +1352,25 @@ def cleanup_recorded_sidecar(
         if running is not False:
             raise LocalASRSidecarError(
                 "Could not verify ownership of the recorded local-ASR sidecar; "
-                "its process record was preserved")
+                "its process record was preserved"
+            )
     else:
         try:
             actual_resolved = Path(actual).resolve()
         except OSError as error:
             raise LocalASRSidecarError(
                 "Could not verify the recorded local-ASR sidecar image; "
-                "its process record was preserved") from error
+                "its process record was preserved"
+            ) from error
         if actual_resolved != recorded:
             raise LocalASRSidecarError(
                 "The recorded local-ASR sidecar image changed; "
-                "its process record was preserved")
+                "its process record was preserved"
+            )
         if not _terminate_pid(pid):
             raise LocalASRSidecarError(
-                "Could not confirm that the recorded local-ASR sidecar terminated")
+                "Could not confirm that the recorded local-ASR sidecar terminated"
+            )
     try:
         record_path.unlink(missing_ok=True)
     except OSError:
@@ -1269,11 +1384,13 @@ def _require_unelevated_windows_process(
     if elevation is True:
         raise LocalASRSidecarError(
             "Local ASR refuses to start from an elevated Windows process. "
-            "Restart Clarify without administrator privileges.")
+            "Restart Clarify without administrator privileges."
+        )
     if elevation is None:
         raise LocalASRSidecarError(
             "Local ASR could not verify Windows process privileges and refused "
-            "to start the sidecar.")
+            "to start the sidecar."
+        )
 
 
 class LocalASRSidecarManager:
@@ -1292,7 +1409,9 @@ class LocalASRSidecarManager:
         compute_device="cpu",
     ):
         self.compute_device = str(compute_device)
-        if self.compute_device != "cpu" and not re.fullmatch(r"cuda:[0-9]{1,2}", self.compute_device):
+        if self.compute_device != "cpu" and not re.fullmatch(
+            r"cuda:[0-9]{1,2}", self.compute_device
+        ):
             raise ValueError("Invalid compute device")
         self.installer = installer or LocalASRInstaller()
         self.idle_seconds = None if idle_seconds is None else float(idle_seconds)
@@ -1318,7 +1437,9 @@ class LocalASRSidecarManager:
     @property
     def process_id(self) -> int | None:
         process = self._process
-        return int(process.pid) if process is not None and process.poll() is None else None
+        return (
+            int(process.pid) if process is not None and process.poll() is None else None
+        )
 
     @property
     def base_url(self) -> str:
@@ -1335,9 +1456,10 @@ class LocalASRSidecarManager:
         path.parent.mkdir(parents=True, exist_ok=True)
         process = self._process
         pid = getattr(process, "pid", None)
-        if (isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0):
+        if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
             raise LocalASRSidecarError(
-                "Cannot record the local-ASR sidecar PID; retry the operation.")
+                "Cannot record the local-ASR sidecar PID; retry the operation."
+            )
         record = {
             "pid": pid,
             "executable": str(self.installer.executable_path),
@@ -1345,7 +1467,8 @@ class LocalASRSidecarManager:
             "started_at": int(time.time()),
         }
         descriptor, temporary = tempfile.mkstemp(
-            prefix=".sidecar-process-", suffix=".tmp", dir=path.parent)
+            prefix=".sidecar-process-", suffix=".tmp", dir=path.parent
+        )
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
                 json.dump(record, stream)
@@ -1371,7 +1494,8 @@ class LocalASRSidecarManager:
                 "Cannot prepare the local-ASR sidecar lock; retry the operation."
             ) from error
         return _AssetRootInstallLock(
-            root.parent / f".{root.name}.clarify-local-asr.lock")
+            root.parent / f".{root.name}.clarify-local-asr.lock"
+        )
 
     def _release_sidecar_lock_locked(self) -> None:
         lock = self._sidecar_lock
@@ -1388,21 +1512,22 @@ class LocalASRSidecarManager:
     def _health(self, expected_process=None) -> bool:
         with self._lock:
             process = self._process
-            if (process is None or process.poll() is not None
-                    or (expected_process is not None and process is not expected_process)):
+            if (
+                process is None
+                or process.poll() is not None
+                or (expected_process is not None and process is not expected_process)
+            ):
                 return False
             url = f"http://127.0.0.1:{self._port}{self._request_path}/health"
         try:
             response = self._session.get(url, timeout=(0.25, 0.25))
-            healthy = response.status_code == 200 and response.json().get("status") == "ok"
+            healthy = (
+                response.status_code == 200 and response.json().get("status") == "ok"
+            )
         except Exception:
             return False
         with self._lock:
-            return bool(
-                healthy
-                and self._process is process
-                and process.poll() is None
-            )
+            return bool(healthy and self._process is process and process.poll() is None)
 
     @staticmethod
     def _cancelled(*events) -> bool:
@@ -1437,7 +1562,8 @@ class LocalASRSidecarManager:
                         except LocalASRError as error:
                             raise LocalASRSidecarError(
                                 "Another local-ASR sidecar or asset operation is active; "
-                                "retry later.") from error
+                                "retry later."
+                            ) from error
                         self._sidecar_lock = sidecar_lock
                 if self._health():
                     with self._lock:
@@ -1452,10 +1578,14 @@ class LocalASRSidecarManager:
                     if not self._stop_locked(keep_sidecar_lock=True):
                         raise LocalASRSidecarError(
                             "The previous local-ASR sidecar is still running; "
-                            "retry after it exits.")
+                            "retry after it exits."
+                        )
                 self._raise_if_cancelled(cancel_event)
-                self.installer.verify(cancel_check=lambda: self._cancelled(
-                    cancel_event, startup_cancel, self._shutdown_event))
+                self.installer.verify(
+                    cancel_check=lambda: self._cancelled(
+                        cancel_event, startup_cancel, self._shutdown_event
+                    )
+                )
                 self._raise_if_cancelled(startup_cancel)
                 self._raise_if_cancelled(cancel_event)
                 _require_unelevated_windows_process(self._elevation_checker)
@@ -1472,17 +1602,24 @@ class LocalASRSidecarManager:
                 threads = max(1, min(8, (os.cpu_count() or 4) // 2))
                 command = [
                     str(self.installer.executable_path),
-                    "--model", str(self.installer.model_path),
-                    "--host", "127.0.0.1",
-                    "--port", str(port),
-                    "--request-path", request_path,
-                    "--threads", str(threads),
-                    "--language", "auto",
+                    "--model",
+                    str(self.installer.model_path),
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                    "--request-path",
+                    request_path,
+                    "--threads",
+                    str(threads),
+                    "--language",
+                    "auto",
                     # whisper.cpp v1.9.1 does not implement the newer
                     # --no-context alias.  A zero context size preserves the
                     # intended stateless transcription behavior on the
                     # pinned runtime.
-                    "--max-context", "0",
+                    "--max-context",
+                    "0",
                     "--no-timestamps",
                     "--no-gpu",
                 ]
@@ -1491,7 +1628,10 @@ class LocalASRSidecarManager:
                 extra = {}
                 if gpu:
                     command.remove("--no-gpu")
-                    extra["env"] = dict(os.environ, CUDA_VISIBLE_DEVICES=self.compute_device.split(":")[1])
+                    extra["env"] = dict(
+                        os.environ,
+                        CUDA_VISIBLE_DEVICES=self.compute_device.split(":")[1],
+                    )
                 flags = 0x08000000 if platform.system() == "Windows" else 0
                 started = time.perf_counter()
                 process = None
@@ -1512,14 +1652,21 @@ class LocalASRSidecarManager:
                         )
                         self._process = process
                         if gpu:
+
                             def drain(stderr=process.stderr, ready=gpu_ready):
                                 try:
                                     for line in iter(stderr.readline, b""):
-                                        if b"whisper_backend_init_gpu: using CUDA" in line:
+                                        if (
+                                            b"whisper_backend_init_gpu: using CUDA"
+                                            in line
+                                        ):
                                             ready.set()
                                 finally:
                                     stderr.close()
-                            threading.Thread(target=drain, daemon=True, name="LocalASRGpuProbe").start()
+
+                            threading.Thread(
+                                target=drain, daemon=True, name="LocalASRGpuProbe"
+                            ).start()
                         self._record_process()
                 except LocalASRCancelledError:
                     raise
@@ -1527,12 +1674,14 @@ class LocalASRSidecarManager:
                     with self._lock:
                         self._stop_locked(expected_process=process)
                     raise LocalASRSidecarError(
-                        f"Could not start whisper.cpp: {error}") from error
+                        f"Could not start whisper.cpp: {error}"
+                    ) from error
 
                 deadline = time.monotonic() + self.startup_timeout
                 while time.monotonic() < deadline:
                     if self._cancelled(
-                            cancel_event, startup_cancel, self._shutdown_event):
+                        cancel_event, startup_cancel, self._shutdown_event
+                    ):
                         with self._lock:
                             self._stop_locked(expected_process=process)
                         raise LocalASRCancelledError("Local ASR startup was cancelled")
@@ -1540,14 +1689,17 @@ class LocalASRSidecarManager:
                         if gpu and not gpu_ready.wait(1.0):
                             with self._lock:
                                 self._stop_locked(expected_process=process)
-                            raise LocalASRSidecarError("CUDA offload could not be verified. Select CPU or install a compatible NVIDIA driver.")
+                            raise LocalASRSidecarError(
+                                "CUDA offload could not be verified. Select CPU or install a compatible NVIDIA driver."
+                            )
                         elapsed = time.perf_counter() - started
                         with self._lock:
                             self._raise_if_cancelled(startup_cancel)
                             self._raise_if_cancelled(cancel_event)
                             if self._process is not process:
                                 raise LocalASRCancelledError(
-                                    "Local ASR startup was cancelled")
+                                    "Local ASR startup was cancelled"
+                                )
                             self._schedule_idle_shutdown_locked()
                         return elapsed
                     if process.poll() is not None:
@@ -1555,13 +1707,15 @@ class LocalASRSidecarManager:
                         with self._lock:
                             self._stop_locked(expected_process=process)
                         raise LocalASRSidecarError(
-                            f"whisper.cpp exited during startup (code {code})")
+                            f"whisper.cpp exited during startup (code {code})"
+                        )
                     startup_cancel.wait(0.05)
                 with self._lock:
                     self._stop_locked(expected_process=process)
                 raise LocalASRSidecarError(
                     "whisper.cpp did not become healthy within "
-                    f"{self.startup_timeout:g}s")
+                    f"{self.startup_timeout:g}s"
+                )
             finally:
                 with self._lock:
                     if self._startup_cancel is startup_cancel:
@@ -1582,12 +1736,19 @@ class LocalASRSidecarManager:
             return
         if idle_since is None:
             idle_since = time.monotonic()
-        limit = (model_idle_seconds(memory_bytes()) if self.idle_seconds is None
-                 else self.idle_seconds)
+        limit = (
+            model_idle_seconds(memory_bytes())
+            if self.idle_seconds is None
+            else self.idle_seconds
+        )
         remaining = max(0.0, limit - (time.monotonic() - idle_since))
         delay = min(15.0, remaining) if self.idle_seconds is None else remaining
-        if (self._active_cancellations or self._shutdown_event.is_set()
-                or self._process is None or self._process.poll() is not None):
+        if (
+            self._active_cancellations
+            or self._shutdown_event.is_set()
+            or self._process is None
+            or self._process.poll() is not None
+        ):
             return
 
         def idle_shutdown() -> None:
@@ -1596,8 +1757,11 @@ class LocalASRSidecarManager:
                     return
                 self._idle_timer = None
                 if not self._active_cancellations:
-                    current_limit = (model_idle_seconds(memory_bytes())
-                                     if self.idle_seconds is None else self.idle_seconds)
+                    current_limit = (
+                        model_idle_seconds(memory_bytes())
+                        if self.idle_seconds is None
+                        else self.idle_seconds
+                    )
                     if time.monotonic() - idle_since >= current_limit:
                         self._stop_locked()
                     else:
@@ -1662,10 +1826,12 @@ class LocalASRSidecarManager:
     def prepare(self, recording_done: threading.Event, cancel_event=None) -> None:
         """Load while recording, with a lease preventing idle unload mid-dictation."""
         memory = memory_bytes()
-        if memory is not None and memory[1] < 1024 ** 3:
+        if memory is not None and memory[1] < 1024**3:
             return  # Do not compete with capture on a memory-constrained host.
         operation_cancel = threading.Event()
-        combined = _CancellationView(operation_cancel, cancel_event, self._shutdown_event)
+        combined = _CancellationView(
+            operation_cancel, cancel_event, self._shutdown_event
+        )
         with self._lock:
             if recording_done.is_set() or combined.is_set():
                 return
@@ -1687,6 +1853,7 @@ class LocalASRSidecarManager:
         audio_bytes: bytes,
         language: str,
         result: queue.Queue,
+        initial_prompt: str = "",
     ) -> None:
         try:
             response = self._session.post(
@@ -1696,18 +1863,27 @@ class LocalASRSidecarManager:
                     "response_format": "json",
                     "temperature": "0.0",
                     "language": language,
+                    "prompt": initial_prompt,
+                    # Zero disables prompt tokens too. Clear history per request
+                    # while retaining vocabulary through long recordings.
+                    "max_context": "224" if initial_prompt else "0",
+                    "carry_initial_prompt": "true" if initial_prompt else "false",
                 },
                 timeout=(5, self.request_timeout),
             )
             response.raise_for_status()
             payload = response.json()
-            if (not isinstance(payload, Mapping)
-                    or not isinstance(payload.get("text"), str)):
+            if not isinstance(payload, Mapping) or not isinstance(
+                payload.get("text"), str
+            ):
                 raise LocalASRSidecarError(
-                    "whisper.cpp returned an invalid transcription response")
+                    "whisper.cpp returned an invalid transcription response"
+                )
             text = payload["text"].strip()
             if not text:
-                raise LocalASRSidecarError("whisper.cpp returned an empty transcription")
+                raise LocalASRSidecarError(
+                    "whisper.cpp returned an empty transcription"
+                )
             result.put((text, None))
         except Exception as error:
             result.put((None, error))
@@ -1719,16 +1895,19 @@ class LocalASRSidecarManager:
         language: str,
         cancel_event: threading.Event | None,
         timings: dict[str, float] | None = None,
+        initial_prompt: str = "",
     ) -> str:
         started = time.perf_counter()
         self.start(cancel_event=cancel_event)
         ready = time.perf_counter()
         if timings is not None:
-            timings["model_start_ms"] = timings.get("model_start_ms", 0.0) + (ready - started) * 1000
+            timings["model_start_ms"] = (
+                timings.get("model_start_ms", 0.0) + (ready - started) * 1000
+            )
         result: queue.Queue = queue.Queue(maxsize=1)
         worker = threading.Thread(
             target=self._post_inference,
-            args=(audio_name, audio_bytes, language, result),
+            args=(audio_name, audio_bytes, language, result, initial_prompt),
             daemon=True,
         )
         worker.start()
@@ -1742,14 +1921,17 @@ class LocalASRSidecarManager:
                 self.stop()
                 worker.join(timeout=2)
                 raise LocalASRSidecarError(
-                    f"Local transcription exceeded {self.request_timeout:g}s")
+                    f"Local transcription exceeded {self.request_timeout:g}s"
+                )
             worker.join(timeout=0.05)
         if cancel_event is not None and cancel_event.is_set():
             self.stop()
             raise LocalASRCancelledError("Local transcription was cancelled")
         text, error = result.get_nowait()
         if timings is not None:
-            timings["inference_ms"] = timings.get("inference_ms", 0.0) + (time.perf_counter() - ready) * 1000
+            timings["inference_ms"] = (
+                timings.get("inference_ms", 0.0) + (time.perf_counter() - ready) * 1000
+            )
         if error is not None:
             if isinstance(error, LocalASRError):
                 raise error
@@ -1764,6 +1946,7 @@ class LocalASRSidecarManager:
         *,
         audio_bytes: bytes | None = None,
         timings: dict[str, float] | None = None,
+        initial_prompt: str = "",
     ) -> str:
         audio_path = Path(audio_path)
         operation_cancel = threading.Event()
@@ -1773,7 +1956,8 @@ class LocalASRSidecarManager:
             self._active_cancellations.add(operation_cancel)
             self._cancel_idle_shutdown_locked()
         combined_cancel = _CancellationView(
-            operation_cancel, cancel_event, self._shutdown_event)
+            operation_cancel, cancel_event, self._shutdown_event
+        )
         owns_transcription = False
         try:
             if audio_bytes is None:
@@ -1781,10 +1965,12 @@ class LocalASRSidecarManager:
                     audio_snapshot = audio_path.read_bytes()
                 except FileNotFoundError as error:
                     raise LocalASRError(
-                        f"Audio file does not exist: {audio_path}") from error
+                        f"Audio file does not exist: {audio_path}"
+                    ) from error
                 except OSError as error:
                     raise LocalASRError(
-                        f"Could not read local audio snapshot: {audio_path.name}") from error
+                        f"Could not read local audio snapshot: {audio_path.name}"
+                    ) from error
             else:
                 audio_snapshot = bytes(audio_bytes)
             if combined_cancel.is_set():
@@ -1793,8 +1979,7 @@ class LocalASRSidecarManager:
                 raise LocalASRError("Local audio snapshot is empty")
             while not self._transcribe_lock.acquire(timeout=0.05):
                 if combined_cancel.is_set():
-                    raise LocalASRCancelledError(
-                        "Local transcription was cancelled")
+                    raise LocalASRCancelledError("Local transcription was cancelled")
             owns_transcription = True
             if combined_cancel.is_set():
                 raise LocalASRCancelledError("Local transcription was cancelled")
@@ -1802,22 +1987,31 @@ class LocalASRSidecarManager:
             for attempt in range(2):
                 try:
                     return self._transcribe_once(
-                        audio_path.name, audio_snapshot, language, combined_cancel,
-                        timings=timings)
-                except (LocalASRCancelledError, LocalASRInstallRequiredError,
-                        LocalASRIntegrityError):
+                        audio_path.name,
+                        audio_snapshot,
+                        language,
+                        combined_cancel,
+                        timings=timings,
+                        initial_prompt=initial_prompt,
+                    )
+                except (
+                    LocalASRCancelledError,
+                    LocalASRInstallRequiredError,
+                    LocalASRIntegrityError,
+                ):
                     raise
                 except LocalASRError as error:
                     if combined_cancel.is_set():
                         raise LocalASRCancelledError(
-                            "Local transcription was cancelled") from error
+                            "Local transcription was cancelled"
+                        ) from error
                     last_error = error
                     self.stop()
                     if attempt == 0:
                         continue
             raise LocalASRSidecarError(
-                "whisper.cpp failed after one automatic restart: "
-                f"{last_error}")
+                f"whisper.cpp failed after one automatic restart: {last_error}"
+            )
         finally:
             if owns_transcription:
                 self._transcribe_lock.release()
@@ -1843,17 +2037,23 @@ class LocalASRProviderAdapter(ProviderAdapter):
         super().__init__(LOCAL_ASR_METADATA, requests)
         self.backend = backend or LocalASRSidecarManager()
         from local_asr_catalog import EnginePool
+
         self.engines = EnginePool(self.backend)
 
     def select_backend(self, model, device="auto"):
         return self.engines.get(model or MODEL_ID, device)
 
-    def transcribe(self, request: TranscriptionRequest,
-            connection: ProviderConnection, cancel_token=None) -> TranscriptionResult:
+    def transcribe(
+        self,
+        request: TranscriptionRequest,
+        connection: ProviderConnection,
+        cancel_token=None,
+    ) -> TranscriptionResult:
         del connection
         self.require(ProviderCapability.AUDIO_TRANSCRIPTION)
         model = str(request.model or "").strip() or MODEL_ID
         from local_asr_catalog import MODELS
+
         if model not in MODELS:
             raise ProviderConfigurationError(
                 PROVIDER_ID,
@@ -1866,28 +2066,38 @@ class LocalASRProviderAdapter(ProviderAdapter):
             backend_kwargs = {"audio_bytes": request.audio_bytes}
             if isinstance(backend, LocalASRSidecarManager):
                 backend_kwargs["timings"] = timings
+                backend_kwargs["initial_prompt"] = request.vocabulary_prompt
             if cancel_token is not None:
                 backend_kwargs["cancel_event"] = cancel_token
             try:
                 text = backend.transcribe(
-                    request.audio_path, request.language, **backend_kwargs)
-            except (LocalASRSidecarError, LocalASRInstallRequiredError, LocalASRIntegrityError):
+                    request.audio_path, request.language, **backend_kwargs
+                )
+            except (
+                LocalASRSidecarError,
+                LocalASRInstallRequiredError,
+                LocalASRIntegrityError,
+            ):
                 if not getattr(backend, "compute_device", "cpu").startswith("cuda:"):
                     raise
                 backend.stop()
                 backend = self.select_backend(model, "cpu")
                 timings.clear()
-                text = backend.transcribe(request.audio_path, request.language, **backend_kwargs)
+                text = backend.transcribe(
+                    request.audio_path, request.language, **backend_kwargs
+                )
         except (LocalASRInstallRequiredError, LocalASRIntegrityError) as error:
             raise ProviderConfigurationError(
-                PROVIDER_ID, str(error),
+                PROVIDER_ID,
+                str(error),
                 ProviderCapability.AUDIO_TRANSCRIPTION,
             ) from error
         except LocalASRCancelledError:
             raise
         except LocalASRError as error:
             raise ProviderResponseError(
-                PROVIDER_ID, str(error),
+                PROVIDER_ID,
+                str(error),
                 ProviderCapability.AUDIO_TRANSCRIPTION,
             ) from error
         return TranscriptionResult(text, PROVIDER_ID, model, timings_ms=timings)

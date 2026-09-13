@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
 from spikes.pyside6.qml_bridge import QmlWorkflowBridge
 from spikes.pyside6.qml_runtime import (
     QtRecordingSession,
@@ -34,7 +34,7 @@ class Recorder:
 class CancelRestartTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QCoreApplication.instance() or QCoreApplication([])
+        cls.app = QApplication.instance() or QApplication([])
 
     def wait(self, predicate, timeout=2):
         deadline = time.monotonic() + timeout

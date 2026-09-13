@@ -10,6 +10,25 @@ use tauri::Manager;
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
 struct Bridge { pending: Pending, next: AtomicU64 }
 
+#[cfg(target_os = "windows")]
+fn style_window(window: &tauri::WebviewWindow) {
+    use std::ffi::c_void;
+    #[link(name = "dwmapi")]
+    extern "system" {
+        fn DwmSetWindowAttribute(hwnd: *mut c_void, attribute: u32, value: *const c_void, size: u32) -> i32;
+    }
+    if let Ok(hwnd) = window.hwnd() {
+        // Windows 11 owns corner clipping, resize hit testing and maximized
+        // geometry. Older Windows versions safely ignore unsupported attributes.
+        let rounded: u32 = 2; // DWMWCP_ROUND
+        let no_border: u32 = 0xfffffffe; // DWMWA_COLOR_NONE
+        unsafe {
+            DwmSetWindowAttribute(hwnd.0 as *mut c_void, 33, &rounded as *const _ as *const c_void, 4);
+            DwmSetWindowAttribute(hwnd.0 as *mut c_void, 34, &no_border as *const _ as *const c_void, 4);
+        }
+    }
+}
+
 #[tauri::command]
 async fn settings_call(method: String, args: Vec<Value>, bridge: tauri::State<'_, Bridge>) -> Result<Value, String> {
     if method.len() > 80 || args.len() > 8 {
@@ -46,6 +65,8 @@ fn main() {
           // original so Windows can scale the taskbar icon for the display DPI.
           if let Some(window) = app.get_webview_window("main") {
               window.set_icon(tauri::include_image!("icons/clarify.png"))?;
+              #[cfg(target_os = "windows")]
+              style_window(&window);
           }
           let handle = app.handle().clone();
           std::thread::spawn(move || {

@@ -476,6 +476,7 @@ def main(argv: list[str] | None = None) -> int:
         parent=app,
         microphone_backend=runtime.recording_audio.recorder,
         hotkey_applier=apply_qml_hotkeys,
+        dictionary_service=getattr(runtime, "dictionary_service", None),
     )
     branding_icon = _load_branding_icon()
     app.setWindowIcon(branding_icon)

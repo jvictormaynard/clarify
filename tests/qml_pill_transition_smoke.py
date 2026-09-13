@@ -21,7 +21,13 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from spikes.pyside6.qml_bridge import QmlWorkflowBridge
-from workflows import RetryDictation, UndoCancelDictation, WorkflowPhase, WorkflowState
+from workflows import (
+    RetryDictation,
+    StopDictation,
+    UndoCancelDictation,
+    WorkflowPhase,
+    WorkflowState,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -205,6 +211,16 @@ def main():
     QTest.qWait(5100)
     assert service.state.phase is WorkflowPhase.READY
     assert not pill.isVisible()
+    bridge.startRecordingFromButton()
+    service.publish(WorkflowPhase.RECORDING)
+    QTest.qWait(350)
+    stop = pill.findChild(QObject, "stopRecordingButton")
+    assert stop.property("visible") and stop.property("enabled")
+    assert pill.property("animatedWidth") == pill.property("designWidth") + 34
+    assert stop.x() >= waveform.x() + waveform.width()
+    click("stopRecordingButton")
+    assert isinstance(service.commands[-1], StopDictation)
+    assert service.state.phase is WorkflowPhase.PROCESSING
     errors = [
         m
         for m in messages

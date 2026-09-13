@@ -534,6 +534,9 @@ def main():
                 assert find_item(QObject, "appPages").property("currentIndex") == 0, (
                     "Tray must never restore an empty toolbar"
                 )
+                assert not panel.isVisible(), "Tray restore closes the Settings surface"
+                bridge.openSettings()
+                settle()
 
             assert panel and panel.isVisible()
             assert panel.transientParent() is None
@@ -873,7 +876,9 @@ def main():
             select_section(1)
             controller.setRouteProviderId("local_asr")
             shot("local-selection")
-            click(visible_item("manageLocalModelsButton"))
+            # Model management is reached through its section, not the removed
+            # empty inline navigation button under the dictation picker.
+            select_section(4)
             assert find_item(QObject, "settingsPage").property("selectedSection") == 4
             shot("local-install")
             assert local.install_calls == 0

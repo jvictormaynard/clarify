@@ -17,6 +17,58 @@ from spikes.pyside6.qml_settings import QmlSettingsController
 from spikes.pyside6.qml_web_settings import SettingsProtocol, WebSettingsProcess
 
 
+def check_native_corners(process_id):
+    """Inspect only the isolated fixture's HWND; never inspect user windows."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    dwm = ctypes.windll.dwmapi
+    user32.GetWindowThreadProcessId.argtypes = [
+        wintypes.HWND,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    dwm.DwmGetWindowAttribute.argtypes = [
+        wintypes.HWND,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    ]
+    matches = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def visit(hwnd, _):
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value == process_id:
+            corner = wintypes.DWORD()
+            corner_result = dwm.DwmGetWindowAttribute(hwnd, 33, ctypes.byref(corner), 4)
+            if corner_result == 0 and corner.value == 2:
+                matches.append(hwnd)
+                # Border color is a set-only DWM attribute on this Windows
+                # build. Capture the actual frame for visual verification.
+                import os
+
+                screenshot = os.environ.get("CLARIFY_TEST_CHROME_SCREENSHOT")
+                if screenshot:
+                    from PIL import ImageGrab
+
+                    rect = wintypes.RECT()
+                    if (
+                        dwm.DwmGetWindowAttribute(
+                            hwnd, 9, ctypes.byref(rect), ctypes.sizeof(rect)
+                        )
+                        == 0
+                    ):
+                        ImageGrab.grab(
+                            bbox=(rect.left, rect.top, rect.right, rect.bottom)
+                        ).save(screenshot)
+        return True
+
+    user32.EnumWindows(visit, 0)
+    return bool(matches)
+
+
 class Dispatcher(QObject):
     request = Signal(object)
 
@@ -85,6 +137,21 @@ def main():
             )
             if not host.show():
                 raise RuntimeError("Native test executable is missing")
+            if "--check-chrome" in sys.argv:
+                chrome_attempts = 0
+
+                def verify_chrome():
+                    nonlocal chrome_attempts
+                    chrome_attempts += 1
+                    if check_native_corners(host.process.processId()):
+                        print("PASS: native rounded corners", flush=True)
+                    elif chrome_attempts >= 100:
+                        print("FAIL: native corner/border attributes", flush=True)
+                        app.exit(5)
+                    else:
+                        QTimer.singleShot(200, verify_chrome)
+
+                QTimer.singleShot(200, verify_chrome)
             QTimer.singleShot(90000, lambda: app.exit(4))
         dispatcher = Dispatcher(SettingsProtocol(settings))
 

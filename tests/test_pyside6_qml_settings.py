@@ -15,7 +15,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 try:
-    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtWidgets import QApplication
     from spikes.pyside6 import qml_settings
     from spikes.pyside6.qml_settings import QmlSettingsController
 
@@ -123,7 +123,7 @@ class _Registry:
 class QmlSettingsControllerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.qt_app = QCoreApplication.instance() or QCoreApplication([])
+        cls.qt_app = QApplication.instance() or QApplication([])
 
     @staticmethod
     def _microphone_inventory():

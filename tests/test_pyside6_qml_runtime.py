@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 try:
-    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtWidgets import QApplication
 except (ImportError, ModuleNotFoundError):
     PYSIDE6_AVAILABLE = False
 else:
@@ -957,6 +957,7 @@ class QtProviderGatewayTests(unittest.TestCase):
                 SimpleNamespace(
                     apply_context=lambda request: request,
                     expand=lambda text: text + " expanded",
+                    refinement_context=lambda: "",
                 ),
             )
             for failure in (
@@ -1047,6 +1048,9 @@ class QtProviderGatewayTests(unittest.TestCase):
                 self.config = ConfigRepository(model)
 
         class Dictionary:
+            def refinement_context(self):
+                return "\nPreserve QML vocabulary."
+
             def __init__(self):
                 self.applied = None
                 self.expanded = []
@@ -1147,6 +1151,9 @@ class QtProviderGatewayTests(unittest.TestCase):
         )
         self.assertEqual(dictionary.expanded, ["refined transcript"])
         self.assertEqual(registry.rewrite_requests[0][0], "gemini")
+        self.assertIn(
+            "Preserve QML vocabulary", registry.rewrite_requests[0][1].instruction
+        )
         self.assertIn(
             "already-transcribed source text",
             registry.rewrite_requests[0][1].instruction,
@@ -1252,7 +1259,7 @@ class QtProviderGatewayTests(unittest.TestCase):
 class QtWorkflowSchedulerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.qt_app = QCoreApplication.instance() or QCoreApplication([])
+        cls.qt_app = QApplication.instance() or QApplication([])
 
     def test_worker_callback_is_delivered_on_qt_thread(self):
         scheduler = QtWorkflowScheduler(self.qt_app)

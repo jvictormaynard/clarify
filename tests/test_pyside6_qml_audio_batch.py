@@ -6,7 +6,7 @@ import time
 import unittest
 
 try:
-    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtWidgets import QApplication
     from spikes.pyside6.qml_audio_batch import QmlAudioFileImportController
 except (ImportError, ModuleNotFoundError):
     PYSIDE6_AVAILABLE = False
@@ -115,7 +115,7 @@ def _selection(
 class QmlAudioFileImportControllerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.app = QCoreApplication.instance() or QCoreApplication([])
+        cls.app = QApplication.instance() or QApplication([])
 
     def test_start_builds_typed_selection_and_existing_controller_deduplicates(self):
         service = _FakeService()

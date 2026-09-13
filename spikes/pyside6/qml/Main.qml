@@ -26,6 +26,11 @@ ApplicationWindow {
     minimumHeight: theme.windowHeight * theme.uiScale
     property bool passivePresentation: false
     property bool presentationVisible: false
+    onPresentationVisibleChanged: {
+        // Tray/visibility shortcuts reopen the toolbar, not a settings placeholder.
+        if (presentationVisible && workflow.surface === "settings")
+            workflow.closeSettings()
+    }
     visible: presentationVisible || opacity > 0.001
     opacity: presentationVisible ? 1.0 : 0.0
     Behavior on opacity {
@@ -285,7 +290,7 @@ ApplicationWindow {
                                 if (workflow.surface === "recording")
                                     workflow.stopRecording()
                                 else
-                                    workflow.startRecording()
+                                    workflow.startRecordingFromButton()
                             }
                         }
                     }

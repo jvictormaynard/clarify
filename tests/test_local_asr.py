@@ -40,7 +40,7 @@ class FakeResponse:
 
     def iter_content(self, chunk_size):
         for index in range(0, len(self.content), max(1, chunk_size // 2)):
-            yield self.content[index:index + max(1, chunk_size // 2)]
+            yield self.content[index : index + max(1, chunk_size // 2)]
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -77,10 +77,12 @@ class InstallerFixture:
         self.directory = Path(directory)
         self.runtime = b"verified-sidecar"
         self.model = b"verified-model"
-        self.archive = make_zip({
-            "Release/whisper-server.exe": self.runtime,
-            "../../outside.exe": b"must-not-extract",
-        })
+        self.archive = make_zip(
+            {
+                "Release/whisper-server.exe": self.runtime,
+                "../../outside.exe": b"must-not-extract",
+            }
+        )
         self.manifest = {
             "schema_version": 1,
             "provider": "local_asr",
@@ -123,16 +125,17 @@ class InstallerFixture:
                     "source_url": "https://example.test/model-source",
                 },
             },
-            "extracted_files": [{
-                "archive_path": "Release/whisper-server.exe",
-                "path": "runtime/whisper-server.exe",
-                "size": len(self.runtime),
-                "sha256": digest(self.runtime),
-            }],
+            "extracted_files": [
+                {
+                    "archive_path": "Release/whisper-server.exe",
+                    "path": "runtime/whisper-server.exe",
+                    "size": len(self.runtime),
+                    "sha256": digest(self.runtime),
+                }
+            ],
         }
         self.manifest_path = self.directory / "manifest.json"
-        self.manifest_path.write_text(
-            json.dumps(self.manifest), encoding="utf-8")
+        self.manifest_path.write_text(json.dumps(self.manifest), encoding="utf-8")
         self.root = self.directory / "assets"
 
     def installer(self, responses=None):
@@ -142,7 +145,8 @@ class InstallerFixture:
         }
         session = InstallerSession(responses)
         return local_asr.LocalASRInstaller(
-            root=self.root, manifest_path=self.manifest_path, session=session), session
+            root=self.root, manifest_path=self.manifest_path, session=session
+        ), session
 
 
 class LocalASRManifestTests(unittest.TestCase):
@@ -174,12 +178,15 @@ class LocalASRManifestTests(unittest.TestCase):
 
     def test_manifest_rejects_unsafe_destination(self):
         for destination in ("../escape.exe", r"..\\escape.exe"):
-            with self.subTest(destination=destination), \
-                    tempfile.TemporaryDirectory() as directory:
+            with (
+                self.subTest(destination=destination),
+                tempfile.TemporaryDirectory() as directory,
+            ):
                 fixture = InstallerFixture(directory)
                 fixture.manifest["extracted_files"][0]["path"] = destination
                 fixture.manifest_path.write_text(
-                    json.dumps(fixture.manifest), encoding="utf-8")
+                    json.dumps(fixture.manifest), encoding="utf-8"
+                )
 
                 with self.assertRaises(local_asr.LocalASRIntegrityError):
                     local_asr.load_manifest(fixture.manifest_path)
@@ -189,7 +196,8 @@ class LocalASRManifestTests(unittest.TestCase):
             fixture = InstallerFixture(directory)
             fixture.manifest["assets"]["model"]["filename"] = "../model.bin"
             fixture.manifest_path.write_text(
-                json.dumps(fixture.manifest), encoding="utf-8")
+                json.dumps(fixture.manifest), encoding="utf-8"
+            )
 
             with self.assertRaises(local_asr.LocalASRIntegrityError):
                 local_asr.load_manifest(fixture.manifest_path)
@@ -202,12 +210,15 @@ class LocalASRManifestTests(unittest.TestCase):
             ("recommended_model", "id", r"C:\\victim"),
         )
         for section, field, value in cases:
-            with self.subTest(section=section, field=field, value=value), \
-                    tempfile.TemporaryDirectory() as directory:
+            with (
+                self.subTest(section=section, field=field, value=value),
+                tempfile.TemporaryDirectory() as directory,
+            ):
                 fixture = InstallerFixture(directory)
                 fixture.manifest[section][field] = value
                 fixture.manifest_path.write_text(
-                    json.dumps(fixture.manifest), encoding="utf-8")
+                    json.dumps(fixture.manifest), encoding="utf-8"
+                )
 
                 with self.assertRaises(local_asr.LocalASRIntegrityError):
                     local_asr.load_manifest(fixture.manifest_path)
@@ -218,19 +229,41 @@ class LocalASRManifestTests(unittest.TestCase):
                 fixture = InstallerFixture(directory)
                 fixture.manifest["extracted_files"][0]["size"] = size
                 fixture.manifest_path.write_text(
-                    json.dumps(fixture.manifest), encoding="utf-8")
+                    json.dumps(fixture.manifest), encoding="utf-8"
+                )
 
                 with self.assertRaises(local_asr.LocalASRIntegrityError):
                     local_asr.load_manifest(fixture.manifest_path)
 
     def test_repository_contains_no_sidecar_binary_or_model(self):
-        names = [path.name.casefold() for path in ROOT.rglob("*") if path.is_file()]
+        # Check source inputs, not ignored package caches or local build output.
+        # rglob + is_file traversed every npm/Cargo/venv file over UNC on Windows.
+        generated = {
+            ".git",
+            ".venv",
+            "venv",
+            "node_modules",
+            "__pycache__",
+            "build",
+            "dist",
+            "target",
+            "release",
+            "test-results",
+            "playwright-report",
+        }
+        names = []
+        for _directory, directories, files in os.walk(ROOT):
+            directories[:] = [name for name in directories if name not in generated]
+            names.extend(name.casefold() for name in files)
 
         self.assertNotIn("whisper-server.exe", names)
-        self.assertFalse(any(name.startswith("ggml-") and name.endswith(".bin")
-                             for name in names))
-        self.assertNotIn("whisper.cpp", (ROOT / "requirements.txt").read_text(
-            encoding="utf-8").casefold())
+        self.assertFalse(
+            any(name.startswith("ggml-") and name.endswith(".bin") for name in names)
+        )
+        self.assertNotIn(
+            "whisper.cpp",
+            (ROOT / "requirements.txt").read_text(encoding="utf-8").casefold(),
+        )
 
 
 class LocalASRInstallerTests(unittest.TestCase):
@@ -258,7 +291,8 @@ class LocalASRInstallerTests(unittest.TestCase):
             self.assertEqual(installer.executable_path.read_bytes(), fixture.runtime)
             self.assertEqual(installer.model_path.read_bytes(), fixture.model)
             self.assertTrue(
-                (installer.install_dir / "licenses" / "whisper.cpp-MIT.txt").is_file())
+                (installer.install_dir / "licenses" / "whisper.cpp-MIT.txt").is_file()
+            )
             self.assertFalse((fixture.root / "outside.exe").exists())
             self.assertFalse((Path(directory) / "outside.exe").exists())
             self.assertTrue(any(stage == "verify:model" for stage, _, _ in progress))
@@ -392,8 +426,7 @@ class LocalASRInstallerTests(unittest.TestCase):
             def reparse_state(path):
                 return True if Path(path) == junction else False
 
-            with patch.object(
-                    local_asr, "_reparse_state", side_effect=reparse_state):
+            with patch.object(local_asr, "_reparse_state", side_effect=reparse_state):
                 with self.assertRaises(local_asr.LocalASRError) as raised:
                     installer.remove(cancel_event=threading.Event())
 
@@ -523,15 +556,15 @@ class LocalASRInstallerTests(unittest.TestCase):
             original_sha256 = local_asr._sha256
 
             def cancel_when_published_model_is_hashed(
-                    path, *args, cancel_check=None, **kwargs):
+                path, *args, cancel_check=None, **kwargs
+            ):
                 if Path(path) == installer.model_path:
                     cancel_event.set()
-                return original_sha256(
-                    path, *args, cancel_check=cancel_check, **kwargs)
+                return original_sha256(path, *args, cancel_check=cancel_check, **kwargs)
 
             with patch.object(
-                    local_asr, "_sha256",
-                    side_effect=cancel_when_published_model_is_hashed):
+                local_asr, "_sha256", side_effect=cancel_when_published_model_is_hashed
+            ):
                 with self.assertRaises(local_asr.LocalASRCancelledError):
                     installer.install(cancel_event=cancel_event)
 
@@ -560,8 +593,10 @@ class LocalASRInstallerTests(unittest.TestCase):
                     raise OSError("private rollback detail")
                 return original_rmtree(path, *args, **kwargs)
 
-            with patch.object(installer, "status", new=status_with_post_publish_tamper), \
-                    patch.object(local_asr.shutil, "rmtree", new=fail_published_cleanup):
+            with (
+                patch.object(installer, "status", new=status_with_post_publish_tamper),
+                patch.object(local_asr.shutil, "rmtree", new=fail_published_cleanup),
+            ):
                 with self.assertRaises(local_asr.LocalASRError) as raised:
                     installer.install()
 
@@ -578,8 +613,12 @@ class LocalASRInstallerTests(unittest.TestCase):
             installer.install()
             original_rmtree = local_asr.shutil.rmtree
 
-            with patch.object(Path, "exists", return_value=False), \
-                    patch.object(local_asr.shutil, "rmtree", wraps=original_rmtree) as rmtree:
+            with (
+                patch.object(Path, "exists", return_value=False),
+                patch.object(
+                    local_asr.shutil, "rmtree", wraps=original_rmtree
+                ) as rmtree,
+            ):
                 installer._discard_published_installation()
 
             rmtree.assert_called_once_with(installer.install_dir)
@@ -693,7 +732,8 @@ class LocalASRInstallerTests(unittest.TestCase):
             installer, session = fixture.installer()
             fixture.root.mkdir()
             (fixture.root / local_asr.ROOT_MARKER).write_text(
-                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8")
+                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8"
+            )
             orphan = fixture.root / ".install-crashed"
             orphan.mkdir()
             (orphan / "partial.bin").write_bytes(b"partial")
@@ -710,7 +750,8 @@ class LocalASRInstallerTests(unittest.TestCase):
             owner, _owner_session = fixture.installer()
             fixture.root.mkdir()
             (fixture.root / local_asr.ROOT_MARKER).write_text(
-                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8")
+                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8"
+            )
             active = fixture.root / ".install-active"
             active.mkdir()
             (active / "partial.bin").write_bytes(b"still downloading")
@@ -780,12 +821,14 @@ class LocalASRInstallerTests(unittest.TestCase):
             lock = installer._acquire_install_lock()
             if os.name == "nt":
                 failing_lock_step = patch.object(
-                    local_asr.os, "fstat", side_effect=OSError("private lock detail"))
+                    local_asr.os, "fstat", side_effect=OSError("private lock detail")
+                )
             else:
                 import fcntl
 
                 failing_lock_step = patch.object(
-                    fcntl, "flock", side_effect=OSError("private lock detail"))
+                    fcntl, "flock", side_effect=OSError("private lock detail")
+                )
             with failing_lock_step:
                 with self.assertRaises(local_asr.LocalASRError) as raised:
                     lock.acquire()
@@ -799,7 +842,8 @@ class LocalASRInstallerTests(unittest.TestCase):
             installer, session = fixture.installer()
             fixture.root.mkdir()
             (fixture.root / local_asr.ROOT_MARKER).write_text(
-                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8")
+                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8"
+            )
             ambiguous = fixture.root / ".install-unsafe!"
             ambiguous.mkdir()
 
@@ -815,7 +859,8 @@ class LocalASRInstallerTests(unittest.TestCase):
             installer, session = fixture.installer()
             fixture.root.mkdir()
             (fixture.root / local_asr.ROOT_MARKER).write_text(
-                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8")
+                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8"
+            )
             target = Path(directory) / "outside"
             target.mkdir()
             link = fixture.root / ".install-link"
@@ -838,8 +883,10 @@ class LocalASRInstallerTests(unittest.TestCase):
             keep = fixture.root / "keep.txt"
             keep.write_text("target data", encoding="utf-8")
 
-            with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                    patch.object(local_asr, "_reparse_state", return_value=True):
+            with (
+                patch.object(local_asr.platform, "system", return_value="Windows"),
+                patch.object(local_asr, "_reparse_state", return_value=True),
+            ):
                 with self.assertRaises(local_asr.LocalASRError):
                     installer.install()
 
@@ -857,8 +904,10 @@ class LocalASRInstallerTests(unittest.TestCase):
             keep = fixture.root / "keep.txt"
             keep.write_text("target data", encoding="utf-8")
 
-            with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                    patch.object(local_asr, "_reparse_state", return_value=True):
+            with (
+                patch.object(local_asr.platform, "system", return_value="Windows"),
+                patch.object(local_asr, "_reparse_state", return_value=True),
+            ):
                 with self.assertRaises(local_asr.LocalASRError):
                     installer.remove()
 
@@ -871,7 +920,8 @@ class LocalASRInstallerTests(unittest.TestCase):
             installer, session = fixture.installer()
             fixture.root.mkdir()
             (fixture.root / local_asr.ROOT_MARKER).write_text(
-                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8")
+                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8"
+            )
             orphan = fixture.root / ".install-crashed"
             orphan.mkdir()
             original_rmtree = local_asr.shutil.rmtree
@@ -881,11 +931,14 @@ class LocalASRInstallerTests(unittest.TestCase):
                     raise OSError("private sharing detail")
                 return original_rmtree(path, *args, **kwargs)
 
-            with patch.object(local_asr.shutil, "rmtree", new=fail_cleanup), \
-                    patch.object(
-                        local_asr.tempfile, "mkdtemp",
-                        side_effect=AssertionError("staging must not continue"),
-                    ):
+            with (
+                patch.object(local_asr.shutil, "rmtree", new=fail_cleanup),
+                patch.object(
+                    local_asr.tempfile,
+                    "mkdtemp",
+                    side_effect=AssertionError("staging must not continue"),
+                ),
+            ):
                 with self.assertRaises(local_asr.LocalASRError) as raised:
                     installer.install()
 
@@ -917,7 +970,8 @@ class LocalASRInstallerTests(unittest.TestCase):
             installer, _session = fixture.installer()
             fixture.root.mkdir()
             (fixture.root / local_asr.ROOT_MARKER).write_text(
-                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8")
+                f"{local_asr.PROVIDER_ID}\n", encoding="utf-8"
+            )
             outside_prefix = Path(directory) / "external"
             victim = Path(f"{outside_prefix}-v-test-ggml-test")
             victim.mkdir()
@@ -983,7 +1037,9 @@ class SidecarSession:
         self.trust_env = True
         self.get_calls = []
         self.post_calls = []
-        self.post_results = list(post_results or [FakeResponse(payload={"text": "local text"})])
+        self.post_results = list(
+            post_results or [FakeResponse(payload={"text": "local text"})]
+        )
 
     def get(self, url, timeout=None):
         self.get_calls.append((url, timeout))
@@ -1077,7 +1133,9 @@ class LocalASRSidecarTests(unittest.TestCase):
 
     def test_sidecar_start_lock_preserves_peer_process_record(self):
         with tempfile.TemporaryDirectory() as directory:
-            first, first_installer, _first_session, _first_factory = self._manager(directory)
+            first, first_installer, _first_session, _first_factory = self._manager(
+                directory
+            )
             second_session = SidecarSession()
             second_factory = PopenFactory()
             second = local_asr.LocalASRSidecarManager(
@@ -1107,15 +1165,16 @@ class LocalASRSidecarTests(unittest.TestCase):
 
     def test_windows_start_refuses_elevated_or_unknown_privileges(self):
         for elevation in (True, None):
-            with self.subTest(elevation=elevation), \
-                    tempfile.TemporaryDirectory() as directory:
+            with (
+                self.subTest(elevation=elevation),
+                tempfile.TemporaryDirectory() as directory,
+            ):
                 manager, installer, _session, factory = self._manager(
                     directory,
                     elevation_checker=lambda elevation=elevation: elevation,
                 )
 
-                with patch.object(
-                        local_asr.platform, "system", return_value="Windows"):
+                with patch.object(local_asr.platform, "system", return_value="Windows"):
                     with self.assertRaises(local_asr.LocalASRSidecarError):
                         manager.start()
 
@@ -1127,8 +1186,7 @@ class LocalASRSidecarTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             manager, _installer, _session, factory = self._manager(directory)
 
-            with patch.object(
-                    local_asr.platform, "system", return_value="Windows"):
+            with patch.object(local_asr.platform, "system", return_value="Windows"):
                 manager.start()
 
             self.assertEqual(factory.calls[0][1]["creationflags"], 0x08000000)
@@ -1165,18 +1223,22 @@ class LocalASRSidecarTests(unittest.TestCase):
             self.assertEqual(text, "local text")
             self.assertFalse(released_path.exists())
             file_part = session.post_calls[0][1]["files"]["file"]
-            self.assertEqual(file_part, (
-                "recording-session.wav", snapshot, "audio/wav"))
+            self.assertEqual(
+                file_part, ("recording-session.wav", snapshot, "audio/wav")
+            )
             manager.shutdown()
 
     def test_request_failure_restarts_sidecar_once(self):
         with tempfile.TemporaryDirectory() as directory:
-            session = SidecarSession([
-                ConnectionError("sidecar crashed"),
-                FakeResponse(payload={"text": "recovered"}),
-            ])
+            session = SidecarSession(
+                [
+                    ConnectionError("sidecar crashed"),
+                    FakeResponse(payload={"text": "recovered"}),
+                ]
+            )
             manager, installer, _session, factory = self._manager(
-                directory, session=session)
+                directory, session=session
+            )
             audio = Path(directory) / "input.wav"
             audio.write_bytes(b"RIFF-audio")
 
@@ -1190,12 +1252,15 @@ class LocalASRSidecarTests(unittest.TestCase):
 
     def test_non_string_inference_text_is_not_reported_as_success(self):
         with tempfile.TemporaryDirectory() as directory:
-            session = SidecarSession([
-                FakeResponse(payload={"text": None}),
-                FakeResponse(payload={"text": "recovered"}),
-            ])
+            session = SidecarSession(
+                [
+                    FakeResponse(payload={"text": None}),
+                    FakeResponse(payload={"text": "recovered"}),
+                ]
+            )
             manager, _installer, _session, factory = self._manager(
-                directory, session=session)
+                directory, session=session
+            )
             audio = Path(directory) / "input.wav"
             audio.write_bytes(b"RIFF-audio")
 
@@ -1213,13 +1278,16 @@ class LocalASRSidecarTests(unittest.TestCase):
                 release_first_request.wait(2)
                 raise ConnectionError("first request failed")
 
-            session = SidecarSession([
-                fail_first_request,
-                FakeResponse(payload={"text": "first recovered"}),
-                FakeResponse(payload={"text": "second completed"}),
-            ])
+            session = SidecarSession(
+                [
+                    fail_first_request,
+                    FakeResponse(payload={"text": "first recovered"}),
+                    FakeResponse(payload={"text": "second completed"}),
+                ]
+            )
             manager, _installer, _session, factory = self._manager(
-                directory, session=session)
+                directory, session=session
+            )
             first_audio = Path(directory) / "first.wav"
             second_audio = Path(directory) / "second.wav"
             first_audio.write_bytes(b"RIFF-first")
@@ -1233,10 +1301,8 @@ class LocalASRSidecarTests(unittest.TestCase):
                 except Exception as error:
                     errors[name] = error
 
-            first = threading.Thread(
-                target=transcribe, args=("first", first_audio))
-            second = threading.Thread(
-                target=transcribe, args=("second", second_audio))
+            first = threading.Thread(target=transcribe, args=("first", first_audio))
+            second = threading.Thread(target=transcribe, args=("second", second_audio))
             first.start()
             self.assertTrue(first_request_started.wait(0.5))
             second.start()
@@ -1250,10 +1316,13 @@ class LocalASRSidecarTests(unittest.TestCase):
             self.assertFalse(first.is_alive())
             self.assertFalse(second.is_alive())
             self.assertEqual(errors, {})
-            self.assertEqual(results, {
-                "first": "first recovered",
-                "second": "second completed",
-            })
+            self.assertEqual(
+                results,
+                {
+                    "first": "first recovered",
+                    "second": "second completed",
+                },
+            )
             self.assertEqual(len(factory.processes), 2)
             self.assertEqual(factory.processes[0].terminate_calls, 1)
             self.assertEqual(factory.processes[1].terminate_calls, 0)
@@ -1269,13 +1338,16 @@ class LocalASRSidecarTests(unittest.TestCase):
                 terminated.wait(2)
                 raise ConnectionError("cancelled sidecar stopped")
 
-            session = SidecarSession([
-                block_first_request,
-                FakeResponse(payload={"text": "queued completed"}),
-            ])
+            session = SidecarSession(
+                [
+                    block_first_request,
+                    FakeResponse(payload={"text": "queued completed"}),
+                ]
+            )
             factory = PopenFactory(terminated)
             manager, _installer, _session, _factory = self._manager(
-                directory, session=session, factory=factory)
+                directory, session=session, factory=factory
+            )
             first_audio = Path(directory) / "first.wav"
             second_audio = Path(directory) / "second.wav"
             first_audio.write_bytes(b"RIFF-first")
@@ -1287,7 +1359,8 @@ class LocalASRSidecarTests(unittest.TestCase):
             def first_transcription():
                 try:
                     results["first"] = manager.transcribe(
-                        first_audio, cancel_event=first_cancel)
+                        first_audio, cancel_event=first_cancel
+                    )
                 except Exception as error:
                     errors["first"] = error
 
@@ -1311,8 +1384,7 @@ class LocalASRSidecarTests(unittest.TestCase):
 
             self.assertFalse(first.is_alive())
             self.assertFalse(second.is_alive())
-            self.assertIsInstance(
-                errors.get("first"), local_asr.LocalASRCancelledError)
+            self.assertIsInstance(errors.get("first"), local_asr.LocalASRCancelledError)
             self.assertNotIn("second", errors)
             self.assertEqual(results.get("second"), "queued completed")
             self.assertEqual(len(factory.processes), 2)
@@ -1333,7 +1405,8 @@ class LocalASRSidecarTests(unittest.TestCase):
             session = SidecarSession([block_first_request])
             factory = PopenFactory(terminated)
             manager, _installer, _session, _factory = self._manager(
-                directory, session=session, factory=factory)
+                directory, session=session, factory=factory
+            )
             audio = Path(directory) / "input.wav"
             audio.write_bytes(b"RIFF-audio")
             errors = []
@@ -1358,8 +1431,12 @@ class LocalASRSidecarTests(unittest.TestCase):
             self.assertFalse(first.is_alive())
             self.assertFalse(second.is_alive())
             self.assertEqual(len(errors), 2)
-            self.assertTrue(all(isinstance(
-                error, local_asr.LocalASRCancelledError) for error in errors))
+            self.assertTrue(
+                all(
+                    isinstance(error, local_asr.LocalASRCancelledError)
+                    for error in errors
+                )
+            )
             self.assertEqual(len(factory.processes), 1)
 
     def test_cancellation_terminates_sidecar(self):
@@ -1373,7 +1450,8 @@ class LocalASRSidecarTests(unittest.TestCase):
             session = SidecarSession([blocking_post])
             factory = PopenFactory(terminated)
             manager, _installer, _session, _factory = self._manager(
-                directory, session=session, factory=factory)
+                directory, session=session, factory=factory
+            )
             audio = Path(directory) / "input.wav"
             audio.write_bytes(b"RIFF-audio")
             cancelled = threading.Event()
@@ -1398,7 +1476,8 @@ class LocalASRSidecarTests(unittest.TestCase):
             session = SidecarSession([blocking_post])
             factory = PopenFactory(terminated)
             manager, installer, _session, _factory = self._manager(
-                directory, session=session, factory=factory)
+                directory, session=session, factory=factory
+            )
             audio = Path(directory) / "input.wav"
             audio.write_bytes(b"RIFF-audio")
             errors = []
@@ -1435,7 +1514,8 @@ class LocalASRSidecarTests(unittest.TestCase):
 
             session = UnhealthySession()
             manager, installer, _session, factory = self._manager(
-                directory, session=session, startup_timeout=5)
+                directory, session=session, startup_timeout=5
+            )
             audio = Path(directory) / "input.wav"
             audio.write_bytes(b"RIFF-audio")
             cancelled = threading.Event()
@@ -1509,7 +1589,8 @@ class LocalASRSidecarTests(unittest.TestCase):
                     return FakeResponse(status_code=503)
 
             manager, installer, _session, factory = self._manager(
-                directory, session=UnhealthySession(), startup_timeout=5)
+                directory, session=UnhealthySession(), startup_timeout=5
+            )
             errors = []
 
             def start():
@@ -1536,7 +1617,8 @@ class LocalASRSidecarTests(unittest.TestCase):
     def test_idle_shutdown_stops_verified_sidecar(self):
         with tempfile.TemporaryDirectory() as directory:
             manager, _installer, _session, factory = self._manager(
-                directory, idle_seconds=0.05)
+                directory, idle_seconds=0.05
+            )
 
             manager.start()
             time.sleep(0.12)
@@ -1558,13 +1640,14 @@ class LocalASRSidecarTests(unittest.TestCase):
 
             session = SidecarSession([blocking_post])
             manager, _installer, _session, factory = self._manager(
-                directory, session=session, idle_seconds=0.05,
-                request_timeout=1)
+                directory, session=session, idle_seconds=0.05, request_timeout=1
+            )
             audio = Path(directory) / "input.wav"
             audio.write_bytes(b"RIFF-audio")
             results = []
             worker = threading.Thread(
-                target=lambda: results.append(manager.transcribe(audio)))
+                target=lambda: results.append(manager.transcribe(audio))
+            )
             worker.start()
             self.assertTrue(request_started.wait(0.5))
 
@@ -1605,12 +1688,15 @@ class LocalASRSidecarTests(unittest.TestCase):
 
             manager._record_process()
             record = json.loads(
-                installer.process_record_path.read_text(encoding="utf-8"))
+                installer.process_record_path.read_text(encoding="utf-8")
+            )
 
             self.assertIsNone(manager.process_id)
             self.assertEqual(record["pid"], process.pid)
-            with patch.object(local_asr, "_process_image_path", return_value=None), \
-                    patch.object(local_asr, "_pid_running_state", return_value=False):
+            with (
+                patch.object(local_asr, "_process_image_path", return_value=None),
+                patch.object(local_asr, "_pid_running_state", return_value=False),
+            ):
                 local_asr.cleanup_recorded_sidecar(
                     installer.process_record_path,
                     installer.executable_path,
@@ -1630,6 +1716,7 @@ class LocalASRSidecarTests(unittest.TestCase):
 
     def test_start_does_not_replace_unconfirmed_previous_sidecar(self):
         with tempfile.TemporaryDirectory() as directory:
+
             class UnhealthySession(SidecarSession):
                 def get(self, url, timeout=None):
                     self.get_calls.append((url, timeout))
@@ -1654,8 +1741,11 @@ class LocalASRSidecarTests(unittest.TestCase):
                 return process
 
             manager, installer, _session, _factory = self._manager(
-                directory, session=UnhealthySession(), factory=create_process,
-                startup_timeout=0.05)
+                directory,
+                session=UnhealthySession(),
+                factory=create_process,
+                startup_timeout=0.05,
+            )
             manager._record_process = Mock(side_effect=OSError("disk full"))
 
             with self.assertRaises(local_asr.LocalASRSidecarError):
@@ -1668,7 +1758,9 @@ class LocalASRSidecarTests(unittest.TestCase):
             with self.assertRaises(local_asr.LocalASRSidecarError) as raised:
                 manager.start()
 
-            self.assertIn("previous local-ASR sidecar is still running", str(raised.exception))
+            self.assertIn(
+                "previous local-ASR sidecar is still running", str(raised.exception)
+            )
             self.assertEqual(len(factory.processes), 1)
 
             process = factory.processes[0]
@@ -1678,6 +1770,7 @@ class LocalASRSidecarTests(unittest.TestCase):
 
     def test_unconfirmed_managed_termination_keeps_process_record(self):
         with tempfile.TemporaryDirectory() as directory:
+
             class StubbornProcess(FakeProcess):
                 def terminate(self):
                     self.terminate_calls += 1
@@ -1697,7 +1790,8 @@ class LocalASRSidecarTests(unittest.TestCase):
                 return process
 
             manager, installer, _session, _factory = self._manager(
-                directory, factory=create_process)
+                directory, factory=create_process
+            )
             manager.start()
 
             manager.stop()
@@ -1725,9 +1819,10 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
         )
         windll = SimpleNamespace(kernel32=kernel32, psapi=psapi)
 
-        with patch.object(
-                local_asr_harness.platform, "system", return_value="Windows"), \
-                patch.object(ctypes, "windll", windll, create=True):
+        with (
+            patch.object(local_asr_harness.platform, "system", return_value="Windows"),
+            patch.object(ctypes, "windll", windll, create=True),
+        ):
             peak = local_asr_harness._windows_working_set(4321)
 
         self.assertEqual(peak, 987654)
@@ -1737,14 +1832,18 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
         shell32 = SimpleNamespace(IsUserAnAdmin=Mock(return_value=1))
         windll = SimpleNamespace(shell32=shell32)
 
-        with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                patch.object(ctypes, "windll", windll, create=True):
+        with (
+            patch.object(local_asr.platform, "system", return_value="Windows"),
+            patch.object(ctypes, "windll", windll, create=True),
+        ):
             self.assertTrue(local_asr._windows_elevation_state())
 
         shell32.IsUserAnAdmin.assert_called_once_with()
         shell32.IsUserAnAdmin.return_value = 0
-        with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                patch.object(ctypes, "windll", windll, create=True):
+        with (
+            patch.object(local_asr.platform, "system", return_value="Windows"),
+            patch.object(ctypes, "windll", windll, create=True),
+        ):
             self.assertFalse(local_asr._windows_elevation_state())
 
     def test_pid_running_state_uses_synchronize_without_terminating(self):
@@ -1755,8 +1854,10 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
         )
         windll = SimpleNamespace(kernel32=kernel32)
 
-        with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                patch.object(ctypes, "windll", windll, create=True):
+        with (
+            patch.object(local_asr.platform, "system", return_value="Windows"),
+            patch.object(ctypes, "windll", windll, create=True),
+        ):
             self.assertTrue(local_asr._pid_running_state(4321))
 
         kernel32.OpenProcess.assert_called_once_with(0x00100000, False, 4321)
@@ -1764,17 +1865,21 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
         kernel32.CloseHandle.assert_called_once_with(123)
 
         kernel32.WaitForSingleObject.return_value = 0
-        with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                patch.object(ctypes, "windll", windll, create=True):
+        with (
+            patch.object(local_asr.platform, "system", return_value="Windows"),
+            patch.object(ctypes, "windll", windll, create=True),
+        ):
             self.assertFalse(local_asr._pid_running_state(4322))
 
     def test_pid_running_state_reports_nonexistent_pid_from_last_error(self):
         kernel32 = SimpleNamespace(OpenProcess=Mock(return_value=0))
         windll = SimpleNamespace(kernel32=kernel32)
 
-        with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                patch.object(ctypes, "windll", windll, create=True), \
-                patch.object(ctypes, "get_last_error", return_value=87, create=True):
+        with (
+            patch.object(local_asr.platform, "system", return_value="Windows"),
+            patch.object(ctypes, "windll", windll, create=True),
+            patch.object(ctypes, "get_last_error", return_value=87, create=True),
+        ):
             self.assertFalse(local_asr._pid_running_state(4321))
 
         kernel32.OpenProcess.assert_called_once_with(0x00100000, False, 4321)
@@ -1783,26 +1888,31 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
         kernel32 = SimpleNamespace(OpenProcess=Mock(return_value=0))
         windll = SimpleNamespace(kernel32=kernel32)
 
-        with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                patch.object(ctypes, "windll", windll, create=True), \
-                patch.object(ctypes, "get_last_error", return_value=5, create=True):
+        with (
+            patch.object(local_asr.platform, "system", return_value="Windows"),
+            patch.object(ctypes, "windll", windll, create=True),
+            patch.object(ctypes, "get_last_error", return_value=5, create=True),
+        ):
             self.assertIsNone(local_asr._pid_running_state(4321))
 
     def test_pid_running_state_uses_native_error_over_stale_ctypes_cache(self):
-        for native_error, stale_error, expected in (
-                (87, 5, False), (5, 87, None)):
+        for native_error, stale_error, expected in ((87, 5, False), (5, 87, None)):
             with self.subTest(native_error=native_error):
                 kernel32 = SimpleNamespace(
                     OpenProcess=Mock(return_value=0),
                     GetLastError=Mock(return_value=native_error),
                 )
                 windll = SimpleNamespace(kernel32=kernel32)
-                with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                        patch.object(ctypes, "windll", windll, create=True), \
-                        patch.object(
-                            ctypes, "get_last_error", return_value=stale_error,
-                            create=True,
-                        ):
+                with (
+                    patch.object(local_asr.platform, "system", return_value="Windows"),
+                    patch.object(ctypes, "windll", windll, create=True),
+                    patch.object(
+                        ctypes,
+                        "get_last_error",
+                        return_value=stale_error,
+                        create=True,
+                    ),
+                ):
                     self.assertIs(local_asr._pid_running_state(4321), expected)
 
     def test_kernel32_loader_requests_last_error_for_native_dll(self):
@@ -1815,7 +1925,8 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
         candidate = FakeWinDLL("windll-kernel32")
         calls.clear()
         module = SimpleNamespace(
-            windll=SimpleNamespace(kernel32=candidate), WinDLL=FakeWinDLL)
+            windll=SimpleNamespace(kernel32=candidate), WinDLL=FakeWinDLL
+        )
 
         selected = local_asr._windows_kernel32_with_last_error(module)
 
@@ -1832,7 +1943,8 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
 
         candidate = SimpleNamespace(OpenProcess=Mock())
         module = SimpleNamespace(
-            windll=SimpleNamespace(kernel32=candidate), WinDLL=FakeWinDLL)
+            windll=SimpleNamespace(kernel32=candidate), WinDLL=FakeWinDLL
+        )
 
         selected = local_asr._windows_kernel32_with_last_error(module)
 
@@ -1846,7 +1958,8 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
 
         kernel32 = FakeWinDLL("kernel32")
         module = SimpleNamespace(
-            WinDLL=FakeWinDLL, get_last_error=Mock(return_value=87))
+            WinDLL=FakeWinDLL, get_last_error=Mock(return_value=87)
+        )
 
         self.assertEqual(local_asr._windows_last_error(module, kernel32), 87)
         module.get_last_error.assert_called_once_with()
@@ -1861,8 +1974,10 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
         )
         windll = SimpleNamespace(kernel32=kernel32)
 
-        with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                patch.object(ctypes, "windll", windll, create=True):
+        with (
+            patch.object(local_asr.platform, "system", return_value="Windows"),
+            patch.object(ctypes, "windll", windll, create=True),
+        ):
             self.assertTrue(local_asr._terminate_pid(4321))
 
         kernel32.OpenProcess.assert_called_once_with(0x00100001, False, 4321)
@@ -1871,8 +1986,10 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
         kernel32.CloseHandle.assert_called_once_with(123)
 
         kernel32.WaitForSingleObject.return_value = 0x00000102
-        with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                patch.object(ctypes, "windll", windll, create=True):
+        with (
+            patch.object(local_asr.platform, "system", return_value="Windows"),
+            patch.object(ctypes, "windll", windll, create=True),
+        ):
             self.assertFalse(local_asr._terminate_pid(4322))
 
     def test_cleanup_keeps_record_when_termination_is_not_confirmed(self):
@@ -1881,13 +1998,20 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
             record_path = root / "sidecar-process.json"
             executable = root / "installed" / "runtime" / "whisper-server.exe"
             executable.parent.mkdir(parents=True)
-            record_path.write_text(json.dumps({
-                "pid": 4321, "executable": str(executable),
-            }), encoding="utf-8")
+            record_path.write_text(
+                json.dumps(
+                    {
+                        "pid": 4321,
+                        "executable": str(executable),
+                    }
+                ),
+                encoding="utf-8",
+            )
 
-            with patch.object(
-                    local_asr, "_process_image_path", return_value=executable), \
-                    patch.object(local_asr, "_terminate_pid", return_value=False):
+            with (
+                patch.object(local_asr, "_process_image_path", return_value=executable),
+                patch.object(local_asr, "_terminate_pid", return_value=False),
+            ):
                 with self.assertRaises(local_asr.LocalASRSidecarError):
                     local_asr.cleanup_recorded_sidecar(record_path, executable, root)
 
@@ -1899,20 +2023,35 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
             record_path = root / "sidecar-process.json"
             executable = root / "installed" / "runtime" / "whisper-server.exe"
             executable.parent.mkdir(parents=True)
-            record_path.write_text(json.dumps({
-                "pid": 4321, "executable": str(executable),
-            }), encoding="utf-8")
+            record_path.write_text(
+                json.dumps(
+                    {
+                        "pid": 4321,
+                        "executable": str(executable),
+                    }
+                ),
+                encoding="utf-8",
+            )
 
             for running in (True, None):
-                with self.subTest(running=running), \
-                        patch.object(
-                            local_asr, "_process_image_path", return_value=None,
-                        ), patch.object(
-                            local_asr, "_pid_running_state", return_value=running,
-                        ), patch.object(local_asr, "_terminate_pid") as terminate:
+                with (
+                    self.subTest(running=running),
+                    patch.object(
+                        local_asr,
+                        "_process_image_path",
+                        return_value=None,
+                    ),
+                    patch.object(
+                        local_asr,
+                        "_pid_running_state",
+                        return_value=running,
+                    ),
+                    patch.object(local_asr, "_terminate_pid") as terminate,
+                ):
                     with self.assertRaises(local_asr.LocalASRSidecarError):
                         local_asr.cleanup_recorded_sidecar(
-                            record_path, executable, root)
+                            record_path, executable, root
+                        )
 
                 self.assertTrue(record_path.exists())
                 terminate.assert_not_called()
@@ -1923,23 +2062,29 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
             record_path = root / "sidecar-process.json"
             executable = root / "installed" / "runtime" / "whisper-server.exe"
             executable.parent.mkdir(parents=True)
-            record_path.write_text(json.dumps({
-                "pid": 4321, "executable": str(executable),
-            }), encoding="utf-8")
+            record_path.write_text(
+                json.dumps(
+                    {
+                        "pid": 4321,
+                        "executable": str(executable),
+                    }
+                ),
+                encoding="utf-8",
+            )
             kernel32 = SimpleNamespace(
                 OpenProcess=Mock(return_value=0),
                 GetLastError=Mock(return_value=5),
             )
             windll = SimpleNamespace(kernel32=kernel32)
 
-            with patch.object(local_asr.platform, "system", return_value="Windows"), \
-                    patch.object(ctypes, "windll", windll, create=True), \
-                    patch.object(
-                        ctypes, "get_last_error", return_value=87, create=True), \
-                    patch.object(local_asr, "_terminate_pid") as terminate:
+            with (
+                patch.object(local_asr.platform, "system", return_value="Windows"),
+                patch.object(ctypes, "windll", windll, create=True),
+                patch.object(ctypes, "get_last_error", return_value=87, create=True),
+                patch.object(local_asr, "_terminate_pid") as terminate,
+            ):
                 with self.assertRaises(local_asr.LocalASRSidecarError):
-                    local_asr.cleanup_recorded_sidecar(
-                        record_path, executable, root)
+                    local_asr.cleanup_recorded_sidecar(record_path, executable, root)
 
             terminate.assert_not_called()
             self.assertTrue(record_path.exists())
@@ -1950,15 +2095,24 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
             record_path = root / "sidecar-process.json"
             executable = root / "installed" / "runtime" / "whisper-server.exe"
             executable.parent.mkdir(parents=True)
-            record_path.write_text(json.dumps({
-                "pid": 4321, "executable": str(executable),
-            }), encoding="utf-8")
+            record_path.write_text(
+                json.dumps(
+                    {
+                        "pid": 4321,
+                        "executable": str(executable),
+                    }
+                ),
+                encoding="utf-8",
+            )
 
-            with patch.object(
-                    local_asr, "_process_image_path", return_value=None), \
-                    patch.object(
-                        local_asr, "_pid_running_state", return_value=False,
-                    ):
+            with (
+                patch.object(local_asr, "_process_image_path", return_value=None),
+                patch.object(
+                    local_asr,
+                    "_pid_running_state",
+                    return_value=False,
+                ),
+            ):
                 local_asr.cleanup_recorded_sidecar(record_path, executable, root)
 
             self.assertFalse(record_path.exists())
@@ -1971,17 +2125,29 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
             current_executable = root / "new-install" / "runtime" / "whisper-server.exe"
             old_executable.parent.mkdir(parents=True)
             current_executable.parent.mkdir(parents=True)
-            record_path.write_text(json.dumps({
-                "pid": 4321, "executable": str(old_executable),
-            }), encoding="utf-8")
+            record_path.write_text(
+                json.dumps(
+                    {
+                        "pid": 4321,
+                        "executable": str(old_executable),
+                    }
+                ),
+                encoding="utf-8",
+            )
 
-            with patch.object(
-                    local_asr, "_process_image_path", return_value=old_executable), \
-                    patch.object(
-                        local_asr, "_terminate_pid", return_value=True,
-                    ) as terminate:
+            with (
+                patch.object(
+                    local_asr, "_process_image_path", return_value=old_executable
+                ),
+                patch.object(
+                    local_asr,
+                    "_terminate_pid",
+                    return_value=True,
+                ) as terminate,
+            ):
                 local_asr.cleanup_recorded_sidecar(
-                    record_path, current_executable, root)
+                    record_path, current_executable, root
+                )
 
             terminate.assert_called_once_with(4321)
             self.assertFalse(record_path.exists())
@@ -1991,18 +2157,32 @@ class LocalASRRecordedProcessTests(unittest.TestCase):
             root = Path(directory)
             record_path = root / "sidecar-process.json"
             current_executable = root / "current" / "runtime" / "whisper-server.exe"
-            external_executable = root.parent / "external" / "runtime" / "whisper-server.exe"
+            external_executable = (
+                root.parent / "external" / "runtime" / "whisper-server.exe"
+            )
             current_executable.parent.mkdir(parents=True)
-            record_path.write_text(json.dumps({
-                "pid": 4321, "executable": str(external_executable),
-            }), encoding="utf-8")
+            record_path.write_text(
+                json.dumps(
+                    {
+                        "pid": 4321,
+                        "executable": str(external_executable),
+                    }
+                ),
+                encoding="utf-8",
+            )
 
-            with patch.object(
-                    local_asr, "_pid_running_state", return_value=True,
-            ), patch.object(local_asr, "_terminate_pid") as terminate:
+            with (
+                patch.object(
+                    local_asr,
+                    "_pid_running_state",
+                    return_value=True,
+                ),
+                patch.object(local_asr, "_terminate_pid") as terminate,
+            ):
                 with self.assertRaises(local_asr.LocalASRSidecarError):
                     local_asr.cleanup_recorded_sidecar(
-                        record_path, current_executable, root)
+                        record_path, current_executable, root
+                    )
 
             terminate.assert_not_called()
             self.assertTrue(record_path.exists())
@@ -2017,34 +2197,56 @@ class LocalASRHarnessTests(unittest.TestCase):
     def _unsupported_float_audio(self, directory):
         audio = Path(directory) / "ieee-float.wav"
         audio.write_bytes(
-            b"RIFF" + struct.pack("<I4s", 48, b"WAVE")
-            + b"fmt " + struct.pack(
-                "<IHHIIHH", 16, 3, 1, 16000, 64000, 4, 32,
+            b"RIFF"
+            + struct.pack("<I4s", 48, b"WAVE")
+            + b"fmt "
+            + struct.pack(
+                "<IHHIIHH",
+                16,
+                3,
+                1,
+                16000,
+                64000,
+                4,
+                32,
             )
-            + b"data" + struct.pack("<I", 4) + b"\0\0\0\0"
+            + b"data"
+            + struct.pack("<I", 4)
+            + b"\0\0\0\0"
         )
         return audio
 
     def _benchmark_args(self, audio):
         return SimpleNamespace(
-            root=None, file=str(audio), language="en", expected_text="",
+            root=None,
+            file=str(audio),
+            language="en",
+            expected_text="",
         )
 
     def test_benchmark_rejects_invalid_wav_before_sidecar_start(self):
         for make_audio in (self._invalid_audio, self._unsupported_float_audio):
-            with self.subTest(audio_factory=make_audio.__name__), \
-                    tempfile.TemporaryDirectory() as directory:
+            with (
+                self.subTest(audio_factory=make_audio.__name__),
+                tempfile.TemporaryDirectory() as directory,
+            ):
                 audio = make_audio(directory)
                 installer = Mock()
                 installer.verify.return_value = None
                 args = self._benchmark_args(audio)
 
-                with patch.object(local_asr_harness, "_require_windows"), \
-                        patch.object(
-                            local_asr_harness, "_installer", return_value=installer,
-                        ), patch.object(
-                            local_asr_harness, "LocalASRSidecarManager",
-                        ) as manager:
+                with (
+                    patch.object(local_asr_harness, "_require_windows"),
+                    patch.object(
+                        local_asr_harness,
+                        "_installer",
+                        return_value=installer,
+                    ),
+                    patch.object(
+                        local_asr_harness,
+                        "LocalASRSidecarManager",
+                    ) as manager,
+                ):
                     with self.assertRaises(local_asr.LocalASRError):
                         local_asr_harness._benchmark(args)
 
@@ -2058,14 +2260,23 @@ class LocalASRHarnessTests(unittest.TestCase):
             installer.verify.return_value = None
             output = StringIO()
 
-            with patch.object(local_asr_harness, "_require_windows"), \
-                    patch.object(
-                        local_asr_harness, "_installer", return_value=installer,
-                    ), patch.object(local_asr_harness, "LocalASRSidecarManager") as manager, \
-                    redirect_stdout(output):
-                result = local_asr_harness.main([
-                    "benchmark", "--file", str(audio),
-                ])
+            with (
+                patch.object(local_asr_harness, "_require_windows"),
+                patch.object(
+                    local_asr_harness,
+                    "_installer",
+                    return_value=installer,
+                ),
+                patch.object(local_asr_harness, "LocalASRSidecarManager") as manager,
+                redirect_stdout(output),
+            ):
+                result = local_asr_harness.main(
+                    [
+                        "benchmark",
+                        "--file",
+                        str(audio),
+                    ]
+                )
 
             self.assertEqual(result, 1)
             payload = json.loads(output.getvalue())
@@ -2091,16 +2302,27 @@ class LocalASRHarnessTests(unittest.TestCase):
             manager.transcribe.return_value = "local transcript"
             output = StringIO()
 
-            with patch.object(local_asr_harness, "_require_windows"), \
-                    patch.object(
-                        local_asr_harness, "_installer", return_value=installer,
-                    ), patch.object(
-                        local_asr_harness, "LocalASRSidecarManager",
-                        return_value=manager,
-                    ), redirect_stdout(output):
-                result = local_asr_harness.main([
-                    "transcribe", "--file", str(audio),
-                ])
+            with (
+                patch.object(local_asr_harness, "_require_windows"),
+                patch.object(
+                    local_asr_harness,
+                    "_installer",
+                    return_value=installer,
+                ),
+                patch.object(
+                    local_asr_harness,
+                    "LocalASRSidecarManager",
+                    return_value=manager,
+                ),
+                redirect_stdout(output),
+            ):
+                result = local_asr_harness.main(
+                    [
+                        "transcribe",
+                        "--file",
+                        str(audio),
+                    ]
+                )
 
             self.assertEqual(result, 0)
             payload = json.loads(output.getvalue())
@@ -2131,14 +2353,22 @@ class LocalASRProviderAdapterTests(unittest.TestCase):
 
             adapter.transcribe(
                 TranscriptionRequest(
-                    audio, local_asr.MODEL_ID, "en", "", "", 0.0,
+                    audio,
+                    local_asr.MODEL_ID,
+                    "en",
+                    "",
+                    "",
+                    0.0,
                 ),
                 ProviderConnection("", ""),
                 token,
             )
 
             backend.transcribe.assert_called_once_with(
-                audio, "en", audio_bytes=None, cancel_event=token,
+                audio,
+                "en",
+                audio_bytes=None,
+                cancel_event=token,
             )
 
     def test_adapter_registers_with_typed_audio_only_metadata(self):
@@ -2153,7 +2383,12 @@ class LocalASRProviderAdapterTests(unittest.TestCase):
             result = registry.transcribe(
                 local_asr.PROVIDER_ID,
                 TranscriptionRequest(
-                    audio, local_asr.MODEL_ID, "pt", "unused", "unused", 0.0,
+                    audio,
+                    local_asr.MODEL_ID,
+                    "pt",
+                    "unused",
+                    "unused",
+                    0.0,
                     audio_bytes=b"RIFF-owned-by-recording-session",
                 ),
                 ProviderConnection("", ""),
@@ -2162,14 +2397,18 @@ class LocalASRProviderAdapterTests(unittest.TestCase):
             self.assertEqual(result.text, "typed local transcript")
             self.assertEqual(result.provider_id, local_asr.PROVIDER_ID)
             self.assertEqual(result.model, local_asr.MODEL_ID)
-            self.assertTrue(registry.supports(
-                local_asr.PROVIDER_ID,
-                ProviderCapability.AUDIO_TRANSCRIPTION,
-            ))
-            self.assertFalse(registry.supports(
-                local_asr.PROVIDER_ID,
-                ProviderCapability.TEXT_GENERATION,
-            ))
+            self.assertTrue(
+                registry.supports(
+                    local_asr.PROVIDER_ID,
+                    ProviderCapability.AUDIO_TRANSCRIPTION,
+                )
+            )
+            self.assertFalse(
+                registry.supports(
+                    local_asr.PROVIDER_ID,
+                    ProviderCapability.TEXT_GENERATION,
+                )
+            )
             backend.transcribe.assert_called_once_with(
                 audio,
                 "pt",
@@ -2182,7 +2421,8 @@ class LocalASRProviderAdapterTests(unittest.TestCase):
 
     def test_adapter_maps_install_and_runtime_failures_to_provider_errors(self):
         request = TranscriptionRequest(
-            Path("input.wav"), local_asr.MODEL_ID, "en", "", "", 0.0)
+            Path("input.wav"), local_asr.MODEL_ID, "en", "", "", 0.0
+        )
         connection = ProviderConnection("", "")
         cases = (
             (
@@ -2217,15 +2457,19 @@ class LocalASRProviderAdapterTests(unittest.TestCase):
     def test_adapter_rejects_unpinned_model_and_is_registered_without_starting(self):
         adapter = local_asr.LocalASRProviderAdapter(Mock())
         request = TranscriptionRequest(
-            Path("input.wav"), "another-model", "en", "", "", 0.0)
+            Path("input.wav"), "another-model", "en", "", "", 0.0
+        )
 
         with self.assertRaises(ProviderConfigurationError):
             adapter.transcribe(request, ProviderConnection("", ""))
 
         registry = build_provider_registry()
         self.assertIn(local_asr.PROVIDER_ID, registry.provider_ids)
-        self.assertTrue(registry.supports(
-            local_asr.PROVIDER_ID, ProviderCapability.AUDIO_TRANSCRIPTION))
+        self.assertTrue(
+            registry.supports(
+                local_asr.PROVIDER_ID, ProviderCapability.AUDIO_TRANSCRIPTION
+            )
+        )
 
 
 if __name__ == "__main__":

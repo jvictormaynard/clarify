@@ -13,7 +13,8 @@
     "windows": [{
       "label": "main", "title": "Clarify — Configurações",
       "width": 1000, "height": 740, "minWidth": 640, "minHeight": 520,
-      "backgroundColor": "#151515", "theme": "Dark", "visible": false
+      "backgroundColor": "#151515", "theme": "Dark", "visible": false,
+      "decorations": false, "shadow": true
     }],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'"

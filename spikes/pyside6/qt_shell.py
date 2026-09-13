@@ -24,6 +24,7 @@ from PySide6.QtCore import (
     QEvent,
     QLockFile,
     QObject,
+    QTimer,
     Signal,
     Slot,
 )
@@ -36,6 +37,8 @@ from windows_hotkeys import (
     HotkeyRegistrationError,
     WM_HOTKEY,
     action_for_hotkey_id,
+    hotkey_physical_keys,
+    physical_key_down,
     register_escape_hotkey,
     register_global_hotkeys,
     unregister_escape_hotkey,
@@ -397,6 +400,10 @@ class WindowsGlobalHotkeyBackend(QObject):
         self._recording_active = False
         self._escape_registered = False
         self._recovery_window: WindowTarget | None = None
+        self._held_keys: tuple[int, ...] = ()
+        self._release_timer = QTimer(self)
+        self._release_timer.setInterval(8)
+        self._release_timer.timeout.connect(self._check_hold_release)
 
     @property
     def is_running(self) -> bool:
@@ -474,6 +481,7 @@ class WindowsGlobalHotkeyBackend(QObject):
     ) -> set[int]:
         """Apply shortcuts, recovering a collision-failed startup if needed."""
 
+        self._release_hold()
         selected = _supported_shell_hotkey_settings(settings)
         if not self.is_running:
             self._settings = selected
@@ -522,6 +530,7 @@ class WindowsGlobalHotkeyBackend(QObject):
     def stop(self) -> None:
         """Remove the native filter and unregister every active shortcut."""
 
+        self._release_hold()
         event_filter = self._event_filter
         if event_filter is None:
             return
@@ -560,8 +569,52 @@ class WindowsGlobalHotkeyBackend(QObject):
         if int(hotkey_id) not in self.registered_ids:
             return
         action = self._action_for_id(int(hotkey_id))
+        if (
+            action == "recording_hotkey"
+            and self._settings.activation_mode.value == "push_to_talk"
+        ):
+            self._begin_hold(
+                hotkey_physical_keys(self._settings.definition(HotkeyAction.RECORDING))
+            )
+            return
         if action is not None:
             self.triggered.emit(action)
+
+    def _begin_hold(self, keys):
+        if self._held_keys:
+            return
+        self._held_keys = tuple(keys)
+        self._hold_escape_sent = False
+        self._release_timer.start()
+        self.triggered.emit("recording_hold_press")
+        self._check_hold_release()
+
+    def _release_hold(self):
+        self._release_timer.stop()
+        if self._held_keys:
+            self._held_keys = ()
+            self.triggered.emit("recording_hold_release")
+
+    def _check_hold_release(self):
+        if not self._held_keys:
+            return
+        user32 = self._user32 if self._user32 is not None else _load_user32()
+        try:
+            # RegisterHotKey's plain ESC does not match Alt/Ctrl+ESC while
+            # the recording shortcut is held. Cancel before handling release.
+            if not self._hold_escape_sent and physical_key_down(user32, 0x1B):
+                self._hold_escape_sent = True
+                self.triggered.emit("escape")
+            down = all(
+                (physical_key_down(user32, 0x5B) or physical_key_down(user32, 0x5C))
+                if key == 0x5B
+                else physical_key_down(user32, key)
+                for key in self._held_keys
+            )
+        except (AttributeError, OSError):
+            down = False
+        if not down:
+            self._release_hold()
 
     @staticmethod
     def _window_handle(window: WindowTarget) -> int:
