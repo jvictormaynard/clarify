@@ -8,6 +8,7 @@ import threading
 import time
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from audio_file_batch import (
     AudioBatchConfigurationError,
@@ -130,8 +131,9 @@ class AudioFileValidationTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "large.wav"
             path.write_bytes(b"0123456789")
-            result = AudioFileBatchService(
-                gateway, max_audio_bytes=4).run([path], _selection())
+            result = AudioFileBatchService(gateway, max_audio_bytes=4).run(
+                [path], _selection()
+            )
             self.assertEqual(result.files[0].status, AudioFileStatus.FAILED)
             self.assertIn("limit", result.files[0].error)
             self.assertEqual(gateway.requests, [])
@@ -150,12 +152,16 @@ class AudioFileBatchTests(unittest.TestCase):
             bad.write_bytes(b"bad")
             converted.write_bytes(b"flac")
             service = AudioFileBatchService(
-                gateway, converter, max_workers=2, temp_root=root / "temp")
+                gateway, converter, max_workers=2, temp_root=root / "temp"
+            )
             result = service.run([first, bad, converted], _selection())
             self.assertEqual(
                 [item.status for item in result.files],
-                [AudioFileStatus.SUCCEEDED, AudioFileStatus.FAILED,
-                 AudioFileStatus.SUCCEEDED],
+                [
+                    AudioFileStatus.SUCCEEDED,
+                    AudioFileStatus.FAILED,
+                    AudioFileStatus.SUCCEEDED,
+                ],
             )
             self.assertIn("provider rejected", result.files[1].error)
             self.assertEqual(first.read_bytes(), b"first")
@@ -172,7 +178,8 @@ class AudioFileBatchTests(unittest.TestCase):
             source = root / "meeting.ogg"
             source.write_bytes(b"original")
             service = AudioFileBatchService(
-                gateway, converter, temp_root=root / "conversion")
+                gateway, converter, temp_root=root / "conversion"
+            )
             result = service.run([source], _selection())
             self.assertEqual(result.files[0].status, AudioFileStatus.SUCCEEDED)
             request = gateway.requests[0][0]
@@ -196,7 +203,8 @@ class AudioFileBatchTests(unittest.TestCase):
                 try:
                     time.sleep(0.03)
                     return TranscriptionResult(
-                        request.audio_path.name, selection.provider_id, selection.model)
+                        request.audio_path.name, selection.provider_id, selection.model
+                    )
                 finally:
                     with lock:
                         active -= 1
@@ -208,10 +216,12 @@ class AudioFileBatchTests(unittest.TestCase):
                 path = root / f"{index}.wav"
                 path.write_bytes(b"fixture")
                 paths.append(path)
-            result = AudioFileBatchService(
-                TrackingGateway(), max_workers=2).run(paths, _selection())
-            self.assertTrue(all(item.status is AudioFileStatus.SUCCEEDED
-                                for item in result.files))
+            result = AudioFileBatchService(TrackingGateway(), max_workers=2).run(
+                paths, _selection()
+            )
+            self.assertTrue(
+                all(item.status is AudioFileStatus.SUCCEEDED for item in result.files)
+            )
             self.assertLessEqual(peak, 2)
 
     def test_cancel_stops_new_work_and_cancels_active_provider(self):
@@ -236,15 +246,17 @@ class AudioFileBatchTests(unittest.TestCase):
                 path = root / f"{index}.wav"
                 path.write_bytes(b"fixture")
                 paths.append(path)
-            job = AudioFileBatchService(
-                BlockingGateway(), max_workers=1).start(paths, _selection())
+            job = AudioFileBatchService(BlockingGateway(), max_workers=1).start(
+                paths, _selection()
+            )
             self.assertTrue(started.wait(2))
             job.cancel()
             result = job.wait(3)
             self.assertTrue(result.cancelled)
             self.assertEqual(calls, 1)
-            self.assertTrue(all(item.status is AudioFileStatus.CANCELLED
-                                for item in result.files))
+            self.assertTrue(
+                all(item.status is AudioFileStatus.CANCELLED for item in result.files)
+            )
 
     def test_transient_failure_can_be_retried_with_bounded_attempts(self):
         attempts = 0
@@ -260,28 +272,32 @@ class AudioFileBatchTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "input.wav"
             path.write_bytes(b"fixture")
-            result = AudioFileBatchService(
-                RetryGateway(), max_attempts=2).run([path], _selection())
+            result = AudioFileBatchService(RetryGateway(), max_attempts=2).run(
+                [path], _selection()
+            )
             self.assertEqual(result.files[0].status, AudioFileStatus.SUCCEEDED)
             self.assertEqual(result.files[0].attempts, 2)
             self.assertEqual(attempts, 2)
 
     def test_retry_backoff_prefers_announced_delay(self):
         attempts = 0
-        call_times = []
 
         class AnnouncedRetryGateway:
             def transcribe(self, request, selection, cancel_token):
                 nonlocal attempts
                 attempts += 1
-                call_times.append(time.monotonic())
                 if attempts == 1:
                     error = RetryableAudioBatchError("try again")
                     error.retry_after_seconds = 0.03
                     raise error
                 return TranscriptionResult("ok", selection.provider_id, selection.model)
 
-        with TemporaryDirectory() as directory:
+        with (
+            TemporaryDirectory() as directory,
+            patch(
+                "audio_file_batch.CancellationToken.wait", return_value=False
+            ) as wait_for_retry,
+        ):
             path = Path(directory) / "input.wav"
             path.write_bytes(b"fixture")
             result = AudioFileBatchService(
@@ -290,8 +306,8 @@ class AudioFileBatchTests(unittest.TestCase):
                 retry_delay_seconds=0.001,
             ).run([path], _selection())
             self.assertEqual(result.files[0].status, AudioFileStatus.SUCCEEDED)
+            wait_for_retry.assert_called_once_with(0.03)
         self.assertEqual(attempts, 2)
-        self.assertGreaterEqual(call_times[1] - call_times[0], 0.02)
 
     def test_retry_skips_when_announced_delay_exceeds_bounded_cap(self):
         attempts = 0
@@ -356,12 +372,17 @@ class AudioFileBatchTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "input.wav"
             path.write_bytes(b"immutable-source")
-            result = AudioFileBatchService(
-                MutatingRetryGateway(), max_attempts=2).run([path], _selection())
+            result = AudioFileBatchService(MutatingRetryGateway(), max_attempts=2).run(
+                [path], _selection()
+            )
             self.assertEqual(result.files[0].status, AudioFileStatus.SUCCEEDED)
-            self.assertEqual([request.audio_bytes for request in requests], [
-                b"immutable-source", b"immutable-source",
-            ])
+            self.assertEqual(
+                [request.audio_bytes for request in requests],
+                [
+                    b"immutable-source",
+                    b"immutable-source",
+                ],
+            )
 
     def test_malformed_path_does_not_abort_other_batch_files(self):
         gateway = _FakeGateway()
@@ -369,7 +390,8 @@ class AudioFileBatchTests(unittest.TestCase):
             valid = Path(directory) / "valid.wav"
             valid.write_bytes(b"fixture")
             result = AudioFileBatchService(gateway).run(
-                ["bad\x00name.wav", valid], _selection())
+                ["bad\x00name.wav", valid], _selection()
+            )
             self.assertEqual(result.files[0].status, AudioFileStatus.FAILED)
             self.assertEqual(result.files[1].status, AudioFileStatus.SUCCEEDED)
 
@@ -397,8 +419,9 @@ class AudioFileBatchTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "input.wav"
             path.write_bytes(b"fixture")
-            result = AudioFileBatchService(
-                QuotaGateway(), max_attempts=3).run([path], _selection())
+            result = AudioFileBatchService(QuotaGateway(), max_attempts=3).run(
+                [path], _selection()
+            )
             self.assertEqual(result.files[0].status, AudioFileStatus.FAILED)
             self.assertEqual(result.files[0].attempts, 1)
             self.assertEqual(attempts, 1)
@@ -407,7 +430,9 @@ class AudioFileBatchTests(unittest.TestCase):
         class RaceGateway:
             def transcribe(self, request, selection, cancel_token):
                 cancel_token.cancel()
-                return TranscriptionResult("late", selection.provider_id, selection.model)
+                return TranscriptionResult(
+                    "late", selection.provider_id, selection.model
+                )
 
         with TemporaryDirectory() as directory:
             path = Path(directory) / "input.wav"
@@ -558,19 +583,27 @@ class RegistryGatewayTests(unittest.TestCase):
 
         class Registry:
             def transcribe(self, provider_id, request, connection, cancel_token):
-                seen.update({
-                    "provider_id": provider_id,
-                    "request": request,
-                    "connection": connection,
-                    "cancel_token": cancel_token,
-                })
+                seen.update(
+                    {
+                        "provider_id": provider_id,
+                        "request": request,
+                        "connection": connection,
+                        "cancel_token": cancel_token,
+                    }
+                )
                 return TranscriptionResult("text", provider_id, request.model)
 
         gateway = RegistryAudioTranscriptionGateway(Registry())
         token = CancellationToken()
         request = TranscriptionRequest(
-            Path("input.wav"), "model", "en", "instruction", "prompt", 0.0,
-            audio_bytes=b"wav")
+            Path("input.wav"),
+            "model",
+            "en",
+            "instruction",
+            "prompt",
+            0.0,
+            audio_bytes=b"wav",
+        )
         selection = _selection()
         result = gateway.transcribe(request, selection, token)
         self.assertEqual(result.provider_id, "local_asr")
@@ -584,12 +617,14 @@ class RegistryGatewayTests(unittest.TestCase):
 
         class Registry:
             def transcribe(self, provider_id, request, connection, cancel_token):
-                seen.update({
-                    "provider_id": provider_id,
-                    "request": request,
-                    "connection": connection,
-                    "cancel_token": cancel_token,
-                })
+                seen.update(
+                    {
+                        "provider_id": provider_id,
+                        "request": request,
+                        "connection": connection,
+                        "cancel_token": cancel_token,
+                    }
+                )
                 return TranscriptionResult("brb", provider_id, request.model)
 
         class Dictionary:
@@ -600,10 +635,12 @@ class RegistryGatewayTests(unittest.TestCase):
                 return text.replace("brb", "be right back")
 
         gateway = DictionaryAwareAudioTranscriptionGateway(
-            RegistryAudioTranscriptionGateway(Registry()), Dictionary())
+            RegistryAudioTranscriptionGateway(Registry()), Dictionary()
+        )
         token = CancellationToken()
         request = TranscriptionRequest(
-            Path("input.wav"), "model", "en", "instruction", "prompt", 0.0)
+            Path("input.wav"), "model", "en", "instruction", "prompt", 0.0
+        )
 
         result = gateway.transcribe(request, _selection(), token)
 
@@ -617,8 +654,7 @@ class RegistryGatewayTests(unittest.TestCase):
 
         class Registry:
             def transcribe(self, provider_id, request, connection, cancel_token):
-                return TranscriptionResult(
-                    "[Error: brb]", provider_id, request.model)
+                return TranscriptionResult("[Error: brb]", provider_id, request.model)
 
         class Dictionary:
             def apply_context(self, request):
@@ -629,10 +665,12 @@ class RegistryGatewayTests(unittest.TestCase):
                 return "expanded error"
 
         gateway = DictionaryAwareAudioTranscriptionGateway(
-            RegistryAudioTranscriptionGateway(Registry()), Dictionary())
+            RegistryAudioTranscriptionGateway(Registry()), Dictionary()
+        )
         result = gateway.transcribe(
             TranscriptionRequest(
-                Path("input.wav"), "model", "en", "instruction", "prompt", 0.0),
+                Path("input.wav"), "model", "en", "instruction", "prompt", 0.0
+            ),
             _selection(),
             CancellationToken(),
         )
@@ -658,11 +696,13 @@ class RegistryGatewayTests(unittest.TestCase):
                 raise AssertionError("cancelled results must not be expanded")
 
         gateway = DictionaryAwareAudioTranscriptionGateway(
-            RegistryAudioTranscriptionGateway(Registry()), Dictionary())
+            RegistryAudioTranscriptionGateway(Registry()), Dictionary()
+        )
         with self.assertRaises(AudioBatchCancelledError):
             gateway.transcribe(
                 TranscriptionRequest(
-                    Path("input.wav"), "model", "en", "instruction", "prompt", 0.0),
+                    Path("input.wav"), "model", "en", "instruction", "prompt", 0.0
+                ),
                 _selection(),
                 token,
             )
