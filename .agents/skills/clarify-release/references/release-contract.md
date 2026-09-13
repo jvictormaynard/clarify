@@ -37,6 +37,9 @@ The tag, release, and executable must all originate from the same green
 - `scripts/build.ps1`
 - `scripts/build-settings.ps1`
 - `scripts/check_settings_payload.py`
+- `scripts/qt_distribution.py`
+- `scripts/qt_sources.json`
+- `docs/qt-distribution.md`
 - `scripts/settings_inventory.py`
 - `desktop/licenses/manifest.json`
 - `desktop/package-lock.json`
@@ -108,7 +111,10 @@ The ZIP must contain:
 - `LICENSE`
 - `THIRD_PARTY_NOTICES.md`
 
-The ZIP also includes `Clarify-settings-NOTICES.txt`. The merged
+The ZIP also includes `Clarify-settings-NOTICES.txt` and `Clarify-qt-NOTICES.txt`.
+Both release tracks also publish and attest `Clarify-qt-sources.zip`, containing
+the pinned upstream Qt/PySide archives and source/replacement instructions.
+The merged
 `Clarify.sbom.json` covers Python, SoX, and the Settings dependency graph.
 The portable executable embeds the Settings SBOM and notices; packaging must
 verify their bytes and the Settings executable hash before publication.
@@ -125,6 +131,7 @@ sponsored signing infrastructure. It must publish exactly these assets:
 - `Clarify.exe`
 - `Clarify.exe.sha256`
 - `Clarify.sbom.json`
+- `Clarify-qt-sources.zip`
 - `Clarify-windows-x64.zip`
 - `sox-14.4.2-source.tar.gz`
 

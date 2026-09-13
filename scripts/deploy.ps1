@@ -297,8 +297,10 @@ foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File))
 # Never copy or bundle the repository .env. Public and local executables read
 # provider credentials from the user's Clarify config directory instead.
 if ($SettingsExecutable) {
+    & $venvPython (Join-Path $PSScriptRoot 'qt_distribution.py') --output-dir (Split-Path $SettingsExecutable) --cache-dir (Join-Path $buildRoot 'qt-sources')
+    if ($LASTEXITCODE -ne 0) { throw 'Qt source and notice verification failed.' }
     $pyinstallerArgs += @('--add-binary', "${SettingsExecutable};.")
-    foreach ($noticeName in @('Clarify-settings.sbom.json', 'Clarify-settings-NOTICES.txt')) {
+    foreach ($noticeName in @('Clarify-settings.sbom.json', 'Clarify-settings-NOTICES.txt', 'Clarify-qt-NOTICES.txt')) {
         $noticePath = Join-Path (Split-Path $SettingsExecutable) $noticeName
         if (-not (Test-Path -LiteralPath $noticePath -PathType Leaf)) { throw "Missing Settings inventory: $noticeName" }
         $pyinstallerArgs += @('--add-data', "${noticePath};.")

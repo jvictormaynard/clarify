@@ -33,8 +33,18 @@ def main() -> None:
     args = parser.parse_args()
     verify_payload(args.executable, args.settings)
     verify_inventory(args.executable, args.settings)
+    verify_qt_notices(args.executable, args.settings.parent)
     verify_qt_payload(args.executable)
     print("Packaged Settings payload matches the build input.")
+
+
+def verify_qt_notices(executable: Path, inputs: Path) -> None:
+    from PyInstaller.archive.readers import CArchiveReader
+
+    name = "Clarify-qt-NOTICES.txt"
+    expected = (inputs / name).read_bytes()
+    if not expected or CArchiveReader(str(executable)).extract(name) != expected:
+        raise ValueError("Packaged Qt notices differ from the build input")
 
 
 def verify_qt_payload(executable: Path) -> None:

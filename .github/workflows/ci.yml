@@ -33,6 +33,7 @@ jobs:
             lock_file: requirements-lock-windows.txt
     env:
       QT_QPA_PLATFORM: offscreen
+      PYTHONFAULTHANDLER: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -83,6 +84,8 @@ jobs:
           tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py
           tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py
           tests/test_pyside6_qt_shell.py
+          scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py
+          tests/test_qt_distribution.py tests/test_qt_package_policy.py
 
       - name: Run Ruff format check
         if: matrix.os == 'ubuntu-latest'
@@ -94,6 +97,8 @@ jobs:
           clarify/desktop/qt_shell.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py
           tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py
           tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py
+          scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py
+          tests/test_qt_distribution.py tests/test_qt_package_policy.py
 
       - name: Run targeted type checks
         if: matrix.os == 'ubuntu-latest'
@@ -242,5 +247,7 @@ jobs:
             dist/Clarify.exe
             dist/Clarify-windows-x64.msi
             dist/Clarify-release-manifest.cab
+            dist/Clarify-qt-sources.zip
+            dist/Clarify-qt-NOTICES.txt
           if-no-files-found: error
           retention-days: 7

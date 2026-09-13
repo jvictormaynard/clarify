@@ -83,9 +83,12 @@ in `desktop/licenses/`, with version-specific mappings, source URLs, and SHA-256
 checks. A missing or changed supplement fails the build. See
 [supplement provenance](desktop/licenses/README.md).
 
-This inventory is engineering evidence, not legal certification. Qt module,
-source-availability, and distribution obligations still require release review;
-see [Release readiness](docs/release-readiness.md).
+Qt 6.11.1 and PySide/Shiboken source archives are supplied separately as
+`Clarify-qt-sources.zip`, with pinned upstream hashes. `Clarify-qt-NOTICES.txt`
+contains their license and third-party attribution texts and is included in the
+executable and release ZIP. See [source and replacement instructions](docs/qt-distribution.md).
+This inventory is engineering evidence, not legal certification; see
+[Release readiness](docs/release-readiness.md).
 The [publication review](docs/release-review-2026-09-13.md) records why the
 default Qt plugin collection is restricted before distribution approval.
 

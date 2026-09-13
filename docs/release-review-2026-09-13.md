@@ -37,11 +37,35 @@ The policy and archive checks are in `scripts/qt_package_policy.py`,
 packaging controls, not a license-compliance certification. Do not infer that
 passing this bounded check reviews every present or future Qt module.
 
+## Source distribution follow-up
+
+The cleaned candidate `28be3cf` passed local Windows packaging and 1,133 Python
+tests (5 existing platform skips), plus all 12 Settings browser tests. Its
+remote Windows tests passed. The remote Linux suite exited with a native
+segmentation fault during Settings tests; that failure requires investigation,
+not a skip or an assumption that the Windows result approves the candidate.
+
+The crash reproduced locally while repeatedly creating/closing Settings and
+validating a fake provider. Faulthandler showed Qt signal emission concurrent
+with garbage collection. Local-model callbacks retained old controllers in
+cycles, including after switching the browsed product. The correction removes
+old subscriptions and uses weak, generation-bound callbacks. A lifetime test
+now checks that shutdown releases the controller. The previously crashing
+scenario passed 100 repetitions on Linux after that correction. Final complete
+suites and packaging still apply to the corrected commit, not the earlier one.
+
+`scripts/qt_distribution.py` now prepares six checksummed, complete upstream
+source archives and their conservative license/attribution collection. Both
+portable build paths embed and verify `Clarify-qt-NOTICES.txt`; release tracks
+include it in the ZIP and publish/attest `Clarify-qt-sources.zip` separately.
+See [source and replacement instructions](qt-distribution.md). This closes the
+missing source/notice artifact implementation, not legal certification or
+acceptance of a final release package.
+
 ## Remaining publication gates
 
-- Record the final package's Qt/PySide6 license texts, third-party notices,
-  corresponding-source availability, and build/replacement instructions. The
-  npm/Cargo inventory does not close this separate distribution review.
+- Pass the final candidate's Linux/Windows CI and inspect the generated Qt
+  source/notice release artifacts. Verify the documented replacement route.
 - Obtain explicit user acceptance of the final Windows package, especially
   first capture after idle, Hold/Escape, immediate restart after cancellation,
   focus/clipboard delivery, saved settings and installed local-ASR discovery.
