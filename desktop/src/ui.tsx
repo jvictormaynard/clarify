@@ -12,14 +12,19 @@ export function Picker({ label, value, options, onChange, onRefresh, busy, disab
   onRefresh?: () => void; busy?: boolean; disabled?: boolean; empty?: string;
 }) {
   const [open, setOpen] = useState(false);
-  return <Popover.Root open={open} onOpenChange={setOpen}>
+  const [search, setSearch] = useState("");
+  return <Popover.Root open={open} onOpenChange={next => {
+    // Exit animations can keep cmdk mounted across a quick close/reopen.
+    if (next) setSearch("");
+    setOpen(next);
+  }}>
     <Popover.Trigger className="control picker" role="combobox" aria-label={label} aria-expanded={open} disabled={disabled}>
       <span>{options.find(item => item.id === value)?.label || value || "Selecionar…"}</span>
       <ChevronDown size={16} aria-hidden />
     </Popover.Trigger>
     <Popover.Portal><Popover.Content className="popover" sideOffset={6} align="start" collisionPadding={12}>
       <Command label={`Buscar ${label.toLowerCase()}`}>
-        <div className="search"><Search size={16} aria-hidden /><Command.Input aria-label={`Buscar ${label.toLowerCase()}`} placeholder={`Buscar ${label.toLowerCase()}…`} />
+        <div className="search"><Search size={16} aria-hidden /><Command.Input value={search} onValueChange={setSearch} aria-label={`Buscar ${label.toLowerCase()}`} placeholder={`Buscar ${label.toLowerCase()}…`} />
           {onRefresh && <button className="icon-button" aria-label={`Atualizar ${label.toLowerCase()}`} onClick={onRefresh} disabled={busy}><RefreshCw size={15} className={busy ? "spin" : ""} /></button>}
         </div>
         <Command.List><Command.Empty>{busy ? "Carregando…" : empty}</Command.Empty>

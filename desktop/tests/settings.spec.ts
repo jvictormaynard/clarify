@@ -160,6 +160,31 @@ test("installed models: search inside popup, keyboard selection, save and discar
   await expect(page.getByRole("combobox", { name: "Modelo", exact: true })).toContainText("Medium");
 });
 
+test("picker resets search when reopened before its closing animation ends", async ({ page }) => {
+  await page.getByRole("combobox", { name: "Serviço", exact: true }).click();
+  await page.getByRole("option", { name: "Local Whisper" }).click();
+  await expect(page.locator(".popover")).toHaveCount(0);
+  // Keep the exiting popup mounted to reproduce rapid reopening deterministically.
+  await page.addStyleTag({ content: '.popover[data-state="closed"] { animation-duration: 30s; }' });
+  const model = page.getByRole("combobox", { name: "Modelo", exact: true });
+  const search = page.getByPlaceholder("Buscar modelo…");
+  await model.click();
+  await search.fill("Medium");
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await search.press("Enter");
+  await expect(page.locator('.popover[data-state="closed"]')).toHaveCount(1);
+  await model.click();
+  await expect(search).toHaveValue("");
+  await expect(page.getByRole("option", { name: /Whisper Base/ })).toBeVisible();
+  await search.fill("Medium");
+  await search.press("Escape");
+  await expect(page.locator('.popover[data-state="closed"]')).toHaveCount(1);
+  await model.click();
+  await expect(search).toHaveValue("");
+  await page.getByRole("option", { name: /Whisper Base/ }).click();
+  await expect(model).toContainText("Base");
+});
+
 test("draft prompt survives navigation; invalid retention cannot save", async ({ page }) => {
   await page.getByRole("button", { name: "Texto", exact: true }).click();
   await page.getByRole("textbox", { name: "Instruções" }).fill("Preserve every detail.");

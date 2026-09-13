@@ -62,6 +62,27 @@ See [source and replacement instructions](qt-distribution.md). This closes the
 missing source/notice artifact implementation, not legal certification or
 acceptance of a final release package.
 
+## Candidate verification and user acceptance
+
+Candidate `df15100` passed 1,140 Python tests on each CI runner. Windows had
+5 existing platform skips; Linux had 4. Its push workflow then found a
+Settings picker race: reopening during the closing animation retained the
+previous search and hid other installed models. The correction resets the
+controlled search on opening. A regression keeps the closing popup mounted
+and checks both selection/reopen and Escape/reopen; it failed before the fix.
+The corrected frontend requires its own CI and packaging result.
+
+The installed `df15100` runtime matched the locally validated portable build,
+with the previous executable preserved in backup. On 2026-09-13, the user
+confirmed preserved settings and local models, working recording, and an
+immediate new recording after Escape. This is acceptance of those scenarios,
+not of an untested subsequent package.
+
+Native WebView checks also passed dictionary/save/navigation, title-bar scroll
+isolation and window controls at normal scale and a forced WebView scale factor
+of 1.5. The synthetic-profile screenshot was inspected. This is not a claim
+that Windows system DPI or a clean Windows VM was tested.
+
 ## Remaining publication gates
 
 - Pass the final candidate's Linux/Windows CI and inspect the generated Qt
