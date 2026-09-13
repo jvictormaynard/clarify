@@ -11,7 +11,8 @@ that published Clarify artifacts are already signed.
 While sponsored signing is unavailable, the repository may publish a
 community portable release. It contains only the unsigned portable EXE, its
 SHA-256 file, the runtime SBOM, the portable ZIP, the verified SoX source
-archive, and GitHub build provenance. It does not contain the MSI or the
+archive, the Qt/PySide source ZIP, and GitHub build provenance. The portable ZIP
+includes the Settings and Qt license notices. It does not contain the MSI or the
 authenticated update manifest.
 
 The community EXE is not a trusted Authenticode publisher. Windows SmartScreen
@@ -33,7 +34,7 @@ Clarify uses [Azure Artifact Signing](https://azure.microsoft.com/en-us/products
 - The federated identity receives only the **Artifact Signing Certificate
   Profile Signer** role for the selected profile. The GitHub environment must
   require owner approval and tag release jobs must originate from protected
-  `master` history.
+  `main` history.
 - Azure protects the managed private key in FIPS 140-2 Level 3 HSMs. Release
   runners submit digests; the private key is not downloaded.
 - The executable, MSI, and release-manifest CAB are signed with SHA-256 and an

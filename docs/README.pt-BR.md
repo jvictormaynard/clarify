@@ -11,9 +11,9 @@ Ditado para Windows, com modelos locais ou sua própria chave de IA. Fale,
 revise e cole sem sair do aplicativo. O Clarify também reescreve e traduz
 textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 
-> Este guia descreve o código atual, incluindo mudanças ainda não publicadas.
+> As Configurações e o dicionário descritos aqui fazem parte da v0.4.0.
 > Consulte as [notas da versão](https://github.com/jvictormaynard/clarify/releases/latest)
-> para conferir os recursos do executável disponível. A validação para publicação
+> antes de baixar; versões anteriores têm uma interface diferente. A validação para publicação
 > está descrita em [Release readiness](release-readiness.md).
 
 ## Principais recursos
@@ -41,9 +41,9 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 
 ![Dicionário pessoal nas Configurações atuais](images/settings-dictionary.png)
 
-Captura do frontend React atual, em teste de navegador com dados fictícios.
-Não representa uma versão já publicada nem substitui a validação da janela
-nativa no Windows.
+Captura do frontend React da v0.4.0, em teste de navegador com dados fictícios.
+Os testes da janela nativa e os cenários não testados estão registrados em
+[Release readiness](release-readiness.md).
 
 ## Instalação no Windows
 
@@ -62,7 +62,8 @@ upgrade, reparo, rollback e desinstalação.
 
 O projeto também publica uma release comunitária sem custo para o aplicativo
 portátil. Ela contém `Clarify.exe`, seu arquivo SHA-256, o SBOM de runtime,
-um arquivo ZIP e o código-fonte verificado do SoX. Ela não possui assinatura
+um arquivo ZIP e os códigos-fonte verificados do SoX e do Qt/PySide. Os avisos
+de licença estão incluídos no pacote portátil e no ZIP. Ela não possui assinatura
 Authenticode enquanto não houver patrocínio para a assinatura paga. O
 SmartScreen pode pedir confirmação no primeiro uso. Essa release não inclui o
 MSI nem o manifesto de atualização autenticado.

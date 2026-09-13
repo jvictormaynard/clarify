@@ -5,6 +5,8 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-13
+
 ### Changed
 
 - Settings use React and Tauri with an integrated title bar and a scrollable content area.
@@ -14,6 +16,7 @@ Notable user-facing changes are documented here. This project follows
 - Updated contributor guidance and documented production and legacy boundaries.
 - Reconciled pending local work with the published local-model improvements.
 - Updated release instructions to use the current main branch and production entrypoints.
+- Portable packages include verified Qt license notices; corresponding Qt/PySide source archives are provided with the release.
 
 ### Added
 
@@ -28,6 +31,12 @@ Notable user-facing changes are documented here. This project follows
 - Local deployment now stops the executable at the installation path, including legacy ClarifyVoice.exe installs.
 - Preserve the exact original transcript when optional refinement fails, with a brief status warning and partial history record.
 - Respect cancellation after refinement and keep existing same-audio retry, cancellation undo and focus-safe delivery.
+- Release local-model callbacks when Settings closes or switches models, preventing retained controllers and an intermittent native crash.
+- Clear picker searches when reopening during the closing animation, so other installed models remain available.
+
+### Removed
+
+- Removed the unused Electron prototype; excluded unused optional Qt modules from the portable build.
 
 ## [0.3.0] - 2026-09-06
 
@@ -177,7 +186,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/jvictormaynard/clarify/compare/v0.3.0...v0.4.0
 [0.2.2]: https://github.com/jvictormaynard/clarify/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/jvictormaynard/clarify/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jvictormaynard/clarify/compare/v0.1.2...v0.2.0

@@ -2,10 +2,12 @@
 
 ## Decision
 
-Not approved for publication yet. A green functional CI is necessary, but does
-not establish license compliance or manual Windows product acceptance. Do not
-create a release tag or treat earlier UI feedback as acceptance of a changed
-portable package.
+The product and cleanup baseline is approved for v0.4.0 community portable
+release preparation. PR #96 and its post-merge CI passed, and the maintainer
+authorized proceeding after reviewing the recorded test limitations. This
+does not approve signed MSI/update rollout or certify legal compliance.
+Publish only after the release-preparation PR, post-merge CI and tag workflow
+pass. Verify the published assets before announcing availability.
 
 ## Evidence and correction
 
@@ -42,7 +44,7 @@ passing this bounded check reviews every present or future Qt module.
 The cleaned candidate `28be3cf` passed local Windows packaging and 1,133 Python
 tests (5 existing platform skips), plus all 12 Settings browser tests. Its
 remote Windows tests passed. The remote Linux suite exited with a native
-segmentation fault during Settings tests; that failure requires investigation,
+segmentation fault during Settings tests; that failure required investigation,
 not a skip or an assumption that the Windows result approves the candidate.
 
 The crash reproduced locally while repeatedly creating/closing Settings and
@@ -70,7 +72,11 @@ Settings picker race: reopening during the closing animation retained the
 previous search and hid other installed models. The correction resets the
 controlled search on opening. A regression keeps the closing popup mounted
 and checks both selection/reopen and Escape/reopen; it failed before the fix.
-The corrected frontend requires its own CI and packaging result.
+The corrected frontend passed all 13 browser tests, 10 repeated reopen tests,
+native WebView checks, and its own CI and packaging inspection. It was merged
+as `926b305879dee078c912e07a6afa0b569934e335`; all jobs in
+[post-merge CI](https://github.com/jvictormaynard/clarify/actions/runs/34733753038)
+also passed. The merged tree was identical to the verified candidate.
 
 The installed `df15100` runtime matched the locally validated portable build,
 with the previous executable preserved in backup. On 2026-09-13, the user
@@ -83,14 +89,16 @@ isolation and window controls at normal scale and a forced WebView scale factor
 of 1.5. The synthetic-profile screenshot was inspected. This is not a claim
 that Windows system DPI or a clean Windows VM was tested.
 
-## Remaining publication gates
+## Release preparation and remaining limits
 
-- Pass the final candidate's Linux/Windows CI and inspect the generated Qt
-  source/notice release artifacts. Verify the documented replacement route.
-- Obtain explicit user acceptance of the final Windows package, especially
-  first capture after idle, Hold/Escape, immediate restart after cancellation,
-  focus/clipboard delivery, saved settings and installed local-ASR discovery.
-- Complete clean-user and scaled-DPI checks from
-  [release readiness](release-readiness.md), with synthetic profiles.
-- Once approved, prepare the appropriate SemVer release, merge, and require
-  green post-merge CI before tagging. The latest public release remains v0.3.0.
+- The final baseline's downloaded CI package passed independent Settings/SBOM
+  hash verification, Qt notice comparison, module policy and six source digests.
+- The user accepted proceeding without a clean Windows machine/VM. No test was
+  fabricated or marked passed for this gap. System DPI, fully offline ASR,
+  broader cross-app acceptance and a custom Qt rebuild remain unverified; see
+  [release readiness](release-readiness.md).
+- v0.4.0 adds compatible Settings, dictionary and Hold functionality. Prepare
+  it as a minor community release; do not merge dependency upgrades into it.
+- Require green release-preparation PR and post-merge CI before creating the
+  tag, then verify all published assets and provenance. Signed distribution
+  remains gated separately by [Windows distribution](windows-distribution.md).

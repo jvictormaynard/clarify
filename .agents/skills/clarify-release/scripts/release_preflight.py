@@ -35,6 +35,9 @@ REQUIRED_FILES = (
     "scripts/build.ps1",
     "scripts/build-settings.ps1",
     "scripts/check_settings_payload.py",
+    "scripts/qt_distribution.py",
+    "scripts/qt_sources.json",
+    "docs/qt-distribution.md",
     "scripts/settings_inventory.py",
     "desktop/licenses/manifest.json",
     "desktop/package-lock.json",
@@ -53,6 +56,7 @@ REQUIRED_FILES = (
 )
 
 SIGNED_REQUIRED_ASSETS = (
+    "Clarify-qt-sources.zip",
     "Clarify.exe",
     "Clarify.exe.sha256",
     "Clarify.sbom.json",
@@ -65,6 +69,7 @@ SIGNED_REQUIRED_ASSETS = (
 )
 
 COMMUNITY_REQUIRED_ASSETS = (
+    "Clarify-qt-sources.zip",
     "Clarify.exe",
     "Clarify.exe.sha256",
     "Clarify.sbom.json",
