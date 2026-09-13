@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import gc
 import json
 import os
 import subprocess
@@ -10,14 +11,15 @@ import sys
 import threading
 import time
 import unittest
+import weakref
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 try:
-    from PySide6.QtCore import QCoreApplication
-    from spikes.pyside6 import qml_settings
-    from spikes.pyside6.qml_settings import QmlSettingsController
+    from PySide6.QtWidgets import QApplication
+    from clarify.desktop import qml_settings
+    from clarify.desktop.qml_settings import QmlSettingsController
 
     PYSIDE6_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
@@ -41,7 +43,7 @@ from hotkey_config import HotkeyAction, HotkeySettings
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SETTINGS = ROOT / "spikes" / "pyside6" / "qml_settings.py"
+SETTINGS = ROOT / "clarify" / "desktop" / "qml_settings.py"
 
 
 def _repositories(directory: str) -> ApplicationRepositories:
@@ -123,7 +125,19 @@ class _Registry:
 class QmlSettingsControllerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.qt_app = QCoreApplication.instance() or QCoreApplication([])
+        cls.qt_app = QApplication.instance() or QApplication([])
+
+    def test_shutdown_releases_local_subscription_and_controller(self):
+        with TemporaryDirectory() as directory:
+            controller = QmlSettingsController(_repositories(directory))
+            product = controller._local_product
+            reference = weakref.ref(controller)
+            controller.shutdown()
+            self.assertEqual(product._listeners, [])
+            del controller
+            self.qt_app.processEvents()
+            gc.collect()
+            self.assertIsNone(reference())
 
     @staticmethod
     def _microphone_inventory():
@@ -362,7 +376,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
 
             controller = QmlSettingsController(repositories)
 
-            self.assertEqual(controller.mode, "transcription")
+            self.assertEqual(controller.mode, "prompt")
             self.assertEqual(controller.language, "pt")
             self.assertTrue(controller.autostart)
             self.assertTrue(controller.historyEnabled)
@@ -584,6 +598,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 self.assertTrue(controller.selectProvider("openai"))
                 self.assertFalse(controller.providerHasApiKey)
                 controller.setProviderApiKey("onboarding-test-key")
+                self.assertTrue(controller.providerDirty)
 
                 with patch.object(
                     qml_settings.PROVIDER_REGISTRY,
@@ -604,6 +619,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 self.assertTrue(controller.providerHasApiKey)
                 self.assertEqual(secret_store.get("openai"), "onboarding-test-key")
                 self.assertEqual(controller.providerApiKey, "")
+                self.assertFalse(controller.providerDirty)
                 self.assertNotIn(
                     "onboarding-test-key",
                     (root / "config.json").read_text(encoding="utf-8"),
@@ -832,7 +848,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
             )
 
             self.assertTrue(controller.dirty)
-            self.assertEqual(controller.mode, "transcription")
+            self.assertEqual(controller.mode, "prompt")
             self.assertEqual(controller.language, "de")
             self.assertTrue(controller.autostart)
             self.assertTrue(controller.historyEnabled)
@@ -973,7 +989,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
             controller = QmlSettingsController(repositories, registry=registry)
             controller.setAutostart(True)
             with (
-                patch("spikes.pyside6.qml_settings._is_windows", return_value=True),
+                patch("clarify.desktop.qml_settings._is_windows", return_value=True),
                 patch.object(
                     repositories.config,
                     "apply",
@@ -1018,7 +1034,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
             self.assertTrue(controller.persistMode("transcription"))
 
             persisted = repositories.config.load()
-            self.assertEqual(persisted.ui.mode, "transcription")
+            self.assertEqual(persisted.ui.mode, "prompt")
             self.assertEqual(persisted.ui.language, "en")
             self.assertFalse(persisted.startup.autostart)
             self.assertFalse(persisted.history_enabled)
@@ -1039,7 +1055,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
             registry.values["Clarify"] = r"C:\Legacy\Clarify.exe --old"
             controller = QmlSettingsController(repositories, registry=registry)
 
-            with patch("spikes.pyside6.qml_settings._is_windows", return_value=True):
+            with patch("clarify.desktop.qml_settings._is_windows", return_value=True):
                 self.assertTrue(controller.save())
 
             self.assertNotIn("Clarify", registry.values)
@@ -1055,7 +1071,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
             controller = QmlSettingsController(repositories, registry=registry)
             controller.setAutostart(True)
             with (
-                patch("spikes.pyside6.qml_settings._is_windows", return_value=True),
+                patch("clarify.desktop.qml_settings._is_windows", return_value=True),
                 patch.object(
                     repositories.config,
                     "apply",
@@ -1162,7 +1178,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 "-c",
                 (
                     "import sys; "
-                    "from spikes.pyside6.qml_settings import "
+                    "from clarify.desktop.qml_settings import "
                     "QmlSettingsController; "
                     "print('app' in sys.modules)"
                 ),

@@ -46,14 +46,28 @@ from workflow_config import (
 from voice_translation import VoiceTranslationConfig
 
 __all__ = [
-    "AppConfig", "ApplicationRepositories", "ConfigRepository",
-    "LocalConfigRepository", "LocalUsageStatsRepository", "ProviderConfig",
-    "ProviderSelection", "StartupSettings", "UIPreferences",
-    "WorkflowConfig", "WorkflowConfigurationError", "WorkflowRoute",
-    "WorkflowScope", "WorkflowTestResult", "environment_defaults",
-    "migrate_config_payload", "normalize_workflow_scope",
-    "test_workflow_configuration", "validate_workflow_config",
-    "validate_workflow_route", "MicrophoneSettings", "RecordingControls",
+    "AppConfig",
+    "ApplicationRepositories",
+    "ConfigRepository",
+    "LocalConfigRepository",
+    "LocalUsageStatsRepository",
+    "ProviderConfig",
+    "ProviderSelection",
+    "StartupSettings",
+    "UIPreferences",
+    "WorkflowConfig",
+    "WorkflowConfigurationError",
+    "WorkflowRoute",
+    "WorkflowScope",
+    "WorkflowTestResult",
+    "environment_defaults",
+    "migrate_config_payload",
+    "normalize_workflow_scope",
+    "test_workflow_configuration",
+    "validate_workflow_config",
+    "validate_workflow_route",
+    "MicrophoneSettings",
+    "RecordingControls",
 ]
 
 
@@ -65,11 +79,13 @@ PROVIDER_SECRET_KEYS = {
     "openai": "openai_api_key",
     "groq": "groq_api_key",
 }
-SUPPORTED_UI_MODES = ("prompt", "transcription")
+SUPPORTED_UI_MODES = ("prompt",)
 SUPPORTED_LANGUAGES = ("en", "pt", "es", "de", "ru")
 
 
-def environment_defaults(environment: Mapping[str, str] | None = None) -> dict[str, Any]:
+def environment_defaults(
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     """Return startup defaults using the same environment contract as app.py.
 
     The precedence is persisted configuration, then environment variables,
@@ -83,7 +99,8 @@ def environment_defaults(environment: Mapping[str, str] | None = None) -> dict[s
         "transcription_provider": "gemini",
         "gemini_api_key": env.get("GEMINI_API_KEY", env.get("API_KEY", "")),
         "gemini_base_url": env.get(
-            "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
+            "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"
+        ),
         "gemini_model": env.get("GEMINI_MODEL", "gemini-2.5-flash"),
         "openai_api_key": env.get("OPENAI_API_KEY", ""),
         "openai_base_url": env.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
@@ -139,6 +156,10 @@ class UIPreferences:
     mode: str = "prompt"
     language: str = "en"
 
+    def __post_init__(self):
+        # Keep the old wire value while removing the user-facing mode choice.
+        object.__setattr__(self, "mode", "prompt")
+
 
 @dataclass(frozen=True)
 class StartupSettings:
@@ -171,9 +192,12 @@ class AppConfig:
     hotkeys: HotkeySettings = field(default_factory=HotkeySettings.defaults)
     workflows: WorkflowConfig = field(default_factory=WorkflowConfig)
     voice_translation: VoiceTranslationConfig = field(
-        default_factory=VoiceTranslationConfig)
+        default_factory=VoiceTranslationConfig
+    )
     microphone: MicrophoneSettings = field(default_factory=MicrophoneSettings.defaults)
-    recording_controls: RecordingControls = field(default_factory=RecordingControls.defaults)
+    recording_controls: RecordingControls = field(
+        default_factory=RecordingControls.defaults
+    )
 
     @classmethod
     def from_mapping(
@@ -206,22 +230,28 @@ class AppConfig:
         provider = choice("transcription_provider", SUPPORTED_PROVIDERS, "gemini")
         requested_refinement_provider = string("refinement_provider").strip().lower()
         refinement_provider = choice(
-            "refinement_provider", SUPPORTED_PROVIDERS, "openai")
+            "refinement_provider", SUPPORTED_PROVIDERS, "openai"
+        )
         refinement_fallback = (
             not requested_refinement_provider
             or requested_refinement_provider not in SUPPORTED_PROVIDERS
             or not PROVIDER_REGISTRY.supports(
-                refinement_provider, ProviderCapability.TEXT_GENERATION)
+                refinement_provider, ProviderCapability.TEXT_GENERATION
+            )
         )
         if refinement_fallback:
             refinement_provider = (
-                provider if (
+                provider
+                if (
                     PROVIDER_REGISTRY.supports(
-                        provider, ProviderCapability.TEXT_GENERATION)
-                        and not PROVIDER_REGISTRY.supports(
-                        provider, ProviderCapability.MULTIMODAL_AUDIO)
+                        provider, ProviderCapability.TEXT_GENERATION
+                    )
+                    and not PROVIDER_REGISTRY.supports(
+                        provider, ProviderCapability.MULTIMODAL_AUDIO
+                    )
                 )
-                else "openai")
+                else "openai"
+            )
 
         provider_defaults = {
             metadata.provider_id: {
@@ -236,20 +266,23 @@ class AppConfig:
             metadata = PROVIDER_REGISTRY.describe(name)
             defaults_for_provider = provider_defaults[name]
             audio_model = string(
-                metadata.audio_model_key,
-                defaults_for_provider["audio_model"])
-            audio_model = PROVIDER_REGISTRY.canonical_audio_model(
-                name, audio_model)
+                metadata.audio_model_key, defaults_for_provider["audio_model"]
+            )
+            audio_model = PROVIDER_REGISTRY.canonical_audio_model(name, audio_model)
             return ProviderConfig(
                 api_key=string(f"{name}_api_key"),
-                base_url=string(
-                    f"{name}_base_url", defaults_for_provider["base_url"]),
+                base_url=string(f"{name}_base_url", defaults_for_provider["base_url"]),
                 audio_model=audio_model,
                 # Gemini historically stores its shared multimodal model only
                 # in ``gemini_model``; do not synthesize a new text-model field
                 # in the typed legacy adapter.
-                text_model=("" if name == "gemini" else string(
-                    metadata.text_model_key, defaults_for_provider["text_model"])),
+                text_model=(
+                    ""
+                    if name == "gemini"
+                    else string(
+                        metadata.text_model_key, defaults_for_provider["text_model"]
+                    )
+                ),
             )
 
         # A model saved for an invalid/transcription-only provider is not
@@ -259,15 +292,15 @@ class AppConfig:
         if not refinement_model:
             metadata = PROVIDER_REGISTRY.describe(refinement_provider)
             refinement_model = (
-                string(metadata.text_model_key) or metadata.default_text_model)
+                string(metadata.text_model_key) or metadata.default_text_model
+            )
 
-        mode = choice("ui_mode", SUPPORTED_UI_MODES, "prompt")
+        mode = "prompt"
         language = choice("ui_language", SUPPORTED_LANGUAGES, "en")
         autostart = source.get("autostart", False)
         if not isinstance(autostart, bool):
             autostart = False
-        local_asr_cloud_refinement = source.get(
-            "local_asr_cloud_refinement", False)
+        local_asr_cloud_refinement = source.get("local_asr_cloud_refinement", False)
         if not isinstance(local_asr_cloud_refinement, bool):
             local_asr_cloud_refinement = False
         history_enabled = source.get("history_enabled", False)
@@ -275,9 +308,11 @@ class AppConfig:
             history_enabled = False
         history_retention_days = source.get("history_retention_days", 30)
         if history_retention_days is not None:
-            if (isinstance(history_retention_days, bool)
-                    or not isinstance(history_retention_days, int)
-                    or history_retention_days < 0):
+            if (
+                isinstance(history_retention_days, bool)
+                or not isinstance(history_retention_days, int)
+                or history_retention_days < 0
+            ):
                 history_retention_days = 30
 
         if isinstance(values, Mapping) and values:
@@ -309,13 +344,15 @@ class AppConfig:
         if "recording_activation_mode" in source:
             try:
                 hotkeys = HotkeySettings(
-                    hotkeys.hotkeys, source["recording_activation_mode"])
+                    hotkeys.hotkeys, source["recording_activation_mode"]
+                )
             except ValueError:
                 pass
         voice_values = source.get("voice_translation")
         try:
             voice_translation = VoiceTranslationConfig.from_mapping(
-                voice_values if isinstance(voice_values, Mapping) else None)
+                voice_values if isinstance(voice_values, Mapping) else None
+            )
         except ValueError:
             # Keep startup resilient to a hand-edited future/invalid section;
             # the dedicated settings/apply boundary reports invalid routes
@@ -337,16 +374,18 @@ class AppConfig:
             # default nested mapping must not mask a persisted legacy ID.
             microphone_values = {
                 "selected_id": supplied_values.get(
-                    "selected_microphone_id",
-                    supplied_values.get("microphone_id")),
+                    "selected_microphone_id", supplied_values.get("microphone_id")
+                ),
             }
         else:
             microphone_values = source.get(
-                "microphone", source.get("microphone_settings"))
+                "microphone", source.get("microphone_settings")
+            )
             if microphone_values is None:
                 microphone_values = {
                     "selected_id": source.get(
-                        "selected_microphone_id", source.get("microphone_id")),
+                        "selected_microphone_id", source.get("microphone_id")
+                    ),
                 }
         try:
             microphone = MicrophoneSettings.from_mapping(microphone_values)
@@ -360,8 +399,7 @@ class AppConfig:
             # before built-in nested defaults are allowed to mask it.
             recording_values = supplied_values["recording"]
         else:
-            recording_values = source.get(
-                "recording_controls", source.get("recording"))
+            recording_values = source.get("recording_controls", source.get("recording"))
         try:
             recording_controls = RecordingControls.from_mapping(recording_values)
         except (TypeError, ValueError):
@@ -373,9 +411,7 @@ class AppConfig:
                     provider,
                     provider_config(provider).audio_model,
                 ),
-                prompt=DEFAULT_WORKFLOW_PROMPTS[
-                    WorkflowScope.TRANSCRIPTION.value
-                ],
+                prompt=DEFAULT_WORKFLOW_PROMPTS[WorkflowScope.TRANSCRIPTION.value],
             ),
             refinement=WorkflowRoute(
                 provider_id=refinement_provider,
@@ -434,10 +470,14 @@ class AppConfig:
                 if normalized not in WORKFLOW_SCOPES:
                     continue
                 raw_value = (
-                    raw_scope.value
-                    if isinstance(raw_scope, WorkflowScope)
-                    else str(raw_scope or "")
-                ).strip().lower()
+                    (
+                        raw_scope.value
+                        if isinstance(raw_scope, WorkflowScope)
+                        else str(raw_scope or "")
+                    )
+                    .strip()
+                    .lower()
+                )
                 if raw_value == normalized:
                     canonical_values[normalized] = route
                 else:
@@ -446,18 +486,22 @@ class AppConfig:
             workflow_mapping.update(canonical_values)
         effective_transcription_provider = (
             workflows.transcription.provider_id
-            if "transcription" in workflow_mapping else provider
+            if "transcription" in workflow_mapping
+            else provider
         )
         effective_refinement_provider = (
             workflows.refinement.provider_id
-            if "refinement" in workflow_mapping else refinement_provider
+            if "refinement" in workflow_mapping
+            else refinement_provider
         )
         effective_refinement_model = (
             workflows.refinement.model_id
-            if "refinement" in workflow_mapping else refinement_model
+            if "refinement" in workflow_mapping
+            else refinement_model
         )
-        if ("local_asr_refinement" in workflow_mapping
-                and isinstance(workflows.local_asr_refinement.enabled, bool)):
+        if "local_asr_refinement" in workflow_mapping and isinstance(
+            workflows.local_asr_refinement.enabled, bool
+        ):
             local_asr_cloud_refinement = workflows.local_asr_refinement.enabled
 
         provider_configs = {
@@ -473,7 +517,8 @@ class AppConfig:
                 # Otherwise `audio_model_from_legacy()` would silently use
                 # the provider default after a valid nested route is applied.
                 provider_configs[route.provider_id] = replace(
-                    selected_config, audio_model=route_model)
+                    selected_config, audio_model=route_model
+                )
 
         return cls(
             schema_version=CONFIG_SCHEMA_VERSION,
@@ -489,7 +534,9 @@ class AppConfig:
             ui=UIPreferences(mode, language),
             startup=StartupSettings(autostart),
             local_asr_cloud_refinement=local_asr_cloud_refinement,
-            local_asr_device=__import__("local_asr_catalog").normalize_device(source.get("local_asr_device")),
+            local_asr_device=__import__("local_asr_catalog").normalize_device(
+                source.get("local_asr_device")
+            ),
             local_asr_streaming=source.get("local_asr_streaming") is True,
             history_enabled=history_enabled,
             history_retention_days=history_retention_days,
@@ -561,7 +608,8 @@ class AppConfig:
         selection = self.selection
         provider_updates: dict[str, ProviderConfig] = {}
         selected_audio_key = PROVIDER_REGISTRY.describe(
-            legacy_config.selection.transcription_provider).audio_model_key
+            legacy_config.selection.transcription_provider
+        ).audio_model_key
         if {"transcription_provider", selected_audio_key} & changed_keys:
             current = workflows.transcription
             if current.independent:
@@ -577,11 +625,14 @@ class AppConfig:
                 compatibility_provider = current.provider_id
             else:
                 transcription_route = legacy_config.workflow(
-                    WorkflowScope.TRANSCRIPTION)
+                    WorkflowScope.TRANSCRIPTION
+                )
                 endpoint = current.custom_endpoint
-                if (current.provider_id != transcription_route.provider_id
-                        and WorkflowScope.TRANSCRIPTION.value
-                        not in preserve_endpoint_scopes):
+                if (
+                    current.provider_id != transcription_route.provider_id
+                    and WorkflowScope.TRANSCRIPTION.value
+                    not in preserve_endpoint_scopes
+                ):
                     endpoint = ""
                 workflows = workflows.with_route(
                     WorkflowScope.TRANSCRIPTION,
@@ -595,10 +646,12 @@ class AppConfig:
                 selection = replace(
                     selection,
                     transcription_provider=(
-                        legacy_config.selection.transcription_provider),
+                        legacy_config.selection.transcription_provider
+                    ),
                 )
                 selected_config = getattr(
-                    self, legacy_config.selection.transcription_provider, None)
+                    self, legacy_config.selection.transcription_provider, None
+                )
                 route_model = str(transcription_route.model_id or "").strip()
                 compatibility_provider = legacy_config.selection.transcription_provider
             if isinstance(selected_config, ProviderConfig) and route_model:
@@ -606,9 +659,9 @@ class AppConfig:
                 # legacy provider/model edit. Without this, a stale nested
                 # route can overwrite the selected provider's audio model
                 # while synchronization updates only the typed route.
-                provider_updates[
-                    compatibility_provider
-                ] = replace(selected_config, audio_model=route_model)
+                provider_updates[compatibility_provider] = replace(
+                    selected_config, audio_model=route_model
+                )
         if {"refinement_provider", "refinement_model"} & changed_keys:
             current_refinement = workflows.refinement
             legacy_route = legacy_config.workflow(WorkflowScope.REFINEMENT)
@@ -623,9 +676,10 @@ class AppConfig:
                 )
             else:
                 endpoint = current_refinement.custom_endpoint
-                if (current_refinement.provider_id != legacy_route.provider_id
-                        and WorkflowScope.REFINEMENT.value
-                        not in preserve_endpoint_scopes):
+                if (
+                    current_refinement.provider_id != legacy_route.provider_id
+                    and WorkflowScope.REFINEMENT.value not in preserve_endpoint_scopes
+                ):
                     endpoint = ""
                 workflows = workflows.with_route(
                     WorkflowScope.REFINEMENT,
@@ -642,13 +696,15 @@ class AppConfig:
                     refinement_model=legacy_config.selection.refinement_model,
                 )
             for scope in (
-                    WorkflowScope.REWRITE.value,
-                    WorkflowScope.TRANSLATION.value,
-                    WorkflowScope.LOCAL_ASR_REFINEMENT.value):
+                WorkflowScope.REWRITE.value,
+                WorkflowScope.TRANSLATION.value,
+                WorkflowScope.LOCAL_ASR_REFINEMENT.value,
+            ):
                 current = workflows[scope]
                 if scope in (
-                        WorkflowScope.REWRITE.value,
-                        WorkflowScope.TRANSLATION.value):
+                    WorkflowScope.REWRITE.value,
+                    WorkflowScope.TRANSLATION.value,
+                ):
                     # The migration marker is the source of truth.  Do not
                     # infer authorship from equal provider/model/endpoint
                     # values because an authored route may intentionally
@@ -659,13 +715,17 @@ class AppConfig:
                     # Local-ASR refinement retains its existing staged
                     # compatibility behavior; it is not one of the legacy
                     # rewrite/translation clones addressed by this marker.
-                    if (current.provider_id != previous_shared.provider_id
-                            or current.model_id != previous_shared.model_id
-                            or current.custom_endpoint):
+                    if (
+                        current.provider_id != previous_shared.provider_id
+                        or current.model_id != previous_shared.model_id
+                        or current.custom_endpoint
+                    ):
                         continue
                 endpoint = current.custom_endpoint
-                if (current.provider_id != legacy_route.provider_id
-                        and scope not in preserve_endpoint_scopes):
+                if (
+                    current.provider_id != legacy_route.provider_id
+                    and scope not in preserve_endpoint_scopes
+                ):
                     endpoint = ""
                 workflows = workflows.with_route(
                     scope,
@@ -692,7 +752,8 @@ class AppConfig:
             local_asr_cloud_refinement=(
                 legacy_config.local_asr_cloud_refinement
                 if "local_asr_cloud_refinement" in changed_keys
-                else self.local_asr_cloud_refinement),
+                else self.local_asr_cloud_refinement
+            ),
         )
 
     def workflow(self, scope: WorkflowScope | str) -> WorkflowRoute:
@@ -742,11 +803,15 @@ class AppConfig:
                 ),
             )
         workflows = self.workflows.with_route(normalized, route)
-        return replace(self, workflows=workflows,
-                       local_asr_cloud_refinement=(
-                           route.enabled
-                           if normalized == WorkflowScope.LOCAL_ASR_REFINEMENT.value
-                           else self.local_asr_cloud_refinement))
+        return replace(
+            self,
+            workflows=workflows,
+            local_asr_cloud_refinement=(
+                route.enabled
+                if normalized == WorkflowScope.LOCAL_ASR_REFINEMENT.value
+                else self.local_asr_cloud_refinement
+            ),
+        )
 
 
 def _version(value: Any) -> int:
@@ -776,10 +841,14 @@ def _migrate_v1_to_v2(payload: dict[str, Any]) -> dict[str, Any]:
                 workflows[str(raw_scope)] = route
                 continue
             raw_value = (
-                raw_scope.value
-                if isinstance(raw_scope, WorkflowScope)
-                else str(raw_scope or "")
-            ).strip().lower()
+                (
+                    raw_scope.value
+                    if isinstance(raw_scope, WorkflowScope)
+                    else str(raw_scope or "")
+                )
+                .strip()
+                .lower()
+            )
             if raw_value == normalized:
                 canonical_values[normalized] = route
             else:
@@ -805,15 +874,19 @@ def _migrate_v1_to_v2(payload: dict[str, Any]) -> dict[str, Any]:
             else "openai"
         )
     if not PROVIDER_REGISTRY.supports(
-            refinement_provider, ProviderCapability.TEXT_GENERATION):
+        refinement_provider, ProviderCapability.TEXT_GENERATION
+    ):
         refinement_fallback = True
         refinement_provider = (
             transcription_provider
-            if (PROVIDER_REGISTRY.supports(
-                    transcription_provider, ProviderCapability.TEXT_GENERATION)
+            if (
+                PROVIDER_REGISTRY.supports(
+                    transcription_provider, ProviderCapability.TEXT_GENERATION
+                )
                 and not PROVIDER_REGISTRY.supports(
-                    transcription_provider,
-                    ProviderCapability.MULTIMODAL_AUDIO))
+                    transcription_provider, ProviderCapability.MULTIMODAL_AUDIO
+                )
+            )
             else "openai"
         )
     defaults = {
@@ -823,16 +896,23 @@ def _migrate_v1_to_v2(payload: dict[str, Any]) -> dict[str, Any]:
         "local_asr": ("ggml-small", ""),
     }
     transcription_model = string(
-        "gemini_model" if transcription_provider == "gemini"
+        "gemini_model"
+        if transcription_provider == "gemini"
         else f"{transcription_provider}_audio_model",
         defaults.get(transcription_provider, ("", ""))[0],
     )
     if transcription_provider == "gemini":
         transcription_model = transcription_model or defaults["gemini"][0]
-    refinement_model = "" if refinement_fallback else string(
-        "refinement_model",
-        string(f"{refinement_provider}_text_model",
-               defaults.get(refinement_provider, ("", ""))[1]),
+    refinement_model = (
+        ""
+        if refinement_fallback
+        else string(
+            "refinement_model",
+            string(
+                f"{refinement_provider}_text_model",
+                defaults.get(refinement_provider, ("", ""))[1],
+            ),
+        )
     )
     local_enabled = migrated.get("local_asr_cloud_refinement", False)
     local_enabled = local_enabled if isinstance(local_enabled, bool) else False
@@ -903,9 +983,7 @@ def _migrate_v1_to_v2(payload: dict[str, Any]) -> dict[str, Any]:
             # before the provenance marker existed.  Primary routes and the
             # local refinement route historically inherit the flat selectors
             # unless the scoped settings controller records an explicit edit.
-            if scope in (
-                    WorkflowScope.REWRITE.value,
-                    WorkflowScope.TRANSLATION.value):
+            if scope in (WorkflowScope.REWRITE.value, WorkflowScope.TRANSLATION.value):
                 route.setdefault("independent", True)
             # A v1 route may override the shared legacy provider while
             # omitting its model.  Canonicalize route aliases before filling
@@ -913,9 +991,10 @@ def _migrate_v1_to_v2(payload: dict[str, Any]) -> dict[str, Any]:
             # otherwise a Groq route could inherit OpenAI's text model and
             # fail only when the workflow is first used.
             for canonical, aliases in (
-                    ("provider_id", ("provider",)),
-                    ("model_id", ("model",)),
-                    ("custom_endpoint", ("endpoint", "base_url"))):
+                ("provider_id", ("provider",)),
+                ("model_id", ("model",)),
+                ("custom_endpoint", ("endpoint", "base_url")),
+            ):
                 if canonical not in route:
                     for alias in aliases:
                         if alias in route:
@@ -969,6 +1048,7 @@ def migrate_config_payload(payload: Any) -> dict[str, Any]:
         if next_version <= version:
             break
         version = next_version
+    migrated["ui_mode"] = "prompt"
     migrated["schema_version"] = min(version, CONFIG_SCHEMA_VERSION)
     return migrated
 
@@ -977,7 +1057,8 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
             json.dump(payload, stream, indent=2, ensure_ascii=False)
@@ -1051,7 +1132,8 @@ def _ensure_supported_schema(
     if version > supported_version:
         raise UnsupportedSchemaVersionError(
             f"Cannot save schema version {version} with supported version "
-            f"{supported_version}")
+            f"{supported_version}"
+        )
     return version
 
 
@@ -1068,15 +1150,22 @@ class LocalConfigRepository(ConfigRepository):
         self.path = Path(path)
         self.environment = os.environ if environment is None else environment
         self.defaults = dict(defaults or environment_defaults(self.environment))
-        secret_stem = ("secrets" if self.path.name == "config.json"
-                       else f"{self.path.stem}.secrets")
+        secret_stem = (
+            "secrets"
+            if self.path.name == "config.json"
+            else f"{self.path.stem}.secrets"
+        )
         self.secret_store = secret_store or create_secret_store(
-            self.path.parent, filename_stem=secret_stem)
+            self.path.parent, filename_stem=secret_stem
+        )
         self._lock = threading.RLock()
 
     def _environment_secret(self, provider: str) -> str | None:
-        names = (("GEMINI_API_KEY", "API_KEY") if provider == "gemini"
-                 else (f"{provider.upper()}_API_KEY",))
+        names = (
+            ("GEMINI_API_KEY", "API_KEY")
+            if provider == "gemini"
+            else (f"{provider.upper()}_API_KEY",)
+        )
         for name in names:
             value = self.environment.get(name)
             if isinstance(value, str) and value:
@@ -1102,8 +1191,7 @@ class LocalConfigRepository(ConfigRepository):
     ) -> dict[str, Any]:
         runtime = dict(migrated)
         removable: set[str] = set()
-        future_schema = _version(
-            migrated.get("schema_version")) > CONFIG_SCHEMA_VERSION
+        future_schema = _version(migrated.get("schema_version")) > CONFIG_SCHEMA_VERSION
 
         for provider, key in PROVIDER_SECRET_KEYS.items():
             legacy = raw.get(key)
@@ -1137,7 +1225,10 @@ class LocalConfigRepository(ConfigRepository):
 
             runtime[key] = self._environment_secret(provider) or stored or legacy or ""
 
-        if removable:
+        mode_migration = (
+            not future_schema and bool(raw) and raw.get("ui_mode") != "prompt"
+        )
+        if removable or mode_migration:
             sanitized = dict(migrated)
             for key in removable:
                 sanitized.pop(key, None)
@@ -1195,10 +1286,14 @@ class LocalConfigRepository(ConfigRepository):
                     unknown[scope] = route
                     continue
                 raw_value = (
-                    raw_scope.value
-                    if isinstance(raw_scope, WorkflowScope)
-                    else str(raw_scope or "")
-                ).strip().lower()
+                    (
+                        raw_scope.value
+                        if isinstance(raw_scope, WorkflowScope)
+                        else str(raw_scope or "")
+                    )
+                    .strip()
+                    .lower()
+                )
                 target = canonical if raw_value == scope else aliases
                 target[scope] = route
             return unknown, aliases, canonical
@@ -1208,9 +1303,10 @@ class LocalConfigRepository(ConfigRepository):
                 return route
             route = dict(route)
             for canonical, aliases in (
-                    ("provider_id", ("provider",)),
-                    ("model_id", ("model",)),
-                    ("custom_endpoint", ("endpoint", "base_url"))):
+                ("provider_id", ("provider",)),
+                ("model_id", ("model",)),
+                ("custom_endpoint", ("endpoint", "base_url")),
+            ):
                 if canonical not in route:
                     for alias in aliases:
                         if alias in route:
@@ -1218,10 +1314,12 @@ class LocalConfigRepository(ConfigRepository):
                             break
             return route
 
-        current_unknown, current_aliases, current_canonical = (
-            split_workflow_values(current_workflows))
-        incoming_unknown, incoming_aliases, incoming_canonical = (
-            split_workflow_values(incoming_workflows))
+        current_unknown, current_aliases, current_canonical = split_workflow_values(
+            current_workflows
+        )
+        incoming_unknown, incoming_aliases, incoming_canonical = split_workflow_values(
+            incoming_workflows
+        )
         current_route_values = dict(current_unknown)
         current_route_values.update(current_aliases)
         current_route_values.update(current_canonical)
@@ -1240,10 +1338,14 @@ class LocalConfigRepository(ConfigRepository):
                 if isinstance(previous_route, Mapping) and isinstance(route, Mapping):
                     merged_route = dict(previous_route)
                     merged_route.update(dict(route))
-                    if (scope in (
+                    if (
+                        scope
+                        in (
                             WorkflowScope.REWRITE.value,
-                            WorkflowScope.TRANSLATION.value)
-                            and "independent" not in route):
+                            WorkflowScope.TRANSLATION.value,
+                        )
+                        and "independent" not in route
+                    ):
                         # Rewrite/translation routes can be authored by
                         # pre-marker scoped mappings.  Primary routes must
                         # carry an explicit marker from the new controller so
@@ -1264,23 +1366,22 @@ class LocalConfigRepository(ConfigRepository):
             metadata.audio_model_key for metadata in PROVIDER_REGISTRY.metadata
         )
         changed_keys = {
-            key for key in legacy_workflow_keys
+            key
+            for key in legacy_workflow_keys
             if key in config and config.get(key) != current_payload.get(key)
         }
         explicit_endpoint_scopes: frozenset[str] = frozenset()
         if preserve_explicit_endpoints and isinstance(incoming_workflows, Mapping):
             explicit_endpoint_scopes = frozenset(
                 scope
-                for scope, route in {
-                    **incoming_aliases, **incoming_canonical
-                }.items()
+                for scope, route in {**incoming_aliases, **incoming_canonical}.items()
                 if isinstance(route, Mapping)
                 and any(
-                    key in route
-                    for key in ("custom_endpoint", "endpoint", "base_url")
+                    key in route for key in ("custom_endpoint", "endpoint", "base_url")
                 )
                 and self._mapping_route_explicitly_changed(
-                    scope, route, current_route_values)
+                    scope, route, current_route_values
+                )
             )
         if changed_keys and synchronize_legacy:
             legacy_values = dict(current_payload)
@@ -1314,13 +1415,11 @@ class LocalConfigRepository(ConfigRepository):
             return ""
 
         incoming_endpoint = value(route, "custom_endpoint", "endpoint", "base_url")
-        previous_endpoint = value(
-            previous, "custom_endpoint", "endpoint", "base_url")
+        previous_endpoint = value(previous, "custom_endpoint", "endpoint", "base_url")
         if incoming_endpoint.rstrip("/") != previous_endpoint.rstrip("/"):
             return True
         return any(
-            key in route
-            and value(route, key) != value(previous, key)
+            key in route and value(route, key) != value(previous, key)
             for key in ("provider_id", "provider", "model_id", "model")
         )
 
@@ -1339,7 +1438,8 @@ class LocalConfigRepository(ConfigRepository):
                 if config.schema_version > CONFIG_SCHEMA_VERSION:
                     raise UnsupportedSchemaVersionError(
                         f"Cannot save schema version {config.schema_version} "
-                        f"with supported version {CONFIG_SCHEMA_VERSION}")
+                        f"with supported version {CONFIG_SCHEMA_VERSION}"
+                    )
                 model = config
                 supplied_keys = set(PROVIDER_SECRET_KEYS.values())
             else:
@@ -1347,7 +1447,8 @@ class LocalConfigRepository(ConfigRepository):
                 if supplied_version > CONFIG_SCHEMA_VERSION:
                     raise UnsupportedSchemaVersionError(
                         f"Cannot save schema version {supplied_version} "
-                        f"with supported version {CONFIG_SCHEMA_VERSION}")
+                        f"with supported version {CONFIG_SCHEMA_VERSION}"
+                    )
                 model = self._model_from_mapping(
                     config,
                     current_payload,
@@ -1380,8 +1481,9 @@ class LocalConfigRepository(ConfigRepository):
                     # not remove that recoverable source merely because the
                     # environment currently masks it. A later save without
                     # the override can retry the migration.
-                    if (isinstance(current_payload.get(key), str)
-                            and current_payload.get(key)):
+                    if isinstance(
+                        current_payload.get(key), str
+                    ) and current_payload.get(key):
                         preserve_legacy.add(key)
                     continue
                 changes[provider] = value
@@ -1395,12 +1497,14 @@ class LocalConfigRepository(ConfigRepository):
                         self.secret_store.set(provider, value)
                         if self.secret_store.get(provider) != value:
                             raise SecretStoreError(
-                                "The credential store failed its verification")
+                                "The credential store failed its verification"
+                            )
                     else:
                         self.secret_store.delete(provider)
                         if self.secret_store.get(provider) is not None:
                             raise SecretStoreError(
-                                "The credential store failed its verification")
+                                "The credential store failed its verification"
+                            )
 
                 for key in PROVIDER_SECRET_KEYS.values():
                     values.pop(key, None)
@@ -1409,9 +1513,11 @@ class LocalConfigRepository(ConfigRepository):
                 # key and therefore either verify secret storage or fail.
                 for key in PROVIDER_SECRET_KEYS.values():
                     legacy = current_payload.get(key)
-                    if ((key not in supplied_keys or key in preserve_legacy)
-                            and isinstance(legacy, str)
-                            and legacy):
+                    if (
+                        (key not in supplied_keys or key in preserve_legacy)
+                        and isinstance(legacy, str)
+                        and legacy
+                    ):
                         values[key] = legacy
                 _atomic_write_json(self.path, values)
             except SecretStoreError:
@@ -1423,7 +1529,8 @@ class LocalConfigRepository(ConfigRepository):
             except Exception:
                 self._restore_secrets(previous)
                 raise SecretStoreUnavailableError(
-                    "The credential store could not be updated") from None
+                    "The credential store could not be updated"
+                ) from None
 
     def apply(self, config: AppConfig | Mapping[str, Any]) -> AppConfig:
         """Validate routes, then persist config as one rollback-capable unit.
@@ -1443,7 +1550,8 @@ class LocalConfigRepository(ConfigRepository):
                 if supplied_version > CONFIG_SCHEMA_VERSION:
                     raise UnsupportedSchemaVersionError(
                         f"Cannot save schema version {supplied_version} "
-                        f"with supported version {CONFIG_SCHEMA_VERSION}")
+                        f"with supported version {CONFIG_SCHEMA_VERSION}"
+                    )
                 current_payload = migrate_config_payload(
                     _read_json_mapping(self.path) or {}
                 )
@@ -1505,14 +1613,18 @@ class LocalUsageStatsRepository(UsageStatsRepository):
             return
         with self._lock:
             _ensure_supported_schema(
-                self.path, STATS_SCHEMA_VERSION, legacy_version_key="version")
+                self.path, STATS_SCHEMA_VERSION, legacy_version_key="version"
+            )
             events = self.load_events()
             events.append(copy.deepcopy(dict(event)))
-            _atomic_write_json(self.path, {
-                "schema_version": STATS_SCHEMA_VERSION,
-                "version": STATS_SCHEMA_VERSION,
-                "events": events,
-            })
+            _atomic_write_json(
+                self.path,
+                {
+                    "schema_version": STATS_SCHEMA_VERSION,
+                    "version": STATS_SCHEMA_VERSION,
+                    "events": events,
+                },
+            )
 
 
 # Descriptive aliases for callers that prefer the storage implementation name.

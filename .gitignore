@@ -13,6 +13,9 @@ __pycache__/
 # Build outputs
 dist/
 build/
+target/
+test-results/
+playwright-report/
 release/
 *.spec
 

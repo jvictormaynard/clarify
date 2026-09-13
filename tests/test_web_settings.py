@@ -1,0 +1,188 @@
+"""The new frontend reuses the real settings controller, without exposing secrets."""
+
+import json
+import unittest
+from tempfile import TemporaryDirectory
+from unittest.mock import Mock, patch
+
+from PySide6.QtWidgets import QApplication
+
+try:
+    from .test_pyside6_qml_settings import _repositories
+except ImportError:  # unittest discovery imports test files as top-level modules.
+    from test_pyside6_qml_settings import _repositories
+from local_asr_product import LocalASRProductState
+from clarify.desktop.qml_settings import QmlSettingsController
+from clarify.desktop.qml_web_settings import SettingsProtocol
+
+
+class WebSettingsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.windows = patch(
+            "clarify.desktop.qml_settings._is_windows", return_value=False
+        )
+        self.windows.start()
+        self.addCleanup(self.windows.stop)
+        self.directory = TemporaryDirectory()
+        self.settings = QmlSettingsController(
+            _repositories(self.directory.name),
+            local_product=Mock(state=LocalASRProductState("missing"), busy=False),
+        )
+        self.protocol = SettingsProtocol(self.settings)
+
+    def tearDown(self):
+        self.settings.shutdown()
+        self.directory.cleanup()
+
+    def request(self, method, *args):
+        return self.protocol.dispatch({"id": 7, "method": method, "args": list(args)})
+
+    def test_snapshot_is_json_and_does_not_include_key(self):
+        self.settings.selectProvider("openai")
+        self.settings.setProviderApiKey("test-secret-never-render")
+        response = self.request("snapshot")
+        self.assertIn("result", response)
+        serialized = json.dumps(response)
+        self.assertNotIn("test-secret-never-render", serialized)
+        self.assertNotIn("providerApiKey", serialized)
+        self.assertEqual(response["id"], 7)
+
+    def test_dictionary_draft_save_discard_and_validation(self):
+        entry = {
+            "term": "Eva Desktop",
+            "aliases": ["Eva"],
+            "pronunciation": "",
+            "enabled": True,
+        }
+        state = self.request("setDictionaryEntries", [entry])["result"]
+        self.assertTrue(state["dirty"])
+        self.assertEqual(self.settings._dictionary_service.state.dictionary, ())
+        self.assertEqual(self.request("load")["result"]["dictionaryEntries"], [])
+        self.request("setDictionaryEntries", [entry])
+        self.assertFalse(self.request("save")["result"]["dirty"])
+        self.assertEqual(
+            self.settings._dictionary_service.reload().dictionary[0].term, "Eva Desktop"
+        )
+        self.assertIn("error", self.request("setDictionaryEntries", [entry, entry]))
+        self.assertEqual(
+            self.request("snapshot")["result"]["dictionaryEntries"], [entry]
+        )
+        self.request("setDictionaryEntries", [])
+        self.request("save")
+        self.assertEqual(self.settings._dictionary_service.reload().dictionary, ())
+
+    def test_failed_dictionary_save_keeps_draft_and_rolls_back_config(self):
+        original = self.settings.repositories.config.load()
+        self.request("setLanguage", "pt" if original.ui.language != "pt" else "en")
+        self.request("setDictionaryEntries", [{"term": "Railway"}])
+        with patch.object(
+            self.settings._dictionary_service.repository,
+            "save",
+            side_effect=OSError("disk full"),
+        ):
+            self.assertIn("error", self.request("save"))
+        self.assertTrue(self.settings.dirty)
+        self.assertEqual(
+            self.settings.repositories.config.load().ui.language, original.ui.language
+        )
+        self.assertEqual(self.settings._dictionary_service.state.dictionary, ())
+
+    def test_draft_save_and_discard_use_repository(self):
+        original = self.settings.language
+        choice = "pt" if original != "pt" else "en"
+        self.assertTrue(self.request("setLanguage", choice)["result"]["dirty"])
+        self.assertEqual(self.settings.repositories.config.load().ui.language, original)
+        self.assertFalse(self.request("load")["result"]["dirty"])
+        self.assertEqual(self.settings.language, original)
+        self.request("setLanguage", choice)
+        self.assertFalse(self.request("save")["result"]["dirty"])
+        self.assertEqual(self.settings.repositories.config.load().ui.language, choice)
+
+    def test_rejects_reflection_malformed_values_and_provider_draft_save(self):
+        for method in (
+            "shutdown",
+            "deleteLater",
+            "repositories",
+            "providerApiKey",
+            "__getattribute__",
+        ):
+            self.assertIn("error", self.request(method))
+        self.assertIn("error", self.protocol.dispatch([]))
+        self.assertIn("error", self.request("setLanguage", "not-a-language"))
+        self.settings.selectProvider("openai")
+        self.settings.setProviderApiKey("test-secret")
+        self.assertIn("error", self.request("save"))
+
+    def test_route_changes_do_not_download_models(self):
+        self.request("selectWorkflow", "transcription")
+        self.request("setRouteProviderId", "local_asr")
+        result = self.request("setRouteModelId", "ggml-medium")
+        self.assertEqual(result["result"]["routeModelId"], "ggml-medium")
+        self.settings._local_product.install.assert_not_called()
+
+    def test_cached_or_unconfigured_catalog_is_not_an_rpc_error(self):
+        self.assertIn("result", self.request("loadRouteModels"))
+        self.assertIn("result", self.request("refreshRouteModels"))
+
+    def test_advanced_recording_validates_and_persists_only_on_save(self):
+        original = self.settings.repositories.config.load().recording_controls
+        controls = self.settings.recordingControls
+        controls["max_duration_seconds"] = 120
+        controls["vad"]["enabled"] = True
+        controls["vad"]["silence_duration_seconds"] = 1.5
+        self.assertIn("result", self.request("setRecordingControls", controls))
+        self.assertEqual(
+            self.settings.repositories.config.load().recording_controls, original
+        )
+        self.assertIn("result", self.request("save"))
+        persisted = self.settings.repositories.config.load().recording_controls
+        self.assertEqual(persisted.max_duration_seconds, 120)
+        self.assertEqual(persisted.vad.silence_duration_seconds, 1.5)
+        controls["max_duration_seconds"] = -1
+        self.assertIn("error", self.request("setRecordingControls", controls))
+        self.assertEqual(self.settings.recordingControls["max_duration_seconds"], 120)
+
+    def test_local_maintenance_uses_existing_controller(self):
+        self.assertIn("result", self.request("removeLocalAsr"))
+        self.settings._local_product.remove_async.assert_called_once()
+        self.assertIn("result", self.request("setLocalStreaming", True))
+        self.assertIn("result", self.request("resetAllHotkeys"))
+
+    def test_window_close_does_not_open_legacy_settings(self):
+        from types import SimpleNamespace
+        from clarify.desktop.qml_web_settings import WebSettingsProcess
+
+        bridge = SimpleNamespace(surface="settings", closeSettings=Mock())
+        fallback = Mock()
+        host = WebSettingsProcess(self.settings, bridge, fallback)
+        host._finished(0, None)
+        fallback.assert_not_called()
+        self.assertIn("error", self.request("openLegacy"))
+        bridge.closeSettings.assert_called_once()
+        host._failed(None)
+        self.assertTrue(host.failed)
+        self.assertFalse(host.show())
+
+    def test_settings_request_only_activates_on_explicit_open(self):
+        from types import SimpleNamespace
+        from workflows import WorkflowState
+        from clarify.desktop.qml_bridge import QmlWorkflowBridge
+
+        bridge = QmlWorkflowBridge(
+            SimpleNamespace(state=WorkflowState(), subscribe=lambda cb: None)
+        )
+        requested = Mock()
+        bridge.settingsRequested.connect(requested)
+        bridge.openSettings()
+        bridge._notify_all()
+        requested.assert_called_once()
+        bridge.openSettings()
+        self.assertEqual(requested.call_count, 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -23,16 +23,33 @@ Focus and selection safety check
     |
     +---- unchanged ----> snapshot, atomically paste, and conditionally restore
     |
-    +---- changed ------> keep result in clipboard and show result panel
+    +---- changed ------> keep result in clipboard for manual paste
 ```
 
 The Qt/QML event loop owns the desktop surface. Provider calls, audio
 processing, and clipboard transactions run through scheduled workers so the
 floating window remains responsive.
 
+## Settings process boundary
+
+`desktop/src/` contains the React/TypeScript Settings pages, Radix-based controls,
+and styles. `desktop/src-tauri/` hosts them in a Tauri v2 WebView2 window. This is
+not Electron and does not replace the Python audio engine or QML pill.
+
+`clarify/desktop/qml_web_settings.py` starts the child with Qt `QProcess` and
+exchanges JSON messages over private standard input/output pipes. The Python
+allowlist controls which Settings properties and methods are exposed. There is
+no public HTTP Settings server. Python owns config, credentials, model assets,
+and audio devices; React displays state and submits changes through this bridge.
+`qml_settings.py` remains the shared controller. The QML Settings view remains a
+fallback when the native child is unavailable.
+
+The new Settings currently use Portuguese labels. QML locale coverage must not
+be described as complete localization of the React pages.
+
 ## Current modules
 
-### `spikes/pyside6/qml_app.py`, `qml_bridge.py`, and `qml_runtime.py`
+### `clarify/desktop/qml_app.py`, `qml_bridge.py`, and `qml_runtime.py`
 
 These modules are the production desktop entrypoint and Qt integration layer:
 
@@ -42,11 +59,14 @@ These modules are the production desktop entrypoint and Qt integration layer:
   voice-translation surfaces to QML;
 - `qml_runtime.py` composes provider, recording, clipboard, statistics, and
   audio-file gateways without importing the old widget frontend; and
-- `spikes/pyside6/qml/` contains the compact black-and-white theme, overlay,
-  settings, result, translation, and file-import surfaces.
+- `clarify/desktop/qml/` contains the compact black-and-white theme, overlay,
+  fallback settings, legacy result assets, translation, and file-import surfaces.
 
 The old widget entrypoint is not used by `start.bat`, PyInstaller, CI, or
-release packaging. The Electron implementation remains historical only.
+release packaging. Root `app.py` remains for legacy compatibility tests; new
+features must not be added there. Production Qt adapters and assets live in
+`clarify/desktop/`; historical comparison tools remain under `spikes/`.
+The unused Electron implementation is available in Git history, not the checkout.
 
 ### Provider layer
 
@@ -278,10 +298,10 @@ before registration, and strict registration rolls back every accepted ID if
 Windows rejects one combination; settings therefore cannot leave a stale or
 partially active set.
 
-The packaged native layer currently supports toggle recording only because
 `RegisterHotKey` delivers key-down notifications and has no key-up edge. The
-settings-facing activation API accepts push-to-talk only when a future
-key-release-capable adapter explicitly opts in. Packaged Windows builds exclude
+production Qt shell adds a scoped physical-key timer for Hold recording: key
+release ends the recording, and Escape cancels it while the shortcut remains
+held. The legacy adapter remains toggle-only. Packaged Windows builds exclude
 the optional cross-platform `keyboard` module.
 
 ### `windows_clipboard.py`
@@ -384,7 +404,11 @@ and context construction. Snippet expansion derives canonical NFC spans from
 the active Unicode database and walks a bounded prefix trie, so it is
 provider-neutral and does not scale with every rule at every input character;
 cloud adapters receive optional vocabulary through the typed
-`TranscriptionRequest`, while offline adapters can ignore it. Usage statistics
+`TranscriptionRequest`. Local Whisper sends the bounded canonical vocabulary
+as `initial_prompt`, including pause-processing segments. Optional refinement
+receives a separate bounded context. Terms are hints, not forced replacements.
+The React Dictionary page edits a draft through `qml_settings.py` and saves or
+discards through the shared Settings transaction. Usage statistics
 never receive dictionary or snippet content. `DictionarySettingsController`
 keeps the Settings page's search, CRUD, reset, preview, and import/export
 callbacks independent from Tk and delegates every mutation to the same
@@ -422,42 +446,26 @@ For API keys, documented environment variables (`GEMINI_API_KEY`, legacy
 for that process and are never persisted. Other settings retain the precedence
 of persisted settings, then their environment defaults, then built-in defaults.
 
-Each recording reserves a unique temporary WAV owned by its
-`RecordingSession`. The provider reads it only during that session; cleanup
-then removes it on success, provider or encoding failure, cancellation, or
-application exit. SoX is stopped before cleanup, and Windows processes are
-attached to a Job Object so force-closing the app cannot orphan the recorder.
-Each session publishes exactly one immutable terminal state (`completed`,
-`failed`, or `cancelled`); cleanup errors and retry exhaustion are tracked
-separately and never rewrite that published outcome.
-Stale SoX discovery runs during recorder initialization, before a hotkey can
-start fresh capture. On Windows, where `SingleInstanceGuard` owns the data
-directory exclusively, the same recovery removes only the legacy
-`temp_recording.wav` and session-pattern WAVs there. Unix source runs skip
-orphan deletion because they do not have equivalent inter-process ownership;
-cleanup failures never block startup. Recorder cancellation is serialized
-through process and microphone-stream setup. If shutdown happens during an
-upload, the worker snapshots the WAV into memory before entering provider
-network I/O. Adapters upload that snapshot, so the filesystem handle is closed
-before a request whose read timeout might be extended indefinitely; bounded
-cleanup can therefore delete the WAV without waiting for the provider. The
-non-daemon shutdown watcher still performs bounded retries and joins workers
-for a finite initial/grace policy, retaining ownership and diagnostics when a
-provider has not yet released. Shutdown is not marked complete until deletion
-succeeds. A
-persistent cleanup failure remains observable and retains session ownership so
-the path cannot be overwritten by a later recording. UI ownership observers
-wait for the watcher's explicit terminal signal rather than the shorter
-two-second UI timeout; a late successful retry is released on Tk's event loop,
-while exhausted cleanup remains owned and visible. Escape cancellation
-likewise retains ownership until recorder shutdown completes, preventing
-immediate restart from reusing the recorder concurrently.
+Recordings use session-owned temporary WAV files. Cleanup must wait until no
+provider, retry, or cancellation-Undo operation needs the audio. Process shutdown
+and file cleanup are separate responsibilities; forced termination and cleanup
+failures can leave artifacts. Do not promise secure deletion or assume a process
+exit proves that audio was removed. The production lifecycle is implemented by
+the Qt runtime and audio services, not the old Tk shutdown observers in `app.py`.
+
+On Windows, a development host packaged with MSIX can redirect apparent AppData
+paths into its virtual profile. Launch the installed app through Explorer and
+verify the physical profile when investigating missing settings or models.
+`scripts/deploy.ps1` uses this launch path and refuses to replace an app with an
+active SoX recorder. Never merge, reset, or delete user profiles merely because
+one launch context appears empty.
 
 ## Packaging
 
 PyInstaller creates a one-file Windows executable containing the Python runtime,
-PySide6/Qt Quick modules, QML assets, immutable distribution policy, and the
-vendored SoX runtime. `.env` is
+PySide6/Qt Quick modules, QML assets, the compiled React/Tauri Settings child,
+immutable distribution policy, and the vendored SoX runtime. The build verifies
+that the embedded Settings child matches its input hash. `.env` is
 never bundled. End-user provider settings are read from the user data directory.
 
 The staged distribution workflow signs the executable, embeds it in a per-user
@@ -479,6 +487,5 @@ updating an existing local installation from WSL; contributors normally use
 
 ## Legacy prototype
 
-`legacy/electron-prototype/` contains the incomplete Electron implementation
-that preceded the Python rewrite. It is not installed, tested, packaged, or used
-at runtime. Keep changes to it separate from current application changes.
+The incomplete Electron prototype was removed from the checkout. It remains
+available in Git history and is not part of current development or distribution.

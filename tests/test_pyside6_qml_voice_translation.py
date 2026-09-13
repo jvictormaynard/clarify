@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 try:
-    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtWidgets import QApplication
 except (ImportError, ModuleNotFoundError):
     PYSIDE6_AVAILABLE = False
 else:
@@ -43,7 +43,7 @@ if PYSIDE6_AVAILABLE:
     )
     from workflow_config import WorkflowConfig, WorkflowRoute
     from workflows import RecordingSnapshot
-    from spikes.pyside6.qml_voice_translation import (
+    from clarify.desktop.qml_voice_translation import (
         QmlVoiceTranslationController,
         QmlVoiceTranslationProvider,
         QtVoiceTranslationRecording,
@@ -466,7 +466,7 @@ class QtVoiceTranslationRecordingTests(unittest.TestCase):
 class QmlVoiceTranslationControllerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.qt_app = QCoreApplication.instance() or QCoreApplication([])
+        cls.qt_app = QApplication.instance() or QApplication([])
 
     def test_start_stop_delivers_runtime_states_on_qt_thread(self):
         class Provider:

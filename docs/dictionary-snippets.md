@@ -74,13 +74,33 @@ subject to the same configured character bound.
 Enabled dictionary entries produce an optional, provider-neutral transcription
 context.  It is bounded to 4096 characters and keeps the stored order.  Cloud
 transcription adapters forward that context through the typed
-`TranscriptionRequest`; local/offline adapters may ignore it.  The HTTP
+`TranscriptionRequest`. The Groq adapter limits the added context to fit its
+896-character prompt budget, without cutting entries or changing the base prompt.
+Local Whisper receives canonical spellings (up to 896 characters) in the
+whisper.cpp `/inference` `prompt` field, with `max_context=224` and
+`carry_initial_prompt=true`. The pinned v1.9.1 server clears text history for
+each request. Empty dictionaries keep `max_context=0`. Pause-stream segments
+and the final tail receive the vocabulary captured at stream creation.
+Optional transcript refinement receives a separate bounded JSON vocabulary
+with instructions to preserve supported spellings, never add missing terms,
+and treat entries as data. Pronunciation and aliases remain recognition hints,
+not exact replacement rules; Whisper receives only canonical spellings.
+The HTTP
 diagnostics boundary logs only provider metadata and redacts request bodies,
 so dictionary content and credentials are not written to provider logs.
 
 ## Settings workflow
 
-The Settings window exposes the local profile under **Dictionary**.  It can
+The current React/Tauri Settings window exposes **Dicionário**: add a word or
+phrase with Enter, search, edit, enable/disable, or remove it. Optional aliases
+and pronunciation appear in a disclosure. Changes remain drafts across tab
+navigation and use the existing floating Save/Discard bar. Saving updates the
+same service used by the running transcription pipeline; no restart is needed.
+Dictionary edits preserve existing snippets. Saving validates and atomically
+replaces the dictionary file; an error leaves its active in-memory value intact.
+The UI explains provider context limits and cloud disclosure. No model is trained.
+
+The legacy Settings window exposes the local profile under **Dictionary**. It can
 search terms, aliases, pronunciation metadata, snippet triggers, and
 replacement text; add or edit either item; enable/disable entries; and delete
 individual rows.  The **Reset all** action clears both collections only after

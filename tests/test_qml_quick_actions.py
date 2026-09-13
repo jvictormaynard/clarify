@@ -5,9 +5,9 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from PySide6.QtCore import QCoreApplication
-from spikes.pyside6.qml_bridge import QmlWorkflowBridge
-from spikes.pyside6.qml_quick_paste import QuickPasteController
+from PySide6.QtWidgets import QApplication
+from clarify.desktop.qml_bridge import QmlWorkflowBridge
+from clarify.desktop.qml_quick_paste import QuickPasteController
 from workflows import (
     WorkflowState,
     WorkflowKind,
@@ -16,14 +16,14 @@ from workflows import (
     SelectionTarget,
 )
 from test_pyside6_qml_settings import _repositories, _MicrophoneBackend
-from spikes.pyside6.qml_settings import QmlSettingsController
+from clarify.desktop.qml_settings import QmlSettingsController
 from microphone_controls import MicrophoneDevice, MicrophoneInventory
 
 
 class QuickActionsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QCoreApplication.instance() or QCoreApplication([])
+        cls.app = QApplication.instance() or QApplication([])
 
     def test_only_completed_dictation_is_retained_in_memory(self):
         service = SimpleNamespace(
@@ -77,9 +77,7 @@ class QuickActionsTests(unittest.TestCase):
         try:
             controller.remember_target()
             own_window.isActive.return_value = True
-            clipboard.capture_target.return_value = SelectionTarget(
-                456, "Clarify.exe"
-            )
+            clipboard.capture_target.return_value = SelectionTarget(456, "Clarify.exe")
             controller.paste("Transcript", finished)
             hide.assert_called_once()
             clipboard.activate.assert_called_once_with(external)
@@ -153,7 +151,7 @@ class QuickActionsTests(unittest.TestCase):
         self.assertFalse(bridge.feedbackVisible)
 
     def test_all_successful_workflows_remain_on_compact_home(self):
-        from spikes.pyside6.qml_app import _WorkflowWindowVisibility
+        from clarify.desktop.qml_app import _WorkflowWindowVisibility
 
         service = SimpleNamespace(
             state=WorkflowState(), subscribe=lambda listener: None
@@ -164,7 +162,9 @@ class QuickActionsTests(unittest.TestCase):
             shell = SimpleNamespace(
                 hide_window=Mock(),
                 show_window=Mock(),
-                show_window_without_activation=lambda: restored_surfaces.append(bridge.surface),
+                show_window_without_activation=lambda: restored_surfaces.append(
+                    bridge.surface
+                ),
             )
             coordinator = _WorkflowWindowVisibility(
                 bridge, shell, SimpleNamespace(isVisible=lambda: True)

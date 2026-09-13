@@ -8,8 +8,8 @@ from unittest.mock import Mock, patch
 
 from PySide6.QtWidgets import QApplication
 
-from spikes.pyside6.qml_bridge import QmlWorkflowBridge
-from spikes.pyside6.qml_app import _WorkflowWindowVisibility
+from clarify.desktop.qml_bridge import QmlWorkflowBridge
+from clarify.desktop.qml_app import _WorkflowWindowVisibility
 from test_workflows import (
     FakeAudio,
     FakeClipboard,
@@ -195,7 +195,7 @@ class CancelledDictationTests(unittest.TestCase):
         self.assertIsNotNone(coordinator)
 
     def test_real_recording_session_removes_wav_and_undo_uses_detached_bytes(self):
-        from spikes.pyside6.qml_runtime import QtRecordingAudioGateway
+        from clarify.desktop.qml_runtime import QtRecordingAudioGateway
 
         payload = b"RIFF" + b"0" * 1196
         recorder = SimpleNamespace(
@@ -207,7 +207,7 @@ class CancelledDictationTests(unittest.TestCase):
         with (
             TemporaryDirectory() as directory,
             patch(
-                "spikes.pyside6.qml_runtime._data_directory",
+                "clarify.desktop.qml_runtime._data_directory",
                 return_value=Path(directory),
             ),
         ):

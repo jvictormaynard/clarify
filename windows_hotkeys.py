@@ -42,24 +42,30 @@ HOTKEY_IDS_BY_ACTION = {spec[0]: hotkey_id for hotkey_id, spec in HOTKEY_SPECS.i
 class HotkeyRegistrationError(RuntimeError):
     """Registration failed; no partially active shortcut set remains."""
 
-    def __init__(self, failed_actions, *, registered=(), reason="RegisterHotKey failed"):
+    def __init__(
+        self, failed_actions, *, registered=(), reason="RegisterHotKey failed"
+    ):
         self.failed_actions = tuple(str(action) for action in failed_actions)
         self.registered = frozenset(int(item) for item in registered)
         self.reason = str(reason)
         actions = ", ".join(self.failed_actions) or "unknown action"
         super().__init__(
             f"Could not register hotkey(s) for {actions}: {self.reason}. "
-            "Choose a different combination and try again.")
+            "Choose a different combination and try again."
+        )
 
-_CONFIRMABLE_PASTE_CLASSES = frozenset({
-    "Edit",
-    "RichEdit20A",
-    "RichEdit20W",
-    "RICHEDIT50A",
-    "RICHEDIT50W",
-    "RICHEDIT60A",
-    "RICHEDIT60W",
-})
+
+_CONFIRMABLE_PASTE_CLASSES = frozenset(
+    {
+        "Edit",
+        "RichEdit20A",
+        "RichEdit20W",
+        "RICHEDIT50A",
+        "RICHEDIT50W",
+        "RICHEDIT60A",
+        "RICHEDIT60W",
+    }
+)
 _MAX_CONFIRMABLE_CONTROL_TEXT = 4 * 1024 * 1024
 
 
@@ -118,8 +124,9 @@ def _normalised_registration_settings(settings=None) -> HotkeySettings:
     if isinstance(settings, HotkeySettings):
         return settings
     if isinstance(settings, dict):
-        if any(str(key) in {action.value for action in HotkeyAction}
-               for key in settings):
+        if any(
+            str(key) in {action.value for action in HotkeyAction} for key in settings
+        ):
             return HotkeySettings(settings)
         return HotkeySettings.from_mapping(settings)
     return HotkeySettings.from_mapping(settings)
@@ -139,7 +146,11 @@ def register_global_hotkeys(user32, hwnd, settings=None, *, strict=False) -> set
     except HotkeyValidationError:
         raise
     user32.RegisterHotKey.argtypes = [
-        wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
+        wintypes.HWND,
+        ctypes.c_int,
+        wintypes.UINT,
+        wintypes.UINT,
+    ]
     user32.RegisterHotKey.restype = wintypes.BOOL
     registered: set[int] = set()
     failed: list[str] = []
@@ -153,8 +164,11 @@ def register_global_hotkeys(user32, hwnd, settings=None, *, strict=False) -> set
         except KeyError:
             continue
         if user32.RegisterHotKey(
-                hwnd, hotkey_id, _hotkey_modifier_mask(definition),
-                _hotkey_virtual_key(definition.key)):
+            hwnd,
+            hotkey_id,
+            _hotkey_modifier_mask(definition),
+            _hotkey_virtual_key(definition.key),
+        ):
             registered.add(hotkey_id)
         else:
             failed.append(action.value)
@@ -190,10 +204,12 @@ class WindowsHotkeyRegistration:
         self.registered: set[int] = set()
 
     def register(self, settings=None) -> set[int]:
-        selected = (_normalised_registration_settings(settings)
-                    if settings is not None else self.settings)
-        ids = register_global_hotkeys(
-            self.user32, self.hwnd, selected, strict=True)
+        selected = (
+            _normalised_registration_settings(settings)
+            if settings is not None
+            else self.settings
+        )
+        ids = register_global_hotkeys(self.user32, self.hwnd, selected, strict=True)
         self.settings = selected
         self.registered = set(ids)
         return set(ids)
@@ -232,13 +248,37 @@ def supports_push_to_talk() -> bool:
     return False
 
 
+def supports_qt_push_to_talk() -> bool:
+    """The Qt shell owns a scoped physical-key release timer on Windows."""
+    import sys
+
+    return sys.platform == "win32"
+
+
+def physical_key_down(user32, virtual_key: int) -> bool:
+    user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
+    user32.GetAsyncKeyState.restype = ctypes.c_short
+    return bool(user32.GetAsyncKeyState(virtual_key) & 0x8000)
+
+
+def hotkey_physical_keys(definition: HotkeyDefinition) -> tuple[int, ...]:
+    modifiers = {"alt": 0x12, "ctrl": 0x11, "shift": 0x10, "win": 0x5B}
+    return (
+        _hotkey_virtual_key(definition.key),
+        *(modifiers[key] for key in definition.modifiers),
+    )
+
+
 def register_escape_hotkey(user32, hwnd) -> bool:
     """Capture Escape without modifiers for the active recording session only."""
     user32.RegisterHotKey.argtypes = [
-        wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
+        wintypes.HWND,
+        ctypes.c_int,
+        wintypes.UINT,
+        wintypes.UINT,
+    ]
     user32.RegisterHotKey.restype = wintypes.BOOL
-    return bool(user32.RegisterHotKey(
-        hwnd, ESCAPE_HOTKEY_ID, MOD_NOREPEAT, VK_ESCAPE))
+    return bool(user32.RegisterHotKey(hwnd, ESCAPE_HOTKEY_ID, MOD_NOREPEAT, VK_ESCAPE))
 
 
 def unregister_escape_hotkey(user32, hwnd) -> None:
@@ -260,7 +300,9 @@ def _focused_control_for_foreground(user32):
         return None
 
     user32.GetWindowThreadProcessId.argtypes = [
-        wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        wintypes.HWND,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
     user32.GetWindowThreadProcessId.restype = wintypes.DWORD
     thread_id = user32.GetWindowThreadProcessId(foreground, None)
     if not thread_id:
@@ -268,8 +310,7 @@ def _focused_control_for_foreground(user32):
 
     info = _GUIThreadInfo()
     info.cbSize = ctypes.sizeof(info)
-    user32.GetGUIThreadInfo.argtypes = [
-        wintypes.DWORD, ctypes.POINTER(_GUIThreadInfo)]
+    user32.GetGUIThreadInfo.argtypes = [wintypes.DWORD, ctypes.POINTER(_GUIThreadInfo)]
     user32.GetGUIThreadInfo.restype = wintypes.BOOL
     if not user32.GetGUIThreadInfo(thread_id, ctypes.byref(info)):
         return None
@@ -285,8 +326,7 @@ def _focused_control_for_foreground(user32):
 
 
 def _window_class_name(user32, hwnd) -> str | None:
-    user32.GetClassNameW.argtypes = [
-        wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
     user32.GetClassNameW.restype = ctypes.c_int
     buffer = ctypes.create_unicode_buffer(256)
     length = user32.GetClassNameW(hwnd, buffer, len(buffer))
@@ -297,14 +337,25 @@ def _send_message_timeout(user32, hwnd, message, wparam, lparam, timeout_ms):
     """Send a control query with the same bounded timeout as WM_PASTE."""
     result = ctypes.c_size_t()
     user32.SendMessageTimeoutW.argtypes = [
-        wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM,
-        wintypes.UINT, wintypes.UINT, ctypes.POINTER(ctypes.c_size_t)]
+        wintypes.HWND,
+        wintypes.UINT,
+        wintypes.WPARAM,
+        wintypes.LPARAM,
+        wintypes.UINT,
+        wintypes.UINT,
+        ctypes.POINTER(ctypes.c_size_t),
+    ]
     user32.SendMessageTimeoutW.restype = wintypes.BOOL
     try:
         delivered = user32.SendMessageTimeoutW(
-            hwnd, message, wparam, lparam,
-            SMTO_BLOCK | SMTO_ABORTIFHUNG, int(timeout_ms),
-            ctypes.byref(result))
+            hwnd,
+            message,
+            wparam,
+            lparam,
+            SMTO_BLOCK | SMTO_ABORTIFHUNG,
+            int(timeout_ms),
+            ctypes.byref(result),
+        )
     except (AttributeError, OSError, TypeError):
         return None
     return result.value if delivered else None
@@ -313,7 +364,8 @@ def _send_message_timeout(user32, hwnd, message, wparam, lparam, timeout_ms):
 def _control_state(user32, hwnd, timeout_ms):
     """Read plain text and selection bounds from a standard text control."""
     length_result = _send_message_timeout(
-        user32, hwnd, WM_GETTEXTLENGTH, 0, 0, timeout_ms)
+        user32, hwnd, WM_GETTEXTLENGTH, 0, 0, timeout_ms
+    )
     if length_result is None:
         return None
     length = int(length_result)
@@ -321,16 +373,21 @@ def _control_state(user32, hwnd, timeout_ms):
         return None
     buffer = ctypes.create_unicode_buffer(length + 1)
     copied = _send_message_timeout(
-        user32, hwnd, WM_GETTEXT, length + 1,
-        ctypes.addressof(buffer), timeout_ms)
+        user32, hwnd, WM_GETTEXT, length + 1, ctypes.addressof(buffer), timeout_ms
+    )
     if copied is None or copied < 0:
         return None
 
     start = ctypes.c_int()
     end = ctypes.c_int()
     selection_result = _send_message_timeout(
-        user32, hwnd, EM_GETSEL,
-        ctypes.addressof(start), ctypes.addressof(end), timeout_ms)
+        user32,
+        hwnd,
+        EM_GETSEL,
+        ctypes.addressof(start),
+        ctypes.addressof(end),
+        timeout_ms,
+    )
     if selection_result is None:
         return None
     if start.value < 0 or end.value < start.value or end.value > length:
@@ -362,8 +419,9 @@ def _paste_result_matches(before, after, expected_text: str) -> bool:
     return False
 
 
-def paste_focused_control(expected_text: str | None = None,
-        timeout_ms: int = 250, *, user32=None) -> bool | None:
+def paste_focused_control(
+    expected_text: str | None = None, timeout_ms: int = 250, *, user32=None
+) -> bool | None:
     """Paste synchronously into a compatible focused control when possible.
 
     ``SendMessageTimeoutW`` only proves that a standard text control returned
@@ -377,14 +435,18 @@ def paste_focused_control(expected_text: str | None = None,
     try:
         focused = _focused_control_for_foreground(user32)
         class_name = _window_class_name(user32, focused) if focused else None
-        if (expected_text is not None and focused is not None
-                and class_name in _CONFIRMABLE_PASTE_CLASSES):
+        if (
+            expected_text is not None
+            and focused is not None
+            and class_name in _CONFIRMABLE_PASTE_CLASSES
+        ):
             before = _control_state(user32, focused, timeout_ms)
             if before is None:
                 return send_ctrl_key("v")
             try:
                 delivered = _send_message_timeout(
-                    user32, focused, WM_PASTE, 0, 0, timeout_ms)
+                    user32, focused, WM_PASTE, 0, 0, timeout_ms
+                )
             except (AttributeError, OSError, TypeError):
                 # The message may have crossed the process boundary before
                 # the API reported an error; never inject a second paste.

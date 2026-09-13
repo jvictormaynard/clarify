@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock
 
-from spikes.pyside6.qml_clipboard import QmlClipboardGateway
+from clarify.desktop.qml_clipboard import QmlClipboardGateway
 from voice_translation import VoiceTranslationPublication
 from windows_clipboard import CF_UNICODETEXT, ClipboardFormat, ClipboardSnapshot
 from workflows import SelectionDisposition, SelectionTarget

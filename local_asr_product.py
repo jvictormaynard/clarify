@@ -101,6 +101,11 @@ class LocalASRProductController:
             state = self._state
         listener(state)
 
+    def unsubscribe(self, listener: StateListener) -> None:
+        with self._lock:
+            if listener in self._listeners:
+                self._listeners.remove(listener)
+
     def _publish(self, state: LocalASRProductState) -> None:
         with self._lock:
             self._state = state
@@ -140,8 +145,7 @@ class LocalASRProductController:
                         self._worker = None
             self._publish(state)
 
-        worker = threading.Thread(
-            target=run, name="ClarifyLocalASRStatus", daemon=True)
+        worker = threading.Thread(target=run, name="ClarifyLocalASRStatus", daemon=True)
         with self._lock:
             if self._worker is not None and self._worker.is_alive():
                 return False
@@ -157,12 +161,14 @@ class LocalASRProductController:
             self._cancel_event = cancel_event
             state = self._state
             requirements = state.requirements or self.installer.requirements()
-            self._publish(LocalASRProductState(
-                status=operation,
-                stage="preparing",
-                detail=("Preparing the verified local-ASR asset operation"),
-                requirements=dict(requirements),
-            ))
+            self._publish(
+                LocalASRProductState(
+                    status=operation,
+                    stage="preparing",
+                    detail=("Preparing the verified local-ASR asset operation"),
+                    requirements=dict(requirements),
+                )
+            )
             return cancel_event
 
     def _unsupported_platform_detail(self) -> str:
@@ -190,42 +196,51 @@ class LocalASRProductController:
                 raise LocalASRError("A local-ASR asset operation is already running")
         unsupported = self._unsupported_platform_detail()
         if unsupported:
-            self._publish(LocalASRProductState(
-                status="error",
-                detail=unsupported,
-                requirements=dict(self._state.requirements or
-                                  self.installer.requirements()),
-            ))
+            self._publish(
+                LocalASRProductState(
+                    status="error",
+                    detail=unsupported,
+                    requirements=dict(
+                        self._state.requirements or self.installer.requirements()
+                    ),
+                )
+            )
             raise LocalASRError(unsupported)
         cancel_event = self._begin("installing")
 
         def progress(stage: str, current: int, total: int) -> None:
             with self._lock:
                 requirements = self._state.requirements
-            self._publish(LocalASRProductState(
-                status="installing",
-                stage=str(stage),
-                current=max(0, int(current)),
-                total=max(0, int(total)),
-                detail=self._progress_detail(stage, current, total),
-                requirements=requirements,
-            ))
+            self._publish(
+                LocalASRProductState(
+                    status="installing",
+                    stage=str(stage),
+                    current=max(0, int(current)),
+                    total=max(0, int(total)),
+                    detail=self._progress_detail(stage, current, total),
+                    requirements=requirements,
+                )
+            )
 
         def run() -> None:
             try:
                 status = self.installer.install(progress, cancel_event)
             except LocalASRCancelledError as error:
-                self._publish(LocalASRProductState(
-                    status="cancelled",
-                    detail=str(error),
-                    requirements=self.installer.requirements(),
-                ))
+                self._publish(
+                    LocalASRProductState(
+                        status="cancelled",
+                        detail=str(error),
+                        requirements=self.installer.requirements(),
+                    )
+                )
             except (LocalASRError, OSError) as error:
-                self._publish(LocalASRProductState(
-                    status="error",
-                    detail=self._actionable_error(error),
-                    requirements=self.installer.requirements(),
-                ))
+                self._publish(
+                    LocalASRProductState(
+                        status="error",
+                        detail=self._actionable_error(error),
+                        requirements=self.installer.requirements(),
+                    )
+                )
             else:
                 self._publish(self._state_from_status(status))
             finally:
@@ -234,7 +249,8 @@ class LocalASRProductController:
                     self._worker = None
 
         worker = threading.Thread(
-            target=run, name="ClarifyLocalASRInstall", daemon=True)
+            target=run, name="ClarifyLocalASRInstall", daemon=True
+        )
         with self._lock:
             self._worker = worker
         worker.start()
@@ -258,30 +274,35 @@ class LocalASRProductController:
                     raise LocalASRCancelledError("Local ASR removal was cancelled")
                 self.installer.remove(cancel_event=cancel_event)
             except LocalASRCancelledError as error:
-                self._publish(LocalASRProductState(
-                    status="cancelled",
-                    detail=str(error),
-                    requirements=self.installer.requirements(),
-                ))
+                self._publish(
+                    LocalASRProductState(
+                        status="cancelled",
+                        detail=str(error),
+                        requirements=self.installer.requirements(),
+                    )
+                )
             except (LocalASRError, OSError) as error:
-                self._publish(LocalASRProductState(
-                    status="error",
-                    detail=self._actionable_error(error),
-                    requirements=self.installer.requirements(),
-                ))
+                self._publish(
+                    LocalASRProductState(
+                        status="error",
+                        detail=self._actionable_error(error),
+                        requirements=self.installer.requirements(),
+                    )
+                )
             else:
-                self._publish(LocalASRProductState(
-                    status="not_installed",
-                    detail="Local-ASR assets were removed.",
-                    requirements=self.installer.requirements(),
-                ))
+                self._publish(
+                    LocalASRProductState(
+                        status="not_installed",
+                        detail="Local-ASR assets were removed.",
+                        requirements=self.installer.requirements(),
+                    )
+                )
             finally:
                 with self._lock:
                     self._cancel_event = None
                     self._worker = None
 
-        worker = threading.Thread(
-            target=run, name="ClarifyLocalASRRemove", daemon=True)
+        worker = threading.Thread(target=run, name="ClarifyLocalASRRemove", daemon=True)
         with self._lock:
             self._worker = worker
         worker.start()
@@ -347,9 +368,11 @@ def format_requirements(requirements: dict | None) -> str:
     runtime = str(values.get("runtime", "")).strip()
     if runtime:
         lines.append(f"Runtime: {runtime}")
-    lines.extend((
-        f"Memory: {format_requirement_bytes(values.get('memory_bytes', 0))} RAM",
-        f"Disk: {format_requirement_bytes(values.get('disk_bytes', 0))} free disk",
-        f"Download: {format_requirement_bytes(values.get('download_bytes', 0))} download",
-    ))
+    lines.extend(
+        (
+            f"Memory: {format_requirement_bytes(values.get('memory_bytes', 0))} RAM",
+            f"Disk: {format_requirement_bytes(values.get('disk_bytes', 0))} free disk",
+            f"Download: {format_requirement_bytes(values.get('download_bytes', 0))} download",
+        )
+    )
     return "\n".join(lines)

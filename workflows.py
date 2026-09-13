@@ -148,6 +148,9 @@ class StartDictation:
     mode: str
     language: str
 
+    def __post_init__(self):
+        object.__setattr__(self, "mode", "prompt")
+
 
 @dataclass(frozen=True)
 class StopDictation:
@@ -673,7 +676,9 @@ class WorkflowService:
             session.recording.start()
             prepare = getattr(self._provider, "prepare_dictation", None)
             if callable(prepare) and self._is_current(session.operation_id):
-                self._run_recording(session.recording, lambda: prepare(session.recording))
+                self._run_recording(
+                    session.recording, lambda: prepare(session.recording)
+                )
         except Exception as error:
             should_fail = False
             with self._lock:
@@ -769,12 +774,27 @@ class WorkflowService:
                     return
                 audio_source = session.recording.stop()
             provider_started = self._clock.monotonic()
-            session.timings_ms["capture_finalize_ms"] = max(0.0, provider_started - (session.processing_started if session.processing_started is not None else provider_started)) * 1000
+            session.timings_ms["capture_finalize_ms"] = (
+                max(
+                    0.0,
+                    provider_started
+                    - (
+                        session.processing_started
+                        if session.processing_started is not None
+                        else provider_started
+                    ),
+                )
+                * 1000
+            )
             provider_result = self._provider.transcribe(
                 audio_source, session.mode, session.language
             )
-            session.timings_ms.update(safe_timings(getattr(provider_result, "timings_ms", {})))
-            session.timings_ms["provider_ms"] = (self._clock.monotonic() - provider_started) * 1000
+            session.timings_ms.update(
+                safe_timings(getattr(provider_result, "timings_ms", {}))
+            )
+            session.timings_ms["provider_ms"] = (
+                self._clock.monotonic() - provider_started
+            ) * 1000
             result = provider_result.text
             if not self._is_current(session.operation_id):
                 return
@@ -793,6 +813,9 @@ class WorkflowService:
                 session,
                 WorkflowPhase.COMPLETED,
                 result_text=result,
+                status_key=(
+                    "refinement_failed" if provider_result.refinement_failed else None
+                ),
                 source_text=(
                     getattr(provider_result, "raw_text", None)
                     if getattr(provider_result, "raw_text", None) is not None
@@ -893,7 +916,9 @@ class WorkflowService:
                 finished = self._clock.monotonic()
                 session.timings_ms["delivery_ms"] = (finished - delivery_started) * 1000
                 if delivered and session.processing_started is not None:
-                    session.timings_ms["stop_to_delivery_ms"] = (finished - session.processing_started) * 1000
+                    session.timings_ms["stop_to_delivery_ms"] = (
+                        finished - session.processing_started
+                    ) * 1000
                 usage_context["latency_ms"] = safe_timings(session.timings_ms)
                 try:
                     self._statistics.record_dictation(
@@ -947,7 +972,8 @@ class WorkflowService:
         try:
             recording.wait_until_started()
             if self._is_current(session.operation_id):
-                audio_source = recording.stop()
+                stop_capture = getattr(recording, "stop_for_cancel", recording.stop)
+                audio_source = stop_capture()
                 # Delete the temporary WAV and release the microphone now.
                 recording.complete()
         except Exception:
@@ -955,28 +981,38 @@ class WorkflowService:
             audio_source = None
             recording.cancel()
         finally:
-            with self._lock:
-                session.cancel_capture_pending = False
-                if not self._is_current_locked(session.operation_id):
-                    return
-                if not session.finish_requested:
-                    session.retry_audio = audio_source
-                    if (
-                        audio_source is not None
-                        and audio_source.duration_seconds is not None
-                    ):
-                        session.elapsed_seconds = audio_source.duration_seconds
-                    self._transition(
-                        session,
-                        WorkflowPhase.CANCELLED,
-                        can_undo=audio_source is not None,
-                    )
-                    return
-                # Dismiss/new shortcut arrived while capture was still stopping.
-                session.retry_audio = None
-                self._session = None
-                self._state = WorkflowState()
-            self._scheduler.call_soon(lambda: self._deliver_ready())
+            # READY must not race the worker's final detach: the audio gateway
+            # rejects new capture until that ownership barrier is released.
+            released = getattr(recording, "when_shutdown_complete", None)
+
+            def callback():
+                self._finish_cancel_capture(session, audio_source)
+
+            if callable(released):
+                released(callback)
+            else:
+                callback()
+
+    def _finish_cancel_capture(self, session, audio_source) -> None:
+        with self._lock:
+            session.cancel_capture_pending = False
+            if not self._is_current_locked(session.operation_id):
+                return
+            if not session.finish_requested:
+                session.retry_audio = audio_source
+                if (
+                    audio_source is not None
+                    and audio_source.duration_seconds is not None
+                ):
+                    session.elapsed_seconds = audio_source.duration_seconds
+                self._transition(
+                    session, WorkflowPhase.CANCELLED, can_undo=audio_source is not None
+                )
+                return
+            session.retry_audio = None
+            self._session = None
+            self._state = WorkflowState()
+        self._scheduler.call_soon(lambda: self._deliver_ready())
 
     def _dismiss_microphone_unavailable(self) -> bool:
         with self._lock:

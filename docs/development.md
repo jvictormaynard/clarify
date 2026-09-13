@@ -5,11 +5,12 @@
 - Python 3.11 or newer
 - Windows 10 or 11 for full product behavior
 - A microphone for end-to-end recording checks
-- An API key for live provider checks
+- An API key only for live cloud-provider checks
 - Git, if cloning instead of downloading a source archive
 
-Node.js is not an application dependency. `package.json` only provides optional
-short aliases for maintainers working from WSL.
+Settings development requires Node.js 22, Rust MSVC, Visual Studio C++ Build
+Tools, and the Windows SDK. WebView2 is required to run the native Settings
+window. End users do not need Node.js, Rust, or Python.
 
 ## Windows setup
 
@@ -17,7 +18,9 @@ short aliases for maintainers working from WSL.
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
 .\scripts\setup.ps1 -Dev
-.\.venv\Scripts\python.exe spikes\pyside6\qml_app.py
+.\scripts\build-settings.ps1
+$env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
+.\.venv\Scripts\python.exe clarify\desktop\qml_app.py
 ```
 
 The setup script creates `.venv` and installs runtime dependencies. `-Dev` also
@@ -44,7 +47,9 @@ The `requirements-lock-windows.txt` file includes the development and packaging
 toolchain used to build and validate the executable. The separate
 `requirements-lock-runtime-windows.txt` file is compiled only from
 `requirements.txt`; it contains the runtime dependency graph and is the sole
-input to the release SBOM. Keeping these locks separate prevents Ruff, mypy,
+input to the Python portion of the release SBOM. The Settings build generates
+its npm and Cargo inventory separately, then release workflows merge both;
+see [Release readiness](release-readiness.md). Keeping these locks separate prevents Ruff, mypy,
 pip-audit, pip-tools, CycloneDX, and PyInstaller from being reported as shipped
 application components while retaining pinned, reproducible build inputs.
 Development locks are compiled with `--allow-unsafe`, so their exact
@@ -54,6 +59,11 @@ compatible with pip-tools and includes fixes for the audited pip advisories.
 The runtime-only lock intentionally excludes those bootstrap tools.
 The release checks that every shared runtime package has the same version in
 both Windows locks before building or generating the SBOM.
+
+Runtime Qt uses `PySide6-Essentials`, not the full `PySide6`/Addons distribution.
+Use a clean build environment after removing dependencies: `pip install` does
+not remove packages left from an older lock. The portable archive check rejects
+unused Qt modules that can otherwise be collected from that environment.
 
 Environment variables are optional because provider settings can be entered in
 the UI. For local automation, copy `.env.example` to `.env` and fill only the
@@ -66,20 +76,41 @@ those platforms remain experimental; the file is written with owner-only
 permissions where supported. Tests inject an in-memory store or use temporary
 directories and never access the developer's credential store.
 
+## Settings development
+
+See [CONTRIBUTING](../CONTRIBUTING.md#required-checks) for the exact npm,
+Playwright, and Cargo checks. `npm run build` in `desktop/` runs TypeScript
+validation before Vite. `npm ci` and `cargo build --locked` use the committed
+dependency locks. `npm run dev` starts Vite; controller access still requires
+the Python process or the isolated test fixture.
+`desktop/rust-toolchain.toml` pins the native compiler to the validated Rust
+1.94.0 release. Rustup installs it when needed. Run Cargo from `desktop/` so this
+pin applies; the Windows staging script copies the same toolchain file.
+
+`tests/web_settings_fixture.py` uses the real Settings controller with temporary
+repositories and fake devices. Browser tests cover save/discard, navigation,
+layout, model selection, and dictionary editing. The optional
+`desktop/scripts/native-chrome-smoke.mjs` tests the native Windows window. Set
+`CLARIFY_TEST_PYTHON`, `CLARIFY_TEST_FIXTURE`, and `CLARIFY_SETTINGS_EXECUTABLE`
+to absolute paths. Do not use personal data for tests.
+
+Without the child executable or the source override, Python can open the legacy
+QML Settings fallback. This is not evidence that the new Settings were built.
+
 ## Checks
 
 Run the same core checks used in CI:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe -m compileall -q spikes\pyside6\qml_app.py spikes\pyside6\qml_bridge.py spikes\pyside6\qml_runtime.py spikes\pyside6\qml_settings.py spikes\pyside6\qml_audio_batch.py spikes\pyside6\qml_clipboard.py spikes\pyside6\qml_voice_translation.py spikes\pyside6\qt_shell.py workflows.py repositories.py workflow_config.py workflow_settings.py voice_translation.py voice_translation_runtime.py dictionary_snippets.py dictionary_settings.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests
+.\.venv\Scripts\python.exe -m compileall -q clarify\desktop\qml_app.py clarify\desktop\qml_bridge.py clarify\desktop\qml_runtime.py clarify\desktop\qml_settings.py clarify\desktop\qml_audio_batch.py clarify\desktop\qml_clipboard.py clarify\desktop\qml_voice_translation.py clarify\desktop\qt_shell.py workflows.py repositories.py workflow_config.py workflow_settings.py voice_translation.py voice_translation_runtime.py dictionary_snippets.py dictionary_settings.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests
 ```
 
 From Linux or WSL with the dependencies installed:
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 -m compileall -q spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py spikes/pyside6/qml_runtime.py spikes/pyside6/qml_settings.py spikes/pyside6/qml_audio_batch.py spikes/pyside6/qml_clipboard.py spikes/pyside6/qml_voice_translation.py spikes/pyside6/qt_shell.py workflows.py repositories.py workflow_config.py workflow_settings.py voice_translation.py voice_translation_runtime.py dictionary_snippets.py dictionary_settings.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests
+python3 -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py workflows.py repositories.py workflow_config.py workflow_settings.py voice_translation.py voice_translation_runtime.py dictionary_snippets.py dictionary_settings.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests
 ```
 
 Repository-specific tests live in `tests/test_repositories.py` and
@@ -209,7 +240,14 @@ or:
 .\scripts\build.ps1
 ```
 
-The portable executable is written to `dist\Clarify.exe`. Local `.env`
+The build first compiles `dist\clarify-settings.exe`, then embeds it into
+`dist\Clarify.exe`. To reuse a Settings build from the same source revision,
+pass `-SettingsExecutable` to `scripts/build.ps1`. The build checks the SHA-256
+of the embedded child against that input; a missing or different payload fails.
+The Settings input directory must also contain `Clarify-settings.sbom.json` and
+`Clarify-settings-NOTICES.txt`, generated by `scripts/settings_inventory.py`.
+Packaging verifies both embedded files and the child hash recorded in the SBOM.
+Local `.env`
 files are deliberately excluded from every build.
 
 ## Windows acceptance checklist
@@ -243,10 +281,10 @@ restored. Confirm this manually from a packaged build by reserving one test
 combination in another application, attempting Apply, and checking that the
 other three Clarify actions still use their previous bindings.
 
-Recording defaults to toggle mode. Push-to-talk remains unavailable in the
-packaged Windows layer until a key-release-capable input adapter is present;
-the settings API reports that capability instead of silently accepting a mode
-that would get stuck recording.
+Recording defaults to toggle mode. Windows also supports Hold: key down starts
+capture and key release finishes it. Check `Esc` while still holding the shortcut,
+release after cancellation, immediate restart, and release during microphone
+startup. The pill microphone remains a click-to-toggle control in either mode.
 
 ## Maintainer deploy from WSL
 
@@ -258,6 +296,19 @@ This invokes `scripts/deploy.ps1` with Windows PowerShell, stages source files o
 the native Windows temporary directory, builds, backs up the installed
 executable, replaces it, and restarts Clarify. Override the discovered
 target with `CLARIFY_INSTALL_PATH` when needed.
+The script also builds Settings unless `-SettingsExecutable` is supplied.
+Use `-BuildOnly` to validate a complete portable package without stopping,
+replacing, or launching the installed app.
+It refuses to replace an app with an active SoX recording and launches through
+Explorer so the app does not inherit an MSIX development host's virtual profile.
+Check configuration and model discovery after launch, not just the process ID.
+
+For a WSL checkout, run Windows Node/Playwright checks from the native staging
+directory created by `build-settings.ps1`, not directly from a UNC path. Keep
+`CLARIFY_TEST_FIXTURE` pointed at the repository fixture and use the Windows
+Python interpreter. Do not share a Linux `node_modules` install with Windows.
+If mypy reports a locked SQLite cache over UNC, use `--cache-dir` with a fresh
+directory under the Windows temporary directory; do not change the type rules.
 
 ## Automatic Python formatting before commits
 
@@ -278,6 +329,10 @@ The CI quality gate runs staged Ruff linting, a focused Ruff format check, mypy 
 typed `desktop_state.py` and `windows_hotkeys.py` modules, the full dependency
 audit, the unit-test baseline, and Python compile checks on Ubuntu and Windows.
 The Windows packaging job is required before CI is green.
+It also runs the shared `.github/actions/settings-build` action: npm lock
+installation, production npm audit, TypeScript/Vite build, isolated Playwright
+tests, and a locked Rust build. Both release workflows use the same action.
+Browser success does not certify WebView2 or native window behavior.
 
 `scripts/dependency_audit.py` audits the locked set with `pip-audit`. The
 reviewed-exception policy lives in `dependency-audit.json`; it is intentionally
@@ -291,6 +346,9 @@ the SHA-256 of every `sox.exe`/DLL selected by
 `scripts/sox-runtime-manifest.json`; the source-archive SHA-256 remains source
 offer evidence only. The same manifest drives `scripts/build.ps1` before GitHub
 artifact attestations are created for the release files.
+The release workflow merges the Settings SBOM into that inventory and includes
+`Clarify-settings-NOTICES.txt` in the ZIP. Settings license supplements are
+version-specific, source-linked, and hash-verified in `desktop/licenses/`.
 Each selected DLL is represented as its own CycloneDX library component with a
 bundle-scoped version, SPDX license, SHA-256, and a dependency edge from the
 SoX aggregate component. This avoids attributing the source archive digest to
@@ -312,7 +370,7 @@ Windows path and include platform-specific validation.
 ## Qt Quick frontend
 
 The production frontend is the PySide6/Qt Quick implementation under
-`spikes/pyside6/`. The directory name is retained for repository history, but
+`clarify/desktop/`. Imports, launch scripts and packaging use this path;
 `qml_app.py`, `qml_runtime.py`, `qml_bridge.py`, and the QML assets are the
 runtime used by `start.bat`, PyInstaller, CI, and releases. The old widget
 comparison scripts remain only as historical measurement tooling and are not
@@ -353,7 +411,7 @@ not install it. The build requires a .NET SDK because
 
 5. Open and merge a focused release-preparation PR after local, Ubuntu,
    Windows, and packaging checks pass.
-6. Create an annotated `vX.Y.Z` tag on the exact green `master` commit and push
+6. Create an annotated `vX.Y.Z` tag on the exact green `main` commit and push
    only that tag.
 7. A community tag release builds the unsigned portable EXE, runtime-lock
    CycloneDX SBOM, checksum, ZIP, SoX source archive, and provenance

@@ -55,7 +55,8 @@ class _RejectingTray:
         self.calls.append(settings)
         if settings == self.rejected:
             raise HotkeyRegistrationError(
-                (HotkeyAction.RECORDING.value,), reason="already registered")
+                (HotkeyAction.RECORDING.value,), reason="already registered"
+            )
         self.active = settings
 
 
@@ -68,56 +69,63 @@ class HotkeySettingsControllerUiTests(unittest.TestCase):
             _KeyEvent(0x0004 | 0x0008, "F2"),
         )
 
-        self.assertEqual(selected.definition(HotkeyAction.RECORDING).display,
-                         "Ctrl+Alt+F2")
+        self.assertEqual(
+            selected.definition(HotkeyAction.RECORDING).display, "Ctrl+Alt+F2"
+        )
 
     def test_conflicting_capture_keeps_the_previous_draft(self):
         controller = HotkeySettingsController()
 
         with self.assertRaises(HotkeyConflictError):
-            controller.capture_event(
-                HotkeyAction.REWRITE, _KeyEvent(0x0008, "L"))
+            controller.capture_event(HotkeyAction.REWRITE, _KeyEvent(0x0008, "L"))
 
         self.assertEqual(
-            controller.settings.definition(HotkeyAction.REWRITE).display,
-            "Alt+K")
+            controller.settings.definition(HotkeyAction.REWRITE).display, "Alt+K"
+        )
 
     def test_replace_restores_a_settings_baseline_for_undo(self):
         controller = HotkeySettingsController()
         baseline = HotkeySettings.defaults().with_hotkey(
-            HotkeyAction.RECORDING, "Ctrl+L")
+            HotkeyAction.RECORDING, "Ctrl+L"
+        )
 
         controller.capture(HotkeyAction.RECORDING, "Ctrl+Shift+L")
         controller.replace(baseline)
 
         self.assertEqual(
-            controller.settings.definition(HotkeyAction.RECORDING).display,
-            "Ctrl+L")
+            controller.settings.definition(HotkeyAction.RECORDING).display, "Ctrl+L"
+        )
 
 
 class HotkeySettingsIntegrationTests(unittest.TestCase):
     def test_settings_source_wires_capture_reset_mode_and_atomic_apply(self):
         source = inspect.getsource(app.App._open_settings)
+        source = source.replace(
+            "self.apply_hotkey_settings(\n                        hotkey_settings_controller.settings\n                    )",
+            "self.apply_hotkey_settings(hotkey_settings_controller.settings)",
+        )
 
         for expected in (
-                "HotkeySettingsController(",
-                "capture_event(action, event)",
-                "reset_hotkey(action)",
-                "hotkey_mode_menu",
-                "_apply_settings_with_hotkeys_transaction(",
-                "restore_after_failed_apply",
-                "restore_hotkeys_after_failed_apply",
-                "_recording_hotkey_hint",
-                "HotkeyAction.VOICE_TRANSLATION:",
-                "hotkey_voice_translation",
-                "_hotkey_definition_for_settings",
-                "self.apply_hotkey_settings(hotkey_settings_controller.settings)"):
+            "HotkeySettingsController(",
+            "capture_event(action, event)",
+            "reset_hotkey(action)",
+            "hotkey_mode_menu",
+            "_apply_settings_with_hotkeys_transaction(",
+            "restore_after_failed_apply",
+            "restore_hotkeys_after_failed_apply",
+            "_recording_hotkey_hint",
+            "HotkeyAction.VOICE_TRANSLATION:",
+            "hotkey_voice_translation",
+            "_hotkey_definition_for_settings",
+            "self.apply_hotkey_settings(hotkey_settings_controller.settings)",
+        ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, source)
         self.assertLess(
             source.index("_apply_settings_transaction("),
             source.index(
-                "self.apply_hotkey_settings(hotkey_settings_controller.settings)"),
+                "self.apply_hotkey_settings(hotkey_settings_controller.settings)"
+            ),
         )
 
     def test_legacy_profiles_show_voice_binding_without_registering_it(self):
@@ -126,16 +134,20 @@ class HotkeySettingsIntegrationTests(unittest.TestCase):
         self.assertNotIn(HotkeyAction.VOICE_TRANSLATION, legacy.hotkeys)
         self.assertEqual(
             app._hotkey_definition_for_settings(
-                legacy, HotkeyAction.VOICE_TRANSLATION).display,
+                legacy, HotkeyAction.VOICE_TRANSLATION
+            ).display,
             "Alt+V",
         )
         for language in ("en", "pt", "es", "de", "ru"):
             with self.subTest(language=language):
-                self.assertTrue(
-                    app.STRINGS[language]["hotkey_voice_translation"])
+                self.assertTrue(app.STRINGS[language]["hotkey_voice_translation"])
 
     def test_apply_keeps_recording_controls_for_draft_commit(self):
         source = inspect.getsource(app.App._open_settings)
+        source = source.replace(
+            "self.apply_hotkey_settings(\n                        hotkey_settings_controller.settings\n                    )",
+            "self.apply_hotkey_settings(hotkey_settings_controller.settings)",
+        )
         apply_source = source.split("def apply_settings():", 1)[1]
 
         self.assertIn("controls = None", apply_source)
@@ -163,7 +175,8 @@ class HotkeySettingsIntegrationTests(unittest.TestCase):
             }
 
         app._commit_settings_draft(
-            saved_settings, microphone_state, "applied", current_settings)
+            saved_settings, microphone_state, "applied", current_settings
+        )
 
         self.assertEqual(microphone_state["controls"], "applied")
         self.assertEqual(saved_settings, current_settings())
@@ -175,10 +188,13 @@ class HotkeySettingsIntegrationTests(unittest.TestCase):
         tray = _Tray()
         config = {"hotkeys": previous.to_mapping()}
 
-        with patch.object(app, "APP_CONFIG", config), \
-                patch.object(app, "_save_app_config") as save:
+        with (
+            patch.object(app, "APP_CONFIG", config),
+            patch.object(app, "_save_app_config") as save,
+        ):
             result = app._apply_hotkey_settings_transaction(
-                selected, repositories=None, tray_icon=tray)
+                selected, repositories=None, tray_icon=tray
+            )
 
         self.assertEqual(result, selected)
         self.assertEqual(config["hotkeys"], selected.to_mapping())
@@ -191,11 +207,14 @@ class HotkeySettingsIntegrationTests(unittest.TestCase):
         tray = _Tray()
         config = {"hotkeys": previous.to_mapping()}
 
-        with patch.object(app, "APP_CONFIG", config), \
-                patch.object(app, "_save_app_config", side_effect=OSError("disk")):
+        with (
+            patch.object(app, "APP_CONFIG", config),
+            patch.object(app, "_save_app_config", side_effect=OSError("disk")),
+        ):
             with self.assertRaises(OSError):
                 app._apply_hotkey_settings_transaction(
-                    selected, repositories=None, tray_icon=tray)
+                    selected, repositories=None, tray_icon=tray
+                )
 
         self.assertEqual(config["hotkeys"], previous.to_mapping())
         self.assertEqual(tray.applied, [selected, previous])
@@ -236,31 +255,38 @@ class HotkeySettingsIntegrationTests(unittest.TestCase):
             app._save_app_config()
 
         def apply_hotkeys():
-            return app._apply_hotkey_settings_transaction(
-                selected, tray_icon=tray)
+            return app._apply_hotkey_settings_transaction(selected, tray_icon=tray)
 
         def restore_ui():
             ui_state["transcription_provider"] = saved_settings[
-                "transcription_provider"]
+                "transcription_provider"
+            ]
             ui_state["history_enabled"] = saved_settings["history_enabled"]
             ui_state["workflows"] = deepcopy(saved_settings["workflows"])
 
-        with patch.object(app, "APP_CONFIG", config), \
-                patch.object(app, "_save_app_config", side_effect=save_config):
+        with (
+            patch.object(app, "APP_CONFIG", config),
+            patch.object(app, "_save_app_config", side_effect=save_config),
+        ):
             with self.assertRaises(HotkeyRegistrationError):
                 app._apply_settings_with_hotkeys_transaction(
-                    apply_general, apply_hotkeys,
+                    apply_general,
+                    apply_hotkeys,
                     restore_hotkeys=lambda: tray.reconfigure_hotkeys(previous),
-                    on_rollback=restore_ui)
+                    on_rollback=restore_ui,
+                )
 
         self.assertEqual(config, baseline)
         self.assertEqual(persisted[-1], baseline)
         self.assertEqual(saved_settings, baseline)
-        self.assertEqual(ui_state, {
-            "transcription_provider": "gemini",
-            "history_enabled": False,
-            "workflows": {"transcription": {"prompt": "original"}},
-        })
+        self.assertEqual(
+            ui_state,
+            {
+                "transcription_provider": "gemini",
+                "history_enabled": False,
+                "workflows": {"transcription": {"prompt": "original"}},
+            },
+        )
         self.assertEqual(tray.active, previous)
         self.assertEqual(tray.calls, [selected, previous, previous])
 
@@ -280,12 +306,16 @@ class HotkeySettingsIntegrationTests(unittest.TestCase):
             config["transcription_provider"] = "openai"
             app._save_app_config()
 
-        with patch.object(app, "APP_CONFIG", config), \
-                patch.object(app, "_save_app_config", side_effect=save_config):
+        with (
+            patch.object(app, "APP_CONFIG", config),
+            patch.object(app, "_save_app_config", side_effect=save_config),
+        ):
             result = app._apply_settings_with_hotkeys_transaction(
                 apply_general,
                 lambda: app._apply_hotkey_settings_transaction(
-                    selected, tray_icon=tray))
+                    selected, tray_icon=tray
+                ),
+            )
 
         self.assertEqual(result, selected)
         self.assertEqual(config["transcription_provider"], "openai")
@@ -308,20 +338,24 @@ class HotkeySettingsIntegrationTests(unittest.TestCase):
         def save_config(_repositories=None):
             persisted.append(deepcopy(config))
 
-        with patch.object(app, "APP_CONFIG", config), \
-                patch.object(
-                    app, "_restore_autostart_registry_state",
-                    side_effect=OSError("registry unavailable")), \
-                patch.object(app, "_save_app_config", side_effect=save_config):
-            app._restore_settings_apply_state(
-                previous, (False, None, None))
+        with (
+            patch.object(app, "APP_CONFIG", config),
+            patch.object(
+                app,
+                "_restore_autostart_registry_state",
+                side_effect=OSError("registry unavailable"),
+            ),
+            patch.object(app, "_save_app_config", side_effect=save_config),
+        ):
+            app._restore_settings_apply_state(previous, (False, None, None))
 
         self.assertEqual(config, previous)
         self.assertEqual(persisted, [previous])
 
     def test_recording_hint_uses_effective_binding_in_every_locale(self):
         selected = HotkeySettings.defaults().with_hotkey(
-            HotkeyAction.RECORDING, "Ctrl+L")
+            HotkeyAction.RECORDING, "Ctrl+L"
+        )
         harness = object.__new__(app.App)
         expected_stop = {
             "en": "Ctrl+L stop",
@@ -331,20 +365,20 @@ class HotkeySettingsIntegrationTests(unittest.TestCase):
             "ru": "Ctrl+L — остановить",
         }
 
-        with patch.object(app, "APP_CONFIG", {
-                "hotkeys": selected.to_mapping()}):
+        with patch.object(app, "APP_CONFIG", {"hotkeys": selected.to_mapping()}):
             for language, stop_hint in expected_stop.items():
                 with self.subTest(language=language):
                     harness.lang = language
-                    self.assertEqual(
-                        app.App._recording_hotkey_hint(harness), "Ctrl+L")
+                    self.assertEqual(app.App._recording_hotkey_hint(harness), "Ctrl+L")
                     self.assertEqual(
                         app.App._recording_hotkey_hint(harness, stopping=True),
-                        stop_hint)
+                        stop_hint,
+                    )
 
     def test_apply_rejects_push_to_talk_without_native_key_release(self):
         selected = HotkeySettings.defaults().with_activation_mode(
-            ActivationMode.PUSH_TO_TALK, push_to_talk_supported=True)
+            ActivationMode.PUSH_TO_TALK, push_to_talk_supported=True
+        )
 
         with patch.object(app, "supports_push_to_talk", return_value=False):
             with self.assertRaises(HotkeyValidationError) as raised:
@@ -354,16 +388,18 @@ class HotkeySettingsIntegrationTests(unittest.TestCase):
 
     def test_keyboard_chord_format_preserves_modifier_order(self):
         selected = HotkeySettings.defaults().with_hotkey(
-            HotkeyAction.RECORDING, "Shift+Ctrl+F2")
+            HotkeyAction.RECORDING, "Shift+Ctrl+F2"
+        )
 
         self.assertEqual(
-            app._keyboard_hotkey_chord(
-                selected.definition(HotkeyAction.RECORDING)),
-            "ctrl+shift+f2")
+            app._keyboard_hotkey_chord(selected.definition(HotkeyAction.RECORDING)),
+            "ctrl+shift+f2",
+        )
 
     def test_non_windows_hooks_replace_the_four_runtime_bindings(self):
         selected = HotkeySettings.defaults().with_hotkey(
-            HotkeyAction.RECORDING, "Ctrl+L")
+            HotkeyAction.RECORDING, "Ctrl+L"
+        )
         hooks = _KeyboardHook()
         harness = object.__new__(app.App)
         harness._keyboard_hotkey_handles = {}
@@ -373,7 +409,8 @@ class HotkeySettingsIntegrationTests(unittest.TestCase):
 
         self.assertEqual(
             [chord for _handle, chord, _callback in hooks.added],
-            ["ctrl+l", "alt+k", "alt+t", "alt+r"])
+            ["ctrl+l", "alt+k", "alt+t", "alt+r"],
+        )
         self.assertEqual(hooks.removed, [])
 
         replacement = selected.with_hotkey(HotkeyAction.REWRITE, "Ctrl+K")

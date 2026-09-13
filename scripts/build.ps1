@@ -2,13 +2,23 @@
 param(
     [string]$OutputDirectory,
     [ValidatePattern('^[a-z0-9][a-z0-9.-]{0,63}$')]
-    [string]$PayloadIdentity
+    [string]$PayloadIdentity,
+    [string]$SettingsExecutable
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+if (-not $SettingsExecutable) {
+    $SettingsExecutable = Join-Path $repoRoot 'dist\clarify-settings.exe'
+    & (Join-Path $PSScriptRoot 'build-settings.ps1') -OutputPath $SettingsExecutable
+}
+if ($SettingsExecutable -and -not (Test-Path -LiteralPath $SettingsExecutable -PathType Leaf)) {
+    throw 'The requested settings executable does not exist.'
+}
+# PyInstaller resolves bundled inputs relative to its generated spec file.
+$SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repoRoot "dist"
 } elseif (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {
@@ -21,9 +31,9 @@ if (-not (Test-Path (Join-Path $repoRoot ".venv\Scripts\python.exe"))) {
 }
 
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
-$entryPoint = Join-Path $repoRoot "spikes\pyside6\qml_app.py"
-$qmlRoot = Join-Path $repoRoot "spikes\pyside6\qml"
-$qmlPythonRoot = Join-Path $repoRoot "spikes\pyside6"
+$entryPoint = Join-Path $repoRoot "clarify\desktop\qml_app.py"
+$qmlRoot = Join-Path $repoRoot "clarify\desktop\qml"
+$qmlPythonRoot = Join-Path $repoRoot "clarify\desktop"
 $versionSource = Join-Path $repoRoot "version.py"
 $repoExtra = Join-Path $repoRoot "extra"
 $assets = Join-Path $repoRoot "assets"
@@ -93,6 +103,7 @@ $pyInstallerArgs = @(
     "--distpath", $OutputDirectory,
     "--workpath", $workDir,
     "--specpath", $specDir,
+    "--additional-hooks-dir", (Join-Path $PSScriptRoot 'pyinstaller-hooks'),
     "--paths", $repoRoot,
     "--paths", $qmlPythonRoot,
     "--add-data", "${extra};extra",
@@ -127,6 +138,16 @@ if ($PayloadIdentity) {
     # gets a valid but byte-distinct historical payload without mutating source.
     $pyInstallerArgs += @("--add-data", "${payloadIdentityFile};.")
 }
+if ($SettingsExecutable) {
+    & $python (Join-Path $PSScriptRoot 'qt_distribution.py') --output-dir (Split-Path $SettingsExecutable)
+    if ($LASTEXITCODE -ne 0) { throw 'Qt source and notice verification failed.' }
+    $pyInstallerArgs += @('--add-binary', "${SettingsExecutable};.")
+    foreach ($noticeName in @('Clarify-settings.sbom.json', 'Clarify-settings-NOTICES.txt', 'Clarify-qt-NOTICES.txt')) {
+        $noticePath = Join-Path (Split-Path $SettingsExecutable) $noticeName
+        if (-not (Test-Path -LiteralPath $noticePath -PathType Leaf)) { throw "Missing Settings inventory: $noticeName" }
+        $pyInstallerArgs += @('--add-data', "${noticePath};.")
+    }
+}
 $pyInstallerArgs += $entryPoint
 
 Write-Host "Building portable Clarify executable..."
@@ -150,6 +171,9 @@ $executable = Join-Path $OutputDirectory "Clarify.exe"
 if (-not (Test-Path $executable)) {
     throw "PyInstaller completed without producing $executable."
 }
+
+& $python (Join-Path $PSScriptRoot 'check_settings_payload.py') $executable $SettingsExecutable
+if ($LASTEXITCODE -ne 0) { throw 'Packaged Settings payload verification failed.' }
 
 $smokeOutLog = Join-Path $workDir "smoke.stdout.log"
 $smokeErrLog = Join-Path $workDir "smoke.stderr.log"

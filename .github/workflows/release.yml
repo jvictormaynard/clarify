@@ -46,10 +46,10 @@ jobs:
       - name: Run Ruff lint
         run: >-
           ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py
-          spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py spikes/pyside6/qml_runtime.py
-          spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py spikes/pyside6/qml_audio_batch.py
-          spikes/pyside6/qml_clipboard.py spikes/pyside6/qml_voice_translation.py
-          spikes/pyside6/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
+          clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
+          clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
+          clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
+          clarify/desktop/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
           tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py
           tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py
           tests/test_pyside6_qt_shell.py
@@ -57,10 +57,10 @@ jobs:
       - name: Run Ruff format check
         run: >-
           ruff format --check scripts/dependency_audit.py tests/test_dependency_lock.py
-          tests/test_repository.py spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py
-          spikes/pyside6/qml_runtime.py spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py
-          spikes/pyside6/qml_audio_batch.py spikes/pyside6/qml_clipboard.py
-          spikes/pyside6/qml_voice_translation.py spikes/pyside6/qt_shell.py
+          tests/test_repository.py clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py
+          clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py
+          clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py
+          clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py
           tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py
           tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py
           tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py
@@ -76,27 +76,35 @@ jobs:
 
       - name: Compile Python sources
         run: >-
-          python -m compileall -q spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py
-          spikes/pyside6/qml_runtime.py spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py
-          spikes/pyside6/qml_audio_batch.py spikes/pyside6/qml_clipboard.py
-          spikes/pyside6/qml_voice_translation.py spikes/pyside6/qt_shell.py
+          python -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py
+          clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py
+          clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py
+          clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py
           desktop_state.py version.py windows_hotkeys.py audio_file_batch.py
           audio_file_batch_ui.py history_store.py workflow_settings.py tests scripts
 
       - name: Validate QML assets
         run: >-
-          python -c "from pathlib import Path; qml = Path('spikes/pyside6/qml');
+          python -c "from pathlib import Path; qml = Path('clarify/desktop/qml');
           assert qml.is_dir() and (qml / 'Main.qml').is_file() and any(qml.glob('*.qml'))"
+
+      - name: Validate and build Settings
+        uses: ./.github/actions/settings-build
+        with:
+          python: ${{ env.pythonLocation }}/python.exe
 
       - name: Build portable executable
         shell: pwsh
-        run: .\scripts\build.ps1
+        run: .\scripts\build.ps1 -SettingsExecutable dist\clarify-settings.exe
 
       - name: Generate runtime SBOM
         run: cyclonedx-py requirements requirements-lock-runtime-windows.txt --of JSON -o dist\Clarify.sbom.json
 
       - name: Add bundled SoX to SBOM
         run: python scripts/add_sbom_component.py --bom-file dist\Clarify.sbom.json --runtime-root extra\sox-14.4.2 --manifest scripts\sox-runtime-manifest.json
+
+      - name: Include Settings in the release SBOM
+        run: python scripts/settings_inventory.py --merge-bom dist/Clarify.sbom.json --settings-bom dist/Clarify-settings.sbom.json
 
       - name: Resolve and validate release version
         id: release
@@ -180,7 +188,7 @@ jobs:
           if ($soxHash -ne "b45f598643ffbd8e363ff24d61166ccec4836fea6d3888881b8df53e3bb55f6c") {
             throw "The downloaded SoX source archive did not match the expected SHA-256."
           }
-          Compress-Archive -Path dist\Clarify.exe, dist\Clarify.sbom.json, LICENSE, THIRD_PARTY_NOTICES.md -DestinationPath dist\Clarify-windows-x64.zip -Force
+          Compress-Archive -Path dist\Clarify.exe, dist\Clarify.sbom.json, LICENSE, THIRD_PARTY_NOTICES.md, dist\Clarify-settings-NOTICES.txt, dist\Clarify-qt-NOTICES.txt -DestinationPath dist\Clarify-windows-x64.zip -Force
           python .\scripts\create_release_manifest.py `
             --version "${{ steps.release.outputs.version }}" `
             --installer dist\Clarify-windows-x64.msi `
@@ -227,6 +235,7 @@ jobs:
             dist/Clarify-release-manifest.cab.sha256
             dist/Clarify-windows-x64.zip
             dist/sox-14.4.2-source.tar.gz
+            dist/Clarify-qt-sources.zip
           if-no-files-found: error
 
       - name: Attest release artifact provenance
@@ -242,6 +251,7 @@ jobs:
             dist/Clarify-release-manifest.cab.sha256
             dist/Clarify-windows-x64.zip
             dist/sox-14.4.2-source.tar.gz
+            dist/Clarify-qt-sources.zip
 
       - name: Publish tagged GitHub release
         if: startsWith(github.ref, 'refs/tags/')
@@ -259,6 +269,7 @@ jobs:
             dist\Clarify-release-manifest.cab.sha256 `
             dist\Clarify-windows-x64.zip `
             dist\sox-14.4.2-source.tar.gz `
+            dist\Clarify-qt-sources.zip `
             --verify-tag `
             --generate-notes `
             --title "Clarify ${{ github.ref_name }}"

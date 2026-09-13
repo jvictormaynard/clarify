@@ -1,7 +1,7 @@
 # Local audio-file import and bounded batch transcription
 
 `audio_file_batch.py` is the UI-independent service boundary used by the
-Qt/QML file-picker in `spikes/pyside6/qml_audio_batch.py`. It is intentionally a local-file workflow,
+Qt/QML file-picker in `clarify/desktop/qml_audio_batch.py`. It is intentionally a local-file workflow,
 not a download manager and not a second provider implementation.
 
 ## Desktop file-picker

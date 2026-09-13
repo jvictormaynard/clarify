@@ -13,9 +13,10 @@ from hotkey_config import HotkeyAction, HotkeySettings
 from windows_hotkeys import ESCAPE_HOTKEY_ID, HotkeyRegistrationError
 
 try:
-    from PySide6.QtCore import QCoreApplication, QEvent, QObject, Signal
+    from PySide6.QtCore import QEvent, QObject, Signal
+    from PySide6.QtWidgets import QApplication
     from PySide6.QtWidgets import QSystemTrayIcon
-    from spikes.pyside6.qt_shell import (
+    from clarify.desktop.qt_shell import (
         ACTIVATION_EVENT_NAME,
         QtShell,
         QtSingleInstanceGuard,
@@ -33,7 +34,7 @@ except (ImportError, ModuleNotFoundError):
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "spikes" / "pyside6" / "qt_shell.py"
+MODULE = ROOT / "clarify" / "desktop" / "qt_shell.py"
 
 
 class FakeLock:
@@ -670,7 +671,7 @@ class WindowsGlobalHotkeyBackendTests(unittest.TestCase):
 class QtShellTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.qt_app = QCoreApplication.instance() or QCoreApplication([])
+        cls.qt_app = QApplication.instance() or QApplication([])
 
     def setUp(self):
         FakeLock.locks.clear()

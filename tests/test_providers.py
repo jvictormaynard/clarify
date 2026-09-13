@@ -18,8 +18,13 @@ _TEST_APPDATA = tempfile.TemporaryDirectory(prefix="clarify-tests-")
 os.environ["APPDATA"] = _TEST_APPDATA.name
 os.environ["HOME"] = _TEST_APPDATA.name
 for _provider_variable in (
-        "API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY",
-        "REFINEMENT_PROVIDER", "REFINEMENT_MODEL"):
+    "API_KEY",
+    "GEMINI_API_KEY",
+    "OPENAI_API_KEY",
+    "GROQ_API_KEY",
+    "REFINEMENT_PROVIDER",
+    "REFINEMENT_MODEL",
+):
     os.environ.pop(_provider_variable, None)
 
 import app
@@ -87,7 +92,8 @@ class ProviderTests(unittest.TestCase):
     def test_app_first_run_defaults_include_voice_translation_hotkey(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = LocalConfigRepository(
-                Path(directory) / "config.json", defaults=app.DEFAULT_CONFIG)
+                Path(directory) / "config.json", defaults=app.DEFAULT_CONFIG
+            )
             settings = repository.load().hotkeys
 
         self.assertEqual(
@@ -98,8 +104,11 @@ class ProviderTests(unittest.TestCase):
     def test_typed_http_errors_are_localized_without_response_content(self):
         app.APP_CONFIG["ui_language"] = "pt"
         error = AuthenticationError(
-            provider="openai", operation="validation", status_code=401,
-            operation_id="abc123")
+            provider="openai",
+            operation="validation",
+            status_code=401,
+            operation_id="abc123",
+        )
 
         message = app._http_error("OpenAI", error)
 
@@ -110,20 +119,23 @@ class ProviderTests(unittest.TestCase):
 
     def test_unknown_provider_error_detail_does_not_echo_exception_content(self):
         detail = app._provider_error_detail(
-            RuntimeError("Bearer secret-token private transcript"))
+            RuntimeError("Bearer secret-token private transcript")
+        )
 
         self.assertEqual(detail, "Provider operation failed.")
 
     @patch("app.subprocess.Popen")
     def test_recorder_reports_when_no_active_microphone_exists(self, popen):
         fake_sounddevice = SimpleNamespace(
-            query_devices=Mock(return_value={"max_input_channels": 0}))
+            query_devices=Mock(return_value={"max_input_channels": 0})
+        )
 
-        with patch("app.sd", fake_sounddevice), \
-                patch.object(app.Recorder, "_stop_stale_windows_recorders"):
+        with (
+            patch("app.sd", fake_sounddevice),
+            patch.object(app.Recorder, "_stop_stale_windows_recorders"),
+        ):
             recorder = app.Recorder()
-        with patch("app.sd", fake_sounddevice), \
-                patch.object(recorder, "_safe_delete"):
+        with patch("app.sd", fake_sounddevice), patch.object(recorder, "_safe_delete"):
             with self.assertRaises(app.MicrophoneUnavailableError):
                 recorder.start()
 
@@ -133,7 +145,8 @@ class ProviderTests(unittest.TestCase):
     @patch("app.subprocess.Popen")
     @patch.object(app.Recorder, "_stop_stale_windows_recorders")
     def test_stale_recorder_cleanup_runs_before_recording_hot_path(
-            self, cleanup, popen, _sleep):
+        self, cleanup, popen, _sleep
+    ):
         stream = Mock()
         fake_sounddevice = SimpleNamespace(
             query_devices=Mock(return_value={"max_input_channels": 1}),
@@ -189,13 +202,17 @@ class ProviderTests(unittest.TestCase):
     def test_primary_instance_listens_for_later_launches(self, thread):
         api = self._single_instance_api()
         callback = Mock()
-        thread.return_value.start.side_effect = lambda: thread.call_args.kwargs["target"]()
+        thread.return_value.start.side_effect = lambda: thread.call_args.kwargs[
+            "target"
+        ]()
         guard = app.SingleInstanceGuard(api, 11, 22)
 
         guard.start_activation_listener(callback)
 
         callback.assert_called_once_with()
-        thread.assert_called_once_with(target=thread.call_args.kwargs["target"], daemon=True)
+        thread.assert_called_once_with(
+            target=thread.call_args.kwargs["target"], daemon=True
+        )
 
     def test_tray_menu_follows_interface_language(self):
         expected = {
@@ -227,14 +244,16 @@ class ProviderTests(unittest.TestCase):
 
     def test_tray_accepts_modern_and_legacy_shell_events(self):
         for event in (
-                app.WindowsTrayIcon.WM_LBUTTONUP,
-                app.WindowsTrayIcon.WM_LBUTTONDBLCLK,
-                app.WindowsTrayIcon.NIN_SELECT,
-                app.WindowsTrayIcon.NIN_KEYSELECT):
+            app.WindowsTrayIcon.WM_LBUTTONUP,
+            app.WindowsTrayIcon.WM_LBUTTONDBLCLK,
+            app.WindowsTrayIcon.NIN_SELECT,
+            app.WindowsTrayIcon.NIN_KEYSELECT,
+        ):
             self.assertEqual(app.WindowsTrayIcon._event_action(event), "open")
         for event in (
-                app.WindowsTrayIcon.WM_RBUTTONUP,
-                app.WindowsTrayIcon.WM_CONTEXTMENU):
+            app.WindowsTrayIcon.WM_RBUTTONUP,
+            app.WindowsTrayIcon.WM_CONTEXTMENU,
+        ):
             self.assertEqual(app.WindowsTrayIcon._event_action(event), "menu")
 
     def test_native_windows_hotkeys_cover_every_alt_action(self):
@@ -243,23 +262,27 @@ class ProviderTests(unittest.TestCase):
             for hotkey_id in windows_hotkeys.HOTKEY_SPECS
         }
 
-        self.assertEqual(actions, {
-            "recording_hotkey", "rewrite_hotkey",
-            "translation_hotkey", "voice_translation_hotkey",
-            "toggle_visibility",
-        })
+        self.assertEqual(
+            actions,
+            {
+                "recording_hotkey",
+                "rewrite_hotkey",
+                "translation_hotkey",
+                "voice_translation_hotkey",
+                "toggle_visibility",
+            },
+        )
         self.assertEqual(app.WindowsTrayIcon.WM_HOTKEY, 0x0312)
 
     def test_escape_hotkey_has_dedicated_action(self):
         self.assertEqual(
-            windows_hotkeys.action_for_hotkey_id(
-                windows_hotkeys.ESCAPE_HOTKEY_ID),
-            "escape")
+            windows_hotkeys.action_for_hotkey_id(windows_hotkeys.ESCAPE_HOTKEY_ID),
+            "escape",
+        )
 
     def test_windows_package_excludes_cross_platform_keyboard_hook(self):
         root = Path(__file__).resolve().parents[1]
-        deploy_script = (root / "scripts" / "deploy.ps1").read_text(
-            encoding="utf-8")
+        deploy_script = (root / "scripts" / "deploy.ps1").read_text(encoding="utf-8")
         requirements = (root / "requirements.txt").read_text(encoding="utf-8")
 
         self.assertIn('"--exclude-module", "keyboard"', deploy_script)
@@ -352,8 +375,9 @@ class ProviderTests(unittest.TestCase):
         app.Recorder._stop_stale_windows_recorders()
 
         command = run.call_args.args[0]
-        self.assertEqual(command[:4], [
-            "powershell.exe", "-NoProfile", "-NonInteractive", "-Command"])
+        self.assertEqual(
+            command[:4], ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command"]
+        )
         self.assertIn(str(app.AUDIO_PATH), command[4])
         self.assertIn("$_.Name -ieq 'sox.exe'", command[4])
         self.assertIn("$_.CommandLine", command[4])
@@ -366,40 +390,53 @@ class ProviderTests(unittest.TestCase):
         run.assert_not_called()
 
     def test_official_openai_audio_models_are_documented_set(self):
-        models = app._fetch_provider_models(
-            "openai", "", "https://api.openai.com/v1")
-        self.assertEqual(models, [
-            "whisper-1",
-            "gpt-4o-mini-transcribe",
-            "gpt-4o-transcribe",
-            "gpt-4o-transcribe-diarize",
-        ])
+        models = app._fetch_provider_models("openai", "", "https://api.openai.com/v1")
+        self.assertEqual(
+            models,
+            [
+                "whisper-1",
+                "gpt-4o-mini-transcribe",
+                "gpt-4o-transcribe",
+                "gpt-4o-transcribe-diarize",
+            ],
+        )
 
     def test_official_groq_audio_models_are_documented_set(self):
         models = app._fetch_provider_models(
-            "groq", "", "https://api.groq.com/openai/v1")
-        self.assertEqual(models, [
-            "whisper-large-v3-turbo",
-            "whisper-large-v3",
-        ])
+            "groq", "", "https://api.groq.com/openai/v1"
+        )
+        self.assertEqual(
+            models,
+            [
+                "whisper-large-v3-turbo",
+                "whisper-large-v3",
+            ],
+        )
 
     @patch("app.PROVIDER_HTTP.session.get")
     def test_proxy_models_are_filtered_to_audio_transcription(self, get):
-        get.return_value = FakeResponse({"data": [
-            {"id": "gpt-5.4"},
-            {"id": "whisper-1"},
-            {"id": "gpt-4o-transcribe"},
-        ]})
+        get.return_value = FakeResponse(
+            {
+                "data": [
+                    {"id": "gpt-5.4"},
+                    {"id": "whisper-1"},
+                    {"id": "gpt-4o-transcribe"},
+                ]
+            }
+        )
         models = app._fetch_provider_models(
-            "openai", "proxy-key", "https://proxy.example")
+            "openai", "proxy-key", "https://proxy.example"
+        )
         self.assertEqual(models, ["gpt-4o-transcribe", "whisper-1"])
         self.assertEqual(get.call_args.args[0], "https://proxy.example/v1/models")
 
     def test_openai_compatible_catalog_uses_id_instead_of_display_name(self):
-        payload = {"data": [
-            {"id": "whisper-large-v3-turbo", "name": "Whisper Large V3 Turbo"},
-            {"id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B Versatile"},
-        ]}
+        payload = {
+            "data": [
+                {"id": "whisper-large-v3-turbo", "name": "Whisper Large V3 Turbo"},
+                {"id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B Versatile"},
+            ]
+        }
         self.assertEqual(
             app._parse_audio_models("groq", payload),
             ["whisper-large-v3-turbo"],
@@ -417,12 +454,23 @@ class ProviderTests(unittest.TestCase):
 
     @patch("app.PROVIDER_HTTP.session.get")
     def test_gemini_models_require_generate_content_support(self, get):
-        get.return_value = FakeResponse({"models": [
-            {"name": "models/gemini-audio", "supportedGenerationMethods": ["generateContent"]},
-            {"name": "models/gemini-embed", "supportedGenerationMethods": ["embedContent"]},
-        ]})
+        get.return_value = FakeResponse(
+            {
+                "models": [
+                    {
+                        "name": "models/gemini-audio",
+                        "supportedGenerationMethods": ["generateContent"],
+                    },
+                    {
+                        "name": "models/gemini-embed",
+                        "supportedGenerationMethods": ["embedContent"],
+                    },
+                ]
+            }
+        )
         models = app._fetch_provider_models(
-            "gemini", "gemini-key", "https://generativelanguage.googleapis.com/v1beta")
+            "gemini", "gemini-key", "https://generativelanguage.googleapis.com/v1beta"
+        )
         self.assertEqual(models, ["gemini-audio"])
         self.assertEqual(
             get.call_args.args[0],
@@ -433,52 +481,67 @@ class ProviderTests(unittest.TestCase):
     def test_gemini_credentials_are_validated_without_generation(self, get):
         get.return_value = FakeResponse({"models": []})
         app._validate_provider_credentials(
-            "gemini", "gemini-key",
-            "https://generativelanguage.googleapis.com/v1beta")
+            "gemini", "gemini-key", "https://generativelanguage.googleapis.com/v1beta"
+        )
         self.assertEqual(
             get.call_args.args[0],
             "https://generativelanguage.googleapis.com/v1beta/models",
         )
-        self.assertEqual(get.call_args.kwargs["headers"], {
-            "x-goog-api-key": "gemini-key",
-        })
+        self.assertEqual(
+            get.call_args.kwargs["headers"],
+            {
+                "x-goog-api-key": "gemini-key",
+            },
+        )
 
     @patch("app.PROVIDER_HTTP.session.get")
     def test_openai_compatible_credentials_use_models_endpoint(self, get):
         get.return_value = FakeResponse({"data": []})
         app._validate_provider_credentials(
-            "groq", "groq-key", "https://api.groq.com/openai/v1")
+            "groq", "groq-key", "https://api.groq.com/openai/v1"
+        )
+        self.assertEqual(get.call_args.args[0], "https://api.groq.com/openai/v1/models")
         self.assertEqual(
-            get.call_args.args[0], "https://api.groq.com/openai/v1/models")
-        self.assertEqual(get.call_args.kwargs["headers"], {
-            "Authorization": "Bearer groq-key",
-        })
+            get.call_args.kwargs["headers"],
+            {
+                "Authorization": "Bearer groq-key",
+            },
+        )
 
     def test_text_model_catalog_excludes_asr_and_non_llm_models(self):
-        models = app._parse_text_models("openai", {"data": [
-            {"id": "gpt-5.4-mini"},
-            {"id": "whisper-1"},
-            {"id": "gpt-4o-transcribe"},
-            {"id": "text-embedding-3-small"},
-            {"id": "gpt-image-1"},
-            {"id": "gpt-4o-realtime-preview"},
-        ]})
+        models = app._parse_text_models(
+            "openai",
+            {
+                "data": [
+                    {"id": "gpt-5.4-mini"},
+                    {"id": "whisper-1"},
+                    {"id": "gpt-4o-transcribe"},
+                    {"id": "text-embedding-3-small"},
+                    {"id": "gpt-image-1"},
+                    {"id": "gpt-4o-realtime-preview"},
+                ]
+            },
+        )
         self.assertEqual(models, ["gpt-5.4-mini"])
         self.assertEqual(
-            app._provider_url("https://proxy.example/v1/", "v1", "audio/transcriptions"),
+            app._provider_url(
+                "https://proxy.example/v1/", "v1", "audio/transcriptions"
+            ),
             "https://proxy.example/v1/audio/transcriptions",
         )
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_gemini_official_endpoint_and_auth(self, post):
-        app.APP_CONFIG.update({
-            "gemini_api_key": "gemini-key",
-            "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta",
-            "gemini_model": "gemini-2.5-flash",
-        })
-        post.return_value = FakeResponse({
-            "candidates": [{"content": {"parts": [{"text": "hello"}]}}]
-        })
+        app.APP_CONFIG.update(
+            {
+                "gemini_api_key": "gemini-key",
+                "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta",
+                "gemini_model": "gemini-2.5-flash",
+            }
+        )
+        post.return_value = FakeResponse(
+            {"candidates": [{"content": {"parts": [{"text": "hello"}]}}]}
+        )
 
         self.assertEqual(app.call_gemini(self.audio_path, "transcription"), "hello")
         args, kwargs = post.call_args
@@ -491,20 +554,24 @@ class ProviderTests(unittest.TestCase):
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_cloud_transcription_prompt_resolves_regional_source_language(self, post):
-        app.APP_CONFIG.update({
-            "gemini_api_key": "gemini-key",
-            "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta",
-            "gemini_model": "gemini-2.5-flash",
-        })
-        post.return_value = FakeResponse({
-            "candidates": [{"content": {"parts": [{"text": "texto"}]}}]
-        })
+        app.APP_CONFIG.update(
+            {
+                "gemini_api_key": "gemini-key",
+                "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta",
+                "gemini_model": "gemini-2.5-flash",
+            }
+        )
+        post.return_value = FakeResponse(
+            {"candidates": [{"content": {"parts": [{"text": "texto"}]}}]}
+        )
 
         self.assertEqual(
             app.call_gemini(self.audio_path, "transcription", "pt-BR"),
             "texto",
         )
-        instruction = post.call_args.kwargs["json"]["systemInstruction"]["parts"][0]["text"]
+        instruction = post.call_args.kwargs["json"]["systemInstruction"]["parts"][0][
+            "text"
+        ]
         self.assertIn("Brazilian Portuguese", instruction)
         self.assertNotIn("English", instruction)
 
@@ -522,31 +589,41 @@ class ProviderTests(unittest.TestCase):
     def test_local_prompt_refinement_maps_auto_language_before_cloud_call(self):
         original = app.APP_CONFIG.copy()
         try:
-            app.APP_CONFIG.update({
-                "transcription_provider": "local_asr",
-                "local_asr_model": "ggml-small",
-                "local_asr_cloud_refinement": True,
-                "workflows": {
-                    **app.APP_CONFIG.get("workflows", {}),
-                    "local_asr_refinement": {
-                        "provider_id": "openai",
-                        "model_id": "gpt-4o-mini",
-                        "enabled": True,
-                        "independent": True,
+            app.APP_CONFIG.update(
+                {
+                    "transcription_provider": "local_asr",
+                    "local_asr_model": "ggml-small",
+                    "local_asr_cloud_refinement": True,
+                    "workflows": {
+                        **app.APP_CONFIG.get("workflows", {}),
+                        "local_asr_refinement": {
+                            "provider_id": "openai",
+                            "model_id": "gpt-4o-mini",
+                            "enabled": True,
+                            "independent": True,
+                        },
                     },
-                },
-            })
-            with patch.object(
-                    app.PROVIDER_REGISTRY, "transcribe",
+                }
+            )
+            with (
+                patch.object(
+                    app.PROVIDER_REGISTRY,
+                    "transcribe",
                     return_value=app.TranscriptionResult(
-                        "local transcript", "local_asr", "ggml-small")), \
-                    patch.object(
-                        app.PROVIDER_REGISTRY, "rewrite",
-                        return_value=app.TranscriptionResult(
-                            "refined transcript", "openai", "gpt-4o-mini")) as rewrite:
+                        "local transcript", "local_asr", "ggml-small"
+                    ),
+                ),
+                patch.object(
+                    app.PROVIDER_REGISTRY,
+                    "rewrite",
+                    return_value=app.TranscriptionResult(
+                        "refined transcript", "openai", "gpt-4o-mini"
+                    ),
+                ) as rewrite,
+            ):
                 result = app._call_provider_audio(
-                    "local_asr", self.audio_path, "prompt", "auto",
-                    audio_bytes=b"RIFF")
+                    "local_asr", self.audio_path, "prompt", "auto", audio_bytes=b"RIFF"
+                )
 
             self.assertEqual(result, "refined transcript")
             instruction = rewrite.call_args.args[1].instruction
@@ -561,11 +638,13 @@ class ProviderTests(unittest.TestCase):
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_openai_whisper_normalizes_regional_language_hint(self, post):
-        app.APP_CONFIG.update({
-            "openai_api_key": "openai-key",
-            "openai_base_url": "https://api.openai.com/v1",
-            "openai_audio_model": "whisper-1",
-        })
+        app.APP_CONFIG.update(
+            {
+                "openai_api_key": "openai-key",
+                "openai_base_url": "https://api.openai.com/v1",
+                "openai_audio_model": "whisper-1",
+            }
+        )
         post.return_value = FakeResponse({"text": "transcript"})
 
         self.assertEqual(
@@ -577,11 +656,13 @@ class ProviderTests(unittest.TestCase):
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_groq_whisper_normalizes_regional_language_hint(self, post):
-        app.APP_CONFIG.update({
-            "groq_api_key": "groq-key",
-            "groq_base_url": "https://api.groq.com/openai/v1",
-            "groq_audio_model": "whisper-large-v3-turbo",
-        })
+        app.APP_CONFIG.update(
+            {
+                "groq_api_key": "groq-key",
+                "groq_base_url": "https://api.groq.com/openai/v1",
+                "groq_audio_model": "whisper-large-v3-turbo",
+            }
+        )
         post.return_value = FakeResponse({"text": "transcript"})
 
         self.assertEqual(
@@ -593,28 +674,36 @@ class ProviderTests(unittest.TestCase):
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_gemini_custom_proxy_uses_bearer_and_v1beta(self, post):
-        app.APP_CONFIG.update({
-            "gemini_api_key": "proxy-key",
-            "gemini_base_url": "https://proxy.example",
-            "gemini_model": "gemini-3-flash",
-        })
-        post.return_value = FakeResponse({
-            "candidates": [{"content": {"parts": [{"text": "proxy text"}]}}]
-        })
+        app.APP_CONFIG.update(
+            {
+                "gemini_api_key": "proxy-key",
+                "gemini_base_url": "https://proxy.example",
+                "gemini_model": "gemini-3-flash",
+            }
+        )
+        post.return_value = FakeResponse(
+            {"candidates": [{"content": {"parts": [{"text": "proxy text"}]}}]}
+        )
 
-        self.assertEqual(app.call_gemini(self.audio_path, "transcription"), "proxy text")
+        self.assertEqual(
+            app.call_gemini(self.audio_path, "transcription"), "proxy text"
+        )
         args, kwargs = post.call_args
         self.assertEqual(
-            args[0], "https://proxy.example/v1beta/models/gemini-3-flash:generateContent")
+            args[0],
+            "https://proxy.example/v1beta/models/gemini-3-flash:generateContent",
+        )
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer proxy-key")
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_openai_whisper_uses_multipart_proxy_endpoint(self, post):
-        app.APP_CONFIG.update({
-            "openai_api_key": "openai-key",
-            "openai_base_url": "https://proxy.example",
-            "openai_audio_model": "gpt-4o-transcribe",
-        })
+        app.APP_CONFIG.update(
+            {
+                "openai_api_key": "openai-key",
+                "openai_base_url": "https://proxy.example",
+                "openai_audio_model": "gpt-4o-transcribe",
+            }
+        )
         post.return_value = FakeResponse({"text": "raw transcript"})
 
         result = app.call_openai(self.audio_path, "transcription", "en")
@@ -628,11 +717,13 @@ class ProviderTests(unittest.TestCase):
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_openai_whisper_omits_language_for_automatic_detection(self, post):
-        app.APP_CONFIG.update({
-            "openai_api_key": "openai-key",
-            "openai_base_url": "https://api.openai.com/v1",
-            "openai_audio_model": "whisper-1",
-        })
+        app.APP_CONFIG.update(
+            {
+                "openai_api_key": "openai-key",
+                "openai_base_url": "https://api.openai.com/v1",
+                "openai_audio_model": "whisper-1",
+            }
+        )
         post.return_value = FakeResponse({"text": "detected transcript"})
 
         self.assertEqual(
@@ -643,13 +734,15 @@ class ProviderTests(unittest.TestCase):
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_openai_prompt_mode_rewrites_the_whisper_transcript(self, post):
-        app.APP_CONFIG.update({
-            "openai_api_key": "openai-key",
-            "openai_base_url": "https://api.openai.com/v1",
-            "openai_text_model": "gpt-4o-mini",
-            "refinement_provider": "openai",
-            "refinement_model": "gpt-4o-mini",
-        })
+        app.APP_CONFIG.update(
+            {
+                "openai_api_key": "openai-key",
+                "openai_base_url": "https://api.openai.com/v1",
+                "openai_text_model": "gpt-4o-mini",
+                "refinement_provider": "openai",
+                "refinement_model": "gpt-4o-mini",
+            }
+        )
         post.side_effect = [
             FakeResponse({"text": "rough transcript"}),
             FakeResponse({"choices": [{"message": {"content": "clear prompt"}}]}),
@@ -660,54 +753,61 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(result, "clear prompt")
         self.assertEqual(post.call_count, 2)
         self.assertEqual(
-            post.call_args_list[1].args[0], "https://api.openai.com/v1/chat/completions")
-        self.assertEqual(
-            post.call_args_list[1].kwargs["json"]["model"], "gpt-4o-mini")
+            post.call_args_list[1].args[0], "https://api.openai.com/v1/chat/completions"
+        )
+        self.assertEqual(post.call_args_list[1].kwargs["json"]["model"], "gpt-4o-mini")
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_groq_uses_official_audio_endpoint_and_configured_model(self, post):
-        app.APP_CONFIG.update({
-            "groq_api_key": "groq-key",
-            "groq_base_url": "https://api.groq.com/openai/v1",
-            "groq_audio_model": "whisper-large-v3-turbo",
-        })
+        app.APP_CONFIG.update(
+            {
+                "groq_api_key": "groq-key",
+                "groq_base_url": "https://api.groq.com/openai/v1",
+                "groq_audio_model": "whisper-large-v3-turbo",
+            }
+        )
         post.return_value = FakeResponse({"text": "groq transcript"})
 
         result = app.call_groq(self.audio_path, "transcription", "pt")
 
         self.assertEqual(result, "groq transcript")
         args, kwargs = post.call_args
-        self.assertEqual(
-            args[0], "https://api.groq.com/openai/v1/audio/transcriptions")
+        self.assertEqual(args[0], "https://api.groq.com/openai/v1/audio/transcriptions")
         self.assertEqual(kwargs["headers"], {"Authorization": "Bearer groq-key"})
         self.assertEqual(kwargs["data"]["model"], "whisper-large-v3-turbo")
         self.assertEqual(kwargs["data"]["language"], "pt")
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_groq_request_defensively_canonicalizes_legacy_model_label(self, post):
-        app.APP_CONFIG.update({
-            "groq_api_key": "groq-key",
-            "groq_base_url": "https://api.groq.com/openai/v1",
-            "groq_audio_model": "Whisper Large V3 Turbo",
-        })
+        app.APP_CONFIG.update(
+            {
+                "groq_api_key": "groq-key",
+                "groq_base_url": "https://api.groq.com/openai/v1",
+                "groq_audio_model": "Whisper Large V3 Turbo",
+            }
+        )
         post.return_value = FakeResponse({"text": "transcript"})
 
         self.assertEqual(
-            app.call_groq(self.audio_path, "transcription", "en"), "transcript")
+            app.call_groq(self.audio_path, "transcription", "en"), "transcript"
+        )
         self.assertEqual(
-            post.call_args.kwargs["data"]["model"], "whisper-large-v3-turbo")
+            post.call_args.kwargs["data"]["model"], "whisper-large-v3-turbo"
+        )
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_groq_asr_can_use_openai_for_text_refinement(self, post):
-        app.APP_CONFIG.update({
-            "groq_api_key": "groq-key",
-            "groq_base_url": "https://api.groq.com/openai/v1",
-            "groq_audio_model": "whisper-large-v3-turbo",
-            "openai_api_key": "openai-key",
-            "openai_base_url": "https://api.openai.com/v1",
-            "refinement_provider": "openai",
-            "refinement_model": "gpt-5.4-mini",
-        })
+        app.APP_CONFIG.update(
+            {
+                "groq_api_key": "groq-key",
+                "groq_base_url": "https://api.groq.com/openai/v1",
+                "groq_audio_model": "whisper-large-v3-turbo",
+                "openai_api_key": "openai-key",
+                "openai_base_url": "https://api.openai.com/v1",
+                "refinement_provider": "openai",
+                "refinement_model": "gpt-5.4-mini",
+            }
+        )
         post.side_effect = [
             FakeResponse({"text": "rough transcript"}),
             FakeResponse({"choices": [{"message": {"content": "refined text"}}]}),
@@ -717,9 +817,9 @@ class ProviderTests(unittest.TestCase):
 
         self.assertEqual(result, "refined text")
         self.assertEqual(
-            post.call_args_list[1].args[0], "https://api.openai.com/v1/chat/completions")
-        self.assertEqual(
-            post.call_args_list[1].kwargs["json"]["model"], "gpt-5.4-mini")
+            post.call_args_list[1].args[0], "https://api.openai.com/v1/chat/completions"
+        )
+        self.assertEqual(post.call_args_list[1].kwargs["json"]["model"], "gpt-5.4-mini")
 
     @patch("app._call_provider_audio", return_value="openai result")
     def test_selected_provider_is_used_automatically(self, route):
@@ -729,8 +829,13 @@ class ProviderTests(unittest.TestCase):
             "openai result",
         )
         route.assert_called_once_with(
-            "openai", self.audio_path, "transcription", "en",
-            audio_bytes=None, cancel_token=None)
+            "openai",
+            self.audio_path,
+            "transcription",
+            "en",
+            audio_bytes=None,
+            cancel_token=None,
+        )
 
     @patch("app._call_provider_audio", return_value="groq result")
     def test_selected_groq_provider_is_used_automatically(self, route):
@@ -740,8 +845,13 @@ class ProviderTests(unittest.TestCase):
             "groq result",
         )
         route.assert_called_once_with(
-            "groq", self.audio_path, "transcription", "en",
-            audio_bytes=None, cancel_token=None)
+            "groq",
+            self.audio_path,
+            "transcription",
+            "en",
+            audio_bytes=None,
+            cancel_token=None,
+        )
 
     def test_voice_provider_preserves_typed_transcription_details(self):
         route = SimpleNamespace(
@@ -763,12 +873,13 @@ class ProviderTests(unittest.TestCase):
             audio_bytes=b"audio",
             cancel_token=None,
         )
-        with patch.object(app, "_workflow_route", return_value=route), \
-                patch.object(
-                    app, "call_transcription_provider",
-                    return_value=detailed) as transcribe:
-            result = app.AppVoiceTranslationProvider.transcribe(
-                audio_source, "auto")
+        with (
+            patch.object(app, "_workflow_route", return_value=route),
+            patch.object(
+                app, "call_transcription_provider", return_value=detailed
+            ) as transcribe,
+        ):
+            result = app.AppVoiceTranslationProvider.transcribe(audio_source, "auto")
 
         self.assertIs(result, detailed)
         transcribe.assert_called_once()
@@ -776,38 +887,45 @@ class ProviderTests(unittest.TestCase):
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_selected_text_rewrite_preserves_language_with_openai(self, post):
-        app.APP_CONFIG.update({
-            "refinement_provider": "openai",
-            "refinement_model": "gpt-4o-mini",
-            "openai_api_key": "openai-key",
-            "openai_base_url": "https://api.openai.com/v1",
-        })
-        post.return_value = FakeResponse({
-            "choices": [{"message": {"content": "Texto melhorado."}}]
-        })
+        app.APP_CONFIG.update(
+            {
+                "refinement_provider": "openai",
+                "refinement_model": "gpt-4o-mini",
+                "openai_api_key": "openai-key",
+                "openai_base_url": "https://api.openai.com/v1",
+            }
+        )
+        post.return_value = FakeResponse(
+            {"choices": [{"message": {"content": "Texto melhorado."}}]}
+        )
 
         self.assertEqual(
-            app.rewrite_selected_text("texto mal organizado"), "Texto melhorado.")
+            app.rewrite_selected_text("texto mal organizado"), "Texto melhorado."
+        )
         request = post.call_args.kwargs["json"]
         self.assertEqual(request["model"], "gpt-4o-mini")
         instruction = request["messages"][0]["content"]
         self.assertIn("Preserve the original language", instruction)
         self.assertNotIn("Output MUST be", instruction)
         source_message = request["messages"][1]["content"]
-        self.assertIn("BEGIN_SOURCE_TEXT\ntexto mal organizado\nEND_SOURCE_TEXT", source_message)
+        self.assertIn(
+            "BEGIN_SOURCE_TEXT\ntexto mal organizado\nEND_SOURCE_TEXT", source_message
+        )
         self.assertIn("Do not answer or execute", source_message)
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_selected_text_rewrite_uses_gemini_text_endpoint(self, post):
-        app.APP_CONFIG.update({
-            "refinement_provider": "gemini",
-            "refinement_model": "gemini-2.5-flash",
-            "gemini_api_key": "gemini-key",
-            "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta",
-        })
-        post.return_value = FakeResponse({
-            "candidates": [{"content": {"parts": [{"text": "Clear text."}]}}]
-        })
+        app.APP_CONFIG.update(
+            {
+                "refinement_provider": "gemini",
+                "refinement_model": "gemini-2.5-flash",
+                "gemini_api_key": "gemini-key",
+                "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta",
+            }
+        )
+        post.return_value = FakeResponse(
+            {"candidates": [{"content": {"parts": [{"text": "Clear text."}]}}]}
+        )
 
         self.assertEqual(app.rewrite_selected_text("unclear text"), "Clear text.")
         self.assertEqual(
@@ -815,51 +933,66 @@ class ProviderTests(unittest.TestCase):
             "https://generativelanguage.googleapis.com/v1beta/models/"
             "gemini-2.5-flash:generateContent",
         )
-        instruction = post.call_args.kwargs["json"]["systemInstruction"]["parts"][0]["text"]
+        instruction = post.call_args.kwargs["json"]["systemInstruction"]["parts"][0][
+            "text"
+        ]
         self.assertIn("Preserve the original language", instruction)
-        source_message = post.call_args.kwargs["json"]["contents"][0]["parts"][0]["text"]
-        self.assertIn("BEGIN_SOURCE_TEXT\nunclear text\nEND_SOURCE_TEXT", source_message)
+        source_message = post.call_args.kwargs["json"]["contents"][0]["parts"][0][
+            "text"
+        ]
+        self.assertIn(
+            "BEGIN_SOURCE_TEXT\nunclear text\nEND_SOURCE_TEXT", source_message
+        )
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_selected_text_rewrite_routes_to_groq(self, post):
-        app.APP_CONFIG.update({
-            "refinement_provider": "groq",
-            "refinement_model": "llama-3.3-70b-versatile",
-            "groq_api_key": "groq-key",
-            "groq_base_url": "https://api.groq.com/openai/v1",
-        })
-        post.return_value = FakeResponse({
-            "choices": [{"message": {"content": "Rewritten."}}]
-        })
+        app.APP_CONFIG.update(
+            {
+                "refinement_provider": "groq",
+                "refinement_model": "llama-3.3-70b-versatile",
+                "groq_api_key": "groq-key",
+                "groq_base_url": "https://api.groq.com/openai/v1",
+            }
+        )
+        post.return_value = FakeResponse(
+            {"choices": [{"message": {"content": "Rewritten."}}]}
+        )
 
         self.assertEqual(app.rewrite_selected_text("rewrite me"), "Rewritten.")
         self.assertEqual(
-            post.call_args.args[0], "https://api.groq.com/openai/v1/chat/completions")
+            post.call_args.args[0], "https://api.groq.com/openai/v1/chat/completions"
+        )
         self.assertEqual(
-            post.call_args.kwargs["json"]["model"], "llama-3.3-70b-versatile")
+            post.call_args.kwargs["json"]["model"], "llama-3.3-70b-versatile"
+        )
 
     def test_selected_text_rewrite_rejects_empty_input_and_empty_response(self):
         self.assertTrue(app.rewrite_selected_text("  ").startswith("[Error"))
-        app.APP_CONFIG.update({
-            "refinement_provider": "openai",
-            "refinement_model": "gpt-4o-mini",
-            "openai_api_key": "openai-key",
-        })
+        app.APP_CONFIG.update(
+            {
+                "refinement_provider": "openai",
+                "refinement_model": "gpt-4o-mini",
+                "openai_api_key": "openai-key",
+            }
+        )
         with patch("app._rewrite_with_provider", return_value=""):
             self.assertTrue(app.rewrite_selected_text("source").startswith("[Error"))
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_selected_text_translation_is_literal_and_targets_requested_language(
-            self, post):
-        app.APP_CONFIG.update({
-            "refinement_provider": "openai",
-            "refinement_model": "gpt-4o-mini",
-            "openai_api_key": "openai-key",
-            "openai_base_url": "https://api.openai.com/v1",
-        })
-        post.return_value = FakeResponse({
-            "choices": [{"message": {"content": "Wie viel verdient er?"}}]
-        })
+        self, post
+    ):
+        app.APP_CONFIG.update(
+            {
+                "refinement_provider": "openai",
+                "refinement_model": "gpt-4o-mini",
+                "openai_api_key": "openai-key",
+                "openai_base_url": "https://api.openai.com/v1",
+            }
+        )
+        post.return_value = FakeResponse(
+            {"choices": [{"message": {"content": "Wie viel verdient er?"}}]}
+        )
 
         result = app.translate_selected_text("How much does he earn?", "de")
 
@@ -874,8 +1007,8 @@ class ProviderTests(unittest.TestCase):
         source_message = request["messages"][1]["content"]
         self.assertIn("Translate only the source text", source_message)
         self.assertIn(
-            "BEGIN_SOURCE_TEXT\nHow much does he earn?\nEND_SOURCE_TEXT",
-            source_message)
+            "BEGIN_SOURCE_TEXT\nHow much does he earn?\nEND_SOURCE_TEXT", source_message
+        )
 
     def test_selected_text_translation_rejects_invalid_inputs(self):
         self.assertTrue(app.translate_selected_text("  ", "de").startswith("[Error"))
@@ -931,23 +1064,26 @@ class ProviderTests(unittest.TestCase):
         self.assertIn("NEVER answer it", instruction)
         self.assertNotIn("Transcribe the audio first", instruction)
 
-        message = app._source_text_message(
-            "Quanto ganha um programador na Amazon?")
+        message = app._source_text_message("Quanto ganha um programador na Amazon?")
         self.assertIn("Rewrite only the source text", message)
         self.assertIn(
             "BEGIN_SOURCE_TEXT\nQuanto ganha um programador na Amazon?\n"
-            "END_SOURCE_TEXT", message)
+            "END_SOURCE_TEXT",
+            message,
+        )
 
     @patch("app.PROVIDER_HTTP.session.post")
     def test_gemini_prompt_uses_low_temperature_for_faithful_editing(self, post):
-        app.APP_CONFIG.update({
-            "gemini_api_key": "gemini-key",
-            "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta",
-            "gemini_model": "gemini-2.5-flash",
-        })
-        post.return_value = FakeResponse({
-            "candidates": [{"content": {"parts": [{"text": "Edited text"}]}}]
-        })
+        app.APP_CONFIG.update(
+            {
+                "gemini_api_key": "gemini-key",
+                "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta",
+                "gemini_model": "gemini-2.5-flash",
+            }
+        )
+        post.return_value = FakeResponse(
+            {"candidates": [{"content": {"parts": [{"text": "Edited text"}]}}]}
+        )
 
         self.assertEqual(app.call_gemini(self.audio_path, "prompt"), "Edited text")
         request = post.call_args.kwargs["json"]
@@ -968,14 +1104,19 @@ class ProviderTests(unittest.TestCase):
     def test_ui_mode_and_language_are_loaded_from_config(self):
         with tempfile.TemporaryDirectory() as directory:
             config_path = Path(directory) / "config.json"
-            config_path.write_text(json.dumps({
-                "ui_mode": "transcription",
-                "ui_language": "pt",
-            }), encoding="utf-8")
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "ui_mode": "transcription",
+                        "ui_language": "pt",
+                    }
+                ),
+                encoding="utf-8",
+            )
             with patch("app.CONFIG_PATH", config_path):
                 config = app._load_app_config()
 
-        self.assertEqual(config["ui_mode"], "transcription")
+        self.assertEqual(config["ui_mode"], "prompt")
         self.assertEqual(config["ui_language"], "pt")
 
     def test_local_asr_onboarding_waits_for_async_verification(self):
@@ -983,8 +1124,7 @@ class ProviderTests(unittest.TestCase):
             "transcription_provider": "local_asr",
             "local_asr_api_key": "",
         }
-        product = SimpleNamespace(
-            state=SimpleNamespace(status="checking"))
+        product = SimpleNamespace(state=SimpleNamespace(status="checking"))
 
         self.assertIsNone(app._settings_onboarding_decision(config, product))
         product.state.status = "installed"
@@ -994,17 +1134,19 @@ class ProviderTests(unittest.TestCase):
 
     def test_load_app_config_rejects_local_asr_refinement_provider(self):
         values = app.DEFAULT_CONFIG.copy()
-        values.update({
-            "transcription_provider": "local_asr",
-            "refinement_provider": "local_asr",
-            "refinement_model": "ggml-small",
-        })
+        values.update(
+            {
+                "transcription_provider": "local_asr",
+                "refinement_provider": "local_asr",
+                "refinement_model": "ggml-small",
+            }
+        )
         fake_config = SimpleNamespace(to_legacy_mapping=lambda: values)
         fake_repositories = SimpleNamespace(
-            config=SimpleNamespace(load=lambda: fake_config))
+            config=SimpleNamespace(load=lambda: fake_config)
+        )
 
-        with patch.object(app, "_storage_repositories",
-                          return_value=fake_repositories):
+        with patch.object(app, "_storage_repositories", return_value=fake_repositories):
             config = app._load_app_config(fake_repositories)
 
         self.assertEqual(config["refinement_provider"], "openai")
@@ -1016,12 +1158,14 @@ class ProviderTests(unittest.TestCase):
         selected = {"provider": "openai", "model": "whisper-1"}
         repositories = object()
 
-        self.assertTrue(app._persist_cloud_selection_before_local_removal(
-            selected,
-            [("openai", "whisper-1")],
-            {"openai": "openai_audio_model"},
-            repositories,
-        ))
+        self.assertTrue(
+            app._persist_cloud_selection_before_local_removal(
+                selected,
+                [("openai", "whisper-1")],
+                {"openai": "openai_audio_model"},
+                repositories,
+            )
+        )
         self.assertEqual(app.APP_CONFIG["transcription_provider"], "openai")
         self.assertEqual(app.APP_CONFIG["openai_audio_model"], "whisper-1")
         save.assert_called_once_with(repositories)
@@ -1031,11 +1175,13 @@ class ProviderTests(unittest.TestCase):
         app.APP_CONFIG["transcription_provider"] = "local_asr"
         previous = app.APP_CONFIG.copy()
 
-        self.assertFalse(app._persist_cloud_selection_before_local_removal(
-            {"provider": "openai", "model": "whisper-1"},
-            [("openai", "whisper-1")],
-            {"openai": "openai_audio_model"},
-        ))
+        self.assertFalse(
+            app._persist_cloud_selection_before_local_removal(
+                {"provider": "openai", "model": "whisper-1"},
+                [("openai", "whisper-1")],
+                {"openai": "openai_audio_model"},
+            )
+        )
         self.assertEqual(app.APP_CONFIG, previous)
         save.assert_called_once_with(None)
 
@@ -1050,12 +1196,17 @@ class ProviderTests(unittest.TestCase):
     @patch("app.PROVIDER_REGISTRY.shutdown", side_effect=RuntimeError("cleanup"))
     @patch("app.call_transcription_provider", return_value="[Error: local failure]")
     def test_cli_local_transcription_cleanup_preserves_exit_code(
-            self, transcribe, shutdown):
+        self, transcribe, shutdown
+    ):
         app.APP_CONFIG["transcription_provider"] = "local_asr"
         with patch.object(app.sys, "stdout", io.StringIO()):
-            result = app._run_cli([
-                "transcribe", "--file", str(self.audio_path),
-            ])
+            result = app._run_cli(
+                [
+                    "transcribe",
+                    "--file",
+                    str(self.audio_path),
+                ]
+            )
 
         self.assertEqual(result, 1)
         transcribe.assert_called_once()
@@ -1064,22 +1215,29 @@ class ProviderTests(unittest.TestCase):
     @patch("app._shutdown_cli_transcription_provider")
     @patch("app.call_transcription_provider", return_value="scoped text")
     def test_cli_transcription_passes_authored_route_to_facade(
-            self, transcribe, shutdown):
-        app.APP_CONFIG.update({
-            "transcription_provider": "gemini",
-            "workflows": {
-                "transcription": {
-                    "provider_id": "groq",
-                    "model_id": "whisper-large-v3",
-                    "custom_endpoint": "https://groq-proxy.example/v1",
-                    "independent": True,
+        self, transcribe, shutdown
+    ):
+        app.APP_CONFIG.update(
+            {
+                "transcription_provider": "gemini",
+                "workflows": {
+                    "transcription": {
+                        "provider_id": "groq",
+                        "model_id": "whisper-large-v3",
+                        "custom_endpoint": "https://groq-proxy.example/v1",
+                        "independent": True,
+                    },
                 },
-            },
-        })
+            }
+        )
         with patch.object(app.sys, "stdout", io.StringIO()):
-            result = app._run_cli([
-                "transcribe", "--file", str(self.audio_path),
-            ])
+            result = app._run_cli(
+                [
+                    "transcribe",
+                    "--file",
+                    str(self.audio_path),
+                ]
+            )
 
         self.assertEqual(result, 0)
         transcribe.assert_called_once()
@@ -1087,20 +1245,26 @@ class ProviderTests(unittest.TestCase):
         self.assertTrue(route.independent)
         self.assertEqual(route.provider_id, "groq")
         self.assertEqual(route.model_id, "whisper-large-v3")
-        self.assertEqual(
-            route.custom_endpoint, "https://groq-proxy.example/v1")
+        self.assertEqual(route.custom_endpoint, "https://groq-proxy.example/v1")
         shutdown.assert_called_once_with("groq")
 
     @patch("app.PROVIDER_REGISTRY.shutdown")
     @patch("app.call_transcription_provider", return_value="local text")
     def test_headless_local_transcription_shuts_down_registry(
-            self, transcribe, shutdown):
+        self, transcribe, shutdown
+    ):
         app.APP_CONFIG["transcription_provider"] = "local_asr"
-        fake_stdin = type("FakeStdin", (), {
-            "buffer": io.BytesIO(b"pcm16"),
-        })()
-        with patch.object(app.sys, "stdin", fake_stdin), \
-                patch.object(app.sys, "stdout", io.StringIO()):
+        fake_stdin = type(
+            "FakeStdin",
+            (),
+            {
+                "buffer": io.BytesIO(b"pcm16"),
+            },
+        )()
+        with (
+            patch.object(app.sys, "stdin", fake_stdin),
+            patch.object(app.sys, "stdout", io.StringIO()),
+        ):
             result = app._run_cli(["headless-transcribe-stdin"])
 
         self.assertEqual(result, 0)
@@ -1110,22 +1274,31 @@ class ProviderTests(unittest.TestCase):
     @patch("app._shutdown_cli_transcription_provider")
     @patch("app.call_transcription_provider", return_value="scoped text")
     def test_headless_cli_transcription_passes_authored_route_to_facade(
-            self, transcribe, shutdown):
-        app.APP_CONFIG.update({
-            "transcription_provider": "gemini",
-            "workflows": {
-                "transcription": {
-                    "provider_id": "local_asr",
-                    "model_id": "ggml-small",
-                    "independent": True,
+        self, transcribe, shutdown
+    ):
+        app.APP_CONFIG.update(
+            {
+                "transcription_provider": "gemini",
+                "workflows": {
+                    "transcription": {
+                        "provider_id": "local_asr",
+                        "model_id": "ggml-small",
+                        "independent": True,
+                    },
                 },
+            }
+        )
+        fake_stdin = type(
+            "FakeStdin",
+            (),
+            {
+                "buffer": io.BytesIO(b"pcm16"),
             },
-        })
-        fake_stdin = type("FakeStdin", (), {
-            "buffer": io.BytesIO(b"pcm16"),
-        })()
-        with patch.object(app.sys, "stdin", fake_stdin), \
-                patch.object(app.sys, "stdout", io.StringIO()):
+        )()
+        with (
+            patch.object(app.sys, "stdin", fake_stdin),
+            patch.object(app.sys, "stdout", io.StringIO()),
+        ):
             result = app._run_cli(["headless-transcribe-stdin"])
 
         self.assertEqual(result, 0)
@@ -1138,11 +1311,19 @@ class ProviderTests(unittest.TestCase):
 
     def test_all_supported_interface_languages_are_accepted(self):
         for language in app.SUPPORTED_LANGUAGES:
-            with self.subTest(language=language), tempfile.TemporaryDirectory() as directory:
+            with (
+                self.subTest(language=language),
+                tempfile.TemporaryDirectory() as directory,
+            ):
                 config_path = Path(directory) / "config.json"
-                config_path.write_text(json.dumps({
-                    "ui_language": language,
-                }), encoding="utf-8")
+                config_path.write_text(
+                    json.dumps(
+                        {
+                            "ui_language": language,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
                 with patch("app.CONFIG_PATH", config_path):
                     config = app._load_app_config()
                 self.assertEqual(config["ui_language"], language)
@@ -1153,7 +1334,7 @@ class ProviderTests(unittest.TestCase):
 
         app.App._save_ui_preferences(harness)
 
-        self.assertEqual(app.APP_CONFIG["ui_mode"], "transcription")
+        self.assertEqual(app.APP_CONFIG["ui_mode"], "prompt")
         self.assertEqual(app.APP_CONFIG["ui_language"], "pt")
         save.assert_called_once_with()
 
@@ -1196,8 +1377,10 @@ class ProviderTests(unittest.TestCase):
                 del self.values[name]
 
         registry = Registry()
-        with patch.object(app.sys, "frozen", True, create=True), patch.object(
-                app.sys, "executable", r"C:\Apps\Clarify.exe"):
+        with (
+            patch.object(app.sys, "frozen", True, create=True),
+            patch.object(app.sys, "executable", r"C:\Apps\Clarify.exe"),
+        ):
             app._set_autostart(True, registry)
 
         self.assertTrue(app._is_autostart_enabled(registry))
@@ -1231,10 +1414,12 @@ class ProviderTests(unittest.TestCase):
                 return "C:\\Users\\runner\\AppData\\Local\\Programs\\Clarify\\", 1
 
         with patch.object(app.sys, "frozen", True, create=True):
-            self.assertTrue(app._is_msi_installed_build(
-                Registry(),
-                r"c:\users\RUNNER\AppData\Local\Programs\Clarify\Clarify.exe",
-            ))
+            self.assertTrue(
+                app._is_msi_installed_build(
+                    Registry(),
+                    r"c:\users\RUNNER\AppData\Local\Programs\Clarify\Clarify.exe",
+                )
+            )
 
     @patch("app.IS_WIN", True)
     def test_portable_frozen_build_cannot_enable_msi_updates(self):
@@ -1258,8 +1443,9 @@ class ProviderTests(unittest.TestCase):
                 return r"C:\Users\runner\AppData\Local\Programs\Clarify", 1
 
         with patch.object(app.sys, "frozen", True, create=True):
-            self.assertFalse(app._is_msi_installed_build(
-                Registry(), r"D:\Portable\Clarify.exe"))
+            self.assertFalse(
+                app._is_msi_installed_build(Registry(), r"D:\Portable\Clarify.exe")
+            )
 
         class MissingRegistry(Registry):
             @staticmethod
@@ -1267,8 +1453,11 @@ class ProviderTests(unittest.TestCase):
                 raise FileNotFoundError("InstallLocation")
 
         with patch.object(app.sys, "frozen", True, create=True):
-            self.assertFalse(app._is_msi_installed_build(
-                MissingRegistry(), r"D:\Portable\Clarify.exe"))
+            self.assertFalse(
+                app._is_msi_installed_build(
+                    MissingRegistry(), r"D:\Portable\Clarify.exe"
+                )
+            )
 
     def test_models_and_settings_labels_follow_interface_language(self):
         self.assertEqual(app.STRINGS["en"]["models_section"], "Models")
@@ -1279,13 +1468,16 @@ class ProviderTests(unittest.TestCase):
     def test_dictionary_editor_preserves_commas_and_localizes_disabled_rows(self):
         self.assertEqual(
             app._dictionary_aliases_from_text(" Acme, Inc \n\n OW "),
-            (" Acme, Inc ", " OW "))
+            (" Acme, Inc ", " OW "),
+        )
         self.assertEqual(
             app._dictionary_aliases_from_text(" Acme, Inc \r\n OW "),
-            (" Acme, Inc ", " OW "))
+            (" Acme, Inc ", " OW "),
+        )
         self.assertEqual(
             app._dictionary_aliases_from_text("Acme\u2028Inc\nOW"),
-            ("Acme\u2028Inc", "OW"))
+            ("Acme\u2028Inc", "OW"),
+        )
         page, pages, visible = app._dictionary_page(tuple(range(1024)), 0)
         self.assertEqual((page, pages, visible), (0, 342, (0, 1, 2)))
         page, pages, visible = app._dictionary_page(tuple(range(1024)), 341)
@@ -1296,8 +1488,11 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(app.STRINGS["de"]["dictionary_disabled"], "Deaktiviert")
         self.assertEqual(app.STRINGS["ru"]["dictionary_disabled"], "Отключён")
         dictionary_item = SimpleNamespace(
-            kind="dictionary", detail="", pronunciation="open whisper",
-            aliases=("Acme, Inc",))
+            kind="dictionary",
+            detail="",
+            pronunciation="open whisper",
+            aliases=("Acme, Inc",),
+        )
         expected_details = {
             "en": "pronunciation: open whisper · aliases: Acme, Inc",
             "pt": "pronúncia: open whisper · aliases: Acme, Inc",
@@ -1309,8 +1504,10 @@ class ProviderTests(unittest.TestCase):
             with self.subTest(language=language):
                 self.assertEqual(
                     app._dictionary_item_detail(
-                        dictionary_item, app.STRINGS[language].get),
-                    expected)
+                        dictionary_item, app.STRINGS[language].get
+                    ),
+                    expected,
+                )
 
         source = inspect.getsource(app.App._open_settings)
         self.assertIn('"dictionary": ctk.CTkScrollableFrame(', source)
@@ -1318,9 +1515,9 @@ class ProviderTests(unittest.TestCase):
         self.assertIn('dictionary_rows.pack(fill="x", expand=False', source)
         self.assertIn('fields["aliases"].get("1.0", "end-1c")', source)
         self.assertIn('else self._t("dictionary_disabled")', source)
-        self.assertIn('_dictionary_item_detail(item, self._t)', source)
-        self.assertIn('for item in visible_items:', source)
-        self.assertIn('DICTIONARY_PAGE_SIZE = 3', inspect.getsource(app))
+        self.assertIn("_dictionary_item_detail(item, self._t)", source)
+        self.assertIn("for item in visible_items:", source)
+        self.assertIn("DICTIONARY_PAGE_SIZE = 3", inspect.getsource(app))
 
     def test_every_locale_translates_the_complete_interface_catalog(self):
         english_keys = set(app.STRINGS["en"])
@@ -1363,14 +1560,21 @@ class UpdateUiTests(unittest.TestCase):
 
         def publish(prepared=None, error=None):
             published.append((prepared, error))
-            win.after(0, lambda: app._finish_update_error(
-                win, update_button, update_status,
-                lambda key: app.STRINGS["en"][key], error))
+            win.after(
+                0,
+                lambda: app._finish_update_error(
+                    win,
+                    update_button,
+                    update_status,
+                    lambda key: app.STRINGS["en"][key],
+                    error,
+                ),
+            )
 
         def unavailable(*_args, **_kwargs):
             raise UpdateTransportError(
-                "secure update service is temporarily unavailable") from requests.ConnectionError(
-                    "network unavailable")
+                "secure update service is temporarily unavailable"
+            ) from requests.ConnectionError("network unavailable")
 
         with patch.object(app, "prepare_update", side_effect=unavailable) as prepare:
             app._run_update_check("0.1.2", Path("updates"), publish)
@@ -1383,7 +1587,8 @@ class UpdateUiTests(unittest.TestCase):
         update_button.configure.assert_called_once_with(state="normal")
         update_status.configure.assert_called_once_with(
             text=("Update blocked: secure update service is temporarily unavailable"),
-            text_color="#d17878")
+            text_color="#d17878",
+        )
 
 
 class WorkflowClipboardAdapterTests(unittest.TestCase):
@@ -1391,10 +1596,10 @@ class WorkflowClipboardAdapterTests(unittest.TestCase):
         self.target = app.SelectionTarget(77, "editor.exe")
 
     def test_capture_without_text_preserves_foreign_non_text_clipboard(self):
-        previous = ClipboardSnapshot((ClipboardFormat(
-            CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10)
-        foreign = ClipboardSnapshot((ClipboardFormat(
-            CF_DIB, b"foreign-image"),), 12)
+        previous = ClipboardSnapshot(
+            (ClipboardFormat(CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10
+        )
+        foreign = ClipboardSnapshot((ClipboardFormat(CF_DIB, b"foreign-image"),), 12)
 
         class ForeignClipboard:
             def __init__(self):
@@ -1417,11 +1622,15 @@ class WorkflowClipboardAdapterTests(unittest.TestCase):
         def copy_to_foreign_clipboard(_chord):
             clipboard.state = foreign
 
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          return_value=True), \
-                patch.object(app, "_WINDOWS_CLIPBOARD", clipboard), \
-                patch.object(app, "_send_key_chord",
-                             side_effect=copy_to_foreign_clipboard) as send_key:
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", return_value=True
+            ),
+            patch.object(app, "_WINDOWS_CLIPBOARD", clipboard),
+            patch.object(
+                app, "_send_key_chord", side_effect=copy_to_foreign_clipboard
+            ) as send_key,
+        ):
             capture = app.AppWorkflowClipboard.capture_selection(self.target)
 
         self.assertIsNone(capture)
@@ -1429,14 +1638,24 @@ class WorkflowClipboardAdapterTests(unittest.TestCase):
         self.assertIs(clipboard.state, foreign)
 
     def test_capture_retries_snapshot_after_contention(self):
-        previous = ClipboardSnapshot((ClipboardFormat(
-            CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10)
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          return_value=True), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             side_effect=[OSError("busy"), previous]), \
-                patch.object(app, "_copy_selected_text_with_sequence",
-                             return_value=("selected", 10, 11)):
+        previous = ClipboardSnapshot(
+            (ClipboardFormat(CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10
+        )
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", return_value=True
+            ),
+            patch.object(
+                app,
+                "_snapshot_windows_clipboard",
+                side_effect=[OSError("busy"), previous],
+            ),
+            patch.object(
+                app,
+                "_copy_selected_text_with_sequence",
+                return_value=("selected", 10, 11),
+            ),
+        ):
             capture = app.AppWorkflowClipboard.capture_selection(self.target)
 
         self.assertIsNotNone(capture)
@@ -1444,51 +1663,65 @@ class WorkflowClipboardAdapterTests(unittest.TestCase):
         self.assertEqual(capture.context["copy_observed_sequence"], 11)
 
     def test_capture_rechecks_focus_after_snapshot_before_copy(self):
-        previous = ClipboardSnapshot((ClipboardFormat(
-            CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10)
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          side_effect=[True, False]), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             return_value=previous), \
-                patch.object(app, "_copy_selected_text_with_sequence") as copy:
+        previous = ClipboardSnapshot(
+            (ClipboardFormat(CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10
+        )
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", side_effect=[True, False]
+            ),
+            patch.object(app, "_snapshot_windows_clipboard", return_value=previous),
+            patch.object(app, "_copy_selected_text_with_sequence") as copy,
+        ):
             capture = app.AppWorkflowClipboard.capture_selection(self.target)
 
         self.assertIsNone(capture)
         copy.assert_not_called()
 
     def test_capture_rechecks_focus_immediately_before_copy_chord(self):
-        previous = ClipboardSnapshot((ClipboardFormat(
-            CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10)
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          side_effect=[True, True, False]), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             return_value=previous), \
-                patch.object(app, "_clipboard_sequence_number", return_value=10), \
-                patch.object(app, "_send_key_chord") as send_key:
+        previous = ClipboardSnapshot(
+            (ClipboardFormat(CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10
+        )
+        with (
+            patch.object(
+                app.AppWorkflowClipboard,
+                "is_target_current",
+                side_effect=[True, True, False],
+            ),
+            patch.object(app, "_snapshot_windows_clipboard", return_value=previous),
+            patch.object(app, "_clipboard_sequence_number", return_value=10),
+            patch.object(app, "_send_key_chord") as send_key,
+        ):
             capture = app.AppWorkflowClipboard.capture_selection(self.target)
 
         self.assertIsNone(capture)
         send_key.assert_not_called()
 
     def test_capture_rejects_clipboard_change_before_copy_chord(self):
-        previous = ClipboardSnapshot((ClipboardFormat(
-            CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10)
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          return_value=True), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             return_value=previous), \
-                patch.object(app, "_clipboard_sequence_number", return_value=11), \
-                patch.object(app, "_send_key_chord") as send_key:
+        previous = ClipboardSnapshot(
+            (ClipboardFormat(CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10
+        )
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", return_value=True
+            ),
+            patch.object(app, "_snapshot_windows_clipboard", return_value=previous),
+            patch.object(app, "_clipboard_sequence_number", return_value=11),
+            patch.object(app, "_send_key_chord") as send_key,
+        ):
             capture = app.AppWorkflowClipboard.capture_selection(self.target)
 
         self.assertIsNone(capture)
         send_key.assert_not_called()
 
     def test_capture_without_snapshot_fails_closed(self):
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          return_value=True), \
-                patch.object(app, "_snapshot_windows_clipboard", return_value=None), \
-                patch.object(app, "_copy_selected_text_with_sequence") as copy:
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", return_value=True
+            ),
+            patch.object(app, "_snapshot_windows_clipboard", return_value=None),
+            patch.object(app, "_copy_selected_text_with_sequence") as copy,
+        ):
             capture = app.AppWorkflowClipboard.capture_selection(self.target)
 
         self.assertIsNone(capture)
@@ -1496,28 +1729,36 @@ class WorkflowClipboardAdapterTests(unittest.TestCase):
 
     def test_capture_with_unrestorable_snapshot_fails_closed(self):
         previous = ClipboardSnapshot(
-            (ClipboardFormat(9001, b"unsupported"),), 10, restorable=False)
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          return_value=True), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             return_value=previous), \
-                patch.object(app, "_copy_selected_text_with_sequence") as copy:
+            (ClipboardFormat(9001, b"unsupported"),), 10, restorable=False
+        )
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", return_value=True
+            ),
+            patch.object(app, "_snapshot_windows_clipboard", return_value=previous),
+            patch.object(app, "_copy_selected_text_with_sequence") as copy,
+        ):
             capture = app.AppWorkflowClipboard.capture_selection(self.target)
 
         self.assertIsNone(capture)
         copy.assert_not_called()
 
     def test_capture_without_text_never_restores_by_sequence_alone(self):
-        previous = ClipboardSnapshot((ClipboardFormat(
-            CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10)
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          return_value=True), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             return_value=previous), \
-                patch.object(app, "_copy_selected_text_with_sequence",
-                             return_value=(None, 10, 11)), \
-                patch.object(app, "_restore_clipboard_snapshot_if_owned",
-                             return_value=False) as restore:
+        previous = ClipboardSnapshot(
+            (ClipboardFormat(CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10
+        )
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", return_value=True
+            ),
+            patch.object(app, "_snapshot_windows_clipboard", return_value=previous),
+            patch.object(
+                app, "_copy_selected_text_with_sequence", return_value=(None, 10, 11)
+            ),
+            patch.object(
+                app, "_restore_clipboard_snapshot_if_owned", return_value=False
+            ) as restore,
+        ):
             capture = app.AppWorkflowClipboard.capture_selection(self.target)
 
         self.assertIsNone(capture)
@@ -1525,13 +1766,17 @@ class WorkflowClipboardAdapterTests(unittest.TestCase):
 
     def test_apply_result_focus_change_copies_without_verification_chord(self):
         capture = app.SelectionCapture(self.target, "selected")
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          return_value=False), \
-                patch.object(app, "_copy_selected_text") as copy, \
-                patch.object(app, "_send_key_chord") as send_key, \
-                patch.object(app, "_paste_generated_text", return_value=False) as copy_result:
-            disposition = app.AppWorkflowClipboard.apply_result(
-                capture, "generated")
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", return_value=False
+            ),
+            patch.object(app, "_copy_selected_text") as copy,
+            patch.object(app, "_send_key_chord") as send_key,
+            patch.object(
+                app, "_paste_generated_text", return_value=False
+            ) as copy_result,
+        ):
+            disposition = app.AppWorkflowClipboard.apply_result(capture, "generated")
 
         self.assertEqual(disposition, app.SelectionDisposition.COPIED)
         copy.assert_not_called()
@@ -1540,37 +1785,41 @@ class WorkflowClipboardAdapterTests(unittest.TestCase):
 
     def test_apply_result_without_snapshot_fails_closed_before_copy(self):
         capture = app.SelectionCapture(self.target, "selected")
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          return_value=True), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             return_value=None), \
-                patch.object(app, "_copy_selected_text_with_sequence") as copy, \
-                patch.object(app, "_send_key_chord") as send_key, \
-                patch.object(app, "_paste_generated_text",
-                             return_value=False) as copy_result:
-            disposition = app.AppWorkflowClipboard.apply_result(
-                capture, "generated")
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", return_value=True
+            ),
+            patch.object(app, "_snapshot_windows_clipboard", return_value=None),
+            patch.object(app, "_copy_selected_text_with_sequence") as copy,
+            patch.object(app, "_send_key_chord") as send_key,
+            patch.object(
+                app, "_paste_generated_text", return_value=False
+            ) as copy_result,
+        ):
+            disposition = app.AppWorkflowClipboard.apply_result(capture, "generated")
 
         self.assertEqual(disposition, app.SelectionDisposition.COPIED)
         copy.assert_not_called()
         send_key.assert_not_called()
         copy_result.assert_called_once_with("generated", should_paste=False)
 
-    def test_apply_result_with_nonrestorable_snapshot_fails_closed_before_copy(
-            self):
+    def test_apply_result_with_nonrestorable_snapshot_fails_closed_before_copy(self):
         capture = app.SelectionCapture(self.target, "selected")
         before = ClipboardSnapshot(
-            (ClipboardFormat(9001, b"unsupported"),), 10, restorable=False)
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          return_value=True), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             return_value=before), \
-                patch.object(app, "_copy_selected_text_with_sequence") as copy, \
-                patch.object(app, "_send_key_chord") as send_key, \
-                patch.object(app, "_paste_generated_text",
-                             return_value=False) as copy_result:
-            disposition = app.AppWorkflowClipboard.apply_result(
-                capture, "generated")
+            (ClipboardFormat(9001, b"unsupported"),), 10, restorable=False
+        )
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", return_value=True
+            ),
+            patch.object(app, "_snapshot_windows_clipboard", return_value=before),
+            patch.object(app, "_copy_selected_text_with_sequence") as copy,
+            patch.object(app, "_send_key_chord") as send_key,
+            patch.object(
+                app, "_paste_generated_text", return_value=False
+            ) as copy_result,
+        ):
+            disposition = app.AppWorkflowClipboard.apply_result(capture, "generated")
 
         self.assertEqual(disposition, app.SelectionDisposition.COPIED)
         copy.assert_not_called()
@@ -1579,17 +1828,21 @@ class WorkflowClipboardAdapterTests(unittest.TestCase):
 
     def test_apply_result_rechecks_focus_after_clipboard_snapshot(self):
         capture = app.SelectionCapture(self.target, "selected")
-        previous = ClipboardSnapshot((ClipboardFormat(
-            CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10)
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          side_effect=[True, False]), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             return_value=previous), \
-                patch.object(app, "_copy_selected_text") as copy, \
-                patch.object(app, "_send_key_chord") as send_key, \
-                patch.object(app, "_paste_generated_text", return_value=False) as copy_result:
-            disposition = app.AppWorkflowClipboard.apply_result(
-                capture, "generated")
+        previous = ClipboardSnapshot(
+            (ClipboardFormat(CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10
+        )
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", side_effect=[True, False]
+            ),
+            patch.object(app, "_snapshot_windows_clipboard", return_value=previous),
+            patch.object(app, "_copy_selected_text") as copy,
+            patch.object(app, "_send_key_chord") as send_key,
+            patch.object(
+                app, "_paste_generated_text", return_value=False
+            ) as copy_result,
+        ):
+            disposition = app.AppWorkflowClipboard.apply_result(capture, "generated")
 
         self.assertEqual(disposition, app.SelectionDisposition.COPIED)
         copy.assert_not_called()
@@ -1598,8 +1851,9 @@ class WorkflowClipboardAdapterTests(unittest.TestCase):
 
     def test_apply_result_rechecks_focus_inside_paste_transaction(self):
         capture = app.SelectionCapture(self.target, "selected")
-        previous = ClipboardSnapshot((ClipboardFormat(
-            CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10)
+        previous = ClipboardSnapshot(
+            (ClipboardFormat(CF_UNICODETEXT, "previous\x00".encode("utf-16-le")),), 10
+        )
         focus = {"window": 77}
 
         def current(target):
@@ -1608,35 +1862,43 @@ class WorkflowClipboardAdapterTests(unittest.TestCase):
         def write_result(_text):
             focus["window"] = 88
 
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          side_effect=current), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             side_effect=[previous, previous]), \
-                patch.object(app, "_copy_selected_text_with_sequence",
-                             return_value=("selected", 10, 11)), \
-                patch.object(app, "_restore_clipboard_snapshot_if_owned"), \
-                patch.object(app, "_set_windows_clipboard_text",
-                             side_effect=write_result), \
-                patch.object(app, "_send_key_chord") as send_key:
-            disposition = app.AppWorkflowClipboard.apply_result(
-                capture, "generated")
+        with (
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", side_effect=current
+            ),
+            patch.object(
+                app, "_snapshot_windows_clipboard", side_effect=[previous, previous]
+            ),
+            patch.object(
+                app,
+                "_copy_selected_text_with_sequence",
+                return_value=("selected", 10, 11),
+            ),
+            patch.object(app, "_restore_clipboard_snapshot_if_owned"),
+            patch.object(app, "_set_windows_clipboard_text", side_effect=write_result),
+            patch.object(app, "_send_key_chord") as send_key,
+        ):
+            disposition = app.AppWorkflowClipboard.apply_result(capture, "generated")
 
         self.assertEqual(disposition, app.SelectionDisposition.COPIED)
         send_key.assert_not_called()
 
     def test_apply_result_rechecks_focus_inside_verification_copy(self):
         capture = app.SelectionCapture(self.target, "selected")
-        with patch.object(app.AppWorkflowClipboard, "is_target_current",
-                          side_effect=[True, True, False, False]), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             return_value=None), \
-                patch.object(app, "_clipboard_sequence_number",
-                             return_value=10), \
-                patch.object(app, "_send_key_chord") as send_key, \
-                patch.object(app, "_paste_generated_text",
-                             return_value=False) as copy_result:
-            disposition = app.AppWorkflowClipboard.apply_result(
-                capture, "generated")
+        with (
+            patch.object(
+                app.AppWorkflowClipboard,
+                "is_target_current",
+                side_effect=[True, True, False, False],
+            ),
+            patch.object(app, "_snapshot_windows_clipboard", return_value=None),
+            patch.object(app, "_clipboard_sequence_number", return_value=10),
+            patch.object(app, "_send_key_chord") as send_key,
+            patch.object(
+                app, "_paste_generated_text", return_value=False
+            ) as copy_result,
+        ):
+            disposition = app.AppWorkflowClipboard.apply_result(capture, "generated")
 
         self.assertEqual(disposition, app.SelectionDisposition.COPIED)
         send_key.assert_not_called()
@@ -1653,7 +1915,8 @@ class WorkflowAppBridgeTests(unittest.TestCase):
         harness = SimpleNamespace(
             _voice_translation_runtime=runtime,
             _workflow_service=SimpleNamespace(
-                state=SimpleNamespace(phase=app.WorkflowPhase.READY)),
+                state=SimpleNamespace(phase=app.WorkflowPhase.READY)
+            ),
             _translation_active=False,
             _rewrite_active=False,
             _workflow_target=Mock(return_value=target),
@@ -1750,7 +2013,8 @@ class WorkflowAppBridgeTests(unittest.TestCase):
             _closing=False,
             _voice_translation_runtime=SimpleNamespace(operation_id=2),
             _workflow_service=SimpleNamespace(
-                state=SimpleNamespace(phase=app.WorkflowPhase.RECORDING)),
+                state=SimpleNamespace(phase=app.WorkflowPhase.RECORDING)
+            ),
             _set_state=set_state,
             _show_result=show_result,
             _t=lambda key: key,
@@ -1780,7 +2044,8 @@ class WorkflowAppBridgeTests(unittest.TestCase):
             _closing=False,
             _voice_translation_runtime=SimpleNamespace(operation_id=2),
             _workflow_service=SimpleNamespace(
-                state=SimpleNamespace(phase=app.WorkflowPhase.RECORDING)),
+                state=SimpleNamespace(phase=app.WorkflowPhase.RECORDING)
+            ),
             _set_state=set_state,
             after=lambda _delay, callback: callback(),
             app_state="recording",
@@ -1825,8 +2090,9 @@ class WorkflowAppBridgeTests(unittest.TestCase):
             after=lambda _delay, callback: callback(),
         )
         for translated, expected in (
-                ("translated text", "translated text"),
-                ("", "raw transcript")):
+            ("translated text", "translated text"),
+            ("", "raw transcript"),
+        ):
             with self.subTest(expected=expected):
                 state = SimpleNamespace(
                     published_text="",
@@ -1853,8 +2119,7 @@ class WorkflowAppBridgeTests(unittest.TestCase):
         states = []
         results = []
         runtime = SimpleNamespace(operation_id=2)
-        service = SimpleNamespace(
-            state=SimpleNamespace(phase=app.WorkflowPhase.READY))
+        service = SimpleNamespace(state=SimpleNamespace(phase=app.WorkflowPhase.READY))
         harness = SimpleNamespace(
             _closing=False,
             _voice_translation_runtime=runtime,
@@ -1918,7 +2183,8 @@ class WorkflowAppBridgeTests(unittest.TestCase):
             _closing=False,
             _voice_translation_runtime=SimpleNamespace(operation_id=2),
             _workflow_service=SimpleNamespace(
-                state=SimpleNamespace(phase=app.WorkflowPhase.RECORDING)),
+                state=SimpleNamespace(phase=app.WorkflowPhase.RECORDING)
+            ),
             _show_success_then=show_success_then,
             _set_state=set_state,
             _show_result=show_result,
@@ -1945,12 +2211,16 @@ class WorkflowAppBridgeTests(unittest.TestCase):
 
     def test_dictation_uses_platform_copy_and_paste_on_non_windows(self):
         target = app.SelectionTarget(77, "editor.exe")
-        with patch.object(app, "IS_WIN", False), \
-                patch.object(app.AppWorkflowClipboard, "is_target_current",
-                             return_value=True), \
-                patch.object(app, "copy_and_paste") as copy:
+        with (
+            patch.object(app, "IS_WIN", False),
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", return_value=True
+            ),
+            patch.object(app, "copy_and_paste") as copy,
+        ):
             disposition = app.AppWorkflowClipboard.write_dictation_result(
-                target, "result")
+                target, "result"
+            )
 
         self.assertEqual(disposition, app.SelectionDisposition.PASTED)
         copy.assert_called_once()
@@ -1959,20 +2229,26 @@ class WorkflowAppBridgeTests(unittest.TestCase):
 
     def test_dictation_non_windows_focus_change_copies_without_pasting(self):
         target = app.SelectionTarget(77, "editor.exe")
-        with patch.object(app, "IS_WIN", False), \
-                patch.object(app.AppWorkflowClipboard, "is_target_current",
-                             return_value=False), \
-                patch.object(app, "copy_and_paste") as copy:
+        with (
+            patch.object(app, "IS_WIN", False),
+            patch.object(
+                app.AppWorkflowClipboard, "is_target_current", return_value=False
+            ),
+            patch.object(app, "copy_and_paste") as copy,
+        ):
             disposition = app.AppWorkflowClipboard.write_dictation_result(
-                target, "result")
+                target, "result"
+            )
 
         self.assertEqual(disposition, app.SelectionDisposition.COPIED)
         copy.assert_called_once_with("result", should_paste=False)
 
     def test_mac_copy_and_paste_uses_command_v_path(self):
-        with patch.object(app, "IS_WIN", False), \
-                patch.object(app, "IS_MAC", True), \
-                patch.object(app.subprocess, "run") as run:
+        with (
+            patch.object(app, "IS_WIN", False),
+            patch.object(app, "IS_MAC", True),
+            patch.object(app.subprocess, "run") as run,
+        ):
             self.assertTrue(app.copy_and_paste("result"))
 
         self.assertEqual(run.call_count, 2)
@@ -1984,7 +2260,8 @@ class WorkflowAppBridgeTests(unittest.TestCase):
     def test_workflow_recording_factory_keeps_startup_owner_until_shutdown(self):
         old_recorder = object()
         old_session = SimpleNamespace(
-            recorder=old_recorder, shutdown_complete=threading.Event())
+            recorder=old_recorder, shutdown_complete=threading.Event()
+        )
         new_session = SimpleNamespace(recorder=object())
         create = Mock(return_value=new_session)
         harness = SimpleNamespace(
@@ -2010,8 +2287,7 @@ class WorkflowAppBridgeTests(unittest.TestCase):
         target = app.SelectionTarget(77, "editor.exe")
         callbacks = []
         dispatches = []
-        service = SimpleNamespace(
-            state=SimpleNamespace(phase=app.WorkflowPhase.READY))
+        service = SimpleNamespace(state=SimpleNamespace(phase=app.WorkflowPhase.READY))
 
         def dispatch(command):
             dispatches.append(command)
@@ -2071,10 +2347,8 @@ class WorkflowAppBridgeTests(unittest.TestCase):
             winfo_y=lambda: 20,
             _primary_mon=(1920, 1080),
             geometry=Mock(),
-            idle_card=SimpleNamespace(
-                pack_forget=Mock(), pack=Mock()),
-            rec_card=SimpleNamespace(
-                pack_forget=Mock(), pack=Mock()),
+            idle_card=SimpleNamespace(pack_forget=Mock(), pack=Mock()),
+            rec_card=SimpleNamespace(pack_forget=Mock(), pack=Mock()),
             _idle_card_pad=0,
             lbl=SimpleNamespace(configure=Mock()),
             sub=SimpleNamespace(configure=Mock()),
@@ -2086,9 +2360,11 @@ class WorkflowAppBridgeTests(unittest.TestCase):
             withdraw=hide,
         )
         harness._reveal_workflow_pill_if_hidden = lambda: (
-            app.App._reveal_workflow_pill_if_hidden(harness))
+            app.App._reveal_workflow_pill_if_hidden(harness)
+        )
         harness._set_state = lambda *args, **kwargs: app.App._set_state(
-            harness, *args, **kwargs)
+            harness, *args, **kwargs
+        )
 
         with patch.object(app, "IS_WIN", False):
             app.App._on_workflow_state(
@@ -2121,18 +2397,17 @@ class WorkflowAppBridgeTests(unittest.TestCase):
             _set_state=Mock(),
         )
         harness._reveal_workflow_pill_if_hidden = lambda: (
-            app.App._reveal_workflow_pill_if_hidden(harness))
+            app.App._reveal_workflow_pill_if_hidden(harness)
+        )
 
         with patch.object(app, "IS_WIN", False):
             app.App._on_workflow_state(
                 harness,
-                SimpleNamespace(
-                    phase=app.WorkflowPhase.MICROPHONE_UNAVAILABLE),
+                SimpleNamespace(phase=app.WorkflowPhase.MICROPHONE_UNAVAILABLE),
             )
             app.App._on_workflow_state(
                 harness,
-                SimpleNamespace(
-                    phase=app.WorkflowPhase.MICROPHONE_UNAVAILABLE),
+                SimpleNamespace(phase=app.WorkflowPhase.MICROPHONE_UNAVAILABLE),
             )
 
         reveal.assert_called_once_with()
@@ -2163,12 +2438,24 @@ class RewriteWorkflowTests(unittest.TestCase):
     @patch("app._send_key_chord", return_value=True)
     @patch("app._set_windows_clipboard_text")
     @patch("app.rewrite_selected_text", return_value="Texto revisado.")
-    @patch("app._copy_selected_text", side_effect=["Texto original.", "Texto original."])
+    @patch(
+        "app._copy_selected_text", side_effect=["Texto original.", "Texto original."]
+    )
     @patch("app._get_windows_clipboard_text", return_value="clipboard anterior")
     @patch("app._foreground_window_handle", side_effect=[77, 77])
     @patch("app._record_usage_event")
-    def test_safe_selection_is_pasted_once(self, record_usage, _foreground, _clipboard, _copy,
-            _rewrite, set_clipboard, send_key, _restore, _sleep):
+    def test_safe_selection_is_pasted_once(
+        self,
+        record_usage,
+        _foreground,
+        _clipboard,
+        _copy,
+        _rewrite,
+        set_clipboard,
+        send_key,
+        _restore,
+        _sleep,
+    ):
         harness = self.Harness()
         app.App._rewrite_selection_worker(harness, 77)
 
@@ -2178,22 +2465,28 @@ class RewriteWorkflowTests(unittest.TestCase):
         self.assertEqual(harness.finished, [("Texto revisado.", None)])
 
     def test_rewrite_restores_rich_snapshot_before_final_selection_check(self):
-        original = ClipboardSnapshot((ClipboardFormat(
-            CF_UNICODETEXT, "Original\x00".encode("utf-16-le")),), 10)
+        original = ClipboardSnapshot(
+            (ClipboardFormat(CF_UNICODETEXT, "Original\x00".encode("utf-16-le")),), 10
+        )
         harness = self.Harness()
-        with patch.object(app, "is_alt_pressed", new=lambda: False), \
-                patch.object(app, "_snapshot_windows_clipboard",
-                             side_effect=[original, original]), \
-                patch.object(app, "_clipboard_sequence_number", return_value=10), \
-                patch.object(app, "_get_windows_clipboard_text", return_value="Original"), \
-                patch.object(app, "_restore_windows_clipboard_if_owned",
-                             return_value=True) as restore, \
-                patch.object(app, "_copy_selected_text",
-                             side_effect=["Original", "Original"]), \
-                patch.object(app, "rewrite_selected_text", return_value="Rewritten"), \
-                patch.object(app, "_foreground_window_handle", side_effect=[77, 77]), \
-                patch.object(app, "_paste_generated_text", return_value=True), \
-                patch.object(app, "_record_usage_event"):
+        with (
+            patch.object(app, "is_alt_pressed", new=lambda: False),
+            patch.object(
+                app, "_snapshot_windows_clipboard", side_effect=[original, original]
+            ),
+            patch.object(app, "_clipboard_sequence_number", return_value=10),
+            patch.object(app, "_get_windows_clipboard_text", return_value="Original"),
+            patch.object(
+                app, "_restore_windows_clipboard_if_owned", return_value=True
+            ) as restore,
+            patch.object(
+                app, "_copy_selected_text", side_effect=["Original", "Original"]
+            ),
+            patch.object(app, "rewrite_selected_text", return_value="Rewritten"),
+            patch.object(app, "_foreground_window_handle", side_effect=[77, 77]),
+            patch.object(app, "_paste_generated_text", return_value=True),
+            patch.object(app, "_record_usage_event"),
+        ):
             app.App._rewrite_selection_worker(harness, 77)
 
         self.assertGreaterEqual(restore.call_count, 2)
@@ -2201,18 +2494,22 @@ class RewriteWorkflowTests(unittest.TestCase):
         self.assertEqual(harness.finished, [("Rewritten", None)])
 
     def test_rewrite_provider_failure_keeps_rich_snapshot_restored(self):
-        original = ClipboardSnapshot((ClipboardFormat(
-            CF_UNICODETEXT, "Original\x00".encode("utf-16-le")),), 10)
+        original = ClipboardSnapshot(
+            (ClipboardFormat(CF_UNICODETEXT, "Original\x00".encode("utf-16-le")),), 10
+        )
         harness = self.Harness()
-        with patch.object(app, "is_alt_pressed", new=lambda: False), \
-                patch.object(app, "_snapshot_windows_clipboard", return_value=original), \
-                patch.object(app, "_clipboard_sequence_number", return_value=10), \
-                patch.object(app, "_get_windows_clipboard_text", return_value="Original"), \
-                patch.object(app, "_restore_windows_clipboard_if_owned",
-                             return_value=True) as restore, \
-                patch.object(app, "_copy_selected_text", return_value="Original"), \
-                patch.object(app, "rewrite_selected_text", return_value="[Error: failed]"), \
-                patch.object(app, "_set_windows_clipboard_text") as set_clipboard:
+        with (
+            patch.object(app, "is_alt_pressed", new=lambda: False),
+            patch.object(app, "_snapshot_windows_clipboard", return_value=original),
+            patch.object(app, "_clipboard_sequence_number", return_value=10),
+            patch.object(app, "_get_windows_clipboard_text", return_value="Original"),
+            patch.object(
+                app, "_restore_windows_clipboard_if_owned", return_value=True
+            ) as restore,
+            patch.object(app, "_copy_selected_text", return_value="Original"),
+            patch.object(app, "rewrite_selected_text", return_value="[Error: failed]"),
+            patch.object(app, "_set_windows_clipboard_text") as set_clipboard,
+        ):
             app.App._rewrite_selection_worker(harness, 77)
 
         restore.assert_called_once()
@@ -2228,12 +2525,22 @@ class RewriteWorkflowTests(unittest.TestCase):
     @patch("app._copy_selected_text", return_value="Hello world")
     @patch("app._foreground_window_handle", side_effect=[77, 77])
     @patch("app._record_usage_event")
-    def test_safe_translation_replaces_only_the_selected_text(self, record_usage,
-            _foreground, _copy, translate, set_clipboard, send_key, _restore, _sleep):
+    def test_safe_translation_replaces_only_the_selected_text(
+        self,
+        record_usage,
+        _foreground,
+        _copy,
+        translate,
+        set_clipboard,
+        send_key,
+        _restore,
+        _sleep,
+    ):
         harness = self.Harness()
 
         app.App._translation_selection_worker(
-            harness, 77, "Hello world", "previous clipboard", "de")
+            harness, 77, "Hello world", "previous clipboard", "de"
+        )
 
         translate.assert_called_once_with("Hello world", "de")
         set_clipboard.assert_called_once_with("Hallo Welt")
@@ -2249,17 +2556,18 @@ class RewriteWorkflowTests(unittest.TestCase):
     @patch("app.translate_selected_text", return_value="Hallo Welt")
     @patch("app._foreground_window_handle", return_value=88)
     @patch("app._record_usage_event")
-    def test_translation_focus_change_copies_without_pasting(self, _record_usage,
-            _foreground, _translate, set_clipboard, send_key):
+    def test_translation_focus_change_copies_without_pasting(
+        self, _record_usage, _foreground, _translate, set_clipboard, send_key
+    ):
         harness = self.Harness()
 
         app.App._translation_selection_worker(
-            harness, 77, "Hello world", "previous clipboard", "de")
+            harness, 77, "Hello world", "previous clipboard", "de"
+        )
 
         set_clipboard.assert_called_once_with("Hallo Welt")
         send_key.assert_not_called()
-        self.assertEqual(
-            harness.finished, [("Hallo Welt", "translation_copied")])
+        self.assertEqual(harness.finished, [("Hallo Welt", "translation_copied")])
 
     @patch("app.is_alt_pressed", new=lambda: False)
     @patch("app._send_key_chord")
@@ -2269,8 +2577,16 @@ class RewriteWorkflowTests(unittest.TestCase):
     @patch("app._get_windows_clipboard_text", return_value="previous")
     @patch("app._foreground_window_handle", return_value=88)
     @patch("app._record_usage_event")
-    def test_focus_change_copies_without_pasting(self, record_usage, _foreground, _clipboard,
-            _copy, _rewrite, set_clipboard, send_key):
+    def test_focus_change_copies_without_pasting(
+        self,
+        record_usage,
+        _foreground,
+        _clipboard,
+        _copy,
+        _rewrite,
+        set_clipboard,
+        send_key,
+    ):
         harness = self.Harness()
         app.App._rewrite_selection_worker(harness, 77)
 
@@ -2287,8 +2603,16 @@ class RewriteWorkflowTests(unittest.TestCase):
     @patch("app._get_windows_clipboard_text", return_value="previous")
     @patch("app._foreground_window_handle", return_value=77)
     @patch("app._record_usage_event")
-    def test_selection_change_copies_without_pasting(self, record_usage, _foreground,
-            _clipboard, _copy, _rewrite, set_clipboard, send_key):
+    def test_selection_change_copies_without_pasting(
+        self,
+        record_usage,
+        _foreground,
+        _clipboard,
+        _copy,
+        _rewrite,
+        set_clipboard,
+        send_key,
+    ):
         harness = self.Harness()
         app.App._rewrite_selection_worker(harness, 77)
 
@@ -2303,8 +2627,9 @@ class RewriteWorkflowTests(unittest.TestCase):
     @patch("app._copy_selected_text", return_value="Original")
     @patch("app._snapshot_windows_clipboard", return_value=None)
     @patch("app._get_windows_clipboard_text", return_value="previous")
-    def test_provider_failure_restores_text_clipboard(self, _clipboard, _snapshot,
-            _copy, _rewrite, set_clipboard):
+    def test_provider_failure_restores_text_clipboard(
+        self, _clipboard, _snapshot, _copy, _rewrite, set_clipboard
+    ):
         harness = self.Harness()
         app.App._rewrite_selection_worker(harness, 77)
 
@@ -2316,8 +2641,9 @@ class RewriteWorkflowTests(unittest.TestCase):
     @patch("app._copy_selected_text", return_value="  \r\n")
     @patch("app._snapshot_windows_clipboard", return_value=None)
     @patch("app._get_windows_clipboard_text", return_value="previous")
-    def test_empty_selection_skips_ai_and_restores_clipboard(self, _clipboard, _snapshot,
-            _copy, set_clipboard):
+    def test_empty_selection_skips_ai_and_restores_clipboard(
+        self, _clipboard, _snapshot, _copy, set_clipboard
+    ):
         harness = self.Harness()
         with patch("app.rewrite_selected_text") as rewrite:
             app.App._rewrite_selection_worker(harness, 77)
@@ -2344,16 +2670,16 @@ class RewriteWorkflowTests(unittest.TestCase):
     @patch("app._get_windows_clipboard_text", return_value="selected")
     @patch("app._clipboard_sequence_number", side_effect=[10, 10, 11])
     @patch("app._send_key_chord")
-    def test_copy_selection_uses_bounded_on_demand_polling(self, send_key,
-            _sequence, _clipboard, _sleep):
+    def test_copy_selection_uses_bounded_on_demand_polling(
+        self, send_key, _sequence, _clipboard, _sleep
+    ):
         self.assertEqual(app._copy_selected_text(timeout=0.1), "selected")
         send_key.assert_called_once_with("ctrl+c")
 
     @patch("app.IS_WIN", True)
     @patch("app._foreground_window_handle", return_value=77)
     @patch("app.threading.Thread")
-    def test_repeated_hotkey_does_not_queue_another_worker(self, thread,
-            _foreground):
+    def test_repeated_hotkey_does_not_queue_another_worker(self, thread, _foreground):
         harness = SimpleNamespace(
             app_state="ready",
             _rewrite_active=False,
@@ -2373,8 +2699,9 @@ class RewriteWorkflowTests(unittest.TestCase):
     @patch("app._foreground_executable", return_value="editor.exe")
     @patch("app._foreground_window_handle", return_value=77)
     @patch("app.threading.Thread")
-    def test_repeated_translation_hotkey_opens_only_one_flow(self, thread,
-            _foreground, _executable):
+    def test_repeated_translation_hotkey_opens_only_one_flow(
+        self, thread, _foreground, _executable
+    ):
         harness = SimpleNamespace(
             app_state="ready",
             _rewrite_active=False,
@@ -2397,15 +2724,15 @@ class RewriteWorkflowTests(unittest.TestCase):
             _show_translation_picker=show,
         )
 
-        app.App._translation_selection_prepared(
-            harness, 77, "selected", "clipboard")
+        app.App._translation_selection_prepared(harness, 77, "selected", "clipboard")
 
         show.assert_called_once_with(77, "selected", "clipboard")
 
     @patch("app._activate_window")
     @patch("app.threading.Thread")
     def test_translation_processing_starts_only_after_language_selection(
-            self, thread, activate):
+        self, thread, activate
+    ):
         feedback = Mock()
         harness = SimpleNamespace(
             _translation_active=True,
@@ -2432,7 +2759,8 @@ class RewriteWorkflowTests(unittest.TestCase):
             _show_success_then=lambda callback: deferred.append(callback),
             _set_state=lambda state, text="", after_ready=None: (
                 states.append((state, text)),
-                ready_callbacks.append(after_ready)),
+                ready_callbacks.append(after_ready),
+            ),
             _show_result=results.append,
             _t=lambda key: key,
         )
@@ -2454,8 +2782,7 @@ class RewriteWorkflowTests(unittest.TestCase):
         self.assertEqual(results, ["Texto revisado."])
 
     @patch("app.threading.Thread")
-    def test_recording_result_waits_for_success_check_before_restoring_ui(self,
-            thread):
+    def test_recording_result_waits_for_success_check_before_restoring_ui(self, thread):
         deferred = []
         ready_callbacks = []
         states = []
@@ -2463,7 +2790,9 @@ class RewriteWorkflowTests(unittest.TestCase):
         harness = SimpleNamespace(
             _show_success_then=lambda callback: deferred.append(callback),
             _set_state=lambda state, after_ready=None: (
-                states.append(state), ready_callbacks.append(after_ready)),
+                states.append(state),
+                ready_callbacks.append(after_ready),
+            ),
             _show_result=results.append,
         )
 
@@ -2509,8 +2838,7 @@ class RewriteWorkflowTests(unittest.TestCase):
             _pill_transition_started=0.0,
         )
 
-        app.App._set_state(
-            harness, "ready", "Pronto", after_ready=callback)
+        app.App._set_state(harness, "ready", "Pronto", after_ready=callback)
 
         self.assertEqual(harness.app_state, "dismissing")
         self.assertFalse(harness._timer_running)
@@ -2541,9 +2869,11 @@ class RewriteWorkflowTests(unittest.TestCase):
         )
 
         app.App._set_state(
-            harness, "ready",
+            harness,
+            "ready",
             after_ready=lambda: events.append("result"),
-            _skip_pill_fade=True)
+            _skip_pill_fade=True,
+        )
 
         self.assertEqual(events, ["result", "fade"])
         overlay.destroy.assert_called_once_with()
@@ -2649,12 +2979,13 @@ class RewriteWorkflowTests(unittest.TestCase):
             def run_immediately(target, daemon):
                 return SimpleNamespace(start=target)
 
-            with patch.object(app, "AUDIO_PATH", audio_path), \
-                    patch("app.time.time", return_value=100.25), \
-                    patch("app.time.sleep"), \
-                    patch("app.threading.Thread", side_effect=run_immediately), \
-                    patch("app.call_transcription_provider",
-                          return_value="Short phrase"):
+            with (
+                patch.object(app, "AUDIO_PATH", audio_path),
+                patch("app.time.time", return_value=100.25),
+                patch("app.time.sleep"),
+                patch("app.threading.Thread", side_effect=run_immediately),
+                patch("app.call_transcription_provider", return_value="Short phrase"),
+            ):
                 app.App._stop_recording(harness)
 
         harness._set_state.assert_called_once_with("processing")
@@ -2670,8 +3001,7 @@ class RewriteWorkflowTests(unittest.TestCase):
             provider_entered = threading.Event()
             allow_provider_return = threading.Event()
             recorder = SimpleNamespace(stop=Mock(), cancel=Mock())
-            session = app.RecordingSession(
-                recorder=recorder, audio_path=audio_path)
+            session = app.RecordingSession(recorder=recorder, audio_path=audio_path)
             session.state = "recording"
             session.start_finished.set()
             harness = SimpleNamespace(
@@ -2687,7 +3017,8 @@ class RewriteWorkflowTests(unittest.TestCase):
                 after=lambda _delay, callback: callback(),
             )
             harness._session_is_current = lambda candidate: (
-                harness._recording_session is candidate and not harness._closing)
+                harness._recording_session is candidate and not harness._closing
+            )
 
             def set_state(state, *_args):
                 harness.app_state = state
@@ -2700,16 +3031,19 @@ class RewriteWorkflowTests(unittest.TestCase):
 
             harness._set_state = set_state
 
-            with patch("app.time.time", return_value=100.25), \
-                    patch("app.time.sleep"), \
-                    patch("app.call_transcription_provider",
-                          side_effect=wait_then_return):
+            with (
+                patch("app.time.time", return_value=100.25),
+                patch("app.time.sleep"),
+                patch("app.call_transcription_provider", side_effect=wait_then_return),
+            ):
                 app.App._stop_recording(harness)
                 self.assertTrue(provider_entered.wait(1))
                 app.App._cancel(harness)
                 deadline = time.time() + 1
-                while (not session.provider_cancel_token.cancelled
-                        and time.time() < deadline):
+                while (
+                    not session.provider_cancel_token.cancelled
+                    and time.time() < deadline
+                ):
                     time.sleep(0.01)
                 allow_provider_return.set()
                 deadline = time.time() + 1
@@ -2737,8 +3071,7 @@ class RewriteWorkflowTests(unittest.TestCase):
                 release_cleanup.wait(1)
 
             recorder.cancel.side_effect = blocked_cancel
-            session = app.RecordingSession(
-                recorder=recorder, audio_path=audio_path)
+            session = app.RecordingSession(recorder=recorder, audio_path=audio_path)
             session.state = "recording"
             session.start_finished.set()
             harness = SimpleNamespace(
@@ -2754,7 +3087,8 @@ class RewriteWorkflowTests(unittest.TestCase):
                 after=lambda _delay, callback: callback(),
             )
             harness._session_is_current = lambda candidate: (
-                harness._recording_session is candidate and not harness._closing)
+                harness._recording_session is candidate and not harness._closing
+            )
 
             def set_state(state, *_args):
                 harness.app_state = state
@@ -2767,8 +3101,9 @@ class RewriteWorkflowTests(unittest.TestCase):
                 allow_provider_return.wait(1)
                 return "late result"
 
-            with patch("app.call_transcription_provider",
-                       side_effect=provider_returns_late):
+            with patch(
+                "app.call_transcription_provider", side_effect=provider_returns_late
+            ):
                 app.App._stop_recording(harness)
                 self.assertTrue(provider_entered.wait(1))
 
@@ -2801,8 +3136,7 @@ class RewriteWorkflowTests(unittest.TestCase):
             audio_path = Path(directory) / "recording.wav"
             audio_path.write_bytes(b"audio")
             recorder = SimpleNamespace(cancel=Mock())
-            session = app.RecordingSession(
-                recorder=recorder, audio_path=audio_path)
+            session = app.RecordingSession(recorder=recorder, audio_path=audio_path)
             session.state = "completed"
             session._cleanup_done.set()
             callbacks = []
@@ -2811,16 +3145,18 @@ class RewriteWorkflowTests(unittest.TestCase):
                 _recording_session=session,
                 _closing=False,
                 _on_result=Mock(),
-                _set_state=lambda state, *_args: setattr(
-                    harness, "app_state", state),
+                _set_state=lambda state, *_args: setattr(harness, "app_state", state),
                 _observe_recording_session_release=Mock(),
                 _session_is_current=lambda candidate: (
-                    harness._recording_session is candidate and not harness._closing),
+                    harness._recording_session is candidate and not harness._closing
+                ),
             )
             app._set_pending_recording_usage(session, {"type": "recording"})
             callbacks.append(
                 lambda: app.App._finish_recording_session(
-                    harness, session, text="late result"))
+                    harness, session, text="late result"
+                )
+            )
 
             # Escape publishes cancellation before the queued Tk callback runs.
             with patch.object(app, "_record_usage_event") as record_usage:
@@ -2844,13 +3180,14 @@ class RewriteWorkflowTests(unittest.TestCase):
             _closing=False,
             _on_result=Mock(side_effect=lambda _text: order.append("result")),
             _session_is_current=lambda candidate: (
-                harness._recording_session is candidate and not harness._closing),
+                harness._recording_session is candidate and not harness._closing
+            ),
         )
         app._set_pending_recording_usage(session, {"type": "recording"})
 
         with patch.object(
-                app, "_record_usage_event",
-                side_effect=lambda *_args: order.append("usage")) as record_usage:
+            app, "_record_usage_event", side_effect=lambda *_args: order.append("usage")
+        ) as record_usage:
             app.App._finish_recording_session(harness, session, text="success")
 
         self.assertEqual(order, ["usage", "result"])
@@ -2867,15 +3204,17 @@ class RewriteWorkflowTests(unittest.TestCase):
             _closing=False,
             _on_result=Mock(side_effect=lambda _text: order.append("result")),
             _observe_recording_session_release=Mock(
-                side_effect=lambda _session: order.append("release")),
+                side_effect=lambda _session: order.append("release")
+            ),
             _session_is_current=lambda candidate: (
-                harness._recording_session is candidate and not harness._closing),
+                harness._recording_session is candidate and not harness._closing
+            ),
         )
         app._set_pending_recording_usage(session, {"type": "recording"})
 
         with patch.object(
-                app, "_record_usage_event",
-                side_effect=lambda *_args: order.append("usage")) as record_usage:
+            app, "_record_usage_event", side_effect=lambda *_args: order.append("usage")
+        ) as record_usage:
             app.App._finish_recording_session(harness, session, text="success")
 
         self.assertEqual(order, ["usage", "result", "release"])
@@ -2909,12 +3248,13 @@ class RewriteWorkflowTests(unittest.TestCase):
                 after=lambda _delay, callback: callback(),
             )
 
-            with patch.object(app, "AUDIO_PATH", audio_path), \
-                    patch("app._has_active_microphone", return_value=True), \
-                    patch("app._recording_usage_context", return_value={}), \
-                    patch("app.time.sleep"), \
-                    patch("app.call_transcription_provider",
-                          return_value="Short phrase"):
+            with (
+                patch.object(app, "AUDIO_PATH", audio_path),
+                patch("app._has_active_microphone", return_value=True),
+                patch("app._recording_usage_context", return_value={}),
+                patch("app.time.sleep"),
+                patch("app.call_transcription_provider", return_value="Short phrase"),
+            ):
                 app.App._start_recording(harness)
                 self.assertTrue(startup_entered.wait(1))
                 app.App._stop_recording(harness)
@@ -2930,8 +3270,7 @@ class RewriteWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             audio_path = Path(directory) / "recording.wav"
             audio_path.write_bytes(b"0" * 1001)
-            recorder = SimpleNamespace(
-                start=Mock(), stop=Mock(), cancel=Mock())
+            recorder = SimpleNamespace(start=Mock(), stop=Mock(), cancel=Mock())
             session = app.RecordingSession(recorder=recorder, audio_path=audio_path)
             callbacks = []
             result_ready = threading.Event()
@@ -2971,19 +3310,23 @@ class RewriteWorkflowTests(unittest.TestCase):
                 _recording_session=None,
                 _closing=False,
                 _session_is_current=lambda candidate: (
-                    harness._recording_session is candidate and not harness._closing),
+                    harness._recording_session is candidate and not harness._closing
+                ),
                 after=lambda _delay, callback: callbacks.append(callback),
             )
-            harness._stop_recording = (
-                lambda expected_session=None: app.App._stop_recording(
-                    harness, expected_session))
+            harness._stop_recording = lambda expected_session=None: (
+                app.App._stop_recording(harness, expected_session)
+            )
 
-            with patch.object(app, "_has_active_microphone", return_value=True), \
-                    patch.object(app, "_recording_usage_context", return_value={}), \
-                    patch.object(app.threading, "Thread", side_effect=make_thread), \
-                    patch.object(app.time, "sleep"), \
-                    patch.object(app, "call_transcription_provider",
-                                 return_value="Short phrase"):
+            with (
+                patch.object(app, "_has_active_microphone", return_value=True),
+                patch.object(app, "_recording_usage_context", return_value={}),
+                patch.object(app.threading, "Thread", side_effect=make_thread),
+                patch.object(app.time, "sleep"),
+                patch.object(
+                    app, "call_transcription_provider", return_value="Short phrase"
+                ),
+            ):
                 app.App._start_recording(harness)
                 app.App._stop_recording(harness)
 
@@ -2992,8 +3335,10 @@ class RewriteWorkflowTests(unittest.TestCase):
                 recorder.stop.assert_not_called()
 
                 startup_worker = next(
-                    worker for worker in (session._active_workers())
-                    if isinstance(worker, DeferredThread))
+                    worker
+                    for worker in (session._active_workers())
+                    if isinstance(worker, DeferredThread)
+                )
                 startup_worker.run()
                 self.assertTrue(callbacks)
                 pending_stop = callbacks.pop(0)
@@ -3012,14 +3357,15 @@ class RewriteWorkflowTests(unittest.TestCase):
 
     def test_missing_or_short_audio_preserves_no_audio_status_and_cleans_up(self):
         for payload in (None, b"0" * 999):
-            with self.subTest(payload="missing" if payload is None else "short"), \
-                    tempfile.TemporaryDirectory() as directory:
+            with (
+                self.subTest(payload="missing" if payload is None else "short"),
+                tempfile.TemporaryDirectory() as directory,
+            ):
                 audio_path = Path(directory) / "recording.wav"
                 if payload is not None:
                     audio_path.write_bytes(payload)
                 recorder = SimpleNamespace(stop=Mock(), cancel=Mock())
-                session = app.RecordingSession(
-                    recorder=recorder, audio_path=audio_path)
+                session = app.RecordingSession(recorder=recorder, audio_path=audio_path)
                 session.state = "recording"
                 session.start_finished.set()
                 callbacks_ready = threading.Event()
@@ -3038,20 +3384,26 @@ class RewriteWorkflowTests(unittest.TestCase):
                     lang="en",
                     _closing=False,
                     _session_is_current=lambda candidate: (
-                        harness._recording_session is candidate
-                        and not harness._closing),
-                    _set_state=Mock(side_effect=lambda state, text="": states.append(
-                        (state, text))),
+                        harness._recording_session is candidate and not harness._closing
+                    ),
+                    _set_state=Mock(
+                        side_effect=lambda state, text="": states.append((state, text))
+                    ),
                     _t=lambda key: key,
                     after=after,
                 )
                 harness._finish_recording_session = (
-                    lambda session, text=None, error=None, status_key=None:
-                    app.App._finish_recording_session(
-                        harness, session, text, error, status_key))
+                    lambda session, text=None, error=None, status_key=None: (
+                        app.App._finish_recording_session(
+                            harness, session, text, error, status_key
+                        )
+                    )
+                )
 
-                with patch.object(app.time, "sleep"), \
-                        patch.object(app, "call_transcription_provider") as provider:
+                with (
+                    patch.object(app.time, "sleep"),
+                    patch.object(app, "call_transcription_provider") as provider,
+                ):
                     app.App._stop_recording(harness)
                     self.assertTrue(callbacks_ready.wait(1))
                     deadline = time.time() + 1
@@ -3091,20 +3443,30 @@ class RewriteWorkflowTests(unittest.TestCase):
                 lang="en",
                 _closing=False,
                 _session_is_current=lambda candidate: (
-                    harness._recording_session is candidate and not harness._closing),
-                _set_state=Mock(side_effect=lambda state, text="": states.append(
-                    (state, text))),
+                    harness._recording_session is candidate and not harness._closing
+                ),
+                _set_state=Mock(
+                    side_effect=lambda state, text="": states.append((state, text))
+                ),
                 _t=lambda key: key,
                 after=after,
             )
             harness._finish_recording_session = (
-                lambda current, text=None, error=None, status_key=None:
-                app.App._finish_recording_session(
-                    harness, current, text, error, status_key))
+                lambda current, text=None, error=None, status_key=None: (
+                    app.App._finish_recording_session(
+                        harness, current, text, error, status_key
+                    )
+                )
+            )
 
-            with patch.object(app.time, "sleep"), patch.object(
-                    app, "call_transcription_provider",
-                    return_value="[Error: provider unavailable]") as provider:
+            with (
+                patch.object(app.time, "sleep"),
+                patch.object(
+                    app,
+                    "call_transcription_provider",
+                    return_value="[Error: provider unavailable]",
+                ) as provider,
+            ):
                 app.App._stop_recording(harness)
                 self.assertTrue(callbacks_ready.wait(1))
                 deadline = time.time() + 1
@@ -3114,8 +3476,12 @@ class RewriteWorkflowTests(unittest.TestCase):
                     callback()
 
             provider.assert_called_once_with(
-                audio_path, "transcribe", "en", audio_bytes=b"0" * 1001,
-                cancel_token=ANY)
+                audio_path,
+                "transcribe",
+                "en",
+                audio_bytes=b"0" * 1001,
+                cancel_token=ANY,
+            )
             self.assertEqual(states, [("processing", ""), ("ready", "error")])
             self.assertIsInstance(session.error, app.RecordingError)
             self.assertEqual(session.state, "failed")
@@ -3153,19 +3519,26 @@ class RewriteWorkflowTests(unittest.TestCase):
                 lang="en",
                 _closing=False,
                 _session_is_current=lambda candidate: (
-                    harness._recording_session is candidate and not harness._closing),
-                _set_state=Mock(side_effect=lambda state, text="": states.append(
-                    (state, text))),
+                    harness._recording_session is candidate and not harness._closing
+                ),
+                _set_state=Mock(
+                    side_effect=lambda state, text="": states.append((state, text))
+                ),
                 _t=lambda key: key,
                 after=after,
             )
             harness._finish_recording_session = (
-                lambda current, text=None, error=None, status_key=None:
-                app.App._finish_recording_session(
-                    harness, current, text, error, status_key))
+                lambda current, text=None, error=None, status_key=None: (
+                    app.App._finish_recording_session(
+                        harness, current, text, error, status_key
+                    )
+                )
+            )
 
-            with patch.object(app, "_has_active_microphone", return_value=True), \
-                    patch.object(app, "_recording_usage_context", return_value={}):
+            with (
+                patch.object(app, "_has_active_microphone", return_value=True),
+                patch.object(app, "_recording_usage_context", return_value={}),
+            ):
                 app.App._start_recording(harness)
                 self.assertTrue(callbacks_ready.wait(1))
                 deadline = time.time() + 1
@@ -3226,7 +3599,8 @@ class WindowFadeTests(unittest.TestCase):
         self.assertEqual(widget.opacity_history, [0.0, 1.0])
         self.assertEqual(
             widget._main_backdrop.set_opacity.call_args_list,
-            [unittest.mock.call(0.0), unittest.mock.call(1.0)])
+            [unittest.mock.call(0.0), unittest.mock.call(1.0)],
+        )
 
     @patch("app.time.perf_counter", side_effect=[0.0, 0.14])
     @patch("app.IS_WIN", False)
@@ -3242,8 +3616,9 @@ class WindowFadeTests(unittest.TestCase):
 
     def test_window_header_drag_updates_window_position(self):
         bindings = {}
-        handle = SimpleNamespace(bind=lambda event, callback, add=None:
-            bindings.__setitem__(event, callback))
+        handle = SimpleNamespace(
+            bind=lambda event, callback, add=None: bindings.__setitem__(event, callback)
+        )
         widget = SimpleNamespace(
             winfo_x=lambda: 100,
             winfo_y=lambda: 50,
@@ -3265,14 +3640,11 @@ class WindowFadeTests(unittest.TestCase):
         self.assertEqual(style["border_width"], 0)
 
     def test_translation_picker_expands_vertically_from_processing_pill_size(self):
-        self.assertGreater(
-            app.TRANSLATION_PICKER_HEIGHT, app.TRANSLATION_PICKER_WIDTH)
+        self.assertGreater(app.TRANSLATION_PICKER_HEIGHT, app.TRANSLATION_PICKER_WIDTH)
         self.assertEqual(app.TRANSLATION_PICKER_COLLAPSED_WIDTH, 142)
         self.assertEqual(app.TRANSLATION_PICKER_COLLAPSED_HEIGHT, 42)
-        self.assertEqual(
-            app.TRANSLATION_PICKER_EXPAND_MS, app.WINDOW_FADE_IN_MS)
-        self.assertEqual(
-            app.TRANSLATION_PICKER_COLLAPSE_MS, app.WINDOW_FADE_OUT_MS)
+        self.assertEqual(app.TRANSLATION_PICKER_EXPAND_MS, app.WINDOW_FADE_IN_MS)
+        self.assertEqual(app.TRANSLATION_PICKER_COLLAPSE_MS, app.WINDOW_FADE_OUT_MS)
 
     def test_alt_r_visibility_toggle_uses_standard_fades(self):
         hide = Mock()
@@ -3343,7 +3715,8 @@ class WindowFadeTests(unittest.TestCase):
     @patch("app._set_window_opacity")
     @patch("app._animate_window_opacity")
     def test_stale_hide_completion_does_not_withdraw_reopened_window(
-            self, animate, _set_opacity):
+        self, animate, _set_opacity
+    ):
         withdraw = Mock()
         harness = SimpleNamespace(
             _clarify_visibility_target=True,
@@ -3353,7 +3726,8 @@ class WindowFadeTests(unittest.TestCase):
         )
         completion = []
         animate.side_effect = lambda _widget, _target, _duration, callback: (
-            completion.append(callback))
+            completion.append(callback)
+        )
 
         app.App._hide_to_tray(harness)
         harness._clarify_visibility_target = True
@@ -3364,8 +3738,8 @@ class WindowFadeTests(unittest.TestCase):
     def test_provider_cards_do_not_cover_their_ctk_border_with_a_canvas(self):
         source = inspect.getsource(app.App._open_settings)
         card_source = source.split(
-            "# Providers page and cards are also created once.", 1)[1].split(
-            "def refresh_provider_ui", 1)[0]
+            "# Providers page and cards are also created once.", 1
+        )[1].split("def refresh_provider_ui", 1)[0]
 
         self.assertNotIn("tk.Canvas(", card_source)
         self.assertIn("ctk.CTkLabel(", card_source)
@@ -3378,13 +3752,14 @@ class WindowFadeTests(unittest.TestCase):
         app.App._sync_escape_hotkey(harness, False)
 
         self.assertEqual(
-            tray.set_escape_enabled.call_args_list,
-            [call(True), call(False)])
+            tray.set_escape_enabled.call_args_list, [call(True), call(False)]
+        )
 
     @patch("app._set_window_opacity")
     @patch("app._animate_window_opacity")
     def test_minimize_restarts_even_when_previous_fade_flag_is_stale(
-            self, animate, set_opacity):
+        self, animate, set_opacity
+    ):
         withdraw = Mock()
         harness = SimpleNamespace(
             _clarify_fading_out=True,
@@ -3401,24 +3776,33 @@ class WindowFadeTests(unittest.TestCase):
 
     def test_translation_picker_is_rendered_as_one_full_resolution_image(self):
         image = app._render_translation_picker_image(
-            "Translate to", 0,
-            app.TRANSLATION_PICKER_WIDTH, app.TRANSLATION_PICKER_HEIGHT)
+            "Translate to",
+            0,
+            app.TRANSLATION_PICKER_WIDTH,
+            app.TRANSLATION_PICKER_HEIGHT,
+        )
 
-        self.assertEqual(image.size, (
-            app.TRANSLATION_PICKER_WIDTH, app.TRANSLATION_PICKER_HEIGHT))
+        self.assertEqual(
+            image.size, (app.TRANSLATION_PICKER_WIDTH, app.TRANSLATION_PICKER_HEIGHT)
+        )
         self.assertEqual(image.mode, "RGBA")
         self.assertIsNotNone(image.getbbox())
 
     def test_translation_picker_image_keeps_corners_transparent(self):
         image = app._render_translation_picker_image(
-            "Translate to", 0,
-            app.TRANSLATION_PICKER_WIDTH, app.TRANSLATION_PICKER_HEIGHT)
+            "Translate to",
+            0,
+            app.TRANSLATION_PICKER_WIDTH,
+            app.TRANSLATION_PICKER_HEIGHT,
+        )
 
         self.assertEqual(image.getpixel((0, 0))[3], 0)
         self.assertEqual(
-            image.getpixel((app.TRANSLATION_PICKER_WIDTH // 2,
-                            app.TRANSLATION_PICKER_HEIGHT // 2))[3],
-            255)
+            image.getpixel(
+                (app.TRANSLATION_PICKER_WIDTH // 2, app.TRANSLATION_PICKER_HEIGHT // 2)
+            )[3],
+            255,
+        )
 
     def test_translation_picker_uses_readable_content_scale(self):
         self.assertGreaterEqual(app.TRANSLATION_PICKER_TITLE_FONT_SIZE, 13)
@@ -3429,7 +3813,8 @@ class WindowFadeTests(unittest.TestCase):
         app._pill_status_font.cache_clear()
         try:
             with patch.object(
-                    app.ImageFont, "truetype", return_value="sf-font") as load:
+                app.ImageFont, "truetype", return_value="sf-font"
+            ) as load:
                 font = app._pill_status_font(56)
 
             self.assertEqual(font, "sf-font")
@@ -3440,10 +3825,8 @@ class WindowFadeTests(unittest.TestCase):
     def test_translation_language_keyboard_navigation_wraps(self):
         count = len(app.SUPPORTED_LANGUAGES)
 
-        self.assertEqual(
-            app._next_translation_language_index(0, -1, count), count - 1)
-        self.assertEqual(
-            app._next_translation_language_index(count - 1, 1, count), 0)
+        self.assertEqual(app._next_translation_language_index(0, -1, count), count - 1)
+        self.assertEqual(app._next_translation_language_index(count - 1, 1, count), 0)
         self.assertEqual(app._next_translation_language_index(2, 1, count), 3)
 
 
@@ -3451,18 +3834,19 @@ class UsageStatisticsTests(unittest.TestCase):
     def test_local_asr_opted_out_refinement_is_not_accounted(self):
         original = app.APP_CONFIG.copy()
         try:
-            app.APP_CONFIG.update({
-                "transcription_provider": "local_asr",
-                "local_asr_model": "ggml-small",
-                "ui_mode": "prompt",
-                "local_asr_cloud_refinement": False,
-                "refinement_provider": "openai",
-                "refinement_model": "gpt-4o-mini",
-            })
+            app.APP_CONFIG.update(
+                {
+                    "transcription_provider": "local_asr",
+                    "local_asr_model": "ggml-small",
+                    "ui_mode": "prompt",
+                    "local_asr_cloud_refinement": False,
+                    "refinement_provider": "openai",
+                    "refinement_model": "gpt-4o-mini",
+                }
+            )
 
             context = app._recording_usage_context("prompt")
-            event = app._build_recording_usage_event(
-                context, 60, "A local transcript")
+            event = app._build_recording_usage_event(context, 60, "A local transcript")
 
             self.assertEqual(context["refinement_provider"], "")
             self.assertEqual(context["refinement_model"], "")
@@ -3473,18 +3857,23 @@ class UsageStatisticsTests(unittest.TestCase):
             app.APP_CONFIG.update(original)
 
     def test_recording_event_tracks_models_cost_and_no_transcript(self):
-        event = app._build_recording_usage_event({
-            "provider": "openai",
-            "model": "whisper-1",
-            "mode": "prompt",
-            "refinement_provider": "openai",
-            "refinement_model": "gpt-4o-mini",
-        }, 60, "A short polished transcript")
+        event = app._build_recording_usage_event(
+            {
+                "provider": "openai",
+                "model": "whisper-1",
+                "mode": "prompt",
+                "refinement_provider": "openai",
+                "refinement_model": "gpt-4o-mini",
+            },
+            60,
+            "A short polished transcript",
+        )
 
         self.assertEqual(event["type"], "recording")
         self.assertEqual(event["word_count"], 4)
-        self.assertEqual([entry["model"] for entry in event["models"]], [
-            "whisper-1", "gpt-4o-mini"])
+        self.assertEqual(
+            [entry["model"] for entry in event["models"]], ["whisper-1", "gpt-4o-mini"]
+        )
         self.assertGreaterEqual(event["estimated_cost_usd"], 0.006)
         self.assertNotIn("text", event)
         self.assertNotIn("transcript", event)
@@ -3499,8 +3888,7 @@ class UsageStatisticsTests(unittest.TestCase):
             "refinement_model": "",
         }
         config = SimpleNamespace(
-            route=SimpleNamespace(
-                provider_id="openai", model_id="gpt-4o-mini"),
+            route=SimpleNamespace(provider_id="openai", model_id="gpt-4o-mini"),
             target_language="en",
         )
         state = SimpleNamespace(
@@ -3508,21 +3896,26 @@ class UsageStatisticsTests(unittest.TestCase):
             translated_text="Hello from the microphone",
         )
 
-        with patch.object(app, "_workflow_route",
-                          return_value=SimpleNamespace(provider_id="groq")), \
-                patch.object(app, "_recording_usage_context",
-                             return_value=context), \
-                patch.object(app, "_record_usage_event") as record_usage:
+        with (
+            patch.object(
+                app, "_workflow_route", return_value=SimpleNamespace(provider_id="groq")
+            ),
+            patch.object(app, "_recording_usage_context", return_value=context),
+            patch.object(app, "_record_usage_event") as record_usage,
+        ):
             app.AppWorkflowStatistics(object()).record_voice_translation(
-                config, state, 45.0)
+                config, state, 45.0
+            )
 
         record_usage.assert_called_once()
         event = record_usage.call_args.args[0]
         self.assertEqual(event["type"], "voice_translation")
         self.assertEqual(event["duration_seconds"], 45.0)
         self.assertEqual(
-            [(entry["provider"], entry["model"], entry["purpose"])
-             for entry in event["models"]],
+            [
+                (entry["provider"], entry["model"], entry["purpose"])
+                for entry in event["models"]
+            ],
             [
                 ("groq", "whisper-large-v3-turbo", "transcription"),
                 ("openai", "gpt-4o-mini", "translation"),
@@ -3544,16 +3937,23 @@ class UsageStatisticsTests(unittest.TestCase):
             raw_transcript="A short source transcript",
             translated_text="Um texto curto traduzido",
         )
-        with patch.object(
-                app, "_recording_usage_context", return_value={
+        with (
+            patch.object(
+                app,
+                "_recording_usage_context",
+                return_value={
                     "provider": "groq",
                     "model": "whisper-large-v3",
                     "mode": "voice_translation",
                     "refinement_provider": "",
                     "refinement_model": "",
-                }), patch.object(app, "_record_usage_event") as record_usage:
+                },
+            ),
+            patch.object(app, "_record_usage_event") as record_usage,
+        ):
             app.AppWorkflowStatistics(None).record_voice_translation(
-                config, state, 45.5)
+                config, state, 45.5
+            )
 
         record_usage.assert_called_once()
         event = record_usage.call_args.args[0]
@@ -3564,8 +3964,10 @@ class UsageStatisticsTests(unittest.TestCase):
         self.assertEqual(event["translation_provider"], "openai")
         self.assertEqual(event["translation_model"], "gpt-4o-mini")
         self.assertEqual(
-            [(entry["provider"], entry["model"], entry["purpose"])
-             for entry in event["models"]],
+            [
+                (entry["provider"], entry["model"], entry["purpose"])
+                for entry in event["models"]
+            ],
             [
                 ("openai", "whisper-1", "transcription"),
                 ("openai", "gpt-4o-mini", "translation"),
@@ -3577,20 +3979,23 @@ class UsageStatisticsTests(unittest.TestCase):
 
     def test_summary_counts_voice_translation_as_recording_and_translation(self):
         now = 2_000_000.0
-        summary = app._usage_summary([
-            {
-                "timestamp": now,
-                "type": "voice_translation",
-                "duration_seconds": 45.5,
-                "word_count": 5,
-                "estimated_cost_usd": 0.02,
-                "cost_complete": True,
-                "models": [
-                    {"provider": "openai", "model": "whisper-1"},
-                    {"provider": "openai", "model": "gpt-4o-mini"},
-                ],
-            },
-        ], now=now)
+        summary = app._usage_summary(
+            [
+                {
+                    "timestamp": now,
+                    "type": "voice_translation",
+                    "duration_seconds": 45.5,
+                    "word_count": 5,
+                    "estimated_cost_usd": 0.02,
+                    "cost_complete": True,
+                    "models": [
+                        {"provider": "openai", "model": "whisper-1"},
+                        {"provider": "openai", "model": "gpt-4o-mini"},
+                    ],
+                },
+            ],
+            now=now,
+        )
 
         self.assertEqual(summary["recordings"], 1)
         self.assertEqual(summary["translations"], 1)
@@ -3602,18 +4007,42 @@ class UsageStatisticsTests(unittest.TestCase):
     def test_summary_ranks_models_and_aggregates_recording_metrics(self):
         now = 2_000_000.0
         events = [
-            {"timestamp": now, "type": "recording", "duration_seconds": 30,
-             "word_count": 50, "estimated_cost_usd": 0.01, "cost_complete": True,
-             "models": [{"provider": "groq", "model": "whisper-large-v3-turbo"}]},
-            {"timestamp": now, "type": "recording", "duration_seconds": 90,
-             "word_count": 120, "estimated_cost_usd": 0.02, "cost_complete": True,
-             "models": [{"provider": "groq", "model": "whisper-large-v3-turbo"}]},
-            {"timestamp": now, "type": "rewrite", "duration_seconds": 0,
-             "word_count": 10, "estimated_cost_usd": 0.001, "cost_complete": True,
-             "models": [{"provider": "openai", "model": "gpt-4o-mini"}]},
-            {"timestamp": now, "type": "translation", "duration_seconds": 0,
-             "word_count": 8, "estimated_cost_usd": 0.001, "cost_complete": True,
-             "models": [{"provider": "openai", "model": "gpt-4o"}]},
+            {
+                "timestamp": now,
+                "type": "recording",
+                "duration_seconds": 30,
+                "word_count": 50,
+                "estimated_cost_usd": 0.01,
+                "cost_complete": True,
+                "models": [{"provider": "groq", "model": "whisper-large-v3-turbo"}],
+            },
+            {
+                "timestamp": now,
+                "type": "recording",
+                "duration_seconds": 90,
+                "word_count": 120,
+                "estimated_cost_usd": 0.02,
+                "cost_complete": True,
+                "models": [{"provider": "groq", "model": "whisper-large-v3-turbo"}],
+            },
+            {
+                "timestamp": now,
+                "type": "rewrite",
+                "duration_seconds": 0,
+                "word_count": 10,
+                "estimated_cost_usd": 0.001,
+                "cost_complete": True,
+                "models": [{"provider": "openai", "model": "gpt-4o-mini"}],
+            },
+            {
+                "timestamp": now,
+                "type": "translation",
+                "duration_seconds": 0,
+                "word_count": 8,
+                "estimated_cost_usd": 0.001,
+                "cost_complete": True,
+                "models": [{"provider": "openai", "model": "gpt-4o"}],
+            },
         ]
 
         summary = app._usage_summary(events, now=now)
@@ -3624,8 +4053,9 @@ class UsageStatisticsTests(unittest.TestCase):
         self.assertEqual(summary["total_seconds"], 120)
         self.assertEqual(summary["average_seconds"], 60)
         self.assertEqual(summary["total_words"], 170)
-        self.assertEqual(summary["ranked_models"][0],
-            (("groq", "whisper-large-v3-turbo"), 2))
+        self.assertEqual(
+            summary["ranked_models"][0], (("groq", "whisper-large-v3-turbo"), 2)
+        )
 
     def test_usage_events_are_persisted_locally(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -3635,8 +4065,7 @@ class UsageStatisticsTests(unittest.TestCase):
                 app._record_usage_event({"type": "rewrite", "models": []})
                 events = app._load_usage_events()
 
-        self.assertEqual([event["type"] for event in events], [
-            "recording", "rewrite"])
+        self.assertEqual([event["type"] for event in events], ["recording", "rewrite"])
 
     def test_duration_formatter_is_compact(self):
         self.assertEqual(app._format_duration(65), "1m 05s")

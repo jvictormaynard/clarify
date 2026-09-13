@@ -24,8 +24,12 @@ class ProviderCapability(str, Enum):
 class ProviderError(RuntimeError):
     """Base error carrying provider and capability context for the caller."""
 
-    def __init__(self, provider_id: str, message: str,
-            capability: ProviderCapability | None = None):
+    def __init__(
+        self,
+        provider_id: str,
+        message: str,
+        capability: ProviderCapability | None = None,
+    ):
         super().__init__(message)
         self.provider_id = provider_id
         self.capability = capability
@@ -91,14 +95,27 @@ class TranscriptionRequest:
     # it without adding a provider-specific workflow branch.
     dictionary_context: str = ""
     execution_device: str = "auto"
+    # Plain canonical spellings for Whisper decoding, not chat instructions.
+    vocabulary_prompt: str = ""
 
-    def effective_prompt(self) -> str:
+    def effective_prompt(self, *, max_chars: int | None = None) -> str:
         """Return the prompt with optional local vocabulary context appended."""
         prompt = str(self.prompt or "").strip()
         context = str(self.dictionary_context or "").strip()
         if len(context) > MAX_TRANSCRIPTION_CONTEXT_CHARS:
             raise ValueError(
-                "dictionary transcription context exceeds the 4096-character limit")
+                "dictionary transcription context exceeds the 4096-character limit"
+            )
+        if max_chars is not None and context:
+            available = max(0, max_chars - len(prompt) - (2 if prompt else 0))
+            if len(context) > available:
+                lines: list[str] = []
+                for line in context.splitlines():
+                    if len("\n".join([*lines, line])) > available:
+                        break
+                    lines.append(line)
+                # The first line is an instruction, not a vocabulary entry.
+                context = "\n".join(lines) if len(lines) > 1 else ""
         if not context:
             return prompt
         if not prompt:
@@ -119,6 +136,8 @@ class TranscriptionResult:
     refinement_provider_id: str | None = None
     refinement_model: str | None = None
     timings_ms: dict[str, float] = field(default_factory=dict, compare=False)
+    # Content-free signal: optional refinement failed, but ASR text is usable.
+    refinement_failed: bool = False
 
 
 @dataclass(frozen=True)
@@ -168,9 +187,16 @@ class HttpResponse(Protocol):
 class HttpClient(Protocol):
     """Shared transport seam implemented by the provider HTTP policy."""
 
-    def request(self, method: str, url: str, *, provider: str,
-            operation: str, cancel_token: Any = None,
-            safe_to_retry: bool | None = None, **kwargs: Any) -> HttpResponse: ...
+    def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        provider: str,
+        operation: str,
+        cancel_token: Any = None,
+        safe_to_retry: bool | None = None,
+        **kwargs: Any,
+    ) -> HttpResponse: ...
 
-    def json(self, response: HttpResponse, *, provider: str,
-            operation: str) -> Any: ...
+    def json(self, response: HttpResponse, *, provider: str, operation: str) -> Any: ...

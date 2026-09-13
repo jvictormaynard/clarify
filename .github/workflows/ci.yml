@@ -33,6 +33,7 @@ jobs:
             lock_file: requirements-lock-windows.txt
     env:
       QT_QPA_PLATFORM: offscreen
+      PYTHONFAULTHANDLER: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -76,24 +77,28 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: >-
           ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py scripts/format_staged.py
-          spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py spikes/pyside6/qml_runtime.py
-          spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py spikes/pyside6/qml_audio_batch.py
-          spikes/pyside6/qml_clipboard.py spikes/pyside6/qml_voice_translation.py
-          spikes/pyside6/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
+          clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
+          clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
+          clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
+          clarify/desktop/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
           tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py
           tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py
           tests/test_pyside6_qt_shell.py
+          scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py
+          tests/test_qt_distribution.py tests/test_qt_package_policy.py
 
       - name: Run Ruff format check
         if: matrix.os == 'ubuntu-latest'
         run: >-
           ruff format --check scripts/dependency_audit.py scripts/format_staged.py tests/test_repository.py
-          spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py spikes/pyside6/qml_runtime.py
-          spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py spikes/pyside6/qml_audio_batch.py
-          spikes/pyside6/qml_clipboard.py spikes/pyside6/qml_voice_translation.py
-          spikes/pyside6/qt_shell.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py
+          clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
+          clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
+          clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
+          clarify/desktop/qt_shell.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py
           tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py
           tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py
+          scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py
+          tests/test_qt_distribution.py tests/test_qt_package_policy.py
 
       - name: Run targeted type checks
         if: matrix.os == 'ubuntu-latest'
@@ -107,10 +112,10 @@ jobs:
 
       - name: Compile Python sources
         run: >-
-          python -m compileall -q spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py
-          spikes/pyside6/qml_runtime.py spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py
-          spikes/pyside6/qml_audio_batch.py spikes/pyside6/qml_clipboard.py
-          spikes/pyside6/qml_voice_translation.py spikes/pyside6/qt_shell.py
+          python -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py
+          clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py
+          clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py
+          clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py
           workflows.py desktop_state.py repositories.py workflow_config.py workflow_settings.py
           voice_translation.py
           secret_store.py update_security.py version.py windows_clipboard.py
@@ -120,7 +125,7 @@ jobs:
 
       - name: Validate QML assets
         run: >-
-          python -c "from pathlib import Path; qml = Path('spikes/pyside6/qml');
+          python -c "from pathlib import Path; qml = Path('clarify/desktop/qml');
           assert qml.is_dir() and (qml / 'Main.qml').is_file() and any(qml.glob('*.qml'))"
 
   package:
@@ -147,14 +152,17 @@ jobs:
       - name: Install locked build dependencies
         run: python -m pip install --disable-pip-version-check -r requirements-dev.txt -c requirements-lock-windows.txt
 
-      - name: Install manifest dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Validate and build Settings
+        uses: ./.github/actions/settings-build
+        with:
+          python: ${{ env.pythonLocation }}/python.exe
 
       - name: Build portable executable
         shell: pwsh
         run: |
-          .\scripts\build.ps1
+          .\scripts\build.ps1 -SettingsExecutable dist\clarify-settings.exe
           .\scripts\build.ps1 `
+            -SettingsExecutable dist\clarify-settings.exe `
             -OutputDirectory dist\baseline `
             -PayloadIdentity baseline-msi-0.1.1
 
@@ -239,5 +247,7 @@ jobs:
             dist/Clarify.exe
             dist/Clarify-windows-x64.msi
             dist/Clarify-release-manifest.cab
+            dist/Clarify-qt-sources.zip
+            dist/Clarify-qt-NOTICES.txt
           if-no-files-found: error
           retention-days: 7

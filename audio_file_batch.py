@@ -50,16 +50,18 @@ from provider_types import (
 # codecs are optional DLLs and are intentionally not advertised by the first
 # import surface.  A later release can expand this allowlist only after the
 # packaged runtime has a deterministic codec acceptance test.
-SUPPORTED_AUDIO_EXTENSIONS = frozenset({
-    ".wav",
-    ".aif",
-    ".aiff",
-    ".au",
-    ".flac",
-    ".oga",
-    ".ogg",
-    ".wv",
-})
+SUPPORTED_AUDIO_EXTENSIONS = frozenset(
+    {
+        ".wav",
+        ".aif",
+        ".aiff",
+        ".au",
+        ".flac",
+        ".oga",
+        ".ogg",
+        ".wv",
+    }
+)
 CANONICAL_AUDIO_EXTENSION = ".wav"
 DEFAULT_MAX_WORKERS = 2
 MAX_MAX_WORKERS = 4
@@ -101,7 +103,8 @@ def _sox_input_type(path: Path) -> str:
     except KeyError as error:
         label = extension or "[none]"
         raise UnsupportedAudioFormatError(
-            f"Unsupported audio format '{label}'") from error
+            f"Unsupported audio format '{label}'"
+        ) from error
 
 
 class AudioBatchError(RuntimeError):
@@ -152,9 +155,10 @@ class FileTranscriptionSelection:
     provider_id: str
     model: str
     language: str
-    mode: str = "transcription"
+    mode: str = "prompt"
     connection: ProviderConnection = field(
-        default_factory=lambda: ProviderConnection("", ""))
+        default_factory=lambda: ProviderConnection("", "")
+    )
     instruction: str = ""
     prompt: str = ""
     temperature: float = 0.0
@@ -172,10 +176,12 @@ class FileTranscriptionSelection:
             raise AudioBatchConfigurationError("A transcription language is required")
         if mode not in {"transcription", "prompt"}:
             raise AudioBatchConfigurationError(
-                "Transcription mode must be 'transcription' or 'prompt'")
+                "Transcription mode must be 'transcription' or 'prompt'"
+            )
         if not 0.0 <= float(self.temperature) <= 2.0:
             raise AudioBatchConfigurationError(
-                "Transcription temperature must be between 0 and 2")
+                "Transcription temperature must be between 0 and 2"
+            )
 
     @property
     def normalized_provider(self) -> str:
@@ -183,7 +189,7 @@ class FileTranscriptionSelection:
 
     @property
     def normalized_mode(self) -> str:
-        return self.mode.strip().lower()
+        return "prompt"
 
 
 class AudioTranscriptionGateway(Protocol):
@@ -194,8 +200,7 @@ class AudioTranscriptionGateway(Protocol):
         request: TranscriptionRequest,
         selection: FileTranscriptionSelection,
         cancel_token: CancellationToken,
-    ) -> TranscriptionResult:
-        ...
+    ) -> TranscriptionResult: ...
 
 
 class AudioFileConverter(Protocol):
@@ -206,8 +211,7 @@ class AudioFileConverter(Protocol):
         source: Path,
         destination: Path,
         cancel_token: CancellationToken,
-    ) -> Path:
-        ...
+    ) -> Path: ...
 
 
 class RegistryAudioTranscriptionGateway:
@@ -244,8 +248,7 @@ class DictionaryAwareAudioTranscriptionGateway:
         cancel_token: CancellationToken,
     ) -> TranscriptionResult:
         contextual_request = self.dictionary_service.apply_context(request)
-        result = self.gateway.transcribe(
-            contextual_request, selection, cancel_token)
+        result = self.gateway.transcribe(contextual_request, selection, cancel_token)
         # Keep provider/refinement error sentinels out of snippet expansion,
         # matching the microphone transcription path.  Exceptions, including
         # cooperative cancellation, intentionally pass through unchanged.
@@ -270,9 +273,13 @@ def _default_sox_path() -> str:
 class SoxAudioConverter:
     """Normalize a supported local file to 16 kHz mono signed PCM WAV."""
 
-    def __init__(self, executable: str | os.PathLike[str] | None = None,
-            *, timeout_seconds: float = 120.0,
-            popen: Callable[..., subprocess.Popen] | None = None):
+    def __init__(
+        self,
+        executable: str | os.PathLike[str] | None = None,
+        *,
+        timeout_seconds: float = 120.0,
+        popen: Callable[..., subprocess.Popen] | None = None,
+    ):
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
         self.executable = str(executable or _default_sox_path())
@@ -292,12 +299,17 @@ class SoxAudioConverter:
             raise AudioBatchCancelledError("Audio conversion was cancelled")
         args = [
             self.executable,
-            "-t", _sox_input_type(source),
+            "-t",
+            _sox_input_type(source),
             str(source),
-            "-r", "16000",
-            "-c", "1",
-            "-b", "16",
-            "-e", "signed-integer",
+            "-r",
+            "16000",
+            "-c",
+            "1",
+            "-b",
+            "16",
+            "-e",
+            "signed-integer",
             str(destination),
         ]
         kwargs: dict[str, Any] = {
@@ -314,7 +326,8 @@ class SoxAudioConverter:
             process = self._popen(args, **kwargs)
         except OSError as error:
             raise AudioConversionError(
-                f"Could not start local audio conversion: {error}") from error
+                f"Could not start local audio conversion: {error}"
+            ) from error
 
         started = time.monotonic()
         try:
@@ -325,7 +338,8 @@ class SoxAudioConverter:
                 if time.monotonic() - started >= self.timeout_seconds:
                     _terminate_process(process)
                     raise AudioConversionError(
-                        "Audio conversion exceeded its time limit")
+                        "Audio conversion exceeded its time limit"
+                    )
                 time.sleep(0.02)
             stdout, stderr = process.communicate()
         except AudioBatchError:
@@ -333,11 +347,13 @@ class SoxAudioConverter:
         except OSError as error:
             _terminate_process(process)
             raise AudioConversionError(
-                f"Audio conversion could not be read: {error}") from error
+                f"Audio conversion could not be read: {error}"
+            ) from error
         if process.returncode != 0:
             detail = (stderr or stdout or b"").decode(errors="replace").strip()
             raise AudioConversionError(
-                f"Audio conversion failed{': ' + detail if detail else ''}")
+                f"Audio conversion failed{': ' + detail if detail else ''}"
+            )
         if cancel_token.cancelled:
             raise AudioBatchCancelledError("Audio conversion was cancelled")
         if not destination.is_file() or destination.stat().st_size == 0:
@@ -382,20 +398,23 @@ def _retryable_error(error: BaseException) -> bool:
         # QuotaError is deliberately a RateLimitError subtype in the shared
         # HTTP policy, but exhausted quota is permanent and must not be retried.
         return False
-    return isinstance(error, (
-        RetryableAudioBatchError,
-        NetworkError,
-        ProviderTimeoutError,
-        ServiceUnavailableError,
-        RateLimitError,
-    ))
+    return isinstance(
+        error,
+        (
+            RetryableAudioBatchError,
+            NetworkError,
+            ProviderTimeoutError,
+            ServiceUnavailableError,
+            RateLimitError,
+        ),
+    )
 
 
 def _retry_delay_seconds(
-        error: BaseException,
-        attempt: int,
-        base_seconds: float,
-        ) -> float | None:
+    error: BaseException,
+    attempt: int,
+    base_seconds: float,
+) -> float | None:
     """Return a bounded delay, preferring provider-announced retry timing."""
 
     announced = getattr(error, "retry_after_seconds", None)
@@ -421,19 +440,19 @@ def _retry_delay_seconds(
 
 
 def _selection_request(
-        path: Path, audio_bytes: bytes, selection: FileTranscriptionSelection
-        ) -> TranscriptionRequest:
+    path: Path, audio_bytes: bytes, selection: FileTranscriptionSelection
+) -> TranscriptionRequest:
     mode = selection.normalized_mode
     language = selection.language.strip()
     instruction = selection.instruction.strip() or (
         "Transcribe the audio accurately."
-        if mode == "transcription" else
-        "Transcribe the audio and format the result clearly."
+        if mode == "transcription"
+        else "Transcribe the audio and format the result clearly."
     )
     prompt = selection.prompt.strip() or (
         "Transcribe this audio."
-        if mode == "transcription" else
-        "Transcribe and rewrite this audio for clarity."
+        if mode == "transcription"
+        else "Transcribe and rewrite this audio for clarity."
     )
     return TranscriptionRequest(
         audio_path=path,
@@ -447,10 +466,10 @@ def _selection_request(
 
 
 def validate_audio_path(
-        path: str | os.PathLike[str] | Path,
-        *,
-        max_bytes: int | None = None,
-        ) -> Path:
+    path: str | os.PathLike[str] | Path,
+    *,
+    max_bytes: int | None = None,
+) -> Path:
     """Resolve and validate one local import without opening or mutating it."""
 
     try:
@@ -464,7 +483,8 @@ def validate_audio_path(
         raise AudioFileValidationError("Audio import must be a local path")
     if "://" in value:
         raise AudioFileValidationError(
-            "Only local audio files are supported; URL downloads are disabled")
+            "Only local audio files are supported; URL downloads are disabled"
+        )
     try:
         candidate = Path(value).expanduser()
         resolved = candidate.resolve(strict=False)
@@ -472,26 +492,28 @@ def validate_audio_path(
         is_file = resolved.is_file()
     except (OSError, RuntimeError, ValueError) as error:
         raise AudioFileValidationError(
-            f"Could not resolve audio file: {value}") from error
+            f"Could not resolve audio file: {value}"
+        ) from error
     if not exists or not is_file:
         raise AudioFileValidationError(f"Audio file does not exist: {value}")
     extension = _audio_extension(resolved)
     if extension not in SUPPORTED_AUDIO_EXTENSIONS:
         supported = ", ".join(sorted(SUPPORTED_AUDIO_EXTENSIONS))
         raise UnsupportedAudioFormatError(
-            f"Unsupported audio format '{extension or '[none]'}'; supported: {supported}")
+            f"Unsupported audio format '{extension or '[none]'}'; supported: {supported}"
+        )
     try:
         size = resolved.stat().st_size
         if size <= 0:
-            raise AudioFileValidationError(
-                f"Audio file is empty: {resolved.name}")
+            raise AudioFileValidationError(f"Audio file is empty: {resolved.name}")
         if max_bytes is not None and size > max_bytes:
             raise AudioFileValidationError(
-                f"Audio file exceeds the {max_bytes} byte limit: "
-                f"{resolved.name}")
+                f"Audio file exceeds the {max_bytes} byte limit: {resolved.name}"
+            )
     except (OSError, ValueError) as error:
         raise AudioFileValidationError(
-            f"Could not inspect audio file: {resolved.name}") from error
+            f"Could not inspect audio file: {resolved.name}"
+        ) from error
     return resolved
 
 
@@ -513,18 +535,21 @@ class AudioBatchResult:
 
     @property
     def succeeded(self) -> tuple[AudioFileResult, ...]:
-        return tuple(item for item in self.files
-                     if item.status is AudioFileStatus.SUCCEEDED)
+        return tuple(
+            item for item in self.files if item.status is AudioFileStatus.SUCCEEDED
+        )
 
     @property
     def failed(self) -> tuple[AudioFileResult, ...]:
-        return tuple(item for item in self.files
-                     if item.status is AudioFileStatus.FAILED)
+        return tuple(
+            item for item in self.files if item.status is AudioFileStatus.FAILED
+        )
 
     @property
     def cancelled_files(self) -> tuple[AudioFileResult, ...]:
-        return tuple(item for item in self.files
-                     if item.status is AudioFileStatus.CANCELLED)
+        return tuple(
+            item for item in self.files if item.status is AudioFileStatus.CANCELLED
+        )
 
 
 @dataclass(frozen=True)
@@ -561,7 +586,8 @@ class AudioBatchJob:
         ]
         self._result: AudioBatchResult | None = None
         self._thread = threading.Thread(
-            target=self._run, name="ClarifyAudioBatch", daemon=True)
+            target=self._run, name="ClarifyAudioBatch", daemon=True
+        )
 
     def start(self) -> "AudioBatchJob":
         # Invalid imports are published before the worker starts so a future
@@ -584,7 +610,8 @@ class AudioBatchJob:
             self._cancel_token.cancel()
             tokens = tuple(self._active_tokens.values())
             pending = tuple(
-                index for index, item in enumerate(self._results)
+                index
+                for index, item in enumerate(self._results)
                 if item.status is AudioFileStatus.PENDING
             )
             for index in pending:
@@ -623,9 +650,11 @@ class AudioBatchJob:
         active_token: CancellationToken | None = None,
     ) -> None:
         with self._lock:
-            if (active_token is not None
-                    and item.status is AudioFileStatus.SUCCEEDED
-                    and (active_token.cancelled or self._cancel_token.cancelled)):
+            if (
+                active_token is not None
+                and item.status is AudioFileStatus.SUCCEEDED
+                and (active_token.cancelled or self._cancel_token.cancelled)
+            ):
                 item = replace(
                     item,
                     status=AudioFileStatus.CANCELLED,
@@ -657,16 +686,19 @@ class AudioBatchJob:
             thread_name_prefix="ClarifyAudioFile",
         )
         pending = [
-            index for index, item in enumerate(self._results)
+            index
+            for index, item in enumerate(self._results)
             if item.status is AudioFileStatus.PENDING
         ]
         cursor = 0
         active: dict[Future[AudioFileResult], tuple[int, CancellationToken]] = {}
         try:
             while active or cursor < len(pending):
-                while (not self._cancel_token.cancelled
-                       and len(active) < self._service.max_workers
-                       and cursor < len(pending)):
+                while (
+                    not self._cancel_token.cancelled
+                    and len(active) < self._service.max_workers
+                    and cursor < len(pending)
+                ):
                     index = pending[cursor]
                     cursor += 1
                     claimed = self._claim_processing(index)
@@ -674,8 +706,10 @@ class AudioBatchJob:
                         continue
                     token, processing = claimed
                     self._notify(processing)
-                    active[executor.submit(
-                        self._process_one, index, token)] = (index, token)
+                    active[executor.submit(self._process_one, index, token)] = (
+                        index,
+                        token,
+                    )
                 if not active:
                     break
                 completed, _ = wait(active, return_when=FIRST_COMPLETED)
@@ -692,14 +726,20 @@ class AudioBatchJob:
             if self._cancel_token.cancelled:
                 for index, item in enumerate(self._results):
                     if item.status is AudioFileStatus.PENDING:
-                        self._publish(index, replace(
-                            item, status=AudioFileStatus.CANCELLED,
-                            error="Batch cancelled before processing"))
+                        self._publish(
+                            index,
+                            replace(
+                                item,
+                                status=AudioFileStatus.CANCELLED,
+                                error="Batch cancelled before processing",
+                            ),
+                        )
         finally:
             executor.shutdown(wait=True, cancel_futures=True)
             with self._lock:
                 self._result = AudioBatchResult(
-                    tuple(self._results), self._cancel_token.cancelled)
+                    tuple(self._results), self._cancel_token.cancelled
+                )
                 self._done.set()
 
     def _claim_processing(
@@ -708,8 +748,10 @@ class AudioBatchJob:
         """Atomically claim a pending entry for a worker submission."""
 
         with self._lock:
-            if (self._cancel_token.cancelled
-                    or self._results[index].status is not AudioFileStatus.PENDING):
+            if (
+                self._cancel_token.cancelled
+                or self._results[index].status is not AudioFileStatus.PENDING
+            ):
                 return None
             token = CancellationToken()
             processing = replace(
@@ -746,21 +788,27 @@ class AudioBatchJob:
                 while attempts < self._service.max_attempts:
                     attempts += 1
                     if token.cancelled or self._cancel_token.cancelled:
-                        return replace(current, status=AudioFileStatus.CANCELLED,
-                                       attempts=attempts - 1,
-                                       error="File processing was cancelled")
+                        return replace(
+                            current,
+                            status=AudioFileStatus.CANCELLED,
+                            attempts=attempts - 1,
+                            error="File processing was cancelled",
+                        )
                     try:
                         result = self._service._transcribe_prepared(
-                            prepared, self._selection, token)
+                            prepared, self._selection, token
+                        )
                         # A provider may finish concurrently with
                         # ``job.cancel()`` after its final token check.  Do
                         # not publish that result as successful once
                         # cancellation has won the batch boundary.
                         if token.cancelled or self._cancel_token.cancelled:
                             return replace(
-                                current, status=AudioFileStatus.CANCELLED,
+                                current,
+                                status=AudioFileStatus.CANCELLED,
                                 attempts=attempts,
-                                error="File processing was cancelled")
+                                error="File processing was cancelled",
+                            )
                         return AudioFileResult(
                             path=path,
                             status=AudioFileStatus.SUCCEEDED,
@@ -771,14 +819,21 @@ class AudioBatchJob:
                         )
                     except BaseException as error:
                         last_error = error
-                        if (token.cancelled or self._cancel_token.cancelled
-                                or _cancelled_error(error)):
+                        if (
+                            token.cancelled
+                            or self._cancel_token.cancelled
+                            or _cancelled_error(error)
+                        ):
                             return replace(
-                                current, status=AudioFileStatus.CANCELLED,
+                                current,
+                                status=AudioFileStatus.CANCELLED,
                                 attempts=attempts,
-                                error="File processing was cancelled")
-                        if (attempts >= self._service.max_attempts
-                                or not _retryable_error(error)):
+                                error="File processing was cancelled",
+                            )
+                        if (
+                            attempts >= self._service.max_attempts
+                            or not _retryable_error(error)
+                        ):
                             break
                         delay = _retry_delay_seconds(
                             error,
@@ -789,18 +844,30 @@ class AudioBatchJob:
                             break
                         if token.wait(delay):
                             return replace(
-                                current, status=AudioFileStatus.CANCELLED,
+                                current,
+                                status=AudioFileStatus.CANCELLED,
                                 attempts=attempts,
-                                error="File processing was cancelled")
+                                error="File processing was cancelled",
+                            )
         except BaseException as error:
             last_error = error
-            if (token.cancelled or self._cancel_token.cancelled
-                    or _cancelled_error(error)):
-                return replace(current, status=AudioFileStatus.CANCELLED,
-                               attempts=attempts,
-                               error="File processing was cancelled")
-        return replace(current, status=AudioFileStatus.FAILED,
-                       attempts=attempts, error=str(last_error or "Unknown error"))
+            if (
+                token.cancelled
+                or self._cancel_token.cancelled
+                or _cancelled_error(error)
+            ):
+                return replace(
+                    current,
+                    status=AudioFileStatus.CANCELLED,
+                    attempts=attempts,
+                    error="File processing was cancelled",
+                )
+        return replace(
+            current,
+            status=AudioFileStatus.FAILED,
+            attempts=attempts,
+            error=str(last_error or "Unknown error"),
+        )
 
 
 class AudioFileBatchService:
@@ -820,24 +887,30 @@ class AudioFileBatchService:
     ):
         if not 1 <= int(max_workers) <= MAX_MAX_WORKERS:
             raise AudioBatchConfigurationError(
-                f"max_workers must be between 1 and {MAX_MAX_WORKERS}")
+                f"max_workers must be between 1 and {MAX_MAX_WORKERS}"
+            )
         if not 1 <= int(max_files) <= MAX_MAX_FILES:
             raise AudioBatchConfigurationError(
-                f"max_files must be between 1 and {MAX_MAX_FILES}")
+                f"max_files must be between 1 and {MAX_MAX_FILES}"
+            )
         if not 1 <= int(max_attempts) <= MAX_MAX_ATTEMPTS:
             raise AudioBatchConfigurationError(
-                f"max_attempts must be between 1 and {MAX_MAX_ATTEMPTS}")
+                f"max_attempts must be between 1 and {MAX_MAX_ATTEMPTS}"
+            )
         if not 1 <= int(max_audio_bytes) <= MAX_MAX_AUDIO_BYTES:
             raise AudioBatchConfigurationError(
-                "max_audio_bytes must be between 1 byte and 1 GiB")
+                "max_audio_bytes must be between 1 byte and 1 GiB"
+            )
         try:
             retry_delay = float(retry_delay_seconds)
         except (TypeError, ValueError):
             raise AudioBatchConfigurationError(
-                "retry_delay_seconds must be a finite value between 0 and 4 seconds")
+                "retry_delay_seconds must be a finite value between 0 and 4 seconds"
+            )
         if not 0.0 <= retry_delay <= MAX_RETRY_DELAY_SECONDS:
             raise AudioBatchConfigurationError(
-                "retry_delay_seconds must be between 0 and 4 seconds")
+                "retry_delay_seconds must be between 0 and 4 seconds"
+            )
         self.gateway = gateway
         self.converter = converter or SoxAudioConverter()
         self.max_workers = int(max_workers)
@@ -860,10 +933,13 @@ class AudioFileBatchService:
         # list into memory before the user sees a clear limit error.
         raw_paths = tuple(islice(paths, self.max_files + 1))
         if not raw_paths:
-            raise AudioBatchConfigurationError("At least one local audio file is required")
+            raise AudioBatchConfigurationError(
+                "At least one local audio file is required"
+            )
         if len(raw_paths) > self.max_files:
             raise AudioBatchConfigurationError(
-                f"Batch contains {len(raw_paths)} files; maximum is {self.max_files}")
+                f"Batch contains {len(raw_paths)} files; maximum is {self.max_files}"
+            )
         validated: list[Path] = []
         initial: list[AudioFileResult] = []
         for raw in raw_paths:
@@ -877,12 +953,14 @@ class AudioFileBatchService:
                 except (TypeError, OSError, RuntimeError, ValueError):
                     path = Path("<invalid>")
                 validated.append(path)
-                initial.append(AudioFileResult(
-                    path=path,
-                    status=AudioFileStatus.FAILED,
-                    attempts=0,
-                    error=str(error),
-                ))
+                initial.append(
+                    AudioFileResult(
+                        path=path,
+                        status=AudioFileStatus.FAILED,
+                        attempts=0,
+                        error=str(error),
+                    )
+                )
             else:
                 validated.append(path)
                 initial.append(AudioFileResult(path, AudioFileStatus.PENDING))
@@ -921,8 +999,7 @@ class AudioFileBatchService:
         if cancel_token.cancelled:
             raise AudioBatchCancelledError("File processing was cancelled")
         return self.gateway.transcribe(
-            _selection_request(
-                prepared.request_path, prepared.audio_bytes, selection),
+            _selection_request(prepared.request_path, prepared.audio_bytes, selection),
             selection,
             cancel_token,
         )
@@ -943,13 +1020,14 @@ class AudioFileBatchService:
             yield _PreparedAudio(
                 request_path=path,
                 audio_bytes=_snapshot_audio(
-                    path, cancel_token, max_bytes=self.max_audio_bytes),
+                    path, cancel_token, max_bytes=self.max_audio_bytes
+                ),
             )
             return
         if self.temp_root is not None:
             self.temp_root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(
-                prefix="clarify-audio-", dir=str(self.temp_root) if self.temp_root else None
+            prefix="clarify-audio-", dir=str(self.temp_root) if self.temp_root else None
         ) as temporary:
             destination = Path(temporary) / "normalized.wav"
             normalized = self.converter.convert(path, destination, cancel_token)
@@ -959,15 +1037,19 @@ class AudioFileBatchService:
                 temporary_resolved = Path(temporary).resolve(strict=True)
             except OSError as error:
                 raise AudioConversionError(
-                    "Audio conversion did not produce a readable temporary WAV") from error
-            if (normalized_resolved == temporary_resolved
-                    or temporary_resolved not in normalized_resolved.parents
-                    or _audio_extension(normalized_resolved)
-                    != CANONICAL_AUDIO_EXTENSION):
+                    "Audio conversion did not produce a readable temporary WAV"
+                ) from error
+            if (
+                normalized_resolved == temporary_resolved
+                or temporary_resolved not in normalized_resolved.parents
+                or _audio_extension(normalized_resolved) != CANONICAL_AUDIO_EXTENSION
+            ):
                 raise AudioConversionError(
-                    "Audio converter returned a path outside its temporary directory")
+                    "Audio converter returned a path outside its temporary directory"
+                )
             audio_bytes = _snapshot_audio(
-                normalized, cancel_token, max_bytes=self.max_audio_bytes)
+                normalized, cancel_token, max_bytes=self.max_audio_bytes
+            )
             yield _PreparedAudio(
                 request_path=normalized,
                 audio_bytes=audio_bytes,
@@ -975,11 +1057,11 @@ class AudioFileBatchService:
 
 
 def _snapshot_audio(
-        path: Path,
-        cancel_token: CancellationToken,
-        *,
-        max_bytes: int = DEFAULT_MAX_AUDIO_BYTES,
-        ) -> bytes:
+    path: Path,
+    cancel_token: CancellationToken,
+    *,
+    max_bytes: int = DEFAULT_MAX_AUDIO_BYTES,
+) -> bytes:
     if cancel_token.cancelled:
         raise AudioBatchCancelledError("File processing was cancelled")
     try:
@@ -996,12 +1078,14 @@ def _snapshot_audio(
                 if total > max_bytes:
                     raise AudioFileValidationError(
                         f"Audio file exceeds the {max_bytes} byte limit: "
-                        f"{Path(path).name}")
+                        f"{Path(path).name}"
+                    )
                 chunks.append(chunk)
         audio = b"".join(chunks)
     except OSError as error:
         raise AudioFileValidationError(
-            f"Could not read audio file: {path.name}") from error
+            f"Could not read audio file: {path.name}"
+        ) from error
     if not audio:
         raise AudioFileValidationError(f"Audio file is empty: {path.name}")
     if cancel_token.cancelled:

@@ -5,6 +5,30 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+### Changed
+
+- Settings use React and Tauri with an integrated title bar and a scrollable content area.
+- Save and discard actions appear in a floating bar only when preferences change.
+- Added explicit handling for unsaved preferences and service credentials; invalid recording values cannot be saved.
+- Windows builds include and verify the Settings executable; CI checks its frontend, Python bridge, and native build.
+- Updated contributor guidance and documented production and legacy boundaries.
+- Reconciled pending local work with the published local-model improvements.
+- Updated release instructions to use the current main branch and production entrypoints.
+
+### Added
+
+- A Dictionary page for personal vocabulary hints used by transcription and optional refinement.
+- Hold-to-record keyboard activation, with Escape cancellation while the shortcut is held.
+
+### Fixed
+
+- Kept the Settings title bar outside page scrolling.
+- Local deployment launches through Explorer to avoid inheriting an isolated application data profile from the development host.
+
+- Local deployment now stops the executable at the installation path, including legacy ClarifyVoice.exe installs.
+- Preserve the exact original transcript when optional refinement fails, with a brief status warning and partial history record.
+- Respect cancellation after refinement and keep existing same-audio retry, cancellation undo and focus-safe delivery.
+
 ## [0.3.0] - 2026-09-06
 
 ### Added
