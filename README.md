@@ -5,7 +5,7 @@
 <h1 align="center">Clarify</h1>
 
 <p align="center">
-  A lightweight desktop voice assistant that turns speech into polished text in any Windows app.
+  Windows dictation with local models or your own AI API key. Speak, refine, and paste without leaving your app.
 </p>
 
 <p align="center">
@@ -37,6 +37,11 @@ translate selected text without opening a separate editor.
 > Whisper keeps transcription local unless you explicitly enable cloud
 > refinement.
 
+> This README describes the current source, including unreleased Settings changes.
+> Downloads can differ. Check the [release notes](https://github.com/jvictormaynard/clarify/releases/latest)
+> for the features in a published executable. Release acceptance is tracked in
+> [Release readiness](docs/release-readiness.md).
+
 ## Features
 
 - Voice transcription and prompt-quality rewriting from any Windows app
@@ -45,12 +50,23 @@ translate selected text without opening a separate editor.
 - Translation picker for selected text
 - Gemini, OpenAI, Groq, Local Whisper, and compatible custom endpoints
 - Native Windows hotkeys and system tray integration
-- English, Portuguese, Spanish, German, and Russian interface languages
-- Workflow-focused Settings pages for recording, speech-to-text, text processing,
-  and integrations
+- English, Portuguese, Spanish, German, and Russian in the QML interface;
+  the new Settings interface currently uses Portuguese
+- React/Tauri Settings organized into General, Dictation, Text, Dictionary,
+  Shortcuts, and Models and services
+- Toggle or hold-to-record keyboard activation; the microphone button uses toggle
+- A personal dictionary for names and technical terms, with per-term enablement
 - Local-only usage statistics without storing transcripts
 - Bundled SoX runtime in the portable Windows build
 - No Clarify account, hosted backend, or telemetry service
+
+## Interface preview
+
+![Personal dictionary in the current Settings frontend](docs/images/settings-dictionary.png)
+
+Current source, not a published-release screenshot. Captured from the real
+React frontend in an isolated browser test with synthetic data; native Windows
+frame behavior still requires separate acceptance.
 
 ## Installation
 
@@ -82,15 +98,15 @@ do not need Python, Node.js, or SoX.
 1. Open the [latest release](https://github.com/jvictormaynard/clarify/releases/latest).
 2. Download `Clarify.exe` and place it in a folder you control.
 3. Double-click the executable.
-4. Open **Settings → Integrations** and choose one explicit onboarding path:
+4. Open **Settings → Modelos e serviços** (Models and services) and choose one explicit onboarding path:
    - **Cloud setup (credential required):** select Gemini, OpenAI, Groq, or a
      compatible custom endpoint, then add and validate an API key.
    - **Local Whisper setup (keyless):** select **Local Whisper**, review its
-     requirements, and use **Download local ASR**. No API key is required for
+     requirements, and use the model installation action. No API key is required for
      local transcription. Prompt-mode cloud refinement remains optional; enable
      **Allow cloud refinement** only when desired. The Windows/offline
      acceptance for Local Whisper is still pending; see [Local ASR](docs/local-asr.md).
-5. Open **Settings → Speech-to-text** or **Settings → Text processing** to
+5. Open **Settings → Ditado** (Dictation) or **Settings → Texto** (Text) to
    choose the route for each workflow. A route selects its provider, model,
    endpoint, enablement, and optional prompt independently.
 
@@ -101,11 +117,16 @@ update path remain disabled until the signed rollout gates are complete.
 ### Run from source on Windows
 
 Requirements: Windows 10 or 11, [Python 3.11 or newer](https://www.python.org/downloads/windows/),
-and a working microphone.
+and a working microphone. Building the new Settings also requires Node.js 22,
+Rust MSVC, Visual Studio C++ Build Tools, and the Windows SDK. Running Settings
+requires Microsoft Edge WebView2. See [Development](docs/development.md).
 
 ```powershell
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
+.\scripts\setup.ps1 -Dev
+.\scripts\build-settings.ps1
+$env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
 .\start.bat
 ```
 
@@ -137,14 +158,14 @@ their current limitations.
 | `Esc` | Cancel an active recording |
 | `Alt + K` (default) | Rewrite the selected text |
 | `Alt + T` (default) | Translate the selected text |
+| `Alt + V` (default) | Record and translate speech |
 | `Alt + R` (default) | Show or hide Clarify |
 
-All four global shortcuts can be captured, validated, and reset in **Settings →
-Shortcuts**. After a recording completes, its result appears directly and the
-recording shortcuts remain available without clicking **Dismiss**.
-The packaged native layer currently supports safe toggle activation only;
-push-to-talk remains visibly unavailable until a key-release-capable adapter is
-implemented.
+All five global shortcuts can be captured, validated, and reset in **Settings →
+Atalhos** (Shortcuts). Toggle starts and stops on successive presses. Hold records
+while the shortcut is pressed and stops on release. `Esc` cancels, including
+while holding the shortcut. The pill microphone button always uses toggle.
+Cancellation feedback and Undo appear inside the pill, not in another window.
 
 The floating bar remains available through the Windows system tray. Click the
 tray icon to restore it, or right-click the icon to open Clarify or quit.
@@ -152,7 +173,9 @@ The minimize button hides the app to the tray instead of closing it.
 
 For rewrite and translation, Clarify only pastes when the original window
 and selection are still active. If focus changed while the provider was
-processing, the result stays in the clipboard and appears in the result panel.
+processing, the result stays in the clipboard for manual paste. There is no
+automatic result window. The pill menu can paste the last transcript from the
+current session.
 Automatic paste temporarily writes the result and restores the user's Unicode
 text, HTML, RTF, and DIB image clipboard formats after a short bounded delay.
 If focus, paste confirmation, or clipboard ownership is lost, the generated
@@ -160,11 +183,11 @@ result remains available for manual paste and the newer clipboard contents win.
 
 ## Providers and workflow routes
 
-Open **Settings → Integrations** to configure a cloud provider, base URL, and
+Open **Settings → Modelos e serviços** to configure a cloud provider, base URL, and
 API key, or to install Local Whisper. Local Whisper does not require an API key
 or cloud endpoint; use **Download local ASR** explicitly to install its verified
-optional assets. Open **Settings → Speech-to-text** and **Settings → Text
-processing** to select independent workflow routes. Ordinary settings are
+optional assets. Open **Settings → Ditado** and **Settings → Texto** to select
+independent workflow routes. Ordinary settings are
 stored in `%APPDATA%\Clarify\config.json`; cloud API keys are kept
 separately with Windows Data Protection API (DPAPI).
 
@@ -173,7 +196,7 @@ separately with Windows Data Protection API (DPAPI).
 | Gemini | Multimodal audio | Same Gemini model | `generativelanguage.googleapis.com/v1beta` |
 | OpenAI | Audio transcription API | OpenAI-compatible text model | `api.openai.com/v1` |
 | Groq | Whisper-compatible audio API | OpenAI-compatible text model | `api.groq.com/openai/v1` |
-| Local Whisper | Local CPU sidecar (optional download) | None by default; cloud refinement requires explicit opt-in | Local loopback only |
+| Local Whisper | Local CPU or compatible NVIDIA GPU sidecar (optional download) | None by default; cloud refinement requires explicit opt-in | Local loopback only |
 
 Custom endpoints must implement the corresponding provider-compatible routes.
 Unknown custom models work, but their cost is intentionally shown as unpriced
@@ -186,6 +209,16 @@ refinement by default, with no mode selector. Existing mode settings migrate
 automatically. Local transcripts stay on the computer unless **Allow cloud
 refinement** is enabled; this setting sends that transcript to the
 selected cloud model. The Windows/offline product acceptance remains pending.
+
+## Personal dictionary
+
+Add names and technical terms in **Settings → Dicionário**, for example
+`Railway`, `pill`, `Lana`, or `Eva Desktop`. Save or discard through the floating
+bar that appears after a change. You can edit, disable, or remove each term.
+Enabled terms provide bounded vocabulary context to ASR and optional text
+refinement. They are hints, not guaranteed replacements. When a cloud route is
+used, this vocabulary is sent to that provider with the request. See
+[Dictionary behavior](docs/dictionary-snippets.md) for limits and processing stages.
 
 ## Privacy and local data
 
@@ -200,9 +233,13 @@ randomized loopback sidecar. The app stores:
 - anonymous usage counters in `%APPDATA%\Clarify\usage_stats.json`;
 - optional Local ASR assets below `%LOCALAPPDATA%\Clarify\local-asr` after
   an explicit download; the runtime and model are not bundled in the executable;
-- a unique temporary WAV file while processing a recording. It is deleted after
-  the provider no longer needs it, including cancellation, failure, and app
-  exit; it is not retained as a recording history.
+- dictionary entries in `%APPDATA%\Clarify\dictionary.json`;
+- a unique temporary WAV file while processing a recording. Normal cleanup
+  removes it when no operation needs it, including cancellation recovery.
+  Crashes, forced shutdown, or cleanup failures can leave files behind; do not
+  treat this as a secure-erasure guarantee;
+- transcript history only when explicitly enabled. Usage counters do not
+  contain transcript text.
 
 Existing plaintext keys are migrated on first load and removed from
 `config.json` only after the encrypted copy has been read back successfully.
@@ -238,6 +275,8 @@ MSIs must come from the protected signing workflow.
 ## Project structure
 
 ```text
+desktop/src/                  React/TypeScript Settings and shared controls
+desktop/src-tauri/             Tauri window and private process bridge
 spikes/pyside6/qml_app.py      Production Qt Quick/QML entrypoint
 spikes/pyside6/qml/            Production QML surfaces and theme
 spikes/pyside6/qml_runtime.py  Qt adapters for providers, audio, clipboard, and storage
@@ -269,11 +308,16 @@ legacy/electron-prototype/     Archived first implementation, not built
 .agents/skills/                Repository-specific maintainer workflows
 ```
 
-The current application is Python with PySide6/Qt Quick. `start.bat`, the
+The application uses Python/PySide6/Qt Quick for the pill and desktop engine,
+and React/TypeScript in a Tauri WebView2 window for Settings. It is not Electron.
+`start.bat`, the
 portable build, and the release workflow all use the QML entrypoint; the old
 CustomTkinter entrypoint is not part of the runtime or package. The Electron
 prototype is kept only for historical context and is excluded from builds. See
 [Architecture](docs/architecture.md) before making structural changes.
+The `spikes/` name is historical; this directory contains production code.
+`app.py` is a legacy frontend retained for compatibility tests, not the shipping
+entrypoint. New UI work belongs in `desktop/` or the QML pill, not `app.py`.
 
 Local Whisper is an explicit provider in the current product runtime. The
 portable executable includes the pinned Local ASR manifest and license notices,

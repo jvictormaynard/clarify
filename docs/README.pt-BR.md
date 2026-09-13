@@ -7,9 +7,14 @@
 [English](../README.md) · [Instalação](#instalação-no-windows) ·
 [Como contribuir](../CONTRIBUTING.md) · [Segurança](../SECURITY.md)
 
-O Clarify é um assistente desktop leve que transforma voz em texto bem
-escrito dentro de qualquer aplicativo do Windows. Ele também reescreve e traduz
+Ditado para Windows, com modelos locais ou sua própria chave de IA. Fale,
+revise e cole sem sair do aplicativo. O Clarify também reescreve e traduz
 textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
+
+> Este guia descreve o código atual, incluindo mudanças ainda não publicadas.
+> Consulte as [notas da versão](https://github.com/jvictormaynard/clarify/releases/latest)
+> para conferir os recursos do executável disponível. A validação para publicação
+> está descrita em [Release readiness](release-readiness.md).
 
 ## Principais recursos
 
@@ -17,9 +22,12 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Reescrita segura de texto selecionado com verificação de foco
 - Tradução de texto selecionado
 - Integração nativa com atalhos e bandeja do Windows
-- Interface em inglês, português, espanhol, alemão e russo
-- Páginas de Settings separadas para gravação, speech-to-text, processamento de
-  texto e integrações
+- Interface QML em inglês, português, espanhol, alemão e russo;
+  as novas Configurações usam português por enquanto
+- Configurações em React/Tauri: Geral, Ditado, Texto, Dicionário, Atalhos e
+  Modelos e serviços
+- Gravação por alternância ou mantendo o atalho pressionado (Hold)
+- Dicionário pessoal para nomes e termos técnicos
 - Estatísticas locais sem armazenar o conteúdo das transcrições
 - Sem conta Clarify, backend próprio ou telemetria
 
@@ -28,6 +36,14 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 > Local Whisper pode transcrever sem chave e baixa seus assets somente após uma
 > ação explícita. As chaves e estatísticas ficam no seu computador. O áudio e o
 > texto selecionado são enviados diretamente ao provedor configurado.
+
+## Prévia da interface
+
+![Dicionário pessoal nas Configurações atuais](images/settings-dictionary.png)
+
+Captura do frontend React atual, em teste de navegador com dados fictícios.
+Não representa uma versão já publicada nem substitui a validação da janela
+nativa no Windows.
 
 ## Instalação no Windows
 
@@ -56,13 +72,13 @@ MSI nem o manifesto de atualização autenticado.
 1. Abra a [versão mais recente](https://github.com/jvictormaynard/clarify/releases/latest).
 2. Baixe `Clarify.exe` e salve-o em uma pasta sob seu controle.
 3. Abra o executável.
-4. Abra **Settings → Integrations** e escolha um caminho de configuração:
+4. Abra **Configurações → Modelos e serviços** e escolha um caminho:
    - **Cloud:** selecione Gemini, OpenAI, Groq ou um endpoint compatível,
      informe a chave de API e valide o provedor.
-   - **Local Whisper:** revise os requisitos e use **Download local ASR**. A
+   - **Local Whisper:** revise os requisitos e instale o modelo escolhido. A
      transcrição local não exige chave. O refinamento cloud é opcional e pode
      ser ativado com **Allow cloud refinement**.
-5. Abra **Settings → Speech-to-text** ou **Settings → Text processing** para
+5. Abra **Configurações → Ditado** ou **Configurações → Texto** para
    escolher a rota de cada workflow. Cada rota pode ter seu próprio provedor,
    modelo, endpoint, estado e prompt.
 
@@ -71,15 +87,21 @@ o arquivo SHA-256 publicado com a release antes de executar o download. O MSI e
 o caminho de atualização no aplicativo permanecem desativados até que os gates
 da release assinada sejam concluídos.
 
-Se ainda não houver uma release, instale pelo código-fonte:
+Para executar o código-fonte com as novas Configurações:
 
 ```powershell
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
+.\scripts\setup.ps1 -Dev
+.\scripts\build-settings.ps1
+$env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
 .\start.bat
 ```
 
 É necessário ter Windows 10 ou 11, Python 3.11 ou mais recente e um microfone.
+O build das Configurações exige Node.js 22, Rust MSVC, Visual Studio C++ Build
+Tools e Windows SDK. A janela usa o Microsoft Edge WebView2. O usuário do
+executável pronto não precisa de Python, Node.js ou Rust.
 Na primeira execução, o script cria um ambiente virtual e instala as
 dependências automaticamente.
 
@@ -91,19 +113,35 @@ dependências automaticamente.
 | `Esc` | Cancelar a gravação ativa |
 | `Alt + K` | Reescrever o texto selecionado |
 | `Alt + T` | Traduzir o texto selecionado |
+| `Alt + V` | Gravar e traduzir a fala |
 | `Alt + R` | Mostrar ou esconder o Clarify |
 
-Os quatro atalhos globais podem ser capturados, validados e redefinidos em
-**Settings → Shortcuts**. Depois de concluir uma gravação, o resultado aparece
-diretamente e os atalhos continuam disponíveis sem clicar em **Dismiss**.
+Os cinco atalhos globais podem ser capturados, validados e redefinidos em
+**Configurações → Atalhos**. No modo Hold, mantenha o atalho pressionado para
+gravar e solte para finalizar. `Esc` cancela mesmo enquanto o atalho está
+pressionado. O botão de microfone da pill continua funcionando por clique.
+O aviso de cancelamento e a opção Desfazer aparecem na própria pill.
+Não há janela automática de resultado. Quando a colagem não é segura, o texto
+fica na área de transferência. O menu da pill permite colar a última
+transcrição da sessão.
 
 ## Provedores e rotas de workflow
 
 Um **provider** é o serviço e suas credenciais. Uma **route** define como cada
 workflow usa esse serviço: provedor, modelo, endpoint, ativação e prompt. Os
-providers são configurados em **Settings → Integrations**; as rotas ficam em
-**Settings → Speech-to-text** e **Settings → Text processing**. O Local Whisper
+providers são configurados em **Configurações → Modelos e serviços**; as rotas ficam em
+**Configurações → Ditado** e **Configurações → Texto**. O Local Whisper
 usa um sidecar local e não exige chave para transcrição.
+
+## Dicionário pessoal
+
+Em **Configurações → Dicionário**, adicione termos como `Railway`, `pill`, `Lana`
+ou `Eva Desktop`. Cada termo pode ser editado, desativado ou removido. A barra
+de salvar e descartar aparece após uma alteração.
+Os termos ativos entram como contexto limitado no ASR e na revisão opcional.
+Eles ajudam o modelo; não garantem uma substituição. Em uma rota na nuvem,
+esse vocabulário também é enviado ao provedor. Veja as etapas e os limites no
+[guia do dicionário](dictionary-snippets.md).
 
 ## Privacidade
 
@@ -113,6 +151,11 @@ em `secrets.dpapi.json`, criptografadas pela DPAPI para o usuário atual. Chaves
 antigas em texto simples são migradas e só são removidas de `config.json` depois
 da confirmação da cópia protegida. Variáveis de ambiente são substituições
 temporárias e não são persistidas.
+
+O dicionário fica em `dictionary.json`. O histórico de transcrições é opcional.
+A gravação usa um WAV temporário, removido após o processamento normal.
+Falhas de limpeza ou encerramento forçado podem deixar arquivos no disco.
+Não há garantia de exclusão segura.
 
 Excluir somente o executável não apaga os dados. Para remover também as
 credenciais, exclua `secrets.dpapi.json` ou toda a pasta de dados do

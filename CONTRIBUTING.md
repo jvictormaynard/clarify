@@ -37,6 +37,8 @@ On Windows:
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
 .\scripts\setup.ps1 -Dev
+.\scripts\build-settings.ps1
+$env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe spikes\pyside6\qml_app.py
 ```
@@ -45,6 +47,16 @@ Read [docs/development.md](docs/development.md) for builds, platform notes, and
 the full Windows acceptance checklist. Read
 [docs/architecture.md](docs/architecture.md) before moving responsibilities
 between modules.
+
+Settings development needs Node.js 22, Rust MSVC, Visual Studio C++ Build Tools,
+the Windows SDK, and WebView2. End users do not need these build tools.
+Use `desktop/src/` for Settings, `spikes/pyside6/qml/` for the pill, and the
+root provider modules for ASR and text processing. `spikes/pyside6/` is production
+code despite its historical name. Do not add features to legacy `app.py` or the
+archived Electron prototype.
+
+For a small first contribution, see the [contributor map and acceptance
+criteria](docs/release-readiness.md).
 
 ## Making a change
 
@@ -76,6 +88,24 @@ and releases. If intent changes, regenerate each lock on its matching runner
 with `python -m piptools compile --strip-extras --output-file=...` and include
 both resulting diffs. Do not add an audit exception without a reviewed rationale
 in `dependency-audit.json`.
+
+For Settings changes, also run from `desktop/`:
+
+```powershell
+npm ci
+npm run build
+$env:CLARIFY_TEST_PYTHON = (Resolve-Path ..\.venv\Scripts\python.exe).Path
+$env:CLARIFY_TEST_FIXTURE = (Resolve-Path ..\tests\web_settings_fixture.py).Path
+$env:CLARIFY_TEST_BROWSER = 'chromium'
+npx --no-install playwright install chromium
+npm test
+cargo build --locked --manifest-path src-tauri/Cargo.toml --release --features custom-protocol
+```
+
+The browser tests use an isolated Python controller, not your personal profile
+or a live provider. They do not replace native Windows acceptance. Commit
+`desktop/package-lock.json` and `desktop/src-tauri/Cargo.lock` when changing
+their dependencies. Dependabot covers both ecosystems.
 
 For packaging-related changes:
 

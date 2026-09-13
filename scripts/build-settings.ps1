@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$OutputPath)
+param([string]$OutputPath, [string]$PythonExecutable = 'python')
 $ErrorActionPreference = 'Stop'
 $taskRepo = Split-Path -Parent $PSScriptRoot
 if (-not $OutputPath) { $OutputPath = Join-Path $taskRepo 'dist\clarify-settings.exe' }
@@ -13,6 +13,18 @@ $taskNpm = Join-Path (Split-Path $taskNode) 'node_modules\npm\bin\npm-cli.js'
 New-Item -ItemType Directory -Path $taskStage -Force | Out-Null
 & robocopy (Join-Path $taskRepo 'desktop') $taskStage /E /XD node_modules target dist test-results /NFL /NDL /NJH /NJS /NP
 if ($LASTEXITCODE -ge 8) { throw 'Could not stage settings sources.' }
+# Newly staged assets must not look old to temporary-file cleanup services.
+$taskStagedAt = [DateTime]::UtcNow
+Get-ChildItem -LiteralPath $taskStage -Force -Exclude node_modules,target,dist,test-results | ForEach-Object {
+    $_.LastWriteTimeUtc = $taskStagedAt
+    $_.LastAccessTimeUtc = $taskStagedAt
+    if ($_.PSIsContainer) {
+        Get-ChildItem -LiteralPath $_.FullName -Recurse -Force | ForEach-Object {
+            $_.LastWriteTimeUtc = $taskStagedAt
+            $_.LastAccessTimeUtc = $taskStagedAt
+        }
+    }
+}
 Push-Location $taskStage
 try {
     & $taskNode $taskNpm ci --no-fund --no-audit
@@ -24,5 +36,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Settings native build failed.' }
     New-Item -ItemType Directory -Path (Split-Path $OutputPath) -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $taskTarget 'release\clarify-settings.exe') -Destination $OutputPath -Force
+    & $PythonExecutable (Join-Path $taskRepo 'scripts\settings_inventory.py') --desktop $taskStage --output-dir (Split-Path $OutputPath)
+    if ($LASTEXITCODE -ne 0) { throw 'Settings dependency inventory failed.' }
     Write-Host "Settings executable: $OutputPath"
 } finally { Pop-Location }

@@ -313,6 +313,7 @@ class RepositorySafetyTests(unittest.TestCase):
                 "test",
                 "check",
                 "build",
+                "build:settings",
                 "installer",
                 "setup",
                 "setup-hooks",

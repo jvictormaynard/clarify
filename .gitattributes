@@ -1,0 +1,2 @@
+# Vendored notice hashes must be identical on Windows and Linux checkouts.
+desktop/licenses/*.txt text eol=lf

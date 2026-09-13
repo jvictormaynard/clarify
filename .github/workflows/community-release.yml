@@ -93,15 +93,23 @@ jobs:
           python -c "from pathlib import Path; qml = Path('spikes/pyside6/qml');
           assert qml.is_dir() and (qml / 'Main.qml').is_file() and any(qml.glob('*.qml'))"
 
+      - name: Validate and build Settings
+        uses: ./.github/actions/settings-build
+        with:
+          python: ${{ env.pythonLocation }}/python.exe
+
       - name: Build portable executable
         shell: pwsh
-        run: .\scripts\build.ps1
+        run: .\scripts\build.ps1 -SettingsExecutable dist\clarify-settings.exe
 
       - name: Generate runtime SBOM
         run: cyclonedx-py requirements requirements-lock-runtime-windows.txt --of JSON -o dist\Clarify.sbom.json
 
       - name: Add bundled SoX to SBOM
         run: python scripts/add_sbom_component.py --bom-file dist\Clarify.sbom.json --runtime-root extra\sox-14.4.2 --manifest scripts\sox-runtime-manifest.json
+
+      - name: Include Settings in the release SBOM
+        run: python scripts/settings_inventory.py --merge-bom dist/Clarify.sbom.json --settings-bom dist/Clarify-settings.sbom.json
 
       - name: Resolve and validate release version
         id: release
@@ -133,7 +141,7 @@ jobs:
             throw "The downloaded SoX source archive did not match the expected SHA-256."
           }
           Compress-Archive `
-            -Path dist\Clarify.exe, dist\Clarify.exe.sha256, dist\Clarify.sbom.json, LICENSE, THIRD_PARTY_NOTICES.md `
+            -Path dist\Clarify.exe, dist\Clarify.exe.sha256, dist\Clarify.sbom.json, LICENSE, THIRD_PARTY_NOTICES.md, dist\Clarify-settings-NOTICES.txt `
             -DestinationPath dist\Clarify-windows-x64.zip `
             -Force
 

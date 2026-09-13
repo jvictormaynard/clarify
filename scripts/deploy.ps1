@@ -1,11 +1,16 @@
 [CmdletBinding()]
 param(
     [string]$InstallPath = $env:CLARIFY_INSTALL_PATH,
-    [string]$SettingsExecutable
+    [string]$SettingsExecutable,
+    [switch]$BuildOnly
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+if (-not $SettingsExecutable) {
+    $SettingsExecutable = Join-Path $repoRoot 'dist\clarify-settings.exe'
+    & (Join-Path $PSScriptRoot 'build-settings.ps1') -OutputPath $SettingsExecutable
+}
 if ($SettingsExecutable -and -not (Test-Path -LiteralPath $SettingsExecutable -PathType Leaf)) {
     throw 'The requested settings executable does not exist.'
 }
@@ -218,6 +223,18 @@ Copy-Item $repoDistribution $distribution -Recurse -Force
 Copy-Item $repoLocalAsrManifest $localAsrManifest -Force
 Copy-Item (Join-Path $repoRoot "local_asr_manifests") (Join-Path $sourceDir "local_asr_manifests") -Recurse -Force
 Copy-Item $repoLocalAsrLicenses $localAsrLicenses -Recurse -Force
+# Copy-Item preserves repository timestamps. Refresh staged inputs so temporary
+# file cleanup does not treat a new build's older assets as abandoned files.
+$stagedAt = [DateTime]::UtcNow
+Get-ChildItem -LiteralPath $sourceDir -Recurse -Force | ForEach-Object {
+    $_.LastWriteTimeUtc = $stagedAt
+    $_.LastAccessTimeUtc = $stagedAt
+}
+foreach ($stagedInput in @($source, $localAsrManifest, (Join-Path $assets 'branding\clarify.ico'))) {
+    if (-not (Test-Path -LiteralPath $stagedInput -PathType Leaf)) {
+        throw "Staged build input is missing: $stagedInput"
+    }
+}
 # Keep the linked SoX runtime intact, but omit files unused by the app.
 Remove-Item (Join-Path $extra "sox.zip") -Force -ErrorAction SilentlyContinue
 $soxDir = Join-Path $extra "sox-14.4.2"
@@ -268,6 +285,11 @@ foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File))
 # provider credentials from the user's Clarify config directory instead.
 if ($SettingsExecutable) {
     $pyinstallerArgs += @('--add-binary', "${SettingsExecutable};.")
+    foreach ($noticeName in @('Clarify-settings.sbom.json', 'Clarify-settings-NOTICES.txt')) {
+        $noticePath = Join-Path (Split-Path $SettingsExecutable) $noticeName
+        if (-not (Test-Path -LiteralPath $noticePath -PathType Leaf)) { throw "Missing Settings inventory: $noticeName" }
+        $pyinstallerArgs += @('--add-data', "${noticePath};.")
+    }
 }
 $pyinstallerArgs += $source
 
@@ -299,9 +321,32 @@ if ($smoke.ExitCode -ne 0) {
     throw "Clarify import smoke test failed. The installed version was not changed."
 }
 
+& $venvPython (Join-Path $repoRoot 'scripts\check_settings_payload.py') $builtExe $SettingsExecutable
+if ($LASTEXITCODE -ne 0) { throw 'Packaged Settings inventory verification failed.' }
+if ($BuildOnly) {
+    Write-Host "Validated portable build: $builtExe. The installed application was not changed."
+    return
+}
+
 Write-Host "Updating $targetExe..."
 # Match the installed path, including legacy ClarifyVoice.exe names.
 $resolvedTargetExe = [System.IO.Path]::GetFullPath($targetExe)
+$taskProcessSnapshot = @(Get-CimInstance Win32_Process)
+$taskAppIds = @($taskProcessSnapshot | Where-Object {
+    $_.ExecutablePath -eq $resolvedTargetExe
+} | Select-Object -ExpandProperty ProcessId)
+$taskChildren = @($taskProcessSnapshot | Where-Object {
+    $_.ParentProcessId -in $taskAppIds -and
+    $_.Name -in @('sox.exe', 'whisper-server.exe', 'clarify-settings.exe')
+})
+if ($taskChildren | Where-Object { $_.Name -eq 'sox.exe' }) {
+    throw 'Finish or cancel the current recording before updating Clarify. The installed version was not changed.'
+}
+# Force-stopping only the main process leaves local servers running. Stop only
+# children owned by this installed app, never another application's processes.
+$taskChildren | ForEach-Object {
+    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+}
 Get-Process -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -and $_.Path -eq $resolvedTargetExe } |
     Stop-Process -Force
@@ -320,6 +365,9 @@ try {
     throw
 }
 
-# Launch the interactive app normally. SW_HIDE can also hide later Qt windows.
-Start-Process $targetExe -WorkingDirectory $targetDir -WindowStyle Normal
+# Let the desktop shell launch the app outside a packaged build host's MSIX
+# identity. A direct child of Codex can silently use LocalCache instead of the
+# user's normal AppData, making settings and installed models seem missing.
+Start-Process -FilePath (Join-Path $env:WINDIR 'explorer.exe') `
+    -ArgumentList ('"' + $targetExe + '"') -WindowStyle Hidden
 Write-Host "Clarify was updated and restarted successfully."

@@ -150,11 +150,17 @@ jobs:
       - name: Install manifest dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
 
+      - name: Validate and build Settings
+        uses: ./.github/actions/settings-build
+        with:
+          python: ${{ env.pythonLocation }}/python.exe
+
       - name: Build portable executable
         shell: pwsh
         run: |
-          .\scripts\build.ps1
+          .\scripts\build.ps1 -SettingsExecutable dist\clarify-settings.exe
           .\scripts\build.ps1 `
+            -SettingsExecutable dist\clarify-settings.exe `
             -OutputDirectory dist\baseline `
             -PayloadIdentity baseline-msi-0.1.1
 

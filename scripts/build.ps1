@@ -10,6 +10,10 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+if (-not $SettingsExecutable) {
+    $SettingsExecutable = Join-Path $repoRoot 'dist\clarify-settings.exe'
+    & (Join-Path $PSScriptRoot 'build-settings.ps1') -OutputPath $SettingsExecutable
+}
 if ($SettingsExecutable -and -not (Test-Path -LiteralPath $SettingsExecutable -PathType Leaf)) {
     throw 'The requested settings executable does not exist.'
 }
@@ -133,6 +137,11 @@ if ($PayloadIdentity) {
 }
 if ($SettingsExecutable) {
     $pyInstallerArgs += @('--add-binary', "${SettingsExecutable};.")
+    foreach ($noticeName in @('Clarify-settings.sbom.json', 'Clarify-settings-NOTICES.txt')) {
+        $noticePath = Join-Path (Split-Path $SettingsExecutable) $noticeName
+        if (-not (Test-Path -LiteralPath $noticePath -PathType Leaf)) { throw "Missing Settings inventory: $noticeName" }
+        $pyInstallerArgs += @('--add-data', "${noticePath};.")
+    }
 }
 $pyInstallerArgs += $entryPoint
 
@@ -157,6 +166,9 @@ $executable = Join-Path $OutputDirectory "Clarify.exe"
 if (-not (Test-Path $executable)) {
     throw "PyInstaller completed without producing $executable."
 }
+
+& $python (Join-Path $PSScriptRoot 'check_settings_payload.py') $executable $SettingsExecutable
+if ($LASTEXITCODE -ne 0) { throw 'Packaged Settings payload verification failed.' }
 
 $smokeOutLog = Join-Path $workDir "smoke.stdout.log"
 $smokeErrLog = Join-Path $workDir "smoke.stderr.log"

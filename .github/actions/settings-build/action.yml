@@ -1,0 +1,72 @@
+name: Validate and build Settings
+description: Build the locked React/Tauri child application and test its Python bridge on Windows.
+inputs:
+  python:
+    description: Python interpreter with the repository development dependencies installed
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: desktop/package-lock.json
+    - name: Check native toolchain
+      shell: pwsh
+      working-directory: desktop
+      run: |
+        rustc --version
+        if ($LASTEXITCODE -ne 0) { throw 'The Windows runner must provide Rust MSVC.' }
+        cargo --version
+        if ($LASTEXITCODE -ne 0) { throw 'Cargo is required.' }
+    - name: Install locked frontend dependencies
+      shell: pwsh
+      working-directory: desktop
+      run: npm ci --no-fund
+    - name: Audit production frontend dependencies
+      shell: pwsh
+      working-directory: desktop
+      run: npm audit --omit=dev --audit-level=high
+    - name: Type-check and build frontend
+      shell: pwsh
+      working-directory: desktop
+      run: npm run build
+    - name: Install test browser
+      shell: pwsh
+      working-directory: desktop
+      run: npx --no-install playwright install chromium
+    - name: Test Settings with isolated Python controller
+      shell: pwsh
+      working-directory: desktop
+      env:
+        CLARIFY_TEST_PYTHON: ${{ inputs.python }}
+        CLARIFY_TEST_BROWSER: chromium
+        QT_QPA_PLATFORM: offscreen
+      run: |
+        $env:CLARIFY_TEST_FIXTURE = Join-Path $env:GITHUB_WORKSPACE 'tests/web_settings_fixture.py'
+        npm test
+        if ($LASTEXITCODE -ne 0) { throw 'Settings browser tests failed.' }
+    - name: Compile native Settings
+      shell: pwsh
+      working-directory: desktop
+      run: |
+        cargo build --locked --manifest-path src-tauri/Cargo.toml --release --features custom-protocol
+        if ($LASTEXITCODE -ne 0) { throw 'Settings native build failed.' }
+        New-Item -ItemType Directory -Path ../dist -Force | Out-Null
+        Copy-Item src-tauri/target/release/clarify-settings.exe ../dist/clarify-settings.exe
+    - name: Collect locked dependency inventory and license texts
+      shell: pwsh
+      env:
+        INVENTORY_PYTHON: ${{ inputs.python }}
+      run: |
+        & $env:INVENTORY_PYTHON scripts/settings_inventory.py --desktop desktop --output-dir dist
+        if ($LASTEXITCODE -ne 0) { throw 'Settings dependency inventory failed.' }
+    - name: Retain isolated Settings test evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: Settings-tests-${{ github.job }}-${{ github.sha }}
+        path: desktop/test-results/
+        if-no-files-found: ignore
+        retention-days: 7

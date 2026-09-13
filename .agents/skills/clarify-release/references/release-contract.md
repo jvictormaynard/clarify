@@ -6,6 +6,7 @@
 - Release branch base: `main`
 - Versioning: Semantic Versioning with `v`-prefixed Git tags
 - Maintained application: Python/Qt `spikes/pyside6/qml_app.py`
+- Settings: React/TypeScript `desktop/src/` in the Tauri child `desktop/src-tauri/`
 - Historical code: `legacy/electron-prototype/` is not packaged
 - Public platform: Windows 10/11, x64 portable executable
 
@@ -34,6 +35,14 @@ The tag, release, and executable must all originate from the same green
 - `scripts/sox-runtime-manifest.json`
 - `version.py`
 - `scripts/build.ps1`
+- `scripts/build-settings.ps1`
+- `scripts/check_settings_payload.py`
+- `scripts/settings_inventory.py`
+- `desktop/licenses/manifest.json`
+- `desktop/package-lock.json`
+- `desktop/src-tauri/Cargo.lock`
+- `.github/actions/settings-build/action.yml`
+- `docs/release-readiness.md`
 - `scripts/build-installer.ps1`
 - `scripts/test-installer.ps1`
 - `scripts/create_release_manifest.py`
@@ -52,6 +61,8 @@ Before the release-preparation PR:
 - `npm run check`
 - `npm test`
 - release preflight script
+- Settings TypeScript/Vite, isolated Playwright, and locked Rust build checks
+- Updated dependency notices and SBOM coverage for the Settings child
 
 For Windows-facing changes:
 
@@ -66,6 +77,7 @@ On the PR and after merge:
 - `Package Windows executable`
   - includes per-user MSI install, upgrade, repair, rollback, uninstall, and
     signed-manifest contract smoke tests
+  - also includes the shared Settings build action and embedded-child hash check
 
 On the tag:
 
@@ -96,6 +108,11 @@ The ZIP must contain:
 - `LICENSE`
 - `THIRD_PARTY_NOTICES.md`
 
+The ZIP also includes `Clarify-settings-NOTICES.txt`. The merged
+`Clarify.sbom.json` covers Python, SoX, and the Settings dependency graph.
+The portable executable embeds the Settings SBOM and notices; packaging must
+verify their bytes and the Settings executable hash before publication.
+
 The SoX source archive must match:
 
 `b45f598643ffbd8e363ff24d61166ccec4836fea6d3888881b8df53e3bb55f6c`
@@ -112,7 +129,7 @@ sponsored signing infrastructure. It must publish exactly these assets:
 - `sox-14.4.2-source.tar.gz`
 
 The ZIP contains the portable executable, checksum, SBOM, `LICENSE`, and
-`THIRD_PARTY_NOTICES.md`. The track does not publish an MSI or authenticated
+`THIRD_PARTY_NOTICES.md`, plus `Clarify-settings-NOTICES.txt`. The track does not publish an MSI or authenticated
 update manifest. Windows SmartScreen warnings remain expected, and the in-app
 update path stays disabled until a signed release satisfies the rollout gates.
 
