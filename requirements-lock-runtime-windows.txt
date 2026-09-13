@@ -16,7 +16,7 @@ pillow==12.3.0
     # via -r requirements.txt
 pycparser==3.0
     # via cffi
-pyside6-essentials==6.11.1
+pyside6-essentials==6.11.2
     # via -r requirements.txt
 requests==2.34.2
     # via -r requirements.txt
