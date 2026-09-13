@@ -14,6 +14,7 @@ if (-not $SettingsExecutable) {
 if ($SettingsExecutable -and -not (Test-Path -LiteralPath $SettingsExecutable -PathType Leaf)) {
     throw 'The requested settings executable does not exist.'
 }
+$SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath
 $repoVersion = Join-Path $repoRoot "version.py"
 $repoExtra = Join-Path $repoRoot "extra"
 $repoAssets = Join-Path $repoRoot "assets"

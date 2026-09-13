@@ -102,6 +102,10 @@ class SettingsPackagingTests(unittest.TestCase):
             with self.subTest(script=name):
                 self.assertIn("if (-not $SettingsExecutable)", script)
                 self.assertIn("'build-settings.ps1'", script)
+                normalized = script.index(
+                    "$SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath"
+                )
+                self.assertLess(normalized, script.index("'--add-binary'"))
         self.assertIn(
             "check_settings_payload.py", (ROOT / "scripts/build.ps1").read_text()
         )

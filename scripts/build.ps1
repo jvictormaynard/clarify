@@ -17,6 +17,8 @@ if (-not $SettingsExecutable) {
 if ($SettingsExecutable -and -not (Test-Path -LiteralPath $SettingsExecutable -PathType Leaf)) {
     throw 'The requested settings executable does not exist.'
 }
+# PyInstaller resolves bundled inputs relative to its generated spec file.
+$SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repoRoot "dist"
 } elseif (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {

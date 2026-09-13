@@ -3,6 +3,7 @@ param([string]$OutputPath, [string]$PythonExecutable = 'python')
 $ErrorActionPreference = 'Stop'
 $taskRepo = Split-Path -Parent $PSScriptRoot
 if (-not $OutputPath) { $OutputPath = Join-Path $taskRepo 'dist\clarify-settings.exe' }
+$OutputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)
 $taskStage = Join-Path $env:TEMP 'clarify-settings-build'
 $taskTarget = Join-Path $env:TEMP 'clarify-tauri-target'
 $taskVswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
