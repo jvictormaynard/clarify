@@ -12,12 +12,12 @@ import { RecordingOptions, recordingDraft, recordingValue, type RecordingDraft }
 import "./styles.css";
 
 const pages = [
-  { id: "general", label: "Geral", icon: Settings2, description: "Idioma, inicialização e privacidade." },
-  { id: "dictation", label: "Ditado", icon: Mic, description: "Microfone, modelo e revisão do texto." },
-  { id: "text", label: "Texto", icon: Sparkles, description: "Modelos e instruções para transformar o texto." },
-  { id: "dictionary", label: "Dicionário", icon: BookOpen, description: "Seu vocabulário." },
-  { id: "shortcuts", label: "Atalhos", icon: Keyboard, description: "Acesse suas ações pelo teclado." },
-  { id: "models", label: "Modelos e serviços", icon: Cpu, description: "Modelos locais e conexões com serviços de IA." },
+  { id: "general", label: "Geral", icon: Settings2 },
+  { id: "dictation", label: "Ditado", icon: Mic },
+  { id: "text", label: "Texto", icon: Sparkles },
+  { id: "dictionary", label: "Dicionário", icon: BookOpen },
+  { id: "shortcuts", label: "Atalhos", icon: Keyboard },
+  { id: "models", label: "Modelos e serviços", icon: Cpu },
 ];
 const languageNames: Record<string, string> = { en: "English", pt: "Português", es: "Español", de: "Deutsch", ru: "Русский" };
 

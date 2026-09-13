@@ -22,8 +22,8 @@ else:
     PYSIDE6_AVAILABLE = True
 
 if PYSIDE6_AVAILABLE:
-    from spikes.pyside6.qml_bridge import QmlWorkflowBridge
-    from spikes.pyside6.qml_runtime import (
+    from clarify.desktop.qml_bridge import QmlWorkflowBridge
+    from clarify.desktop.qml_runtime import (
         QtProviderGateway,
         QtRecorder,
         QtRecordingSession,
@@ -138,7 +138,7 @@ class QtRecordingSessionTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             recorder = Recorder()
             with patch(
-                "spikes.pyside6.qml_runtime._data_directory",
+                "clarify.desktop.qml_runtime._data_directory",
                 return_value=Path(directory),
             ):
                 session = QtRecordingSession(recorder)
@@ -220,18 +220,18 @@ class QtRecordingSessionTests(unittest.TestCase):
         fake_sounddevice = SimpleNamespace(RawInputStream=create_level_stream)
         with (
             patch(
-                "spikes.pyside6.qml_runtime.platform.system",
+                "clarify.desktop.qml_runtime.platform.system",
                 return_value="Windows",
             ),
             patch(
-                "spikes.pyside6.qml_runtime.subprocess.Popen",
+                "clarify.desktop.qml_runtime.subprocess.Popen",
                 return_value=process,
             ) as popen,
             patch(
-                "spikes.pyside6.qml_runtime._sounddevice",
+                "clarify.desktop.qml_runtime._sounddevice",
                 fake_sounddevice,
             ),
-            patch("spikes.pyside6.qml_runtime.time.sleep"),
+            patch("clarify.desktop.qml_runtime.time.sleep"),
         ):
             recorder.start(Path("capture.wav"), threading.Event())
 
@@ -306,18 +306,18 @@ class QtRecordingSessionTests(unittest.TestCase):
 
         with (
             patch(
-                "spikes.pyside6.qml_runtime.platform.system",
+                "clarify.desktop.qml_runtime.platform.system",
                 return_value="Windows",
             ),
             patch(
-                "spikes.pyside6.qml_runtime.subprocess.Popen",
+                "clarify.desktop.qml_runtime.subprocess.Popen",
                 return_value=process,
             ),
             patch(
-                "spikes.pyside6.qml_runtime._sounddevice",
+                "clarify.desktop.qml_runtime._sounddevice",
                 SimpleNamespace(RawInputStream=lambda **_options: level_stream),
             ),
-            patch("spikes.pyside6.qml_runtime.time.sleep"),
+            patch("clarify.desktop.qml_runtime.time.sleep"),
         ):
             starter = threading.Thread(target=run_start)
             starter.start()
@@ -332,7 +332,7 @@ class QtRecordingSessionTests(unittest.TestCase):
         self.assertIsNone(recorder.mic_stream)
 
     def test_recorder_resolves_sox_from_a_frozen_bundle(self):
-        from spikes.pyside6 import qml_runtime
+        from clarify.desktop import qml_runtime
 
         with TemporaryDirectory() as directory:
             bundle_root = Path(directory)
@@ -394,7 +394,7 @@ class QtRecordingSessionTests(unittest.TestCase):
         recorder = QtRecorder(Config(), InventorySource())
         recorder.sox = "sox"
         with patch(
-            "spikes.pyside6.qml_runtime.platform.system", return_value="Windows"
+            "clarify.desktop.qml_runtime.platform.system", return_value="Windows"
         ):
             with self.assertRaises(MicrophoneUnavailableError):
                 recorder.start(Path("capture.wav"), threading.Event())
@@ -426,7 +426,7 @@ class QtRecordingSessionTests(unittest.TestCase):
         )
 
         with patch(
-            "spikes.pyside6.qml_runtime.platform.system", return_value="Windows"
+            "clarify.desktop.qml_runtime.platform.system", return_value="Windows"
         ):
             recorder = QtRecorder()
             selectable = recorder.selectable_microphone_devices(inventory)
@@ -438,7 +438,7 @@ class QtRecordingSessionTests(unittest.TestCase):
     ):
         from array import array
         from microphone_controls import MicrophoneDevice, MicrophoneInventory
-        from spikes.pyside6 import qml_runtime
+        from clarify.desktop import qml_runtime
 
         selected = MicrophoneDevice(
             stable_id="selected",
@@ -553,7 +553,7 @@ class QtRecordingSessionTests(unittest.TestCase):
         with (
             TemporaryDirectory() as directory,
             patch(
-                "spikes.pyside6.qml_runtime._data_directory",
+                "clarify.desktop.qml_runtime._data_directory",
                 return_value=Path(directory),
             ),
         ):
@@ -970,13 +970,13 @@ class QtProviderGatewayTests(unittest.TestCase):
                 with (
                     self.subTest(provider=provider, failure=type(failure).__name__),
                     patch(
-                        "spikes.pyside6.qml_runtime.PROVIDER_REGISTRY.transcribe",
+                        "clarify.desktop.qml_runtime.PROVIDER_REGISTRY.transcribe",
                         return_value=TranscriptionResult(
                             "original transcript", provider, "fixture"
                         ),
                     ),
                     patch(
-                        "spikes.pyside6.qml_runtime.PROVIDER_REGISTRY.rewrite",
+                        "clarify.desktop.qml_runtime.PROVIDER_REGISTRY.rewrite",
                         side_effect=[failure],
                     ) as rewrite,
                 ):
@@ -1025,7 +1025,7 @@ class QtProviderGatewayTests(unittest.TestCase):
         snapshot = RecordingSnapshot(Path("removed.wav"), b"audio")
         for error_type in (NetworkError, ProviderTimeoutError):
             with patch(
-                "spikes.pyside6.qml_runtime.PROVIDER_REGISTRY.transcribe",
+                "clarify.desktop.qml_runtime.PROVIDER_REGISTRY.transcribe",
                 side_effect=error_type(provider="groq", operation="transcription"),
             ) as send:
                 with self.assertRaises(TranscriptionTransportError):
@@ -1123,7 +1123,7 @@ class QtProviderGatewayTests(unittest.TestCase):
         registry = Registry()
         audio = RecordingSnapshot(Path("recording.wav"), b"audio", cancel_token=None)
 
-        with patch("spikes.pyside6.qml_runtime.PROVIDER_REGISTRY", registry):
+        with patch("clarify.desktop.qml_runtime.PROVIDER_REGISTRY", registry):
             gateway = QtProviderGateway(
                 QtWorkflowConfig(Repositories(config)),
                 dictionary,
@@ -1171,7 +1171,7 @@ class QtProviderGatewayTests(unittest.TestCase):
             registry.rewrite_requests[0][1].instruction,
         )
 
-        with patch("spikes.pyside6.qml_runtime.PROVIDER_REGISTRY", registry):
+        with patch("clarify.desktop.qml_runtime.PROVIDER_REGISTRY", registry):
             gateway = QtProviderGateway(
                 QtWorkflowConfig(Repositories(config)),
                 dictionary,
@@ -1233,7 +1233,7 @@ class QtProviderGatewayTests(unittest.TestCase):
         )
         registry = Registry()
 
-        with patch("spikes.pyside6.qml_runtime.PROVIDER_REGISTRY", registry):
+        with patch("clarify.desktop.qml_runtime.PROVIDER_REGISTRY", registry):
             gateway = QtProviderGateway(
                 QtWorkflowConfig(Repositories(config)),
                 SimpleNamespace(),
@@ -1332,8 +1332,8 @@ class QtWorkflowSchedulerTests(unittest.TestCase):
                 "-c",
                 (
                     "import sys; "
-                    "import spikes.pyside6.qml_bridge; "
-                    "import spikes.pyside6.qml_runtime; "
+                    "import clarify.desktop.qml_bridge; "
+                    "import clarify.desktop.qml_runtime; "
                     "print('app' in sys.modules)"
                 ),
             ],
@@ -1471,7 +1471,7 @@ class QtStatisticsGatewayTests(unittest.TestCase):
         repository = self.UsageRepository()
         statistics = QtStatisticsGateway(SimpleNamespace(usage_stats=repository))
 
-        with patch("spikes.pyside6.qml_runtime.time.time", return_value=1234.5):
+        with patch("clarify.desktop.qml_runtime.time.time", return_value=1234.5):
             statistics.record_dictation(
                 {
                     "provider": "openai",
@@ -1511,7 +1511,7 @@ class QtStatisticsGatewayTests(unittest.TestCase):
             translated_text="Hallo vom Mikrofon",
         )
 
-        with patch("spikes.pyside6.qml_runtime.time.time", return_value=1234.5):
+        with patch("clarify.desktop.qml_runtime.time.time", return_value=1234.5):
             statistics.record_voice_translation(config, state, 45.5)
 
         self.assertEqual(len(repository.events), 1)
@@ -1602,11 +1602,11 @@ class QtHistoryRecorderTests(unittest.TestCase):
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional spike dependency")
 class QtClipboardGatewayTests(unittest.TestCase):
     def test_xclip_failure_is_reported_to_copy_bridge(self):
-        from spikes.pyside6.qml_runtime import QtClipboardGateway
+        from clarify.desktop.qml_runtime import QtClipboardGateway
 
         failure = subprocess.CalledProcessError(1, ["xclip", "-selection", "clipboard"])
         with patch(
-            "spikes.pyside6.qml_clipboard.subprocess.run", side_effect=failure
+            "clarify.desktop.qml_clipboard.subprocess.run", side_effect=failure
         ) as run:
             gateway = QtClipboardGateway(is_windows=False, platform_name="Linux")
             with self.assertRaises(subprocess.CalledProcessError):

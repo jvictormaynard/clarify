@@ -4,9 +4,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
 from PySide6.QtWidgets import QApplication
-from spikes.pyside6.qml_app import _WorkflowWindowVisibility
-from spikes.pyside6.qml_bridge import QmlWorkflowBridge
-from spikes.pyside6.qml_clipboard import QmlClipboardGateway
+from clarify.desktop.qml_app import _WorkflowWindowVisibility
+from clarify.desktop.qml_bridge import QmlWorkflowBridge
+from clarify.desktop.qml_clipboard import QmlClipboardGateway
 from workflows import WorkflowState, WorkflowPhase, SelectionDisposition
 from test_pyside6_qml_clipboard import FakeClipboardAdapter
 
@@ -102,7 +102,7 @@ class DictationFocusTests(unittest.TestCase):
         self.assertFalse(self.visible)
 
     def test_shell_passive_restore_never_requests_activation(self):
-        from spikes.pyside6.qt_shell import QtShell
+        from clarify.desktop.qt_shell import QtShell
 
         window = Mock()
         window.setProperty.return_value = True
@@ -117,7 +117,7 @@ class DictationFocusTests(unittest.TestCase):
         window.requestActivate.assert_called_once()
 
     def test_shell_keeps_unsupported_window_hidden(self):
-        from spikes.pyside6.qt_shell import QtShell
+        from clarify.desktop.qt_shell import QtShell
 
         window = Mock()
         window.setProperty.return_value = False

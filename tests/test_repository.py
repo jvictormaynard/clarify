@@ -32,7 +32,7 @@ class RepositorySafetyTests(unittest.TestCase):
     def test_deploy_stages_all_python_modules(self):
         content = (ROOT / "scripts" / "deploy.ps1").read_text(encoding="utf-8")
         self.assertIn(
-            '$sourceQmlPython = Join-Path $sourceDir "spikes\\pyside6"', content
+            '$sourceQmlPython = Join-Path $sourceDir "clarify\\desktop"', content
         )
         self.assertIn('Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File', content)
         self.assertIn('Join-Path $repoQmlPython "qt_shell.py"', content)
@@ -61,10 +61,10 @@ class RepositorySafetyTests(unittest.TestCase):
             '"requests", "sounddevice", "customtkinter", "Pillow", "pyinstaller"',
             content,
         )
-        self.assertIn("'PySide6'", content)
+        self.assertIn("'PySide6-Essentials'", content)
 
     def test_windows_builds_isolate_host_dll_paths_and_smoke_test_imports(self):
-        entrypoint = (ROOT / "spikes" / "pyside6" / "qml_app.py").read_text(
+        entrypoint = (ROOT / "clarify" / "desktop" / "qml_app.py").read_text(
             encoding="utf-8"
         )
         self.assertIn('CLARIFY_IMPORT_SMOKE_TEST") == "1"', entrypoint)
@@ -86,7 +86,8 @@ class RepositorySafetyTests(unittest.TestCase):
         start_sh = (ROOT / "start.sh").read_text(encoding="utf-8")
         package = (ROOT / "package.json").read_text(encoding="utf-8")
 
-        self.assertIn("PySide6>=6.8,<7", requirements)
+        self.assertIn("PySide6-Essentials>=6.8,<7", requirements)
+        self.assertNotIn("PySide6>=", requirements)
         self.assertNotIn("customtkinter", requirements.casefold())
         for content in (build, deploy):
             self.assertIn("qml_app.py", content)
@@ -103,7 +104,7 @@ class RepositorySafetyTests(unittest.TestCase):
         self.assertIn('Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File', deploy)
         for content in (build, deploy):
             self.assertIn('if ($qmlModule.BaseName -ne "qml_app")', content)
-        self.assertIn("spikes/pyside6/qml", package)
+        self.assertIn("clarify/desktop/qml", package)
         self.assertIn("Main.qml", package)
         self.assertNotIn("compileall -q app.py", package)
 
@@ -234,7 +235,10 @@ class RepositorySafetyTests(unittest.TestCase):
         self.assertIn("-BaselinePayloadSha256", content)
         self.assertIn("-CurrentPayloadSha256", content)
         self.assertIn("payloads must be byte-distinct", content)
-        self.assertIn("Install manifest dependencies", content)
+        self.assertIn(
+            "-r requirements-dev.txt -c requirements-lock-windows.txt", content
+        )
+        self.assertNotIn("Install manifest dependencies", content)
         self.assertIn("scripts/create_release_manifest.py tests", content)
         self.assertNotIn("AZURE_CLIENT_ID", content)
 
@@ -352,13 +356,13 @@ class RepositorySafetyTests(unittest.TestCase):
             encoding="utf-8"
         )
         for workflow in (ci, release):
-            self.assertIn("spikes/pyside6/qml_app.py", workflow)
-            self.assertIn("spikes/pyside6/qml_runtime.py", workflow)
-            self.assertIn("spikes/pyside6/qml_status.py", workflow)
-            self.assertIn("spikes/pyside6/qml_audio_batch.py", workflow)
-            self.assertIn("spikes/pyside6/qml_clipboard.py", workflow)
-            self.assertIn("spikes/pyside6/qml_voice_translation.py", workflow)
-            self.assertIn("spikes/pyside6/qml", workflow)
+            self.assertIn("clarify/desktop/qml_app.py", workflow)
+            self.assertIn("clarify/desktop/qml_runtime.py", workflow)
+            self.assertIn("clarify/desktop/qml_status.py", workflow)
+            self.assertIn("clarify/desktop/qml_audio_batch.py", workflow)
+            self.assertIn("clarify/desktop/qml_clipboard.py", workflow)
+            self.assertIn("clarify/desktop/qml_voice_translation.py", workflow)
+            self.assertIn("clarify/desktop/qml", workflow)
             self.assertIn("Main.qml", workflow)
         self.assertIn("-ArgumentList @('--hidden')", ci)
         self.assertNotIn("secret-store-self-test', '--result-file", ci)

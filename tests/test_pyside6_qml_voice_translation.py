@@ -43,7 +43,7 @@ if PYSIDE6_AVAILABLE:
     )
     from workflow_config import WorkflowConfig, WorkflowRoute
     from workflows import RecordingSnapshot
-    from spikes.pyside6.qml_voice_translation import (
+    from clarify.desktop.qml_voice_translation import (
         QmlVoiceTranslationController,
         QmlVoiceTranslationProvider,
         QtVoiceTranslationRecording,

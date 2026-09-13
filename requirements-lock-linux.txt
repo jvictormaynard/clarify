@@ -121,14 +121,8 @@ pyproject-hooks==1.2.0
     # via
     #   build
     #   pip-tools
-pyside6==6.11.1
-    # via -r requirements.txt
-pyside6-addons==6.11.1
-    # via pyside6
 pyside6-essentials==6.11.1
-    # via
-    #   pyside6
-    #   pyside6-addons
+    # via -r requirements.txt
 python-dateutil==2.9.0.post0
     # via arrow
 referencing==0.37.0
@@ -156,10 +150,7 @@ rpds-py==2026.6.3
 ruff==0.16.1
     # via -r requirements-dev.txt
 shiboken6==6.11.1
-    # via
-    #   pyside6
-    #   pyside6-addons
-    #   pyside6-essentials
+    # via pyside6-essentials
 six==1.17.0
     # via
     #   python-dateutil

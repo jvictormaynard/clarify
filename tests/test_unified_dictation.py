@@ -10,7 +10,7 @@ from secret_store import MemorySecretStore
 from audio_file_batch import FileTranscriptionSelection
 from provider_types import ProviderConnection, TranscriptionResult
 from provider_http import CancellationToken
-from spikes.pyside6.qml_runtime import QtAudioFileGateway, QtProviderGateway
+from clarify.desktop.qml_runtime import QtAudioFileGateway, QtProviderGateway
 
 
 class UnifiedDictationTests(unittest.TestCase):
@@ -62,7 +62,7 @@ class UnifiedDictationTests(unittest.TestCase):
         token = CancellationToken()
         with (
             patch(
-                "spikes.pyside6.qml_runtime.PROVIDER_REGISTRY.transcribe",
+                "clarify.desktop.qml_runtime.PROVIDER_REGISTRY.transcribe",
                 return_value=TranscriptionResult(
                     "quarta, na verdade quinta", "openai", "whisper-1"
                 ),

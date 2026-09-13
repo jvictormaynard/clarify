@@ -31,9 +31,9 @@ if (-not (Test-Path (Join-Path $repoRoot ".venv\Scripts\python.exe"))) {
 }
 
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
-$entryPoint = Join-Path $repoRoot "spikes\pyside6\qml_app.py"
-$qmlRoot = Join-Path $repoRoot "spikes\pyside6\qml"
-$qmlPythonRoot = Join-Path $repoRoot "spikes\pyside6"
+$entryPoint = Join-Path $repoRoot "clarify\desktop\qml_app.py"
+$qmlRoot = Join-Path $repoRoot "clarify\desktop\qml"
+$qmlPythonRoot = Join-Path $repoRoot "clarify\desktop"
 $versionSource = Join-Path $repoRoot "version.py"
 $repoExtra = Join-Path $repoRoot "extra"
 $assets = Join-Path $repoRoot "assets"
@@ -103,6 +103,7 @@ $pyInstallerArgs = @(
     "--distpath", $OutputDirectory,
     "--workpath", $workDir,
     "--specpath", $specDir,
+    "--additional-hooks-dir", (Join-Path $PSScriptRoot 'pyinstaller-hooks'),
     "--paths", $repoRoot,
     "--paths", $qmlPythonRoot,
     "--add-data", "${extra};extra",

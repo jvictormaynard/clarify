@@ -23,12 +23,12 @@ from workflows import (
 )
 
 try:
-    from spikes.pyside6.qml_runtime import (
+    from clarify.desktop.qml_runtime import (
         QtHistoryRecorder,
         QtProviderGateway,
         QtWorkflowConfig,
     )
-    from spikes.pyside6.qml_bridge import QmlWorkflowBridge
+    from clarify.desktop.qml_bridge import QmlWorkflowBridge
 except ImportError:
     QT_AVAILABLE = False
 else:
@@ -57,13 +57,13 @@ class RefinementRecoveryTests(unittest.TestCase):
         self.raw = "  João, use 42 unidades.\nNão envie ainda.  "
         self.asr = self.enterContext(
             patch(
-                "spikes.pyside6.qml_runtime.PROVIDER_REGISTRY.transcribe",
+                "clarify.desktop.qml_runtime.PROVIDER_REGISTRY.transcribe",
                 return_value=TranscriptionResult(self.raw, "openai", "whisper-1"),
             )
         )
         self.rewrite = self.enterContext(
             patch(
-                "spikes.pyside6.qml_runtime.PROVIDER_REGISTRY.rewrite",
+                "clarify.desktop.qml_runtime.PROVIDER_REGISTRY.rewrite",
                 side_effect=RuntimeError("sensitive provider response"),
             )
         )

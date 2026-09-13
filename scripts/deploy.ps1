@@ -19,7 +19,7 @@ $repoVersion = Join-Path $repoRoot "version.py"
 $repoExtra = Join-Path $repoRoot "extra"
 $repoAssets = Join-Path $repoRoot "assets"
 $repoDistribution = Join-Path $repoRoot "distribution"
-$repoQmlPython = Join-Path $repoRoot "spikes\pyside6"
+$repoQmlPython = Join-Path $repoRoot "clarify\desktop"
 $repoQml = Join-Path $repoQmlPython "qml"
 $repoLocalAsrManifest = Join-Path $repoRoot "local_asr_manifest.json"
 $repoLocalAsrLicenses = Join-Path $repoRoot "licenses"
@@ -148,7 +148,7 @@ Invoke-LoggedProcess $venvPython @(
 
 $versionScript = (
     "from importlib.metadata import version; " +
-    "names=('requests','sounddevice','PySide6','Pillow','pyinstaller'); " +
+    "names=('requests','sounddevice','PySide6-Essentials','Pillow','pyinstaller'); " +
     "print(', '.join(name + ' ' + version(name) for name in names))"
 )
 $versionArguments = @("-c", $versionScript)
@@ -160,12 +160,21 @@ Write-Host "Build dependencies: $dependencyVersions"
 
 # Keep PyInstaller's work directory so subsequent deployments can reuse its
 # dependency-analysis cache. Only refresh source inputs and final output.
-Remove-Item $sourceDir, $distDir -Recurse -Force -ErrorAction SilentlyContinue
+$resolvedBuildRoot = [System.IO.Path]::GetFullPath($buildRoot).TrimEnd('\')
+foreach ($refreshPath in @($sourceDir, $distDir)) {
+    $resolvedRefreshPath = [System.IO.Path]::GetFullPath($refreshPath)
+    if ([System.IO.Path]::GetDirectoryName($resolvedRefreshPath) -ne $resolvedBuildRoot) {
+        throw "Refusing to refresh a path outside the isolated build directory."
+    }
+    if (Test-Path -LiteralPath $resolvedRefreshPath) {
+        Remove-Item -LiteralPath $resolvedRefreshPath -Recurse -Force
+    }
+}
 New-Item $sourceDir, $distDir, $workDir, $specDir -ItemType Directory -Force | Out-Null
 
 # PyInstaller cannot reliably analyze source files over a WSL UNC path, so
 # stage the required inputs on the Windows filesystem before building.
-$sourceQmlPython = Join-Path $sourceDir "spikes\pyside6"
+$sourceQmlPython = Join-Path $sourceDir "clarify\desktop"
 $source = Join-Path $sourceQmlPython "qml_app.py"
 $qml = Join-Path $sourceDir "qml"
 $extra = Join-Path $sourceDir "extra"
@@ -182,6 +191,8 @@ foreach ($requiredPath in @(
     }
 }
 New-Item $sourceQmlPython -ItemType Directory -Force | Out-Null
+Copy-Item (Join-Path $repoRoot 'clarify\__init__.py') (Join-Path $sourceDir 'clarify') -Force
+Copy-Item (Join-Path $repoQmlPython '__init__.py') $sourceQmlPython -Force
 foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File)) {
     Copy-Item $qmlModule.FullName $sourceQmlPython -Force
 }
@@ -256,6 +267,7 @@ $pyinstallerArgs = @(
     "--distpath", $distDir,
     "--workpath", $workDir,
     "--specpath", $specDir,
+    "--additional-hooks-dir", (Join-Path $PSScriptRoot 'pyinstaller-hooks'),
     "--paths", $sourceDir,
     "--paths", $sourceQmlPython,
     "--add-data", "${extra};extra",

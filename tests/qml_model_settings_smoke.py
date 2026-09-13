@@ -50,8 +50,8 @@ from repositories import (
     LocalUsageStatsRepository,
 )
 from secret_store import MemorySecretStore
-from spikes.pyside6.qml_bridge import QmlWorkflowBridge
-from spikes.pyside6.qml_settings import QmlSettingsController
+from clarify.desktop.qml_bridge import QmlWorkflowBridge
+from clarify.desktop.qml_settings import QmlSettingsController
 from workflows import WorkflowState, WorkflowPhase, RetryDictation
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -161,7 +161,7 @@ def main():
         # Stage assets locally, as the Windows packager does. Qt resolves some
         # relative image URLs incorrectly when Main.qml is loaded from WSL UNC.
         qml_source = Path(
-            os.environ.get("CLARIFY_TEST_QML_ROOT", str(ROOT / "spikes/pyside6/qml"))
+            os.environ.get("CLARIFY_TEST_QML_ROOT", str(ROOT / "clarify/desktop/qml"))
         )
         qml_root = Path(shutil.copytree(qml_source, base / "qml"))
         repositories = ApplicationRepositories(
@@ -354,7 +354,7 @@ def main():
             settle()
 
         with patch(
-            "spikes.pyside6.qml_settings.PROVIDER_REGISTRY.discover_models",
+            "clarify.desktop.qml_settings.PROVIDER_REGISTRY.discover_models",
             return_value=ModelCatalog(
                 audio_models=(
                     "whisper-1",
@@ -370,7 +370,7 @@ def main():
             if not root_windows:
                 raise AssertionError("\n".join(messages))
             window = engine.rootObjects()[0]
-            from spikes.pyside6.qml_app import _SettingsWindowVisibility
+            from clarify.desktop.qml_app import _SettingsWindowVisibility
 
             settings_presenter = _SettingsWindowVisibility(
                 bridge, engine.rootObjects()[1]
@@ -519,8 +519,8 @@ def main():
             assert bridge.surface == "settings"
             panel = find_item(QQuickWindow, "clarifySettingsWindow")
             if "--window-only" in sys.argv:
-                from spikes.pyside6.qt_shell import QtShell
-                from spikes.pyside6.qml_app import _WorkflowWindowVisibility
+                from clarify.desktop.qt_shell import QtShell
+                from clarify.desktop.qml_app import _WorkflowWindowVisibility
 
                 integration_shell = QtShell(window)
                 coordinator = _WorkflowWindowVisibility(

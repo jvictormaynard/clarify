@@ -5,9 +5,9 @@
 - Repository: `jvictormaynard/clarify`
 - Release branch base: `main`
 - Versioning: Semantic Versioning with `v`-prefixed Git tags
-- Maintained application: Python/Qt `spikes/pyside6/qml_app.py`
+- Maintained application: Python/Qt `clarify/desktop/qml_app.py`
 - Settings: React/TypeScript `desktop/src/` in the Tauri child `desktop/src-tauri/`
-- Historical code: `legacy/electron-prototype/` is not packaged
+- Historical Electron code is retained only in Git history
 - Public platform: Windows 10/11, x64 portable executable
 
 The tag, release, and executable must all originate from the same green

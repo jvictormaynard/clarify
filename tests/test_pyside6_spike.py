@@ -30,7 +30,9 @@ class PySide6SpikeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             FakeWorkflow().transition("show_result")
         source = (SPIKE / "app.py").read_text(encoding="utf-8")
-        self.assertIn("self._result_button.setEnabled(surface == Surface.SUCCESS)", source)
+        self.assertIn(
+            "self._result_button.setEnabled(surface == Surface.SUCCESS)", source
+        )
 
     def test_tray_and_initial_pill_lifecycle_are_explicit(self):
         source = (SPIKE / "app.py").read_text(encoding="utf-8")
@@ -83,7 +85,10 @@ class PySide6SpikeTests(unittest.TestCase):
         self.assertIn("ConvertTo-CanonicalSha256", aggregate)
         self.assertIn("ExecutableSHA256", aggregate)
         self.assertIn("all three nonblank artifact hash fields", aggregate)
-        self.assertIn("Every measurement must include all three nonblank artifact hash fields", aggregate)
+        self.assertIn(
+            "Every measurement must include all three nonblank artifact hash fields",
+            aggregate,
+        )
         self.assertIn("single artifact manifest digest", aggregate)
         self.assertIn("one executable artifact hash", aggregate)
         self.assertIn("executable and manifest artifact hashes must match", aggregate)
@@ -92,10 +97,14 @@ class PySide6SpikeTests(unittest.TestCase):
         self.assertIn('$zone -ceq "Z"', aggregate)
         self.assertIn("$Row.Round = $round", aggregate)
         for metric in ("WindowProcessId", "ProcessCount", "ThreadCount"):
-            self.assertIn(f'@("WindowProcessId", "ProcessCount", "ThreadCount")', aggregate)
+            self.assertIn(
+                f'@("WindowProcessId", "ProcessCount", "ThreadCount")', aggregate
+            )
             self.assertIn(metric, aggregate)
         self.assertIn("InvariantCulture", aggregate)
-        self.assertIn("$resolvedInput.ToLowerInvariant() -eq $destinationKey", aggregate)
+        self.assertIn(
+            "$resolvedInput.ToLowerInvariant() -eq $destinationKey", aggregate
+        )
         self.assertTrue((FIXTURES / "valid_measurements.csv").is_file())
         self.assertTrue((FIXTURES / "invalid_measurements.csv").is_file())
         self.assertTrue((FIXTURES / "invalid_round_spellings.csv").is_file())
@@ -120,13 +129,16 @@ class PySide6SpikeTests(unittest.TestCase):
         ):
             self.assertTrue((FIXTURES / name).is_file())
 
-    @unittest.skipUnless(os.name == "nt", "native PowerShell integration runs on Windows CI")
+    @unittest.skipUnless(
+        os.name == "nt", "native PowerShell integration runs on Windows CI"
+    )
     def test_aggregate_windows_rejects_failures_and_is_idempotent(self):
         script = SPIKE / "aggregate.ps1"
         valid = FIXTURES / "valid_measurements.csv"
         invalid = FIXTURES / "invalid_measurements.csv"
         with tempfile.TemporaryDirectory() as temp_dir:
             summary = Path(temp_dir) / "summary.csv"
+
             def run_aggregate(inputs):
                 def quote(path):
                     return "'" + str(path).replace("'", "''") + "'"
@@ -137,9 +149,17 @@ class PySide6SpikeTests(unittest.TestCase):
                 )
                 return subprocess.run(
                     [
-                        "powershell.exe", "-NoProfile", "-NonInteractive",
-                        "-ExecutionPolicy", "Bypass", "-Command", command,
-                    ], capture_output=True, text=True, check=False,
+                        "powershell.exe",
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-Command",
+                        command,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
                 )
 
             first = run_aggregate([valid])
@@ -149,12 +169,18 @@ class PySide6SpikeTests(unittest.TestCase):
             failed = run_aggregate([invalid])
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn("MainWindowSeen", failed.stdout + failed.stderr)
-            equivalent_rounds = run_aggregate([FIXTURES / "invalid_round_spellings.csv"])
+            equivalent_rounds = run_aggregate(
+                [FIXTURES / "invalid_round_spellings.csv"]
+            )
             self.assertNotEqual(equivalent_rounds.returncode, 0)
-            self.assertIn("three independent", equivalent_rounds.stdout + equivalent_rounds.stderr)
+            self.assertIn(
+                "three independent", equivalent_rounds.stdout + equivalent_rounds.stderr
+            )
             equivalent_boots = run_aggregate([FIXTURES / "invalid_boot_spellings.csv"])
             self.assertNotEqual(equivalent_boots.returncode, 0)
-            self.assertIn("three independent", equivalent_boots.stdout + equivalent_boots.stderr)
+            self.assertIn(
+                "three independent", equivalent_boots.stdout + equivalent_boots.stderr
+            )
             invalid_boot = run_aggregate([FIXTURES / "invalid_boot_id.csv"])
             self.assertNotEqual(invalid_boot.returncode, 0)
             self.assertIn("BootId", invalid_boot.stdout + invalid_boot.stderr)
@@ -163,7 +189,9 @@ class PySide6SpikeTests(unittest.TestCase):
             self.assertIn("BootId", lowercase_boot.stdout + lowercase_boot.stderr)
             mixed_hosts = run_aggregate([FIXTURES / "invalid_mixed_hosts.csv"])
             self.assertNotEqual(mixed_hosts.returncode, 0)
-            self.assertIn("exactly one benchmark host", mixed_hosts.stdout + mixed_hosts.stderr)
+            self.assertIn(
+                "exactly one benchmark host", mixed_hosts.stdout + mixed_hosts.stderr
+            )
             invalid_host = run_aggregate([FIXTURES / "invalid_host_id.csv"])
             self.assertNotEqual(invalid_host.returncode, 0)
             self.assertIn("HostId", invalid_host.stdout + invalid_host.stderr)
@@ -172,13 +200,19 @@ class PySide6SpikeTests(unittest.TestCase):
             self.assertIn("HostId", missing_host.stdout + missing_host.stderr)
             missing_hashes = run_aggregate([FIXTURES / "invalid_hash_missing.csv"])
             self.assertNotEqual(missing_hashes.returncode, 0)
-            self.assertIn("three nonblank", missing_hashes.stdout + missing_hashes.stderr)
+            self.assertIn(
+                "three nonblank", missing_hashes.stdout + missing_hashes.stderr
+            )
             mismatched_hashes = run_aggregate([FIXTURES / "invalid_hash_mismatch.csv"])
             self.assertNotEqual(mismatched_hashes.returncode, 0)
-            self.assertIn("hashes must match", mismatched_hashes.stdout + mismatched_hashes.stderr)
-            for malformed in sorted(FIXTURES.glob("invalid_*_process_id.csv")) + sorted(
-                FIXTURES.glob("invalid_*_process_count.csv")
-            ) + sorted(FIXTURES.glob("invalid_*_thread_count.csv")):
+            self.assertIn(
+                "hashes must match", mismatched_hashes.stdout + mismatched_hashes.stderr
+            )
+            for malformed in (
+                sorted(FIXTURES.glob("invalid_*_process_id.csv"))
+                + sorted(FIXTURES.glob("invalid_*_process_count.csv"))
+                + sorted(FIXTURES.glob("invalid_*_thread_count.csv"))
+            ):
                 rejected = run_aggregate([malformed])
                 self.assertNotEqual(rejected.returncode, 0, malformed.name)
 
@@ -252,7 +286,7 @@ class PySide6SpikeTests(unittest.TestCase):
 
     def test_production_requirements_use_qt_runtime_without_customtkinter(self):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
-        self.assertIn("PySide6>=6.8,<7", requirements)
+        self.assertIn("PySide6-Essentials>=6.8,<7", requirements)
         self.assertNotIn("customtkinter", requirements.casefold())
 
 

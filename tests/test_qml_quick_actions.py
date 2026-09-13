@@ -6,8 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from PySide6.QtWidgets import QApplication
-from spikes.pyside6.qml_bridge import QmlWorkflowBridge
-from spikes.pyside6.qml_quick_paste import QuickPasteController
+from clarify.desktop.qml_bridge import QmlWorkflowBridge
+from clarify.desktop.qml_quick_paste import QuickPasteController
 from workflows import (
     WorkflowState,
     WorkflowKind,
@@ -16,7 +16,7 @@ from workflows import (
     SelectionTarget,
 )
 from test_pyside6_qml_settings import _repositories, _MicrophoneBackend
-from spikes.pyside6.qml_settings import QmlSettingsController
+from clarify.desktop.qml_settings import QmlSettingsController
 from microphone_controls import MicrophoneDevice, MicrophoneInventory
 
 
@@ -151,7 +151,7 @@ class QuickActionsTests(unittest.TestCase):
         self.assertFalse(bridge.feedbackVisible)
 
     def test_all_successful_workflows_remain_on_compact_home(self):
-        from spikes.pyside6.qml_app import _WorkflowWindowVisibility
+        from clarify.desktop.qml_app import _WorkflowWindowVisibility
 
         service = SimpleNamespace(
             state=WorkflowState(), subscribe=lambda listener: None

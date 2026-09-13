@@ -36,7 +36,7 @@ floating window remains responsive.
 and styles. `desktop/src-tauri/` hosts them in a Tauri v2 WebView2 window. This is
 not Electron and does not replace the Python audio engine or QML pill.
 
-`spikes/pyside6/qml_web_settings.py` starts the child with Qt `QProcess` and
+`clarify/desktop/qml_web_settings.py` starts the child with Qt `QProcess` and
 exchanges JSON messages over private standard input/output pipes. The Python
 allowlist controls which Settings properties and methods are exposed. There is
 no public HTTP Settings server. Python owns config, credentials, model assets,
@@ -49,7 +49,7 @@ be described as complete localization of the React pages.
 
 ## Current modules
 
-### `spikes/pyside6/qml_app.py`, `qml_bridge.py`, and `qml_runtime.py`
+### `clarify/desktop/qml_app.py`, `qml_bridge.py`, and `qml_runtime.py`
 
 These modules are the production desktop entrypoint and Qt integration layer:
 
@@ -59,15 +59,14 @@ These modules are the production desktop entrypoint and Qt integration layer:
   voice-translation surfaces to QML;
 - `qml_runtime.py` composes provider, recording, clipboard, statistics, and
   audio-file gateways without importing the old widget frontend; and
-- `spikes/pyside6/qml/` contains the compact black-and-white theme, overlay,
+- `clarify/desktop/qml/` contains the compact black-and-white theme, overlay,
   fallback settings, legacy result assets, translation, and file-import surfaces.
 
 The old widget entrypoint is not used by `start.bat`, PyInstaller, CI, or
 release packaging. Root `app.py` remains for legacy compatibility tests; new
-features must not be added there. The `spikes/` directory name is historical,
-not a statement that the shipping Qt runtime is experimental. Moving it requires
-an import and packaging migration, not only a directory rename.
-The Electron implementation remains historical only.
+features must not be added there. Production Qt adapters and assets live in
+`clarify/desktop/`; historical comparison tools remain under `spikes/`.
+The unused Electron implementation is available in Git history, not the checkout.
 
 ### Provider layer
 
@@ -299,10 +298,10 @@ before registration, and strict registration rolls back every accepted ID if
 Windows rejects one combination; settings therefore cannot leave a stale or
 partially active set.
 
-The packaged native layer currently supports toggle recording only because
 `RegisterHotKey` delivers key-down notifications and has no key-up edge. The
-settings-facing activation API accepts push-to-talk only when a future
-key-release-capable adapter explicitly opts in. Packaged Windows builds exclude
+production Qt shell adds a scoped physical-key timer for Hold recording: key
+release ends the recording, and Escape cancels it while the shortcut remains
+held. The legacy adapter remains toggle-only. Packaged Windows builds exclude
 the optional cross-platform `keyboard` module.
 
 ### `windows_clipboard.py`
@@ -488,6 +487,5 @@ updating an existing local installation from WSL; contributors normally use
 
 ## Legacy prototype
 
-`legacy/electron-prototype/` contains the incomplete Electron implementation
-that preceded the Python rewrite. It is not installed, tested, packaged, or used
-at runtime. Keep changes to it separate from current application changes.
+The incomplete Electron prototype was removed from the checkout. It remains
+available in Git history and is not part of current development or distribution.

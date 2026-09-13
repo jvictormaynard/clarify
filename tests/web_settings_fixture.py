@@ -13,8 +13,8 @@ from types import SimpleNamespace
 from test_pyside6_qml_settings import _repositories, _MicrophoneBackend
 from microphone_controls import MicrophoneInventory, MicrophoneDevice
 from local_asr_product import LocalASRProductState
-from spikes.pyside6.qml_settings import QmlSettingsController
-from spikes.pyside6.qml_web_settings import SettingsProtocol, WebSettingsProcess
+from clarify.desktop.qml_settings import QmlSettingsController
+from clarify.desktop.qml_web_settings import SettingsProtocol, WebSettingsProcess
 
 
 def check_native_corners(process_id):
@@ -92,7 +92,7 @@ def main():
     app = QCoreApplication([])
     with (
         TemporaryDirectory() as directory,
-        patch("spikes.pyside6.qml_settings._is_windows", return_value=False),
+        patch("clarify.desktop.qml_settings._is_windows", return_value=False),
         patch(
             "local_asr_catalog.installer_for",
             side_effect=lambda model, device: Mock(

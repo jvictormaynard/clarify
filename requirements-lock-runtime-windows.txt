@@ -16,21 +16,12 @@ pillow==12.3.0
     # via -r requirements.txt
 pycparser==3.0
     # via cffi
-pyside6==6.11.1
-    # via -r requirements.txt
-pyside6-addons==6.11.1
-    # via pyside6
 pyside6-essentials==6.11.1
-    # via
-    #   pyside6
-    #   pyside6-addons
+    # via -r requirements.txt
 requests==2.34.2
     # via -r requirements.txt
 shiboken6==6.11.1
-    # via
-    #   pyside6
-    #   pyside6-addons
-    #   pyside6-essentials
+    # via pyside6-essentials
 sounddevice==0.5.5
     # via -r requirements.txt
 urllib3==2.7.0

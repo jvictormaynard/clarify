@@ -8,7 +8,7 @@ from enum import Enum
 from functools import partial
 from pathlib import Path
 
-# Source autostart executes this file directly from ``spikes/pyside6`` while
+# Source autostart executes this file directly from ``clarify/desktop`` while
 # the root-level workflow modules remain package imports.  Put the repository
 # root on ``sys.path`` before importing either the Qt or application modules.
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -67,7 +67,7 @@ def _qml_root() -> Path:
     if getattr(sys, "frozen", False):
         roots.append(Path(sys.executable).resolve().parent)
     roots.extend(
-        (Path(__file__).resolve().parent, _REPOSITORY_ROOT / "spikes" / "pyside6")
+        (Path(__file__).resolve().parent, _REPOSITORY_ROOT / "clarify" / "desktop")
     )
 
     seen: set[Path] = set()
@@ -119,9 +119,31 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
 
 
 if os.environ.get("CLARIFY_IMPORT_SMOKE_TEST") == "1":
-    # Import Qt and all application modules without opening the UI. This catches
-    # DLL collection conflicts before a new executable replaces the installed one.
-    raise SystemExit(0)
+    # Validate the collected QML plugins too, without a user profile, recorder,
+    # hotkeys or visible window. Python imports alone cannot detect missing QML.
+    QQuickStyle.setStyle("Basic")
+    smoke_app = QApplication([])
+    smoke_engine = QQmlApplicationEngine()
+    smoke_engine.loadData(b"""
+        import QtQuick 6.5
+        import QtQuick.Controls 6.5
+        import QtQuick.Layouts 6.5
+        import QtQuick.Dialogs 6.5
+        import QtQuick.Window 6.5
+        ApplicationWindow {
+            visible: false; width: 400; height: 120
+            RowLayout {
+                Button { text: "Test" }
+                TextField { text: "Test" }
+                ComboBox { model: ["Test"] }
+                Switch { checked: true }
+                ProgressBar { value: 0.5 }
+            }
+            FileDialog {}
+        }
+    """)
+    smoke_app.processEvents()
+    raise SystemExit(0 if smoke_engine.rootObjects() else 2)
 
 
 class ShellStartResult(Enum):

@@ -86,6 +86,8 @@ checks. A missing or changed supplement fails the build. See
 This inventory is engineering evidence, not legal certification. Qt module,
 source-availability, and distribution obligations still require release review;
 see [Release readiness](docs/release-readiness.md).
+The [publication review](docs/release-review-2026-09-13.md) records why the
+default Qt plugin collection is restricted before distribution approval.
 
 ## Provider marks
 
@@ -95,8 +97,8 @@ owners. Their presence does not imply endorsement or affiliation.
 
 ## Legacy prototype
 
-The archived Electron prototype under `legacy/electron-prototype/` is not part
-of the current build. If it is revived, its npm dependency licenses must be
+The removed Electron prototype is retained in Git history, not in the current
+checkout or build. If it is revived, its npm dependency licenses must be
 reviewed and documented before distribution.
 
 Maintainers should update this file whenever a distributed dependency or

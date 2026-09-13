@@ -9,8 +9,8 @@ from unittest.mock import Mock
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
-from spikes.pyside6.qml_runtime import QtRecorder
-from spikes.pyside6.qml_status import QmlStatusPillController
+from clarify.desktop.qml_runtime import QtRecorder
+from clarify.desktop.qml_status import QmlStatusPillController
 
 
 class CaptureReadinessTests(unittest.TestCase):

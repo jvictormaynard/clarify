@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from local_asr_catalog import installer_for, MODELS
-from spikes.pyside6.qml_runtime import create_runtime_repositories
+from clarify.desktop.qml_runtime import create_runtime_repositories
 from dictionary_snippets import (
     DictionarySnippetService,
     LocalDictionarySnippetsRepository,
@@ -43,7 +43,7 @@ def main():
         report["medium_gpu"] = installer_for("ggml-medium", "cuda:0").status()["state"]
         report["ok"] = all(value == "installed" for value in report["models"].values())
         if len(sys.argv) > 2:
-            from spikes.pyside6.qml_runtime import QtWorkflowConfig, QtProviderGateway
+            from clarify.desktop.qml_runtime import QtWorkflowConfig, QtProviderGateway
             from workflows import RecordingSnapshot
             from provider_registry import PROVIDER_REGISTRY
 

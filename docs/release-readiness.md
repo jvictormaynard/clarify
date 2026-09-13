@@ -32,6 +32,9 @@ publication. Local evidence does not replace those gates.
 
 ## Scope before publication
 
+See the [publication review](release-review-2026-09-13.md) for the optional Qt
+payload finding, corrective packaging policy, and still-open acceptance gates.
+
 - [ ] Review the existing Settings, dictionary, hotkey, and deployment changes
   as focused groups. Do not stage an entire dirty worktree without review.
 - [ ] Align the English and Portuguese README with the candidate. Keep
@@ -75,7 +78,7 @@ as a side effect of local build validation.
 | Localization | React labels and QML catalogs | Inventory missing React translations before claiming full locale support |
 | Dictation | `provider_types.py`, `provider_adapters.py`, `local_asr.py` | A bounded provider contract test using synthetic input |
 | Vocabulary | `dictionary_snippets.py`, `desktop/src/dictionary.tsx` | A validation or context-limit case with ASR/refinement coverage |
-| Desktop behavior | `spikes/pyside6/`, `windows_hotkeys.py` | A focused state-transition fix with Windows acceptance |
+| Desktop behavior | `clarify/desktop/`, `windows_hotkeys.py` | A focused state-transition fix with Windows acceptance |
 | Build and security | `scripts/`, `.github/`, `distribution/` | A reproducibility or artifact-content check, without changing trust policy |
 
 ## Backlog reconciliation

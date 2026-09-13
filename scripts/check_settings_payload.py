@@ -5,6 +5,11 @@ import hashlib
 import json
 from pathlib import Path
 
+try:
+    from .qt_package_policy import unexpected_qt_payload
+except ImportError:
+    from qt_package_policy import unexpected_qt_payload
+
 
 def verify_payload(executable: Path, settings: Path) -> None:
     from PyInstaller.archive.readers import CArchiveReader
@@ -28,7 +33,16 @@ def main() -> None:
     args = parser.parse_args()
     verify_payload(args.executable, args.settings)
     verify_inventory(args.executable, args.settings)
+    verify_qt_payload(args.executable)
     print("Packaged Settings payload matches the build input.")
+
+
+def verify_qt_payload(executable: Path) -> None:
+    from PyInstaller.archive.readers import CArchiveReader
+
+    unexpected = unexpected_qt_payload(CArchiveReader(str(executable)).toc)
+    if unexpected:
+        raise ValueError("Unreviewed Qt payload: " + ", ".join(unexpected[:12]))
 
 
 def verify_inventory(executable: Path, settings: Path) -> None:

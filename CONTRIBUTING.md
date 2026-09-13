@@ -40,7 +40,7 @@ cd clarify
 .\scripts\build-settings.ps1
 $env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe spikes\pyside6\qml_app.py
+.\.venv\Scripts\python.exe clarify\desktop\qml_app.py
 ```
 
 Read [docs/development.md](docs/development.md) for builds, platform notes, and
@@ -50,10 +50,10 @@ between modules.
 
 Settings development needs Node.js 22, Rust MSVC, Visual Studio C++ Build Tools,
 the Windows SDK, and WebView2. End users do not need these build tools.
-Use `desktop/src/` for Settings, `spikes/pyside6/qml/` for the pill, and the
-root provider modules for ASR and text processing. `spikes/pyside6/` is production
-code despite its historical name. Do not add features to legacy `app.py` or the
-archived Electron prototype.
+Use `desktop/src/` for Settings, `clarify/desktop/qml/` for the pill, and the
+root provider modules for ASR and text processing. `clarify/desktop/` contains
+the production Qt adapters. Do not add features to legacy `app.py` or the
+historical comparison tools under `spikes/`.
 
 For a small first contribution, see the [contributor map and acceptance
 criteria](docs/release-readiness.md).
@@ -75,7 +75,7 @@ Use clear commit messages. Conventional prefixes such as `fix:`, `feat:`,
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe -m compileall -q spikes\pyside6\qml_app.py spikes\pyside6\qml_bridge.py spikes\pyside6\qml_runtime.py spikes\pyside6\qml_settings.py spikes\pyside6\qml_audio_batch.py spikes\pyside6\qml_clipboard.py spikes\pyside6\qml_voice_translation.py spikes\pyside6\qt_shell.py workflows.py repositories.py dictionary_snippets.py dictionary_settings.py secret_store.py desktop_state.py version.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py tests
+.\.venv\Scripts\python.exe -m compileall -q clarify\desktop\qml_app.py clarify\desktop\qml_bridge.py clarify\desktop\qml_runtime.py clarify\desktop\qml_settings.py clarify\desktop\qml_audio_batch.py clarify\desktop\qml_clipboard.py clarify\desktop\qml_voice_translation.py clarify\desktop\qt_shell.py workflows.py repositories.py dictionary_snippets.py dictionary_settings.py secret_store.py desktop_state.py version.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py tests
 ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py tests/test_repository.py
 mypy desktop_state.py windows_hotkeys.py
 python scripts/dependency_audit.py
@@ -134,11 +134,17 @@ Maintainers may ask for a smaller scope when a change mixes unrelated concerns.
 Review is collaborative, and specific technical disagreement is welcome when it
 stays respectful and evidence-based.
 
+`main` requires a pull request, resolved review conversations, and passing
+`Tests (ubuntu-latest)`, `Tests (windows-latest)`, and `Package Windows executable`
+checks against the current base. Force pushes and branch deletion are disabled,
+including for administrators. A second person's approval is not required for
+this single-maintainer repository; this does not replace the release gates.
+
 ## Translations
 
 When adding a new interface language:
 
-1. Add the language and accessible labels in the QML surface under `spikes/pyside6/qml/`.
+1. Add the language and accessible labels in the QML surface under `clarify/desktop/qml/`.
 2. Translate every key in the interface catalog.
 3. Add tests showing that the catalog is complete and the flag renders.
 4. Check controls at normal and scaled DPI because translated labels vary in

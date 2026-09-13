@@ -18,7 +18,7 @@ environment:
 ```powershell
 py -m venv spikes\pyside6\.venv
 spikes\pyside6\.venv\Scripts\python.exe -m pip install -r spikes\pyside6\requirements.txt
-spikes\pyside6\.venv\Scripts\python.exe -m spikes.pyside6.qml_app
+spikes\pyside6\.venv\Scripts\python.exe -m clarify.desktop.qml_app
 ```
 
 The QML frontend exercises the real idle, recording, processing, success,

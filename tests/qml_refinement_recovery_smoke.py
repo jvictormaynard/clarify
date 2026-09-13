@@ -10,7 +10,7 @@ from PySide6.QtCore import QObject, Property, QUrl, Qt  # noqa: E402
 from PySide6.QtGui import QGuiApplication  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from spikes.pyside6.qml_bridge import QmlWorkflowBridge  # noqa: E402
+from clarify.desktop.qml_bridge import QmlWorkflowBridge  # noqa: E402
 from workflows import WorkflowKind, WorkflowPhase, WorkflowState  # noqa: E402
 
 
@@ -44,7 +44,7 @@ warnings = []
 engine.warnings.connect(lambda errors: warnings.extend(str(error) for error in errors))
 engine.rootContext().setContextProperty("workflow", bridge)
 engine.rootContext().setContextProperty("pillStatus", status)
-engine.load(QUrl.fromLocalFile(str(ROOT / "spikes/pyside6/qml/StatusPill.qml")))
+engine.load(QUrl.fromLocalFile(str(ROOT / "clarify/desktop/qml/StatusPill.qml")))
 assert engine.rootObjects(), warnings
 pill = engine.rootObjects()[0]
 label = pill.findChild(QObject, "pillFeedbackLabel")

@@ -42,7 +42,7 @@ Há divergências concretas nesta pasta:
 
 - A referência local `origin/main` contém `RetryDictation` e
   `TranscriptionTransportError`. Os arquivos `workflows.py` e
-  `spikes/pyside6/qml_runtime.py` da pasta atual não contêm esses contratos.
+  `clarify/desktop/qml_runtime.py` da pasta atual não contêm esses contratos.
 - `docs/history.md` descreve consulta, exportação e exclusão do histórico na
   interface. O QML atual expõe ativação e retenção, mas não localizei a página
   completa nem esses comandos no controlador de configurações.
@@ -78,10 +78,10 @@ isolada de qualidade:
 
 | Arquivo Clarify | Linhas | Responsabilidades a separar |
 | --- | ---: | --- |
-| `spikes/pyside6/qml_settings.py` | 2.094 | Provedores, modelos, microfone, atalhos, autostart e persistência |
-| `spikes/pyside6/qml/Main.qml` | 2.053 | Janela principal, resultado e várias configurações |
+| `clarify/desktop/qml_settings.py` | 2.094 | Provedores, modelos, microfone, atalhos, autostart e persistência |
+| `clarify/desktop/qml/Main.qml` | 2.053 | Janela principal, resultado e várias configurações |
 | `local_asr.py` | 1.874 | Manifesto, instalação, processos, inferência e adapter |
-| `spikes/pyside6/qml_runtime.py` | 1.733 | Agendamento, áudio, chamadas de modelo e armazenamento |
+| `clarify/desktop/qml_runtime.py` | 1.733 | Agendamento, áudio, chamadas de modelo e armazenamento |
 
 O Handy fornece exemplos de componentes separados para cada configuração. O
 OpenWhispr separa componentes, serviços e estado, mas seu `audioManager.js` tem
@@ -302,8 +302,8 @@ Links fixados nas versões inspecionadas:
 
 Evidência Clarify: `workflows.py`, `provider_types.py`, `local_asr.py`,
 `local_asr_catalog.py`, `local_asr_streaming.py`, `windows_hotkeys.py`,
-`spikes/pyside6/qml_runtime.py`, `spikes/pyside6/qml_settings.py`,
-`spikes/pyside6/qml/Main.qml`, `spikes/pyside6/qml/ProviderSettings.qml`,
+`clarify/desktop/qml_runtime.py`, `clarify/desktop/qml_settings.py`,
+`clarify/desktop/qml/Main.qml`, `clarify/desktop/qml/ProviderSettings.qml`,
 `docs/history.md`, `docs/dictionary-snippets.md`, `docs/transcription-latency.md`,
 `docs/local-asr-profiles-and-streaming.md`, `pyproject.toml`,
 `.github/workflows/ci.yml` e `tests/test_pyside6_qml.py`.

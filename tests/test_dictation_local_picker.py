@@ -12,7 +12,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 from test_pyside6_qml_settings import _repositories
-from spikes.pyside6.qml_settings import QmlSettingsController
+from clarify.desktop.qml_settings import QmlSettingsController
 from local_asr_product import LocalASRProductState
 
 
@@ -42,7 +42,7 @@ class LocalPickerTests(unittest.TestCase):
                 with (
                     patch("local_asr_catalog.installer_for", side_effect=installer),
                     patch(
-                        "spikes.pyside6.qml_settings.PROVIDER_REGISTRY.discover_models"
+                        "clarify.desktop.qml_settings.PROVIDER_REGISTRY.discover_models"
                     ) as cloud,
                 ):
                     self.assertTrue(controller.loadRouteModels())
@@ -63,7 +63,7 @@ class LocalPickerTests(unittest.TestCase):
                     engine.rootContext().setContextProperty("testSettings", controller)
                     qml_dir = Path(directory) / "qml"
                     shutil.copytree(
-                        Path(__file__).resolve().parents[1] / "spikes/pyside6/qml",
+                        Path(__file__).resolve().parents[1] / "clarify/desktop/qml",
                         qml_dir,
                     )
                     source = """import QtQuick

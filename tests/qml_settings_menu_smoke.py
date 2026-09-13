@@ -10,7 +10,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtCore import QUrl, QTimer
 
 root = Path(__file__).resolve().parents[1]
-qml_dir = root / "spikes/pyside6/qml"
+qml_dir = root / "clarify/desktop/qml"
 source = (qml_dir / "Main.qml").read_text(encoding="utf8")
 start = source.index("        property var pendingAction: null")
 end = source.index("\n        QuickMenu {", start)

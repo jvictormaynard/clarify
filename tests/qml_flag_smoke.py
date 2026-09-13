@@ -18,7 +18,7 @@ def main():
     root = Path(__file__).resolve().parents[1]
     with TemporaryDirectory() as directory:
         qml = Path(
-            shutil.copytree(root / "spikes/pyside6/qml", Path(directory) / "qml")
+            shutil.copytree(root / "clarify/desktop/qml", Path(directory) / "qml")
         )
         engine = QQmlApplicationEngine()
         engine.loadData(

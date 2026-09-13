@@ -46,10 +46,10 @@ jobs:
       - name: Run Ruff lint
         run: >-
           ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py
-          spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py spikes/pyside6/qml_runtime.py
-          spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py spikes/pyside6/qml_audio_batch.py
-          spikes/pyside6/qml_clipboard.py spikes/pyside6/qml_voice_translation.py
-          spikes/pyside6/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
+          clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
+          clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
+          clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
+          clarify/desktop/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
           tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py
           tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py
           tests/test_pyside6_qt_shell.py
@@ -57,10 +57,10 @@ jobs:
       - name: Run Ruff format check
         run: >-
           ruff format --check scripts/dependency_audit.py tests/test_dependency_lock.py
-          tests/test_repository.py spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py
-          spikes/pyside6/qml_runtime.py spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py
-          spikes/pyside6/qml_audio_batch.py spikes/pyside6/qml_clipboard.py
-          spikes/pyside6/qml_voice_translation.py spikes/pyside6/qt_shell.py
+          tests/test_repository.py clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py
+          clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py
+          clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py
+          clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py
           tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py
           tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py
           tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py
@@ -76,16 +76,16 @@ jobs:
 
       - name: Compile Python sources
         run: >-
-          python -m compileall -q spikes/pyside6/qml_app.py spikes/pyside6/qml_bridge.py
-          spikes/pyside6/qml_runtime.py spikes/pyside6/qml_settings.py spikes/pyside6/qml_status.py
-          spikes/pyside6/qml_audio_batch.py spikes/pyside6/qml_clipboard.py
-          spikes/pyside6/qml_voice_translation.py spikes/pyside6/qt_shell.py
+          python -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py
+          clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py
+          clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py
+          clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py
           desktop_state.py version.py windows_hotkeys.py audio_file_batch.py
           audio_file_batch_ui.py history_store.py workflow_settings.py tests scripts
 
       - name: Validate QML assets
         run: >-
-          python -c "from pathlib import Path; qml = Path('spikes/pyside6/qml');
+          python -c "from pathlib import Path; qml = Path('clarify/desktop/qml');
           assert qml.is_dir() and (qml / 'Main.qml').is_file() and any(qml.glob('*.qml'))"
 
       - name: Validate and build Settings

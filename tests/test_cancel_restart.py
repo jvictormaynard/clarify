@@ -7,8 +7,8 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 from PySide6.QtWidgets import QApplication
-from spikes.pyside6.qml_bridge import QmlWorkflowBridge
-from spikes.pyside6.qml_runtime import (
+from clarify.desktop.qml_bridge import QmlWorkflowBridge
+from clarify.desktop.qml_runtime import (
     QtRecordingSession,
     QtRecordingAudioGateway,
     QtWorkflowScheduler,
@@ -47,7 +47,7 @@ class CancelRestartTests(unittest.TestCase):
         with (
             TemporaryDirectory() as directory,
             patch(
-                "spikes.pyside6.qml_runtime._data_directory",
+                "clarify.desktop.qml_runtime._data_directory",
                 return_value=Path(directory),
             ),
         ):
@@ -73,7 +73,7 @@ class CancelRestartTests(unittest.TestCase):
         with (
             TemporaryDirectory() as directory,
             patch(
-                "spikes.pyside6.qml_runtime._data_directory",
+                "clarify.desktop.qml_runtime._data_directory",
                 return_value=Path(directory),
             ),
         ):
@@ -127,7 +127,7 @@ class CancelRestartTests(unittest.TestCase):
         with (
             TemporaryDirectory() as directory,
             patch(
-                "spikes.pyside6.qml_runtime._data_directory",
+                "clarify.desktop.qml_runtime._data_directory",
                 return_value=Path(directory),
             ),
         ):
@@ -194,7 +194,7 @@ class CancelRestartTests(unittest.TestCase):
         with (
             TemporaryDirectory() as directory,
             patch(
-                "spikes.pyside6.qml_runtime._data_directory",
+                "clarify.desktop.qml_runtime._data_directory",
                 return_value=Path(directory),
             ),
         ):

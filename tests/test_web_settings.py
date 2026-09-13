@@ -12,8 +12,8 @@ try:
 except ImportError:  # unittest discovery imports test files as top-level modules.
     from test_pyside6_qml_settings import _repositories
 from local_asr_product import LocalASRProductState
-from spikes.pyside6.qml_settings import QmlSettingsController
-from spikes.pyside6.qml_web_settings import SettingsProtocol
+from clarify.desktop.qml_settings import QmlSettingsController
+from clarify.desktop.qml_web_settings import SettingsProtocol
 
 
 class WebSettingsTests(unittest.TestCase):
@@ -23,7 +23,7 @@ class WebSettingsTests(unittest.TestCase):
 
     def setUp(self):
         self.windows = patch(
-            "spikes.pyside6.qml_settings._is_windows", return_value=False
+            "clarify.desktop.qml_settings._is_windows", return_value=False
         )
         self.windows.start()
         self.addCleanup(self.windows.stop)
@@ -154,7 +154,7 @@ class WebSettingsTests(unittest.TestCase):
 
     def test_window_close_does_not_open_legacy_settings(self):
         from types import SimpleNamespace
-        from spikes.pyside6.qml_web_settings import WebSettingsProcess
+        from clarify.desktop.qml_web_settings import WebSettingsProcess
 
         bridge = SimpleNamespace(surface="settings", closeSettings=Mock())
         fallback = Mock()
@@ -170,7 +170,7 @@ class WebSettingsTests(unittest.TestCase):
     def test_settings_request_only_activates_on_explicit_open(self):
         from types import SimpleNamespace
         from workflows import WorkflowState
-        from spikes.pyside6.qml_bridge import QmlWorkflowBridge
+        from clarify.desktop.qml_bridge import QmlWorkflowBridge
 
         bridge = QmlWorkflowBridge(
             SimpleNamespace(state=WorkflowState(), subscribe=lambda cb: None)

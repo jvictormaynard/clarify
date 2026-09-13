@@ -277,10 +277,10 @@ MSIs must come from the protected signing workflow.
 ```text
 desktop/src/                  React/TypeScript Settings and shared controls
 desktop/src-tauri/             Tauri window and private process bridge
-spikes/pyside6/qml_app.py      Production Qt Quick/QML entrypoint
-spikes/pyside6/qml/            Production QML surfaces and theme
-spikes/pyside6/qml_runtime.py  Qt adapters for providers, audio, clipboard, and storage
-spikes/pyside6/qml_bridge.py   QML-facing workflow state and commands
+clarify/desktop/qml_app.py      Production Qt Quick/QML entrypoint
+clarify/desktop/qml/            Production QML surfaces and theme
+clarify/desktop/qml_runtime.py  Qt adapters for providers, audio, clipboard, and storage
+clarify/desktop/qml_bridge.py   QML-facing workflow state and commands
 provider_types.py              Typed provider requests, results, and capabilities
 provider_adapters.py           Gemini and OpenAI-compatible adapters
 provider_registry.py           Provider metadata and request routing registry
@@ -303,7 +303,6 @@ installer/                     WiX per-user MSI definition
 distribution/                  Immutable packaged update trust policy
 tests/                         Unit and repository-safety tests
 docs/                          Architecture and development documentation
-legacy/electron-prototype/     Archived first implementation, not built
 .github/                       CI, release, issue, and PR automation
 .agents/skills/                Repository-specific maintainer workflows
 ```
@@ -313,9 +312,9 @@ and React/TypeScript in a Tauri WebView2 window for Settings. It is not Electron
 `start.bat`, the
 portable build, and the release workflow all use the QML entrypoint; the old
 CustomTkinter entrypoint is not part of the runtime or package. The Electron
-prototype is kept only for historical context and is excluded from builds. See
+prototype was removed from the checkout and remains available in Git history. See
 [Architecture](docs/architecture.md) before making structural changes.
-The `spikes/` name is historical; this directory contains production code.
+Production Qt code lives in `clarify/desktop/`; `spikes/` contains only historical comparison tools.
 `app.py` is a legacy frontend retained for compatibility tests, not the shipping
 entrypoint. New UI work belongs in `desktop/` or the QML pill, not `app.py`.
 

@@ -16,8 +16,8 @@ from unittest.mock import patch
 
 try:
     from PySide6.QtWidgets import QApplication
-    from spikes.pyside6 import qml_settings
-    from spikes.pyside6.qml_settings import QmlSettingsController
+    from clarify.desktop import qml_settings
+    from clarify.desktop.qml_settings import QmlSettingsController
 
     PYSIDE6_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
@@ -41,7 +41,7 @@ from hotkey_config import HotkeyAction, HotkeySettings
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SETTINGS = ROOT / "spikes" / "pyside6" / "qml_settings.py"
+SETTINGS = ROOT / "clarify" / "desktop" / "qml_settings.py"
 
 
 def _repositories(directory: str) -> ApplicationRepositories:
@@ -975,7 +975,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
             controller = QmlSettingsController(repositories, registry=registry)
             controller.setAutostart(True)
             with (
-                patch("spikes.pyside6.qml_settings._is_windows", return_value=True),
+                patch("clarify.desktop.qml_settings._is_windows", return_value=True),
                 patch.object(
                     repositories.config,
                     "apply",
@@ -1041,7 +1041,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
             registry.values["Clarify"] = r"C:\Legacy\Clarify.exe --old"
             controller = QmlSettingsController(repositories, registry=registry)
 
-            with patch("spikes.pyside6.qml_settings._is_windows", return_value=True):
+            with patch("clarify.desktop.qml_settings._is_windows", return_value=True):
                 self.assertTrue(controller.save())
 
             self.assertNotIn("Clarify", registry.values)
@@ -1057,7 +1057,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
             controller = QmlSettingsController(repositories, registry=registry)
             controller.setAutostart(True)
             with (
-                patch("spikes.pyside6.qml_settings._is_windows", return_value=True),
+                patch("clarify.desktop.qml_settings._is_windows", return_value=True),
                 patch.object(
                     repositories.config,
                     "apply",
@@ -1164,7 +1164,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 "-c",
                 (
                     "import sys; "
-                    "from spikes.pyside6.qml_settings import "
+                    "from clarify.desktop.qml_settings import "
                     "QmlSettingsController; "
                     "print('app' in sys.modules)"
                 ),

@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlEngine, QQmlComponent
-from spikes.pyside6.qml_bridge import QmlWorkflowBridge
-from spikes.pyside6.qt_shell import WindowsGlobalHotkeyBackend
+from clarify.desktop.qml_bridge import QmlWorkflowBridge
+from clarify.desktop.qt_shell import WindowsGlobalHotkeyBackend
 from workflows import (
     CancelDictation,
     WorkflowState,
@@ -45,7 +45,7 @@ class RecordingControlsTests(unittest.TestCase):
 
     def test_reopening_toolbar_leaves_settings_placeholder(self):
         source = (
-            Path(__file__).resolve().parents[1] / "spikes/pyside6/qml/Main.qml"
+            Path(__file__).resolve().parents[1] / "clarify/desktop/qml/Main.qml"
         ).read_text(encoding="utf-8")
         start = source.index("    onPresentationVisibleChanged:")
         end = source.index("    visible:", start)
@@ -114,13 +114,13 @@ class RecordingControlsTests(unittest.TestCase):
         events = []
         backend.triggered.connect(events.append)
         with patch(
-            "spikes.pyside6.qt_shell.physical_key_down",
+            "clarify.desktop.qt_shell.physical_key_down",
             side_effect=lambda api, key: key != 0x1B,
         ):
             backend._begin_hold((65, 18))
             backend._begin_hold((65, 18))
         with patch(
-            "spikes.pyside6.qt_shell.physical_key_down",
+            "clarify.desktop.qt_shell.physical_key_down",
             side_effect=[False, True, False],
         ):
             backend._check_hold_release()
@@ -134,14 +134,14 @@ class RecordingControlsTests(unittest.TestCase):
         events = []
         backend.triggered.connect(events.append)
         with patch(
-            "spikes.pyside6.qt_shell.physical_key_down",
+            "clarify.desktop.qt_shell.physical_key_down",
             side_effect=lambda api, key: key != 0x1B,
         ):
             backend._begin_hold((65, 18))
-        with patch("spikes.pyside6.qt_shell.physical_key_down", return_value=True):
+        with patch("clarify.desktop.qt_shell.physical_key_down", return_value=True):
             backend._check_hold_release()
             backend._check_hold_release()
-        with patch("spikes.pyside6.qt_shell.physical_key_down", return_value=False):
+        with patch("clarify.desktop.qt_shell.physical_key_down", return_value=False):
             backend._check_hold_release()
         self.assertEqual(
             events, ["recording_hold_press", "escape", "recording_hold_release"]

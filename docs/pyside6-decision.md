@@ -13,7 +13,7 @@ and manual UI acceptance still run in CI and on the target Windows machine.
 
 ## Scope and integration
 
-The production entrypoint is `spikes/pyside6/qml_app.py`. It composes the real
+The production entrypoint is `clarify/desktop/qml_app.py`. It composes the real
 `WorkflowService`, typed provider registry, recording session, native clipboard
 transaction, persisted settings, system tray, global hotkeys, voice translation,
 and audio-file import controllers. `requirements.txt`, `start.bat`, the

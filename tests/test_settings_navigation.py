@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
 from PySide6.QtWidgets import QApplication
-from spikes.pyside6.qml_bridge import QmlWorkflowBridge
+from clarify.desktop.qml_bridge import QmlWorkflowBridge
 from workflows import WorkflowState, WorkflowPhase
 
 
@@ -94,7 +94,7 @@ class SettingsNavigationTests(unittest.TestCase):
         service.finish.assert_not_called()
 
     def test_settings_hides_toolbar_after_completed_workflow(self):
-        from spikes.pyside6.qml_app import _WorkflowWindowVisibility
+        from clarify.desktop.qml_app import _WorkflowWindowVisibility
 
         service = SimpleNamespace(
             state=WorkflowState(), subscribe=lambda listener: None, finish=Mock()

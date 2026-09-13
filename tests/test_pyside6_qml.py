@@ -14,8 +14,8 @@ try:
     from PySide6.QtGui import QIcon
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtWidgets import QApplication
-    from spikes.pyside6 import qml_app
-    from spikes.pyside6.qml_app import (
+    from clarify.desktop import qml_app
+    from clarify.desktop.qml_app import (
         ShellStartResult,
         _connect_preference_sync,
         _connect_shutdown,
@@ -30,13 +30,13 @@ try:
         _sync_recording_escape_hotkey,
         _start_shell_if_available,
     )
-    from spikes.pyside6.qml_bridge import QmlWorkflowBridge
-    from spikes.pyside6.qml_status import (
+    from clarify.desktop.qml_bridge import QmlWorkflowBridge
+    from clarify.desktop.qml_status import (
         QmlStatusPillController,
         _packaged_app_icon,
         _pillow_data_url,
     )
-    from spikes.pyside6.qml_settings import QmlSettingsController
+    from clarify.desktop.qml_settings import QmlSettingsController
 except (ImportError, ModuleNotFoundError):
     PYSIDE6_AVAILABLE = False
     QObject = object
@@ -48,7 +48,7 @@ else:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SPIKE = ROOT / "spikes" / "pyside6"
+SPIKE = ROOT / "clarify" / "desktop"
 QML_ROOT = SPIKE / "qml"
 
 
@@ -1109,7 +1109,7 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
         self.assertIsNotNone(coordinator)
 
     def test_empty_selection_then_repeated_hotkeys_keep_editor_focus(self):
-        from test_workflows import (
+        from tests.test_workflows import (
             FakeAudio,
             FakeClipboard,
             FakeClock,
@@ -1327,7 +1327,7 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
 
         shell = Shell()
         with patch(
-            "spikes.pyside6.qml_app.QSystemTrayIcon.isSystemTrayAvailable",
+            "clarify.desktop.qml_app.QSystemTrayIcon.isSystemTrayAvailable",
             return_value=True,
         ):
             result = _start_shell_if_available(shell)
@@ -1344,7 +1344,7 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
 
         shell = NoTrayShell()
         with patch(
-            "spikes.pyside6.qml_app.QSystemTrayIcon.isSystemTrayAvailable",
+            "clarify.desktop.qml_app.QSystemTrayIcon.isSystemTrayAvailable",
             return_value=False,
         ):
             result = _start_shell_if_available(shell)
@@ -1356,7 +1356,7 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
                 return False
 
         with patch(
-            "spikes.pyside6.qml_app.QSystemTrayIcon.isSystemTrayAvailable",
+            "clarify.desktop.qml_app.QSystemTrayIcon.isSystemTrayAvailable",
             return_value=True,
         ):
             result = _start_shell_if_available(SecondaryShell())

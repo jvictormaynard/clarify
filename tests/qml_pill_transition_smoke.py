@@ -20,7 +20,7 @@ from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from spikes.pyside6.qml_bridge import QmlWorkflowBridge
+from clarify.desktop.qml_bridge import QmlWorkflowBridge
 from workflows import (
     RetryDictation,
     StopDictation,
@@ -89,7 +89,7 @@ def main():
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("workflow", bridge)
     engine.rootContext().setContextProperty("pillStatus", status)
-    engine.load(QUrl.fromLocalFile(str(ROOT / "spikes/pyside6/qml/StatusPill.qml")))
+    engine.load(QUrl.fromLocalFile(str(ROOT / "clarify/desktop/qml/StatusPill.qml")))
     assert len(engine.rootObjects()) == 1, messages
     pill = engine.rootObjects()[0]
     output = Path(sys.argv[1]) if len(sys.argv) > 1 else None

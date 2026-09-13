@@ -6,7 +6,7 @@ here without a shadcn runtime dependency. Settings use the web UI;
 the recording engine and pill remain in Python/Qt.
 
 The Python engine remains the sole owner of configuration, secrets, audio,
-shortcuts and clipboard delivery. `spikes/pyside6/qml_web_settings.py` defines a
+shortcuts and clipboard delivery. `clarify/desktop/qml_web_settings.py` defines a
 small allowlisted protocol over QProcess stdin/stdout. Saved API keys are not
 included in snapshots. No HTTP listener, browser filesystem API or shell API
 is exposed. The frontend has no production mock-data fallback.

@@ -26,7 +26,7 @@ def main():
     source = Path(
         os.environ.get(
             "CLARIFY_TEST_QML_ROOT",
-            str(Path(__file__).resolve().parents[1] / "spikes/pyside6/qml"),
+            str(Path(__file__).resolve().parents[1] / "clarify/desktop/qml"),
         )
     )
     with TemporaryDirectory() as directory:
