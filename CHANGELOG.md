@@ -5,6 +5,14 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-15
+
+### Changed
+
+- Update the Qt desktop runtime to 6.11.2 and refresh its matching source archives and notices.
+- Update the Settings interface dependencies to React 19.3 and Lucide 1.43, with TypeScript 7 and Vite 8 for builds.
+- Update sounddevice and the dependency validation tools, and refresh the pinned release authentication and provenance actions.
+
 ## [0.4.1] - 2026-09-15
 
 ### Fixed
@@ -194,7 +202,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/jvictormaynard/clarify/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/jvictormaynard/clarify/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jvictormaynard/clarify/compare/v0.3.0...v0.4.0
 [0.2.2]: https://github.com/jvictormaynard/clarify/compare/v0.2.1...v0.2.2

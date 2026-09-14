@@ -20,7 +20,7 @@ pyside6-essentials==6.11.2
     # via -r requirements.txt
 requests==2.34.2
     # via -r requirements.txt
-shiboken6==6.11.1
+shiboken6==6.11.2
     # via pyside6-essentials
 sounddevice==0.5.6
     # via -r requirements.txt

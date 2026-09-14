@@ -164,7 +164,7 @@ class RepositorySafetyTests(unittest.TestCase):
         for required in (
             "environment: release-signing",
             "id-token: write",
-            "azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3",
+            "azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0",
             "azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2",
             "scripts\\verify-signature.ps1",
             "actions/attest-build-provenance@",
