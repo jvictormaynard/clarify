@@ -376,6 +376,19 @@ runtime used by `start.bat`, PyInstaller, CI, and releases. The old widget
 comparison scripts remain only as historical measurement tooling and are not
 part of startup or packaging.
 
+For a recording-pill visibility change, run the native stacking check on the
+Windows desktop with no active recording:
+
+```powershell
+.\.venv\Scripts\python.exe tests\qml_pill_stacking_smoke.py
+```
+
+It uses simulated workflow states, restores a deliberately lowered pill and
+checks that keyboard focus does not change. Do not set
+`QT_QPA_PLATFORM=offscreen` for this check. Follow it with manual acceptance of
+the installed executable; a visible Qt state alone does not prove that the
+pill is above other applications.
+
 ## Release process
 
 The repository-local `$clarify-release` skill under

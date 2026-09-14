@@ -1,9 +1,14 @@
 # Recovery after optional refinement failure
 
 The Qt dictation runtime preserves a successful ASR transcript when the optional
-refinement route fails, has an invalid configuration, or returns empty/invalid
-text. This applies to cloud dictation and to local ASR with explicitly enabled
-refinement. Transcription-only and successful refinement keep their existing behavior.
+refinement route fails, has an invalid configuration, returns empty/invalid
+text, or removes most of a long transcript. This applies to cloud dictation and
+to local ASR with explicitly enabled refinement. Transcription-only and successful
+refinement keep their existing behavior.
+
+The content-loss guard normalizes whitespace before comparing lengths. It rejects
+refined text shorter than one quarter of the original when the original has at
+least 240 characters. Short corrections and ordinary editing remain allowed.
 
 The fallback returns the exact original transcript. It skips snippet expansion
 on that fallback so no additional transformation can replace the recovered text.
@@ -24,8 +29,8 @@ Disabled history remains disabled. This status describes processing; it does not
 claim that an external application accepted a paste.
 
 Validation uses fake providers, temporary history and the actual QML component
-loaded offscreen. It covers empty output, provider errors, configuration errors,
-cancellation, local-refinement opt-in, one ASR call, unchanged original text,
+loaded offscreen. It covers empty output, severe content loss, provider errors,
+configuration errors, cancellation, local-refinement opt-in, one ASR call, unchanged original text,
 focus-change copy fallback, history and warning reset. No real microphone or paid
 API call is needed. Installed Windows acceptance is separate from these tests.
 

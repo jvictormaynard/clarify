@@ -33,6 +33,8 @@ try:
     from clarify.desktop.qml_bridge import QmlWorkflowBridge
     from clarify.desktop.qml_status import (
         QmlStatusPillController,
+        QmlStatusPillWindow,
+        _raise_status_pill,
         _packaged_app_icon,
         _pillow_data_url,
     )
@@ -958,6 +960,74 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
         bridge.recording = False
         bridge.recordingChanged.emit()
         self.assertEqual(controller.audioLevel, 0.0)
+
+    def test_status_pill_reasserts_order_after_show_and_workflow_transition(self):
+        class Window(QObject):
+            visibleChanged = Signal(bool)
+
+            def __init__(self):
+                super().__init__()
+                self.visible = False
+                self.setProperty("requestedVisible", False)
+
+            def isVisible(self):
+                return self.visible
+
+        class Bridge(QObject):
+            surfaceChanged = Signal()
+
+        window = Window()
+        bridge = Bridge()
+        raise_window = Mock()
+        controller = QmlStatusPillWindow(window, bridge, raise_window=raise_window)
+        self.app.processEvents()
+        raise_window.assert_not_called()
+
+        for _ in range(2):
+            window.visible = True
+            window.setProperty("requestedVisible", True)
+            window.visibleChanged.emit(True)
+            bridge.surfaceChanged.emit()
+            self.app.processEvents()
+            raise_window.assert_called_once_with(window)
+            raise_window.reset_mock()
+
+            # Recording -> processing keeps the window visible but must recover
+            # the order if another window has covered it in the meantime.
+            bridge.surfaceChanged.emit()
+            self.app.processEvents()
+            raise_window.assert_called_once_with(window)
+            raise_window.reset_mock()
+
+            # A queued raise must not show an expired/cancelled operation.
+            bridge.surfaceChanged.emit()
+            window.setProperty("requestedVisible", False)
+            self.app.processEvents()
+            raise_window.assert_not_called()
+            window.visible = False
+            window.visibleChanged.emit(False)
+            self.app.processEvents()
+            raise_window.assert_not_called()
+        controller.deleteLater()
+
+    def test_status_pill_native_raise_never_activates_or_shows_window(self):
+        from clarify.desktop import qml_status
+
+        window = Mock()
+        window.winId.return_value = 0x100000123
+        set_window_pos = Mock(return_value=1)
+        native = SimpleNamespace(user32=SimpleNamespace(SetWindowPos=set_window_pos))
+        with (
+            patch.object(qml_status.sys, "platform", "win32"),
+            patch.object(qml_status.ctypes, "windll", native, create=True),
+        ):
+            _raise_status_pill(window)
+        args = set_window_pos.call_args.args
+        self.assertEqual(args[:2], (0x100000123, -1))
+        self.assertTrue(args[-1] & 0x0010)  # SWP_NOACTIVATE
+        self.assertFalse(args[-1] & 0x0040)  # No SWP_SHOWWINDOW
+        window.raise_.assert_not_called()
+        window.requestActivate.assert_not_called()
 
     def test_status_pill_prefers_packaged_high_resolution_icon_asset(self):
         from PIL import Image

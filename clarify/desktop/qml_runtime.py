@@ -705,6 +705,12 @@ class QtProviderGateway:
         )
         if not refined.text or not refined.text.strip():
             raise RuntimeError("Refinement returned no text")
+        source_size = len(" ".join(raw_transcript.split()))
+        refined_size = len(" ".join(refined.text.split()))
+        if source_size >= 240 and refined_size * 4 < source_size:
+            # Dictation cleanup must not replace a long transcript with a title.
+            # Let the existing recovery path retain the exact original text.
+            raise RuntimeError("Refinement removed most of the transcript")
         return refined
 
     def rewrite(self, text: str) -> RewriteResult:
