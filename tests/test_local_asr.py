@@ -1112,6 +1112,7 @@ class LocalASRSidecarTests(unittest.TestCase):
             self.assertGreater(len(request_path), 20)
             self.assertIn("--no-gpu", command)
             self.assertNotIn("--no-context", command)
+            self.assertNotIn("--no-timestamps", command)
             self.assertIn("--max-context", command)
             self.assertEqual(command[command.index("--max-context") + 1], "0")
             self.assertEqual(options["stdin"], local_asr.subprocess.DEVNULL)
@@ -1205,6 +1206,8 @@ class LocalASRSidecarTests(unittest.TestCase):
             self.assertTrue(url.startswith("http://127.0.0.1:"))
             self.assertTrue(url.endswith("/inference"))
             self.assertEqual(options["data"]["language"], "pt")
+            self.assertEqual(options["data"]["no_timestamps"], "false")
+            self.assertEqual(options["data"]["token_timestamps"], "false")
             self.assertEqual(options["files"]["file"][1], b"RIFF-audio")
             manager.shutdown()
 

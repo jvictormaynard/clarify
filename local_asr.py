@@ -1620,7 +1620,6 @@ class LocalASRSidecarManager:
                     # pinned runtime.
                     "--max-context",
                     "0",
-                    "--no-timestamps",
                     "--no-gpu",
                 ]
                 gpu_ready = threading.Event()
@@ -1861,6 +1860,11 @@ class LocalASRSidecarManager:
                 files={"file": (audio_name, audio_bytes, "audio/wav")},
                 data={
                     "response_format": "json",
+                    # Keep segment timestamps in the decoder: without them an
+                    # early end-of-text skips the rest of a 30-second window.
+                    # Word timestamps only wrap output text and can split words.
+                    "no_timestamps": "false",
+                    "token_timestamps": "false",
                     "temperature": "0.0",
                     "language": language,
                     "prompt": initial_prompt,

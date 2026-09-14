@@ -89,7 +89,7 @@ try:
     from .qml_bridge import QmlWorkflowBridge  # noqa: E402
     from .qml_settings import QmlSettingsController  # noqa: E402
     from .qml_web_settings import WebSettingsProcess  # noqa: E402
-    from .qml_status import QmlStatusPillController  # noqa: E402
+    from .qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
     from .qml_voice_translation import (  # noqa: E402
         create_qml_voice_translation_controller,
     )
@@ -105,7 +105,7 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from qml_bridge import QmlWorkflowBridge  # noqa: E402
     from qml_settings import QmlSettingsController  # noqa: E402
     from qml_web_settings import WebSettingsProcess  # noqa: E402
-    from qml_status import QmlStatusPillController  # noqa: E402
+    from qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
     from qml_voice_translation import (  # noqa: E402
         create_qml_voice_translation_controller,
     )
@@ -540,6 +540,8 @@ def main(argv: list[str] | None = None) -> int:
         runtime.shutdown()
         return 1
 
+    pill_window_order = QmlStatusPillWindow(pill_window, bridge, parent=app)
+
     window.setProperty("presentationVisible", not start_hidden)
     if not start_hidden:
         window.show()
@@ -576,7 +578,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     bridge.settingsRequested.connect(web_settings.activate)
     app.aboutToQuit.connect(web_settings.shutdown)
-    _ = workflow_window_visibility, settings_window_visibility
+    _ = workflow_window_visibility, settings_window_visibility, pill_window_order
     _connect_shutdown(app, shell, runtime, voice_translation, audio_batch)
     app.aboutToQuit.connect(settings.shutdown)
 

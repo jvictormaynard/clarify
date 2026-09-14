@@ -921,6 +921,85 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional spike dependency")
 class QtProviderGatewayTests(unittest.TestCase):
+    def test_dictation_recovers_original_when_refinement_discards_content(self):
+        config = AppConfig.from_mapping(
+            {
+                "groq_api_key": "offline-fixture",
+                "local_asr_cloud_refinement": True,
+                "workflows": {
+                    "transcription": {
+                        "provider_id": "local_asr",
+                        "model_id": "ggml-medium",
+                    },
+                    "local_asr_refinement": {
+                        "provider_id": "groq",
+                        "model_id": "editor",
+                    },
+                },
+            }
+        )
+        expand = Mock(side_effect=lambda text: text + " expanded")
+        gateway = QtProviderGateway(
+            SimpleNamespace(current=lambda: config, workflow=config.workflow),
+            SimpleNamespace(
+                apply_context=lambda request: request,
+                expand=expand,
+                refinement_context=lambda: "",
+            ),
+        )
+        long_source = (
+            "First, preserve the microphone selection and the recording shortcut. "
+            "Second, keep the first and last paragraphs, dates, amounts, and names. "
+            "Third, show the recording window without taking keyboard focus. "
+            "Fourth, retain the complete transcript if the optional editor fails."
+        )
+        cases = (
+            (long_source, "Recording improvements", True),
+            ("保持完整的录音内容和所有要求。" * 30, "录音标题", True),
+            (long_source, long_source.replace("First, ", ""), False),
+            (
+                "Send three copies, no, five copies to Ana.",
+                "Send five copies to Ana.",
+                False,
+            ),
+            (
+                "  " * 250 + "Send five copies to Ana.",
+                "Send five copies to Ana.",
+                False,
+            ),
+        )
+        for source, edited, rejected in cases:
+            with (
+                self.subTest(source=source[:30], rejected=rejected),
+                patch(
+                    "clarify.desktop.qml_runtime.PROVIDER_REGISTRY.transcribe",
+                    return_value=TranscriptionResult(
+                        source, "local_asr", "ggml-medium"
+                    ),
+                ),
+                patch(
+                    "clarify.desktop.qml_runtime.PROVIDER_REGISTRY.rewrite",
+                    return_value=RewriteResult(edited, "groq", "editor"),
+                ),
+                patch("provider_registry.PROVIDER_HTTP.logger.write"),
+            ):
+                expand.reset_mock()
+                result = gateway.transcribe(
+                    RecordingSnapshot(
+                        Path("unused.wav"), b"fixture", duration_seconds=150
+                    ),
+                    "prompt",
+                    "pt",
+                )
+                self.assertEqual(result.raw_text, source)
+                self.assertEqual(result.refinement_failed, rejected)
+                if rejected:
+                    self.assertEqual(result.text, source)
+                    self.assertIsNone(result.refined_text)
+                    expand.assert_not_called()
+                else:
+                    self.assertEqual(result.text, edited + " expanded")
+
     def test_cleanup_failure_preserves_transcript_but_cancellation_propagates(self):
         from provider_http import (
             NetworkError,

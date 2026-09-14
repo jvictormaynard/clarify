@@ -5,6 +5,14 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-15
+
+### Fixed
+
+- Preserve speech across long Local Whisper recordings by keeping internal segment timestamps enabled.
+- Keep the original transcript when optional rewriting removes most of its content, with the existing recovery warning.
+- Restore the recording and processing pill above other windows whenever it appears, without changing keyboard focus.
+
 ## [0.4.0] - 2026-09-13
 
 ### Changed
@@ -186,7 +194,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/jvictormaynard/clarify/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jvictormaynard/clarify/compare/v0.3.0...v0.4.0
 [0.2.2]: https://github.com/jvictormaynard/clarify/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/jvictormaynard/clarify/compare/v0.2.0...v0.2.1
