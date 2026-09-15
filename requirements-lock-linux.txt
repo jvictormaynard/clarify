@@ -28,7 +28,7 @@ cffi==2.1.0
     # via sounddevice
 chardet==5.2.0
     # via cyclonedx-bom
-charset-normalizer==3.4.9
+charset-normalizer==3.5.1
     # via requests
 click==8.4.2
     # via pip-tools
