@@ -82,7 +82,7 @@ packageurl-python==0.17.6
     # via
     #   cyclonedx-bom
     #   cyclonedx-python-lib
-packaging==26.2
+packaging==26.3
     # via
     #   build
     #   cyclonedx-bom
