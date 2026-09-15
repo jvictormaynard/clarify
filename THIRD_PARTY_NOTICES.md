@@ -83,7 +83,7 @@ in `desktop/licenses/`, with version-specific mappings, source URLs, and SHA-256
 checks. A missing or changed supplement fails the build. See
 [supplement provenance](desktop/licenses/README.md).
 
-Qt 6.11.1 and PySide/Shiboken source archives are supplied separately as
+Qt 6.11.2 and PySide/Shiboken source archives are supplied separately as
 `Clarify-qt-sources.zip`, with pinned upstream hashes. `Clarify-qt-NOTICES.txt`
 contains their license and third-party attribution texts and is included in the
 executable and release ZIP. See [source and replacement instructions](docs/qt-distribution.md).

@@ -1,6 +1,6 @@
 {
   "name": "clarify",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "scripts": {
     "build:settings": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-settings.ps1",

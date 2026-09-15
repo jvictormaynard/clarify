@@ -44,7 +44,7 @@ cyclonedx-python-lib==11.11.0
     #   pip-audit
 defusedxml==0.7.1
     # via py-serializable
-filelock==3.32.2
+filelock==3.32.6
     # via cachecontrol
 fqdn==1.5.1
     # via jsonschema
@@ -125,7 +125,7 @@ pyproject-hooks==1.2.0
     # via
     #   build
     #   pip-tools
-pyside6-essentials==6.11.1
+pyside6-essentials==6.11.2
     # via -r requirements.txt
 python-dateutil==2.9.0.post0
     # via arrow
@@ -153,9 +153,9 @@ rpds-py==2026.6.3
     # via
     #   jsonschema
     #   referencing
-ruff==0.16.1
+ruff==0.16.6
     # via -r requirements-dev.txt
-shiboken6==6.11.1
+shiboken6==6.11.2
     # via pyside6-essentials
 six==1.17.0
     # via
@@ -163,7 +163,7 @@ six==1.17.0
     #   rfc3339-validator
 sortedcontainers==2.4.0
     # via cyclonedx-python-lib
-sounddevice==0.5.5
+sounddevice==0.5.6
     # via -r requirements.txt
 tomli==2.4.1
     # via pip-audit

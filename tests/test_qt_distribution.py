@@ -26,7 +26,7 @@ class QtDistributionTests(unittest.TestCase):
             self.assertRegex(entry["sha256"], r"^[0-9a-f]{64}$")
             url = source_url(entry["name"], manifest["version"])
             self.assertTrue(url.startswith("https://download.qt.io/official_releases/"))
-            self.assertTrue(url.endswith("-6.11.1.tar.xz"))
+            self.assertTrue(url.endswith("-6.11.2.tar.xz"))
 
     def test_verified_cache_is_reused_but_corruption_fails_closed(self):
         with TemporaryDirectory() as temporary:

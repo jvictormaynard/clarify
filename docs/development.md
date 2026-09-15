@@ -80,7 +80,7 @@ directories and never access the developer's credential store.
 
 See [CONTRIBUTING](../CONTRIBUTING.md#required-checks) for the exact npm,
 Playwright, and Cargo checks. `npm run build` in `desktop/` runs TypeScript
-validation before Vite. `npm ci` and `cargo build --locked` use the committed
+validation with TypeScript 7 before Vite 8. `npm ci` and `cargo build --locked` use the committed
 dependency locks. `npm run dev` starts Vite; controller access still requires
 the Python process or the isolated test fixture.
 `desktop/rust-toolchain.toml` pins the native compiler to the validated Rust

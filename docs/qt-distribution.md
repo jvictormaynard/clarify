@@ -1,7 +1,7 @@
 # Qt source and replacement information
 
-Clarify uses unmodified PySide6-Essentials and Shiboken6 6.11.1 wheels and the
-Qt 6.11.1 shared libraries supplied in those wheels. The selected Qt runtime
+Clarify uses unmodified PySide6-Essentials and Shiboken6 6.11.2 wheels and the
+Qt 6.11.2 shared libraries supplied in those wheels. The selected Qt runtime
 modules are Qt Base (Core, GUI, Widgets, Network, OpenGL), Qt Declarative
 (QML and Quick, controls, dialogs, layouts, effects and shapes), and Qt SVG.
 Clarify's MIT license does not replace the licenses of these libraries.
@@ -13,7 +13,7 @@ scripts, third-party sources and notices remain in those archives. These
 additional sources do not mean their tools are linked into Clarify.
 
 `scripts/qt_sources.json` pins each archive to the upstream SHA-256 published
-with Qt 6.11.1. `Clarify-qt-NOTICES.txt` collects the upstream license texts,
+with Qt 6.11.2. `Clarify-qt-NOTICES.txt` collects the upstream license texts,
 copyright notices and attribution records, conservatively including components
 not linked into the application. It is included in the portable package and
 release ZIP. The source ZIP is a separate download; no Qt source download occurs
@@ -40,7 +40,7 @@ source and notices files. This document does not add a license restriction.
    source root. This source mode is the direct way to test a replacement.
 6. To create a replacement portable EXE, build Settings as documented, put your
    wheels in the build environment and run `scripts/build.ps1`. Its normal setup
-   uses the pinned versions; keep version 6.11.1 for a same-version modified
+   uses the pinned versions; keep version 6.11.2 for a same-version modified
    build, or explicitly update the version constraints, locks and source
    manifest when developing against a different version. Re-run the tests.
 
