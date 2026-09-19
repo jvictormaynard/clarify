@@ -560,6 +560,7 @@ def main(argv: list[str] | None = None) -> int:
         window,
         hotkeys=hotkeys,
         application=app,
+        visibility_hotkey_allowed=lambda: not bridge.recording,
         icon=branding_icon,
         parent=app,
     )

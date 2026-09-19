@@ -71,7 +71,9 @@ For Windows-facing changes:
 
 - `npm run deploy`
 - installed process path and responsiveness check
-- manual acceptance of visible behavior and relevant hotkeys
+- an explicit publication request is sufficient approval for visible behavior
+  and relevant hotkeys; do not require a second manual confirmation
+- disclose any manual interaction check that was not performed
 
 On the PR and after merge:
 
