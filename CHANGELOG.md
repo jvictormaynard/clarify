@@ -5,6 +5,16 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-19
+
+### Changed
+
+- Refresh the pinned Settings, Python packaging, syntax highlighting, and HTTP encoding dependencies.
+
+### Fixed
+
+- Ignore the visibility shortcut during an active recording so the compact home pill cannot overlap the recording pill; restore the shortcut after recording stops or is cancelled.
+
 ## [0.4.2] - 2026-09-15
 
 ### Changed
@@ -202,7 +212,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/jvictormaynard/clarify/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/jvictormaynard/clarify/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/jvictormaynard/clarify/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jvictormaynard/clarify/compare/v0.3.0...v0.4.0
