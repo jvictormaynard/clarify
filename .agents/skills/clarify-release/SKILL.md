@@ -77,7 +77,10 @@ npm test
 For Windows UI, dependency, packaging, hotkey, focus, microphone, or
 transparency changes, also run `npm run deploy`. Confirm that
 `C:\repos\clarify\dist\Clarify.exe` restarted and is responding.
-Require the user's manual acceptance for visible or interaction changes.
+When the user explicitly requests publication, treat that request as approval
+of visible and interaction changes. Do not require a second manual-acceptance
+confirmation. Report any manual interaction check that was not performed as an
+open validation limitation.
 
 Never treat unit tests or a successful PyInstaller build as visual acceptance.
 
@@ -164,7 +167,7 @@ Stop publication and explain the blocker if:
 
 - unrelated local changes make scope ambiguous;
 - a required test, package job, or post-merge check fails;
-- Windows interaction changes lack real executable acceptance;
+- the Windows build, deployment, or installed-process verification fails;
 - the tag exists at another commit;
 - the release workflow or any required asset is missing;
 - signed-release signing configuration, timestamp, publisher identity, or
