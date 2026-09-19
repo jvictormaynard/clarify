@@ -684,6 +684,7 @@ class QtShellTests(unittest.TestCase):
         application=None,
         tray_icon_factory=FakeTray,
         menu_factory=FakeMenu,
+        visibility_hotkey_allowed=None,
     ):
         return QtShell(
             FakeWindow(),
@@ -697,6 +698,7 @@ class QtShellTests(unittest.TestCase):
             application=application,
             tray_icon_factory=tray_icon_factory,
             menu_factory=menu_factory,
+            visibility_hotkey_allowed=visibility_hotkey_allowed,
         )
 
     def test_secondary_process_does_not_create_tray_or_hotkeys(self):
@@ -791,6 +793,29 @@ class QtShellTests(unittest.TestCase):
         self.assertTrue(hotkeys.stopped)
         self.assertEqual(application.quit_calls, 1)
         self.assertFalse(shell.is_running)
+
+    def test_visibility_hotkey_is_ignored_while_recording(self):
+        hotkeys = FakeHotkeys()
+        recording = True
+        shell = self._shell(
+            hotkeys=hotkeys,
+            visibility_hotkey_allowed=lambda: not recording,
+        )
+        visibility_events = []
+        shell.hotkeyTriggered.connect(visibility_events.append)
+        self.assertTrue(shell.start())
+
+        hotkeys.triggered.emit("toggle_visibility")
+
+        self.assertEqual(visibility_events, [])
+        self.assertEqual(shell._window.calls, [])
+
+        recording = False
+        hotkeys.triggered.emit("toggle_visibility")
+
+        self.assertEqual(visibility_events, ["toggle_visibility"])
+        self.assertEqual(shell._window.calls, ["show", "raise", "activate"])
+        shell.stop()
 
     def test_tray_close_event_hides_window_and_preserves_native_handle(self):
         shell = self._shell()

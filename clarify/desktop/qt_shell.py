@@ -642,6 +642,7 @@ class QtShell(QObject):
         application: Any | None = None,
         tray_icon_factory: Callable[[QIcon, QObject | None], Any] = QSystemTrayIcon,
         menu_factory: Callable[[], Any] = QMenu,
+        visibility_hotkey_allowed: Callable[[], bool] | None = None,
         icon: QIcon | None = None,
         title: str = "Clarify",
         parent: QObject | None = None,
@@ -653,6 +654,7 @@ class QtShell(QObject):
         self._application = application
         self._tray_icon_factory = tray_icon_factory
         self._menu_factory = menu_factory
+        self._visibility_hotkey_allowed = visibility_hotkey_allowed
         self._icon = icon or QIcon()
         self._title = str(title)
         self._tray: Any | None = None
@@ -865,7 +867,10 @@ class QtShell(QObject):
 
     def _handle_hotkey(self, action: str) -> None:
         normalized = str(action)
+        visibility_allowed = self._visibility_hotkey_allowed
         if normalized == HotkeyAction.VISIBILITY.value:
+            if visibility_allowed is not None and not visibility_allowed():
+                return
             self.toggle_window()
         self.hotkeyTriggered.emit(normalized)
 
