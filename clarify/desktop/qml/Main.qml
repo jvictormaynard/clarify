@@ -9,22 +9,19 @@ ApplicationWindow {
     objectName: "clarifyMainWindow"
     property string displayedSurface: workflow.surface
     property real surfaceOpacity: 1
-    readonly property real surfaceScale: displayedSurface === "translation_picker"
-                                        ? 1.0 / Math.max(1.0, Screen.devicePixelRatio)
-                                        : theme.uiScale
     width: (displayedSurface === "result"
             || displayedSurface === "voice_result"
             || displayedSurface === "voice_error" ? theme.resultWidth
             : displayedSurface === "translation_picker" ? theme.translationPickerWidth
-            : displayedSurface === "files" ? theme.panelWidth : theme.windowWidth) * root.surfaceScale
+            : displayedSurface === "files" ? theme.panelWidth : theme.windowWidth) * theme.uiScale
     height: (displayedSurface === "result"
              || displayedSurface === "voice_result"
              || displayedSurface === "voice_error"
              ? theme.resultHeight
              : displayedSurface === "translation_picker" ? translationPickerPage.implicitHeight
-             : displayedSurface === "files" ? theme.panelHeight : theme.windowHeight) * root.surfaceScale
-    minimumWidth: theme.windowWidth * root.surfaceScale
-    minimumHeight: theme.windowHeight * root.surfaceScale
+             : displayedSurface === "files" ? theme.panelHeight : theme.windowHeight) * theme.uiScale
+    minimumWidth: theme.windowWidth * theme.uiScale
+    minimumHeight: theme.windowHeight * theme.uiScale
     property bool passivePresentation: false
     property bool presentationVisible: false
     onPresentationVisibleChanged: {
@@ -202,10 +199,10 @@ ApplicationWindow {
         objectName: "mainCard"
         opacity: root.surfaceOpacity
         enabled: !surfaceTransition.running
-        width: root.width / root.surfaceScale
-        height: root.height / root.surfaceScale
+        width: root.width / theme.uiScale
+        height: root.height / theme.uiScale
         anchors.centerIn: parent
-        scale: root.surfaceScale
+        scale: theme.uiScale
         transformOrigin: Item.Center
         radius: root.displayedSurface === "idle"
                 || root.displayedSurface === "recording"
@@ -1173,9 +1170,9 @@ ApplicationWindow {
                                     RoundedFlag {
                                         objectName: "translationFlag_" + languageOption.modelData.code
                                         source: "flags/" + languageOption.modelData.code + ".svg"
-                                        displayScale: root.surfaceScale
-                                        Layout.preferredWidth: 20
-                                        Layout.preferredHeight: 15
+                                        displayScale: theme.uiScale
+                                        Layout.preferredWidth: 21.333
+                                        Layout.preferredHeight: 16
                                         Layout.alignment: Qt.AlignVCenter
                                     }
 

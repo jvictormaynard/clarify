@@ -156,7 +156,7 @@ their current limitations.
 | Shortcut | Action |
 | --- | --- |
 | `Alt + L` (default) | Start or stop recording |
-| `Esc` | Cancel an active recording |
+| `Esc` | Cancel an active recording or close the translation language picker |
 | `Alt + K` (default) | Rewrite the selected text |
 | `Alt + T` (default) | Translate the selected text |
 | `Alt + V` (default) | Record and translate speech |
@@ -167,6 +167,8 @@ Atalhos** (Shortcuts). Toggle starts and stops on successive presses. Hold recor
 while the shortcut is pressed and stops on release. `Esc` cancels, including
 while holding the shortcut. The pill microphone button always uses toggle.
 Cancellation feedback and Undo appear inside the pill, not in another window.
+While choosing a translation language, `Esc` closes the picker even if the
+source application keeps keyboard focus.
 
 The floating bar remains available through the Windows system tray. Click the
 tray icon to restore it, or right-click the icon to open Clarify or quit.

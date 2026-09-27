@@ -385,9 +385,8 @@ def main():
                 )
                 shot("translation-picker")
                 image = window.grabWindow()
-                # Match the pill's physical size even when Windows scales Qt.
-                assert 239 <= image.width() <= 241, image.width()
-                assert 230 <= image.height() <= 280, image.height()
+                assert 263 <= window.width() <= 265, window.width()
+                assert 250 <= window.height() <= 310, window.height()
                 close_button = visible_item("translationPickerCloseButton")
                 close_position = close_button.mapToScene(QPointF(0, 0))
                 assert close_position.x() > window.width() - 60
@@ -430,6 +429,17 @@ def main():
                 bridge._on_workflow_state(WorkflowState())
                 settle()
                 assert window.width() < 200 and window.height() < 70
+                # Use the initial pill as the flag-size reference at every DPI.
+                home_flags = [
+                    item
+                    for item in visible_item("languageButton").childItems()
+                    if item.property("source") is not None
+                ]
+                assert len(home_flags) == 1
+                home_flag = home_flags[0]
+                assert abs(home_flag.width() - flag.width()) < 0.01
+                assert abs(home_flag.height() - flag.height()) < 0.01
+                shot("initial-pill")
                 failures = [
                     message
                     for message in messages

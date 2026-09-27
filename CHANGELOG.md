@@ -9,7 +9,8 @@ Notable user-facing changes are documented here. This project follows
 
 ### Fixed
 
-- Keep the selected-text translation picker at the pill's compact physical scale across Windows DPI settings, with a vertical language list, rounded flags, and matching dark styling.
+- Keep the selected-text translation picker compact, with a vertical language list, rounded flags sized to match the initial pill, and the same interface scale and dark styling.
+- Let Escape cancel the translation picker while keyboard focus remains in the source application.
 
 ## [0.4.3] - 2026-09-19
 
