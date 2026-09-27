@@ -399,7 +399,7 @@ def main():
                     bottom = button.mapToScene(QPointF(button.width(), button.height()))
                     assert top.y() > previous_bottom
                     assert 0 < top.x() < bottom.x() < window.width()
-                    assert bottom.y() < window.height() - 5
+                    assert bottom.y() * ratio < image.height() - 6
                     assert button.width() > 210 and button.height() >= 32
                     previous_bottom = bottom.y()
                     flag = visible_item("translationFlag_" + code)
