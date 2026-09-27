@@ -9,19 +9,22 @@ ApplicationWindow {
     objectName: "clarifyMainWindow"
     property string displayedSurface: workflow.surface
     property real surfaceOpacity: 1
+    readonly property real surfaceScale: displayedSurface === "translation_picker"
+                                        ? 1.0 / Math.max(1.0, Screen.devicePixelRatio)
+                                        : theme.uiScale
     width: (displayedSurface === "result"
             || displayedSurface === "voice_result"
             || displayedSurface === "voice_error" ? theme.resultWidth
             : displayedSurface === "translation_picker" ? theme.translationPickerWidth
-            : displayedSurface === "files" ? theme.panelWidth : theme.windowWidth) * theme.uiScale
+            : displayedSurface === "files" ? theme.panelWidth : theme.windowWidth) * root.surfaceScale
     height: (displayedSurface === "result"
              || displayedSurface === "voice_result"
              || displayedSurface === "voice_error"
              ? theme.resultHeight
              : displayedSurface === "translation_picker" ? translationPickerPage.implicitHeight
-             : displayedSurface === "files" ? theme.panelHeight : theme.windowHeight) * theme.uiScale
-    minimumWidth: theme.windowWidth * theme.uiScale
-    minimumHeight: theme.windowHeight * theme.uiScale
+             : displayedSurface === "files" ? theme.panelHeight : theme.windowHeight) * root.surfaceScale
+    minimumWidth: theme.windowWidth * root.surfaceScale
+    minimumHeight: theme.windowHeight * root.surfaceScale
     property bool passivePresentation: false
     property bool presentationVisible: false
     onPresentationVisibleChanged: {
@@ -199,10 +202,10 @@ ApplicationWindow {
         objectName: "mainCard"
         opacity: root.surfaceOpacity
         enabled: !surfaceTransition.running
-        width: root.width / theme.uiScale
-        height: root.height / theme.uiScale
+        width: root.width / root.surfaceScale
+        height: root.height / root.surfaceScale
         anchors.centerIn: parent
-        scale: theme.uiScale
+        scale: root.surfaceScale
         transformOrigin: Item.Center
         radius: root.displayedSurface === "idle"
                 || root.displayedSurface === "recording"
@@ -1097,31 +1100,31 @@ ApplicationWindow {
             Item {
                 id: translationPickerPage
                 objectName: "translationPickerPage"
-                implicitHeight: translationPickerContent.implicitHeight + 28
+                implicitHeight: translationPickerContent.implicitHeight + 20
 
                 ColumnLayout {
                     id: translationPickerContent
                     anchors.fill: parent
-                    anchors.margins: 14
-                    spacing: 14
+                    anchors.margins: 10
+                    spacing: 10
 
                     RowLayout {
                         Layout.fillWidth: true
 
                         ColumnLayout {
-                            spacing: 6
+                            spacing: 4
 
                             Label {
                                 text: "Translate selection"
                                 color: theme.text
-                                font.pixelSize: 18
+                                font.pixelSize: 14
                                 font.weight: Font.DemiBold
                             }
 
                             Label {
                                 text: "Choose a target language"
                                 color: theme.subtleText
-                                font.pixelSize: 13
+                                font.pixelSize: 11
                             }
                         }
 
@@ -1132,8 +1135,9 @@ ApplicationWindow {
                             iconSource: "icons/x.svg"
                             theme: root.visualTheme
                             quiet: true
-                            Layout.preferredWidth: 26
-                            Layout.preferredHeight: 26
+                            iconSize: 14
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
                             Layout.alignment: Qt.AlignTop
                             Accessible.name: "Cancel translation"
                             onClicked: workflow.cancelTranslation()
@@ -1143,7 +1147,7 @@ ApplicationWindow {
                     ColumnLayout {
                         objectName: "translationOptionsList"
                         Layout.fillWidth: true
-                        spacing: 6
+                        spacing: 4
 
                         Repeater {
                             model: workflow.translationOptions
@@ -1154,31 +1158,31 @@ ApplicationWindow {
                                 objectName: "translationOption_" + modelData.code
                                 text: modelData.label
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 46
+                                Layout.preferredHeight: 34
                                 hoverEnabled: true
-                                leftPadding: 12
-                                rightPadding: 12
+                                leftPadding: 10
+                                rightPadding: 10
                                 topPadding: 0
                                 bottomPadding: 0
                                 Accessible.name: "Translate to " + modelData.label
                                 onClicked: workflow.chooseTranslation(modelData.code)
 
                                 contentItem: RowLayout {
-                                    spacing: 14
+                                    spacing: 10
 
                                     RoundedFlag {
                                         objectName: "translationFlag_" + languageOption.modelData.code
                                         source: "flags/" + languageOption.modelData.code + ".svg"
-                                        displayScale: theme.uiScale
-                                        Layout.preferredWidth: 28
-                                        Layout.preferredHeight: 21
+                                        displayScale: root.surfaceScale
+                                        Layout.preferredWidth: 20
+                                        Layout.preferredHeight: 15
                                         Layout.alignment: Qt.AlignVCenter
                                     }
 
                                     Label {
                                         text: languageOption.text
                                         color: theme.text
-                                        font.pixelSize: 16
+                                        font.pixelSize: 12
                                         verticalAlignment: Text.AlignVCenter
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
@@ -1186,7 +1190,7 @@ ApplicationWindow {
                                 }
 
                                 background: Rectangle {
-                                    radius: theme.controlRadius
+                                    radius: theme.fieldRadius
                                     color: languageOption.hovered || languageOption.down || languageOption.visualFocus
                                            ? theme.controlHover : theme.control
                                     border.width: 1

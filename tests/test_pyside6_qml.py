@@ -57,7 +57,7 @@ QML_ROOT = SPIKE / "qml"
 class PySide6QmlFrontendTests(unittest.TestCase):
     @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is required")
     def test_translation_picker_render_and_interactions_at_scaled_dpi(self):
-        for scale in ("1", "1.5"):
+        for scale in ("1", "1.5", "2"):
             with self.subTest(scale=scale):
                 result = subprocess.run(
                     [

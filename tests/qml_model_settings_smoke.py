@@ -384,12 +384,13 @@ def main():
                     WorkflowState(phase=WorkflowPhase.TRANSLATION_PICKER)
                 )
                 shot("translation-picker")
-                assert 300 <= window.width() <= 350, window.width()
-                assert 320 <= window.height() <= 410, window.height()
+                image = window.grabWindow()
+                # Match the pill's physical size even when Windows scales Qt.
+                assert 239 <= image.width() <= 241, image.width()
+                assert 230 <= image.height() <= 280, image.height()
                 close_button = visible_item("translationPickerCloseButton")
                 close_position = close_button.mapToScene(QPointF(0, 0))
                 assert close_position.x() > window.width() - 60
-                image = window.grabWindow()
                 ratio = image.width() / window.width()
                 previous_bottom = 0
                 for code in languages:
@@ -398,8 +399,8 @@ def main():
                     bottom = button.mapToScene(QPointF(button.width(), button.height()))
                     assert top.y() > previous_bottom
                     assert 0 < top.x() < bottom.x() < window.width()
-                    assert bottom.y() < window.height() - 10
-                    assert button.width() > 240 and button.height() >= 44
+                    assert bottom.y() < window.height() - 5
+                    assert button.width() > 210 and button.height() >= 32
                     previous_bottom = bottom.y()
                     flag = visible_item("translationFlag_" + code)
                     origin = flag.mapToScene(QPointF(0, 0))
