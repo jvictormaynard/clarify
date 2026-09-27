@@ -304,6 +304,10 @@ release ends the recording, and Escape cancels it while the shortcut remains
 held. Global Escape is also registered while the translation language picker
 is open, so cancellation does not depend on Clarify taking keyboard focus.
 The binding is released after a language choice or cancellation.
+Selected-text translation always includes the chosen language's display name
+in the provider instruction and source message. The chosen language takes
+precedence over workflow prompt language requests; selected text is delimited
+as source data so embedded requests are translated rather than executed.
 The legacy adapter remains toggle-only. Packaged Windows builds exclude
 the optional cross-platform `keyboard` module.
 
