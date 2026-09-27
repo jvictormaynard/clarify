@@ -56,6 +56,27 @@ QML_ROOT = SPIKE / "qml"
 
 class PySide6QmlFrontendTests(unittest.TestCase):
     @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is required")
+    def test_translation_picker_render_and_interactions_at_scaled_dpi(self):
+        for scale in ("1", "1.5"):
+            with self.subTest(scale=scale):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(ROOT / "tests/qml_model_settings_smoke.py"),
+                        "--translation-picker-only",
+                    ],
+                    cwd=ROOT,
+                    env=dict(
+                        os.environ, QT_QPA_PLATFORM="offscreen", QT_SCALE_FACTOR=scale
+                    ),
+                    capture_output=True,
+                    text=True,
+                    timeout=90,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("PASS: compact translation picker", result.stdout)
+
+    @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is required")
     def test_pill_transition_and_expiry_offscreen(self):
         result = subprocess.run(
             [sys.executable, str(ROOT / "tests/qml_pill_transition_smoke.py")],
@@ -181,7 +202,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("implicitHeight: 18", rounded_flag_source)
         self.assertIn("Screen.devicePixelRatio", rounded_flag_source)
         self.assertNotIn("border.width", rounded_flag_source)
-        self.assertEqual(main_source.count("RoundedFlag {"), 1)
+        self.assertEqual(main_source.count("RoundedFlag {"), 2)
         select_source = (QML_ROOT / "SearchSelect.qml").read_text(encoding="utf-8")
         self.assertEqual(select_source.count("RoundedFlag {"), 2)
         for language in ("en", "pt", "es", "de", "ru"):

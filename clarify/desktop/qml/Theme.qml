@@ -28,6 +28,7 @@ QtObject {
     readonly property int resultHeight: 148
     readonly property int panelWidth: 520
     readonly property int panelHeight: 430
+    readonly property int translationPickerWidth: 300
     readonly property int settingsWidth: 720
     readonly property int settingsHeight: 540
     readonly property int fadeDuration: 180

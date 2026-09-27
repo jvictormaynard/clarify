@@ -378,6 +378,84 @@ def main():
             assert settings_presenter._window is not None
             window.setProperty("presentationVisible", True)
             window.show()
+            if "--translation-picker-only" in sys.argv:
+                languages = ("en", "pt", "es", "de", "ru")
+                bridge._on_workflow_state(
+                    WorkflowState(phase=WorkflowPhase.TRANSLATION_PICKER)
+                )
+                shot("translation-picker")
+                assert 300 <= window.width() <= 350, window.width()
+                assert 320 <= window.height() <= 410, window.height()
+                close_button = visible_item("translationPickerCloseButton")
+                close_position = close_button.mapToScene(QPointF(0, 0))
+                assert close_position.x() > window.width() - 60
+                image = window.grabWindow()
+                ratio = image.width() / window.width()
+                previous_bottom = 0
+                for code in languages:
+                    button = visible_item("translationOption_" + code)
+                    top = button.mapToScene(QPointF(0, 0))
+                    bottom = button.mapToScene(QPointF(button.width(), button.height()))
+                    assert top.y() > previous_bottom
+                    assert 0 < top.x() < bottom.x() < window.width()
+                    assert bottom.y() < window.height() - 10
+                    assert button.width() > 240 and button.height() >= 44
+                    previous_bottom = bottom.y()
+                    flag = visible_item("translationFlag_" + code)
+                    origin = flag.mapToScene(QPointF(0, 0))
+                    edge = flag.mapToScene(QPointF(flag.width(), flag.height()))
+                    colors = {
+                        image.pixelColor(x, y).name()
+                        for x in range(int(origin.x() * ratio), int(edge.x() * ratio))
+                        for y in range(int(origin.y() * ratio), int(edge.y() * ratio))
+                    }
+                    assert len(colors) > 3, (code, "flag not rendered", colors)
+                    with patch.object(service, "dispatch", create=True) as dispatch:
+                        click(button)
+                        command = dispatch.call_args.args[0]
+                        assert type(command).__name__ == "ChooseTranslationLanguage"
+                        assert command.language == code
+                with patch.object(service, "dispatch", create=True) as dispatch:
+                    click(close_button)
+                    assert (
+                        type(dispatch.call_args.args[0]).__name__ == "CancelTranslation"
+                    )
+                    dispatch.reset_mock()
+                    QTest.keyClick(window, Qt.Key.Key_Escape)
+                    settle()
+                    assert (
+                        type(dispatch.call_args.args[0]).__name__ == "CancelTranslation"
+                    )
+                bridge._on_workflow_state(WorkflowState())
+                settle()
+                assert window.width() < 200 and window.height() < 70
+                failures = [
+                    message
+                    for message in messages
+                    if any(
+                        word in message
+                        for word in (
+                            "Error:",
+                            "Binding loop",
+                            "Unable to assign",
+                            "is not defined",
+                            "Cannot assign",
+                            "Cannot open",
+                            "Error decoding",
+                        )
+                    )
+                ]
+                assert not failures, "\n".join(failures)
+                for panel in engine.rootObjects():
+                    panel.close()
+                engine.deleteLater()
+                QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                controller.shutdown()
+                qInstallMessageHandler(None)
+                print(
+                    "PASS: compact translation picker; five vertical flags and choices; close, Escape and pill resize"
+                )
+                return
             shot("home")
             microphone_button = visible_item("microphoneButton")
             assert microphone_button.property("text") == ""
