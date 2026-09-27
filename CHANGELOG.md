@@ -11,6 +11,7 @@ Notable user-facing changes are documented here. This project follows
 
 - Keep the selected-text translation picker compact, with a vertical language list, rounded flags sized to match the initial pill, and the same interface scale and dark styling.
 - Let Escape cancel the translation picker while keyboard focus remains in the source application.
+- Allow dragging the translation picker with the same native window movement as the initial pill, without choosing a language during a drag.
 - Always send the selected target language to the translation provider, including when the default or a custom workflow prompt is configured.
 
 ## [0.4.3] - 2026-09-19

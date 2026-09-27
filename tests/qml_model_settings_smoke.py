@@ -391,6 +391,29 @@ def main():
                 close_position = close_button.mapToScene(QPointF(0, 0))
                 assert close_position.x() > window.width() - 60
                 ratio = image.width() / window.width()
+                drag = find_item(QObject, "translationPickerWindowDragHandler")
+                assert drag is not None
+                first_option = visible_item("translationOption_en")
+                with patch.object(service, "dispatch", create=True) as dispatch:
+                    for start in (
+                        QPointF(window.width() / 2, 20).toPoint(),
+                        first_option.mapToScene(
+                            QPointF(first_option.width() / 2, first_option.height() / 2)
+                        ).toPoint(),
+                    ):
+                        QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, start)
+                        QTest.mouseMove(window, start + QPointF(35, 0).toPoint(), 30)
+                        QTest.mouseMove(window, start + QPointF(45, 0).toPoint(), 30)
+                        assert drag.property("active"), (
+                            "translation picker must allow window dragging"
+                        )
+                        QTest.mouseRelease(
+                            window,
+                            Qt.LeftButton,
+                            Qt.NoModifier,
+                            start + QPointF(45, 0).toPoint(),
+                        )
+                    dispatch.assert_not_called()
                 previous_bottom = 0
                 for code in languages:
                     button = visible_item("translationOption_" + code)
