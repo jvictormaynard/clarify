@@ -1099,6 +1099,14 @@ ApplicationWindow {
                 objectName: "translationPickerPage"
                 implicitHeight: translationPickerContent.implicitHeight + 20
 
+                DragHandler {
+                    objectName: "translationPickerWindowDragHandler"
+                    target: null
+                    acceptedButtons: Qt.LeftButton
+                    grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.CanTakeOverFromHandlersOfDifferentType
+                    onActiveChanged: if (active) root.startSystemMove()
+                }
+
                 ColumnLayout {
                     id: translationPickerContent
                     anchors.fill: parent
