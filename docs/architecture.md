@@ -301,7 +301,14 @@ partially active set.
 `RegisterHotKey` delivers key-down notifications and has no key-up edge. The
 production Qt shell adds a scoped physical-key timer for Hold recording: key
 release ends the recording, and Escape cancels it while the shortcut remains
-held. The legacy adapter remains toggle-only. Packaged Windows builds exclude
+held. Global Escape is also registered while the translation language picker
+is open, so cancellation does not depend on Clarify taking keyboard focus.
+The binding is released after a language choice or cancellation.
+Selected-text translation always includes the chosen language's display name
+in the provider instruction and source message. The chosen language takes
+precedence over workflow prompt language requests; selected text is delimited
+as source data so embedded requests are translated rather than executed.
+The legacy adapter remains toggle-only. Packaged Windows builds exclude
 the optional cross-platform `keyboard` module.
 
 ### `windows_clipboard.py`

@@ -56,6 +56,27 @@ QML_ROOT = SPIKE / "qml"
 
 class PySide6QmlFrontendTests(unittest.TestCase):
     @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is required")
+    def test_translation_picker_render_and_interactions_at_scaled_dpi(self):
+        for scale in ("1", "1.25", "1.5", "2"):
+            with self.subTest(scale=scale):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(ROOT / "tests/qml_model_settings_smoke.py"),
+                        "--translation-picker-only",
+                    ],
+                    cwd=ROOT,
+                    env=dict(
+                        os.environ, QT_QPA_PLATFORM="offscreen", QT_SCALE_FACTOR=scale
+                    ),
+                    capture_output=True,
+                    text=True,
+                    timeout=90,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("PASS: compact translation picker", result.stdout)
+
+    @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is required")
     def test_pill_transition_and_expiry_offscreen(self):
         result = subprocess.run(
             [sys.executable, str(ROOT / "tests/qml_pill_transition_smoke.py")],
@@ -181,7 +202,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("implicitHeight: 18", rounded_flag_source)
         self.assertIn("Screen.devicePixelRatio", rounded_flag_source)
         self.assertNotIn("border.width", rounded_flag_source)
-        self.assertEqual(main_source.count("RoundedFlag {"), 1)
+        self.assertEqual(main_source.count("RoundedFlag {"), 2)
         select_source = (QML_ROOT / "SearchSelect.qml").read_text(encoding="utf-8")
         self.assertEqual(select_source.count("RoundedFlag {"), 2)
         for language in ("en", "pt", "es", "de", "ru"):
@@ -544,7 +565,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertNotIn("--fake", source)
 
     @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
-    def test_escape_hotkey_sync_tracks_recording_surface(self):
+    def test_escape_hotkey_sync_tracks_recording_and_translation_picker(self):
         class Bridge:
             surface = "idle"
 
@@ -563,8 +584,12 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         _sync_recording_escape_hotkey(bridge, hotkeys)
         bridge.surface = "processing"
         _sync_recording_escape_hotkey(bridge, hotkeys)
+        bridge.surface = "translation_picker"
+        _sync_recording_escape_hotkey(bridge, hotkeys)
+        bridge.surface = "processing"
+        _sync_recording_escape_hotkey(bridge, hotkeys)
 
-        self.assertEqual(hotkeys.states, [False, True, False])
+        self.assertEqual(hotkeys.states, [False, True, False, True, False])
 
     @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
     def test_branding_icon_loads_from_source_and_frozen_bundle_paths(self):
@@ -802,6 +827,46 @@ class QmlWorkflowBridgeHotkeyTests(unittest.TestCase):
             audio_batch_controller=audio,
         )
         return service, bridge
+
+    def test_native_escape_cancels_translation_picker_without_window_focus(self):
+        from clarify.desktop.qt_shell import WindowsGlobalHotkeyBackend
+        from tests.test_pyside6_qt_shell import FakeNativeEventTarget, FakeWindow
+        from windows_hotkeys import ESCAPE_HOTKEY_ID
+        from workflows import CancelTranslation, WorkflowPhase, WorkflowState
+
+        service, bridge = self._bridge()
+        target = FakeNativeEventTarget()
+        window = FakeWindow(visible=False)
+        register_escape = Mock(return_value=True)
+        unregister_escape = Mock()
+        backend = WindowsGlobalHotkeyBackend(
+            target,
+            user32="fake-user32",
+            register_hotkeys=lambda *_args, **_kwargs: {0x5101},
+            unregister_hotkeys=lambda *_args, **_kwargs: None,
+            register_escape=register_escape,
+            unregister_escape=unregister_escape,
+            message_decoder=lambda *_args: ESCAPE_HOTKEY_ID,
+        )
+        backend.triggered.connect(bridge.handleHotkey)
+        bridge.surfaceChanged.connect(
+            lambda: _sync_recording_escape_hotkey(bridge, backend)
+        )
+        backend.start(window)
+        try:
+            service.publish(WorkflowState(phase=WorkflowPhase.TRANSLATION_PICKER))
+            register_escape.assert_called_once_with("fake-user32", 123)
+            target.installed[0].nativeEventFilter(b"windows_generic_MSG", object())
+            self.assertIsInstance(service.commands[-1], CancelTranslation)
+            self.assertFalse(window.visible)
+            service.publish(WorkflowState())
+            unregister_escape.assert_called_once_with("fake-user32", 123)
+            self.assertNotIn(ESCAPE_HOTKEY_ID, backend.registered_ids)
+            count = len(service.commands)
+            target.installed[0].nativeEventFilter(b"windows_generic_MSG", object())
+            self.assertEqual(len(service.commands), count)
+        finally:
+            backend.stop()
 
     def test_global_hotkeys_are_blocked_by_voice_or_audio_busy_state(self):
         for busy_kwargs in (

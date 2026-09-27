@@ -5,6 +5,14 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-09-27
+
+### Fixed
+
+- Keep the selected-text translation picker compact, with a vertical language list, rounded flags sized to match the initial pill, and the same interface scale and dark styling.
+- Let Escape cancel the translation picker while keyboard focus remains in the source application.
+- Always send the selected target language to the translation provider, including when the default or a custom workflow prompt is configured.
+
 ## [0.4.3] - 2026-09-19
 
 ### Changed
@@ -212,7 +220,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/jvictormaynard/clarify/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/jvictormaynard/clarify/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/jvictormaynard/clarify/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/jvictormaynard/clarify/compare/v0.4.0...v0.4.1

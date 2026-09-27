@@ -355,10 +355,12 @@ class _WorkflowWindowVisibility:
 
 
 def _sync_recording_escape_hotkey(bridge, hotkeys) -> None:
-    """Register global Escape only while the workflow is recording."""
+    """Register global Escape while recording or choosing a translation language."""
 
     if hotkeys is not None:
-        hotkeys.set_recording_active(bridge.surface == "recording")
+        hotkeys.set_recording_active(
+            bridge.surface in {"recording", "translation_picker"}
+        )
 
 
 def _connect_shutdown(

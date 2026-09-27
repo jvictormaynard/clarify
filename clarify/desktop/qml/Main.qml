@@ -12,16 +12,14 @@ ApplicationWindow {
     width: (displayedSurface === "result"
             || displayedSurface === "voice_result"
             || displayedSurface === "voice_error" ? theme.resultWidth
-            : (displayedSurface === "files"
-               || displayedSurface === "translation_picker")
-              ? theme.panelWidth : theme.windowWidth) * theme.uiScale
+            : displayedSurface === "translation_picker" ? theme.translationPickerWidth
+            : displayedSurface === "files" ? theme.panelWidth : theme.windowWidth) * theme.uiScale
     height: (displayedSurface === "result"
              || displayedSurface === "voice_result"
              || displayedSurface === "voice_error"
              ? theme.resultHeight
-             : (displayedSurface === "files"
-                || displayedSurface === "translation_picker")
-               ? theme.panelHeight : theme.windowHeight) * theme.uiScale
+             : displayedSurface === "translation_picker" ? translationPickerPage.implicitHeight
+             : displayedSurface === "files" ? theme.panelHeight : theme.windowHeight) * theme.uiScale
     minimumWidth: theme.windowWidth * theme.uiScale
     minimumHeight: theme.windowHeight * theme.uiScale
     property bool passivePresentation: false
@@ -1099,86 +1097,107 @@ ApplicationWindow {
             Item {
                 id: translationPickerPage
                 objectName: "translationPickerPage"
+                implicitHeight: translationPickerContent.implicitHeight + 20
 
                 ColumnLayout {
+                    id: translationPickerContent
                     anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 8
+                    anchors.margins: 10
+                    spacing: 10
 
                     RowLayout {
                         Layout.fillWidth: true
 
                         ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 1
+                            spacing: 4
 
                             Label {
                                 text: "Translate selection"
                                 color: theme.text
-                                font.pixelSize: 13
-                                font.weight: Font.Bold
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
                             }
 
                             Label {
                                 text: "Choose a target language"
-                                color: theme.dim
-                                font.pixelSize: 10
+                                color: theme.subtleText
+                                font.pixelSize: 11
                             }
                         }
 
+                        Item { Layout.fillWidth: true }
+
                         AppButton {
+                            objectName: "translationPickerCloseButton"
                             iconSource: "icons/x.svg"
                             theme: root.visualTheme
                             quiet: true
-                            Layout.preferredWidth: 26
-                            Layout.preferredHeight: 26
+                            iconSize: 14
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            Layout.alignment: Qt.AlignTop
                             Accessible.name: "Cancel translation"
                             onClicked: workflow.cancelTranslation()
                         }
                     }
 
-                    Rectangle {
+                    ColumnLayout {
+                        objectName: "translationOptionsList"
                         Layout.fillWidth: true
-                        height: 1
-                        color: theme.border
-                    }
-
-                    Flow {
-                        id: translationOptionsFlow
-                        objectName: "translationOptionsFlow"
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 86
-                        spacing: 6
+                        spacing: 4
 
                         Repeater {
                             model: workflow.translationOptions
 
-                            delegate: AppButton {
+                            delegate: Button {
+                                id: languageOption
                                 required property var modelData
+                                objectName: "translationOption_" + modelData.code
                                 text: modelData.label
-                                theme: root.visualTheme
-                                width: 154
-                                height: 34
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 34
+                                hoverEnabled: true
+                                leftPadding: 10
+                                rightPadding: 10
+                                topPadding: 0
+                                bottomPadding: 0
                                 Accessible.name: "Translate to " + modelData.label
                                 onClicked: workflow.chooseTranslation(modelData.code)
+
+                                contentItem: RowLayout {
+                                    spacing: 10
+
+                                    RoundedFlag {
+                                        objectName: "translationFlag_" + languageOption.modelData.code
+                                        source: "flags/" + languageOption.modelData.code + ".svg"
+                                        displayScale: theme.uiScale
+                                        Layout.preferredWidth: 21.333
+                                        Layout.preferredHeight: 16
+                                        Layout.alignment: Qt.AlignVCenter
+                                    }
+
+                                    Label {
+                                        text: languageOption.text
+                                        color: theme.text
+                                        font.pixelSize: 12
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                background: Rectangle {
+                                    radius: theme.fieldRadius
+                                    color: languageOption.hovered || languageOption.down || languageOption.visualFocus
+                                           ? theme.controlHover : theme.control
+                                    border.width: 1
+                                    border.color: theme.border
+
+                                    Behavior on color {
+                                        ColorAnimation { duration: 110; easing.type: Easing.OutCubic }
+                                    }
+                                }
                             }
-                        }
-                    }
-
-                    Item { Layout.fillHeight: true }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Item { Layout.fillWidth: true }
-
-                        AppButton {
-                            text: "Cancel"
-                            theme: root.visualTheme
-                            quiet: true
-                            Layout.preferredWidth: 56
-                            Layout.preferredHeight: 26
-                            Accessible.name: "Cancel translation"
-                            onClicked: workflow.cancelTranslation()
                         }
                     }
                 }

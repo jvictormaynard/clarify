@@ -111,7 +111,7 @@ dependências automaticamente.
 | Atalho | Ação |
 | --- | --- |
 | `Alt + L` | Iniciar ou encerrar a gravação |
-| `Esc` | Cancelar a gravação ativa |
+| `Esc` | Cancelar a gravação ativa ou fechar o seletor de idioma da tradução |
 | `Alt + K` | Reescrever o texto selecionado |
 | `Alt + T` | Traduzir o texto selecionado |
 | `Alt + V` | Gravar e traduzir a fala |
@@ -122,6 +122,8 @@ Os cinco atalhos globais podem ser capturados, validados e redefinidos em
 gravar e solte para finalizar. `Esc` cancela mesmo enquanto o atalho está
 pressionado. O botão de microfone da pill continua funcionando por clique.
 O aviso de cancelamento e a opção Desfazer aparecem na própria pill.
+Durante a escolha do idioma da tradução, `Esc` fecha o seletor mesmo quando o
+foco do teclado permanece no aplicativo de origem.
 Não há janela automática de resultado. Quando a colagem não é segura, o texto
 fica na área de transferência. O menu da pill permite colar a última
 transcrição da sessão.
