@@ -64,14 +64,16 @@ class FakeHttp:
             status_code=response.status_code,
             operation_id=getattr(response, "_clarify_operation_id", None),
         )
-        self.events.append({
-            "event": "provider_http_error",
-            "provider": provider,
-            "operation": operation,
-            "operation_id": error.operation_id,
-            "status_code": error.status_code,
-            "error_type": error.code,
-        })
+        self.events.append(
+            {
+                "event": "provider_http_error",
+                "provider": provider,
+                "operation": operation,
+                "operation_id": error.operation_id,
+                "status_code": error.status_code,
+                "error_type": error.code,
+            }
+        )
         return error
 
 
@@ -79,12 +81,15 @@ def compatible_metadata(provider_id="compatible", capabilities=None):
     return ProviderMetadata(
         provider_id=provider_id,
         display_name=provider_id.title(),
-        capabilities=frozenset(capabilities or {
-            ProviderCapability.AUDIO_TRANSCRIPTION,
-            ProviderCapability.TEXT_GENERATION,
-            ProviderCapability.MODEL_DISCOVERY,
-            ProviderCapability.CUSTOM_BASE_URL,
-        }),
+        capabilities=frozenset(
+            capabilities
+            or {
+                ProviderCapability.AUDIO_TRANSCRIPTION,
+                ProviderCapability.TEXT_GENERATION,
+                ProviderCapability.MODEL_DISCOVERY,
+                ProviderCapability.CUSTOM_BASE_URL,
+            }
+        ),
         default_base_url="https://compatible.example/v1",
         audio_model_key=f"{provider_id}_audio_model",
         text_model_key=f"{provider_id}_text_model",
@@ -94,6 +99,66 @@ def compatible_metadata(provider_id="compatible", capabilities=None):
 
 
 class ProviderRegistryContractTests(unittest.TestCase):
+    def test_cleanup_reasoning_budget_is_sent_only_to_supported_groq_models(self):
+        for provider, endpoint, model, expected in (
+            ("groq", "https://api.groq.com/openai/v1", "openai/gpt-oss-20b", "low"),
+            ("groq", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b", "low"),
+            ("groq", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", None),
+            ("groq", "https://fixture.example/v1", "openai/gpt-oss-20b", None),
+            (
+                "groq",
+                "https://api.groq.com.fixture.example/v1",
+                "openai/gpt-oss-20b",
+                None,
+            ),
+            ("compatible", "https://fixture.example/v1", "openai/gpt-oss-20b", None),
+        ):
+            with self.subTest(provider=provider, model=model):
+                http = FakeHttp(
+                    FakeResponse({"choices": [{"message": {"content": "edited"}}]})
+                )
+                adapter = OpenAICompatibleAdapter(
+                    compatible_metadata(provider), http, official_host="api.groq.com"
+                )
+                result = adapter.rewrite(
+                    RewriteRequest(
+                        text="source",
+                        model=model,
+                        language="en",
+                        instruction="Clean the text.",
+                        source_message="source",
+                        reasoning_effort="low",
+                    ),
+                    ProviderConnection("fixture", endpoint),
+                )
+                self.assertEqual(result.text, "edited")
+                payload = http.calls[0][2]["json"]
+                self.assertEqual(payload.get("reasoning_effort"), expected)
+                self.assertEqual(
+                    payload.get("max_completion_tokens"), 4096 if expected else None
+                )
+                self.assertEqual(payload["messages"][1]["content"], "source")
+
+    def test_incomplete_text_is_rejected_even_when_content_is_present(self):
+        http = FakeHttp(
+            FakeResponse(
+                {
+                    "choices": [
+                        {
+                            "message": {"content": "only the first point"},
+                            "finish_reason": "length",
+                        }
+                    ]
+                }
+            )
+        )
+        adapter = OpenAICompatibleAdapter(compatible_metadata(), http)
+        with self.assertRaises(InvalidResponseError):
+            adapter.rewrite(
+                RewriteRequest("all points", "editor", "en", "Clean.", "all points"),
+                ProviderConnection("fixture", "https://fixture.example/v1"),
+            )
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.audio_path = Path(self.directory.name) / "sample.wav"
@@ -107,18 +172,20 @@ class ProviderRegistryContractTests(unittest.TestCase):
         registry = build_provider_registry(http)
 
         self.assertEqual(
-            registry.provider_ids, ("gemini", "openai", "groq", "local_asr"))
+            registry.provider_ids, ("gemini", "openai", "groq", "local_asr")
+        )
         self.assertEqual(registry.describe("openai").display_name, "OpenAI")
-        self.assertEqual(
-            registry.describe("groq").audio_model_key, "groq_audio_model")
-        self.assertTrue(registry.supports(
-            "gemini", ProviderCapability.MULTIMODAL_AUDIO))
-        self.assertFalse(registry.supports(
-            "groq", ProviderCapability.MULTIMODAL_AUDIO))
-        self.assertTrue(registry.supports(
-            "local_asr", ProviderCapability.AUDIO_TRANSCRIPTION))
-        self.assertFalse(registry.supports(
-            "local_asr", ProviderCapability.TEXT_GENERATION))
+        self.assertEqual(registry.describe("groq").audio_model_key, "groq_audio_model")
+        self.assertTrue(
+            registry.supports("gemini", ProviderCapability.MULTIMODAL_AUDIO)
+        )
+        self.assertFalse(registry.supports("groq", ProviderCapability.MULTIMODAL_AUDIO))
+        self.assertTrue(
+            registry.supports("local_asr", ProviderCapability.AUDIO_TRANSCRIPTION)
+        )
+        self.assertFalse(
+            registry.supports("local_asr", ProviderCapability.TEXT_GENERATION)
+        )
         for provider_id in registry.provider_ids:
             with self.subTest(provider_id=provider_id):
                 adapter = registry.adapter(provider_id)
@@ -133,14 +200,19 @@ class ProviderRegistryContractTests(unittest.TestCase):
             app.APP_CONFIG["transcription_provider"] = "local_asr"
             app.APP_CONFIG["local_asr_model"] = "ggml-small"
             app.APP_CONFIG["local_asr_cloud_refinement"] = False
-            with patch.object(
-                    app.PROVIDER_REGISTRY, "transcribe",
+            with (
+                patch.object(
+                    app.PROVIDER_REGISTRY,
+                    "transcribe",
                     return_value=TranscriptionResult(
-                        "local transcript", "local_asr", "ggml-small")) as transcribe, \
-                    patch.object(app, "_refine_transcript") as refine:
+                        "local transcript", "local_asr", "ggml-small"
+                    ),
+                ) as transcribe,
+                patch.object(app, "_refine_transcript") as refine,
+            ):
                 result = app._call_provider_audio(
-                    "local_asr", self.audio_path, "prompt", "pt-BR",
-                    audio_bytes=b"RIFF")
+                    "local_asr", self.audio_path, "prompt", "pt-BR", audio_bytes=b"RIFF"
+                )
             self.assertEqual(result, "local transcript")
             transcribe.assert_called_once()
             self.assertEqual(transcribe.call_args.args[1].language, "pt-BR")
@@ -151,39 +223,56 @@ class ProviderRegistryContractTests(unittest.TestCase):
 
     def test_gemini_contract_discovers_canonical_ids_and_uses_custom_proxy_auth(self):
         http = FakeHttp(
-            FakeResponse({"models": [
-                {"name": "models/gemini-3-flash",
-                 "supportedGenerationMethods": ["generateContent"]},
-                {"name": "models/embed-1",
-                 "supportedGenerationMethods": ["embedContent"]},
-            ]}),
-            FakeResponse({
-                "candidates": [{"content": {"parts": [{"text": "hello"}]}}],
-            }),
+            FakeResponse(
+                {
+                    "models": [
+                        {
+                            "name": "models/gemini-3-flash",
+                            "supportedGenerationMethods": ["generateContent"],
+                        },
+                        {
+                            "name": "models/embed-1",
+                            "supportedGenerationMethods": ["embedContent"],
+                        },
+                    ]
+                }
+            ),
+            FakeResponse(
+                {
+                    "candidates": [{"content": {"parts": [{"text": "hello"}]}}],
+                }
+            ),
         )
         registry = build_provider_registry(http)
         connection = ProviderConnection("proxy-key", "https://proxy.example")
 
         catalog = registry.discover_models("gemini", connection)
-        result = registry.transcribe("gemini", TranscriptionRequest(
-            audio_path=self.audio_path,
-            model="models/gemini-3-flash",
-            language="en",
-            instruction="Transcribe faithfully.",
-            prompt="Transcribe this audio.",
-            temperature=0.0,
-        ), connection)
+        result = registry.transcribe(
+            "gemini",
+            TranscriptionRequest(
+                audio_path=self.audio_path,
+                model="models/gemini-3-flash",
+                language="en",
+                instruction="Transcribe faithfully.",
+                prompt="Transcribe this audio.",
+                temperature=0.0,
+            ),
+            connection,
+        )
 
-        self.assertEqual(catalog, ModelCatalog(
-            ("gemini-3-flash",), ("gemini-3-flash",)))
+        self.assertEqual(
+            catalog, ModelCatalog(("gemini-3-flash",), ("gemini-3-flash",))
+        )
         self.assertEqual(result.text, "hello")
         self.assertEqual(result.model, "gemini-3-flash")
+        self.assertEqual(http.calls[0][1], "https://proxy.example/v1beta/models")
         self.assertEqual(
-            http.calls[0][1], "https://proxy.example/v1beta/models")
-        self.assertEqual(http.calls[0][2]["headers"], {
-            "x-goog-api-key": "proxy-key",
-            "Authorization": "Bearer proxy-key",
-        })
+            http.calls[0][2]["headers"],
+            {
+                "x-goog-api-key": "proxy-key",
+                "Authorization": "Bearer proxy-key",
+            },
+        )
         self.assertEqual(
             http.calls[1][1],
             "https://proxy.example/v1beta/models/gemini-3-flash:generateContent",
@@ -196,40 +285,61 @@ class ProviderRegistryContractTests(unittest.TestCase):
 
     def test_openai_compatible_contract_filters_catalog_and_uses_api_ids(self):
         http = FakeHttp(
-            FakeResponse({"data": [
-                {"id": "whisper-compatible", "name": "Pretty Whisper"},
-                {"id": "chat-compatible", "name": "Pretty Chat"},
-                {"id": "text-embedding-compatible"},
-            ]}),
+            FakeResponse(
+                {
+                    "data": [
+                        {"id": "whisper-compatible", "name": "Pretty Whisper"},
+                        {"id": "chat-compatible", "name": "Pretty Chat"},
+                        {"id": "text-embedding-compatible"},
+                    ]
+                }
+            ),
             FakeResponse({"text": "raw transcript"}),
             FakeResponse({"choices": [{"message": {"content": "rewritten"}}]}),
         )
         registry = ProviderRegistry()
         registry.register_openai_compatible(
-            compatible_metadata(), http,
+            compatible_metadata(),
+            http,
             audio_model_aliases={"Pretty Whisper": "whisper-compatible"},
         )
         connection = ProviderConnection("key", "https://proxy.example/v1")
 
         catalog = registry.discover_models("compatible", connection)
-        transcript = registry.transcribe("compatible", TranscriptionRequest(
-            self.audio_path, "Pretty Whisper", "pt", "unused", "unused", 0.0,
-        ), connection)
-        rewrite = registry.rewrite("compatible", RewriteRequest(
-            "raw transcript", "chat-compatible", "pt", "Rewrite.",
-            "SOURCE", 0.1,
-        ), connection)
+        transcript = registry.transcribe(
+            "compatible",
+            TranscriptionRequest(
+                self.audio_path,
+                "Pretty Whisper",
+                "pt",
+                "unused",
+                "unused",
+                0.0,
+            ),
+            connection,
+        )
+        rewrite = registry.rewrite(
+            "compatible",
+            RewriteRequest(
+                "raw transcript",
+                "chat-compatible",
+                "pt",
+                "Rewrite.",
+                "SOURCE",
+                0.1,
+            ),
+            connection,
+        )
 
         self.assertEqual(catalog.audio_models, ("whisper-compatible",))
         self.assertEqual(catalog.text_models, ("chat-compatible",))
         self.assertEqual(transcript.model, "whisper-compatible")
         self.assertEqual(rewrite.text, "rewritten")
         self.assertEqual(
-            http.calls[1][1], "https://proxy.example/v1/audio/transcriptions")
-        self.assertEqual(
-            http.calls[1][2]["data"]["model"], "whisper-compatible")
-        self.assertEqual(
-            http.calls[2][1], "https://proxy.example/v1/chat/completions")
+            http.calls[1][1], "https://proxy.example/v1/audio/transcriptions"
+        )
+        self.assertEqual(http.calls[1][2]["data"]["model"], "whisper-compatible")
+        self.assertEqual(http.calls[2][1], "https://proxy.example/v1/chat/completions")
         self.assertEqual(http.calls[0][2]["operation"], "model_discovery")
         self.assertEqual(http.calls[1][2]["operation"], "transcription")
         self.assertEqual(http.calls[2][2]["operation"], "text_generation")
@@ -239,10 +349,16 @@ class ProviderRegistryContractTests(unittest.TestCase):
             self.assertNotIn("timeout", kwargs)
 
     def test_openai_compatible_contract_accepts_models_catalog_key(self):
-        http = FakeHttp(FakeResponse({"models": [
-            {"id": "whisper-compatible"},
-            {"id": "chat-compatible"},
-        ]}))
+        http = FakeHttp(
+            FakeResponse(
+                {
+                    "models": [
+                        {"id": "whisper-compatible"},
+                        {"id": "chat-compatible"},
+                    ]
+                }
+            )
+        )
         registry = ProviderRegistry()
         registry.register_openai_compatible(compatible_metadata(), http)
 
@@ -267,12 +383,19 @@ class ProviderRegistryContractTests(unittest.TestCase):
         registry = ProviderRegistry()
         registry.register_openai_compatible(compatible_metadata(), http)
         request = TranscriptionRequest(
-            self.audio_path, "whisper-compatible", "en", "unused", "unused",
-            0.0, audio_bytes=b"snapshot-bytes")
+            self.audio_path,
+            "whisper-compatible",
+            "en",
+            "unused",
+            "unused",
+            0.0,
+            audio_bytes=b"snapshot-bytes",
+        )
         self.audio_path.unlink()
 
         result = registry.transcribe(
-            "compatible", request, ProviderConnection("key", "https://proxy.example/v1"))
+            "compatible", request, ProviderConnection("key", "https://proxy.example/v1")
+        )
 
         self.assertEqual(result.text, "snapshot transcript")
         self.assertEqual(uploaded, [b"snapshot-bytes"])
@@ -286,12 +409,30 @@ class ProviderRegistryContractTests(unittest.TestCase):
         registry.register_openai_compatible(compatible_metadata("acme"), http)
         connection = ProviderConnection("key", "https://acme.example")
 
-        transcription = registry.transcribe("acme", TranscriptionRequest(
-            self.audio_path, "whisper-acme", "en", "unused", "unused", 0.0,
-        ), connection)
-        translation = registry.translate("acme", TranslationRequest(
-            "Hello", "chat-acme", "de", "Translate to German.", "SOURCE", 0.0,
-        ), connection)
+        transcription = registry.transcribe(
+            "acme",
+            TranscriptionRequest(
+                self.audio_path,
+                "whisper-acme",
+                "en",
+                "unused",
+                "unused",
+                0.0,
+            ),
+            connection,
+        )
+        translation = registry.translate(
+            "acme",
+            TranslationRequest(
+                "Hello",
+                "chat-acme",
+                "de",
+                "Translate to German.",
+                "SOURCE",
+                0.0,
+            ),
+            connection,
+        )
 
         self.assertEqual(transcription.text, "transcribed")
         self.assertEqual(translation.text, "translated")
@@ -299,52 +440,93 @@ class ProviderRegistryContractTests(unittest.TestCase):
 
     def test_openai_compatible_text_operations_accept_non_empty_strings(self):
         http = FakeHttp(
-            FakeResponse({
-                "choices": [{"message": {"content": "  rewritten  "}}],
-            }),
-            FakeResponse({
-                "choices": [{"message": {"content": "  translated  "}}],
-            }),
+            FakeResponse(
+                {
+                    "choices": [{"message": {"content": "  rewritten  "}}],
+                }
+            ),
+            FakeResponse(
+                {
+                    "choices": [{"message": {"content": "  translated  "}}],
+                }
+            ),
         )
         registry = ProviderRegistry()
         registry.register_openai_compatible(compatible_metadata(), http)
         connection = ProviderConnection("key", "https://compatible.example/v1")
 
-        rewrite = registry.rewrite("compatible", RewriteRequest(
-            "Raw", "chat-compatible", "en", "Rewrite.", "SOURCE", 0.1,
-        ), connection)
-        translation = registry.translate("compatible", TranslationRequest(
-            "Hello", "chat-compatible", "de", "Translate.", "SOURCE", 0.0,
-        ), connection)
+        rewrite = registry.rewrite(
+            "compatible",
+            RewriteRequest(
+                "Raw",
+                "chat-compatible",
+                "en",
+                "Rewrite.",
+                "SOURCE",
+                0.1,
+            ),
+            connection,
+        )
+        translation = registry.translate(
+            "compatible",
+            TranslationRequest(
+                "Hello",
+                "chat-compatible",
+                "de",
+                "Translate.",
+                "SOURCE",
+                0.0,
+            ),
+            connection,
+        )
 
         self.assertEqual(rewrite.text, "rewritten")
         self.assertEqual(translation.text, "translated")
 
     def test_openai_compatible_text_operations_reject_invalid_content(self):
         requests = (
-            ("rewrite", RewriteRequest(
-                "Raw", "chat-compatible", "en", "Rewrite.", "SOURCE", 0.1,
-            )),
-            ("translate", TranslationRequest(
-                "Hello", "chat-compatible", "de", "Translate.", "SOURCE", 0.0,
-            )),
+            (
+                "rewrite",
+                RewriteRequest(
+                    "Raw",
+                    "chat-compatible",
+                    "en",
+                    "Rewrite.",
+                    "SOURCE",
+                    0.1,
+                ),
+            ),
+            (
+                "translate",
+                TranslationRequest(
+                    "Hello",
+                    "chat-compatible",
+                    "de",
+                    "Translate.",
+                    "SOURCE",
+                    0.0,
+                ),
+            ),
         )
 
         for operation, request in requests:
             for content in (None, [], {}, "   "):
                 with self.subTest(operation=operation, content=content):
-                    http = FakeHttp(FakeResponse({
-                        "choices": [{"message": {"content": content}}],
-                    }))
+                    http = FakeHttp(
+                        FakeResponse(
+                            {
+                                "choices": [{"message": {"content": content}}],
+                            }
+                        )
+                    )
                     registry = ProviderRegistry()
-                    registry.register_openai_compatible(
-                        compatible_metadata(), http)
+                    registry.register_openai_compatible(compatible_metadata(), http)
 
                     with self.assertRaises(InvalidResponseError) as raised:
                         getattr(registry, operation)(
-                            "compatible", request,
-                            ProviderConnection(
-                                "key", "https://compatible.example/v1"),
+                            "compatible",
+                            request,
+                            ProviderConnection("key", "https://compatible.example/v1"),
                         )
 
                     self.assertEqual(
@@ -360,23 +542,33 @@ class ProviderRegistryContractTests(unittest.TestCase):
                 "transcription",
                 {"text": "   "},
                 lambda registry: registry.transcribe(
-                    "compatible", TranscriptionRequest(
-                        self.audio_path, "whisper-compatible", "en",
-                        "unused", "unused", 0.0), connection),
+                    "compatible",
+                    TranscriptionRequest(
+                        self.audio_path,
+                        "whisper-compatible",
+                        "en",
+                        "unused",
+                        "unused",
+                        0.0,
+                    ),
+                    connection,
+                ),
             ),
             (
                 "text_generation",
                 {"choices": [{"message": {"content": "   "}}]},
                 lambda registry: registry.rewrite(
-                    "compatible", RewriteRequest(
-                        "Raw", "chat-compatible", "en", "Rewrite.",
-                        "SOURCE", 0.1), connection),
+                    "compatible",
+                    RewriteRequest(
+                        "Raw", "chat-compatible", "en", "Rewrite.", "SOURCE", 0.1
+                    ),
+                    connection,
+                ),
             ),
             (
                 "model_discovery",
                 {"data": {"not": "a list"}},
-                lambda registry: registry.discover_models(
-                    "compatible", connection),
+                lambda registry: registry.discover_models("compatible", connection),
             ),
         )
 
@@ -391,17 +583,19 @@ class ProviderRegistryContractTests(unittest.TestCase):
                 with self.assertRaises(InvalidResponseError) as raised:
                     invoke(registry)
 
-                self.assertEqual(raised.exception.operation_id,
-                                 f"{operation}-123")
+                self.assertEqual(raised.exception.operation_id, f"{operation}-123")
                 self.assertEqual(len(http.events), 1)
-                self.assertEqual(http.events[0], {
-                    "event": "provider_http_error",
-                    "provider": "compatible",
-                    "operation": operation,
-                    "operation_id": f"{operation}-123",
-                    "status_code": 200,
-                    "error_type": "invalid_response",
-                })
+                self.assertEqual(
+                    http.events[0],
+                    {
+                        "event": "provider_http_error",
+                        "provider": "compatible",
+                        "operation": operation,
+                        "operation_id": f"{operation}-123",
+                        "status_code": 200,
+                        "error_type": "invalid_response",
+                    },
+                )
 
     def test_desktop_workflow_routes_a_registered_compatible_provider(self):
         http = FakeHttp(FakeResponse({"text": "desktop transcript"}))
@@ -414,25 +608,37 @@ class ProviderRegistryContractTests(unittest.TestCase):
             "acme_audio_model": "whisper-acme",
         }
 
-        with patch.object(app, "PROVIDER_REGISTRY", registry), patch.dict(
-                app.APP_CONFIG, config, clear=False):
+        with (
+            patch.object(app, "PROVIDER_REGISTRY", registry),
+            patch.dict(app.APP_CONFIG, config, clear=False),
+        ):
             result = app.call_transcription_provider(
-                self.audio_path, "transcription", "en")
+                self.audio_path, "transcription", "en"
+            )
 
         self.assertEqual(result, "desktop transcript")
         self.assertEqual(
-            http.calls[0][1], "https://acme.example/v1/audio/transcriptions")
+            http.calls[0][1], "https://acme.example/v1/audio/transcriptions"
+        )
 
     def test_unsupported_capability_is_typed_and_actionable(self):
         registry = ProviderRegistry()
-        metadata = compatible_metadata(
-            "textonly", {ProviderCapability.TEXT_GENERATION})
+        metadata = compatible_metadata("textonly", {ProviderCapability.TEXT_GENERATION})
         registry.register(OpenAICompatibleAdapter(metadata, FakeHttp()))
 
         with self.assertRaises(UnsupportedCapabilityError) as raised:
-            registry.transcribe("textonly", TranscriptionRequest(
-                self.audio_path, "model", "en", "unused", "unused", 0.0,
-            ), ProviderConnection("key", "https://text.example"))
+            registry.transcribe(
+                "textonly",
+                TranscriptionRequest(
+                    self.audio_path,
+                    "model",
+                    "en",
+                    "unused",
+                    "unused",
+                    0.0,
+                ),
+                ProviderConnection("key", "https://text.example"),
+            )
 
         self.assertEqual(
             raised.exception.capability,
@@ -445,15 +651,22 @@ class ProviderRegistryContractTests(unittest.TestCase):
         registry = build_provider_registry(FakeHttp())
 
         with self.assertRaises(ProviderConfigurationError) as raised:
-            registry.validate("gemini", ProviderConnection(
-                "", "https://generativelanguage.googleapis.com/v1beta"))
+            registry.validate(
+                "gemini",
+                ProviderConnection(
+                    "", "https://generativelanguage.googleapis.com/v1beta"
+                ),
+            )
 
         self.assertEqual(raised.exception.provider_id, "gemini")
         self.assertIn("API key", str(raised.exception))
 
     def test_provider_layer_never_imports_tk_or_ui_modules(self):
         for filename in (
-                "provider_types.py", "provider_adapters.py", "provider_registry.py"):
+            "provider_types.py",
+            "provider_adapters.py",
+            "provider_registry.py",
+        ):
             source = (ROOT / filename).read_text(encoding="utf-8").lower()
             self.assertNotIn("tkinter", source, filename)
             self.assertNotIn("customtkinter", source, filename)

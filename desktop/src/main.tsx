@@ -203,7 +203,7 @@ function App() {
             {state.localAsrBusy && <progress aria-label="Instalação do modelo" max="1" value={state.localAsrProgress >= 0 ? state.localAsrProgress : undefined} />}
             {state.localAsrRequirementsList.length > 0 && <details><summary>Requisitos do modelo</summary><ul>{state.localAsrRequirementsList.map(value => <li key={value}>{value}</li>)}</ul></details>}
             <details><summary>Opções do modelo local</summary>
-              <Toggle title="Processar pausas durante a gravação" hint="Experimental. Usa o modelo local enquanto você fala." checked={state.localStreaming} onChange={v => void run("setLocalStreaming", v)} />
+              <Toggle title="Reconhecer durante a gravação (experimental)" hint="Requer GPU NVIDIA. Pode reduzir a espera ao terminar com uma pausa, mas pode aumentar a espera em fala contínua. Mantém a gravação completa." checked={state.localStreaming} onChange={v => void run("setLocalStreaming", v)} />
               <p className="hint" role="status">{state.localBenchmarkDetail}</p>
               <div className="inline-actions">
                 <button className="button" disabled={state.localAsrBusy} onClick={() => void run(state.localBenchmarkBusy ? "cancelLocalMeasurement" : "installLocalAsr")}>{state.localBenchmarkBusy ? "Cancelar medição" : "Otimizar CPU/GPU"}</button>

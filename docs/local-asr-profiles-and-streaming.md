@@ -1,6 +1,7 @@
-# Local model profiles, compute devices, and experimental pause processing
+# Local model profiles, compute devices, and background recognition
 
-Implemented 2026-09-06. Applies to the Qt desktop runtime.
+Implemented 2026-09-06; background recognition revised 2026-09-30.
+Applies to the Qt desktop runtime.
 
 ## Profiles
 
@@ -20,13 +21,59 @@ AMD, Intel GPU, and Apple GPU acceleration are not implemented. They must not be
 
 ## Experimental processing during recording
 
-The option is OFF by default. This is pause-based Whisper processing, not a native streaming ASR model. It reads the same mono PCM16 16 kHz WAV written by the recorder. A conservative low-energy pause of at least one second permits a split after at least three seconds of audio. Speech is never split merely because a timer expires. The buffer is bounded to 60 seconds and the segment list to 128 entries. The decoder runs serially.
+The option stays OFF by default and requires a selected NVIDIA CUDA backend.
+CPU recording still prepares the model in the background. Existing settings
+retain their explicit opt-in or opt-out. This uses Whisper requests during
+capture; it does not add a native streaming model or a cloud transcription call.
 
-No partial text is pasted. At stop, the full final WAV must match the exact committed PCM prefix. The remaining tail is decoded and joined with completed segments. Changed/unsupported audio, backlog, empty chunks, and segment errors discard partial results and retain the normal full-audio path. Cancellation follows the recording lifecycle. Success still has no result window, and explicit same-audio retry is preserved.
+The worker reads the recorder's original mono PCM16 16 kHz WAV. A low-energy
+pause of at least one second permits a snapshot after at least three seconds
+of new audio. Each request contains the complete recorded prefix. Its result
+replaces the previous snapshot; separately decoded speech is never joined.
+This retains the full decoder context. Pending audio is bounded to 60 seconds,
+and the background prefix to 30 minutes. A limit disables background recognition
+for that recording and leaves the normal full-recording path available.
 
-Chunk boundaries can change wording, punctuation, and language recognition. Multilingual quality evaluation is still required before enabling this by default. Continuous speech without a safe pause may see no streaming benefit.
+No partial text is pasted. At Stop, the final recording must match the exact
+cached PCM prefix by SHA-256. Only a complete snapshot with a near-silent tail
+can be reused. The tail must have RMS below 25 and peak amplitude no more than
+100 on the signed PCM16 scale. A voiced tail, changed or unsupported audio,
+backlog, empty result, or recognition error uses the original full recording.
+Finalization has an eight-second cooperative cancellation budget. Stopping the
+decoder and loading it again can add further delay. User cancellation is kept
+separate from cancellation of a speculative request. Same-audio retry remains
+available.
 
-## Validation and limits
+The 2026-09-30 real-time replay test rejected independent chunks as a default:
+word errors increased in three of four English/Portuguese recordings lasting
+63 to 188 seconds. Full-prefix snapshots keep the original recognition context,
+but a voiced tail still needs a full request. Very quiet speech, missing final
+pauses, decoder load, and continuous speech require further evaluation.
+Background recognition therefore remains an experiment and can increase delay.
+
+## Dictation cleanup
+
+The official Groq `openai/gpt-oss-20b` and `openai/gpt-oss-120b` routes use
+`reasoning_effort=low` for dictation cleanup. Other models, custom endpoints,
+selected-text rewriting, and translation keep their existing request settings.
+The completion budget scales with transcript length. A `length` finish reason
+rejects incomplete output and uses the original transcript through the existing
+recovery path.
+
+Cleanup preserves unique intended facts, names, numbers, negations, conditions,
+and separate events. It removes accidental duplicates and resolves clear spoken
+self-corrections. Word-error rate applies to raw ASR; it cannot judge a valid
+editorial rewrite. Long-input recovery still rejects severe compression, except
+when the output keeps the exact words of every unique sentence in source order.
+This permits large exact duplicate removal without accepting a short title.
+
+The revised policy passed 33 live content checks across English and Portuguese,
+including one-to-three-minute text, repeated blocks, independent shipments,
+dates, names, quantities, negations, uncertain alternatives, and twenty exact
+repetitions. These checks and manual inspection support the tested cases; they
+do not prove quality for every possible dictation.
+
+## Historical validation (2026-09-06)
 
 Windows tests cover profile isolation, configuration persistence, cache invalidation, CPU fallback, cancellation, exact PCM preservation across segments, final-audio mismatch, missing pauses, and bounded backlog. Existing provider, recorder, workflow, settings, clipboard, and recovery suites also run.
 

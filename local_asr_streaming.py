@@ -1,4 +1,4 @@
-"""Experimental pause segmentation of the authoritative PCM WAV recording.
+"""Speculative full-recording recognition at pauses in the PCM WAV.
 
 No partial text is delivered. Invalid/changed audio or processing failures discard
 all segments and leave the original full recording for normal transcription.
@@ -12,11 +12,13 @@ from pathlib import Path
 import struct
 import sys
 import threading
+import time
 import wave
 
 RATE = 16000
 FRAME = 640  # 20 ms, mono signed 16-bit
 MAX_PENDING = RATE * 2 * 60
+MAX_RECORDING = RATE * 2 * 60 * 30
 
 
 def pcm_offset(header):
@@ -49,18 +51,41 @@ def wav_bytes(pcm):
     return output.getvalue()
 
 
+def quiet_tail(pcm):
+    """Skip only near-silent trailing samples, below the pause threshold."""
+    samples = array("h", pcm)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    return bool(samples) and (
+        max(abs(value) for value in samples) <= 100
+        and sum(value * value for value in samples) / len(samples) < 25 * 25
+    )
+
+
 class PauseStream:
     def __init__(
-        self, path, backend, model, language, cancel_token, *, initial_prompt=""
+        self,
+        path,
+        backend,
+        model,
+        language,
+        cancel_token,
+        *,
+        initial_prompt="",
+        worker_wait_seconds=8.0,
+        finalize_seconds=8.0,
     ):
         self.path, self.backend = Path(path), backend
         self.model, self.language, self.cancel_token = model, language, cancel_token
         self.initial_prompt = initial_prompt
+        self.worker_wait_seconds = max(0.0, float(worker_wait_seconds))
+        self.finalize_seconds = max(0.0, float(finalize_seconds))
         self.done = threading.Event()
         self.abort = threading.Event()
         self.on_finished = lambda: None
         self.failed = False
         self.parts = []
+        self.completed_snapshots = 0
         self.committed = 0
         self.digest = hashlib.sha256()
         self.worker = threading.Thread(
@@ -84,13 +109,14 @@ class PauseStream:
 
     def _run(self):
         pending = bytearray()
+        prefix = bytearray()
         scanned = silent = 0
         speech = False
         offset = None
         read_count = 0
         try:
             while not self.done.wait(0.2):
-                if self.cancel_token.cancelled:
+                if self.cancel_token.cancelled or self.abort.is_set():
                     return
                 with self.path.open("rb") as source:
                     if offset is None:
@@ -117,12 +143,16 @@ class PauseStream:
                     if speech and silent >= RATE * 2 and scanned >= RATE * 2 * 3:
                         cut = scanned - RATE  # preserve half a second on each side
                         part = bytes(pending[:cut])
-                        text = self._decode(part)
+                        if len(prefix) + len(part) > MAX_RECORDING:
+                            raise ValueError("Background recording limit exceeded")
+                        # Re-decode the full prefix. Independent chunks change
+                        # names and can lose quiet speech when context resets.
+                        text = self._decode(bytes(prefix) + part)
                         if not text:
-                            raise ValueError("Empty segment")
-                        if len(self.parts) >= 128:
-                            raise ValueError("Streaming segment limit exceeded")
-                        self.parts.append(text)
+                            raise ValueError("Empty snapshot")
+                        prefix.extend(part)
+                        self.parts[:] = [text]
+                        self.completed_snapshots += 1
                         self.digest.update(part)
                         self.committed += cut
                         del pending[:cut]
@@ -136,10 +166,15 @@ class PauseStream:
 
     def finish(self, audio):
         self.done.set()
-        self.worker.join(timeout=125)
-        if self.worker.is_alive():
-            self.abort.set()
-        if self.worker.is_alive() or self.failed or not self.parts:
+        deadline = time.monotonic() + self.finalize_seconds
+        worker_deadline = min(deadline, time.monotonic() + self.worker_wait_seconds)
+        while self.worker.is_alive():
+            remaining = worker_deadline - time.monotonic()
+            if self.cancel_token.cancelled or remaining <= 0:
+                self.abort.set()
+                return None
+            self.worker.join(timeout=min(0.05, remaining))
+        if self.failed or not self.parts or self.abort.is_set():
             return None
         if self.cancel_token.cancelled:
             return None
@@ -159,13 +194,19 @@ class PauseStream:
             ):
                 return None
             tail = pcm[self.committed :]
-            # The retained silence still goes through the decoder, with the full tail.
-            text = self._decode(tail) if tail else ""
+            # Never join separately decoded speech. A voiced tail requires the
+            # normal full-recording request, with its original decoder context.
+            if tail and not quiet_tail(tail):
+                return None
+            if (
+                self.abort.is_set()
+                or self.cancel_token.cancelled
+                or time.monotonic() >= deadline
+            ):
+                return None
             from provider_types import TranscriptionResult
 
-            return TranscriptionResult(
-                " ".join(self.parts + ([text] if text else [])), "local_asr", self.model
-            )
+            return TranscriptionResult(self.parts[0], "local_asr", self.model)
         except Exception:
             return None
 
