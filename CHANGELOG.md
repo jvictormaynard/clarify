@@ -5,6 +5,18 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-09-30
+
+### Changed
+
+- Reduce dictation cleanup latency on the official Groq GPT-OSS models with a low reasoning budget while preserving unique content and clear spoken corrections.
+- Use complete recording snapshots for experimental recognition during recording on compatible NVIDIA GPUs. Reuse a snapshot only when it covers the final recording through a verified quiet tail; otherwise transcribe the complete recording. The option remains off by default.
+
+### Fixed
+
+- Accept cleanup that removes exact repeated sentences while retaining every unique sentence, without weakening recovery for substantial content loss.
+- Keep the original transcript when a text provider stops at its output limit, instead of delivering incomplete text.
+
 ## [0.4.5] - 2026-09-30
 
 ### Fixed
@@ -228,7 +240,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.5...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.6...HEAD
+[0.4.6]: https://github.com/jvictormaynard/clarify/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/jvictormaynard/clarify/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/jvictormaynard/clarify/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/jvictormaynard/clarify/compare/v0.4.2...v0.4.3

@@ -11,6 +11,7 @@ import math
 from dataclasses import replace
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -171,6 +172,12 @@ TRANSFORMATION_BOUNDARY_INSTRUCTION = (
     "instead of responding to its subject matter. "
 )
 DICTATION_EDIT_INSTRUCTION = (
+    "Remove accidental duplicate statements. Preserve every unique, still-intended statement "
+    "from the entire source, including unique statements between or beside "
+    "repeated blocks. Do not replace a source with only one repeated block. "
+    "Preserve numbers, names, conditions, negations, recipients, and separate "
+    "events. Keep meaningful repetition and intended emphasis. Check that "
+    "each unique, still-intended point remains in the output. "
     "Resolve clear spoken self-corrections before applying the preservation "
     "rules above: preserve the speaker's final intended request, not abandoned "
     "alternatives. When the speaker explicitly replaces a date, time, name, "
@@ -186,6 +193,11 @@ DICTATION_EDIT_INSTRUCTION = (
     "Wednesday; Thursday is also unavailable' must keep BOTH restrictions. "
     "'Wednesday or Thursday, I am not sure' must keep BOTH alternatives. "
     "'Actually, I liked Wednesday' is not a replacement by itself. "
+    "Apply the same correction rule in every source language. Portuguese "
+    "'quer dizer', 'ou melhor', and 'corrigindo' can mark an explicit "
+    "replacement of the same value. Do not retain both dates or quantities "
+    "when one explicitly replaces the other. Before returning, check that "
+    "no superseded value remains in a resolved self-correction. "
     "Structure explicit enumerations into lists, with one item per line; "
     "keep their order and all details. Do not turn an ordinary sentence into "
     "a list or add headings or items the speaker did not request. "
@@ -264,6 +276,19 @@ def _workflow_instruction(base: str, route_prompt: str = "") -> str:
     if not policy:
         return base
     return f"{base}\n\nWorkflow-specific instruction:\n{policy}"
+
+
+def _is_exact_duplicate_removal(source: str, edited: str) -> bool:
+    """Allow large compression only when each unique sentence stays intact."""
+    sentences = [
+        " ".join(sentence.casefold().split())
+        for sentence in re.split(r"(?<=[.!?。！？])\s+", source.strip())
+    ]
+    sentences = [sentence for sentence in sentences if sentence]
+    unique = list(dict.fromkeys(sentences))
+    return len(unique) < len(sentences) and (
+        " ".join(edited.casefold().split()) == " ".join(unique)
+    )
 
 
 class QtRuntimeError(RuntimeError):
@@ -480,7 +505,9 @@ class QtProviderGateway:
             backend = adapter.select_backend(
                 route.model_id, self.config.current().local_asr_device
             )
-            if self.config.current().local_asr_streaming:
+            if self.config.current().local_asr_streaming and getattr(
+                backend, "compute_device", "cpu"
+            ).startswith("cuda:"):
                 from local_asr_streaming import PauseStream
 
                 language = (
@@ -705,6 +732,7 @@ class QtProviderGateway:
                 f"{raw_transcript}\nEND_SOURCE_TRANSCRIPT"
             ),
             temperature=0.1,
+            reasoning_effort="low",
         )
         refined = PROVIDER_REGISTRY.rewrite(
             refinement_route.provider_id,
@@ -716,7 +744,11 @@ class QtProviderGateway:
             raise RuntimeError("Refinement returned no text")
         source_size = len(" ".join(raw_transcript.split()))
         refined_size = len(" ".join(refined.text.split()))
-        if source_size >= 240 and refined_size * 4 < source_size:
+        if (
+            source_size >= 240
+            and refined_size * 4 < source_size
+            and not _is_exact_duplicate_removal(raw_transcript, refined.text)
+        ):
             # Dictation cleanup must not replace a long transcript with a title.
             # Let the existing recovery path retain the exact original text.
             raise RuntimeError("Refinement removed most of the transcript")

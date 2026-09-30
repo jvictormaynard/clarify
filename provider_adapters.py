@@ -7,6 +7,7 @@ import io
 import mimetypes
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlsplit
 
 from provider_http import InvalidResponseError
 from provider_types import (
@@ -582,6 +583,8 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         temperature: float,
         connection: ProviderConnection,
         cancel_token=None,
+        *,
+        reasoning_effort: str | None = None,
     ) -> str:
         self.require(ProviderCapability.TEXT_GENERATION)
         self._require_connection(connection)
@@ -600,6 +603,18 @@ class OpenAICompatibleAdapter(ProviderAdapter):
             ],
             "temperature": temperature,
         }
+        if (
+            self.metadata.provider_id == "groq"
+            and urlsplit(connection.base_url).hostname == "api.groq.com"
+            and model_id in {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}
+            and reasoning_effort in {"low", "medium", "high"}
+        ):
+            body["reasoning_effort"] = reasoning_effort
+            # Leave room for the complete source plus the model's reasoning.
+            # This is a ceiling, not a request to produce additional text.
+            body["max_completion_tokens"] = max(
+                4096, min(16384, len(source_message) + 1024)
+            )
         response = self.http.request(
             "POST",
             normalize_provider_url(
@@ -615,6 +630,16 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         payload = self.http.json(
             response, provider=self.metadata.provider_id, operation="text_generation"
         )
+        if (
+            isinstance(payload, Mapping)
+            and isinstance(payload.get("choices"), list)
+            and payload["choices"]
+            and isinstance(payload["choices"][0], Mapping)
+            and payload["choices"][0].get("finish_reason") == "length"
+        ):
+            raise _invalid_response_error(
+                self.http, response, self.metadata.provider_id, "text_generation"
+            )
         try:
             content = payload["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError):
@@ -636,6 +661,7 @@ class OpenAICompatibleAdapter(ProviderAdapter):
             request.temperature,
             connection,
             cancel_token,
+            reasoning_effort=request.reasoning_effort,
         )
         return RewriteResult(text, self.metadata.provider_id, request.model)
 

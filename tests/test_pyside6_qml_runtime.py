@@ -39,8 +39,9 @@ if PYSIDE6_AVAILABLE:
         RewriteResult,
         TranscriptionResult,
     )
+    from provider_http import CancellationToken
     from repositories import AppConfig, ProviderConfig
-    from workflow_config import WorkflowConfig, WorkflowRoute
+    from workflow_config import WorkflowConfig, WorkflowRoute, WorkflowScope
     from workflows import (
         CancelDictation,
         CancelTranslation,
@@ -921,6 +922,91 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional spike dependency")
 class QtProviderGatewayTests(unittest.TestCase):
+    def test_background_recognition_requires_cuda_and_respects_opt_out(self):
+        from unittest.mock import Mock
+
+        for device, enabled, expected in (
+            ("cuda:0", True, True),
+            ("cpu", True, False),
+            ("cuda:0", False, False),
+        ):
+            with self.subTest(device=device, enabled=enabled):
+                config = AppConfig.from_mapping(
+                    {
+                        "local_asr_streaming": enabled,
+                        "workflows": {
+                            "transcription": {
+                                "provider_id": "local_asr",
+                                "model_id": "ggml-medium",
+                                "enabled": True,
+                            }
+                        },
+                    }
+                )
+                gateway = QtProviderGateway(
+                    SimpleNamespace(current=lambda: config, workflow=config.workflow),
+                    SimpleNamespace(vocabulary_prompt=lambda: "QML"),
+                )
+                recording = SimpleNamespace(
+                    _lock=threading.RLock(),
+                    preparation_done=threading.Event(),
+                    provider_cancel_token=CancellationToken(),
+                    audio_path=Path("fixture.wav"),
+                    transcription_language="pt",
+                    attach_worker=Mock(),
+                    detach_worker=Mock(),
+                )
+                backend = Mock(compute_device=device)
+                with (
+                    patch(
+                        "clarify.desktop.qml_runtime.PROVIDER_REGISTRY.adapter"
+                    ) as adapter,
+                    patch("local_asr_streaming.PauseStream") as factory,
+                ):
+                    adapter.return_value.select_backend.return_value = backend
+                    gateway.prepare_dictation(recording)
+                    self.assertEqual(factory.called, expected)
+                    backend.prepare.assert_called_once()
+                    if expected:
+                        factory.return_value.start.assert_called_once()
+                        recording.attach_worker.assert_called_once_with(
+                            factory.return_value.worker
+                        )
+
+    def test_dictation_cleanup_requests_a_low_reasoning_budget(self):
+        config = AppConfig.from_mapping(
+            {
+                "workflows": {
+                    "local_asr_refinement": {
+                        "provider_id": "groq",
+                        "model_id": "openai/gpt-oss-20b",
+                        "enabled": True,
+                    }
+                }
+            }
+        )
+        gateway = QtProviderGateway(
+            SimpleNamespace(current=lambda: config, workflow=config.workflow),
+            SimpleNamespace(refinement_context=lambda: ""),
+        )
+        with patch(
+            "clarify.desktop.qml_runtime.PROVIDER_REGISTRY.rewrite",
+            return_value=RewriteResult(
+                "Send 5 copies to Ana.", "groq", "openai/gpt-oss-20b"
+            ),
+        ) as rewrite:
+            result = gateway._refine_transcript(
+                "Send 3 copies, no, 5 copies to Ana.",
+                "en",
+                "English",
+                WorkflowScope.LOCAL_ASR_REFINEMENT,
+                CancellationToken(),
+            )
+            request = rewrite.call_args.args[1]
+            self.assertEqual(request.reasoning_effort, "low")
+            self.assertEqual(request.text, "Send 3 copies, no, 5 copies to Ana.")
+            self.assertEqual(result.text, "Send 5 copies to Ana.")
+
     def test_translation_sends_the_chosen_language_to_every_provider(self):
         from provider_registry import build_provider_registry
 
@@ -1056,6 +1142,21 @@ class QtProviderGatewayTests(unittest.TestCase):
                 "  " * 250 + "Send five copies to Ana.",
                 "Send five copies to Ana.",
                 False,
+            ),
+            (
+                "Send five copies to Ana. " * 20,
+                "Send five copies to Ana.",
+                False,
+            ),
+            (
+                "Send five copies to Ana. " * 20 + "Do not send before approval.",
+                "Send five copies to Ana.",
+                True,
+            ),
+            (
+                "Send five copies to Ana. " * 20 + "Send five copies to Ana?",
+                "Send five copies to Ana.",
+                True,
             ),
         )
         for source, edited, rejected in cases:

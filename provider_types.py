@@ -148,6 +148,8 @@ class RewriteRequest:
     instruction: str
     source_message: str
     temperature: float = 0.1
+    # Optional latency policy. Adapters omit it for unsupported models.
+    reasoning_effort: str | None = None
 
 
 @dataclass(frozen=True)

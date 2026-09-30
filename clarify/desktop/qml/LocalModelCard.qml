@@ -88,7 +88,7 @@ Pane {
             palette.base: visualTheme.control
             palette.window: visualTheme.card
             objectName: "localStreamingSwitch"
-            text: "Process pauses while recording (experimental)"
+            text: "Recognize while recording (experimental, NVIDIA GPU)"
             checked: settingsController.localStreaming
             onToggled: settingsController.setLocalStreaming(checked)
         }

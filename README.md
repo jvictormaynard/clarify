@@ -353,7 +353,14 @@ Install a local model once to prepare CPU and compatible NVIDIA GPU support.
 Automatic measures this computer and uses the fastest available device. Model
 weights are reused between runtimes. Existing installations can select Optimize
 CPU/GPU. Base, Small and Medium trade speed for capacity; accuracy depends on
-language and audio. Pause processing is experimental and off by default.
+language and audio. Recognition during recording is experimental, requires
+NVIDIA GPU support, and stays off by default. It can reuse a complete snapshot
+when recording ends with a pause. Continuous speech can still require the full
+recording and can take longer. See the
+[background recognition limits](docs/local-asr-profiles-and-streaming.md).
 Cloud refinement of local transcripts remains an explicit option.
 
 If optional dictation refinement fails, Clarify keeps the original transcript, shows a brief warning and records a partial result when local history is enabled.
+Dictation cleanup uses low reasoning on the official Groq GPT-OSS models.
+It preserves unique content, resolves clear spoken corrections, and removes
+accidental duplicates. Incomplete provider output also uses the original text.

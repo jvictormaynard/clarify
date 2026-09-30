@@ -188,10 +188,18 @@ Instale o modelo uma vez para preparar CPU e GPU NVIDIA compativel. O modo
 Automatic mede este computador e usa o dispositivo mais rapido. O arquivo do
 modelo e reutilizado entre os modos. Instalacoes existentes podem usar Optimize
 CPU/GPU. Base, Small e Medium oferecem perfis diferentes de velocidade e memoria.
-O processamento durante pausas e experimental e fica desativado por padrao.
+O reconhecimento durante a gravação é experimental, exige uma GPU NVIDIA
+compatível e fica desativado por padrão. Ele pode reutilizar uma transcrição
+completa até a última pausa. A fala contínua pode exigir o processamento de toda
+a gravação e aumentar a demora. Veja os
+[limites do reconhecimento durante a gravação](local-asr-profiles-and-streaming.md).
 O refinamento na nuvem da transcricao local continua sendo uma opcao explicita.
 
 Se a revisão opcional do ditado falhar, o Clarify preserva a transcrição original, mostra um aviso breve e registra resultado parcial quando o histórico local está ativado.
+A revisão do ditado usa esforço de raciocínio baixo nos modelos GPT-OSS do
+serviço oficial Groq. Ela preserva o conteúdo único, resolve correções claras
+da fala e remove repetições acidentais. Uma resposta incompleta do provedor
+também mantém o texto original.
 O ditado usa o refinamento fiel como comportamento padrão, sem seletor de modo.
 Configurações antigas de modo são migradas automaticamente. O refinamento em
 nuvem de transcrições locais continua dependendo da autorização nas configurações.
