@@ -26,7 +26,6 @@ try:
         _register_qml_context,
         _WorkflowWindowVisibility,
         _hidden_start_requested,
-        _show_translation_picker_if_needed,
         _sync_recording_escape_hotkey,
         _start_shell_if_available,
     )
@@ -535,7 +534,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("settings.persistLanguage", source)
         self.assertIn("bridge.modeChanged.connect", source)
         self.assertIn("bridge.languageChanged.connect", source)
-        self.assertIn("_show_translation_picker_if_needed", source)
+        self.assertIn("_WorkflowWindowVisibility(bridge, shell, window)", source)
         self.assertIn("tray_available=tray_available", source)
         self.assertIn("ShellStartResult.SECONDARY_INSTANCE", source)
         self.assertIn("QmlWorkflowBridge(", source)
@@ -1438,14 +1437,129 @@ class QmlEntrypointIntegrationTests(unittest.TestCase):
 
         bridge = Bridge()
         shell = Shell()
-        bridge.surfaceChanged.connect(
-            lambda: _show_translation_picker_if_needed(bridge, shell)
+        coordinator = _WorkflowWindowVisibility(
+            bridge, shell, SimpleNamespace(isVisible=lambda: False)
         )
 
         bridge.surface = "translation_picker"
         bridge.surfaceChanged.emit()
 
         self.assertEqual(shell.show_calls, 1)
+        bridge.surfaceChanged.emit()
+        self.assertEqual(shell.show_calls, 1)
+        self.assertIsNotNone(coordinator)
+
+    def test_translation_picker_restores_the_previous_pill_visibility(self):
+        from clarify.desktop.qt_shell import QtShell
+        from tests.test_pyside6_qt_shell import FakeWindow
+        from workflows import WorkflowPhase, WorkflowState
+
+        class Window(FakeWindow):
+            def __init__(self):
+                super().__init__(visible=True)
+                self.properties = {"presentationVisible": True}
+
+            def property(self, name):
+                return self.properties.get(name)
+
+            def setProperty(self, name, value):
+                self.properties[name] = value
+                if name == "presentationVisible":
+                    self.visible = value
+                return True
+
+        for initially_visible in (False, True):
+            for prepare_first in (False, True):
+                for outcome in ("cancel", "complete", "fail"):
+                    with self.subTest(
+                        visible=initially_visible,
+                        prepare=prepare_first,
+                        outcome=outcome,
+                    ):
+                        service = QmlWorkflowBridgeHotkeyTests.WorkflowService()
+                        bridge = QmlWorkflowBridge(service)
+                        window = Window()
+                        shell = QtShell(window)
+                        coordinator = _WorkflowWindowVisibility(bridge, shell, window)
+                        if not initially_visible:
+                            shell._handle_hotkey("toggle_visibility")
+                        self.assertEqual(window.isVisible(), initially_visible)
+
+                        def publish(phase):
+                            service.publish(
+                                WorkflowState(phase=phase, kind="translation")
+                            )
+
+                        if prepare_first:
+                            publish(WorkflowPhase.PREPARING_TRANSLATION)
+                        publish(WorkflowPhase.TRANSLATION_PICKER)
+                        self.assertTrue(window.isVisible(), "Picker must be visible")
+                        window.calls.clear()
+                        publish(WorkflowPhase.TRANSLATION_PICKER)
+                        self.assertEqual(window.calls, [])
+
+                        if outcome == "cancel":
+                            self.assertTrue(bridge.cancelTranslation())
+                            publish(WorkflowPhase.READY)
+                        elif outcome == "complete":
+                            self.assertTrue(bridge.chooseTranslation("de"))
+                            publish(WorkflowPhase.TRANSLATING)
+                            publish(WorkflowPhase.PUBLISHING)
+                            publish(WorkflowPhase.COMPLETED)
+                        else:
+                            publish(WorkflowPhase.TRANSLATING)
+                            publish(WorkflowPhase.FAILED)
+                            bridge.finish()
+
+                        expected_visible = initially_visible and outcome != "fail"
+                        self.assertEqual(window.isVisible(), expected_visible)
+                        self.assertNotIn("activate", window.calls)
+                        # A later workflow must use the restored state, even if the
+                        # user only opened and closed the language picker.
+                        publish(WorkflowPhase.REWRITING)
+                        publish(WorkflowPhase.COMPLETED)
+                        self.assertEqual(window.isVisible(), expected_visible)
+                        self.assertNotIn("activate", window.calls)
+                        self.assertIsNotNone(coordinator)
+
+    def test_workflow_does_not_restore_a_pill_that_is_still_fading_out(self):
+        from clarify.desktop.qt_shell import QtShell
+        from tests.test_pyside6_qt_shell import FakeWindow
+        from workflows import WorkflowPhase, WorkflowState
+
+        class FadingWindow(FakeWindow):
+            def __init__(self):
+                super().__init__(visible=True)
+                self.properties = {"presentationVisible": True}
+
+            def property(self, name):
+                return self.properties.get(name)
+
+            def setProperty(self, name, value):
+                self.properties[name] = value
+                return True
+
+        for picker in (False, True):
+            with self.subTest(picker=picker):
+                service = QmlWorkflowBridgeHotkeyTests.WorkflowService()
+                bridge = QmlWorkflowBridge(service)
+                window = FadingWindow()
+                shell = QtShell(window)
+                coordinator = _WorkflowWindowVisibility(bridge, shell, window)
+                shell._handle_hotkey("toggle_visibility")
+                self.assertFalse(window.property("presentationVisible"))
+                self.assertTrue(window.isVisible(), "Native hide waits for the fade")
+                service.publish(
+                    WorkflowState(phase=WorkflowPhase.PREPARING_TRANSLATION)
+                )
+                if picker:
+                    service.publish(
+                        WorkflowState(phase=WorkflowPhase.TRANSLATION_PICKER)
+                    )
+                    service.publish(WorkflowState(phase=WorkflowPhase.TRANSLATING))
+                service.publish(WorkflowState(phase=WorkflowPhase.COMPLETED))
+                self.assertFalse(window.property("presentationVisible"))
+                self.assertIsNotNone(coordinator)
 
     def test_shell_failure_is_distinguished_from_secondary_and_tray_absence(self):
         class Shell:

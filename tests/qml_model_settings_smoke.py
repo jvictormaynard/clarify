@@ -463,6 +463,131 @@ def main():
                 assert abs(home_flag.width() - flag.width()) < 0.01
                 assert abs(home_flag.height() - flag.height()) < 0.01
                 shot("initial-pill")
+
+                from clarify.desktop.qml_app import _WorkflowWindowVisibility
+                from clarify.desktop.qt_shell import QtShell
+
+                shell = QtShell(window)
+                coordinator = _WorkflowWindowVisibility(bridge, shell, window)
+
+                def publish_translation(phase):
+                    bridge._on_workflow_state(
+                        WorkflowState(phase=phase, kind="translation")
+                    )
+
+                picker_exit_frames = []
+
+                def observe_picker_exit():
+                    if (
+                        window.isVisible()
+                        and window.opacity() > 0.001
+                        and bridge.surface != "translation_picker"
+                    ):
+                        picker_exit_frames.append(
+                            (
+                                window.property("displayedSurface"),
+                                window.width(),
+                                window.height(),
+                                window.opacity(),
+                            )
+                        )
+
+                for outcome in ("close", "escape", "complete"):
+                    shell.show_window()
+                    settle()
+                    shell._handle_hotkey("toggle_visibility")
+                    assert not window.property("presentationVisible")
+                    # Start before the hide animation ends, as a rapid shortcut can.
+                    publish_translation(WorkflowPhase.PREPARING_TRANSLATION)
+                    settle()
+                    publish_translation(WorkflowPhase.TRANSLATION_PICKER)
+                    settle()
+                    assert window.isVisible(), "Hidden home pill must allow the picker"
+                    assert window.property("presentationVisible")
+                    picker_size = (window.width(), window.height())
+                    picker_exit_frames.clear()
+                    window.afterAnimating.connect(observe_picker_exit)
+
+                    if outcome == "complete":
+                        with patch.object(
+                            service,
+                            "dispatch",
+                            create=True,
+                            side_effect=lambda _command: publish_translation(
+                                WorkflowPhase.TRANSLATING
+                            ),
+                        ) as dispatch:
+                            click(visible_item("translationOption_de"))
+                            assert dispatch.call_args.args[0].language == "de"
+                        publish_translation(WorkflowPhase.PUBLISHING)
+                        publish_translation(WorkflowPhase.COMPLETED)
+                    else:
+                        with patch.object(
+                            service,
+                            "dispatch",
+                            create=True,
+                            side_effect=lambda _command: bridge._on_workflow_state(
+                                WorkflowState()
+                            ),
+                        ) as dispatch:
+                            if outcome == "close":
+                                click(visible_item("translationPickerCloseButton"))
+                            else:
+                                QTest.keyClick(window, Qt.Key.Key_Escape)
+                            assert (
+                                type(dispatch.call_args.args[0]).__name__
+                                == "CancelTranslation"
+                            )
+                    settle()
+                    window.afterAnimating.disconnect(observe_picker_exit)
+                    assert picker_exit_frames, (
+                        "The test must observe the fade animation"
+                    )
+                    assert all(
+                        surface == "translation_picker"
+                        and (width, height) == picker_size
+                        for surface, width, height, _opacity in picker_exit_frames
+                    ), (
+                        outcome,
+                        "Picker layout must remain until its hide animation ends",
+                        picker_exit_frames,
+                    )
+                    assert not window.property("presentationVisible"), outcome
+                    assert not window.isVisible(), outcome
+                    bridge._on_workflow_state(
+                        WorkflowState(phase=WorkflowPhase.REWRITING, kind="rewrite")
+                    )
+                    bridge._on_workflow_state(
+                        WorkflowState(phase=WorkflowPhase.COMPLETED, kind="rewrite")
+                    )
+                    settle()
+                    assert not window.isVisible(), (
+                        "Later paste must keep home pill hidden"
+                    )
+                # A visible home pill must return after cancellation, and an
+                # interrupted fade must reopen the latest surface without delay.
+                shell.show_window()
+                settle()
+                publish_translation(WorkflowPhase.TRANSLATION_PICKER)
+                settle()
+                bridge._on_workflow_state(WorkflowState())
+                settle()
+                assert window.isVisible() and window.property("presentationVisible")
+                assert window.property("displayedSurface") == "idle"
+                shell.hide_window()
+                settle()
+                publish_translation(WorkflowPhase.TRANSLATION_PICKER)
+                settle()
+                bridge._on_workflow_state(WorkflowState())
+                publish_translation(WorkflowPhase.PREPARING_TRANSLATION)
+                publish_translation(WorkflowPhase.TRANSLATION_PICKER)
+                settle()
+                assert window.isVisible()
+                assert window.property("displayedSurface") == "translation_picker"
+                bridge._on_workflow_state(WorkflowState())
+                settle()
+                assert not window.isVisible()
+                assert coordinator is not None
                 failures = [
                     message
                     for message in messages
@@ -487,7 +612,7 @@ def main():
                 controller.shutdown()
                 qInstallMessageHandler(None)
                 print(
-                    "PASS: compact translation picker; five vertical flags and choices; close, Escape and pill resize"
+                    "PASS: compact translation picker; five vertical flags and choices; close, Escape, pill resize, hidden home-pill restoration and no home-pill frames during fade-out"
                 )
                 return
             shot("home")

@@ -28,6 +28,13 @@ ApplicationWindow {
         // Tray/visibility shortcuts reopen the toolbar, not a settings placeholder.
         if (presentationVisible && workflow.surface === "settings")
             workflow.closeSettings()
+        if (root.displayedSurface === "translation_picker")
+            Qt.callLater(root.syncSurface)
+    }
+    onOpacityChanged: {
+        if (root.displayedSurface === "translation_picker"
+                && !presentationVisible && opacity <= 0.001)
+            Qt.callLater(root.syncSurface)
     }
     visible: presentationVisible || opacity > 0.001
     opacity: presentationVisible ? 1.0 : 0.0
@@ -66,18 +73,30 @@ ApplicationWindow {
     Theme { id: theme }
     property Theme visualTheme: theme
     Component.onCompleted: displayedSurface = workflow.surface
+    function syncSurface() {
+        if (workflow.surface === root.displayedSurface) return
+        // Keep the picker layout until its native window finishes fading out.
+        // Switching to the home layout while it is visible produces a brief pill.
+        if (root.displayedSurface === "translation_picker"
+                && !root.presentationVisible && root.opacity > 0.001) return
+        surfaceTransition.stop()
+        if (workflow.surface === "files" || root.displayedSurface === "files") {
+            surfaceTransition.start()
+        } else {
+            root.displayedSurface = workflow.surface
+            root.surfaceOpacity = 1
+        }
+    }
     Connections {
         target: workflow
         function onSurfaceChanged() {
             if (workflow.surface !== "idle") quickMenu.close()
-            if (workflow.surface === root.displayedSurface) return
-            surfaceTransition.stop()
-            if (workflow.surface === "files" || root.displayedSurface === "files") {
-                surfaceTransition.start()
-            } else {
-                root.displayedSurface = workflow.surface
-                root.surfaceOpacity = 1
-            }
+            // The Python visibility controller receives this same signal. Let it
+            // decide whether to hide or restore the window before changing layout.
+            if (root.displayedSurface === "translation_picker")
+                Qt.callLater(root.syncSurface)
+            else
+                root.syncSurface()
         }
     }
     SequentialAnimation {

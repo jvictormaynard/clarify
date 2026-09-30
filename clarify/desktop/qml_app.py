@@ -259,13 +259,6 @@ def _hidden_start_requested(arguments: list[str]) -> bool:
     raise ValueError("unsupported launch arguments")
 
 
-def _show_translation_picker_if_needed(bridge, shell) -> None:
-    """Reveal a picker that was opened by a hotkey while the window was hidden."""
-
-    if bridge.surface == "translation_picker":
-        shell.show_window()
-
-
 class _SettingsWindowVisibility:
     """Own native settings presentation independently of menu and toolbar state."""
 
@@ -298,7 +291,7 @@ class _SettingsWindowVisibility:
 
 
 class _WorkflowWindowVisibility:
-    """Hide the main card while a transient pill owns workflow feedback."""
+    """Preserve main-card visibility across workflow pills and the picker."""
 
     _PILL_SURFACES = frozenset({"recording", "processing", "voice_processing"})
 
@@ -310,13 +303,29 @@ class _WorkflowWindowVisibility:
         self._last_surface = bridge.surface
         bridge.surfaceChanged.connect(self.sync)
 
+    def _presentation_visible(self) -> bool:
+        # Native visibility remains true during the QML hide animation. Use
+        # the requested state so a workflow cannot undo an Alt+R hide.
+        property_reader = getattr(self._window, "property", None)
+        if callable(property_reader):
+            requested = property_reader("presentationVisible")
+            if isinstance(requested, bool):
+                return requested
+        return bool(self._window.isVisible())
+
     def sync(self) -> None:
         surface = self._bridge.surface
         previous_surface = self._last_surface
         self._last_surface = surface
+        if surface == "translation_picker":
+            if self._restore_visible is None:
+                self._restore_visible = self._presentation_visible()
+            if surface != previous_surface:
+                self._shell.show_window()
+            return
         if surface == "settings":
             if self._restore_visible is None:
-                self._restore_visible = bool(self._window.isVisible())
+                self._restore_visible = self._presentation_visible()
             self._shell.hide_window()
             return
         feedback = bool(getattr(self._bridge, "feedbackVisible", False))
@@ -327,7 +336,7 @@ class _WorkflowWindowVisibility:
         )
         if pill_active:
             if self._restore_visible is None:
-                self._restore_visible = bool(self._window.isVisible())
+                self._restore_visible = self._presentation_visible()
             if feedback:
                 # An error is handled in the pill. Restoring the main window
                 # on dismissal would steal the next shortcut's selection.
@@ -344,7 +353,6 @@ class _WorkflowWindowVisibility:
             "result",
             "voice_result",
             "voice_error",
-            "translation_picker",
         }
         if surface != previous_surface and (explicit_navigation or restore_panel):
             self._shell.show_window()
@@ -352,6 +360,8 @@ class _WorkflowWindowVisibility:
             restore = getattr(self._shell, "show_window_without_activation", None)
             if callable(restore):
                 restore()
+        elif restore_visible is False and surface in {"idle", "success"}:
+            self._shell.hide_window()
 
 
 def _sync_recording_escape_hotkey(bridge, hotkeys) -> None:
@@ -568,9 +578,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     shell.hotkeyTriggered.connect(bridge.handleHotkey)
     bridge.resultRequested.connect(shell.show_window)
-    bridge.surfaceChanged.connect(
-        lambda: _show_translation_picker_if_needed(bridge, shell)
-    )
     workflow_window_visibility = _WorkflowWindowVisibility(bridge, shell, window)
     # Keep the coordinator strongly referenced for the lifetime of app.exec().
     web_settings = WebSettingsProcess(
