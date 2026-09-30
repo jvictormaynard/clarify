@@ -5,6 +5,13 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-09-30
+
+### Fixed
+
+- Preserve the main pill's hidden state after cancelling or completing selected-text translation, including a shortcut pressed during the hide animation.
+- Keep the translation picker layout throughout its fade-out so the home pill does not flash when closing the picker or choosing a language.
+
 ## [0.4.4] - 2026-09-27
 
 ### Fixed
@@ -221,7 +228,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.5...HEAD
+[0.4.5]: https://github.com/jvictormaynard/clarify/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/jvictormaynard/clarify/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/jvictormaynard/clarify/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/jvictormaynard/clarify/compare/v0.4.1...v0.4.2

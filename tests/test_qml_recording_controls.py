@@ -48,16 +48,19 @@ class RecordingControlsTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "clarify/desktop/qml/Main.qml"
         ).read_text(encoding="utf-8")
         start = source.index("    onPresentationVisibleChanged:")
-        end = source.index("    visible:", start)
+        # Copy this handler only; adjacent Window handlers do not belong in
+        # the reduced QtObject fixture used to check Settings navigation.
+        end = source.index("\n    }", start) + len("\n    }")
         handler = source[start:end]
         engine = QQmlEngine()
         engine.rootContext().setContextProperty("workflow", self.bridge)
         component = QQmlComponent(engine)
         component.setData(
             (
-                "import QtQml\nQtObject { property bool presentationVisible: false\n"
-                + handler
-                + "}"
+                "import QtQml\nQtObject { id: root\n"
+                "property bool presentationVisible: false\n"
+                "property string displayedSurface: workflow.surface\n"
+                "function syncSurface() {}\n" + handler + "}"
             ).encode(),
             "",
         )
