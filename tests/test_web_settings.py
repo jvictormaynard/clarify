@@ -51,6 +51,19 @@ class WebSettingsTests(unittest.TestCase):
         self.assertNotIn("providerApiKey", serialized)
         self.assertEqual(response["id"], 7)
 
+    def test_automatic_update_flag_is_an_optional_saved_draft(self):
+        self.assertFalse(self.request("snapshot")["result"]["automaticUpdates"])
+        state = self.request("setAutomaticUpdates", True)["result"]
+        self.assertTrue(state["automaticUpdates"])
+        self.assertTrue(state["dirty"])
+        self.assertFalse(self.settings.repositories.config.load().automatic_updates)
+        self.assertFalse(self.request("load")["result"]["automaticUpdates"])
+        self.request("setAutomaticUpdates", True)
+        self.assertFalse(self.request("save")["result"]["dirty"])
+        self.assertTrue(self.settings.repositories.config.load().automatic_updates)
+        self.assertIn("error", self.request("setAutomaticUpdates", "false"))
+        self.assertTrue(self.settings.repositories.config.load().automatic_updates)
+
     def test_dictionary_draft_save_discard_and_validation(self):
         entry = {
             "term": "Eva Desktop",

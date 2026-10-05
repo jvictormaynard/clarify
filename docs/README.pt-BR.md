@@ -65,8 +65,25 @@ portátil. Ela contém `Clarify.exe`, seu arquivo SHA-256, o SBOM de runtime,
 um arquivo ZIP e os códigos-fonte verificados do SoX e do Qt/PySide. Os avisos
 de licença estão incluídos no pacote portátil e no ZIP. Ela não possui assinatura
 Authenticode enquanto não houver patrocínio para a assinatura paga. O
-SmartScreen pode pedir confirmação no primeiro uso. Essa release não inclui o
-MSI nem o manifesto de atualização autenticado.
+SmartScreen pode pedir confirmação no primeiro uso. A partir da versão 0.5.0,
+a release inclui um manifesto autenticado com Ed25519 para atualizações
+portáteis. O MSI e seu canal separado com Authenticode continuam em preparação.
+
+### Atualizações portáteis
+
+A partir da versão 0.5.0, o Clarify verifica novas versões estáveis após iniciar
+e a cada seis horas enquanto estiver aberto. A instalação automática vem
+desativada. Uma bolinha vermelha no botão de Settings do home pill indica uma
+nova versão. Abra o menu e selecione **Install update** para baixar e instalar.
+
+Para ativar a instalação automática, abra **Settings → Geral → Atualizações**,
+ative **Atualização automática** e salve. O Clarify baixa a versão em segundo
+plano, espera concluir as tarefas e fechar os Settings, e reinicia para aplicar
+a atualização. Configurações, chaves, modelos e atalhos são preservados. Se a
+nova versão não iniciar, o executável anterior é restaurado. O aplicativo
+verifica a assinatura do manifesto, o tamanho e o SHA-256 do executável antes
+da troca. Se você usa uma versão anterior, instale a versão 0.5.0 manualmente
+uma vez.
 
 ### Executável portátil
 
@@ -84,9 +101,10 @@ MSI nem o manifesto de atualização autenticado.
    modelo, endpoint, estado e prompt.
 
 Os executáveis portáteis comunitários não possuem assinatura de código. Confira
-o arquivo SHA-256 publicado com a release antes de executar o download. O MSI e
-o caminho de atualização no aplicativo permanecem desativados até que os gates
-da release assinada sejam concluídos.
+o arquivo SHA-256 publicado com a release antes do primeiro uso. As
+atualizações portáteis seguintes usam o manifesto Ed25519 autenticado. O MSI e
+seu canal de atualização permanecem desativados até concluir os gates da
+release com Authenticode.
 
 Para executar o código-fonte com as novas Configurações:
 

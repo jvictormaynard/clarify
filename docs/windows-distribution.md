@@ -2,23 +2,89 @@
 
 This document defines the target installer, signing, update, recovery, and
 incident contract. The repository contains no private key or reusable signing
-credential. Until the prerequisites in [Rollout gates](#rollout-gates) are
-complete, this is a fail-closed implementation contract rather than a claim
-that published Clarify artifacts are already signed.
+credential. Portable updates use the Ed25519 contract below from v0.5.0.
+The sponsored Authenticode MSI channel remains fail-closed until its separate
+prerequisites in [Rollout gates](#rollout-gates) are complete.
 
 ## No-cost community release
 
 While sponsored signing is unavailable, the repository may publish a
-community portable release. It contains only the unsigned portable EXE, its
+community portable release. It contains the unsigned portable EXE, its
 SHA-256 file, the runtime SBOM, the portable ZIP, the verified SoX source
 archive, the Qt/PySide source ZIP, and GitHub build provenance. The portable ZIP
-includes the Settings and Qt license notices. It does not contain the MSI or the
-authenticated update manifest.
+includes Settings, Qt, and cryptography/OpenSSL license notices. From v0.5.0,
+the release also contains `Clarify-portable-update.json` and its detached
+Ed25519 signature, `Clarify-portable-update.json.sig`. It does not contain the
+MSI or the Authenticode CAB manifest.
 
 The community EXE is not a trusted Authenticode publisher. Windows SmartScreen
 may show a warning, so the user must verify the published SHA-256 before the
-first launch. The MSI and in-app update path remain disabled. The signed
-contract below remains the target for a future sponsored release.
+first launch. A metadata signature authenticates the exact portable executable
+for later in-app updates; it does not add an Authenticode publisher signature.
+The MSI contract below remains the target for a future sponsored release.
+
+## Authenticated portable updates
+
+The packaged `distribution/portable-update-policy.json` pins the Ed25519 public
+key, canonical repository, stable channel, and 256 MiB download limit. The
+private key is the `CLARIFY_UPDATE_SIGNING_KEY` secret in the GitHub
+`portable-updates` environment. Only `v*` tags can use this environment. The
+community workflow requires the tag's exact commit to belong to canonical
+`main`, checks that the packaged version matches the tag, and refuses a signing
+key that differs from the packaged pin. Release publication still requires
+green PR and main tests/packaging before tagging. No paid signing service is
+used by this portable channel.
+
+The app checks GitHub's latest stable release 30 seconds after startup and
+every six hours. Requests use bounded HTTPS reads and a fixed GitHub host
+allowlist; provider credentials and `.netrc` are not read. Authenticate raw
+manifest bytes before parsing strict identity, source commit, version, URL,
+size, and SHA-256 fields. Refuse prereleases, downgrades, duplicate fields,
+unexpected URLs, changed signatures, and missing metadata. Interrupted or
+oversized downloads never reach the installation transaction.
+
+`automatic_updates` is off by default and changes only when Settings are saved.
+With it off, show a red dot on the home pill's Settings button and **Install
+update X.Y.Z** in the quick menu. With it on, download in the background. Both
+paths wait for idle workflows, closed Settings, no unsaved drafts/results,
+and no active audio/model/provider work. The native Settings child must have
+ended; a hidden WebView can still own unsaved form fields. Close it using its
+normal confirmation flow before restart. Block new UI/hotkey input only while
+the helper is being armed and the app exits. A failed preparation leaves the
+current app running. The installation folder must be writable by the user;
+the updater never requests elevation and refuses MSI-owned paths.
+
+The helper is a copy of the current installed executable. It binds the target
+to the parent's image path, SHA-256, retained process handle, and creation time;
+then acknowledges preparation before the app quits. After graceful exit, it
+rechecks signed metadata and binary bytes, stages on the installation volume,
+atomically keeps the old executable and installs the new one, and launches an
+independent PyInstaller process with `--hidden`. A receipt from the first Qt
+event-loop tick after QML and single-instance startup confirms success. On
+failed startup, stop only the new child, restore the old executable, and restart
+it. Keep a failed-version marker to prevent repeated automatic restart attempts;
+manual retry remains available. Keep the most recent verified backup. If
+Windows prevents restoration, preserve that backup for manual recovery.
+
+Profiles, DPAPI keys, downloaded models, statistics, and shortcuts are outside
+this transaction. Cache attempts older than 24 hours are removed only when
+their paths and contents match the updater's owned file set. Verify the
+embedded key and crypto notices during packaging, add OpenSSL to the release
+SBOM, and attest both metadata assets with the EXE and ZIP.
+
+`python scripts/test_portable_update.py` builds isolated Windows fixtures with
+a generated test key. It tests actual one-file process exit, file replacement,
+restart receipt, failed-startup rollback, and tamper rejection. It does not
+read user profiles, start microphones, register hotkeys, or touch an existing
+Clarify installation. CI and the community release run this acceptance gate.
+
+For planned key rotation, first ship an update that trusts both old and new
+pins while signing with the old key, then switch signing, then remove the old
+pin in a later release. The initial schema supports one pin; implement and test
+the overlap before rotation. Do not overwrite the secret/pin independently.
+If the signing key is lost or compromised, stop publication, remove the
+affected release from the stable channel, and publish a reviewed replacement
+requiring one manual download. Do not bypass signature verification.
 
 ## Signing mechanism and ownership
 

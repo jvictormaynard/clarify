@@ -49,6 +49,12 @@ REQUIRED_FILES = (
     "scripts/create_release_manifest.py",
     "scripts/verify-signature.ps1",
     "distribution/update-policy.json",
+    "distribution/portable-update-policy.json",
+    "portable_updates.py",
+    "portable_update_windows.py",
+    "scripts/create_portable_update_manifest.py",
+    "scripts/test_portable_update.py",
+    "scripts/portable_crypto_inventory.py",
     "docs/windows-distribution.md",
     ".githooks/pre-commit",
     ".github/workflows/ci.yml",
@@ -69,6 +75,8 @@ SIGNED_REQUIRED_ASSETS = (
 )
 
 COMMUNITY_REQUIRED_ASSETS = (
+    "Clarify-portable-update.json",
+    "Clarify-portable-update.json.sig",
     "Clarify-qt-sources.zip",
     "Clarify.exe",
     "Clarify.exe.sha256",

@@ -35,6 +35,7 @@ def main() -> None:
     verify_inventory(args.executable, args.settings)
     verify_qt_notices(args.executable, args.settings.parent)
     verify_qt_payload(args.executable)
+    verify_update_payload(args.executable, args.settings.parent)
     print("Packaged Settings payload matches the build input.")
 
 
@@ -45,6 +46,20 @@ def verify_qt_notices(executable: Path, inputs: Path) -> None:
     expected = (inputs / name).read_bytes()
     if not expected or CArchiveReader(str(executable)).extract(name) != expected:
         raise ValueError("Packaged Qt notices differ from the build input")
+
+
+def verify_update_payload(executable: Path, inputs: Path) -> None:
+    from PyInstaller.archive.readers import CArchiveReader
+
+    archive = CArchiveReader(str(executable))
+    policy = "distribution/portable-update-policy.json"
+    expected = (Path(__file__).resolve().parents[1] / policy).read_bytes()
+    matches = [name for name in archive.toc if name.replace("\\", "/") == policy]
+    if len(matches) != 1 or archive.extract(matches[0]) != expected:
+        raise ValueError("Packaged portable update key differs from the source policy")
+    name = "Clarify-crypto-NOTICES.txt"
+    if archive.extract(name) != (inputs / name).read_bytes():
+        raise ValueError("Packaged crypto notices differ from the build input")
 
 
 def verify_qt_payload(executable: Path) -> None:

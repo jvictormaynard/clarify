@@ -437,6 +437,35 @@ fallback is intentionally explicit; it does not claim OS-backed protection.
 
 ## Data ownership
 
+### Portable updates
+
+`portable_updates.py` owns strict stable-version comparison, Ed25519 manifest
+verification, bounded canonical GitHub downloads, binary checks, and atomic
+replacement with recovery. The packaged `distribution/portable-update-policy.json`
+pins the public key. Neither this module nor its Windows helper reads provider
+credentials or user recordings.
+
+`portable_update_windows.py` binds the helper to the installed executable's
+path, hash, process ID, and creation time. It waits for graceful process exit,
+stages on the installation volume, replaces the binary, and restarts an
+independent PyInstaller process. A receipt after Qt, QML, and single-instance
+startup confirms acceptance; failed startup restores the previous executable.
+MSI-owned paths are excluded from this portable transaction.
+
+`clarify/desktop/qml_updates.py` owns Qt state and worker cancellation. It
+checks after startup and every six hours. `automatic_updates` is an optional
+configuration boolean, off by default. Settings edits remain drafts until
+saved. The composition root permits restart only when workflows, audio,
+provider validation, and local-model work are idle, Settings are closed, and
+no unsaved draft or result is open. Input is blocked during handoff.
+
+Settings RPC exposes only explicit update status and actions. The QML home
+pill shows availability and offers manual installation. Downloads, receipts,
+and a failed-version marker live in `%LOCALAPPDATA%\Clarify\updates`; the latest
+verified previous executable remains beside the installation. Old owned cache
+attempts are pruned after 24 hours. Profiles and model data are outside this
+boundary.
+
 | Data | Location | Content |
 | --- | --- | --- |
 | Settings | `%APPDATA%\Clarify\config.json` | Provider endpoints, models, selections, and UI preferences; no API keys |

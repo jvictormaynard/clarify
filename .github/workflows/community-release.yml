@@ -18,9 +18,20 @@ jobs:
   release:
     name: Build unsigned portable release
     runs-on: windows-latest
+    environment: portable-updates
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Require a release tag on canonical main
+        shell: pwsh
+        run: |
+          git fetch origin main
+          if ($LASTEXITCODE -ne 0) { throw "Unable to verify main." }
+          git merge-base --is-ancestor "${{ github.sha }}" origin/main
+          if ($LASTEXITCODE -ne 0) { throw "The release commit must belong to main." }
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -58,6 +69,9 @@ jobs:
           tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py
           tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py
           tests/test_pyside6_qt_shell.py
+          portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py
+          scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py
+          tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py
 
       - name: Run Ruff format check
         run: >-
@@ -105,6 +119,12 @@ jobs:
       - name: Generate runtime SBOM
         run: cyclonedx-py requirements requirements-lock-runtime-windows.txt --of JSON -o dist\Clarify.sbom.json
 
+      - name: Include portable crypto attribution and OpenSSL in SBOM
+        run: python scripts/portable_crypto_inventory.py --output-dir dist --bom dist/Clarify.sbom.json
+
+      - name: Verify frozen portable replacement and recovery
+        run: python scripts/test_portable_update.py
+
       - name: Add bundled SoX to SBOM
         run: python scripts/add_sbom_component.py --bom-file dist\Clarify.sbom.json --runtime-root extra\sox-14.4.2 --manifest scripts\sox-runtime-manifest.json
 
@@ -141,15 +161,22 @@ jobs:
             throw "The downloaded SoX source archive did not match the expected SHA-256."
           }
           Compress-Archive `
-            -Path dist\Clarify.exe, dist\Clarify.exe.sha256, dist\Clarify.sbom.json, LICENSE, THIRD_PARTY_NOTICES.md, dist\Clarify-settings-NOTICES.txt, dist\Clarify-qt-NOTICES.txt `
+            -Path dist\Clarify.exe, dist\Clarify.exe.sha256, dist\Clarify.sbom.json, LICENSE, THIRD_PARTY_NOTICES.md, dist\Clarify-settings-NOTICES.txt, dist\Clarify-qt-NOTICES.txt, dist\Clarify-crypto-NOTICES.txt `
             -DestinationPath dist\Clarify-windows-x64.zip `
             -Force
+
+      - name: Sign portable update metadata
+        env:
+          CLARIFY_UPDATE_SIGNING_KEY: ${{ secrets.CLARIFY_UPDATE_SIGNING_KEY }}
+        run: python scripts/create_portable_update_manifest.py --source-sha ${{ github.sha }}
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: Clarify-community-${{ github.ref_name }}
           path: |
+            dist/Clarify-portable-update.json
+            dist/Clarify-portable-update.json.sig
             dist/Clarify.exe
             dist/Clarify.exe.sha256
             dist/Clarify.sbom.json
@@ -162,6 +189,8 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
+            dist/Clarify-portable-update.json
+            dist/Clarify-portable-update.json.sig
             dist/Clarify.exe
             dist/Clarify.exe.sha256
             dist/Clarify.sbom.json
@@ -180,9 +209,13 @@ jobs:
 
           Windows SmartScreen may show a warning because the executable does not have a paid Authenticode publisher signature. Verify Clarify.exe with Clarify.exe.sha256 before launching it.
 
-          This free release contains the portable app only. The signed MSI and authenticated update manifest remain disabled until the project has sponsored signing infrastructure.
+          This portable release includes Ed25519-authenticated update metadata. Starting with v0.5.0, Clarify checks for newer stable releases and can install them automatically when enabled in Settings. Updates wait until work is complete and Settings are closed, then restart the app. If startup fails, the previous executable is restored.
+
+          The Windows executable is still unsigned. The sponsored Authenticode MSI and its separate signed-CAB update channel remain disabled.
           "@
           gh release create "${{ github.ref_name }}" `
+            dist\Clarify-portable-update.json `
+            dist\Clarify-portable-update.json.sig `
             dist\Clarify.exe `
             dist\Clarify.exe.sha256 `
             dist\Clarify.sbom.json `
