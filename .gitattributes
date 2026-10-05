@@ -1,2 +1,5 @@
 # Vendored notice hashes must be identical on Windows and Linux checkouts.
 desktop/licenses/*.txt text eol=lf
+licenses/cryptography-APACHE.txt text eol=lf
+licenses/cryptography-BSD.txt text eol=lf
+licenses/OpenSSL-APACHE.txt text eol=lf
