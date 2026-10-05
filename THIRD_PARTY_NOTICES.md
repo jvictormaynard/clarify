@@ -3,6 +3,11 @@
 Clarify includes or depends on third-party software. Each component remains
 under its own license; the project MIT license does not replace those terms.
 
+`scripts/portable_crypto_inventory.py` verifies the pinned cryptography wheel,
+its bundled OpenSSL version, and preserved license hashes. Packaging embeds
+`Clarify-crypto-NOTICES.txt`; the release ZIP includes the same full notices.
+The release SBOM records cryptography and its statically linked OpenSSL.
+
 ## Bundled in the Windows executable
 
 | Component | Purpose | License information |
@@ -17,6 +22,8 @@ under its own license; the project MIT license does not replace those terms.
 | Tauri | Native Settings child window | MIT OR Apache-2.0; transitive crate terms also apply |
 | Pillow | Image rendering | HPND |
 | Requests | HTTP client | Apache-2.0 |
+| cryptography 50.0.2 | Ed25519 portable-update authentication | Apache-2.0 OR BSD-3-Clause; preserved in `licenses/cryptography-APACHE.txt` and `licenses/cryptography-BSD.txt` |
+| OpenSSL 4.0.3 | Static dependency of the Windows cryptography wheel | Apache-2.0; preserved in `licenses/OpenSSL-APACHE.txt` |
 | sounddevice | Audio capture | MIT |
 | PyInstaller bootloader | Portable packaging | GPL-2.0-or-later with a special exception for bundled applications |
 

@@ -83,6 +83,8 @@ On the PR and after merge:
   - includes per-user MSI install, upgrade, repair, rollback, uninstall, and
     signed-manifest contract smoke tests
   - also includes the shared Settings build action and embedded-child hash check
+  - includes frozen portable update replacement, startup receipt, rollback, and
+    tamper rejection with generated fixture keys and isolated paths
 
 On the tag:
 
@@ -137,10 +139,19 @@ sponsored signing infrastructure. It must publish exactly these assets:
 - `Clarify-windows-x64.zip`
 - `sox-14.4.2-source.tar.gz`
 
+From v0.5.0 the community track also publishes exactly one of each:
+
+- `Clarify-portable-update.json`
+- `Clarify-portable-update.json.sig`
+
 The ZIP contains the portable executable, checksum, SBOM, `LICENSE`, and
-`THIRD_PARTY_NOTICES.md`, plus `Clarify-settings-NOTICES.txt`. The track does not publish an MSI or authenticated
-update manifest. Windows SmartScreen warnings remain expected, and the in-app
-update path stays disabled until a signed release satisfies the rollout gates.
+`THIRD_PARTY_NOTICES.md`, plus Settings, Qt, and crypto notices. The track does
+not publish an MSI or Authenticode CAB manifest. Windows SmartScreen warnings
+remain expected. Portable in-app updates use the separate pinned Ed25519
+policy and protected `portable-updates` environment described in
+`docs/windows-distribution.md`. Verify both signed metadata assets against
+the packaged pin, executable hash/size, tag, and exact green source SHA.
+Keep the Authenticode MSI rollout gates intact.
 
 ## Documentation ownership
 

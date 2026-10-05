@@ -120,6 +120,7 @@ def environment_defaults(
         # the typed repository means the UI can apply one atomic preference
         # change without teaching the history file about configuration.
         "history_enabled": False,
+        "automatic_updates": False,
         "history_retention_days": 30,
         "autostart": False,
         "voice_translation": VoiceTranslationConfig().to_mapping(),
@@ -188,6 +189,7 @@ class AppConfig:
     local_asr_device: str = "auto"
     local_asr_streaming: bool = False
     history_enabled: bool = False
+    automatic_updates: bool = False
     history_retention_days: int | None = 30
     hotkeys: HotkeySettings = field(default_factory=HotkeySettings.defaults)
     workflows: WorkflowConfig = field(default_factory=WorkflowConfig)
@@ -539,6 +541,7 @@ class AppConfig:
             ),
             local_asr_streaming=source.get("local_asr_streaming") is True,
             history_enabled=history_enabled,
+            automatic_updates=source.get("automatic_updates") is True,
             history_retention_days=history_retention_days,
             hotkeys=hotkeys,
             workflows=workflows,
@@ -574,6 +577,7 @@ class AppConfig:
             "ui_language": self.ui.language,
             "autostart": self.startup.autostart,
             "history_enabled": self.history_enabled,
+            "automatic_updates": self.automatic_updates,
             "history_retention_days": self.history_retention_days,
             "hotkeys": self.hotkeys.to_mapping(),
             "workflows": self.workflows.to_mapping(),

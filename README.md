@@ -88,8 +88,24 @@ It contains `Clarify.exe`, its SHA-256 file, the runtime SBOM, a ZIP
 archive, and verified SoX and Qt/PySide source archives. License notices are
 included in the portable package and ZIP. It is intentionally unsigned
 until paid publisher signing is sponsored. Windows SmartScreen can therefore
-ask for confirmation on first launch. This release does not contain the MSI or
-the authenticated update manifest.
+ask for confirmation on first launch. From v0.5.0, this release also provides
+Ed25519-authenticated portable update metadata. The MSI and its separate
+Authenticode update channel remain staged.
+
+### Portable updates
+
+From v0.5.0, Clarify checks for new stable releases after startup and every six
+hours while running. Automatic installation is off by default. A red dot on
+the home pill's Settings button marks an available update. Open its menu and
+select **Install update** to download and install it.
+
+To enable automatic installation, open **Settings → Geral → Atualizações**,
+enable **Atualização automática**, and save. Clarify downloads in the
+background, waits until active work is complete and Settings are closed,
+then restarts to apply the update. Settings, keys, models, and shortcuts stay
+in place. If the new version fails to start, the previous executable is restored.
+The app verifies signed metadata and the executable's size and SHA-256 before
+replacement. Install v0.5.0 manually once if you are using an older version.
 
 ### Portable Windows app
 

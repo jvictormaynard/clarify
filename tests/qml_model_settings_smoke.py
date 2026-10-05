@@ -62,6 +62,22 @@ class PillStatus(QObject):
     targetIcon = Property(str, lambda self: "", constant=True)
 
 
+class UpdateState(QObject):
+    changed = Signal()
+    available = False
+    busy = False
+    installing = False
+    supported = True
+    version = "0.5.1"
+    status = "A versão 0.5.1 está disponível."
+    progress = 0
+    install_calls = 0
+
+    def install(self):
+        self.install_calls += 1
+        return True
+
+
 class AudioBatch(QObject):
     changed = Signal()
     copyCompleted = Signal(str, bool)
@@ -207,6 +223,9 @@ def main():
             ),
         )
         controller.setRouteProviderId("openai")
+        if "--updates-only" in sys.argv:
+            updates = UpdateState()
+            controller.bindUpdates(updates)
         service = SimpleNamespace(
             state=WorkflowState(), subscribe=lambda _listener: None
         )
@@ -378,6 +397,72 @@ def main():
             assert settings_presenter._window is not None
             window.setProperty("presentationVisible", True)
             window.show()
+            if "--updates-only" in sys.argv:
+                settle()
+                before = (window.width(), window.height())
+                dot = find_item(QObject, "updateNotification")
+                assert dot is not None and not dot.property("visible")
+                updates.available = True
+                updates.changed.emit()
+                settle()
+                assert dot.property("visible")
+                assert before == (window.width(), window.height())
+                gear = visible_item("settingsButton")
+                position = dot.mapToItem(gear, QPointF(0, 0))
+                assert 0 <= position.x() <= gear.width() - dot.width()
+                assert 0 <= position.y() <= gear.height() - dot.height()
+                shot("home-update")
+                click(gear)
+                item = find_item(QObject, "quickUpdateItem")
+                assert item.property("visible") and item.property("enabled")
+                assert item.property("text") == "Install update 0.5.1"
+                shot("update-menu")
+                updates.busy = True
+                updates.changed.emit()
+                settle()
+                assert not item.property("enabled")
+                updates.busy = False
+                updates.changed.emit()
+                item.triggered.emit()
+                settle()
+                assert updates.install_calls == 1
+                updates.installing = True
+                updates.changed.emit()
+                settle()
+                assert not window.property("contentItem").isEnabled()
+                updates.installing = False
+                updates.available = False
+                updates.changed.emit()
+                settle()
+                assert window.property("contentItem").isEnabled() and not dot.property(
+                    "visible"
+                )
+                failures = [
+                    message
+                    for message in messages
+                    if any(
+                        word in message
+                        for word in (
+                            "Error:",
+                            "Binding loop",
+                            "Unable to assign",
+                            "is not defined",
+                            "Cannot assign",
+                            "Cannot open",
+                        )
+                    )
+                ]
+                assert not failures, "\n".join(failures)
+                for panel in engine.rootObjects():
+                    panel.close()
+                engine.deleteLater()
+                QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                controller.shutdown()
+                qInstallMessageHandler(None)
+                print(
+                    "PASS: update notification, unchanged pill geometry, manual menu action and installation input gate"
+                )
+                return
             if "--translation-picker-only" in sys.argv:
                 languages = ("en", "pt", "es", "de", "ru")
                 bridge._on_workflow_state(

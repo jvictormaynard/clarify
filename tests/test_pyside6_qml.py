@@ -55,6 +55,27 @@ QML_ROOT = SPIKE / "qml"
 
 class PySide6QmlFrontendTests(unittest.TestCase):
     @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is required")
+    def test_update_notification_and_menu_at_scaled_dpi(self):
+        for scale in ("1", "1.25", "1.5", "2"):
+            with self.subTest(scale=scale):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(ROOT / "tests/qml_model_settings_smoke.py"),
+                        "--updates-only",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env={
+                        **os.environ,
+                        "QT_QPA_PLATFORM": "offscreen",
+                        "QT_SCALE_FACTOR": scale,
+                    },
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is required")
     def test_translation_picker_render_and_interactions_at_scaled_dpi(self):
         for scale in ("1", "1.25", "1.5", "2"):
             with self.subTest(scale=scale):
@@ -526,7 +547,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("QtShell", source)
         self.assertIn("WindowsGlobalHotkeyBackend", source)
         self.assertIn('if sys.platform == "win32"', source)
-        self.assertIn("shell.hotkeyTriggered.connect(bridge.handleHotkey)", source)
+        self.assertIn("shell.hotkeyTriggered.connect(", source)
         self.assertIn("_connect_preference_sync(bridge, settings)", source)
         self.assertIn("settings.configChanged.connect", source)
         self.assertIn("syncing_from_settings", source)

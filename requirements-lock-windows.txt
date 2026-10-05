@@ -25,7 +25,9 @@ cachecontrol==0.14.4
 certifi==2026.7.22
     # via requests
 cffi==2.1.0
-    # via sounddevice
+    # via
+    #   cryptography
+    #   sounddevice
 chardet==5.2.0
     # via cyclonedx-bom
 charset-normalizer==3.5.1
@@ -36,6 +38,8 @@ colorama==0.4.6
     # via
     #   build
     #   click
+cryptography==50.0.2
+    # via -r requirements.txt
 cyclonedx-bom==7.3.1
     # via -r requirements-dev.txt
 cyclonedx-python-lib==11.12.0

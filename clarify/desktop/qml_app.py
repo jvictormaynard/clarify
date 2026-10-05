@@ -15,7 +15,7 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPOSITORY_ROOT))
 
-from PySide6.QtCore import QUrl  # noqa: E402
+from PySide6.QtCore import QTimer, QUrl  # noqa: E402
 from PySide6.QtGui import QIcon  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 from PySide6.QtQuickControls2 import QQuickStyle  # noqa: E402
@@ -88,6 +88,7 @@ try:
     from .qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from .qml_bridge import QmlWorkflowBridge  # noqa: E402
     from .qml_settings import QmlSettingsController  # noqa: E402
+    from .qml_updates import QmlUpdateController  # noqa: E402
     from .qml_web_settings import WebSettingsProcess  # noqa: E402
     from .qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
     from .qml_voice_translation import (  # noqa: E402
@@ -104,6 +105,7 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from qml_bridge import QmlWorkflowBridge  # noqa: E402
     from qml_settings import QmlSettingsController  # noqa: E402
+    from qml_updates import QmlUpdateController  # noqa: E402
     from qml_web_settings import WebSettingsProcess  # noqa: E402
     from qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
     from qml_voice_translation import (  # noqa: E402
@@ -405,6 +407,11 @@ def main(argv: list[str] | None = None) -> int:
     """Start the real QML frontend; missing runtime dependencies are fatal."""
 
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if len(arguments) == 2 and arguments[0] == "--apply-portable-update":
+        from portable_update_windows import run_portable_update_helper
+        from version import __version__
+
+        return run_portable_update_helper(Path(arguments[1]), __version__)
     try:
         start_hidden = _hidden_start_requested(arguments)
     except ValueError:
@@ -512,6 +519,36 @@ def main(argv: list[str] | None = None) -> int:
         hotkey_applier=apply_qml_hotkeys,
         dictionary_service=getattr(runtime, "dictionary_service", None),
     )
+
+    def can_restart_for_update() -> bool:
+        return (
+            workflow_service.state.phase.value == "ready"
+            and bridge.surface in {"idle", "success"}
+            and not bridge.feedbackVisible
+            and not voice_translation.active
+            and not audio_batch.running
+            and not settings.microphoneTestBusy
+            and not settings.localAsrBusy
+            and not settings.localBenchmarkBusy
+            and not settings.providerBusy
+            and not settings.dirty
+            and not settings.providerDirty
+            and not web_settings.blocks_update()
+        )
+
+    updates = QmlUpdateController(
+        automatic=loaded_config.automatic_updates,
+        can_restart=can_restart_for_update,
+        restart=app.quit,
+        parent=app,
+    )
+    settings.bindUpdates(updates)
+
+    def sync_updates():
+        updates.setAutomatic(repositories.config.load().automatic_updates)
+
+    settings.saved.connect(sync_updates)
+    settings.loaded.connect(sync_updates)
     branding_icon = _load_branding_icon()
     app.setWindowIcon(branding_icon)
     status_pill = QmlStatusPillController(
@@ -576,7 +613,9 @@ def main(argv: list[str] | None = None) -> int:
         icon=branding_icon,
         parent=app,
     )
-    shell.hotkeyTriggered.connect(bridge.handleHotkey)
+    shell.hotkeyTriggered.connect(
+        lambda action: bridge.handleHotkey(action) if not updates.installing else None
+    )
     bridge.resultRequested.connect(shell.show_window)
     workflow_window_visibility = _WorkflowWindowVisibility(bridge, shell, window)
     # Keep the coordinator strongly referenced for the lifetime of app.exec().
@@ -591,6 +630,7 @@ def main(argv: list[str] | None = None) -> int:
     _ = workflow_window_visibility, settings_window_visibility, pill_window_order
     _connect_shutdown(app, shell, runtime, voice_translation, audio_batch)
     app.aboutToQuit.connect(settings.shutdown)
+    app.aboutToQuit.connect(updates.shutdown)
 
     shell_result = _start_shell_if_available(shell)
     if shell_result is ShellStartResult.SECONDARY_INSTANCE:
@@ -600,6 +640,11 @@ def main(argv: list[str] | None = None) -> int:
         shell_result
         in (ShellStartResult.STARTED_WITHOUT_TRAY, ShellStartResult.SETUP_FAILED)
     )
+    from portable_update_windows import acknowledge_portable_update
+    from version import __version__
+
+    QTimer.singleShot(0, lambda: acknowledge_portable_update(__version__))
+    updates.start()
     return app.exec()
 
 

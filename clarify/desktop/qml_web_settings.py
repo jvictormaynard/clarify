@@ -21,6 +21,15 @@ PROPERTIES = (
     "modes",
     "autostart",
     "historyEnabled",
+    "automaticUpdates",
+    "applicationVersion",
+    "updateAvailable",
+    "updateBusy",
+    "updateInstalling",
+    "updateSupported",
+    "updateVersion",
+    "updateStatus",
+    "updateProgress",
     "historyRetentionDays",
     "microphoneDevices",
     "selectedMicrophoneId",
@@ -72,6 +81,9 @@ METHODS = frozenset(
         "setMode",
         "setAutostart",
         "setHistoryEnabled",
+        "setAutomaticUpdates",
+        "checkForUpdates",
+        "installUpdate",
         "setHistoryRetentionDays",
         "selectMicrophone",
         "refreshMicrophones",
@@ -206,6 +218,11 @@ class WebSettingsProcess(QObject):
     def _window_command(self, action):
         if self.process.state() == QProcess.ProcessState.Running:
             self.process.write((json.dumps({"window": action}) + "\n").encode())
+
+    def blocks_update(self) -> bool:
+        # Hidden WebView instances can still own local unsaved form fields.
+        # A confirmed close ends the child and permits a safe app restart.
+        return self.process.state() != QProcess.ProcessState.NotRunning
 
     def show(self) -> bool:
         path = settings_executable()

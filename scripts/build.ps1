@@ -141,8 +141,10 @@ if ($PayloadIdentity) {
 if ($SettingsExecutable) {
     & $python (Join-Path $PSScriptRoot 'qt_distribution.py') --output-dir (Split-Path $SettingsExecutable)
     if ($LASTEXITCODE -ne 0) { throw 'Qt source and notice verification failed.' }
+    & $python (Join-Path $PSScriptRoot 'portable_crypto_inventory.py') --output-dir (Split-Path $SettingsExecutable)
+    if ($LASTEXITCODE -ne 0) { throw 'Crypto attribution verification failed.' }
     $pyInstallerArgs += @('--add-binary', "${SettingsExecutable};.")
-    foreach ($noticeName in @('Clarify-settings.sbom.json', 'Clarify-settings-NOTICES.txt', 'Clarify-qt-NOTICES.txt')) {
+    foreach ($noticeName in @('Clarify-settings.sbom.json', 'Clarify-settings-NOTICES.txt', 'Clarify-qt-NOTICES.txt', 'Clarify-crypto-NOTICES.txt')) {
         $noticePath = Join-Path (Split-Path $SettingsExecutable) $noticeName
         if (-not (Test-Path -LiteralPath $noticePath -PathType Leaf)) { throw "Missing Settings inventory: $noticeName" }
         $pyInstallerArgs += @('--add-data', "${noticePath};.")

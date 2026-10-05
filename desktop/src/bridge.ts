@@ -8,6 +8,9 @@ export interface Settings {
   dirty: boolean; lastError: string;
   language: string; languages: string[]; mode: string; modes: string[];
   autostart: boolean; historyEnabled: boolean; historyRetentionDays: number | null;
+  automaticUpdates: boolean; applicationVersion: string;
+  updateAvailable: boolean; updateBusy: boolean; updateInstalling: boolean;
+  updateSupported: boolean; updateVersion: string; updateStatus: string; updateProgress: number;
   microphoneDevices: Option[]; selectedMicrophoneId: string | null;
   microphoneStatus: string; microphoneTestBusy: boolean; microphoneTestLevel: number;
   microphoneTestStatus: string; recordingControls: RecordingControls;

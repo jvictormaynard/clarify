@@ -5,6 +5,18 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-05
+
+### Added
+
+- Check for new stable Windows portable releases in the background. Show a red notification dot on the home pill's Settings button and an **Install update** action in its menu.
+- Add optional **Atualização automática** under General Settings, disabled by default. When enabled and saved, download updates in the background, wait for active work to finish and Settings to close, then install and restart Clarify.
+- Authenticate update metadata with a pinned Ed25519 key and recheck the executable's size and SHA-256 before installation. Keep the previous executable and restore it if the new version fails to start. Preserve settings, provider credentials, models, and shortcuts.
+
+### Security
+
+- Restrict automatic updates to stable canonical GitHub releases with signed metadata. Reject altered files, downgrades, unexpected download hosts, and MSI-owned installations. Keep the separate Authenticode MSI channel gated.
+
 ## [0.4.7] - 2026-10-05
 
 ### Security
@@ -251,7 +263,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.7...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/jvictormaynard/clarify/compare/v0.4.7...v0.5.0
 [0.4.7]: https://github.com/jvictormaynard/clarify/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/jvictormaynard/clarify/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/jvictormaynard/clarify/compare/v0.4.4...v0.4.5

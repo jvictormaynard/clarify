@@ -400,9 +400,10 @@ The signed installer/update contract, Azure OIDC configuration, manual
 acceptance matrix, rotation, and revocation procedure are documented in
 [Windows distribution and update security](windows-distribution.md). The
 community release workflow is the no-cost path: it publishes only an unsigned
-portable EXE, checksum, SBOM, ZIP, SoX and Qt/PySide source archives, and provenance. Do not
-publish an MSI or authenticated manifest until every signed rollout gate there
-is complete.
+portable EXE, checksum, SBOM, ZIP, SoX and Qt/PySide source archives, and provenance.
+From v0.5.0 it also publishes Ed25519 portable update metadata using the
+protected `portable-updates` environment. Do not publish an MSI or Authenticode
+CAB manifest until every signed MSI rollout gate there is complete.
 
 For a local unsigned packaging check, run `npm run build` followed by
 `npm run installer`. This creates `dist\Clarify-windows-x64.msi`; it does
@@ -428,8 +429,11 @@ not install it. The build requires a .NET SDK because
    only that tag.
 7. A community tag release builds the unsigned portable EXE, runtime-lock
    CycloneDX SBOM, checksum, ZIP, SoX and Qt/PySide source archives, and provenance
-   attestations. It publishes no MSI or update manifest.
-8. Download the published assets, verify the checksum and SBOM/ZIP contents,
+   attestations, plus portable update metadata and its detached Ed25519
+   signature. It publishes no MSI or Authenticode CAB manifest. The signing
+   secret must match the public key packaged in the source policy.
+8. Download the published assets, verify the checksum, Ed25519 metadata
+   signature/source SHA, and SBOM/ZIP contents,
    inspect attestations, and confirm that `/releases/latest` resolves to the
    new version.
 9. Use the signed workflow manually only after Azure signing and the manual

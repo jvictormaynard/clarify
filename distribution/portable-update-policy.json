@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "repository": "jvictormaynard/clarify",
+  "channel": "stable",
+  "algorithm": "Ed25519",
+  "public_key": "mI2ZfiC7YMTUX2zXnIuZSMPdQ2+FF/dvCQ1o6WYPQj0=",
+  "maximum_download_bytes": 268435456
+}

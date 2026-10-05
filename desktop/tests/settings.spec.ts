@@ -31,6 +31,28 @@ test.beforeEach(async ({ page }) => {
 });
 test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
 
+test("automatic updates are optional and follow save and discard", async ({ page }) => {
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  const toggle = page.getByRole("switch", { name: "Atualização automática", exact: true });
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  await expect(toggle).toBeChecked();
+  await page.getByRole("button", { name: "Descartar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Descartar", exact: true }).click();
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
+  await page.getByRole("button", { name: "Ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await expect(toggle).toBeChecked();
+  await expect(page.getByText(/^Versão \d+\.\d+\.\d+$/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Verificar atualizações" })).toBeDisabled();
+  await page.setViewportSize({ width: 640, height: 520 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.screenshot({ path: "test-results/settings-updates.png", animations: "disabled" });
+});
+
 test("dictionary supports custom phrases, search, save and discard", async ({ page }) => {
   await page.getByRole("button", { name: "Dicionário", exact: true }).click();
   await page.getByRole("textbox", { name: "Novo termo", exact: true }).fill("Railway");

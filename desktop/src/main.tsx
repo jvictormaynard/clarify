@@ -169,6 +169,12 @@ function App() {
         {page === "general" && <>
           <section><h2>Preferências</h2><Row title="Idioma do texto"><Picker label="Idioma" value={state.language} options={state.languages.map(id => ({ id, label: languageNames[id] || id }))} onChange={v => void run("setLanguage", v)} /></Row>
             <Toggle title="Iniciar com o Windows" hint="Deixe o Clarify pronto quando você precisar." checked={state.autostart} onChange={v => void run("setAutostart", v)} /></section>
+          <section><h2>Atualizações</h2>
+            <Toggle title="Atualização automática" hint="Baixe e instale novas versões em segundo plano. O Clarify reinicia após concluir suas tarefas e fechar os Settings." checked={state.automaticUpdates} onChange={v => void run("setAutomaticUpdates", v)} />
+            <Row title={`Versão ${state.applicationVersion}`} hint={state.updateStatus || "Com a atualização automática desativada, o menu do Clarify avisa quando há uma nova versão."}>
+              <button className="control" disabled={!state.updateSupported || state.updateBusy} onClick={() => void run("checkForUpdates")}>Verificar atualizações</button>
+            </Row>
+          </section>
           <section><h2>Privacidade</h2><Toggle title="Salvar histórico" hint="Mantenha suas transcrições neste computador." checked={state.historyEnabled} onChange={v => void run("setHistoryEnabled", v)} />
             {state.historyEnabled && <Row title="Retenção do histórico" hint="Em dias. Deixe vazio para não definir um prazo."><input aria-label="Retenção do histórico" className="control" type="number" min="0" max="3650" value={retention} onChange={e => setRetention(e.target.value)} /></Row>}</section>
         </>}

@@ -314,6 +314,7 @@ class QmlSettingsController(QObject):
     """
 
     configChanged = Signal()
+    updatesChanged = Signal()
     routeChanged = Signal()
     selectedScopeChanged = Signal()
     dirtyChanged = Signal()
@@ -347,6 +348,7 @@ class QmlSettingsController(QObject):
         dictionary_service: DictionarySnippetService | None = None,
     ) -> None:
         super().__init__(parent)
+        self._updates = None
         self.repositories = repositories
         self._config_repository: ConfigRepository = repositories.config
         self._dictionary_service = dictionary_service or DictionarySnippetService(
@@ -636,6 +638,69 @@ class QmlSettingsController(QObject):
     @historyEnabled.setter
     def historyEnabled(self, value: bool) -> None:
         self.setHistoryEnabled(value)
+
+    def bindUpdates(self, updates) -> None:
+        """Bind the composition-owned updater; draft edits have no side effects."""
+        self._updates = updates
+        updates.changed.connect(self.updatesChanged)
+        self.updatesChanged.emit()
+
+    @Property(bool, notify=configChanged)
+    def automaticUpdates(self) -> bool:
+        return self._config.automatic_updates
+
+    @Property(str, constant=True)
+    def applicationVersion(self) -> str:
+        from version import __version__
+
+        return __version__
+
+    @Property(bool, notify=updatesChanged)
+    def updateAvailable(self) -> bool:
+        return self._updates is not None and self._updates.available
+
+    @Property(bool, notify=updatesChanged)
+    def updateBusy(self) -> bool:
+        return self._updates is not None and self._updates.busy
+
+    @Property(bool, notify=updatesChanged)
+    def updateInstalling(self) -> bool:
+        return self._updates is not None and self._updates.installing
+
+    @Property(bool, notify=updatesChanged)
+    def updateSupported(self) -> bool:
+        return self._updates is not None and self._updates.supported
+
+    @Property(str, notify=updatesChanged)
+    def updateVersion(self) -> str:
+        return self._updates.version if self._updates is not None else ""
+
+    @Property(str, notify=updatesChanged)
+    def updateStatus(self) -> str:
+        return (
+            self._updates.status
+            if self._updates is not None
+            else "A atualização requer a versão portátil para Windows."
+        )
+
+    @Property(int, notify=updatesChanged)
+    def updateProgress(self) -> int:
+        return self._updates.progress if self._updates is not None else 0
+
+    @Slot(bool, result=bool)
+    def setAutomaticUpdates(self, value: bool) -> bool:
+        if not isinstance(value, bool):
+            self._set_error(ValueError("A opção de atualização deve ser um booleano."))
+            return False
+        return self._update_config(replace(self._config, automatic_updates=value))
+
+    @Slot(result=bool)
+    def checkForUpdates(self) -> bool:
+        return self._updates is not None and self._updates.check()
+
+    @Slot(result=bool)
+    def installUpdate(self) -> bool:
+        return self._updates is not None and self._updates.install()
 
     @Property("QVariant", notify=configChanged)
     def historyRetentionDays(self) -> int | None:

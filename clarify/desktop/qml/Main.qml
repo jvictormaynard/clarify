@@ -24,6 +24,11 @@ ApplicationWindow {
     minimumHeight: theme.windowHeight * theme.uiScale
     property bool passivePresentation: false
     property bool presentationVisible: false
+    Binding {
+        target: root.contentItem
+        property: "enabled"
+        value: settings.updateInstalling !== true
+    }
     onPresentationVisibleChanged: {
         // Tray/visibility shortcuts reopen the toolbar, not a settings placeholder.
         if (presentationVisible && workflow.surface === "settings")
@@ -190,6 +195,15 @@ ApplicationWindow {
             onTriggered: quickMenu.runAfterClose(function() {
                 workflow.openSettings()
             })
+        }
+        QuickMenuItem {
+            objectName: "quickUpdateItem"
+            visualTheme: root.visualTheme
+            visible: settings.updateAvailable === true
+            enabled: !settings.updateBusy
+            text: "Install update " + settings.updateVersion
+            icon.source: "icons/refresh.svg"
+            onTriggered: quickMenu.runAfterClose(function() { settings.installUpdate() })
         }
     }
 
@@ -372,6 +386,18 @@ ApplicationWindow {
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
                             Accessible.name: "Open quick actions"
+                            Accessible.description: settings.updateAvailable ? "A new version is available" : ""
+                            Rectangle {
+                                objectName: "updateNotification"
+                                visible: settings.updateAvailable === true
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: "#ef4444"
+                                anchors.top: parent.top
+                                anchors.right: parent.right
+                                anchors.margins: 2
+                            }
                             onClicked: {
                                 if (quickMenu.visible) {
                                     quickMenu.close()

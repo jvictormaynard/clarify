@@ -86,6 +86,9 @@ jobs:
           tests/test_pyside6_qt_shell.py
           scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py
           tests/test_qt_distribution.py tests/test_qt_package_policy.py
+          portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py
+          scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py
+          tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py
 
       - name: Run Ruff format check
         if: matrix.os == 'ubuntu-latest'
@@ -99,6 +102,9 @@ jobs:
           tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py
           scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py
           tests/test_qt_distribution.py tests/test_qt_package_policy.py
+          portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py
+          scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py
+          tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py
 
       - name: Run targeted type checks
         if: matrix.os == 'ubuntu-latest'
@@ -173,6 +179,9 @@ jobs:
           if ($baselineHash -eq $currentHash) {
             throw "Baseline and current executable payloads must be byte-distinct."
           }
+
+      - name: Verify frozen portable replacement and recovery
+        run: python scripts/test_portable_update.py
 
       - name: Build baseline and current installers
         shell: pwsh
