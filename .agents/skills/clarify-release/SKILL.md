@@ -118,8 +118,11 @@ verified SoX source archive, and publish the GitHub release.
 
 When sponsored signing is unavailable, use the tag-triggered
 `Community Release` workflow instead. It publishes only the unsigned portable
-EXE, checksum, runtime SBOM, ZIP, SoX source archive, and provenance
-attestations. It must not publish an MSI or authenticated update manifest.
+EXE, checksum, runtime SBOM, ZIP, Qt and SoX source archives, and provenance
+attestations. From v0.5.0 it also publishes Ed25519-authenticated portable
+metadata and its signature, as specified in the release contract. Verify these
+against the bundled public key, executable hash, version, and source SHA.
+It must not publish an MSI or an Authenticode CAB update manifest.
 
 Do not create a second manual release while the workflow is running.
 
