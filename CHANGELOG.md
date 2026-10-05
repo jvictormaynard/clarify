@@ -5,6 +5,17 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-10-05
+
+### Security
+
+- Update the bundled HTTP transport to urllib3 2.8.0 to fix HTTPS proxy TLS policy separation, unbounded chunk headers, and a deflate streaming loop.
+- Update the locked wheel and Tauri CLI build tools with archive-handling and Windows command-execution fixes.
+
+### Changed
+
+- Update Vite, CycloneDX, and Ruff with build, schema path, and validation fixes. Keep the native Settings runtime and provider behavior unchanged.
+
 ## [0.4.6] - 2026-09-30
 
 ### Changed
@@ -240,7 +251,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.6...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.4.7...HEAD
+[0.4.7]: https://github.com/jvictormaynard/clarify/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/jvictormaynard/clarify/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/jvictormaynard/clarify/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/jvictormaynard/clarify/compare/v0.4.3...v0.4.4
