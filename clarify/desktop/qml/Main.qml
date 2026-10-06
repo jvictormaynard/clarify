@@ -1143,6 +1143,20 @@ ApplicationWindow {
                 id: translationPickerPage
                 objectName: "translationPickerPage"
                 implicitHeight: translationPickerContent.implicitHeight + 20
+                function focusFirstLanguage() {
+                    if (!visible || workflow.surface !== "translation_picker") return
+                    const firstOption = translationOptionsRepeater.itemAt(0)
+                    if (firstOption) firstOption.forceActiveFocus(Qt.TabFocusReason)
+                }
+                onVisibleChanged: if (visible) Qt.callLater(focusFirstLanguage)
+
+                Connections {
+                    target: workflow
+                    function onSurfaceChanged() {
+                        if (workflow.surface === "translation_picker")
+                            Qt.callLater(translationPickerPage.focusFirstLanguage)
+                    }
+                }
 
                 DragHandler {
                     objectName: "translationPickerWindowDragHandler"
@@ -1200,11 +1214,13 @@ ApplicationWindow {
                         spacing: 4
 
                         Repeater {
+                            id: translationOptionsRepeater
                             model: workflow.translationOptions
 
                             delegate: Button {
                                 id: languageOption
                                 required property var modelData
+                                required property int index
                                 objectName: "translationOption_" + modelData.code
                                 text: modelData.label
                                 Layout.fillWidth: true
@@ -1216,6 +1232,18 @@ ApplicationWindow {
                                 bottomPadding: 0
                                 Accessible.name: "Translate to " + modelData.label
                                 onClicked: workflow.chooseTranslation(modelData.code)
+                                KeyNavigation.up: translationOptionsRepeater.itemAt(
+                                    (index + translationOptionsRepeater.count - 1) % translationOptionsRepeater.count)
+                                KeyNavigation.down: translationOptionsRepeater.itemAt(
+                                    (index + 1) % translationOptionsRepeater.count)
+                                Keys.onReturnPressed: event => {
+                                    if (!event.isAutoRepeat) languageOption.clicked()
+                                    event.accepted = true
+                                }
+                                Keys.onEnterPressed: event => {
+                                    if (!event.isAutoRepeat) languageOption.clicked()
+                                    event.accepted = true
+                                }
 
                                 contentItem: RowLayout {
                                     spacing: 10

@@ -5,6 +5,12 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-06
+
+### Fixed
+
+- Focus the first language when opening the translation picker. Use Up and Down to move through the languages, including from either end of the list, and Enter to select the focused language.
+
 ## [0.5.0] - 2026-10-05
 
 ### Added
@@ -263,7 +269,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/jvictormaynard/clarify/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/jvictormaynard/clarify/compare/v0.4.7...v0.5.0
 [0.4.7]: https://github.com/jvictormaynard/clarify/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/jvictormaynard/clarify/compare/v0.4.5...v0.4.6

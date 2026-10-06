@@ -472,6 +472,51 @@ def main():
                 image = window.grabWindow()
                 assert 263 <= window.width() <= 265, window.width()
                 assert 250 <= window.height() <= 310, window.height()
+                first_option = visible_item("translationOption_en")
+                assert first_option.property("activeFocus"), (
+                    "Opening the picker must focus the first language"
+                )
+                assert first_option.property("visualFocus"), (
+                    "The initial keyboard choice must be visible"
+                )
+                with patch.object(service, "dispatch", create=True) as dispatch:
+                    for key, expected in (
+                        (Qt.Key.Key_Down, "pt"),
+                        (Qt.Key.Key_Down, "es"),
+                        (Qt.Key.Key_Up, "pt"),
+                        (Qt.Key.Key_Up, "en"),
+                        (Qt.Key.Key_Up, "ru"),
+                        (Qt.Key.Key_Down, "en"),
+                    ):
+                        QTest.keyClick(window, key)
+                        app.processEvents()
+                        option = visible_item("translationOption_" + expected)
+                        assert option.property("activeFocus"), expected
+                        assert option.property("visualFocus"), expected
+                    dispatch.assert_not_called()
+                    app.sendEvent(
+                        window,
+                        QKeyEvent(
+                            QEvent.Type.KeyPress,
+                            Qt.Key.Key_Return,
+                            Qt.KeyboardModifier.NoModifier,
+                            "\r",
+                            True,
+                        ),
+                    )
+                    dispatch.assert_not_called()
+                    # Both the main Enter key and keypad Enter select each row once.
+                    for key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                        for code in languages:
+                            dispatch.reset_mock()
+                            QTest.keyClick(window, key)
+                            app.processEvents()
+                            dispatch.assert_called_once()
+                            command = dispatch.call_args.args[0]
+                            assert type(command).__name__ == "ChooseTranslationLanguage"
+                            assert command.language == code, (key, code)
+                            QTest.keyClick(window, Qt.Key.Key_Down)
+                            app.processEvents()
                 close_button = visible_item("translationPickerCloseButton")
                 close_position = close_button.mapToScene(QPointF(0, 0))
                 assert close_position.x() > window.width() - 60
@@ -523,6 +568,13 @@ def main():
                         command = dispatch.call_args.args[0]
                         assert type(command).__name__ == "ChooseTranslationLanguage"
                         assert command.language == code
+                with patch.object(service, "dispatch", create=True) as dispatch:
+                    QTest.keyClick(window, Qt.Key.Key_Up)
+                    QTest.keyClick(window, Qt.Key.Key_Return)
+                    dispatch.assert_called_once()
+                    assert dispatch.call_args.args[0].language == "de", (
+                        "Arrow navigation must continue from the mouse-focused row"
+                    )
                 with patch.object(service, "dispatch", create=True) as dispatch:
                     click(close_button)
                     assert (
@@ -589,6 +641,9 @@ def main():
                     settle()
                     assert window.isVisible(), "Hidden home pill must allow the picker"
                     assert window.property("presentationVisible")
+                    assert visible_item("translationOption_en").property(
+                        "activeFocus"
+                    ), "Reopening the picker must reset keyboard focus"
                     picker_size = (window.width(), window.height())
                     picker_exit_frames.clear()
                     window.afterAnimating.connect(observe_picker_exit)
@@ -602,7 +657,10 @@ def main():
                                 WorkflowPhase.TRANSLATING
                             ),
                         ) as dispatch:
-                            click(visible_item("translationOption_de"))
+                            for _ in range(3):
+                                QTest.keyClick(window, Qt.Key.Key_Down)
+                            QTest.keyClick(window, Qt.Key.Key_Return)
+                            dispatch.assert_called_once()
                             assert dispatch.call_args.args[0].language == "de"
                         publish_translation(WorkflowPhase.PUBLISHING)
                         publish_translation(WorkflowPhase.COMPLETED)
@@ -663,12 +721,17 @@ def main():
                 settle()
                 publish_translation(WorkflowPhase.TRANSLATION_PICKER)
                 settle()
+                # Closing and reopening during the fade keeps the same QML page.
+                close_button.forceActiveFocus(Qt.FocusReason.TabFocusReason)
                 bridge._on_workflow_state(WorkflowState())
                 publish_translation(WorkflowPhase.PREPARING_TRANSLATION)
                 publish_translation(WorkflowPhase.TRANSLATION_PICKER)
                 settle()
                 assert window.isVisible()
                 assert window.property("displayedSurface") == "translation_picker"
+                assert visible_item("translationOption_en").property("activeFocus"), (
+                    "A picker reopened during the fade must receive keyboard focus"
+                )
                 bridge._on_workflow_state(WorkflowState())
                 settle()
                 assert not window.isVisible()
@@ -697,7 +760,7 @@ def main():
                 controller.shutdown()
                 qInstallMessageHandler(None)
                 print(
-                    "PASS: compact translation picker; five vertical flags and choices; close, Escape, pill resize, hidden home-pill restoration and no home-pill frames during fade-out"
+                    "PASS: compact translation picker; keyboard focus, arrows, Enter and keypad Enter; five vertical flags and choices; close, Escape, pill resize, hidden home-pill restoration and no home-pill frames during fade-out"
                 )
                 return
             shot("home")
