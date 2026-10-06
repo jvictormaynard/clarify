@@ -185,6 +185,8 @@ while holding the shortcut. The pill microphone button always uses toggle.
 Cancellation feedback and Undo appear inside the pill, not in another window.
 While choosing a translation language, `Esc` closes the picker even if the
 source application keeps keyboard focus.
+The picker focuses the first language when it opens. Use `↑` and `↓` to move
+through the languages and `Enter` to select. Navigation wraps at either end.
 
 The floating bar remains available through the Windows system tray. Click the
 tray icon to restore it, or right-click the icon to open Clarify or quit.

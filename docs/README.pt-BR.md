@@ -142,6 +142,8 @@ pressionado. O botão de microfone da pill continua funcionando por clique.
 O aviso de cancelamento e a opção Desfazer aparecem na própria pill.
 Durante a escolha do idioma da tradução, `Esc` fecha o seletor mesmo quando o
 foco do teclado permanece no aplicativo de origem.
+O seletor dá foco ao primeiro idioma ao abrir. Use `↑` e `↓` para navegar pelos
+idiomas e `Enter` para selecionar. A navegação continua ao chegar ao fim da lista.
 Não há janela automática de resultado. Quando a colagem não é segura, o texto
 fica na área de transferência. O menu da pill permite colar a última
 transcrição da sessão.
