@@ -305,8 +305,8 @@ sync, or high-volume requirement.
 
 The production Qt runtime creates a profile-relative store and subscribes
 `QtHistoryRecorder` to terminal workflow states. The recorder queues writes
-outside the UI thread and records only
-when local history is enabled. React Settings and its QML controller expose
+outside the UI thread and records only when local history is enabled.
+React Settings and its QML controller expose
 the opt-in and retention controls. Production Settings do not yet expose a
 history browser, copy, export, delete-all, or retry controls; export and deletion
 are storage APIs, and the old widget history page is a legacy surface.

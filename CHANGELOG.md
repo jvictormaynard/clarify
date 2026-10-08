@@ -5,6 +5,13 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-10-08
+
+### Changed
+
+- Separate dictation, text rewrite, and translation provider policy from the Qt runtime. Keep existing prompts, route selection, cancellation, dictionary expansion, and original-transcript recovery, with direct tests that run without a desktop framework.
+- Document the current local-history integration and distinguish its storage APIs from the controls available in production Settings.
+
 ## [0.5.2] - 2026-10-08
 
 ### Changed
@@ -279,7 +286,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/jvictormaynard/clarify/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/jvictormaynard/clarify/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/jvictormaynard/clarify/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/jvictormaynard/clarify/compare/v0.4.7...v0.5.0
