@@ -132,8 +132,26 @@ surface. It keeps an immutable typed draft, changes one scope at a time, and
 delegates Apply, Reset, and Test to `LocalConfigRepository` so validation and
 atomic persistence remain outside the Qt event loop. The controller exposes only redacted
 effective-route summaries (provider, model, endpoint, and local/cloud state).
-`AppWorkflowProvider` resolves the route for each operation, including the
-rewrite and translation-specific prompt and endpoint.
+`WorkflowProviderService` resolves the route for each operation, including the
+rewrite and translation-specific prompt and endpoint. The legacy
+`AppWorkflowProvider` remains a compatibility adapter in `app.py`.
+
+### `workflow_provider.py`
+
+`WorkflowProviderService` owns provider policy for dictation, selected-text
+rewrite, and selected-text translation. It constructs typed requests, applies
+workflow prompts and dictionary context, preserves raw/refined provenance,
+and retains the exact raw transcript when optional refinement fails.
+Cancellation still takes precedence over recovery. It delegates HTTP, retries,
+and local inference to the existing provider registry.
+
+The service accepts a read-only configuration protocol, a dictionary service,
+and an optional registry. It imports no desktop framework and does not own
+capture, worker scheduling, clipboard publication, or profile persistence.
+`QtProviderGateway` composes this policy with Qt-owned recording preparation;
+the recording gateway still owns session exclusivity, stop, and cleanup.
+This boundary allows provider policy to be tested without starting Qt or a
+microphone. It changes no routes, persisted schemas, prompts, or user controls.
 
 ### Dedicated voice translation (`voice_translation.py`, `voice_translation_runtime.py`)
 
@@ -273,7 +291,7 @@ cleanup. Settings integration, hot-plug handling, audio cues, and packaged
 Windows acceptance remain follow-up work so the existing `Recorder` and
 `RecordingSession` cleanup/cancellation contract is not duplicated here.
 
-### `history_store.py` (typed groundwork, not user-facing)
+### `history_store.py` and `QtHistoryRecorder`
 
 Defines the opt-in, local-only transcription history boundary for issue #53.
 `HistoryRecord` accepts raw/refined text, workflow, timestamp, provider/model
@@ -283,9 +301,16 @@ uses a versioned JSON document with atomic same-directory writes, recovers an
 intact interrupted snapshot when the primary is missing, enforces configurable
 retention, supports delete-all, and exports TXT, Markdown, or JSON. The first
 version intentionally avoids SQLite because the staged boundary has no search,
-sync, or high-volume requirement. Settings/UI wiring, copy/retry actions,
-per-user path selection, and packaged Windows acceptance remain follow-up work;
-this module must not be read as a product-level history claim.
+sync, or high-volume requirement.
+
+The production Qt runtime creates a profile-relative store and subscribes
+`QtHistoryRecorder` to terminal workflow states. The recorder queues writes
+outside the UI thread and records only
+when local history is enabled. React Settings and its QML controller expose
+the opt-in and retention controls. Production Settings do not yet expose a
+history browser, copy, export, delete-all, or retry controls; export and deletion
+are storage APIs, and the old widget history page is a legacy surface.
+See [the history boundary](history.md) for privacy and acceptance limits.
 
 ### `desktop_state.py`
 
