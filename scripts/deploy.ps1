@@ -224,6 +224,7 @@ foreach ($backendModule in @(
     "windows_clipboard.py",
     "windows_hotkeys.py",
     "workflow_config.py",
+    "workflow_provider.py",
     "workflow_settings.py",
     "workflows.py"
 )) {
