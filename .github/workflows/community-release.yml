@@ -63,6 +63,7 @@ jobs:
         run: >-
           ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py
           clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
+          workflow_provider.py tests/test_workflow_provider.py
           clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
           clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
           clarify/desktop/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
@@ -78,6 +79,7 @@ jobs:
           ruff format --check scripts/dependency_audit.py tests/test_dependency_lock.py
           tests/test_repository.py clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py
           clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py
+          workflow_provider.py tests/test_workflow_provider.py
           clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py
           clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py
           tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py

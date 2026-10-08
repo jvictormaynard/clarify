@@ -36,6 +36,7 @@ class RepositorySafetyTests(unittest.TestCase):
         )
         self.assertIn('Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File', content)
         self.assertIn('Join-Path $repoQmlPython "qt_shell.py"', content)
+        self.assertIn('"workflow_provider.py",', content)
         self.assertNotIn('Join-Path $repoRoot "*.py"', content)
         self.assertIn('$repoQml = Join-Path $repoQmlPython "qml"', content)
         self.assertIn("Copy-Item $repoQml $qml -Recurse -Force", content)

@@ -1,12 +1,16 @@
 # Local transcription history boundary
 
 This document describes the local history boundary and its current desktop
-integration for issue #53. The Settings window now exposes a reversible,
-disabled-by-default toggle, retention policy, refresh, export, and delete-all
-actions. Successful workflow results and terminal error summaries are written
-only after the workflow publishes its terminal state. This remains a `Part of
-#53` implementation: packaged Windows acceptance is still a separate manual
-gate.
+integration for issue #53. Production React Settings expose a reversible,
+disabled-by-default toggle and retention policy. `QtHistoryRecorder` subscribes
+to terminal workflow states and queues successful results or safe error
+summaries for storage outside the UI thread. It respects the current opt-in
+before each write.
+
+The storage API supports reads, export, and delete-all. Production Settings do
+not yet expose a history browser or these actions. The history page in the old
+widget frontend is a legacy surface, not a production Settings capability.
+Packaged Windows acceptance remains a separate manual gate.
 
 ## Privacy contract
 
@@ -79,12 +83,11 @@ The export destination must differ from the history file. Export is unavailable
 while the store is disabled, and neither export nor persistence includes
 telemetry or provider credentials.
 
-The desktop page offers separate **Copy source** and **Copy result** actions
-when the corresponding field exists. It deliberately does not offer a live
-retry action yet: the current workflow contract does not retain audio or a
-focus-safe source target after completion, so silently replaying a record would
-be unsafe. The page labels this boundary rather than pretending that retry is
-available.
+The legacy widget page offers separate **Copy source** and **Copy result**
+actions when the corresponding field exists. These actions are not present in
+production Settings. Neither surface provides history retry: the workflow
+contract does not retain audio or a focus-safe source target after completion.
+A retry feature requires an explicit retained-source contract.
 
 Prompt-mode dictation through a non-multimodal transcription provider keeps
 the raw provider transcript in `raw_text`, the second-route output in
@@ -100,7 +103,9 @@ closed instead of writing transcripts to the production profile.
 
 ## Follow-up needed for #53
 
-Packaged Windows acceptance remains: verify the installed Settings path,
-restart recovery, retention/delete-all, export destinations, and that usage
-statistics contain no transcript text. A future issue can add safe retry only
-after the workflow layer defines an explicit retained source contract.
+A production history browser still needs explicit copy, export, and delete
+controls over the existing storage API. Packaged Windows acceptance must verify
+the opt-in and retention controls, terminal-result persistence, restart recovery,
+and that usage statistics contain no transcript text. Export and delete-all UI
+acceptance applies when those controls are implemented. Safe retry requires an
+explicit retained-source contract.

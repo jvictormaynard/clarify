@@ -1,3 +1,3 @@
 """Single source of truth for the packaged Clarify version."""
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"

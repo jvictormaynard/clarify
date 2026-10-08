@@ -78,6 +78,7 @@ jobs:
         run: >-
           ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py scripts/format_staged.py
           clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
+          workflow_provider.py tests/test_workflow_provider.py
           clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
           clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
           clarify/desktop/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
@@ -95,6 +96,7 @@ jobs:
         run: >-
           ruff format --check scripts/dependency_audit.py scripts/format_staged.py tests/test_repository.py
           clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
+          workflow_provider.py tests/test_workflow_provider.py
           clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
           clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
           clarify/desktop/qt_shell.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py
@@ -126,7 +128,7 @@ jobs:
           voice_translation.py
           secret_store.py update_security.py version.py windows_clipboard.py
           windows_hotkeys.py provider_types.py provider_adapters.py provider_http.py
-          provider_registry.py scripts/format_staged.py scripts/create_release_manifest.py tests
+          provider_registry.py workflow_provider.py scripts/format_staged.py scripts/create_release_manifest.py tests
           local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py
 
       - name: Validate QML assets
