@@ -31,7 +31,41 @@ test.beforeEach(async ({ page }) => {
 });
 test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
 
+test("editable fields expose their guidance to assistive technology", async ({ page }) => {
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  const history = page.getByRole("switch", { name: "Salvar histórico", exact: true });
+  await expect(history).toHaveAccessibleDescription("Mantenha suas transcrições neste computador.");
+  if (!(await history.isChecked())) await history.click();
+  await expect(history).toBeChecked();
+  const retention = page.getByRole("spinbutton", { name: "Retenção do histórico", exact: true });
+  await expect(retention).toHaveAccessibleDescription("Em dias. Deixe vazio para não definir um prazo.");
+  await page.getByText("Retenção do histórico", { exact: true }).click();
+  await expect(retention).toBeFocused();
+});
+
+test("instruction placeholders meet normal-text contrast", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  const contrast = await page.getByRole("textbox", { name: "Instruções", exact: true }).evaluate(element => {
+    const luminance = (color: string) => {
+      const values = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => {
+        const channel = value / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+      });
+      return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
+    };
+    const foreground = luminance(getComputedStyle(element, "::placeholder").color);
+    const background = luminance(getComputedStyle(element).backgroundColor);
+    return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+  });
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
+});
+
 test("automatic updates are optional and follow save and discard", async ({ page }) => {
+  const version = await page.evaluate(async () => {
+    const state = await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] });
+    return state.applicationVersion;
+  });
+  expect(version).toMatch(/^\d+\.\d+\.\d+$/);
   await page.getByRole("button", { name: "Geral", exact: true }).click();
   const toggle = page.getByRole("switch", { name: "Atualização automática", exact: true });
   await expect(toggle).not.toBeChecked();
@@ -46,7 +80,7 @@ test("automatic updates are optional and follow save and discard", async ({ page
   await page.getByRole("button", { name: "Ditado", exact: true }).click();
   await page.getByRole("button", { name: "Geral", exact: true }).click();
   await expect(toggle).toBeChecked();
-  await expect(page.getByText(/^Versão \d+\.\d+\.\d+$/)).toBeVisible();
+  await expect(page.getByText(`Versão ${version}`, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Verificar atualizações" })).toBeDisabled();
   await page.setViewportSize({ width: 640, height: 520 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
@@ -108,6 +142,8 @@ test("integrated titlebar stays compact and close preserves unsaved changes", as
 });
 
 test("page headings scroll with content on every settings tab", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
   await page.setViewportSize({ width: 640, height: 520 });
   for (const name of ["Ditado", "Texto", "Atalhos", "Modelos e serviços", "Geral"]) {
     await page.getByRole("button", { name, exact: true }).click();
@@ -123,6 +159,7 @@ test("page headings scroll with content on every settings tab", async ({ page })
     }
     await expect(page.getByRole("button", { name: "Fechar configurações", exact: true })).toBeInViewport();
   }
+  expect(consoleErrors).toEqual([]);
 });
 
 test("scroll boundaries cannot move the window chrome or sidebar", async ({ page }) => {

@@ -5,6 +5,48 @@ Components follow the composition approach used by shadcn/ui and are maintained
 here without a shadcn runtime dependency. Settings use the web UI;
 the recording engine and pill remain in Python/Qt.
 
+## Source map
+
+```text
+src/
+  main.tsx                    React entrypoint
+  app.tsx                     Window layout, navigation and page selection
+  components/                 Reusable controls and shared Settings views
+  pages/                      General, Dictation, Text, Dictionary, Shortcuts, Models
+  settings/
+    bridge.ts                 Typed commands and serialized Settings state
+    use-settings.ts           Drafts, operations, save/discard and navigation
+    use-settings-window.ts    Native close requests and window lifecycle
+    recording.ts              Recording draft conversion and validation
+    settings-dialogs.tsx      Confirmation and shortcut dialogs
+    navigation.ts             Page IDs, labels and icons
+  styles/
+    tokens.css                Colors, type, spacing, radius and motion values
+    base.css                  Document defaults
+    components.css            Common control states and dialogs
+    pages.css                 Feature-specific layouts
+    layout.css                Window layout and responsive overrides
+```
+
+Add a page under `pages/`. Use the controls in `components/ui.tsx`:
+`Button`, `Field`, `Input`, `TextArea`, `Picker`, `Toggle`, `Row`, `Section`, and
+`Confirm`. `Field` owns the input label and help-text association. `Toggle`
+provides the same association for switches. Radix imports belong in the common
+controls, so page code does not duplicate their behavior or class names.
+
+Put multi-command operations in `use-settings.ts`. Its operation boundary owns
+busy state, errors and success updates. Save and navigation share the workflow
+draft staging operation. Native close handling has its own hook. Command argument
+tuples in `bridge.ts` check frontend callers; the Python allowlist remains the
+runtime authority. Keep providers, persisted configuration and credentials in
+their existing Python owners.
+
+Use `styles/tokens.css` for shared values and common theme roles. Keep values
+specific to one component with that component's styles. Keep feature geometry in
+`pages.css` and window geometry in `layout.css`. The Qt/QML pill retains its
+existing theme and behavior. Settings tests cover help-text associations,
+placeholder contrast, keyboard selection, drafts, persistence and window geometry.
+
 The Python engine remains the sole owner of configuration, secrets, audio,
 shortcuts and clipboard delivery. `clarify/desktop/qml_web_settings.py` defines a
 small allowlisted protocol over QProcess stdin/stdout. Saved API keys are not

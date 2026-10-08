@@ -1,0 +1,152 @@
+.mic-test {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: 14px 0 5px;
+}
+
+.wave {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  flex: 1;
+  max-width: 235px;
+}
+
+.wave i {
+  display: block;
+  width: 3px;
+  min-height: 3px;
+  border-radius: 4px;
+  background: #a2afa0;
+  transition: height var(--motion-fast);
+}
+
+.segmented {
+  display: flex;
+  gap: 3px;
+  background: #1c1c1a;
+  padding: var(--space-1);
+  border-radius: var(--radius-segmented);
+  margin: var(--space-3) 0 7px;
+  width: fit-content;
+}
+
+.segmented button {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: var(--space-2) 15px;
+  color: var(--color-text-subtle);
+  font-size: var(--text-sm);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: #343430;
+  color: var(--color-text-bright);
+}
+
+.installation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: 17px 0 var(--space-3);
+}
+
+.installation-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-label);
+}
+
+.installation-status svg {
+  color: #b9ccac;
+}
+
+.service-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  margin: var(--space-3) 0 6px;
+}
+
+.shortcut {
+  font-family: ui-monospace, monospace;
+  font-size: var(--text-sm);
+  width: auto;
+  float: right;
+  min-width: 120px;
+}
+
+.settings-error {
+  margin: 0 0 var(--space-5);
+}
+
+.dictionary-add,
+.dictionary-line,
+.dictionary-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dictionary-add {
+  margin: var(--space-5) 0;
+}
+
+.dictionary-add > .control,
+.dictionary-term {
+  flex: 1;
+  min-width: 0;
+}
+
+.dictionary-search {
+  margin: var(--space-6) 0 var(--space-2);
+  color: #94948f;
+}
+
+.dictionary-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  padding: 10px 0;
+  font: inherit;
+}
+
+.dictionary-entry {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-subtle-border);
+}
+
+.dictionary-term:not(:focus) {
+  background: transparent;
+  border-color: transparent;
+}
+
+.dictionary-entry details {
+  margin: 0 0 0 var(--space-3);
+}
+
+.dictionary-entry summary {
+  font-size: var(--text-sm);
+}
+
+.dictionary-entry details > .control {
+  margin: 5px 0;
+}
+
+.dictionary-empty {
+  padding: var(--space-6) 0;
+}
+
+.dictionary-help {
+  margin-top: var(--space-6);
+}
