@@ -5,6 +5,16 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-08
+
+### Changed
+
+- Organize Settings into focused pages, reusable controls, shared draft operations, and separate style files. Add a source map for contributors and typed frontend command arguments. Preserve the existing pill, recording engine, and portable update behavior.
+
+### Fixed
+
+- Associate Settings field labels and help text with their controls, improve instruction placeholder contrast, and avoid duplicate model requirement entries.
+
 ## [0.5.1] - 2026-10-06
 
 ### Fixed
@@ -269,7 +279,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/jvictormaynard/clarify/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/jvictormaynard/clarify/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/jvictormaynard/clarify/compare/v0.4.7...v0.5.0
 [0.4.7]: https://github.com/jvictormaynard/clarify/compare/v0.4.6...v0.4.7

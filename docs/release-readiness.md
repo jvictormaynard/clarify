@@ -84,7 +84,7 @@ as a side effect of local build validation.
 | Settings UX | `desktop/src/`, `desktop/tests/` | A keyboard or layout regression with a failing test and a real screenshot |
 | Localization | React labels and QML catalogs | Inventory missing React translations before claiming full locale support |
 | Dictation | `provider_types.py`, `provider_adapters.py`, `local_asr.py` | A bounded provider contract test using synthetic input |
-| Vocabulary | `dictionary_snippets.py`, `desktop/src/dictionary.tsx` | A validation or context-limit case with ASR/refinement coverage |
+| Vocabulary | `dictionary_snippets.py`, `desktop/src/pages/dictionary-page.tsx` | A validation or context-limit case with ASR/refinement coverage |
 | Desktop behavior | `clarify/desktop/`, `windows_hotkeys.py` | A focused state-transition fix with Windows acceptance |
 | Build and security | `scripts/`, `.github/`, `distribution/` | A reproducibility or artifact-content check, without changing trust policy |
 

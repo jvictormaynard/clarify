@@ -47,6 +47,20 @@ fallback when the native child is unavailable.
 The new Settings currently use Portuguese labels. QML locale coverage must not
 be described as complete localization of the React pages.
 
+The Settings frontend separates window composition (`desktop/src/app.tsx`),
+feature pages (`pages/`), reusable controls (`components/`), and application state
+(`settings/`). `settings/use-settings.ts` owns draft staging, navigation and
+save/discard operations. Its shared operation boundary controls busy state,
+errors and success updates. `settings/use-settings-window.ts` owns native close
+requests. `settings/bridge.ts` defines typed command arguments for frontend
+callers without changing the Python allowlist or private pipe protocol.
+
+Shared Settings visual values live in `desktop/src/styles/tokens.css`; base styles,
+controls, page layouts and responsive window rules have separate files. Common
+fields own their accessible labels and help-text associations. The compact QML
+surfaces keep their existing theme and behavior. See `desktop/README.md` for the
+source map and component conventions.
+
 ## Current modules
 
 ### `clarify/desktop/qml_app.py`, `qml_bridge.py`, and `qml_runtime.py`

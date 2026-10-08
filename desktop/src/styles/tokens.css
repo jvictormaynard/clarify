@@ -1,0 +1,36 @@
+/* Settings values. Qt/QML keeps its compact-surface scale in Theme.qml. */
+:root {
+  --font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --color-text: #eeeeec;
+  --color-background: #151515;
+  --color-text-muted: #9c9c99;
+  --color-border: #30302e;
+  --color-surface: #20201f;
+  --color-focus: #bfcfc1;
+  --color-navigation-text: #a5a5a1;
+  --color-text-bright: #eee;
+  --color-placeholder: #90908c;
+  --color-popover: #20201e;
+  --color-shadow: #0008;
+  --color-text-subtle: #aaa;
+  --color-primary: #e0e7dc;
+  --color-primary-hover: #f2f5ef;
+  --color-error: #edb2a5;
+  --color-subtle-border: #ffffff0a;
+  --text-sm: 12px;
+  --text-label: 13px;
+  --text-base: 14px;
+  --radius-sm: 5px;
+  --radius-control: 8px;
+  --radius-segmented: 9px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-page: 44px;
+  --motion-fast: 0.12s;
+  --motion-control: 0.16s;
+  --motion-enter: 0.15s;
+  --motion-save-bar: 0.24s;
+}

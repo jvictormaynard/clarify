@@ -33,7 +33,7 @@ try {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 15000 });
-  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Opções avançadas" })).toHaveCount(0);
   console.log(`Native ready after ${Math.round(performance.now() - started)} ms (includes isolated Python fixture startup)`);
   await page.screenshot({ path: `${process.env.CLARIFY_TEST_OUTPUT}/native-dictation.png` });
@@ -44,7 +44,7 @@ try {
   await page.getByRole("combobox", { name: "Modelo", exact: true }).click();
   await page.getByRole("option", { name: /Whisper Medium/ }).click();
   await page.getByRole("button", { name: "Salvar alterações" }).click();
-  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
   await page.getByText("Limites e parada automática", { exact: true }).click();
   await page.getByRole("spinbutton", { name: "Duração máxima", exact: true }).fill("120");
   await page.getByRole("button", { name: "Salvar alterações" }).click();
