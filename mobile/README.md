@@ -5,7 +5,7 @@ API key handles speech recognition and rewriting. Native bottom tabs contain
 Home, Dicionário and Ajustes. History and vocabulary are stored locally in SQLite.
 No backend, account, sync, billing, translation, or local model is included.
 
-Candidate **0.2.2 (16)** handles blocked microphone activation with a Portuguese
+Version **0.2.2 (16)** handles blocked microphone activation with a Portuguese
 recovery message instead of an Expo/native error. Calls have priority over the
 app's recording session; finish the call or other recording before activating.
 Every audio setup failure stops the engine, removes its tap, deactivates the
@@ -15,25 +15,27 @@ handoff, and never opens the source app after a failed/interrupted activation.
 Provider models and rewrite prompts are unchanged. Physical call/permission
 flows still need iPhone acceptance; tests use synthetic native failures.
 
-Current TestFlight version: **0.2.1 (15)**, verified available to `Clarify Interno`
-on 2026-10-10 at 21:14:57 UTC. See the update evidence below for checks and limits.
+Current TestFlight version: **0.2.2 (16)**, verified available to `Clarify Interno`
+on 2026-10-10 at 21:54:55 UTC. See the update evidence below for checks and limits.
 
 The `iOS TestFlight` GitHub Actions workflow tests and builds the application with
 Xcode on a standard macOS runner, then uploads directly to App Store Connect.
 It does not use EAS Build or EAS Submit. Apple processing and internal group
 availability were verified separately from the upload.
 
-Build 15 comes from source commit `b5c84f66a5c4c80c91cc068af09d80a6743bb837`.
-[GitHub Actions run 38085697600](https://github.com/jvictormaynard/clarify/actions/runs/38085697600)
-completed successfully: 10 JavaScript contracts, 25 Swift contracts, 16 UIKit
+Build 16 comes from source commit `0ccff93d7afde528544b2f3d4bf649b1442e7baa`.
+[GitHub Actions run 38088125315](https://github.com/jvictormaynard/clarify/actions/runs/38088125315)
+completed successfully: 13 JavaScript contracts, 25 Swift contracts, 19 UIKit
 simulator tests, Expo Doctor, native compilation, distribution signature checks
-and direct Apple upload. The downloaded IPA is 15,549,343 bytes, with SHA-256
-`7ae7127337f02e6dc5b3165beee11f79f3b82993a6a166dd56160ac82a2e9294`.
-All three bundles are version 0.2.1 (15). Apple build ID:
-`d1400bfe-ed82-48dc-beea-386df760cb49`; processing `VALID`, internal state
+and direct Apple upload. The downloaded IPA is 15,553,431 bytes, with SHA-256
+`c573c6203c6174f7828183f2e0e21d296b0ca09b88d63d773e0a79835fda1a4b`.
+All three bundles are version 0.2.2 (16). Apple build ID:
+`8c8ed273-09ec-4dbf-9332-81846a731df1`; processing `VALID`, internal state
 `IN_BETA_TESTING`, with the existing tester present in `Clarify Interno`.
-The opening animation, physical haptics and automatic return still need iPhone
-acceptance. Simulator layout checks do not prove the real system transition.
+The call/permission recovery, opening animation and automatic return still need
+iPhone acceptance. Simulator checks do not prove the real system transition.
+General [CI run 38088125314](https://github.com/jvictormaynard/clarify/actions/runs/38088125314)
+also passed the Linux/Windows tests and Windows packaging job for that source.
 
 ## Direct TestFlight delivery
 
