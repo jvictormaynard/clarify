@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, AppState } from 'react-native';
 import Core, { type Snapshot } from '../../modules/clarify-core';
+import { activateMicrophone } from './activation';
 
 const idle: Snapshot = { sessionActive: false, heartbeat: 0, phase: 'idle', configured: false };
 export const isBusy = (state: Snapshot) => ['recording', 'locked', 'transcribing', 'rewriting'].includes(state.phase);
@@ -23,8 +24,12 @@ function useClarifyState() {
   const activate = useCallback((token?: string) => {
     if (request.current) return request.current;
     setActivating(true);
-    request.current = Core.activate().then(() => refresh()).then(async () => {
-      if (token) await Core.returnToSource(token);
+    request.current = activateMicrophone(Core, token).then((next) => {
+      if (mounted.current) setState(next);
+    }).catch(async (error: unknown) => {
+      // Show the native failure in the page and keyboard as well as the alert.
+      await refresh().catch(() => undefined);
+      throw error;
     }).finally(() => {
       request.current = null;
       if (mounted.current) setActivating(false);

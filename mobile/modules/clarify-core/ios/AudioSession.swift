@@ -69,58 +69,65 @@ final class ClarifyAudioSession: NSObject {
     guard KeyStore.read() != nil else { throw ClarifyError("Configure sua chave Groq primeiro.") }
     if engine.isRunning { lastActivity = Date(); publish(); return }
     let session = AVAudioSession.sharedInstance()
-    try session.setCategory(.playAndRecord, mode: .default,
-      options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth])
-    // Configure this before activation; otherwise recording can suppress haptics.
-    try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
-    try session.setActive(true)
-    feedback.prepare()
-    let input = engine.inputNode
-    let format = input.outputFormat(forBus: 0)
-    guard format.sampleRate > 0, format.channelCount > 0 else {
-      try? session.setActive(false, options: .notifyOthersOnDeactivation)
-      throw ClarifyError("O microfone está indisponível.")
-    }
-    if hasTap { input.removeTap(onBus: 0) }
-    input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
-      guard let self = self else { return }
-      self.fileLock.lock()
-      defer { self.fileLock.unlock() }
-      let bufferDuration = Double(buffer.frameLength) / buffer.format.sampleRate
-      if let file = self.file, Date().timeIntervalSince1970 - bufferDuration >= self.captureAfter {
-        do { try file.write(from: buffer) }
-        catch {
-          let failedURL = self.audioURL
-          DispatchQueue.main.async {
-            if let failedURL = failedURL, self.audioURL == failedURL {
-              self.fail("Não foi possível gravar o áudio.")
+    do {
+      try session.setCategory(.playAndRecord, mode: .default,
+        options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth])
+      // Configure this before activation; otherwise recording can suppress haptics.
+      try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
+      try session.setActive(true)
+      feedback.prepare()
+      let input = engine.inputNode
+      let format = input.outputFormat(forBus: 0)
+      guard format.sampleRate > 0, format.channelCount > 0 else {
+        throw ClarifyError("O microfone está indisponível.")
+      }
+      if hasTap { input.removeTap(onBus: 0) }
+      input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
+        guard let self = self else { return }
+        self.fileLock.lock()
+        defer { self.fileLock.unlock() }
+        let bufferDuration = Double(buffer.frameLength) / buffer.format.sampleRate
+        if let file = self.file, Date().timeIntervalSince1970 - bufferDuration >= self.captureAfter {
+          do { try file.write(from: buffer) }
+          catch {
+            let failedURL = self.audioURL
+            DispatchQueue.main.async {
+              if let failedURL = failedURL, self.audioURL == failedURL {
+                self.fail("Não foi possível gravar o áudio.")
+              }
             }
           }
         }
       }
+      hasTap = true
+      engine.prepare(); try engine.start()
+      state.sessionActive = true
+      if state.phase == .error { state.phase = .idle; state.message = nil }
+      lastActivity = Date()
+      timer?.invalidate()
+      timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.tick() }
+      publish()
+    } catch {
+      // Category, session activation and engine startup all need the same rollback.
+      // A call can reject setActive before a tap or engine has been started.
+      stopAudio()
+      engine = AVAudioEngine()
+      let message = MicrophoneFailure.message(for: error)
+      fail(message)
+      throw ClarifyError(message)
     }
-    hasTap = true
-    do { engine.prepare(); try engine.start() }
-    catch {
-      input.removeTap(onBus: 0); hasTap = false
-      try? session.setActive(false, options: .notifyOthersOnDeactivation)
-      throw ClarifyError("O microfone está em uso. Feche a chamada ou o outro gravador.")
-    }
-    state.sessionActive = true
-    if state.phase == .error { state.phase = .idle; state.message = nil }
-    lastActivity = Date()
-    timer?.invalidate()
-    timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.tick() }
-    publish()
   }
   func deactivate() {
     cancel()
+    stopAudio()
+    publish()
+  }
+  private func stopAudio() {
     engine.stop()
     if hasTap { engine.inputNode.removeTap(onBus: 0); hasTap = false }
     try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     timer?.invalidate(); timer = nil
     state.sessionActive = false
-    publish()
   }
   private func tick() {
     for (url, command) in store?.commands() ?? [] {

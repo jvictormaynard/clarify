@@ -26,11 +26,12 @@ export interface HistoryEntry {
   rewritten: boolean;
 }
 export interface HistoryPage { entries: HistoryEntry[]; nextCursor?: number }
+export interface MicrophoneActivation { active: boolean; message?: string }
 
 export default requireNativeModule<{
   getSnapshot(): Promise<Snapshot>;
   setKey(key: string): Promise<void>;
-  activate(): Promise<void>;
+  activate(): Promise<MicrophoneActivation>;
   deactivate(): Promise<void>;
   returnToSource(token: string): Promise<boolean>;
   command(action: RecordingAction, operationID: string): Promise<void>;

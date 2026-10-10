@@ -13,10 +13,19 @@ public class ClarifyCoreModule: Module {
     AsyncFunction("setKey") { (key: String) in try ClarifyAudioSession.shared.saveKey(key) }.runOnQueue(.main)
     AsyncFunction("activate") { (promise: Promise) in
       AVAudioSession.sharedInstance().requestRecordPermission { allowed in
-        DispatchQueue.main.async {
-          guard allowed else { promise.reject("MICROPHONE_DENIED", "Ative o microfone em Ajustes > Clarify."); return }
-          do { try ClarifyAudioSession.shared.activate(); promise.resolve(nil) }
-          catch { promise.reject("MICROPHONE_ERROR", error.localizedDescription) }
+        Task { @MainActor in
+          guard allowed else { promise.resolve(["active": false, "message": "Ative o microfone em Ajustes > Clarify."] as [String: Any]); return }
+          // The permission sheet and keyboard handoff can leave the app inactive.
+          // Start audio only after that transition, and never from the background.
+          let deadline = Date().addingTimeInterval(2)
+          while UIApplication.shared.applicationState == .inactive, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+          }
+          guard UIApplication.shared.applicationState == .active else {
+            promise.resolve(["active": false, "message": "Mantenha o Clarify aberto e tente ativar o microfone novamente."] as [String: Any]); return
+          }
+          do { try ClarifyAudioSession.shared.activate(); promise.resolve(["active": true]) }
+          catch { promise.resolve(["active": false, "message": MicrophoneFailure.message(for: error)] as [String: Any]) }
         }
       }
     }.runOnQueue(.main)

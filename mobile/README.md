@@ -5,6 +5,16 @@ API key handles speech recognition and rewriting. Native bottom tabs contain
 Home, Dicionário and Ajustes. History and vocabulary are stored locally in SQLite.
 No backend, account, sync, billing, translation, or local model is included.
 
+Candidate **0.2.2 (16)** handles blocked microphone activation with a Portuguese
+recovery message instead of an Expo/native error. Calls have priority over the
+app's recording session; finish the call or other recording before activating.
+Every audio setup failure stops the engine, removes its tap, deactivates the
+session and clears its active state. A later button press can try again.
+Activation waits for the app to become active after permission or keyboard
+handoff, and never opens the source app after a failed/interrupted activation.
+Provider models and rewrite prompts are unchanged. Physical call/permission
+flows still need iPhone acceptance; tests use synthetic native failures.
+
 Current TestFlight version: **0.2.1 (15)**, verified available to `Clarify Interno`
 on 2026-10-10 at 21:14:57 UTC. See the update evidence below for checks and limits.
 
@@ -154,8 +164,8 @@ copying, individual deletion and clearing history without deleting vocabulary.
 Keep mobile in this repository; Expo builds remain
 independent and upload only the mobile directory.
 
-The mobile source currently remains local and uncommitted. EAS hosts the builds;
-no separate GitHub repository was created and no source was pushed to GitHub.
+The mobile source and direct build workflow are in this repository on
+`codex/ios-testflight`, tracked by draft PR #138. No separate repository was created.
 
 ## Development
 
