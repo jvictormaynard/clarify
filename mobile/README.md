@@ -5,20 +5,31 @@ API key handles speech recognition and rewriting. Native bottom tabs contain
 Home, Dicionário and Ajustes. History and vocabulary are stored locally in SQLite.
 No backend, account, sync, billing, translation, or local model is included.
 
-Current TestFlight version: **0.2.0 (14)**, verified available to `Clarify Interno`
-on 2026-10-10 at 09:02:17 UTC. See the update evidence below for checks and limits.
+Current TestFlight version: **0.2.1 (15)**, verified available to `Clarify Interno`
+on 2026-10-10 at 21:14:57 UTC. See the update evidence below for checks and limits.
 
-Development candidate: **0.2.1 (15)**. The `iOS TestFlight` GitHub Actions workflow
-tests and builds this candidate with Xcode on a standard macOS runner, then uploads
-directly to App Store Connect. It does not use EAS Build or EAS Submit. Availability
-requires successful Apple processing and assignment to the internal testing group.
-The instructions below describe this candidate; TestFlight 0.2.0 (14) still uses
-the square recording-finish icon.
+The `iOS TestFlight` GitHub Actions workflow tests and builds the application with
+Xcode on a standard macOS runner, then uploads directly to App Store Connect.
+It does not use EAS Build or EAS Submit. Apple processing and internal group
+availability were verified separately from the upload.
+
+Build 15 comes from source commit `b5c84f66a5c4c80c91cc068af09d80a6743bb837`.
+[GitHub Actions run 38085697600](https://github.com/jvictormaynard/clarify/actions/runs/38085697600)
+completed successfully: 10 JavaScript contracts, 25 Swift contracts, 16 UIKit
+simulator tests, Expo Doctor, native compilation, distribution signature checks
+and direct Apple upload. The downloaded IPA is 15,549,343 bytes, with SHA-256
+`7ae7127337f02e6dc5b3165beee11f79f3b82993a6a166dd56160ac82a2e9294`.
+All three bundles are version 0.2.1 (15). Apple build ID:
+`d1400bfe-ed82-48dc-beea-386df760cb49`; processing `VALID`, internal state
+`IN_BETA_TESTING`, with the existing tester present in `Clarify Interno`.
+The opening animation, physical haptics and automatic return still need iPhone
+acceptance. Simulator layout checks do not prove the real system transition.
 
 ## Direct TestFlight delivery
 
-`.github/workflows/ios-testflight.yml` runs on changes to the mobile delivery
-branch `codex/ios-testflight`, and supports manual dispatch. Increase
+`.github/workflows/ios-testflight.yml` runs on application changes to the mobile
+delivery branch `codex/ios-testflight`, and supports manual dispatch. Documentation
+and ignore-file changes do not trigger another upload of the same build. Increase
 `expo.ios.buildNumber` in `app.json` before each new upload. It remains the same
 in the container, keyboard and activity. The workflow checks the JavaScript,
 Swift and UIKit simulator contracts before creating an archive. Expo CNG generates

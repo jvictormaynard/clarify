@@ -3,7 +3,12 @@ name: iOS TestFlight
 on:
   push:
     branches: [codex/ios-testflight]
-    paths: [mobile/**, .github/workflows/ios-testflight.yml]
+    paths:
+      - mobile/**
+      - '!mobile/**/*.md'
+      - '!mobile/LICENSE'
+      - '!mobile/.gitignore'
+      - '!mobile/.easignore'
   workflow_dispatch:
 
 permissions:
