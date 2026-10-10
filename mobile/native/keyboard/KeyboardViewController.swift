@@ -1,0 +1,325 @@
+import UIKit
+import SwiftUI
+
+final class KeyboardInputView: UIInputView {
+  static let contentHeight: CGFloat = 278
+  override init(frame: CGRect, inputViewStyle: UIInputView.Style) {
+    super.init(frame: frame, inputViewStyle: inputViewStyle)
+    // Publish one height before UIKit attaches and animates this input view.
+    // The host can resize its width without changing the keyboard's height.
+    autoresizingMask = [.flexibleWidth]
+    allowsSelfSizing = true
+    heightAnchor.constraint(equalToConstant: Self.contentHeight).isActive = true
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+  override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: Self.contentHeight) }
+  override func systemLayoutSizeFitting(_ targetSize: CGSize) -> CGSize {
+    CGSize(width: targetSize.width, height: Self.contentHeight)
+  }
+  override func systemLayoutSizeFitting(_ targetSize: CGSize, withHorizontalFittingPriority horizontal: UILayoutPriority,
+                                      verticalFittingPriority vertical: UILayoutPriority) -> CGSize {
+    systemLayoutSizeFitting(targetSize)
+  }
+}
+
+final class RecordingGlyph: UIView {
+  private let icon = UIImageView()
+  private let tips = UIImageView(image: UIImage(systemName: "chevron.up.2"))
+  private var mode = ""
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    isUserInteractionEnabled = false; isAccessibilityElement = false
+    for image in [icon, tips] {
+      image.tintColor = .systemBackground; image.contentMode = .scaleAspectFit
+      image.translatesAutoresizingMaskIntoConstraints = false; addSubview(image)
+    }
+    tips.alpha = 0
+    NSLayoutConstraint.activate([
+      icon.widthAnchor.constraint(equalToConstant: 22), icon.heightAnchor.constraint(equalToConstant: 22),
+      icon.centerXAnchor.constraint(equalTo: centerXAnchor), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+      tips.widthAnchor.constraint(equalToConstant: 11), tips.heightAnchor.constraint(equalToConstant: 10),
+      tips.centerXAnchor.constraint(equalTo: centerXAnchor), tips.topAnchor.constraint(equalTo: topAnchor, constant: 5)
+    ])
+    update(recording: false, locked: false, animated: false)
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+  func update(recording: Bool, locked: Bool, animated: Bool = true) {
+    let next = locked ? "locked" : recording ? "recording" : "idle"
+    guard mode != next else { return }; mode = next
+    icon.image = UIImage(systemName: locked ? "paperplane.fill" : "mic.fill")
+    let change = {
+      self.tips.alpha = recording && !locked ? 0.8 : 0
+      self.icon.transform = recording && !locked ? CGAffineTransform(translationX: 0, y: 5).scaledBy(x: 0.75, y: 0.75) : .identity
+    }
+    if animated && !UIAccessibility.isReduceMotionEnabled {
+      UIView.animate(withDuration: 0.18, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseOut], animations: change)
+    } else { change() }
+  }
+}
+
+final class RecordControl: UIControl {
+  var onAction: ((String) -> Void)?
+  private var gesture = RecordGesture()
+  var locked: Bool { get { gesture.locked } set { gesture.locked = newValue } }
+  private var origin = CGPoint.zero
+  var holding: Bool { gesture.holding }
+  func reset() { gesture.reset() }
+  override func accessibilityActivate() -> Bool {
+    guard isEnabled else { return false }
+    if locked { reset(); onAction?("finish") }
+    else { onAction?(gesture.press()); locked = true; onAction?("lock") }
+    return true
+  }
+  override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+    origin = touch.location(in: self.superview)
+    let action = gesture.press(); onAction?(action); return action == "start"
+  }
+  override func continueTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+    if let action = gesture.move(vertical: Double(touch.location(in: self.superview).y - origin.y)) { onAction?(action) }
+    return true
+  }
+  override func endTracking(_ touch: UITouch?, with event: UIEvent?) {
+    if let action = gesture.release() { onAction?(action) }
+  }
+  override func cancelTracking(with event: UIEvent?) {
+    reset(); onAction?("cancel")
+  }
+}
+
+// SwiftUI opens the container; the experimental source resolver supplies a nonce.
+private struct ActivationLink: View {
+  @Environment(\.openURL) private var openURL
+  let destination: () -> URL
+  var body: some View {
+    Button { openURL(destination()) } label: {
+      HStack(spacing: 7) {
+        ClarifyMark().fill(Color(uiColor: .systemBackground)).frame(width: 22, height: 24)
+        Text("Começar").font(.system(size: 14, weight: .semibold))
+      }.foregroundStyle(Color(uiColor: .systemBackground))
+        .frame(width: 118, height: 44).background(Color(uiColor: .label), in: Capsule())
+    }.buttonStyle(.plain).accessibilityLabel("Começar no Clarify")
+      .accessibilityHint("Abre o Clarify para ativar o microfone.")
+  }
+}
+
+final class KeyboardViewController: UIInputViewController {
+  private let store = SharedState()
+  private let mic = RecordControl()
+  private let glyph = RecordingGlyph()
+  private let status = UILabel()
+  private let detail = UILabel()
+  private let insert = UIButton(type: .system)
+  private let cancel = UIButton(type: .system)
+  private let keys = KeyGridView()
+  private let typing = TypingAssistant()
+  private let suggestions = UIStackView()
+  private let feedback = HapticFeedback()
+  private var activation: UIHostingController<ActivationLink>?
+  private var timer: Timer?
+  private var operationID: String?
+  private var documentID: UUID?
+  private var attached = false
+  private var state = DictationSnapshot()
+
+  override func loadView() {
+    let input = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: 0, height: KeyboardInputView.contentHeight), inputViewStyle: .keyboard)
+    preferredContentSize = CGSize(width: 0, height: KeyboardInputView.contentHeight)
+    inputView = input
+    // Let the system keyboard material remain visible behind the extension.
+    view.backgroundColor = .clear
+    view.isOpaque = false
+  }
+
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    // Public API disables the OS dictation action. iOS owns its bottom-bar icon.
+    hasDictationKey = true
+    status.font = .systemFont(ofSize: 15, weight: .semibold)
+    detail.font = .systemFont(ofSize: 11); detail.textColor = .secondaryLabel
+    detail.numberOfLines = 1; detail.lineBreakMode = .byTruncatingTail
+    mic.backgroundColor = .label; mic.layer.cornerRadius = 22
+    mic.isAccessibilityElement = true; mic.accessibilityTraits = .button
+    mic.accessibilityLabel = "Gravar"
+    mic.accessibilityHint = "Segure para falar. Deslize para cima para travar."
+    mic.onAction = { [weak self] action in self?.send(action) }
+    mic.addSubview(glyph); glyph.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+      glyph.leadingAnchor.constraint(equalTo: mic.leadingAnchor), glyph.trailingAnchor.constraint(equalTo: mic.trailingAnchor),
+      glyph.topAnchor.constraint(equalTo: mic.topAnchor), glyph.bottomAnchor.constraint(equalTo: mic.bottomAnchor)
+    ])
+    insert.setTitle("Inserir", for: .normal)
+    insert.titleLabel?.font = .systemFont(ofSize: 13, weight: .medium)
+    insert.addTarget(self, action: #selector(insertResult), for: .touchUpInside)
+    cancel.setImage(UIImage(systemName: "xmark"), for: .normal); cancel.accessibilityLabel = "Cancelar gravação"
+    cancel.tintColor = .secondaryLabel
+    cancel.addTarget(self, action: #selector(cancelRecording), for: .touchUpInside)
+    keys.previewContainer = view
+    keys.onKeyPress = { [weak self] in self?.feedback.type() }
+    keys.onInsert = { [weak self] text in
+      guard let self = self else { return }
+      self.typing.insert(text, into: self.textDocumentProxy); self.updateSuggestions()
+    }
+    keys.onDelete = { [weak self] in
+      guard let self = self else { return }
+      self.typing.delete(in: self.textDocumentProxy); self.updateSuggestions()
+    }
+    keys.onNextKeyboard = { [weak self] button, event in
+      if let event = event { self?.handleInputModeList(from: button, with: event) }
+      else { self?.advanceToNextInputMode() }
+    }
+    suggestions.axis = .horizontal; suggestions.distribution = .fillEqually
+    for element in [status, detail, mic, insert, keys, cancel, suggestions] {
+      element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element)
+    }
+    NSLayoutConstraint.activate([
+      mic.topAnchor.constraint(equalTo: view.topAnchor, constant: 7), mic.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
+      mic.widthAnchor.constraint(equalToConstant: 44), mic.heightAnchor.constraint(equalToConstant: 44),
+      status.topAnchor.constraint(equalTo: view.topAnchor, constant: 10), status.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+      status.trailingAnchor.constraint(lessThanOrEqualTo: insert.leadingAnchor, constant: -4),
+      detail.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 3), detail.leadingAnchor.constraint(equalTo: status.leadingAnchor),
+      detail.trailingAnchor.constraint(equalTo: insert.leadingAnchor, constant: -4),
+      insert.centerYAnchor.constraint(equalTo: mic.centerYAnchor), insert.trailingAnchor.constraint(equalTo: cancel.leadingAnchor),
+      insert.widthAnchor.constraint(equalToConstant: 48),
+      cancel.centerYAnchor.constraint(equalTo: mic.centerYAnchor), cancel.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -2),
+      cancel.widthAnchor.constraint(equalToConstant: 44), cancel.heightAnchor.constraint(equalToConstant: 44),
+      keys.topAnchor.constraint(equalTo: view.topAnchor, constant: 58), keys.heightAnchor.constraint(equalToConstant: 220),
+      keys.leadingAnchor.constraint(equalTo: view.leadingAnchor), keys.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      suggestions.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
+      suggestions.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -8),
+      suggestions.topAnchor.constraint(equalTo: view.topAnchor, constant: 7),
+      suggestions.heightAnchor.constraint(equalToConstant: 44)
+    ])
+    let host = UIHostingController(rootView: ActivationLink { [weak self] in self?.activationURL() ?? URL(string: "clarify://keyboard")! })
+    if #available(iOS 16.4, *) { host.safeAreaRegions = [] }
+    addChild(host); view.addSubview(host.view); host.didMove(toParent: self)
+    host.view.backgroundColor = .clear; host.view.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+      host.view.trailingAnchor.constraint(equalTo: mic.trailingAnchor), host.view.centerYAnchor.constraint(equalTo: mic.centerYAnchor),
+      host.view.widthAnchor.constraint(equalToConstant: 118), host.view.heightAnchor.constraint(equalToConstant: 44)
+    ])
+    activation = host
+    requestSupplementaryLexicon { [weak self] lexicon in
+      self?.typing.protect(lexicon); self?.updateSuggestions()
+    }
+  }
+  override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    if keys.needsGlobe != needsInputModeSwitchKey {
+      UIView.performWithoutAnimation { keys.needsGlobe = needsInputModeSwitchKey; keys.rebuild(); keys.layoutIfNeeded() }
+    }
+  }
+  override func textDidChange(_ textInput: UITextInput?) {
+    super.textDidChange(textInput)
+    // Context is used only locally for casing; it is never saved or sent to Groq.
+    let proxy = textDocumentProxy
+    let appearance: UIUserInterfaceStyle = proxy.keyboardAppearance == .dark ? .dark : (proxy.keyboardAppearance == .light ? .light : .unspecified)
+    let shift = keys.model.shift
+    let returnType = proxy.returnKeyType ?? .default
+    let changed = view.overrideUserInterfaceStyle != appearance || keys.returnType != returnType
+    view.overrideUserInterfaceStyle = appearance
+    keys.returnType = returnType
+    if keys.model.shift != .caps {
+      let context = proxy.documentContextBeforeInput ?? ""
+      let sentenceStart = context.isEmpty || context.hasSuffix("\n") || [". ", "! ", "? "].contains { context.hasSuffix($0) }
+      let type = proxy.autocapitalizationType ?? .sentences
+      keys.model.shift = type == .allCharacters ? .caps : ((type == .sentences && sentenceStart) || (type == .words && (context.isEmpty || context.last?.isWhitespace == true)) ? .once : .off)
+    }
+    if changed || shift != keys.model.shift { keys.rebuild() }
+    updateSuggestions()
+  }
+  override func viewWillAppear(_ animated: Bool) {
+    super.viewWillAppear(animated); attached = true; feedback.prepare(); refresh(); updateSuggestions(); timer?.invalidate()
+    timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in self?.refresh() }
+  }
+  override func viewDidDisappear(_ animated: Bool) {
+    super.viewDidDisappear(animated); attached = false; timer?.invalidate(); timer = nil
+    invalidateActivationSource()
+    typing.reset()
+    suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
+    if !mic.locked { send("cancel") }
+  }
+  deinit { timer?.invalidate() }
+  private func send(_ action: String) {
+    guard hasFullAccess, state.isLive, let store = store else { return }
+    if action == "start" {
+      guard !state.phase.busy else { return }
+      operationID = UUID().uuidString; documentID = textDocumentProxy.documentIdentifier
+    }
+    guard let id = operationID else { return }
+    do {
+      try store.send(action, operationID: id)
+      feedback.record(action)
+      glyph.update(recording: mic.holding, locked: mic.locked)
+    }
+    catch { detail.text = "Abra o Clarify para configurar o teclado." }
+  }
+  private func refresh() {
+    state = store?.snapshot() ?? DictationSnapshot()
+    if state.isLive, state.phase.busy, operationID != state.operationID {
+      // Recover cancellation after iOS recreates the extension during processing.
+      operationID = state.operationID; documentID = nil
+    }
+    // Do not reset a held gesture while the host is accepting its start command.
+    if !state.isLive || (state.operationID == operationID && !state.phase.busy && !mic.holding) { mic.reset() }
+    if state.isLive, [.recording, .locked].contains(state.phase), !mic.holding {
+      // A new keyboard instance must be able to stop an existing locked clip.
+      if operationID != state.operationID { documentID = nil }
+      operationID = state.operationID
+      mic.locked = true
+    }
+    let available = hasFullAccess && state.configured
+    activation?.view.isHidden = !hasFullAccess || state.isLive
+    mic.isEnabled = available && state.isLive && ![.transcribing, .rewriting].contains(state.phase)
+    insert.isHidden = !state.isLive || state.text?.isEmpty != false || state.phase.busy || state.operationID == store?.receipt()
+    cancel.isHidden = !state.isLive || !state.phase.busy
+    if !hasFullAccess {
+      status.text = "Ative o Acesso Total"; detail.text = "Ajustes > Geral > Teclado > Clarify"
+    } else if !state.configured {
+      status.text = "Configure sua chave Groq"; detail.text = "Abra o Clarify para configurar."
+    } else if !state.isLive {
+      status.text = "Ative o microfone"; detail.text = "Toque em Começar."
+    } else {
+      switch state.phase {
+      case .recording: status.text = "Ouvindo…"; detail.text = "Deslize para cima para travar ↑"
+      case .locked: status.text = "Gravação travada"; detail.text = "Toque para finalizar e transcrever."
+      case .transcribing: status.text = "Transcrevendo…"; detail.text = nil
+      case .rewriting: status.text = "Reescrevendo…"; detail.text = nil
+      case .error: status.text = "Não foi possível concluir"; detail.text = state.message
+      default: status.text = "Clarify"; detail.text = "Segure para falar · Trave para cima ↑"
+      }
+    }
+    glyph.update(recording: mic.holding, locked: mic.locked)
+    mic.accessibilityLabel = mic.locked ? "Finalizar gravação" : "Gravar"
+    let showingSuggestions = !suggestions.arrangedSubviews.isEmpty && !state.phase.busy && insert.isHidden
+    suggestions.isHidden = !showingSuggestions
+    status.isHidden = showingSuggestions; detail.isHidden = showingSuggestions
+    if attached, state.phase == .ready, let id = operationID, state.operationID == id,
+       documentID == textDocumentProxy.documentIdentifier, store?.receipt() != id { insertResult() }
+  }
+  @objc private func insertResult() {
+    guard attached, let store = store, let text = state.text, !text.isEmpty,
+          let id = state.operationID, store.receipt() != id else { return }
+    // Claim publication before insertion, so repeated polling cannot insert twice.
+    do { try store.acknowledge(id) } catch { return }
+    typing.reset(); textDocumentProxy.insertText(text); insert.isHidden = true; updateSuggestions()
+  }
+  private func updateSuggestions() {
+    suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
+    for suggestion in typing.suggestions(textDocumentProxy) {
+      let button = UIButton(type: .system)
+      button.setTitle(suggestion.title, for: .normal); button.tintColor = .label
+      button.titleLabel?.font = .systemFont(ofSize: 18)
+      button.titleLabel?.adjustsFontSizeToFitWidth = true
+      button.titleLabel?.minimumScaleFactor = 0.65
+      button.accessibilityLabel = suggestion.undo ? "Desfazer correção: \(suggestion.value)" : "Usar \(suggestion.value)"
+      button.addAction(UIAction { [weak self] _ in
+        guard let self = self else { return }
+        self.feedback.type(); self.typing.choose(suggestion, in: self.textDocumentProxy); self.updateSuggestions()
+      }, for: .touchUpInside)
+      suggestions.addArrangedSubview(button)
+    }
+    let show = !suggestions.arrangedSubviews.isEmpty && !state.phase.busy && insert.isHidden
+    suggestions.isHidden = !show; status.isHidden = show; detail.isHidden = show
+  }
+  @objc private func cancelRecording() { mic.reset(); send("cancel") }
+}

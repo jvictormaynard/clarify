@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "Clarify",
+    "slug": "clarify-ios",
+    "owner": "victormaynard",
+    "version": "0.2.1",
+    "scheme": "clarify",
+    "platforms": [
+      "ios"
+    ],
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.jvictormaynard.clarify",
+      "buildNumber": "15",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "O Clarify usa o microfone para transcrever e reescrever o que você ditar.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSSupportsLiveActivities": true,
+        "ClarifyAppGroup": "group.com.jvictormaynard.clarify",
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      },
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.jvictormaynard.clarify"
+        ]
+      }
+    },
+    "plugins": [
+      "./plugins/with-clarify-keyboard.cjs",
+      "./plugins/with-clarify-activity.cjs",
+      "expo-router",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "ClarifyKeyboard",
+                  "bundleIdentifier": "com.jvictormaynard.clarify.keyboard",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.jvictormaynard.clarify"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "ClarifyActivity",
+                  "bundleIdentifier": "com.jvictormaynard.clarify.activity",
+                  "entitlements": {}
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "6dc3404f-4bdb-4d12-8a3b-006355b408b3"
+      }
+    }
+  }
+}
