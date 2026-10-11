@@ -11,7 +11,7 @@ private final class Field: NSObject, UITextDocumentProxy {
   var documentContextBeforeInput: String? { before }
   var documentContextAfterInput: String? { after }
   var documentInputMode: UITextInputMode? { nil }
-  var selectedText: String? { nil }
+  var selectedText: String?
   var hasText: Bool { !before.isEmpty || !after.isEmpty }
   var autocorrectionType: UITextAutocorrectionType = .yes
   var spellCheckingType: UITextSpellCheckingType = .yes
@@ -25,6 +25,14 @@ private final class Field: NSObject, UITextDocumentProxy {
 }
 
 @MainActor
+private final class SelectionKeyboard: KeyboardViewController {
+  let field = Field()
+  var fullAccess = true
+  override var textDocumentProxy: UITextDocumentProxy { field }
+  override var hasFullAccess: Bool { fullAccess }
+}
+
+@MainActor
 private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
   var pulses = 0
   var preparations = 0
@@ -33,6 +41,111 @@ private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
 }
 
 final class KeyboardUITests: XCTestCase {
+  @MainActor
+  private func assertSavedTitleIsVisible(_ button: UIButton, in appearance: UIUserInterfaceStyle) throws {
+    button.overrideUserInterfaceStyle = appearance; button.layoutIfNeeded()
+    let label = try XCTUnwrap(button.titleLabel)
+    let image = UIGraphicsImageRenderer(bounds: button.bounds).image { button.layer.render(in: $0.cgContext) }
+    let cgImage = try XCTUnwrap(image.cgImage), width = cgImage.width, height = cgImage.height
+    let bitmap = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+      bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue))
+    bitmap.draw(cgImage, in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
+    let data = try XCTUnwrap(bitmap.data).assumingMemoryBound(to: UInt8.self)
+    let scale = image.scale, rect = label.convert(label.bounds, to: button).insetBy(dx: 1, dy: 1)
+    guard !rect.isEmpty else { XCTFail("Saved title has no visible area"); return }
+    var visiblePixels = 0
+    for y in max(0, Int(rect.minY * scale))..<min(height, Int(rect.maxY * scale)) {
+      for x in max(0, Int(rect.minX * scale))..<min(width, Int(rect.maxX * scale)) {
+        let offset = (y * width + x) * 4
+        let luminance = (Int(data[offset]) + Int(data[offset + 1]) + Int(data[offset + 2])) / 3
+        if appearance == .dark ? luminance < 100 : luminance > 155 { visiblePixels += 1 }
+      }
+    }
+    XCTAssertGreaterThan(visiblePixels, 5, "Saved must remain readable against the disabled capsule background")
+  }
+  func testDictionarySelectionSavesDisablesAndUpdatesWithoutChangingTheDocument() async throws {
+    try await MainActor.run {
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let store = SharedState(root: root)
+      try store.publishKeyboardDictionary(KeyboardDictionaryContext(scope: "guest", words: []))
+      var snapshot = DictationSnapshot(); snapshot.sessionActive = true; snapshot.configured = true
+      try store.write(snapshot, to: "state.json")
+      let keyboard = SelectionKeyboard(); keyboard.store = store
+      keyboard.overrideUserInterfaceStyle = .dark
+      let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+      let host = UIViewController(); window.rootViewController = host; window.makeKeyAndVisible()
+      defer { window.isHidden = true }
+      host.addChild(keyboard); host.view.addSubview(keyboard.view); keyboard.didMove(toParent: host)
+      keyboard.view.frame = CGRect(x: 0, y: 574, width: 393, height: 278)
+      func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
+      let action = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" })
+      keyboard.field.before = "Untouched "
+      keyboard.field.selectedText = "João Victor"; keyboard.selectionDidChange(nil)
+      XCTAssertFalse(action.isHidden); XCTAssertTrue(action.isEnabled)
+      for width in [CGFloat(320), 393, 852] {
+        keyboard.view.frame.size.width = width; keyboard.view.layoutIfNeeded()
+        XCTAssertTrue(keyboard.view.bounds.contains(action.frame))
+        XCTAssertGreaterThan(action.bounds.width, 150)
+        XCTAssertEqual(keyboard.view.bounds.height, 278)
+      }
+      keyboard.view.frame.size.width = 393; keyboard.view.layoutIfNeeded()
+      let offered = XCTAttachment(image: UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) })
+      offered.name = "dictionary-selection-offered"; offered.lifetime = .keepAlways; self.add(offered)
+      action.sendActions(for: .touchUpInside)
+      XCTAssertFalse(action.isEnabled); XCTAssertEqual(action.title(for: .normal), L("Salvo"))
+      XCTAssertEqual(action.titleLabel?.text, L("Salvo"), "The rendered label must confirm Saved immediately")
+      XCTAssertEqual(store.keyboardAdditions(scope: "guest").map { $0.1.term }, ["João Victor"])
+      XCTAssertEqual(keyboard.field.before, "Untouched "); XCTAssertEqual(keyboard.field.selectedText, "João Victor")
+      for selection in ["three selected words", "", "+ …"] {
+        keyboard.field.selectedText = selection; keyboard.selectionDidChange(nil); XCTAssertTrue(action.isHidden)
+      }
+      keyboard.field.selectedText = "New"; keyboard.selectionDidChange(nil)
+      XCTAssertFalse(action.isHidden); XCTAssertTrue(action.isEnabled)
+      keyboard.field.isSecureTextEntry = true; keyboard.selectionDidChange(nil); XCTAssertTrue(action.isHidden)
+      keyboard.field.isSecureTextEntry = false; keyboard.field.selectedText = "JOÃO VICTOR"; keyboard.selectionDidChange(nil)
+      XCTAssertFalse(action.isHidden); XCTAssertFalse(action.isEnabled)
+      for appearance in [UIUserInterfaceStyle.light, .dark] { try self.assertSavedTitleIsVisible(action, in: appearance) }
+      keyboard.view.frame.size.width = 393; keyboard.view.layoutIfNeeded()
+      let capture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) })
+      capture.name = "dictionary-selection-saved"; capture.lifetime = .keepAlways; self.add(capture)
+      keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+      snapshot.sessionActive = false; try store.write(snapshot, to: "state.json")
+      keyboard.field.selectedText = "Other"
+      keyboard.beginAppearanceTransition(true, animated: false); keyboard.endAppearanceTransition()
+      defer { keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition() }
+      for width in [CGFloat(320), 393] {
+        keyboard.view.frame.size.width = width
+        for language in ["pt", "en", "es"] {
+          action.setTitle(L("Adicionar ao dicionário", language: language), for: .normal)
+          keyboard.view.layoutIfNeeded()
+          XCTAssertTrue(keyboard.view.bounds.contains(action.frame))
+          XCTAssertLessThanOrEqual(action.frame.maxX, width - 136, "Do not overlap the inactive Start button")
+          XCTAssertGreaterThan(action.bounds.width, 140)
+        }
+      }
+      keyboard.fullAccess = false; keyboard.field.selectedText = "Restricted"; keyboard.selectionDidChange(nil)
+      XCTAssertFalse(action.isEnabled)
+    }
+  }
+  func testShortSelectionOffersDictionaryActionWithoutChangingTheDocument() async {
+    await MainActor.run {
+      let keyboard = SelectionKeyboard()
+      keyboard.loadViewIfNeeded()
+      keyboard.field.before = "Original text "
+      keyboard.field.selectedText = "Clarify"
+      keyboard.selectionDidChange(nil)
+      func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
+      let action = descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" && !$0.isHidden }
+      XCTAssertNotNil(action, "A selected word must offer the dictionary action")
+      XCTAssertEqual(keyboard.field.before, "Original text ")
+      XCTAssertEqual(keyboard.field.selectedText, "Clarify")
+    }
+  }
   func testKeyboardPublishesItsHeightBeforeAttachment() async {
     await MainActor.run {
       let keyboard = KeyboardViewController()

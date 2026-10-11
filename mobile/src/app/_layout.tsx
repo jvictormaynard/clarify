@@ -11,7 +11,7 @@ function Navigation() {
   if (onboardingRequired === null) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.background }}>
     {setupError ? <Button onPress={() => void refreshOnboarding()}>{t("Tentar carregar novamente")}</Button> : <ActivityIndicator />}
   </View>;
-  return <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
+  return <Stack screenOptions={{ headerShown: false, animation: 'fade', headerBackButtonDisplayMode: 'minimal' }}>
     <Stack.Protected guard={onboardingRequired}><Stack.Screen name="onboarding" /></Stack.Protected>
     <Stack.Protected guard={!onboardingRequired}>
       <Stack.Screen name="(tabs)" />

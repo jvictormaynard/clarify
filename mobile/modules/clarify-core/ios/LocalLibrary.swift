@@ -160,6 +160,22 @@ final class LocalLibrary {
     try bind(JSONEncoder().encode(entries), to: value, at: 1)
     guard sqlite3_step(value) == SQLITE_DONE else { throw failure() }
   }
+  func importKeyboardAdditions(_ store: SharedState, scope: String?) throws -> Bool {
+    let pending = store.keyboardAdditions(scope: scope ?? "guest")
+    guard !pending.isEmpty else { return false }
+    let original = try dictionary(scope: scope)
+    var entries = original
+    for (_, addition) in pending {
+      if let index = entries.firstIndex(where: { KeyboardSelection.key($0.term) == KeyboardSelection.key(addition.term) }) {
+        entries[index].enabled = true
+      } else { entries.append(VocabularyEntry(term: addition.term)) }
+    }
+    try saveDictionary(entries, scope: scope)
+    // Remove only the imported files, after the transaction. A crash/retry or a
+    // simultaneous enqueue cannot duplicate a word or erase a later addition.
+    for (url, _) in pending { try? FileManager.default.removeItem(at: url) }
+    return entries != original
+  }
   func cloudDictionary(_ scope: String) throws -> CloudDictionary {
     guard UUID(uuidString: scope) != nil else { throw failure() }
     let value = try statement("SELECT payload FROM account_vocabulary WHERE account=?")

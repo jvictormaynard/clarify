@@ -13,6 +13,15 @@ An unfinished setup resumes on the next launch. Existing accounts and keys
 skip first-run setup after an upgrade. A setup preference contains no credentials.
 Billing, translation and local models are outside this mobile release.
 
+Version 0.6.0 (22) adds a dictionary action to the keyboard toolbar when one or
+two words are selected. Tap **Adicionar ao dicionário** to save without changing
+the selected text. The button changes to **Salvo** and is disabled for an enabled
+term or a durable pending addition. Labels follow Portuguese, English or Spanish.
+Disabled terms are enabled again without losing aliases or pronunciation.
+The app imports offline additions into the appropriate guest/account dictionary;
+account words synchronize before the next hosted dictation. The toolbar keeps
+the keyboard's existing height. Settings uses an icon-only native back button.
+
 Version 0.3.0 (17) adds an optional shared account, vocabulary sync
 and hosted Groq dictation through [`server/`](../server/README.md). Account login
 uses email codes; sessions stay in the containing app's Keychain and never reach
@@ -36,11 +45,13 @@ handoff, and never opens the source app after a failed/interrupted activation.
 Provider models and rewrite prompts are unchanged. Physical call/permission
 flows still need iPhone acceptance; tests use synthetic native failures.
 
-Last verified TestFlight version: **0.4.1 (19)**, available to `Clarify Interno`
-on 2026-10-11. [Direct delivery run 38112957238](https://github.com/jvictormaynard/clarify/actions/runs/38112957238)
+Previous verified TestFlight delivery: **0.5.0 (20)**, available to `Clarify Interno`
+on 2026-10-11. [Direct delivery run 38122247572](https://github.com/jvictormaynard/clarify/actions/runs/38122247572)
 passed native validation, signed archive checks and direct Apple upload.
-Apple build `1ddf4b9f-c07e-4b83-be80-db1241b20254` is `VALID` and `IN_BETA_TESTING`.
-Build 20 is the next delivery candidate; availability must be checked after upload.
+Apple processing is `VALID` and the internal state is `IN_BETA_TESTING`.
+For **0.6.0 (22)**, follow the [direct delivery workflow](https://github.com/jvictormaynard/clarify/actions/workflows/ios-testflight.yml).
+The final Apple processing and internal-group availability are recorded in
+[delivery PR 144](https://github.com/jvictormaynard/clarify/pull/144) after upload.
 
 The `iOS TestFlight` GitHub Actions workflow tests and builds the application with
 Xcode on a standard macOS runner, then uploads directly to App Store Connect.

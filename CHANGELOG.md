@@ -5,6 +5,14 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+
+- iOS keyboard: select one or two words to add them directly to the dictionary. The localized action confirms Saved, prevents duplicate additions and preserves the selected text. Offline additions stay on the device and account words synchronize automatically.
+
+### Fixed
+
+- Show only the native back chevron on iOS Settings, instead of the internal “(tabs)” route name.
+
 ## [0.7.0] - 2026-10-11
 
 ### Added

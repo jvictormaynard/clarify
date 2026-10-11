@@ -30,7 +30,12 @@ public class ClarifyCoreModule: Module {
           promise.reject("ACCOUNT_BUSY", L("Finalize o ditado antes de alterar a conta.")); return
         }
         do {
+          let previousScope = CloudAccount.shared.scope
+          // Pending keyboard edits stay durable if import fails. They must not
+          // prevent signing out, deleting the account or freeing dictionary space.
+          try? ClarifyAudioSession.shared.importKeyboardVocabulary()
           let changed = try await CloudAccount.shared.command(action, value: value, library: ClarifyAudioSession.shared.library())
+          if action == "delete", let previousScope { try SharedState()?.discardKeyboardAdditions(scope: previousScope) }
           if changed {
             if !CloudAccount.shared.configured { ClarifyAudioSession.shared.deactivate() }
             ClarifyAudioSession.shared.libraryChanged()
@@ -96,6 +101,7 @@ public class ClarifyCoreModule: Module {
       ClarifyAudioSession.shared.libraryChanged()
     }.runOnQueue(.main)
     AsyncFunction("getDictionary") { () -> [[String: Any]] in
+      try? ClarifyAudioSession.shared.importKeyboardVocabulary()
       try CloudAccount.shared.prepareLibrary(ClarifyAudioSession.shared.library())
       let entries = try ClarifyAudioSession.shared.library().dictionary(scope: CloudAccount.shared.scope)
       return try JSONSerialization.jsonObject(with: JSONEncoder().encode(entries)) as? [[String: Any]] ?? []
@@ -107,6 +113,7 @@ public class ClarifyCoreModule: Module {
           let entries = try JSONDecoder().decode([VocabularyEntry].self, from: JSONSerialization.data(withJSONObject: values))
           let original = try JSONDecoder().decode([VocabularyEntry].self, from: JSONSerialization.data(withJSONObject: base))
           let library = try ClarifyAudioSession.shared.library()
+          try? ClarifyAudioSession.shared.importKeyboardVocabulary()
           try CloudAccount.shared.saveDictionaryDraft(entries, base: original, library: library)
           if CloudAccount.shared.scope != nil { await CloudAccount.shared.syncAfterSave(library) }
           ClarifyAudioSession.shared.libraryChanged()

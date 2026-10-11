@@ -4143,5 +4143,20 @@
     "pt": "A opção de atualização deve estar ativada ou desativada.",
     "en": "A opção de atualização deve ser um booleano.",
     "es": "La opción de actualización debe estar activada o desactivada."
+  },
+  "Adicionar ao dicionário": {
+    "pt": "Adicionar ao dicionário",
+    "en": "Add to Dictionary",
+    "es": "Añadir al diccionario"
+  },
+  "Salvo": {
+    "pt": "Salvo",
+    "en": "Saved",
+    "es": "Guardado"
+  },
+  "Selecione uma ou duas palavras.": {
+    "pt": "Selecione uma ou duas palavras.",
+    "en": "Select one or two words.",
+    "es": "Selecciona una o dos palabras."
   }
 }
