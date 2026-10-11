@@ -45,9 +45,6 @@ final class KeyboardUITests: XCTestCase {
   private func assertSavedTitleIsVisible(_ button: UIButton, in appearance: UIUserInterfaceStyle) throws {
     button.overrideUserInterfaceStyle = appearance; button.layoutIfNeeded()
     let label = try XCTUnwrap(button.titleLabel)
-    var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
-    label.textColor.resolvedColor(with: label.traitCollection).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-    print("CLARIFY_UI_CONTRAST mode=\(appearance.rawValue) currentTitle=\(button.currentTitle ?? "nil") label=\(label.text ?? "nil") frame=\(label.frame) bounds=\(label.bounds) hidden=\(label.isHidden) alpha=\(label.alpha) rgba=\([red,green,blue,alpha]) traits=\(label.traitCollection.userInterfaceStyle.rawValue)")
     let image = UIGraphicsImageRenderer(bounds: button.bounds).image { button.layer.render(in: $0.cgContext) }
     let cgImage = try XCTUnwrap(image.cgImage), width = cgImage.width, height = cgImage.height
     let bitmap = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
@@ -100,6 +97,7 @@ final class KeyboardUITests: XCTestCase {
       offered.name = "dictionary-selection-offered"; offered.lifetime = .keepAlways; self.add(offered)
       action.sendActions(for: .touchUpInside)
       XCTAssertFalse(action.isEnabled); XCTAssertEqual(action.title(for: .normal), L("Salvo"))
+      XCTAssertEqual(action.titleLabel?.text, L("Salvo"), "The rendered label must confirm Saved immediately")
       XCTAssertEqual(store.keyboardAdditions(scope: "guest").map { $0.1.term }, ["João Victor"])
       XCTAssertEqual(keyboard.field.before, "Untouched "); XCTAssertEqual(keyboard.field.selectedText, "João Victor")
       for selection in ["three selected words", "", "+ …"] {

@@ -371,15 +371,23 @@ class KeyboardViewController: UIInputViewController {
         dictionaryCheckedAt = Date(); dictionaryRevision = state.libraryRevision
       }
       let saved = selectedTermSaved
-      addToDictionary.isEnabled = !saved && hasFullAccess && dictionaryContext != nil
-      addToDictionary.backgroundColor = .label
-      addToDictionary.setTitleColor(.systemBackground, for: .normal)
-      addToDictionary.setTitleColor(.systemBackground, for: .disabled)
       let title = saved ? L("Salvo") : dictionaryError == nil ? L("Adicionar ao dicionário") : L("Tentar novamente")
-      addToDictionary.setTitle(title, for: .normal)
-      addToDictionary.setImage(UIImage(systemName: saved ? "checkmark" : "plus"), for: .normal)
-      addToDictionary.tintColor = .systemBackground
-      addToDictionary.semanticContentAttribute = .forceRightToLeft
+      let titleChanged = addToDictionary.title(for: .normal) != title
+      // A system button crossfades title changes. Confirm the durable save
+      // immediately, and do not restart that transition on keyboard polling.
+      UIView.performWithoutAnimation {
+        addToDictionary.isEnabled = !saved && hasFullAccess && dictionaryContext != nil
+        addToDictionary.backgroundColor = .label
+        addToDictionary.setTitleColor(.systemBackground, for: .normal)
+        addToDictionary.setTitleColor(.systemBackground, for: .disabled)
+        if titleChanged {
+          addToDictionary.setTitle(title, for: .normal)
+          addToDictionary.setImage(UIImage(systemName: saved ? "checkmark" : "plus"), for: .normal)
+        }
+        addToDictionary.tintColor = .systemBackground
+        addToDictionary.semanticContentAttribute = .forceRightToLeft
+        if titleChanged { view.layoutIfNeeded() }
+      }
       addToDictionary.accessibilityLabel = title
       addToDictionary.accessibilityHint = dictionaryError ?? term
       dictionaryTrailing?.constant = state.isLive ? -8 : -82
