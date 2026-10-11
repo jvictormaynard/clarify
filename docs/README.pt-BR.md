@@ -24,15 +24,24 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Integração nativa com atalhos e bandeja do Windows
 - Interface QML em inglês, português, espanhol, alemão e russo;
   as novas Configurações usam português por enquanto
-- Configurações em React/Tauri: Geral, Ditado, Texto, Dicionário, Atalhos e
+- Configurações em React/Tauri: Conta Clarify, Geral, Ditado, Texto, Dicionário, Atalhos e
   Modelos e serviços
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
 - Dicionário pessoal para nomes e termos técnicos
 - Estatísticas locais sem armazenar o conteúdo das transcrições
-- Sem conta Clarify, backend próprio ou telemetria
+- Conta opcional com entrada por código de e-mail, dicionário compartilhado e cota de ditado
+- Modos locais e com chave própria disponíveis sem conta; sem telemetria
+
+A versão 0.6.0 permite confirmar o código dentro das Configurações. Depois de
+entrar, conecte o dicionário ou ative o processamento do Clarify de forma explícita.
+O histórico e os atalhos permanecem locais. O [aplicativo iOS](../mobile/README.md)
+é distribuído pelo TestFlight. O [servidor de contas](../server/README.md) também
+pode ser hospedado por você; as chaves de produção e os dados dos usuários são privados.
 
 > [!IMPORTANT]
-> A transcrição ou o refinamento em provedores cloud exige uma chave de API. O
+> O acesso direto a provedores cloud exige sua própria chave de API. O ditado
+> pela conta Clarify usa o servidor do Clarify e a Groq, sujeito à cota da conta
+> e ao teto global do beta. O
 > Local Whisper pode transcrever sem chave e baixa seus assets somente após uma
 > ação explícita. As chaves e estatísticas ficam no seu computador. O áudio e o
 > texto selecionado são enviados diretamente ao provedor configurado.

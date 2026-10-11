@@ -28,14 +28,16 @@ pastes the result back into the app you were using. It can also rewrite or
 translate selected text without opening a separate editor.
 
 > [!IMPORTANT]
-> Clarify supports bring-your-own-key cloud providers. Cloud transcription
-> or text refinement requires an API key. The optional Local Whisper provider
+> Clarify supports bring-your-own-key cloud providers and optional hosted
+> dictation through a Clarify account. Direct provider access requires your own
+> API key. The optional Local Whisper provider
 > does not require an API key for local transcription; it downloads its
 > runtime/model only after an explicit action, and its packaged Windows/offline
 > acceptance is still pending. Keys and local usage statistics stay on your
-> computer. Cloud audio/text goes directly to the provider you configure; Local
+> computer. With your own key, cloud audio/text goes directly to the provider you configure; Local
 > Whisper keeps transcription local unless you explicitly enable cloud
-> refinement.
+> refinement. Hosted dictation sends audio and text through the Clarify service
+> to Groq and is subject to the account allowance and the global beta budget.
 
 > The Settings and dictionary described here are included in v0.4.0.
 > Check the [release notes](https://github.com/jvictormaynard/clarify/releases/latest)
@@ -44,10 +46,11 @@ translate selected text without opening a separate editor.
 
 ## Features
 
-Development source also includes the [iOS client](mobile/README.md) and an
-[optional shared account service](server/README.md). Shared account access,
-vocabulary sync and hosted allowance are under validation and are not included
-in the current Windows release. Production keys and user data are never public.
+Version 0.6.0 adds optional shared accounts and vocabulary sync. Enter the emailed
+code inside Settings, then explicitly connect the dictionary or enable hosted
+dictation. History and snippets stay local. The [iOS client](mobile/README.md)
+is delivered through TestFlight. The [account service](server/README.md) can also
+be self-hosted. Production keys and user data are never public.
 
 - Voice transcription and prompt-quality rewriting from any Windows app
 - Optional Local Whisper transcription after an explicit, verified asset download
@@ -57,13 +60,14 @@ in the current Windows release. Production keys and user data are never public.
 - Native Windows hotkeys and system tray integration
 - English, Portuguese, Spanish, German, and Russian in the QML interface;
   the new Settings interface currently uses Portuguese
-- React/Tauri Settings organized into General, Dictation, Text, Dictionary,
+- React/Tauri Settings organized into Account, General, Dictation, Text, Dictionary,
   Shortcuts, and Models and services
 - Toggle or hold-to-record keyboard activation; the microphone button uses toggle
 - A personal dictionary for names and technical terms, with per-term enablement
 - Local-only usage statistics without storing transcripts
 - Bundled SoX runtime in the portable Windows build
-- No Clarify account, hosted backend, or telemetry service
+- Optional account with email-code login, shared vocabulary and hosted allowance
+- Local and personal-key modes remain available without an account; no telemetry service
 
 ## Interface preview
 

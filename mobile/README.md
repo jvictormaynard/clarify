@@ -3,15 +3,19 @@
 Expo application plus a small Swift keyboard extension. One user-supplied Groq
 API key handles speech recognition and rewriting. Native bottom tabs contain
 Home, Dicionário and Ajustes. History and vocabulary are stored locally in SQLite.
-Build 16 does not include an account, sync, billing, translation or local model.
+The 0.3.0 (17) release candidate adds an optional account and vocabulary sync.
+Billing, translation and local models are outside this mobile release.
 
-The current development branch adds an optional shared account, vocabulary sync
+Version 0.3.0 (17) adds an optional shared account, vocabulary sync
 and hosted Groq dictation through [`server/`](../server/README.md). Account login
 uses email codes; sessions stay in the containing app's Keychain and never reach
 JavaScript or the keyboard extension. Signing in does not change processing:
 the user explicitly enables hosted processing and connects the dictionary.
-BYOK remains available. History stays local. Hosted access is not yet deployed
-or available in the existing TestFlight build. Google/Apple login is deferred.
+BYOK remains available. History stays local. The server is deployed at
+`https://clarify-api.victormaynard.com`; hosted processing requires a dedicated
+Groq key and an enabled beta budget. The approved global beta budget is US$10
+per UTC calendar month, with up to 300 minutes per account. Both limits apply.
+Google/Apple login is deferred. Build 16 does not include these account controls.
 
 Version **0.2.2 (16)** handles blocked microphone activation with a Portuguese
 recovery message instead of an Expo/native error. Calls have priority over the
