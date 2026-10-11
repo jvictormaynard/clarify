@@ -232,3 +232,7 @@ também mantém o texto original.
 O ditado usa o refinamento fiel como comportamento padrão, sem seletor de modo.
 Configurações antigas de modo são migradas automaticamente. O refinamento em
 nuvem de transcrições locais continua dependendo da autorização nas configurações.
+## Privacidade
+
+Consulte o [aviso de privacidade](../PRIVACY.md) antes de ativar a sincronização
+da conta ou o processamento pelo serviço Clarify.

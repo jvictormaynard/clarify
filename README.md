@@ -391,3 +391,7 @@ If optional dictation refinement fails, Clarify keeps the original transcript, s
 Dictation cleanup uses low reasoning on the official Groq GPT-OSS models.
 It preserves unique content, resolves clear spoken corrections, and removes
 accidental duplicates. Incomplete provider output also uses the original text.
+
+## Privacy
+
+Read the [privacy notice](PRIVACY.md) before enabling account sync or hosted processing.

@@ -2,6 +2,7 @@
 
 This service and the desktop/iOS clients are public under the root MIT license.
 Production keys, database contents, backups and administrator access are private.
+See the [privacy notice and account deletion instructions](../PRIVACY.md).
 The server is optional: local inference and personal provider keys still work
 without an account. The iOS app currently supports personal Groq keys, not local
 inference. This increment shares vocabulary and hosted audio allowance. History,
