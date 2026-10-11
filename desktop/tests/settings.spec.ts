@@ -32,10 +32,13 @@ test.beforeEach(async ({ page }, testInfo) => {
 });
 test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
 
-test("onboarding: first run offers account, BYOK and local paths before Settings", async ({ page }) => {
+test("onboarding: first run shows email and a local link before Settings", async ({ page }) => {
   await expect(page.getByRole("navigation", { name: "Configurações" })).toBeHidden();
-  for (const name of ["Entrar", "Criar conta", "Usar minha chave de API", "Usar modelo local"])
-    await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
+  for (const name of ["Entrar", "Criar conta", "Usar minha chave de API"])
+    await expect(page.getByRole("button", { name, exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "continuar 100% local", exact: true }).click();
   await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
   await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("invalid");
   await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
@@ -48,10 +51,9 @@ test("onboarding: first run offers account, BYOK and local paths before Settings
   await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
 });
 
-test("onboarding: signup confirms its code inside the app and requests processing consent", async ({ page }) => {
-  await page.getByRole("button", { name: "Criar conta", exact: true }).click();
+test("onboarding: email confirms its code inside the app and requests processing consent", async ({ page }) => {
   await page.getByRole("textbox", { name: "E-mail", exact: true }).fill("test@example.test");
-  await page.getByRole("button", { name: "Criar conta", exact: true }).click();
+  await page.getByRole("textbox", { name: "E-mail", exact: true }).press("Enter");
   await expect(page.getByText("Digite o código enviado para test@example.test.", { exact: false })).toBeVisible();
   await page.getByRole("textbox", { name: "Código recebido por e-mail" }).fill("000000");
   await page.getByRole("button", { name: "Confirmar código" }).click();
@@ -66,7 +68,7 @@ test("onboarding: signup confirms its code inside the app and requests processin
 });
 
 test("onboarding: local choice leads to model setup without a login", async ({ page }) => {
-  await page.getByRole("button", { name: "Usar modelo local", exact: true }).click();
+  await page.getByRole("button", { name: "continuar 100% local", exact: true }).click();
   await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
   await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Modelo local", exact: true })).toBeVisible();
@@ -75,13 +77,13 @@ test("onboarding: local choice leads to model setup without a login", async ({ p
 test("account remains optional and self-hosting configuration does not change dictation routes", async ({ page }) => {
   await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
   await expect(page.getByText("A conta é opcional.", { exact: false })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Entrar", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
   await page.getByRole("textbox", { name: "E-mail", exact: true }).fill("test@example.test");
-  await expect(page.getByRole("button", { name: "Entrar", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeEnabled();
   await page.getByText("Servidor próprio", { exact: true }).click();
   await page.getByRole("textbox", { name: "Endereço do servidor", exact: true }).fill("https://clarify.example");
   await page.getByRole("button", { name: "Salvar servidor", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Entrar", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Ditado", exact: true }).click();
   await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();

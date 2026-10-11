@@ -20,6 +20,13 @@ export function Button({ children, onPress, disabled = false, destructive = fals
     <Text style={[ui.buttonText, { color: destructive ? c.danger : c.accent }]}>{children}</Text>
   </Pressable>;
 }
+export function TextButton({ children, onPress, disabled = false }: { children: string; onPress: () => void; disabled?: boolean }) {
+  const c = usePalette();
+  return <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
+    style={({ pressed }) => ({ minHeight: 44, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.35 : pressed ? 0.65 : 1 })}>
+    <Text style={[ui.small, { color: c.accent }]}>{children}</Text>
+  </Pressable>;
+}
 export const ui = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 36, gap: 16 },
   heading: { gap: 8, marginBottom: 8 }, title: { fontSize: 32, fontWeight: '700', letterSpacing: -0.8 },

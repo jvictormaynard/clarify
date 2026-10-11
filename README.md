@@ -47,8 +47,9 @@ translate selected text without opening a separate editor.
 ## Features
 
 Version 0.6.0 adds optional shared accounts and vocabulary sync. On first launch,
-choose sign in, create an account, a personal Groq key or a local model. Confirm
-the emailed code inside the app and explicitly enable hosted processing.
+enter your email and confirm the code inside the app to enter or create an
+account. Alternatively, follow **continuar 100% local** to configure a local
+model; a personal Groq key remains available from that setup page. Explicitly enable hosted processing when using an account.
 Existing profiles retain their setup; account controls remain in Settings.
 Connect the dictionary there to sync vocabulary. History and snippets stay local. The [iOS client](mobile/README.md)
 is delivered through TestFlight. The [account service](server/README.md) can also
@@ -126,8 +127,8 @@ do not need Python, Node.js, or SoX.
 1. Open the [latest release](https://github.com/jvictormaynard/clarify/releases/latest).
 2. Download `Clarify.exe` and place it in a folder you control.
 3. Double-click the executable.
-4. The first-run page opens automatically. Choose **Entrar**, **Criar conta**,
-   **Usar minha chave de API**, or **Usar modelo local**.
+4. The first-run page opens automatically. Enter your email and press **Continuar**,
+   or follow **continuar 100% local**. No password is needed.
    - **Clarify account:** confirm your email code inside the app, read the
      processing notice and enable hosted dictation. No provider key is needed.
    - **Personal key:** save your Groq key. Other providers remain available

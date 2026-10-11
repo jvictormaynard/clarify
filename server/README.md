@@ -69,6 +69,7 @@ minutes. Sessions expire after 14 days and logout revokes the session.
 
 | Request | Purpose |
 | --- | --- |
+| `POST /_allauth/app/v1/auth/continue` | Enter or create a passwordless account with `email`; confirm with `code/confirm` |
 | `POST /_allauth/app/v1/auth/signup` | Start signup with `email` |
 | `POST /_allauth/app/v1/auth/email/verify` | Confirm signup with six-digit `key` |
 | `POST /_allauth/app/v1/auth/code/request` | Request login code with `email` |

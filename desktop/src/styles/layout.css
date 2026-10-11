@@ -265,6 +265,7 @@ header {
 }
 .onboarding-content h1 { margin: 20px 0 8px; }
 .onboarding-content fieldset { display: grid; gap: 18px; margin-top: 28px; }
-.onboarding-options { display: grid; gap: 12px; }
+.account-sign-in { display: grid; gap: 16px; }
+.onboarding-skip { justify-self: center; font-size: var(--text-sm); }
 .onboarding .row { display: grid; gap: 10px; }
 .onboarding .row-control { width: 100%; }

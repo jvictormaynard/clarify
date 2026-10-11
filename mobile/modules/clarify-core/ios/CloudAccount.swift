@@ -129,7 +129,7 @@ final class CloudAccount {
       try locked { state = CloudAccountState(); state.endpoint = endpoint; try persist() }
     case "login", "signup":
       guard locked({ state.userID == nil }) else { throw ClarifyError("Saia da conta atual primeiro.") }
-      let path = action == "signup" ? "/auth/signup" : "/auth/code/request"
+      let path = action == "signup" ? "/auth/signup" : "/auth/continue"
       let (code, _) = try await perform("POST", "/_allauth/app/v1" + path, json: ["email": value.trimmingCharacters(in: .whitespacesAndNewlines)])
       guard code == 200 || code == 401 else { throw ClarifyError("Não foi possível enviar o código. Confira o e-mail ou aguarde antes de tentar novamente.") }
       try locked { state.pending = action; state.email = value; try persist() }

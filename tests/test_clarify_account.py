@@ -70,6 +70,33 @@ class AccountTests(unittest.TestCase):
         self.assertNotIn("test-session-only", self.account.path.read_text())
         self.assertFalse(self.account.hosted)
 
+    def test_email_entry_uses_unified_passwordless_flow_and_existing_confirmation(self):
+        self.request.return_value = self.response(
+            {"meta": {"session_token": "pending-session"}}, 401
+        )
+        self.account.authenticate("login", " user@example.test ")
+        self.assertEqual(
+            self.request.call_args.args[1],
+            "https://clarify.example/_allauth/app/v1/auth/continue",
+        )
+        self.assertEqual(
+            self.request.call_args.kwargs["json"], {"email": "user@example.test"}
+        )
+        self.assertEqual(self.account.snapshot()["pending"], "login")
+        self.assertFalse(self.account.snapshot()["signedIn"])
+        user_id = str(uuid.uuid4())
+        self.request.side_effect = [
+            self.response({"meta": {"is_authenticated": True}}),
+            self.response({"id": user_id, "email": "user@example.test"}),
+        ]
+        self.account.authenticate("confirm", "123456")
+        confirm = self.request.call_args_list[-2]
+        self.assertEqual(
+            confirm.args[1], "https://clarify.example/_allauth/app/v1/auth/code/confirm"
+        )
+        self.assertEqual(confirm.kwargs["json"], {"code": "123456"})
+        self.assertTrue(self.account.snapshot()["signedIn"])
+
     def test_endpoint_rejects_credentials_paths_queries_and_insecure_hosts(self):
         for value in (
             "http://public.test",

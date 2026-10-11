@@ -238,7 +238,7 @@ class AccountService:
         if action in {"login", "signup"}:
             if self.snapshot()["signedIn"]:
                 raise AccountError("Saia da conta atual primeiro.")
-            path = "/auth/signup" if action == "signup" else "/auth/code/request"
+            path = "/auth/signup" if action == "signup" else "/auth/continue"
             code, result = self._request(
                 "POST", "/_allauth/app/v1" + path, json={"email": value.strip()}
             )

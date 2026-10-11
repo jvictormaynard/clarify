@@ -29,7 +29,13 @@ through the existing config transaction. Legacy profiles retain their choices.
 The iOS app uses an app-only onboarding preference and protected Router screens;
 existing keys/accounts migrate once before the new setup can save credentials.
 Setup does not acquire the microphone or send an email without a user action.
-Account authentication forms are shared with the respective Settings pages.
+The initial page shows the email form directly. The server's `auth/continue`
+adapter creates an unverified account only when needed, then uses allauth's
+same login-code verification and session machinery for both paths. New-account
+limits still apply; no usable password is saved. Legacy separate endpoints remain
+available. Authentication forms are shared with desktop Settings and the iOS
+sign-in screen. The iOS Account tab is present with or without a session;
+its settings button opens a native stack page outside the bottom tabs.
 
 ## Runtime flow
 
