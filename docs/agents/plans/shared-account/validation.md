@@ -69,6 +69,13 @@ and account-missing messages; all 24 server tests pass. Those two notification
 paths also have native frontend targets configured, preventing a missing-URL
 server error while keeping links out of the email.
 
+Follow-up deployment `aac9529e-5d00-4013-b940-94478a6c0754`, exported from commit
+`265ba8808bbf3d8288bab75767a884941047bb5e`, reached `SUCCESS`. It includes the
+custom email templates and native notification fixes. No second real email was
+sent for this copy change; template content and complete code flows were checked
+with the isolated PostgreSQL suite. Ten desktop account tests and the mobile
+TypeScript/lint/13-test checks also passed after setting the custom endpoint.
+
 Public signup and hosted inference remain disabled. A dedicated Groq key and
 approved global budget are still required. No new TestFlight release is claimed.
 Device activation/dictation, multi-device acceptance, live quota exhaustion and
