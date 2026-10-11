@@ -184,7 +184,7 @@ class KeyboardViewController: UIInputViewController {
     addToDictionary.titleLabel?.adjustsFontSizeToFitWidth = true
     addToDictionary.titleLabel?.minimumScaleFactor = 0.75
     addToDictionary.layer.cornerRadius = 22
-    addToDictionary.addTarget(self, action: #selector(saveSelectedTerm), for: .touchUpInside)
+    addToDictionary.addAction(UIAction { [weak self] _ in self?.saveSelectedTerm() }, for: .touchUpInside)
     addToDictionary.contentEdgeInsets = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
     addToDictionary.isHidden = true
     for element in [status, detail, mic, insert, keys, cancel, suggestions, addToDictionary] {
@@ -388,7 +388,7 @@ class KeyboardViewController: UIInputViewController {
     suggestions.isHidden = !showSuggestions
     status.isHidden = showDictionary || showSuggestions; detail.isHidden = status.isHidden
   }
-  @objc private func saveSelectedTerm() {
+  private func saveSelectedTerm() {
     guard let term = selectedTerm, let scope = selectedScope, let store,
           hasFullAccess, selectedDocument == textDocumentProxy.documentIdentifier,
           term == KeyboardSelection.term(textDocumentProxy.selectedText), !state.phase.busy else { updateToolbar(); return }
