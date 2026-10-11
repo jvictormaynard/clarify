@@ -15,7 +15,7 @@ export default function Dictionary() {
   const [entries, setEntries] = useState<VocabularyEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState('');
-  const [editing, setEditing] = useState<{ index: number; value: VocabularyEntry } | null>(null);
+  const [editing, setEditing] = useState<{ index: number; value: VocabularyEntry; base: VocabularyEntry[] } | null>(null);
   const [aliases, setAliases] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -27,18 +27,18 @@ export default function Dictionary() {
     void Core.getDictionary().then((values) => { if (active) { setEntries(values); setLoaded(true); } }).catch(report).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [focused, state.libraryRevision, account?.signedIn, account?.syncEnabled]);
-  const edit = (index = -1) => { const value = index < 0 ? empty() : { ...entries[index] }; setAliases(value.aliases.join(', ')); setEditing({ index, value }); };
+  const edit = (index = -1) => { const value = index < 0 ? empty() : { ...entries[index] }; setAliases(value.aliases.join(', ')); setEditing({ index, value, base: entries }); };
   async function save(values: VocabularyEntry[], remove = false) {
     setSaving(true);
     setDeleting(remove);
-    try { await Core.saveDictionary(values); setEntries(await Core.getDictionary()); setEditing(null); await refresh(); }
+    try { await Core.saveDictionary(values, editing?.base ?? entries); setEntries(await Core.getDictionary()); setEditing(null); await refresh(); }
     catch (error) { report(error); }
     finally { setSaving(false); setDeleting(false); }
   }
   function commit() {
     if (!editing) return;
     const value = { ...editing.value, aliases: aliases.split(',').map((s) => s.trim()).filter(Boolean) };
-    const values = [...entries];
+    const values = [...editing.base];
     if (editing.index < 0) values.push(value); else values[editing.index] = value;
     void save(values);
   }
@@ -71,7 +71,7 @@ export default function Dictionary() {
           <View style={ui.row}><Text style={[ui.body, { color: c.text }]}>{t("Usar esta palavra")}</Text><Switch accessibilityLabel={t("Usar esta palavra")} value={editing.value.enabled} disabled={busy} onValueChange={(enabled) => setEditing({ ...editing, value: { ...editing.value, enabled } })} /></View>
         </Card>}
         <Button loading={saving && !deleting} disabled={busy || !editing?.value.term.trim()} onPress={commit}>{t("Salvar palavra")}</Button>
-        {editing && editing.index >= 0 && <Button loading={deleting} disabled={busy} destructive onPress={() => Alert.alert(t("Excluir palavra?"), editing.value.term, [{ text: t("Cancelar"), style: 'cancel' }, { text: t("Excluir"), style: 'destructive', onPress: () => void save(entries.filter((_, index) => index !== editing.index), true) }])}>{t("Excluir palavra")}</Button>}
+        {editing && editing.index >= 0 && <Button loading={deleting} disabled={busy} destructive onPress={() => Alert.alert(t("Excluir palavra?"), editing.value.term, [{ text: t("Cancelar"), style: 'cancel' }, { text: t("Excluir"), style: 'destructive', onPress: () => void save(editing.base.filter((_, index) => index !== editing.index), true) }])}>{t("Excluir palavra")}</Button>}
       </ScrollView></SafeAreaView>
     </Modal>
   </>;

@@ -53,5 +53,5 @@ export default requireNativeModule<{
   deleteHistory(id: string): Promise<void>;
   clearHistory(): Promise<void>;
   getDictionary(): Promise<VocabularyEntry[]>;
-  saveDictionary(entries: VocabularyEntry[]): Promise<void>;
+  saveDictionary(entries: VocabularyEntry[], base: VocabularyEntry[]): Promise<void>;
 }>('ClarifyCore');

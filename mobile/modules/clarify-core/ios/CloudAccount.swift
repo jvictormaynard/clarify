@@ -232,6 +232,15 @@ final class CloudAccount {
     do { _ = try await command("sync", value: "", library: library) }
     catch { locked { syncError = L("As palavras foram salvas neste iPhone. A sincronização será tentada novamente ao abrir o aplicativo.") } }
   }
+  func saveDictionaryDraft(_ entries: [VocabularyEntry], base: [VocabularyEntry], library: LocalLibrary) throws {
+    guard !managed || scope != nil else { throw ClarifyError(L("Entre na conta novamente.")) }
+    let merged: [VocabularyEntry]
+    do { merged = try Self.merge(base: base, local: entries, remote: library.dictionary(scope: scope)) }
+    catch is VocabularyConflict {
+      throw ClarifyError(L("A mesma palavra mudou nos dois dispositivos. Escolha qual versão manter nas palavras em conflito."))
+    }
+    try library.saveDictionary(merged, scope: scope)
+  }
   func prepareLibrary(_ library: LocalLibrary) throws {
     guard let userID = scope else { return }
     let cached = try library.cloudDictionary(userID)

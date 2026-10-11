@@ -100,13 +100,14 @@ public class ClarifyCoreModule: Module {
       let entries = try ClarifyAudioSession.shared.library().dictionary(scope: CloudAccount.shared.scope)
       return try JSONSerialization.jsonObject(with: JSONEncoder().encode(entries)) as? [[String: Any]] ?? []
     }.runOnQueue(.main)
-    AsyncFunction("saveDictionary") { (values: [[String: Any]], promise: Promise) in
+    AsyncFunction("saveDictionary") { (values: [[String: Any]], base: [[String: Any]], promise: Promise) in
       Task { @MainActor in
         guard !ClarifyAudioSession.shared.state.phase.busy, !CloudAccount.shared.isBusy else { promise.reject("ACCOUNT_BUSY", L("Finalize a operação antes de alterar o dicionário.")); return }
         do {
           let entries = try JSONDecoder().decode([VocabularyEntry].self, from: JSONSerialization.data(withJSONObject: values))
+          let original = try JSONDecoder().decode([VocabularyEntry].self, from: JSONSerialization.data(withJSONObject: base))
           let library = try ClarifyAudioSession.shared.library()
-          try library.saveDictionary(entries, scope: CloudAccount.shared.scope)
+          try CloudAccount.shared.saveDictionaryDraft(entries, base: original, library: library)
           if CloudAccount.shared.scope != nil { await CloudAccount.shared.syncAfterSave(library) }
           ClarifyAudioSession.shared.libraryChanged()
           promise.resolve(nil)

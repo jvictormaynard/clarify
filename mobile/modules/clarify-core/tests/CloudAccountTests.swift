@@ -2,6 +2,20 @@ import XCTest
 @testable import ClarifyContracts
 
 final class CloudAccountTests: XCTestCase {
+  func testSavingAnOpenDraftPreservesWordsReceivedDuringAutomaticRefresh() throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+    let account = CloudAccount(defaults: defaults), library = try LocalLibrary(root: root)
+    let original = VocabularyEntry(term: "A"), remote = VocabularyEntry(term: "Remote")
+    try library.saveDictionary([original, remote])
+    let edit = VocabularyEntry(term: "A", pronunciation: "ours")
+    try account.saveDictionaryDraft([edit], base: [original], library: library)
+    XCTAssertEqual(try library.dictionary(), [edit, remote])
+    XCTAssertThrowsError(try account.saveDictionaryDraft([VocabularyEntry(term: "A", pronunciation: "other")], base: [original], library: library))
+    XCTAssertEqual(try library.dictionary(), [edit, remote])
+  }
   func testExpiredManagedSessionCannotUsePersonalCredentials() throws {
     let suite = "ClarifyTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
