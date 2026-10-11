@@ -236,7 +236,7 @@ class EmailAccountTests(TestCase):
         self.assertNotEqual(response.status_code, 200)
         self.assertIn(self.client.get("/v1/usage").status_code, (401, 403))
 
-    def test_existing_account_email_directs_to_app_login(self):
+    def test_existing_account_email_directs_to_unified_email_form(self):
         user = get_user_model().objects.create_user("existing@example.test")
         EmailAddress.objects.create(
             user=user, email=user.email, verified=True, primary=True
@@ -246,7 +246,9 @@ class EmailAccountTests(TestCase):
         )
         self.assertEqual(response.status_code, 401)
         self.assertTrue(mail.outbox)
-        self.assertIn("Entrar", mail.outbox[-1].body)
+        self.assertIn(
+            "informe seu e-mail para receber um código de acesso", mail.outbox[-1].body
+        )
         self.assertNotIn("testserver", mail.outbox[-1].body)
         self.assertNotIn("http", mail.outbox[-1].body)
         self.accept_token(response)
@@ -264,7 +266,7 @@ class EmailAccountTests(TestCase):
         self.accept_token(response)
         self.assertEqual(self.client.get("/v1/account").status_code, 200)
 
-    def test_unknown_account_email_directs_to_app_signup(self):
+    def test_unknown_account_email_directs_to_unified_email_form(self):
         response = self.client.post(
             "/_allauth/app/v1/auth/code/request",
             {"email": "unknown@example.test"},
@@ -272,7 +274,9 @@ class EmailAccountTests(TestCase):
         )
         self.assertEqual(response.status_code, 401)
         self.assertTrue(mail.outbox)
-        self.assertIn("Criar conta", mail.outbox[-1].body)
+        self.assertIn(
+            "informe seu e-mail para entrar ou criar uma conta", mail.outbox[-1].body
+        )
         self.assertNotIn("testserver", mail.outbox[-1].body)
         self.assertNotIn("http", mail.outbox[-1].body)
         self.accept_token(response)
