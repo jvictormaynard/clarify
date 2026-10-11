@@ -11,7 +11,7 @@ private final class Field: NSObject, UITextDocumentProxy {
   var documentContextBeforeInput: String? { before }
   var documentContextAfterInput: String? { after }
   var documentInputMode: UITextInputMode? { nil }
-  var selectedText: String? { nil }
+  var selectedText: String?
   var hasText: Bool { !before.isEmpty || !after.isEmpty }
   var autocorrectionType: UITextAutocorrectionType = .yes
   var spellCheckingType: UITextSpellCheckingType = .yes
@@ -25,6 +25,12 @@ private final class Field: NSObject, UITextDocumentProxy {
 }
 
 @MainActor
+private final class SelectionKeyboard: KeyboardViewController {
+  let field = Field()
+  override var textDocumentProxy: UITextDocumentProxy { field }
+}
+
+@MainActor
 private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
   var pulses = 0
   var preparations = 0
@@ -33,6 +39,21 @@ private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
 }
 
 final class KeyboardUITests: XCTestCase {
+  func testShortSelectionOffersDictionaryActionWithoutChangingTheDocument() async {
+    await MainActor.run {
+      let keyboard = SelectionKeyboard()
+      keyboard.loadViewIfNeeded()
+      keyboard.field.before = "Original text "
+      keyboard.field.selectedText = "Clarify"
+      keyboard.selectionDidChange(nil)
+      func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
+      let action = descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" && !$0.isHidden }
+      XCTAssertNotNil(action, "A selected word must offer the dictionary action")
+      XCTAssertEqual(keyboard.field.before, "Original text ")
+      XCTAssertEqual(keyboard.field.selectedText, "Clarify")
+    }
+  }
   func testKeyboardPublishesItsHeightBeforeAttachment() async {
     await MainActor.run {
       let keyboard = KeyboardViewController()

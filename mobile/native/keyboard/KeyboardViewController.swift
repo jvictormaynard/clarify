@@ -102,7 +102,7 @@ private struct ActivationLink: View {
   }
 }
 
-final class KeyboardViewController: UIInputViewController {
+class KeyboardViewController: UIInputViewController {
   private let store = SharedState()
   private let mic = RecordControl()
   private let glyph = RecordingGlyph()
