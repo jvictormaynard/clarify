@@ -158,6 +158,7 @@ class KeyboardViewController: UIInputViewController {
       glyph.topAnchor.constraint(equalTo: mic.topAnchor), glyph.bottomAnchor.constraint(equalTo: mic.bottomAnchor)
     ])
     insert.setTitle(L("Inserir"), for: .normal)
+    insert.isHidden = true; cancel.isHidden = true
     insert.titleLabel?.font = .systemFont(ofSize: 13, weight: .medium)
     insert.addTarget(self, action: #selector(insertResult), for: .touchUpInside)
     cancel.setImage(UIImage(systemName: "xmark"), for: .normal); cancel.accessibilityLabel = L("Cancelar gravação")
