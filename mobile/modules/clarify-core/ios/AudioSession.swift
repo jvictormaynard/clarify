@@ -25,7 +25,20 @@ final class ClarifyAudioSession: NSObject {
   private(set) var state = DictationSnapshot()
 
   func library() throws -> LocalLibrary { try libraryResult.get() }
-  func libraryChanged() { state.libraryRevision += 1; publish() }
+  func libraryChanged() { state.libraryRevision += 1; try? importKeyboardVocabulary(); publish() }
+  func importKeyboardVocabulary() throws {
+    guard let store, !state.phase.busy, !CloudAccount.shared.isBusy else { return }
+    let account = CloudAccount.shared
+    guard !account.managed || account.scope != nil else { try store.publishKeyboardDictionary(nil); return }
+    let library = try library()
+    try account.prepareLibrary(library)
+    if try library.importKeyboardAdditions(store, scope: account.scope) {
+      state.libraryRevision += 1
+      account.dictionaryChanged()
+    }
+    let words = try library.dictionary(scope: account.scope).map { KeyboardDictionaryWord(term: $0.term, enabled: $0.enabled) }
+    try store.publishKeyboardDictionary(KeyboardDictionaryContext(scope: account.scope ?? "guest", words: words))
+  }
 
   private override init() {
     super.init()
@@ -37,13 +50,14 @@ final class ClarifyAudioSession: NSObject {
       }
     }
     store = SharedState()
+    try? importKeyboardVocabulary()
     state.configured = CloudAccount.shared.configured
     publish()
     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
       Unmanaged.passUnretained(self).toOpaque(), { _, observer, _, _, _ in
         guard let observer = observer else { return }
         let owner = Unmanaged<ClarifyAudioSession>.fromOpaque(observer).takeUnretainedValue()
-        DispatchQueue.main.async { owner.tick() }
+        DispatchQueue.main.async { try? owner.importKeyboardVocabulary(); owner.tick() }
       }, "com.clarify.keyboard.command" as CFString, nil, .deliverImmediately)
     NotificationCenter.default.addObserver(self, selector: #selector(interrupted),
       name: AVAudioSession.interruptionNotification, object: nil)
@@ -144,7 +158,7 @@ final class ClarifyAudioSession: NSObject {
       return
     }
     // Refresh liveness once per second, without disk writes on every audio buffer.
-    if Date().timeIntervalSince1970 - state.heartbeat >= 1 { publish() }
+    if Date().timeIntervalSince1970 - state.heartbeat >= 1 { try? importKeyboardVocabulary(); publish() }
   }
   func handle(_ action: String, id: String, haptics: Bool = true) {
     lastActivity = Date()
@@ -169,6 +183,7 @@ final class ClarifyAudioSession: NSObject {
   }
   private func start(id: String, locked: Bool, haptics: Bool) throws {
     guard !CloudAccount.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
+    try? importKeyboardVocabulary()
     clipVocabulary = try library().dictionary(scope: CloudAccount.shared.scope)
     let format = engine.inputNode.outputFormat(forBus: 0)
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("clarify-\(UUID().uuidString).m4a")

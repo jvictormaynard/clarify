@@ -60,6 +60,11 @@ final class CloudAccount {
   var hosted: Bool { locked { state.userID != nil && state.hosted } }
   var managed: Bool { locked { state.userID != nil || state.hosted } }
   var scope: String? { locked { state.userID } }
+  func dictionaryChanged() {
+    // A keyboard edit must reach the server before the next hosted clip, even
+    // when the previous automatic synchronization happened less than a minute ago.
+    locked { lastSyncAttempt = -.infinity; lastRefreshAttempt = -.infinity }
+  }
   var isBusy: Bool { locked { busy } }
   var configured: Bool { locked { managed ? state.userID != nil && state.hosted && AccountCredential.read() != nil : KeyStore.read() != nil } }
   func snapshot() -> [String: Any] {

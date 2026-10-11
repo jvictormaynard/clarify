@@ -22,7 +22,7 @@ module.exports = function withClarifyKeyboard(config) {
     for (const name of ['KeyboardViewController.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift', 'KBHostArbiterHook.m', 'KBHostArbiterHook.h', 'ClarifyKeyboard-Bridging-Header.h']) {
       fs.copyFileSync(path.join(root, 'native/keyboard', name), path.join(out, name));
     }
-    for (const name of ['SharedState.swift', 'KeyboardState.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'Localization.swift']) {
+    for (const name of ['SharedState.swift', 'KeyboardVocabulary.swift', 'KeyboardState.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'Localization.swift']) {
       fs.copyFileSync(path.join(root, 'modules/clarify-core/ios', name), path.join(out, name));
     }
     fs.writeFileSync(path.join(out, 'Info.plist'), plist.default.build({
@@ -43,7 +43,7 @@ module.exports = function withClarifyKeyboard(config) {
     const project = mod.modResults;
     if (project.pbxTargetByName(targetName)) return mod;
     const target = project.addTarget(targetName, 'app_extension', targetName, `${bundle}.keyboard`);
-    const files = ['KeyboardViewController.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift', 'KBHostArbiterHook.m', 'SharedState.swift', 'KeyboardState.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'Localization.swift'];
+    const files = ['KeyboardViewController.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift', 'KBHostArbiterHook.m', 'SharedState.swift', 'KeyboardVocabulary.swift', 'KeyboardState.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'Localization.swift'];
     const pbxGroup = project.addPbxGroup(files, targetName, targetName);
     project.addToPbxGroup(pbxGroup.uuid, project.getFirstProject().firstProject.mainGroup);
     project.addBuildPhase(files.map((name) => `${targetName}/${name}`), 'PBXSourcesBuildPhase', 'Sources', target.uuid);

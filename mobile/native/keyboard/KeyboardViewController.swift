@@ -103,7 +103,7 @@ private struct ActivationLink: View {
 }
 
 class KeyboardViewController: UIInputViewController {
-  private let store = SharedState()
+  var store = SharedState()
   private let mic = RecordControl()
   private let glyph = RecordingGlyph()
   private let status = UILabel()
@@ -113,6 +113,16 @@ class KeyboardViewController: UIInputViewController {
   private let keys = KeyGridView()
   private let typing = TypingAssistant()
   private let suggestions = UIStackView()
+  private let addToDictionary = UIButton(type: .system)
+  private var dictionaryTrailing: NSLayoutConstraint?
+  private var selectedTerm: String?
+  private var selectedScope: String?
+  private var selectedDocument: UUID?
+  private var dictionaryError: String?
+  private var dictionaryContext: KeyboardDictionaryContext?
+  private var dictionaryCheckedAt = Date.distantPast
+  private var dictionaryRevision = -1
+  private var selectedTermSaved = false
   private let feedback = HapticFeedback()
   private var activation: UIHostingController<ActivationLink>?
   private var timer: Timer?
@@ -168,7 +178,15 @@ class KeyboardViewController: UIInputViewController {
       else { self?.advanceToNextInputMode() }
     }
     suggestions.axis = .horizontal; suggestions.distribution = .fillEqually
-    for element in [status, detail, mic, insert, keys, cancel, suggestions] {
+    addToDictionary.accessibilityIdentifier = "clarify.add-to-dictionary"
+    addToDictionary.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+    addToDictionary.titleLabel?.adjustsFontSizeToFitWidth = true
+    addToDictionary.titleLabel?.minimumScaleFactor = 0.75
+    addToDictionary.layer.cornerRadius = 22
+    addToDictionary.addTarget(self, action: #selector(saveSelectedTerm), for: .touchUpInside)
+    addToDictionary.contentEdgeInsets = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
+    addToDictionary.isHidden = true
+    for element in [status, detail, mic, insert, keys, cancel, suggestions, addToDictionary] {
       element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element)
     }
     NSLayoutConstraint.activate([
@@ -188,6 +206,12 @@ class KeyboardViewController: UIInputViewController {
       suggestions.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -8),
       suggestions.topAnchor.constraint(equalTo: view.topAnchor, constant: 7),
       suggestions.heightAnchor.constraint(equalToConstant: 44)
+    ])
+    dictionaryTrailing = addToDictionary.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -8)
+    NSLayoutConstraint.activate([
+      addToDictionary.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 12),
+      dictionaryTrailing!, addToDictionary.centerYAnchor.constraint(equalTo: mic.centerYAnchor),
+      addToDictionary.heightAnchor.constraint(equalToConstant: 44)
     ])
     let host = UIHostingController(rootView: ActivationLink { [weak self] in self?.activationURL() ?? URL(string: "clarify://keyboard")! })
     if #available(iOS 16.4, *) { host.safeAreaRegions = [] }
@@ -225,6 +249,10 @@ class KeyboardViewController: UIInputViewController {
       keys.model.shift = type == .allCharacters ? .caps : ((type == .sentences && sentenceStart) || (type == .words && (context.isEmpty || context.last?.isWhitespace == true)) ? .once : .off)
     }
     if changed || shift != keys.model.shift { keys.rebuild() }
+    updateSuggestions()
+  }
+  override func selectionDidChange(_ textInput: UITextInput?) {
+    super.selectionDidChange(textInput)
     updateSuggestions()
   }
   override func viewWillAppear(_ animated: Bool) {
@@ -290,9 +318,7 @@ class KeyboardViewController: UIInputViewController {
     }
     glyph.update(recording: mic.holding, locked: mic.locked)
     mic.accessibilityLabel = mic.locked ? L("Finalizar gravação") : L("Gravar")
-    let showingSuggestions = !suggestions.arrangedSubviews.isEmpty && !state.phase.busy && insert.isHidden
-    suggestions.isHidden = !showingSuggestions
-    status.isHidden = showingSuggestions; detail.isHidden = showingSuggestions
+    updateToolbar()
     if attached, state.phase == .ready, let id = operationID, state.operationID == id,
        documentID == textDocumentProxy.documentIdentifier, store?.receipt() != id { insertResult() }
   }
@@ -318,8 +344,51 @@ class KeyboardViewController: UIInputViewController {
       }, for: .touchUpInside)
       suggestions.addArrangedSubview(button)
     }
-    let show = !suggestions.arrangedSubviews.isEmpty && !state.phase.busy && insert.isHidden
-    suggestions.isHidden = !show; status.isHidden = show; detail.isHidden = show
+    updateToolbar()
+  }
+  private func updateToolbar(forceDictionaryRefresh: Bool = false) {
+    let proxy = textDocumentProxy
+    let term = proxy.isSecureTextEntry == true ? nil : KeyboardSelection.term(proxy.selectedText)
+    let selectionChanged = term != selectedTerm || selectedDocument != proxy.documentIdentifier
+    if selectionChanged { dictionaryError = nil }
+    selectedTerm = term; selectedDocument = proxy.documentIdentifier
+    let available = !state.phase.busy && !mic.holding && !mic.locked && insert.isHidden
+    let showDictionary = term != nil && available
+    addToDictionary.isHidden = !showDictionary
+    if showDictionary, let term {
+      // Selection and taps refresh immediately. Idle polling must not scan the
+      // vocabulary inbox on every 150 ms keyboard state refresh.
+      if selectionChanged || forceDictionaryRefresh || dictionaryRevision != state.libraryRevision || Date().timeIntervalSince(dictionaryCheckedAt) >= 1 {
+        dictionaryContext = store?.keyboardDictionary()
+        selectedScope = dictionaryContext?.scope
+        selectedTermSaved = dictionaryContext.map { store?.isKeyboardTermSaved(term, context: $0) == true } ?? false
+        dictionaryCheckedAt = Date(); dictionaryRevision = state.libraryRevision
+      }
+      let saved = selectedTermSaved
+      addToDictionary.isEnabled = !saved && hasFullAccess && dictionaryContext != nil
+      addToDictionary.backgroundColor = .label
+      addToDictionary.setTitleColor(.systemBackground, for: .normal)
+      addToDictionary.setTitleColor(.systemBackground.withAlphaComponent(0.55), for: .disabled)
+      let title = saved ? L("Salvo") : dictionaryError == nil ? L("Adicionar ao dicionário") : L("Tentar novamente")
+      addToDictionary.setTitle(title, for: .normal)
+      addToDictionary.setImage(UIImage(systemName: saved ? "checkmark" : "plus"), for: .normal)
+      addToDictionary.tintColor = .systemBackground
+      addToDictionary.semanticContentAttribute = .forceRightToLeft
+      addToDictionary.accessibilityLabel = title
+      addToDictionary.accessibilityHint = dictionaryError ?? term
+      dictionaryTrailing?.constant = state.isLive ? -8 : -82
+    }
+    let showSuggestions = !showDictionary && !suggestions.arrangedSubviews.isEmpty && available
+    suggestions.isHidden = !showSuggestions
+    status.isHidden = showDictionary || showSuggestions; detail.isHidden = status.isHidden
+  }
+  @objc private func saveSelectedTerm() {
+    guard let term = selectedTerm, let scope = selectedScope, let store,
+          hasFullAccess, selectedDocument == textDocumentProxy.documentIdentifier,
+          term == KeyboardSelection.term(textDocumentProxy.selectedText), !state.phase.busy else { updateToolbar(); return }
+    do { try store.addKeyboardTerm(term, scope: scope); dictionaryError = nil; feedback.type() }
+    catch { dictionaryError = error.localizedDescription; UIAccessibility.post(notification: .announcement, argument: dictionaryError) }
+    updateToolbar(forceDictionaryRefresh: true)
   }
   @objc private func cancelRecording() { mic.reset(); send("cancel") }
 }

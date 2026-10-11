@@ -16,6 +16,15 @@ Sessions stay in the desktop secret store or app-only iOS Keychain. The keyboard
 extension receives neither provider keys nor account sessions. Account-scoped
 vocabulary caches preserve the local dictionary when the user signs out.
 
+The iOS keyboard receives a nonsecret App Group vocabulary projection with an
+opaque account scope. A tap on a one- or two-word selection writes a separate
+atomic inbox file before confirming Saved. The containing app imports these
+additions into its scoped SQLite dictionary before dictation or dictionary
+access, and while its microphone session is active. Imported files are removed
+only after persistence. Account additions invalidate the synchronization interval
+so the next hosted dictation includes them. History and credentials remain
+app-only; pending additions never cross account or guest scopes.
+
 `server/` uses Django, django-allauth headless email codes, DRF and PostgreSQL.
 The server owns provider selection, prompts, billing bounds and per-account/global
 admission. Clients cannot send arbitrary model, prompt, endpoint or ownership
