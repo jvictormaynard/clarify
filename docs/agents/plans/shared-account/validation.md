@@ -9,7 +9,7 @@ dirty checkout and existing TestFlight build 16 were preserved.
 - Windows Python suite: 1,214 tests passed, 5 skipped, with a temporary AppData
   profile and no real keys, microphone or recordings. Subsequent account/capture
   repairs passed 69 focused account, provider, Qt Settings and lifecycle tests.
-- Server: 22 tests passed on a disposable PostgreSQL 16 cluster. This includes
+- Server: 24 tests passed on a disposable PostgreSQL 16 cluster. This includes
   account/email flows, account isolation, revision conflicts, admission races,
   cost bounds, idempotency, audio validation and the daily email send ceiling.
 - Settings: TypeScript/frontend build and 17 isolated Playwright tests passed.
@@ -64,7 +64,10 @@ account, code capture, session and temporary registered SSH key were removed.
 The initial email used allauth's default host-based wording. Custom signup and
 login templates now contain the Clarify name, code and instructions to enter the
 code in the mobile or desktop app, without a URL or browser instruction. The
-PostgreSQL authentication tests check both email types; all 22 server tests pass.
+PostgreSQL authentication tests check both code emails and the account-existing
+and account-missing messages; all 24 server tests pass. Those two notification
+paths also have native frontend targets configured, preventing a missing-URL
+server error while keeping links out of the email.
 
 Public signup and hosted inference remain disabled. A dedicated Groq key and
 approved global budget are still required. No new TestFlight release is claimed.

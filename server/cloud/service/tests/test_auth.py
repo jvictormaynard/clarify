@@ -1,8 +1,10 @@
 import re
 
 from django.core import mail
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
+from allauth.account.models import EmailAddress
 
 
 @override_settings(
@@ -85,6 +87,62 @@ class EmailAccountTests(TestCase):
         )
         self.assertNotEqual(response.status_code, 200)
         self.assertIn(self.client.get("/v1/usage").status_code, (401, 403))
+
+    def test_existing_account_email_directs_to_app_login(self):
+        user = get_user_model().objects.create_user("existing@example.test")
+        EmailAddress.objects.create(
+            user=user, email=user.email, verified=True, primary=True
+        )
+        response = self.client.post(
+            "/_allauth/app/v1/auth/signup", {"email": user.email}, format="json"
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertTrue(mail.outbox)
+        self.assertIn("Entrar", mail.outbox[-1].body)
+        self.assertNotIn("testserver", mail.outbox[-1].body)
+        self.assertNotIn("http", mail.outbox[-1].body)
+        self.accept_token(response)
+        response = self.client.post(
+            "/_allauth/app/v1/auth/code/request", {"email": user.email}, format="json"
+        )
+        self.assertEqual(response.status_code, 401)
+        self.accept_token(response)
+        response = self.client.post(
+            "/_allauth/app/v1/auth/code/confirm",
+            {"code": self.email_code()},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.accept_token(response)
+        self.assertEqual(self.client.get("/v1/account").status_code, 200)
+
+    def test_unknown_account_email_directs_to_app_signup(self):
+        response = self.client.post(
+            "/_allauth/app/v1/auth/code/request",
+            {"email": "unknown@example.test"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertTrue(mail.outbox)
+        self.assertIn("Criar conta", mail.outbox[-1].body)
+        self.assertNotIn("testserver", mail.outbox[-1].body)
+        self.assertNotIn("http", mail.outbox[-1].body)
+        self.accept_token(response)
+        response = self.client.post(
+            "/_allauth/app/v1/auth/signup",
+            {"email": "unknown@example.test"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 401)
+        self.accept_token(response)
+        response = self.client.post(
+            "/_allauth/app/v1/auth/email/verify",
+            {"key": self.email_code()},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.accept_token(response)
+        self.assertEqual(self.client.get("/v1/account").status_code, 200)
 
     @override_settings(CLARIFY_DAILY_EMAIL_LIMIT=1)
     def test_daily_send_limit_blocks_codes_for_another_address(self):

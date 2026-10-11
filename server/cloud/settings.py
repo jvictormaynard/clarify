@@ -90,6 +90,11 @@ TEMPLATES = [
 ]
 HEADLESS_ONLY = True
 HEADLESS_CLIENTS = ("app",)
+# allauth prepares these targets even when the native email template has no link.
+HEADLESS_FRONTEND_URLS = {
+    "account_signup": "clarify://settings",
+    "account_reset_password": "clarify://settings",
+}
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*"]
