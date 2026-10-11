@@ -56,13 +56,13 @@ final class ContractsTests: XCTestCase {
   func testTruncatedRewriteIsNotPublishedAsComplete() async {
     MockProtocol.handle = { _ in (200, Data(#"{"choices":[{"finish_reason":"length","message":{"content":"Partial"}}]}"#.utf8)) }
     do { _ = try await client().rewrite("A complete sentence"); XCTFail("Truncated text must be rejected") }
-    catch { XCTAssertTrue(error.localizedDescription.contains("preservada")) }
+    catch { XCTAssertEqual(error.localizedDescription, L("A reescrita não foi concluída. A transcrição foi preservada.")) }
   }
   func testLongTranscriptCannotBeReplacedWithASummary() async {
     MockProtocol.handle = { _ in (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":"Resumo curto."}}]}"#.utf8)) }
     let source = (1...20).map { "Requisito \($0): manter este detalhe." }.joined(separator: " ")
     do { _ = try await client().rewrite(source); XCTFail("Summary must preserve original transcript for recovery") }
-    catch { XCTAssertTrue(error.localizedDescription.contains("preservada")) }
+    catch { XCTAssertEqual(error.localizedDescription, L("A reescrita removeu parte demais do texto. A transcrição foi preservada.")) }
   }
   func testExactDuplicateRemovalCanReduceALongTranscript() async throws {
     MockProtocol.handle = { _ in (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":"Enviar cinco cópias para Ana."}}]}"#.utf8)) }

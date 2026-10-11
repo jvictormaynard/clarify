@@ -15,7 +15,10 @@ final class TypingAssistant {
   private let languages: [String] = {
     let available = UITextChecker.availableLanguages
     return [available.first { $0 == "pt_BR" } ?? available.first { $0.hasPrefix("pt") },
-      available.first { $0 == "en_US" } ?? available.first { $0.hasPrefix("en") }].compactMap { $0 }
+      available.first { $0 == "en_US" } ?? available.first { $0.hasPrefix("en") },
+      available.first { $0 == "es_ES" } ?? available.first { $0.hasPrefix("es") }].compactMap { $0 }.sorted {
+        $0.hasPrefix(ClarifyLocale.language) && !$1.hasPrefix(ClarifyLocale.language)
+      }
   }()
 
   func protect(_ lexicon: UILexicon) {

@@ -10,11 +10,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "workflow_provider.py"
 OUTPUT = ROOT / "mobile/modules/clarify-core/ios/RewritePrompt.swift"
 SERVER_OUTPUT = ROOT / "shared/dictation_prompt.json"
+TEXT_OUTPUT = ROOT / "shared/text_prompts.json"
 names = {
     "FAITHFUL_REWRITE_INSTRUCTION",
     "TRANSFORMATION_BOUNDARY_INSTRUCTION",
     "DICTATION_EDIT_INSTRUCTION",
     "TRANSCRIPT_REWRITE_INSTRUCTION",
+    "SELECTED_TEXT_REWRITE_INSTRUCTION",
+    "SELECTED_TEXT_TRANSLATION_INSTRUCTION",
 }
 values = {}
 
@@ -54,6 +57,11 @@ enum RewritePrompt {
     % wrapped
 )
 if "--check" in sys.argv:
+    if json.loads(TEXT_OUTPUT.read_text(encoding="utf-8")) != {
+        "rewrite": values["SELECTED_TEXT_REWRITE_INSTRUCTION"],
+        "translate": values["SELECTED_TEXT_TRANSLATION_INSTRUCTION"],
+    }:
+        raise SystemExit("Server text prompts are out of sync")
     if OUTPUT.read_text(encoding="utf-8") != generated:
         raise SystemExit(
             "Mobile dictation prompt is out of sync. Run python3 scripts/sync-prompts.py"
@@ -64,6 +72,18 @@ if "--check" in sys.argv:
     }:
         raise SystemExit("Server dictation prompt is out of sync")
 else:
+    TEXT_OUTPUT.write_text(
+        json.dumps(
+            {
+                "rewrite": values["SELECTED_TEXT_REWRITE_INSTRUCTION"],
+                "translate": values["SELECTED_TEXT_TRANSLATION_INSTRUCTION"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     OUTPUT.write_text(generated, encoding="utf-8")
     SERVER_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     SERVER_OUTPUT.write_text(

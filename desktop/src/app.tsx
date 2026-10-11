@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { useLayoutEffect, useRef } from "react";
 import { AlertCircle, LoaderCircle } from "lucide-react";
 import { Titlebar } from "./components/titlebar";
@@ -10,7 +11,7 @@ import { TextPage } from "./pages/text-page";
 import { DictionaryPage } from "./pages/dictionary-page";
 import { ShortcutsPage } from "./pages/shortcuts-page";
 import { ModelsPage } from "./pages/models-page";
-import { settingsPages } from "./settings/navigation";
+import { getSettingsPages } from "./settings/navigation";
 import { SettingsDialogs } from "./settings/settings-dialogs";
 import { useSettings } from "./settings/use-settings";
 
@@ -31,8 +32,12 @@ export function App() {
   useLayoutEffect(() => {
     if (scrollArea.current) scrollArea.current.scrollTop = 0;
   }, [page]);
-  const Page = pageComponents[page];
-  const info = settingsPages.find((item) => item.id === page)!;
+  const managed = !!(state?.accountState?.managed || state?.accountState?.signedIn);
+  const settingsPages = getSettingsPages();
+  const visiblePages = settingsPages.filter(item => !managed || item.id !== "models");
+  const activePage = managed && page === "models" ? "account" : page;
+  const Page = pageComponents[activePage];
+  const info = settingsPages.find((item) => item.id === activePage)!;
 
   return (
     <div className="settings-window">
@@ -42,8 +47,8 @@ export function App() {
       />
       {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} /> : <div className="app" data-navigating={navigating || undefined}>
         <aside>
-          <nav aria-label="Configurações">
-            {settingsPages.map(({ id, label, icon: Icon }) => (
+          <nav aria-label={t("Configurações")}>
+            {visiblePages.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 disabled={busy}
@@ -66,14 +71,12 @@ export function App() {
               {error && (
                 <div role="alert" className="error settings-error">
                   <AlertCircle size={17} />
-                  <span>{error}</span>
+                  <span>{t(error)}</span>
                 </div>
               )}
               {!state ? (
                 <div className="connection" role="status">
-                  <LoaderCircle className="spin" size={22} />
-                  Conectando ao Clarify…
-                </div>
+                  <LoaderCircle className="spin" size={22} />{t("Conectando ao Clarify…")}</div>
               ) : (
                 <fieldset disabled={busy}>
                   <Page controller={{ ...controller, state }} />
@@ -84,7 +87,7 @@ export function App() {
           <div
             className="floating-save"
             role="group"
-            aria-label="Alterações pendentes"
+            aria-label={t("Alterações pendentes")}
             aria-hidden={!dirty}
             data-visible={dirty || undefined}
           >
@@ -92,23 +95,16 @@ export function App() {
               variant="ghost"
               disabled={busy || !dirty}
               onClick={() => controller.setDiscarding(true)}
-            >
-              Descartar
-            </Button>
+            >{t("Descartar")}</Button>
             <Button
               variant="primary"
-              aria-label="Salvar alterações"
+              aria-label={t("Salvar alterações")}
               disabled={busy || !dirty || !state}
               onClick={() => void controller.save()}
-            >
-              {busy && !navigating ? (
-                <LoaderCircle size={15} className="spin" />
-              ) : null}
-              Salvar
-            </Button>
+            > {busy && !navigating && <LoaderCircle size={15} className="spin" />}{t("Salvar")}</Button>
           </div>
           <span className="sr-only" role="status">
-            {saved ? "Alterações salvas" : ""}
+            {saved ? t("Alterações salvas") : ""}
           </span>
         </main>
         <SettingsDialogs controller={controller} />

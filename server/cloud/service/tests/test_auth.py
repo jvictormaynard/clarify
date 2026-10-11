@@ -23,12 +23,54 @@ class EmailAccountTests(TestCase):
     def email_code(self):
         self.assertTrue(mail.outbox)
         message = mail.outbox[-1]
-        self.assertTrue(message.subject.startswith("[Clarify] "))
+        self.assertEqual(message.subject, "Seu código de acesso")
         self.assertNotIn("testserver", message.subject + message.body)
         self.assertIn("10 minutos", message.body)
         match = re.search(r"\b\d{6}\b", message.body)
         self.assertIsNotNone(match, "Verification email must contain a six digit code")
         return match.group(0)
+
+    def test_device_language_selects_code_email_for_existing_accounts(self):
+        for language, subject, expiry in (
+            ("pt-BR", "Seu código de acesso", "10 minutos"),
+            ("en-US", "Your access code", "10 minutes"),
+            ("es-MX", "Tu código de acceso", "10 minutos"),
+        ):
+            with self.subTest(language=language):
+                user = get_user_model().objects.create_user(f"{language}@example.test")
+                EmailAddress.objects.create(
+                    user=user, email=user.email, primary=True, verified=True
+                )
+                response = APIClient().post(
+                    "/_allauth/app/v1/auth/continue",
+                    {"email": user.email},
+                    format="json",
+                    HTTP_ACCEPT_LANGUAGE=language,
+                    REMOTE_ADDR=language,
+                )
+                self.assertEqual(response.status_code, 401)
+                self.assertEqual(mail.outbox[-1].subject, subject)
+                self.assertIn(expiry, mail.outbox[-1].body)
+                self.assertNotIn("http", mail.outbox[-1].body)
+
+    def test_device_language_selects_code_email_for_new_accounts(self):
+        for language, subject in (
+            ("pt-BR", "Seu código de acesso"),
+            ("en-US", "Your access code"),
+            ("es-MX", "Tu código de acceso"),
+        ):
+            with self.subTest(language=language):
+                response = APIClient().post(
+                    "/_allauth/app/v1/auth/continue",
+                    {"email": f"new-{language}@example.test"},
+                    format="json",
+                    HTTP_ACCEPT_LANGUAGE=language,
+                    REMOTE_ADDR=f"new-{language}",
+                )
+                self.assertEqual(response.status_code, 401)
+                self.assertEqual(mail.outbox[-1].subject, subject)
+                self.assertNotIn("http", mail.outbox[-1].body)
+                self.assertRegex(mail.outbox[-1].body, r"\b\d{6}\b")
 
     def test_continue_creates_passwordless_account_and_requires_its_code(self):
         response = self.client.post(

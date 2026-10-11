@@ -1,5 +1,7 @@
 import tempfile
 import uuid
+import hashlib
+import json
 
 from allauth.account.models import EmailAddress
 from django.conf import settings
@@ -157,7 +159,9 @@ class DictationView(ServiceView):
                     request.user, operation_id, digest, duration_ms
                 )
                 if not fresh:
-                    return Response(operation.result)
+                    return Response(
+                        {**operation.result, "usage": ledger.usage(request.user)}
+                    )
                 vocabulary = Dictionary.objects.filter(user=request.user).first()
                 outcome = groq.dictation(
                     path,
@@ -172,13 +176,86 @@ class DictationView(ServiceView):
                     input_tokens=outcome.input_tokens,
                     output_tokens=outcome.output_tokens,
                 )
-                return Response(outcome.result)
+                return Response({**outcome.result, "usage": ledger.usage(request.user)})
         except ledger.Rejected as error:
-            return Response({"code": error.code}, status=error.status)
+            return Response(
+                {"code": error.code, "usage": ledger.usage(request.user)},
+                status=error.status,
+            )
         except Exception:
             if operation:
                 ledger.settle(operation)
-            return Response({"code": "processing_failed"}, status=502)
+            return Response(
+                {"code": "processing_failed", "usage": ledger.usage(request.user)},
+                status=502,
+            )
+
+
+class TextView(ServiceView):
+    """Bounded rewrite/translation, never a general provider proxy."""
+
+    def post(self, request):
+        if not take_rate("text", str(request.user.pk), 6):
+            return Response({"code": "rate_limited"}, status=429)
+        try:
+            if set(request.data) != {"operation_id", "action", "text", "language"}:
+                raise ValueError()
+            operation_id = uuid.UUID(request.data["operation_id"])
+            action, source, language = (
+                request.data[k] for k in ("action", "text", "language")
+            )
+            if action not in {"rewrite", "translate"} or language not in {
+                "auto",
+                "pt",
+                "en",
+                "es",
+                "de",
+                "ru",
+            }:
+                raise ValueError()
+            if (
+                not isinstance(source, str)
+                or not source.strip()
+                or len(source.encode()) > 16000
+            ):
+                raise ValueError()
+            fingerprint = hashlib.sha256(
+                json.dumps(
+                    ["text", action, source, language], ensure_ascii=False
+                ).encode()
+            ).hexdigest()
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return Response({"code": "invalid_text_request"}, status=400)
+        operation = None
+        try:
+            operation, fresh = ledger.reserve(
+                request.user, operation_id, fingerprint, 0, text_operation=True
+            )
+            if fresh:
+                outcome = groq.text_operation(source, action, language)
+                ledger.settle(
+                    operation,
+                    result=outcome.result,
+                    cost=outcome.cost,
+                    input_tokens=outcome.input_tokens,
+                    output_tokens=outcome.output_tokens,
+                )
+                result = outcome.result
+            else:
+                result = operation.result
+            return Response({**result, "usage": ledger.usage(request.user)})
+        except ledger.Rejected as error:
+            return Response(
+                {"code": error.code, "usage": ledger.usage(request.user)},
+                status=error.status,
+            )
+        except Exception:
+            if operation:
+                ledger.settle(operation)
+            return Response(
+                {"code": "processing_failed", "usage": ledger.usage(request.user)},
+                status=502,
+            )
 
 
 def health(request):

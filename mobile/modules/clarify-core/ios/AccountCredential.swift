@@ -17,7 +17,7 @@ enum AccountCredential {
   static func save(_ value: String?) throws {
     guard let value, !value.isEmpty else {
       let status = SecItemDelete(query as CFDictionary)
-      guard status == errSecSuccess || status == errSecItemNotFound else { throw ClarifyError("Não foi possível remover a sessão.") }
+      guard status == errSecSuccess || status == errSecItemNotFound else { throw ClarifyError(L("Não foi possível remover a sessão.")) }
       return
     }
     let attributes: [String: Any] = [kSecValueData as String: Data(value.utf8),
@@ -25,8 +25,8 @@ enum AccountCredential {
     let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
     if status == errSecItemNotFound {
       guard SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil) == errSecSuccess else {
-        throw ClarifyError("Não foi possível salvar a sessão.")
+        throw ClarifyError(L("Não foi possível salvar a sessão."))
       }
-    } else if status != errSecSuccess { throw ClarifyError("Não foi possível salvar a sessão.") }
+    } else if status != errSecSuccess { throw ClarifyError(L("Não foi possível salvar a sessão.")) }
   }
 }

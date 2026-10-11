@@ -18,7 +18,7 @@ enum KeyStore {
     let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
     if key.isEmpty { SecItemDelete(query as CFDictionary); return }
     guard key.hasPrefix("gsk_"), !key.contains(where: { $0.isWhitespace }) else {
-      throw ClarifyError("Informe uma chave válida do Groq.")
+      throw ClarifyError(L("Informe uma chave válida do Groq."))
     }
     let attributes: [String: Any] = [
       kSecValueData as String: Data(key.utf8),
@@ -27,14 +27,14 @@ enum KeyStore {
     let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
     if status == errSecItemNotFound {
       guard SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil) == errSecSuccess else {
-        throw ClarifyError("Não foi possível salvar a chave.")
+        throw ClarifyError(L("Não foi possível salvar a chave."))
       }
-    } else if status != errSecSuccess { throw ClarifyError("Não foi possível salvar a chave.") }
+    } else if status != errSecSuccess { throw ClarifyError(L("Não foi possível salvar a chave.")) }
   }
 }
 
 struct ClarifyError: LocalizedError {
   let message: String
   init(_ message: String) { self.message = message }
-  var errorDescription: String? { message }
+  var errorDescription: String? { L(message) }
 }

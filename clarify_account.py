@@ -10,6 +10,7 @@ from dataclasses import replace
 import json
 from pathlib import Path
 import threading
+import time
 from typing import Any
 from urllib.parse import urlsplit
 import uuid
@@ -24,6 +25,7 @@ from dictionary_snippets import (
 )
 from provider_types import TranscriptionResult
 from secret_store import SecretStore, create_secret_store
+from shared.localization import device_language
 
 SECRET_ID = "clarify_account"
 
@@ -105,6 +107,8 @@ class AccountService:
         secrets: SecretStore | None = None,
         request=None,
         default_endpoint="",
+        ui_language=None,
+        clock=time.monotonic,
     ):
         self.directory = Path(directory)
         self.path = self.directory / "account.json"
@@ -112,12 +116,17 @@ class AccountService:
             self.directory, filename_stem="account-secrets"
         )
         self.request = request or requests.request
+        self.ui_language = ui_language or device_language()
+        self._clock = clock
+        self._last_refresh_attempt = float("-inf")
+        self._last_sync_attempt = float("-inf")
         self.default_endpoint = endpoint(default_endpoint)
         self._lock = threading.RLock()
         self._generation = 0
         self._busy = False
         self._state = self._read(self.path, {})
         self._usage: dict[str, Any] = {}
+        self._usage_generation = 0
         self._dictionary_conflict = False
         self._sync_error = ""
         try:
@@ -155,14 +164,29 @@ class AccountService:
             self._busy = False
 
     @property
+    def signed_in(self):
+        with self._lock:
+            return bool(self._state.get("user_id"))
+
+    @property
     def hosted(self):
         with self._lock:
-            return self._state.get("mode") == "hosted"
+            return (
+                bool(self._state.get("user_id")) and self._state.get("mode") == "hosted"
+            )
+
+    @property
+    def managed(self):
+        """An expired managed session cannot silently fall back to personal keys."""
+        with self._lock:
+            return (
+                bool(self._state.get("user_id")) or self._state.get("mode") == "hosted"
+            )
 
     @property
     def scope(self):
         with self._lock:
-            value = self._state.get("user_id") if self._state.get("sync") else None
+            value = self._state.get("user_id")
             return str(uuid.UUID(value)) if value else None
 
     def snapshot(self):
@@ -170,10 +194,11 @@ class AccountService:
             return {
                 "endpoint": self._state.get("endpoint", self.default_endpoint),
                 "signedIn": bool(self._state.get("user_id")),
+                "managed": self.managed,
                 "email": self._state.get("email", ""),
                 "pending": self._state.get("pending", ""),
                 "hosted": self.hosted,
-                "syncEnabled": bool(self.scope),
+                "syncEnabled": bool(self._state.get("sync")),
                 "usage": dict(self._usage),
                 "dictionaryConflict": self._dictionary_conflict,
                 "syncError": self._sync_error,
@@ -192,6 +217,7 @@ class AccountService:
         with self._lock:
             base = self._state.get("endpoint", self.default_endpoint)
             generation = self._generation
+            usage_generation = self._usage_generation
             token = self.secrets.get(SECRET_ID)
         if not base:
             raise AccountError(
@@ -199,7 +225,7 @@ class AccountService:
             )
         if cancel:
             cancel.raise_if_cancelled()
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", "Accept-Language": self.ui_language}
         if token:
             headers["X-Session-Token"] = token
         try:
@@ -207,7 +233,7 @@ class AccountService:
                 method,
                 endpoint(base) + path,
                 headers=headers,
-                timeout=(5, 100 if path == "/v1/dictations" else 15),
+                timeout=(5, 100 if path in {"/v1/dictations", "/v1/text"} else 15),
                 allow_redirects=False,
                 **kwargs,
             )
@@ -218,8 +244,6 @@ class AccountService:
             raise AccountError(
                 "Não foi possível acessar o Clarify. Verifique a conexão."
             ) from None
-        if cancel:
-            cancel.raise_if_cancelled()
         with self._lock:
             if generation != self._generation:
                 raise AccountError("A conta mudou. O resultado foi descartado.")
@@ -228,10 +252,18 @@ class AccountService:
                 self._state.pop("user_id", None)
                 self._state["sync"] = False
                 self._usage = {}
+                self._usage_generation += 1
                 self._save()
             new_token = result.get("meta", {}).get("session_token")
             if new_token:
                 self.secrets.set(SECRET_ID, new_token)
+            if isinstance(result.get("usage"), dict) and (
+                method == "POST" or usage_generation == self._usage_generation
+            ):
+                self._usage = result["usage"]
+                self._usage_generation += 1
+        if cancel:
+            cancel.raise_if_cancelled()
         return response.status_code, result
 
     def authenticate(self, action, value):
@@ -267,14 +299,31 @@ class AccountService:
             raise AccountError("Ação de conta inválida.")
 
     def refresh(self):
+        self._last_refresh_attempt = self._clock()
         code, result = self._request("GET", "/v1/account")
         if code != 200:
             raise AccountError("A sessão expirou. Entre na conta novamente.")
         user_id = str(uuid.UUID(result["id"]))
         with self._lock:
             self._state.update(user_id=user_id, email=result["email"], pending="")
-            self._usage = result.get("usage", {})
             self._save()
+
+    def refresh_if_due(self, service, *, force=False):
+        """Foreground refresh, at most once a minute, including after failures."""
+        if not self.signed_in:
+            return
+        if self._clock() - self._last_refresh_attempt >= 60:
+            self.refresh()
+        if (
+            self.signed_in
+            and not self._dictionary_conflict
+            and (force or self._clock() - self._last_sync_attempt >= 60)
+        ):
+            try:
+                self.sync_dictionary(service)
+            except AccountError as error:
+                with self._lock:
+                    self._sync_error = str(error)
 
     def logout(self, *, delete=False):
         scope = self._state.get("user_id")
@@ -310,18 +359,23 @@ class AccountService:
         with self._lock:
             if value and not self._state.get("user_id"):
                 raise AccountError("Entre na sua conta primeiro.")
+            if not value and self.signed_in:
+                raise AccountError(
+                    "Saia da conta para usar sua chave ou modelos locais."
+                )
             self._state["mode"] = "hosted" if value else "personal"
             self._save()
 
     def sync_dictionary(self, service, *, prefer=None):
+        self._last_sync_attempt = self._clock()
         with self._lock:
             user_id = self._state.get("user_id")
             if not user_id:
                 raise AccountError("Entre na sua conta primeiro.")
             target = self.directory / "account-data" / str(uuid.UUID(user_id))
             metadata = self._read(target / "sync.json", {})
-            # Resume this account's cache. First connection imports local words
-            # only after the explicit sync command; snippets remain on the device.
+            # Resume this account's cache. First connection imports local words;
+            # snippets remain on the device and guest data is never overwritten.
             cached = LocalDictionarySnippetsRepository(
                 target / "dictionary.json"
             ).load()
@@ -385,9 +439,11 @@ class AccountService:
             service.reload()
 
     def transcribe(self, source, language, dictionary_service):
+        if not self.hosted:
+            raise AccountError("Ative o processamento do Clarify na sua conta.")
         if source.cancel_token:
             source.cancel_token.raise_if_cancelled()
-        if self.scope:
+        if self.scope and self._clock() - self._last_sync_attempt >= 60:
             try:
                 self.sync_dictionary(dictionary_service)
             except AccountError as error:
@@ -435,6 +491,29 @@ class AccountService:
             refinement_model="openai/gpt-oss-20b",
         )
 
+    def transform_text(self, text, action, language="auto", *, cancel=None):
+        if not self.hosted:
+            raise AccountError("Ative o processamento do Clarify na sua conta.")
+        code, result = self._request(
+            "POST",
+            "/v1/text",
+            cancel=cancel,
+            json={
+                "operation_id": str(uuid.uuid4()),
+                "action": action,
+                "text": str(text),
+                "language": str(language or "auto").split("-")[0],
+            },
+        )
+        if code != 200:
+            raise AccountError(
+                "Não foi possível processar o texto pelo Clarify. Verifique sua cota e tente novamente."
+            )
+        value = result.get("text")
+        if not isinstance(value, str) or not value.strip():
+            raise AccountError("O Clarify retornou um resultado inválido.")
+        return value
+
 
 class AccountDictionaryRepository:
     """Scope vocabulary per account; snippets always remain in the local profile."""
@@ -455,6 +534,14 @@ class AccountDictionaryRepository:
         original = self.local.load()
         if not self.account.scope:
             return original
+        if not self.path.exists():
+            # Seed a separate cache once. Offline account edits never modify BYOK words.
+            LocalDictionarySnippetsRepository(self.path).save(
+                replace(original, snippets=())
+            )
+            _atomic_write_json(
+                self.path.with_name("sync.json"), {"base": [], "revision": -1}
+            )
         cached = LocalDictionarySnippetsRepository(self.path).load()
         return replace(original, dictionary=cached.dictionary)
 

@@ -37,6 +37,27 @@ available. Authentication forms are shared with desktop Settings and the iOS
 sign-in screen. The iOS Account tab is present with or without a session;
 its settings button opens a native stack page outside the bottom tabs.
 
+An authenticated account uses Clarify-managed processing for dictation, imported
+audio, selected-text rewrite and translation. Personal provider and local-model
+controls are hidden in this mode. An expired managed session fails closed; it
+cannot fall back to a saved personal key. Signing out explicitly restores the
+personal configuration. Processing consent is separate from authentication.
+
+Vocabulary sync runs after login and local edits, then at most once per minute
+while the app is active or before a hosted dictation. Failed attempts also use
+this interval. Conflicting edits require an explicit resolution. Each account
+has its own persistent cache; guest words, snippets, settings, keys and history
+remain on the device. Processing responses include the updated shared allowance,
+and a foreground refresh catches changes made on another device.
+
+`shared/ui_strings.json` owns Portuguese, English and Spanish UI and email copy.
+Clients select the device UI language, independently of dictation language, and
+send it as `Accept-Language` for authentication. Unsupported device languages
+use English. Qt and React read the shared catalog; `scripts/sync_locales.py`
+generates the checked Swift copy for the app, keyboard and Live Activity. The
+desktop bridge supplies the same Windows UI language used by the account client.
+Authentication emails contain the code and localized instructions, without links.
+
 ## Runtime flow
 
 ```text

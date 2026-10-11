@@ -92,6 +92,7 @@ try:
     from .qml_web_settings import WebSettingsProcess  # noqa: E402
     from .qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
     from .qml_voice_translation import (  # noqa: E402
+        QmlVoiceTranslationProvider,
         create_qml_voice_translation_controller,
     )
     from .qml_runtime import (  # noqa: E402
@@ -109,6 +110,7 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from qml_web_settings import WebSettingsProcess  # noqa: E402
     from qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
     from qml_voice_translation import (  # noqa: E402
+        QmlVoiceTranslationProvider,
         create_qml_voice_translation_controller,
     )
     from qml_runtime import (  # noqa: E402
@@ -428,6 +430,11 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(sys.argv[:1])
     app.setApplicationName("Clarify")
     app.setOrganizationName("Clarify")
+    try:
+        from .qml_localization import install_translations
+    except ImportError:
+        from qml_localization import install_translations
+    install_translations(app)
 
     scheduler = QtWorkflowScheduler(app)
     try:
@@ -454,6 +461,11 @@ def main(argv: list[str] | None = None) -> int:
         runtime.clipboard,
         scheduler,
         on_usage=partial(_record_voice_translation_usage, usage_statistics),
+        provider=QmlVoiceTranslationProvider(
+            repositories.config.load,
+            account=runtime.account,
+            dictionary_service=runtime.dictionary_service,
+        ),
         parent=app,
     )
     audio_batch = QmlAudioFileImportController(

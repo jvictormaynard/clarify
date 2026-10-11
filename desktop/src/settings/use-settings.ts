@@ -1,3 +1,4 @@
+import { t, setUiLanguage } from "../i18n";
 import {
   useCallback,
   useEffect,
@@ -107,7 +108,7 @@ export function useSettings() {
             await call("selectWorkflow", "transcription");
             s = await call("loadRouteModels");
           }
-          if (live) setState(s);
+          if (live) { setUiLanguage(s.uiLanguage); setState(s); }
         } catch (e) {
           if (live) setError(String(e));
         } finally {
@@ -137,6 +138,16 @@ export function useSettings() {
   useEffect(() => {
     if (state) setRetention(String(state.historyRetentionDays ?? ""));
   }, [state?.historyRetentionDays]);
+  useEffect(() => {
+    const refreshAccount = () => {
+      if (document.hidden || pending.current || !current.current?.accountState?.signedIn || dirtyRef.current) return;
+      void call("accountCommand", "auto", "").catch(() => undefined);
+    };
+    refreshAccount();
+    document.addEventListener("visibilitychange", refreshAccount);
+    const timer = setInterval(refreshAccount, 60000);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", refreshAccount); };
+  }, [state?.accountState?.signedIn]);
   useEffect(() => {
     if (state) setPrompt(state.routePrompt);
   }, [state?.routePrompt, state?.selectedScope]);
@@ -175,11 +186,11 @@ export function useSettings() {
       retention !== "" &&
       (!/^\d+$/.test(retention) || Number(retention) > 3650)
     ) {
-      setError("A retenção deve ser um número inteiro entre 0 e 3650 dias.");
+      setError(t("A retenção deve ser um número inteiro entre 0 e 3650 dias."));
       return false;
     }
     if (apiKey || endpoint !== state.providerBaseUrl || state.providerDirty) {
-      setError("Valide ou descarte as alterações do serviço antes de salvar.");
+      setError(t("Valide ou descarte as alterações do serviço antes de salvar."));
       return false;
     }
     const next = await execute(async () => {
@@ -283,7 +294,7 @@ export function useSettings() {
   const selectProvider = async (id: string) => {
     if (!state) return;
     if (apiKey || state.providerDirty || endpoint !== state.providerBaseUrl) {
-      setError("Valide ou descarte as alterações antes de trocar de serviço.");
+      setError(t("Valide ou descarte as alterações antes de trocar de serviço."));
       return;
     }
     await run("selectProvider", id);

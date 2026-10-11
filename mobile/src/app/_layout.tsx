@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { DarkTheme, DefaultTheme, ThemeProvider, Stack } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -8,14 +9,14 @@ function Navigation() {
   const c = usePalette();
   const { onboardingRequired, setupError, refreshOnboarding } = useClarify();
   if (onboardingRequired === null) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.background }}>
-    {setupError ? <Button onPress={() => void refreshOnboarding()}>Tentar carregar novamente</Button> : <ActivityIndicator />}
+    {setupError ? <Button onPress={() => void refreshOnboarding()}>{t("Tentar carregar novamente")}</Button> : <ActivityIndicator />}
   </View>;
   return <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
     <Stack.Protected guard={onboardingRequired}><Stack.Screen name="onboarding" /></Stack.Protected>
     <Stack.Protected guard={!onboardingRequired}>
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="settings" options={{ headerShown: true, title: 'Ajustes', animation: 'slide_from_right' }} />
-      <Stack.Screen name="sign-in" options={{ headerShown: true, title: 'Conta', animation: 'slide_from_right' }} />
+      <Stack.Screen name="settings" options={{ headerShown: true, title: t("Ajustes"), animation: 'slide_from_right' }} />
+      <Stack.Screen name="sign-in" options={{ headerShown: true, title: t("Conta"), animation: 'slide_from_right' }} />
     </Stack.Protected>
   </Stack>;
 }

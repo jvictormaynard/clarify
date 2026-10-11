@@ -93,7 +93,7 @@ final class KeyGridView: UIView {
         let mode = key(title, special: true) { [weak self] in self?.changeShiftOrSymbols() }
         if model.page == .letters {
           mode.setImage(UIImage(systemName: model.shift == .caps ? "capslock.fill" : (model.shift == .once ? "shift.fill" : "shift")), for: .normal)
-          mode.accessibilityLabel = model.shift == .caps ? "Desativar maiúsculas" : "Maiúsculas"
+          mode.accessibilityLabel = model.shift == .caps ? L("Desativar maiúsculas") : L("Maiúsculas")
         }
         row.addArrangedSubview(mode)
       }
@@ -115,7 +115,7 @@ final class KeyGridView: UIView {
       }
       if index == 2 {
         let delete = key("", special: true) {}
-        delete.setImage(UIImage(systemName: "delete.left"), for: .normal); delete.accessibilityLabel = "Apagar"
+        delete.setImage(UIImage(systemName: "delete.left"), for: .normal); delete.accessibilityLabel = L("Apagar")
         delete.accessibleAction = { [weak self] in self?.onDelete?() }
         delete.addTarget(self, action: #selector(beginDelete), for: .touchDown)
         delete.addTarget(self, action: #selector(stopDelete), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
@@ -156,14 +156,14 @@ final class KeyGridView: UIView {
     mode.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 0.113).isActive = true
     if needsGlobe {
       let globe = key("", special: true) {}; globe.setImage(UIImage(systemName: "globe"), for: .normal)
-      globe.accessibilityLabel = "Próximo teclado"
+      globe.accessibilityLabel = L("Próximo teclado")
       globe.accessibleAction = { [weak self, weak globe] in if let globe = globe { self?.onNextKeyboard?(globe, nil) } }
       globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
       bottom.addArrangedSubview(globe); globe.widthAnchor.constraint(equalTo: mode.widthAnchor).isActive = true
     }
-    bottom.addArrangedSubview(key("espaço") { [weak self] in self?.insert(" ") })
-    let returns: [UIReturnKeyType: String] = [.go: "ir", .search: "buscar", .send: "enviar", .next: "próximo", .done: "OK", .join: "entrar", .route: "rota"]
-    let enter = key(returns[returnType] ?? "retorno", special: true) { [weak self] in self?.insert("\n") }
+    bottom.addArrangedSubview(key(L("espaço")) { [weak self] in self?.insert(" ") })
+    let returns: [UIReturnKeyType: String] = [.go: L("ir"), .search: L("buscar"), .send: L("enviar"), .next: L("próximo"), .done: "OK", .join: L("entrar"), .route: L("rota")]
+    let enter = key(returns[returnType] ?? L("retorno"), special: true) { [weak self] in self?.insert("\n") }
     if returnType != .default {
       enter.restingColor = .systemBlue; enter.backgroundColor = .systemBlue; enter.setTitleColor(.white, for: .normal)
     }

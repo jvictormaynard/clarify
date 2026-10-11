@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, PanResponder, Pressable, StyleSheet, Text, View, type PanResponderInstance } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -69,9 +70,9 @@ export function RecordButton() {
   const locked = state.phase === 'locked' || localLocked;
   const busy = ['transcribing', 'rewriting'].includes(state.phase);
   return <View style={styles.wrap}>
-    <View {...gesture?.panHandlers} accessible accessibilityRole="button" accessibilityLabel={locked ? 'Finalizar gravação' : 'Gravar'}
-      accessibilityState={{ disabled: !state.sessionActive || busy }} accessibilityHint="Segure para falar. Deslize para cima para travar."
-      accessibilityActions={[{ name: 'activate', label: 'Gravar ou finalizar' }]} onAccessibilityAction={accessibleRecord}
+    <View {...gesture?.panHandlers} accessible accessibilityRole="button" accessibilityLabel={locked ? t("Finalizar gravação") : t("Gravar")}
+      accessibilityState={{ disabled: !state.sessionActive || busy }} accessibilityHint={t("Segure para falar. Deslize para cima para travar.")}
+      accessibilityActions={[{ name: 'activate', label: t("Gravar ou finalizar") }]} onAccessibilityAction={accessibleRecord}
       style={[styles.button, { backgroundColor: c.text, opacity: state.sessionActive && !busy ? 1 : 0.35 }]}>
       <Animated.View pointerEvents="none" style={[styles.tips, { opacity: animation }]}>
         {[0, 1].map((i) => <View key={i} style={[styles.chevron, { borderColor: c.background }]} />)}
@@ -84,7 +85,7 @@ export function RecordButton() {
     {['recording', 'locked', 'transcribing', 'rewriting'].includes(state.phase) && <Pressable accessibilityRole="button" hitSlop={10} onPress={() => {
       operation.current = latest.current.operationID ?? operation.current;
       control.current?.reset(); send('cancel');
-    }}><Text style={{ color: c.muted, padding: 8 }}>Cancelar</Text></Pressable>}
+    }}><Text style={{ color: c.muted, padding: 8 }}>{t("Cancelar")}</Text></Pressable>}
   </View>;
 }
 const styles = StyleSheet.create({

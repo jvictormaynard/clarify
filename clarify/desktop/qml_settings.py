@@ -1362,6 +1362,8 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def refreshRouteModels(self) -> bool:
         """Discover models without saving credentials or changing the route."""
+        if getattr(self._account, "managed", False) is True:
+            return False
         key = self._model_connection_key()
         if (
             key[0] != LOCAL_ASR_PROVIDER_ID and not key[2]
@@ -1487,10 +1489,11 @@ class QmlSettingsController(QObject):
         def measure():
             try:
                 result = calibrate(pool, model, audio, token)
-                detail = (
-                    "Measured: "
-                    + result["selected"]
-                    + ". Select Automatic and use this model to apply."
+                from shared.localization import translate
+
+                detail = translate(
+                    "Measured: {engine}. Select Automatic and use this model to apply.",
+                    engine=result["selected"],
                 )
             except Exception as error:
                 detail = str(error)
@@ -1690,6 +1693,8 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def validateProvider(self) -> bool:
         """Validate and persist the selected cloud provider without blocking QML."""
+        if getattr(self._account, "managed", False) is True:
+            return False
 
         provider_id = self._selected_provider_id
         if provider_id == LOCAL_ASR_PROVIDER_ID:
@@ -1895,6 +1900,12 @@ class QmlSettingsController(QObject):
         self.loaded.emit()
         return True
 
+    @Property(str, constant=True)
+    def uiLanguage(self):
+        from shared.localization import device_language
+
+        return device_language()
+
     @Property("QVariantMap", notify=accountStateChanged)
     def accountState(self):
         return {
@@ -1929,9 +1940,9 @@ class QmlSettingsController(QObject):
                         "Confirme sua conta e ative o processamento do Clarify."
                     )
             elif mode in {"byok", "local"}:
-                if self._account.snapshot().get("hosted"):
+                if self._account.snapshot().get("signedIn"):
                     raise ValueError(
-                        "Desative o processamento da conta antes de usar esta opção."
+                        "Saia da conta para usar sua chave ou modelos locais."
                     )
                 if mode == "byok":
                     key = str(key).strip()
@@ -1982,6 +1993,14 @@ class QmlSettingsController(QObject):
 
     @Slot(str, str, result=bool)
     def accountCommand(self, action, value=""):
+        if action == "auto" and (
+            self._account_busy
+            or not self._account_can_change()
+            or self.dirty
+            or self.providerDirty
+            or not self._account.signed_in
+        ):
+            return False
         if self._account_busy or not self._account_can_change():
             self._set_error(ValueError("Finalize o ditado antes de alterar a conta."))
             return False
@@ -1991,6 +2010,7 @@ class QmlSettingsController(QObject):
             )
             return False
         if action not in {
+            "auto",
             "configure",
             "login",
             "signup",
@@ -2016,6 +2036,13 @@ class QmlSettingsController(QObject):
                     self._account.configure(value)
                 elif action in {"login", "signup", "confirm"}:
                     self._account.authenticate(action, value)
+                    if action == "confirm":
+                        self._dictionary_service.reload()
+                        self._account.refresh_if_due(
+                            self._dictionary_service, force=True
+                        )
+                elif action == "auto":
+                    self._account.refresh_if_due(self._dictionary_service)
                 elif action == "refresh":
                     self._account.refresh()
                 elif action in {"sync", "sync-local", "sync-remote"}:
@@ -2429,15 +2456,24 @@ class QmlSettingsController(QObject):
                     "error",
                 )
         if not selection.can_record:
+            from shared.localization import translate
+
             return (
-                f"No safe input device ({self._microphone_inventory.error_code or 'unavailable'}).",
+                translate(
+                    "No safe input device ({code}).",
+                    code=self._microphone_inventory.error_code or "unavailable",
+                ),
                 "error",
             )
         if selection.is_fallback:
             assert selection.device is not None
+            from shared.localization import translate
+
             return (
-                "Saved microphone unavailable; using current default: "
-                + selection.device.name,
+                translate(
+                    "Saved microphone unavailable; using current default: {name}",
+                    name=selection.device.name,
+                ),
                 "warning",
             )
         assert selection.device is not None
@@ -2473,8 +2509,12 @@ class QmlSettingsController(QObject):
             )
             self._microphone_test_kind = "ok" if peak > 0.01 else "warning"
         else:
+            from shared.localization import translate
+
             message = str(payload or "Input test failed")
-            self._microphone_test_status = f"Input test failed: {message}"
+            self._microphone_test_status = translate(
+                "Input test failed: {message}", message=translate(message)
+            )
             self._microphone_test_kind = "error"
         self.microphoneTestChanged.emit()
 

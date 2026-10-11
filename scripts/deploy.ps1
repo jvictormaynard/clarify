@@ -231,6 +231,10 @@ foreach ($backendModule in @(
 )) {
     Copy-Item (Join-Path $repoRoot $backendModule) $sourceDir -Force
 }
+New-Item (Join-Path $sourceDir "shared") -ItemType Directory -Force | Out-Null
+foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json")) {
+    Copy-Item (Join-Path $repoRoot "shared\$catalogFile") (Join-Path $sourceDir "shared") -Force
+}
 Copy-Item $repoQml $qml -Recurse -Force
 Copy-Item $repoVersion $sourceDir -Force
 Copy-Item $repoExtra $extra -Recurse -Force
@@ -278,6 +282,7 @@ $pyinstallerArgs = @(
     "--add-data", "${assets};assets",
     "--add-data", "${distribution};distribution",
     "--add-data", "${qml};qml",
+    "--add-data", "$(Join-Path $sourceDir 'shared\ui_strings.json');shared",
     "--add-data", "${localAsrManifest};.",
     "--add-data", "${localAsrLicenses};licenses",
     "--hidden-import", "version",

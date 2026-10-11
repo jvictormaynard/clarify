@@ -32,15 +32,19 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Conta opcional com entrada por código de e-mail, dicionário compartilhado e cota de ditado
 - Modos locais e com chave própria disponíveis sem conta; sem telemetria
 
-A versão 0.6.0 mostra o campo de e-mail no primeiro acesso. O mesmo código
-permite entrar ou criar a conta, sem senha. O link **continuar 100% local**
-abre a configuração do modelo local; a chave Groq continua disponível nessa etapa.
-Confirme o código de e-mail dentro do aplicativo e ative o processamento do
-Clarify de forma explícita. As instalações existentes mantêm sua configuração.
-Os controles da conta e a conexão do dicionário continuam nas Configurações.
-O histórico e os atalhos permanecem locais. O [aplicativo iOS](../mobile/README.md)
+A versão 0.7.0 usa o idioma do dispositivo: português, inglês ou espanhol,
+incluindo o e-mail de autenticação. No primeiro acesso, informe seu e-mail e
+confirme o código dentro do aplicativo para entrar ou criar uma conta.
+**Continuar sem conta** abre a configuração do modelo local; a chave própria
+continua disponível nessa etapa. O processamento da conta exige consentimento.
+Contas autenticadas usam os modelos gerenciados pelo Clarify. As configurações
+de provedores, chaves e modelos locais aparecem apenas no modo sem conta.
+O dicionário sincroniza automaticamente e o consumo é atualizado após o uso.
+O cache local preserva alterações offline; conflitos mantêm ambas as cópias
+até a resolução. O histórico e os atalhos permanecem locais. As instalações
+existentes mantêm sua configuração. O [aplicativo iOS](../mobile/README.md)
 é distribuído pelo TestFlight. O [servidor de contas](../server/README.md) também
-pode ser hospedado por você; as chaves de produção e os dados dos usuários são privados.
+pode ser hospedado por você. As chaves de produção e os dados dos usuários são privados.
 
 > [!IMPORTANT]
 > O acesso direto a provedores cloud exige sua própria chave de API. O ditado

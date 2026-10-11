@@ -3,7 +3,7 @@
     "name": "Clarify",
     "slug": "clarify-ios",
     "owner": "victormaynard",
-    "version": "0.4.1",
+    "version": "0.5.0",
     "scheme": "clarify",
     "platforms": [
       "ios"
@@ -13,7 +13,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.jvictormaynard.clarify",
-      "buildNumber": "19",
+      "buildNumber": "20",
       "supportsTablet": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "O Clarify usa o microfone para transcrever e reescrever o que você ditar.",
@@ -23,6 +23,11 @@
         "ClarifyCloudURL": "https://clarify-api.victormaynard.com",
         "UIBackgroundModes": [
           "audio"
+        ],
+        "CFBundleLocalizations": [
+          "pt",
+          "en",
+          "es"
         ]
       },
       "entitlements": {
@@ -63,6 +68,11 @@
         },
         "projectId": "6dc3404f-4bdb-4d12-8a3b-006355b408b3"
       }
+    },
+    "locales": {
+      "pt": "./locales/pt.json",
+      "en": "./locales/en.json",
+      "es": "./locales/es.json"
     }
   }
 }

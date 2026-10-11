@@ -438,3 +438,16 @@ not install it. The build requires a .NET SDK because
    new version.
 9. Use the signed workflow manually only after Azure signing and the manual
    acceptance gates are sponsored and complete.
+
+## Interface localization
+
+Edit the Portuguese, English and Spanish entries in `shared/ui_strings.json`.
+Run `python scripts/sync_locales.py` to update the native Swift catalog, then
+`python scripts/sync_locales.py --check` before committing. The iOS app, keyboard
+and Live Activity use the generated catalog. Authentication email copy uses the
+same source. Keep substitutions unchanged across translations. Do not translate
+state IDs, prompts, user transcripts, email addresses or dictionary entries.
+
+The Windows Settings build stages `desktop/` and `shared/` together under
+`%TEMP%\clarify-settings-workspace`, with pinned dependencies in the staged
+`desktop` folder. The portable package embeds the shared Python UI catalog.

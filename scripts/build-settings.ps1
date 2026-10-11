@@ -4,7 +4,8 @@ $ErrorActionPreference = 'Stop'
 $taskRepo = Split-Path -Parent $PSScriptRoot
 if (-not $OutputPath) { $OutputPath = Join-Path $taskRepo 'dist\clarify-settings.exe' }
 $OutputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)
-$taskStage = Join-Path $env:TEMP 'clarify-settings-build'
+$taskStageRoot = Join-Path $env:TEMP 'clarify-settings-workspace'
+$taskStage = Join-Path $taskStageRoot 'desktop'
 $taskTarget = Join-Path $env:TEMP 'clarify-tauri-target'
 $taskVswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $taskVs = & $taskVswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -12,7 +13,7 @@ if (-not $taskVs) { throw 'Install Visual Studio C++ Build Tools and the Windows
 $taskNode = (Get-Command node.exe -ErrorAction Stop).Source
 $taskNpm = Join-Path (Split-Path $taskNode) 'node_modules\npm\bin\npm-cli.js'
 New-Item -ItemType Directory -Path $taskStage -Force | Out-Null
-& robocopy (Join-Path $taskRepo 'desktop') $taskStage /E /XD node_modules target dist test-results /NFL /NDL /NJH /NJS /NP
+& robocopy (Join-Path $taskRepo 'desktop') $taskStage /E /XD node_modules target dist test-results /XF node_modules /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
 if ($LASTEXITCODE -ge 8) { throw 'Could not stage settings sources.' }
 # Newly staged assets must not look old to temporary-file cleanup services.
 $taskStagedAt = [DateTime]::UtcNow
@@ -25,6 +26,10 @@ Get-ChildItem -LiteralPath $taskStage -Force -Exclude node_modules,target,dist,t
             $_.LastAccessTimeUtc = $taskStagedAt
         }
     }
+}
+New-Item -ItemType Directory -Path (Join-Path $taskStageRoot 'shared') -Force | Out-Null
+foreach ($taskFile in @('i18n.ts', 'ui_strings.json')) {
+    Copy-Item -LiteralPath (Join-Path $taskRepo "shared\$taskFile") -Destination (Join-Path $taskStageRoot "shared\$taskFile") -Force
 }
 Push-Location $taskStage
 try {

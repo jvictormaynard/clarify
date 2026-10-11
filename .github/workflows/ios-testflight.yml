@@ -5,6 +5,8 @@ on:
     branches: [codex/ios-testflight]
     paths:
       - mobile/**
+      - shared/**
+      - scripts/sync_locales.py
       - '!mobile/**/*.md'
       - '!mobile/LICENSE'
       - '!mobile/.gitignore'

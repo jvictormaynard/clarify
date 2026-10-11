@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, AppState } from 'react-native';
 import Core, { type Snapshot, type AccountSnapshot } from '../../modules/clarify-core';
@@ -6,7 +7,7 @@ import { activateMicrophone } from './activation';
 const idle: Snapshot = { sessionActive: false, heartbeat: 0, phase: 'idle', configured: false };
 export const isBusy = (state: Snapshot) => ['recording', 'locked', 'transcribing', 'rewriting'].includes(state.phase);
 export function report(error: unknown) {
-  Alert.alert('Clarify', error instanceof Error ? error.message : 'Não foi possível concluir. Tente novamente.');
+  Alert.alert('Clarify', error instanceof Error ? t(error.message) : t("Não foi possível concluir. Tente novamente."));
 }
 
 function useClarifyState() {
@@ -35,6 +36,22 @@ function useClarifyState() {
     try { setAccount(await Core.accountCommand(action, value)); }
     finally { setAccountBusy(false); await refreshAccount(); }
   }, [refreshAccount]);
+  // Native snapshots are local reads. Server refresh has its own one-minute gate.
+  useEffect(() => {
+    let live = true;
+    let pending = false;
+    const sync = async () => {
+      if (pending || AppState.currentState !== 'active') return;
+      pending = true;
+      try { const next = await Core.accountCommand('auto', ''); if (live) setAccount(next); }
+      catch { /* Keep cached data during temporary offline periods. */ }
+      finally { pending = false; }
+    };
+    void sync();
+    const timer = setInterval(() => void sync(), 60000);
+    const listener = AppState.addEventListener('change', value => { if (value === 'active') void sync(); });
+    return () => { live = false; clearInterval(timer); listener.remove(); };
+  }, []);
   const [activating, setActivating] = useState(false);
   const [keyboardEntry, setKeyboardEntry] = useState(false);
   const [keyboardToken, setKeyboardToken] = useState<string | undefined>();

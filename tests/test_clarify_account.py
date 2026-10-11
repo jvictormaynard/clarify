@@ -70,6 +70,70 @@ class AccountTests(unittest.TestCase):
         self.assertNotIn("test-session-only", self.account.path.read_text())
         self.assertFalse(self.account.hosted)
 
+    def test_device_language_is_sent_without_changing_the_auth_payload(self):
+        self.account.ui_language = "es"
+        self.request.return_value = self.response({}, 401)
+        self.account.authenticate("login", "user@example.test")
+        self.assertEqual(
+            self.request.call_args.kwargs["headers"]["Accept-Language"], "es"
+        )
+
+    def test_late_account_refresh_cannot_undo_usage_returned_by_processing(self):
+        user_id = self.signed_in()
+
+        def respond(method, url, **kwargs):
+            if method == "GET":
+                self.account._request("POST", "/v1/text", json={})
+                return self.response(
+                    {
+                        "id": user_id,
+                        "email": "user@example.test",
+                        "usage": {"used_ms": 10},
+                    }
+                )
+            return self.response({"usage": {"used_ms": 500}})
+
+        self.request.side_effect = respond
+        self.account.refresh()
+        self.assertEqual(self.account.snapshot()["usage"]["used_ms"], 500)
+
+    def test_cancelled_result_still_updates_consumption_without_publishing(self):
+        from provider_http import CancellationToken, ProviderCancelledError
+
+        token = CancellationToken()
+
+        def respond(*args, **kwargs):
+            token.cancel()
+            return self.response(
+                {"usage": {"used_ms": 500}, "text": "Discard this result"}
+            )
+
+        self.request.side_effect = respond
+        with self.assertRaises(ProviderCancelledError):
+            self.account._request("POST", "/v1/text", cancel=token, json={})
+        self.assertEqual(self.account.snapshot()["usage"]["used_ms"], 500)
+
+    def test_signed_in_processing_requires_consent_and_cannot_switch_to_byok(self):
+        self.signed_in()
+        self.assertTrue(self.account.signed_in)
+        self.assertFalse(self.account.hosted)
+        with self.assertRaises(AccountError):
+            self.account.transcribe(Mock(), "auto", self.service)
+        self.account.set_hosted(True)
+        with self.assertRaises(AccountError):
+            self.account.set_hosted(False)
+        self.assertTrue(self.account.hosted)
+
+    def test_automatic_refresh_has_a_network_cooldown(self):
+        self.signed_in()
+        self.request.side_effect = [
+            self.response({"revision": 0, "entries": [entry("Local")]}),
+        ]
+        self.account.refresh_if_due(self.service)
+        self.request.reset_mock()
+        self.account.refresh_if_due(self.service)
+        self.request.assert_not_called()
+
     def test_email_entry_uses_unified_passwordless_flow_and_existing_confirmation(self):
         self.request.return_value = self.response(
             {"meta": {"session_token": "pending-session"}}, 401
@@ -175,7 +239,8 @@ class AccountTests(unittest.TestCase):
             self.account.refresh()
         self.assertFalse(self.account.snapshot()["signedIn"])
         self.assertIsNone(self.account.secrets.get("clarify_account"))
-        self.assertTrue(self.account.hosted)
+        self.assertFalse(self.account.hosted)
+        self.assertTrue(self.account.managed)
 
     def test_conflict_choice_preserves_other_independent_changes(self):
         base = [entry("A")]
@@ -186,11 +251,12 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(merged[0]["pronunciation"], "theirs")
 
     def test_failed_first_sync_does_not_drop_words_changed_during_request(self):
-        user_id = self.signed_in()
+        self.signed_in()
+        self.service.reload()
 
         def answer(method, url, **kwargs):
             if method == "PUT":
-                self.local.save(
+                self.service.repository.save(
                     DictionarySnippets(
                         (DictionaryEntry("Local"), DictionaryEntry("New"))
                     )
@@ -202,7 +268,7 @@ class AccountTests(unittest.TestCase):
         self.request.side_effect = answer
         with self.assertRaises(AccountError):
             self.account.sync_dictionary(self.service)
-        self.assertFalse((self.root / "account-data" / user_id / "sync.json").exists())
+        self.assertEqual([e.term for e in self.local.load().dictionary], ["Local"])
         self.assertEqual(
             {e.term for e in self.service.state.dictionary}, {"Local", "New"}
         )

@@ -94,11 +94,11 @@ private struct ActivationLink: View {
     Button { openURL(destination()) } label: {
       HStack(spacing: 7) {
         ClarifyMark().fill(Color(uiColor: .systemBackground)).frame(width: 22, height: 24)
-        Text("Começar").font(.system(size: 14, weight: .semibold))
+        Text(L("Começar")).font(.system(size: 14, weight: .semibold))
       }.foregroundStyle(Color(uiColor: .systemBackground))
         .frame(width: 118, height: 44).background(Color(uiColor: .label), in: Capsule())
-    }.buttonStyle(.plain).accessibilityLabel("Começar no Clarify")
-      .accessibilityHint("Abre o Clarify para ativar o microfone.")
+    }.buttonStyle(.plain).accessibilityLabel(L("Começar no Clarify"))
+      .accessibilityHint(L("Abre o Clarify para ativar o microfone."))
   }
 }
 
@@ -139,18 +139,18 @@ final class KeyboardViewController: UIInputViewController {
     detail.numberOfLines = 1; detail.lineBreakMode = .byTruncatingTail
     mic.backgroundColor = .label; mic.layer.cornerRadius = 22
     mic.isAccessibilityElement = true; mic.accessibilityTraits = .button
-    mic.accessibilityLabel = "Gravar"
-    mic.accessibilityHint = "Segure para falar. Deslize para cima para travar."
+    mic.accessibilityLabel = L("Gravar")
+    mic.accessibilityHint = L("Segure para falar. Deslize para cima para travar.")
     mic.onAction = { [weak self] action in self?.send(action) }
     mic.addSubview(glyph); glyph.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([
       glyph.leadingAnchor.constraint(equalTo: mic.leadingAnchor), glyph.trailingAnchor.constraint(equalTo: mic.trailingAnchor),
       glyph.topAnchor.constraint(equalTo: mic.topAnchor), glyph.bottomAnchor.constraint(equalTo: mic.bottomAnchor)
     ])
-    insert.setTitle("Inserir", for: .normal)
+    insert.setTitle(L("Inserir"), for: .normal)
     insert.titleLabel?.font = .systemFont(ofSize: 13, weight: .medium)
     insert.addTarget(self, action: #selector(insertResult), for: .touchUpInside)
-    cancel.setImage(UIImage(systemName: "xmark"), for: .normal); cancel.accessibilityLabel = "Cancelar gravação"
+    cancel.setImage(UIImage(systemName: "xmark"), for: .normal); cancel.accessibilityLabel = L("Cancelar gravação")
     cancel.tintColor = .secondaryLabel
     cancel.addTarget(self, action: #selector(cancelRecording), for: .touchUpInside)
     keys.previewContainer = view
@@ -251,7 +251,7 @@ final class KeyboardViewController: UIInputViewController {
       feedback.record(action)
       glyph.update(recording: mic.holding, locked: mic.locked)
     }
-    catch { detail.text = "Abra o Clarify para configurar o teclado." }
+    catch { detail.text = L("Abra o Clarify para configurar o teclado.") }
   }
   private func refresh() {
     state = store?.snapshot() ?? DictationSnapshot()
@@ -273,23 +273,23 @@ final class KeyboardViewController: UIInputViewController {
     insert.isHidden = !state.isLive || state.text?.isEmpty != false || state.phase.busy || state.operationID == store?.receipt()
     cancel.isHidden = !state.isLive || !state.phase.busy
     if !hasFullAccess {
-      status.text = "Ative o Acesso Total"; detail.text = "Ajustes > Geral > Teclado > Clarify"
+      status.text = L("Ative o Acesso Total"); detail.text = L("Ajustes > Geral > Teclado > Clarify")
     } else if !state.configured {
-      status.text = "Configure sua chave Groq"; detail.text = "Abra o Clarify para configurar."
+      status.text = L("Configure sua chave Groq"); detail.text = L("Abra o Clarify para configurar.")
     } else if !state.isLive {
-      status.text = "Ative o microfone"; detail.text = "Toque em Começar."
+      status.text = L("Ative o microfone"); detail.text = L("Toque em Começar.")
     } else {
       switch state.phase {
-      case .recording: status.text = "Ouvindo…"; detail.text = "Deslize para cima para travar ↑"
-      case .locked: status.text = "Gravação travada"; detail.text = "Toque para finalizar e transcrever."
-      case .transcribing: status.text = "Transcrevendo…"; detail.text = nil
-      case .rewriting: status.text = "Reescrevendo…"; detail.text = nil
-      case .error: status.text = "Não foi possível concluir"; detail.text = state.message
-      default: status.text = "Clarify"; detail.text = "Segure para falar · Trave para cima ↑"
+      case .recording: status.text = L("Ouvindo…"); detail.text = L("Deslize para cima para travar ↑")
+      case .locked: status.text = L("Gravação travada"); detail.text = L("Toque para finalizar e transcrever.")
+      case .transcribing: status.text = L("Transcrevendo…"); detail.text = nil
+      case .rewriting: status.text = L("Reescrevendo…"); detail.text = nil
+      case .error: status.text = L("Não foi possível concluir"); detail.text = state.message
+      default: status.text = "Clarify"; detail.text = L("Segure para falar · Trave para cima ↑")
       }
     }
     glyph.update(recording: mic.holding, locked: mic.locked)
-    mic.accessibilityLabel = mic.locked ? "Finalizar gravação" : "Gravar"
+    mic.accessibilityLabel = mic.locked ? L("Finalizar gravação") : L("Gravar")
     let showingSuggestions = !suggestions.arrangedSubviews.isEmpty && !state.phase.busy && insert.isHidden
     suggestions.isHidden = !showingSuggestions
     status.isHidden = showingSuggestions; detail.isHidden = showingSuggestions
@@ -311,7 +311,7 @@ final class KeyboardViewController: UIInputViewController {
       button.titleLabel?.font = .systemFont(ofSize: 18)
       button.titleLabel?.adjustsFontSizeToFitWidth = true
       button.titleLabel?.minimumScaleFactor = 0.65
-      button.accessibilityLabel = suggestion.undo ? "Desfazer correção: \(suggestion.value)" : "Usar \(suggestion.value)"
+      button.accessibilityLabel = suggestion.undo ? L("Desfazer correção: {word}", ["word": suggestion.value]) : L("Usar {word}", ["word": suggestion.value])
       button.addAction(UIAction { [weak self] _ in
         guard let self = self else { return }
         self.feedback.type(); self.typing.choose(suggestion, in: self.textDocumentProxy); self.updateSuggestions()

@@ -4,9 +4,9 @@ Expo application plus a small Swift keyboard extension. Use a Clarify account or
 a personal Groq API key for speech recognition and rewriting. Native bottom tabs contain
 Home, Dicionário and Conta. Ajustes opens from the Account tab; signed-out users
 see a short invitation and one sign-in/create-account button. History and vocabulary are stored locally in SQLite.
-Version 0.4.1 (19) shows the email field directly before the bottom tabs.
+Version 0.5.0 (20) shows the email field directly before the bottom tabs.
 The same emailed code enters an existing account or creates a new one, without
-a password. Use **seguir sem conta** to configure a personal Groq key.
+a password. Use **Continuar sem conta** to configure a personal Groq key.
 The account path explicitly asks to enable hosted processing. The final step
 explains keyboard installation; microphone permission is requested when needed.
 An unfinished setup resumes on the next launch. Existing accounts and keys
@@ -16,9 +16,11 @@ Billing, translation and local models are outside this mobile release.
 Version 0.3.0 (17) adds an optional shared account, vocabulary sync
 and hosted Groq dictation through [`server/`](../server/README.md). Account login
 uses email codes; sessions stay in the containing app's Keychain and never reach
-JavaScript or the keyboard extension. Signing in does not change processing:
-the user explicitly enables hosted processing and connects the dictionary.
-BYOK remains available. History stays local. The server is deployed at
+JavaScript or the keyboard extension. Signed-in accounts use managed models
+after explicit processing consent. Personal keys remain available after signing
+out. Account vocabulary syncs automatically and usage updates after processing.
+The interface and authentication email follow the device language: Portuguese,
+English or Spanish. Local dictionary caches preserve offline changes. History stays local. The server is deployed at
 `https://clarify-api.victormaynard.com`; hosted processing requires a dedicated
 Groq key and an enabled beta budget. The approved global beta budget is US$10
 per UTC calendar month, with up to 300 minutes per account. Both limits apply.
@@ -34,11 +36,11 @@ handoff, and never opens the source app after a failed/interrupted activation.
 Provider models and rewrite prompts are unchanged. Physical call/permission
 flows still need iPhone acceptance; tests use synthetic native failures.
 
-Last verified TestFlight version: **0.4.0 (18)**, available to `Clarify Interno`
-on 2026-10-11. [Direct delivery run 38110322552](https://github.com/jvictormaynard/clarify/actions/runs/38110322552)
-passed JavaScript, Swift and UIKit contracts, signed archive checks and Apple upload.
-Apple build `2b57fed1-b6ad-4611-beec-67dd62f41e2c` is `VALID` and `IN_BETA_TESTING`.
-Build 19 is the next delivery candidate; availability must be checked after upload.
+Last verified TestFlight version: **0.4.1 (19)**, available to `Clarify Interno`
+on 2026-10-11. [Direct delivery run 38112957238](https://github.com/jvictormaynard/clarify/actions/runs/38112957238)
+passed native validation, signed archive checks and direct Apple upload.
+Apple build `1ddf4b9f-c07e-4b83-be80-db1241b20254` is `VALID` and `IN_BETA_TESTING`.
+Build 20 is the next delivery candidate; availability must be checked after upload.
 
 The `iOS TestFlight` GitHub Actions workflow tests and builds the application with
 Xcode on a standard macOS runner, then uploads directly to App Store Connect.
@@ -80,7 +82,7 @@ establish TestFlight availability; verify `VALID` and `IN_BETA_TESTING` in Apple
 
 ## Use
 
-1. Open Clarify, enter your email and press **Continuar**, or use **seguir sem conta**.
+1. Open Clarify, enter your email and press **Continuar**, or use **Continuar sem conta**.
    Confirm the account code inside Clarify and enable its processing, or save
    your personal Groq key in the device-only Keychain. Read the processing notice
    before continuing. Account controls remain in Conta; provider controls are in Conta → Ajustes.

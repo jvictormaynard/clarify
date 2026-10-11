@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { ArrowRight } from "lucide-react";
 import { Button, Field, Picker, Row } from "./ui";
 import type { SettingsPageProps } from "../settings/use-settings";
@@ -13,17 +14,17 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
   } = controller;
   return (
     <>
-      <Row title="Serviço">
+      <Row title={t("Serviço")}>
         <Picker
-          label="Serviço"
+          label={t("Serviço")}
           value={state.routeProviderId}
           options={state.routeProviders}
           onChange={(value) => void selectRouteProvider(value)}
         />
       </Row>
-      <Row title="Modelo">
+      <Row title={t("Modelo")}>
         <Picker
-          label="Modelo"
+          label={t("Modelo")}
           value={state.routeModelId}
           options={state.routeModelOptions}
           onChange={(value) => void run("setRouteModelId", value)}
@@ -31,8 +32,8 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
           busy={state.routeModelStatus === "loading"}
           empty={
             state.routeProviderId === "local_asr"
-              ? "Nenhum modelo instalado."
-              : "Nenhum modelo disponível. Verifique o serviço."
+              ? t("Nenhum modelo instalado.")
+              : t("Nenhum modelo disponível. Verifique o serviço.")
           }
         />
       </Row>
@@ -41,17 +42,17 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
       ) && (
         <Button variant="text" onClick={() => void navigate("models")}>
           {state.routeModelStatus === "not_configured"
-            ? "Conectar serviço"
-            : "Gerenciar modelos e serviços"}{" "}
+            ? t("Conectar serviço")
+            : t("Gerenciar modelos e serviços")}{" "}
           <ArrowRight size={15} />
         </Button>
       )}
       {state.routeProviderId !== "local_asr" && (
         <details key={state.selectedScope}>
-          <summary>Modelo e endereço personalizados</summary>
+          <summary>{t("Modelo e endereço personalizados")}</summary>
           <Field
-            title="ID do modelo"
-            hint="Opcional: use um modelo que não aparece no catálogo."
+            title={t("ID do modelo")}
+            hint={t("Opcional: use um modelo que não aparece no catálogo.")}
             value={routeOverride?.model ?? state.routeModelId}
             onChange={(e) =>
               setRouteOverride({
@@ -61,8 +62,8 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
             }
           />
           <Field
-            title="Endereço deste fluxo"
-            hint="Deixe vazio para usar o endereço do serviço."
+            title={t("Endereço deste fluxo")}
+            hint={t("Deixe vazio para usar o endereço do serviço.")}
             value={routeOverride?.endpoint ?? state.routeCustomEndpoint}
             onChange={(e) =>
               setRouteOverride({

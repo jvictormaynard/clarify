@@ -25,7 +25,7 @@ Pane {
             font.weight: Font.DemiBold
         }
         AppButton {
-            objectName: group.objectName + "Toggle"
+            objectName: group.objectName + qsTr("Toggle")
             Layout.fillWidth: true
             Layout.preferredHeight: 24
             theme: group.visualTheme

@@ -18,14 +18,15 @@ operators and policies.
   then sends the transcript and vocabulary to Groq for rewriting. The result
   returns to the device.
 
-History and snippets remain on each device in this version. Dictionary sync is
-optional. If enabled, the service stores the account's dictionary so the user
-can retrieve it on another device. Personal provider keys are not synchronized.
+History and snippets remain on each device in this version. Signing in
+automatically synchronizes the account dictionary so it is available on another
+device. Choose Continue without an account to keep vocabulary on the device.
+Personal provider keys are not synchronized.
 
 ## Account information and security
 
 The service stores the email address, verified account status, sessions,
-dictionary when sync is enabled, and processing usage needed to enforce limits.
+account dictionary, and processing usage needed to enforce limits.
 Resend delivers the email codes. Enter the code in the app; the email does not
 require a browser link. Codes expire after 10 minutes. Sessions expire after
 14 days and can be revoked by signing out.

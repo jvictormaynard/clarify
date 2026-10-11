@@ -46,13 +46,17 @@ translate selected text without opening a separate editor.
 
 ## Features
 
-Version 0.6.0 adds optional shared accounts and vocabulary sync. On first launch,
-enter your email and confirm the code inside the app to enter or create an
-account. Alternatively, follow **continuar 100% local** to configure a local
-model; a personal Groq key remains available from that setup page. Explicitly enable hosted processing when using an account.
-Existing profiles retain their setup; account controls remain in Settings.
-Connect the dictionary there to sync vocabulary. History and snippets stay local. The [iOS client](mobile/README.md)
-is delivered through TestFlight. The [account service](server/README.md) can also
+Version 0.7.0 uses the device language for Portuguese, English and Spanish,
+including the passwordless authentication email. On first launch, enter your
+email and confirm the code inside the app to enter or create an account.
+**Continue without an account** opens local-model setup; a personal API key is
+also available there. Account processing requires explicit consent.
+Signed-in accounts use Clarify-managed models; personal provider and local-model
+settings appear only in account-free mode. Vocabulary sync runs automatically,
+and usage updates after processing. Local caches preserve offline edits and
+conflicts keep both copies until resolved. History and snippets stay local.
+Existing profiles retain their setup. The [iOS client](mobile/README.md) is
+delivered through TestFlight. The [account service](server/README.md) can also
 be self-hosted. Production keys and user data are never public.
 
 - Voice transcription and prompt-quality rewriting from any Windows app
