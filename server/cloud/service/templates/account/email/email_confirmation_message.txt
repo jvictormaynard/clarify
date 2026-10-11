@@ -1,0 +1,8 @@
+Use este código para confirmar sua conta no Clarify:
+
+{{ code }}
+
+Digite o código no aplicativo Clarify, no celular ou no computador.
+Ele expira em 10 minutos.
+
+Se você não solicitou este código, ignore este e-mail.

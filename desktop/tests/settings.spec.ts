@@ -31,6 +31,21 @@ test.beforeEach(async ({ page }) => {
 });
 test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
 
+test("account remains optional and self-hosting configuration does not change dictation routes", async ({ page }) => {
+  await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+  await expect(page.getByText("A conta é opcional.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Entrar", exact: true })).toBeDisabled();
+  await page.getByRole("textbox", { name: "E-mail", exact: true }).fill("test@example.test");
+  await expect(page.getByRole("button", { name: "Entrar", exact: true })).toBeEnabled();
+  await page.getByText("Servidor próprio", { exact: true }).click();
+  await page.getByRole("textbox", { name: "Endereço do servidor", exact: true }).fill("https://clarify.example");
+  await page.getByRole("button", { name: "Salvar servidor", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Entrar", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Ditado", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
+});
+
 test("editable fields expose their guidance to assistive technology", async ({ page }) => {
   await page.getByRole("button", { name: "Geral", exact: true }).click();
   const history = page.getByRole("switch", { name: "Salvar histórico", exact: true });

@@ -3,6 +3,7 @@ import { AlertCircle, LoaderCircle } from "lucide-react";
 import { Titlebar } from "./components/titlebar";
 import { Button } from "./components/ui";
 import { GeneralPage } from "./pages/general-page";
+import { AccountPage } from "./pages/account-page";
 import { DictationPage } from "./pages/dictation-page";
 import { TextPage } from "./pages/text-page";
 import { DictionaryPage } from "./pages/dictionary-page";
@@ -13,6 +14,7 @@ import { SettingsDialogs } from "./settings/settings-dialogs";
 import { useSettings } from "./settings/use-settings";
 
 const pageComponents = {
+  account: AccountPage,
   general: GeneralPage,
   dictation: DictationPage,
   text: TextPage,

@@ -1,0 +1,137 @@
+# Optional shared Clarify account
+
+This service and the desktop/iOS clients are public under the root MIT license.
+Production keys, database contents, backups and administrator access are private.
+The server is optional: local inference and personal provider keys still work
+without an account. The iOS app currently supports personal Groq keys, not local
+inference. This increment shares vocabulary and hosted audio allowance. History,
+snippets and personal provider keys remain on each device.
+
+## Run and verify
+
+Use Python 3.12, PostgreSQL 16 or later, and ffmpeg. From the repository root:
+
+```sh
+python3 -m venv server/.venv
+server/.venv/bin/pip install --require-hashes -r server/requirements.txt
+# Set DATABASE_URL to an isolated test database, not a production database.
+CLARIFY_DEVELOPMENT=1 server/.venv/bin/python server/manage.py test cloud.service.tests
+python3 mobile/scripts/sync-prompts.py --check
+```
+
+SQLite is available for development only. Concurrency tests require PostgreSQL.
+Tests use fake provider responses, synthetic silent audio and in-memory email.
+No provider key, real recording or real profile is required.
+
+Build the container from the repository root:
+
+```sh
+docker build -f server/Dockerfile -t clarify-account .
+docker run --env-file server/.env -p 8080:8080 clarify-account
+```
+
+Set the fields in `server/.env.example` in the host's private secret store.
+Use a dedicated database and Groq project/key. Never ship these values in clients.
+Start-up runs serialized migrations and creates the allauth database cache.
+Place the service behind a TLS reverse proxy which overwrites forwarded headers.
+Set its public host in `ALLOWED_HOSTS`. Limit request bodies to 25 MiB at ingress.
+`GET /health` checks database connectivity. Only that path is exempt from the
+application's HTTPS redirect, for private host probes.
+
+On Railway, also include `healthcheck.railway.app` in `ALLOWED_HOSTS`; Railway
+uses that host for its deployment probe. Keep the generated service domain
+and the verified custom domain in the same explicit list. Do not use `*`.
+
+The beta uses Resend Free for outbound codes. Verify `victormaynard.com` in
+Resend and add the requested DNS records in Cloudflare, preserving existing
+mail records. SMTP uses `smtp.resend.com:465`, implicit TLS, user `resend`, and a
+private sending key restricted to this domain. See the official
+[SMTP reference](https://resend.com/docs/send-with-smtp). The free plan allows
+100 emails per day and 3,000 per month, including resends. Monitor this quota
+before expanding registration. This quota is shared with other projects in the
+same Resend team. Clarify caps send attempts at 50 per UTC day by default;
+failed sends also consume this conservative limit. Adjust
+`CLARIFY_DAILY_EMAIL_LIMIT` only after checking the team's remaining allowance.
+Do not send real messages from tests.
+
+Before opening registration, test code delivery and logout with a test account.
+Before enabling hosted inference, approve a global budget and check Groq's own
+project spending/rate limits. Both registration and hosted inference default off;
+the monthly budget defaults to zero. Account quota defaults to 300 audio minutes
+per UTC calendar month. These are beta controls, not a promise of a paid plan.
+
+## Client protocol
+
+Native clients use django-allauth headless email codes. A successful authenticated
+session uses `X-Session-Token`; it is never a Groq key. Codes expire after 10
+minutes. Sessions expire after 14 days and logout revokes the session.
+
+| Request | Purpose |
+| --- | --- |
+| `POST /_allauth/app/v1/auth/signup` | Start signup with `email` |
+| `POST /_allauth/app/v1/auth/email/verify` | Confirm signup with six-digit `key` |
+| `POST /_allauth/app/v1/auth/code/request` | Request login code with `email` |
+| `POST /_allauth/app/v1/auth/code/confirm` | Confirm login with six-digit `code` |
+| `DELETE /_allauth/app/v1/auth/session` | Revoke current session |
+| `GET /v1/account` | Account identity and shared allowance |
+| `DELETE /v1/account` | Delete account with `{"confirm":true}` |
+| `GET /v1/usage` | Shared allowance for this account |
+| `GET /v1/dictionary` | This account's vocabulary and revision |
+| `PUT /v1/dictionary` | Replace vocabulary using `revision` and `entries` |
+| `POST /v1/dictations` | Multipart `audio`, UUID `operation_id`, optional `language` |
+
+All `/v1` routes require an active session and a verified primary email. The
+server derives account ownership from that session. It rejects caller-supplied
+owner IDs, provider URLs, prompts, models and token settings. There is no chat,
+completion or general provider proxy. Fixed processing is Whisper Large V3 Turbo
+followed by GPT OSS 20B. `shared/dictation_prompt.json` is generated from the
+canonical desktop prompt by `mobile/scripts/sync-prompts.py`.
+
+The client explicitly connects vocabulary. Each account has a separate local
+cache; logout restores the local vocabulary. Sync combines independent edits and
+preserves deletions. A same-word conflict requires a choice; revision mismatches
+never silently overwrite the server. Sync runs on save, explicit refresh and
+before hosted dictation. This increment does not push changes in real time.
+
+## Bounds and retention
+
+- Audio: 24 MiB, 250 ms through 5 minutes. Decode locally to mono 16 kHz WAV;
+  validate actual duration. No remote media URLs or playlists. Temporary audio
+  is removed after the request. Container restarts clear abandoned temp files.
+- Vocabulary: 512 entries, shared validation with desktop, bounded provider
+  context. It is input data and cannot change provider instructions.
+- One in-flight operation per account, four globally by default, six dictations
+  per account per minute, and 2,000 per account per month. Atomic PostgreSQL
+  admission prevents quota and budget races across workers and month boundaries.
+- Every operation reserves its worst-case provider cost before provider work.
+  Actual usage includes completion/reasoning tokens and the ASR minimum charge.
+  Failed or uncertain provider work retains the conservative cost reservation;
+  it is not automatically refunded or retried.
+- Duplicate operation ID and identical content reuse a result for five minutes.
+  Different content is rejected. Expired IDs cannot repeat paid work while the
+  operation record exists. Clients must reuse their UUID when retrying.
+- Result text is cached for five minutes, then swept within roughly one minute.
+  No account history endpoint. Operation metadata is removed after 31 days;
+  monthly aggregate cost records remain for budget accounting. Account deletion
+  removes the user and dictionary, removes cached text/content hashes and
+  detaches accounting records. Backup retention must be configured by the host.
+- No transcripts, audio, credentials, HTTP headers or provider error bodies in
+  application/access logs. The default proxy limiter uses the connection peer,
+  not untrusted forwarding headers. Behind a shared proxy, this is conservative
+  and can limit multiple users together. Verify trustworthy ingress IP handling
+  before widening the beta; do not blindly trust `X-Forwarded-For`.
+
+Open code does not grant access to the hosted service. Security rests on account
+verification, ownership checks, bounded inputs, atomic limits and server secrets.
+Self-hosters configure their own credentials, limits and database.
+
+## Release gates
+
+Server tests, desktop Python/Settings checks and iOS native compilation must pass.
+Live email, device activation/dictation, account isolation, quota exhaustion,
+session revocation and account deletion need staging acceptance. No automatic
+TestFlight upload is part of this change. The existing private-API app-return
+experiment is limited to TestFlight; remove it before a public App Store release.
+Public launch also needs an accurate privacy policy, account deletion instructions
+and a tested backup/restore policy. Google/Apple login, history sync and billing
+are separate increments.

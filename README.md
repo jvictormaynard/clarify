@@ -44,6 +44,11 @@ translate selected text without opening a separate editor.
 
 ## Features
 
+Development source also includes the [iOS client](mobile/README.md) and an
+[optional shared account service](server/README.md). Shared account access,
+vocabulary sync and hosted allowance are under validation and are not included
+in the current Windows release. Production keys and user data are never public.
+
 - Voice transcription and prompt-quality rewriting from any Windows app
 - Optional Local Whisper transcription after an explicit, verified asset download
 - Safe selected-text rewriting that checks focus before replacing content

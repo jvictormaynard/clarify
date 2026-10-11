@@ -9,6 +9,12 @@ export type DictionaryEntry = {
   enabled: boolean;
 };
 export interface Settings {
+  accountState?: {
+    endpoint: string; signedIn: boolean; email: string; pending: string;
+    hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
+    dictionaryConflict?: boolean; syncError?: string;
+    usage: { month?: string; limit_ms?: number; used_ms?: number; reserved_ms?: number; hosted_available?: boolean };
+  };
   dictionaryEntries: DictionaryEntry[];
   dirty: boolean;
   lastError: string;
@@ -76,6 +82,7 @@ export interface Settings {
 
 // Argument tuples keep every frontend call checked without changing the pipe protocol.
 export type SettingsArguments = {
+  accountCommand: [action: string, value: string];
   snapshot: [];
   setLanguage: [value: string];
   setDictionaryEntries: [entries: DictionaryEntry[]];

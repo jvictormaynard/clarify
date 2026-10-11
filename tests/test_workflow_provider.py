@@ -26,6 +26,33 @@ from workflows import RecordingSnapshot, TranscriptionTransportError
 
 
 class WorkflowProviderTests(unittest.TestCase):
+    def test_hosted_dictation_is_optional_and_file_import_keeps_personal_route(
+        self,
+    ):
+        account = Mock(hosted=True)
+        account.transcribe.return_value = TranscriptionResult(
+            "Hosted.", "clarify", "whisper-large-v3-turbo"
+        )
+        self.service.account = account
+        result = self.service.transcribe(self.audio, "prompt", "pt")
+        self.assertEqual(result.text, "Hosted.")
+        account.transcribe.assert_called_once_with(self.audio, "pt", self.dictionary)
+        self.registry.transcribe.assert_not_called()
+        account.transcribe.reset_mock()
+        selection = FileTranscriptionSelection(
+            "groq",
+            "whisper-large-v3",
+            "pt",
+            connection=ProviderConnection("test-only", ""),
+        )
+        self.service.transcribe(self.audio, "prompt", "pt", selection=selection)
+        account.transcribe.assert_not_called()
+        self.registry.transcribe.assert_called_once()
+        self.registry.transcribe.reset_mock()
+        self.service.account = Mock(hosted=False)
+        self.service.transcribe(self.audio, "transcription", "pt")
+        self.registry.transcribe.assert_called_once()
+
     def setUp(self):
         self.current = AppConfig(
             openai=ProviderConfig(api_key="test-only", base_url="https://base.invalid"),

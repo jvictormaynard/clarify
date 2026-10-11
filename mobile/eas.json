@@ -1,0 +1,8 @@
+{
+  "cli": { "version": ">= 24.11.0", "appVersionSource": "local" },
+  "build": {
+    "simulator": { "distribution": "internal", "ios": { "simulator": true }, "node": "22.21.1", "buildArtifactPaths": ["test-results/keyboard-ui.zip"] },
+    "production": { "distribution": "store", "autoIncrement": true, "node": "22.21.1", "buildArtifactPaths": ["test-results/keyboard-ui.zip"] }
+  },
+  "submit": { "production": { "ios": { "ascAppId": "6820869157" } } }
+}

@@ -41,4 +41,8 @@ temp_recording.webm
 # Local application data and test artifacts
 config.json
 usage_stats.json
+account.json
+account-secrets*.json
+account-data/
+server/.development.sqlite3*
 *.wav

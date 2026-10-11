@@ -1,7 +1,27 @@
 # Architecture
 
-Clarify is a local-first desktop application. It has no Clarify-owned
-backend: the desktop process calls the AI provider selected by the user.
+Clarify has a local-first Windows desktop client, an iOS client in `mobile/`,
+and an optional account service in `server/`. Local models and personal API keys
+work without an account. Hosted dictation requires an authenticated account and
+uses a server-owned Groq key; personal keys never pass through that service.
+
+All product source remains in this public MIT repository. Production credentials,
+user data, backups and administrator access stay private in the hosting platform.
+There is no separate closed backend or local/cloud product fork.
+
+The first account increment shares vocabulary and hosted audio allowance. Each
+device keeps its history and snippets locally. `clarify_account.py` owns the
+desktop account boundary; the iOS containing app owns `CloudAccount.swift`.
+Sessions stay in the desktop secret store or app-only iOS Keychain. The keyboard
+extension receives neither provider keys nor account sessions. Account-scoped
+vocabulary caches preserve the local dictionary when the user signs out.
+
+`server/` uses Django, django-allauth headless email codes, DRF and PostgreSQL.
+The server owns provider selection, prompts, billing bounds and per-account/global
+admission. Clients cannot send arbitrary model, prompt, endpoint or ownership
+settings. A PostgreSQL lock serializes quota reservations and cost settlement.
+`shared/dictation_prompt.json` is generated from the canonical desktop prompt.
+See [server operations and release gates](../server/README.md).
 
 ## Runtime flow
 
