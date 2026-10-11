@@ -45,11 +45,13 @@ handoff, and never opens the source app after a failed/interrupted activation.
 Provider models and rewrite prompts are unchanged. Physical call/permission
 flows still need iPhone acceptance; tests use synthetic native failures.
 
-Last verified TestFlight version: **0.5.0 (20)**, available to `Clarify Interno`
+Previous verified TestFlight delivery: **0.5.0 (20)**, available to `Clarify Interno`
 on 2026-10-11. [Direct delivery run 38122247572](https://github.com/jvictormaynard/clarify/actions/runs/38122247572)
 passed native validation, signed archive checks and direct Apple upload.
 Apple processing is `VALID` and the internal state is `IN_BETA_TESTING`.
-Build 21 is the next delivery candidate; availability must be checked after upload.
+For **0.6.0 (21)**, follow [direct delivery run 38164503475](https://github.com/jvictormaynard/clarify/actions/runs/38164503475).
+The final Apple processing and internal-group availability are recorded in
+[delivery PR 144](https://github.com/jvictormaynard/clarify/pull/144) after upload.
 
 The `iOS TestFlight` GitHub Actions workflow tests and builds the application with
 Xcode on a standard macOS runner, then uploads directly to App Store Connect.
