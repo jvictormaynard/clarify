@@ -5,6 +5,27 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-11
+
+### Added
+
+- Use the device language for Portuguese, English and Spanish throughout the desktop and mobile interfaces. Authentication emails use the same language and a localized subject without a brand prefix.
+- Route desktop selected-text rewriting, translation and imported audio through the Clarify account when signed in, with fixed server models and bounded processing.
+
+### Changed
+
+- Separate managed-account settings from personal keys, providers and local models. Keep personal settings and vocabulary when switching accounts or signing out. An expired session requires sign-in or an explicit return to account-free mode.
+- Synchronize account vocabulary automatically after sign-in, on foreground entry and after edits. Refresh usage after processing, with a one-minute foreground refresh interval and conflict protection.
+- Keep local settings, dictionary caches and history for offline use and account-free operation.
+- Apply the same passwordless steps, full-width fields, Back action and initial “Continue without an account” link on both platforms. Put the mobile link outside the authentication card.
+- Use stable button labels with integrated loading indicators. Describe managed data processing using Clarify in the interface.
+- Prepare iOS 0.5.0 (20) for direct TestFlight delivery, separately from the Windows release.
+
+### Fixed
+
+- Prevent stored personal providers from receiving managed-account operations or being contacted by hidden model controls.
+- Preserve reported usage when a completed operation is cancelled locally, and prevent stale refresh responses from replacing newer consumption.
+
 ## [0.6.0] - 2026-10-11
 
 ### Added
@@ -305,7 +326,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/jvictormaynard/clarify/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jvictormaynard/clarify/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/jvictormaynard/clarify/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/jvictormaynard/clarify/compare/v0.5.1...v0.5.2

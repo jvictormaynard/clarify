@@ -12,6 +12,7 @@ from PySide6.QtCore import QObject, QProcess, QTimer
 
 # Never expose QObject reflection, repository access, saved API keys, or paths.
 PROPERTIES = (
+    "uiLanguage",
     "onboardingRequired",
     "accountState",
     "dirty",

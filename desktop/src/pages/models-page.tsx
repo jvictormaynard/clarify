@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import {
   Button,
@@ -31,17 +32,14 @@ export function ModelsPage({ controller }: SettingsPageProps) {
     <>
       <Section
         title={
-          <>
-            Modelos locais <span className="badge">No seu computador</span>
+          <>{t("Modelos locais")}<span className="badge">{t("No seu computador")}</span>
           </>
         }
       >
-        <p className="hint">
-          Transcreva sem enviar o áudio para um serviço externo.
-        </p>
-        <Row title="Modelo">
+        <p className="hint">{t("Transcreva sem enviar o áudio para um serviço externo.")}</p>
+        <Row title={t("Modelo")}>
           <Picker
-            label="Modelo local"
+            label={t("Modelo local")}
             disabled={state.localAsrBusy || state.localBenchmarkBusy}
             value={String(state.localProfileIndex)}
             options={state.localProfiles.map((label, i) => ({
@@ -51,9 +49,9 @@ export function ModelsPage({ controller }: SettingsPageProps) {
             onChange={(v) => void run("selectLocalProfile", Number(v))}
           />
         </Row>
-        <Row title="Processamento">
+        <Row title={t("Processamento")}>
           <Picker
-            label="Processamento"
+            label={t("Processamento")}
             disabled={state.localAsrBusy || state.localBenchmarkBusy}
             value={String(state.localDeviceIndex)}
             options={state.localDevices.map((label, i) => ({
@@ -68,35 +66,29 @@ export function ModelsPage({ controller }: SettingsPageProps) {
             <div className="installation-status">
               {state.localAsrStatus === "installed" ? (
                 <>
-                  <Check size={17} /> Pronto para usar
-                </>
+                  <Check size={17} />{t("Pronto para usar")}</>
               ) : state.localAsrBusy ? (
                 <>
-                  <LoaderCircle size={17} className="spin" /> Preparando modelo…
-                </>
+                  <LoaderCircle size={17} className="spin" />{t("Preparando modelo…")}</>
               ) : (
-                "Instalação do modelo"
+                t("Instalação do modelo")
               )}
             </div>
-            <p className="hint">{state.localAsrDetail}</p>
+            <p className="hint">{t(state.localAsrDetail)}</p>
           </div>
           {state.localAsrBusy ? (
-            <Button onClick={() => void run("cancelLocalAsr")}>Cancelar</Button>
+            <Button onClick={() => void run("cancelLocalAsr")}>{t("Cancelar")}</Button>
           ) : state.localAsrStatus !== "installed" &&
             state.localAsrCanInstall ? (
             <Button onClick={() => void run("installLocalAsr")}>
-              <Download size={16} />
-              Instalar
-            </Button>
+              <Download size={16} />{t("Instalar")}</Button>
           ) : (
-            <Button onClick={() => void run("refreshLocalAsr")}>
-              Verificar
-            </Button>
+            <Button onClick={() => void run("refreshLocalAsr")}>{t("Verificar")}</Button>
           )}
         </div>
         {state.localAsrBusy && (
           <progress
-            aria-label="Instalação do modelo"
+            aria-label={t("Instalação do modelo")}
             max="1"
             value={
               state.localAsrProgress >= 0 ? state.localAsrProgress : undefined
@@ -105,7 +97,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
         )}
         {requirements.length > 0 && (
           <details>
-            <summary>Requisitos do modelo</summary>
+            <summary>{t("Requisitos do modelo")}</summary>
             <ul>
               {requirements.map((value) => (
                 <li key={value}>{value}</li>
@@ -114,10 +106,10 @@ export function ModelsPage({ controller }: SettingsPageProps) {
           </details>
         )}
         <details>
-          <summary>Opções do modelo local</summary>
+          <summary>{t("Opções do modelo local")}</summary>
           <Toggle
-            title="Reconhecer durante a gravação (experimental)"
-            hint="Requer GPU NVIDIA. Pode reduzir a espera ao terminar com uma pausa, mas pode aumentar a espera em fala contínua. Mantém a gravação completa."
+            title={t("Reconhecer durante a gravação (experimental)")}
+            hint={t("Requer GPU NVIDIA. Pode reduzir a espera ao terminar com uma pausa, mas pode aumentar a espera em fala contínua. Mantém a gravação completa.")}
             checked={state.localStreaming}
             onChange={(v) => void run("setLocalStreaming", v)}
           />
@@ -136,7 +128,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
               }
             >
               {state.localBenchmarkBusy
-                ? "Cancelar medição"
+                ? t("Cancelar medição")
                 : "Otimizar CPU/GPU"}
             </Button>
             {state.localAsrStatus === "installed" && (
@@ -144,16 +136,12 @@ export function ModelsPage({ controller }: SettingsPageProps) {
                 <Button
                   disabled={state.localAsrBusy || state.localBenchmarkBusy}
                   onClick={() => void useLocalModel()}
-                >
-                  Usar este modelo
-                </Button>
+                >{t("Usar este modelo")}</Button>
                 <Button
                   variant="ghost"
                   disabled={state.localAsrBusy || state.localBenchmarkBusy}
                   onClick={() => setConfirmAction("removeLocalAsr")}
-                >
-                  Remover modelo
-                </Button>
+                >{t("Remover modelo")}</Button>
               </>
             )}
           </div>
@@ -161,14 +149,13 @@ export function ModelsPage({ controller }: SettingsPageProps) {
       </Section>
       <Section
         title={
-          <>
-            Serviços na nuvem <span className="badge">Sua chave de API</span>
+          <>{t("Serviços na nuvem")}<span className="badge">{t("Sua chave de API")}</span>
           </>
         }
       >
-        <Row title="Serviço">
+        <Row title={t("Serviço")}>
           <Picker
-            label="Serviço na nuvem"
+            label={t("Serviço na nuvem")}
             value={state.selectedProviderId}
             options={state.providers.filter((p) => p.id !== "local_asr")}
             onChange={(value) => void selectProvider(value)}
@@ -177,25 +164,25 @@ export function ModelsPage({ controller }: SettingsPageProps) {
         {state.selectedProviderId !== "local_asr" && (
           <>
             <Field
-              title="Chave de API"
+              title={t("Chave de API")}
               hint={
                 state.providerHasApiKey
-                  ? "Uma chave já está salva. Preencha apenas para substituí-la."
-                  : "A chave fica no armazenamento seguro do Clarify."
+                  ? t("Uma chave já está salva. Preencha apenas para substituí-la.")
+                  : t("A chave fica no armazenamento seguro do Clarify.")
               }
               type="password"
               autoComplete="off"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={
-                state.providerHasApiKey ? "••••••••••••••••" : "Cole sua chave"
+                state.providerHasApiKey ? "••••••••••••••••" : t("Cole sua chave")
               }
             />
             {state.providerSupportsCustomEndpoint && (
               <details>
-                <summary>Endereço personalizado</summary>
+                <summary>{t("Endereço personalizado")}</summary>
                 <Input
-                  aria-label="Endpoint"
+                  aria-label={t("Endpoint")}
                   value={endpoint}
                   onChange={(e) => setEndpoint(e.target.value)}
                 />
@@ -203,16 +190,16 @@ export function ModelsPage({ controller }: SettingsPageProps) {
             )}
             <div className="service-actions">
               <span className="hint" role="status">
-                {state.providerError ||
+                {(state.providerError && t(state.providerError)) ||
                   (state.providerHasApiKey
-                    ? "Chave configurada"
-                    : "Sem chave configurada")}
+                    ? t("Chave configurada")
+                    : t("Sem chave configurada"))}
               </span>
               <Button
                 disabled={state.providerBusy || busy}
                 onClick={() => void validateProvider()}
               >
-                {state.providerBusy ? "Validando…" : "Validar e salvar chave"}
+                {state.providerBusy ? t("Validando…") : t("Validar e salvar chave")}
               </Button>
             </div>
             {state.providerHasApiKey && (
@@ -220,9 +207,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
                 variant="text"
                 disabled={state.providerBusy}
                 onClick={() => setConfirmAction("clearProvider")}
-              >
-                Remover chave salva
-              </Button>
+              >{t("Remover chave salva")}</Button>
             )}
           </>
         )}

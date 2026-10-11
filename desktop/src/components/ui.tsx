@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import {
   useId,
   type ButtonHTMLAttributes,
@@ -22,16 +23,21 @@ export function Button({
   variant = "default",
   className = "",
   type = "button",
+  loading = false,
+  children,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: keyof typeof variants;
+  loading?: boolean;
 }) {
   return (
     <button
       {...props}
+      disabled={props.disabled || loading}
+      aria-busy={loading}
       type={type}
       className={`${variants[variant]} ${className}`.trim()}
-    />
+    >{loading && <span className="button-spinner" aria-hidden="true" />}{children}</button>
   );
 }
 
@@ -180,7 +186,7 @@ export function Confirm({
           <Dialog.Description>{description}</Dialog.Description>
           <Dialog.Close
             className="icon-button dialog-close"
-            aria-label="Fechar"
+            aria-label={t("Fechar")}
           >
             <X size={18} />
           </Dialog.Close>

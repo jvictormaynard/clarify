@@ -811,8 +811,10 @@ class QtShell(QObject):
         # reference and release it alongside the tray during shell cleanup.
         menu = self._menu_factory()
         self._menu = menu
-        show_action = menu.addAction(f"Show {self._title}")
-        quit_action = menu.addAction(f"Quit {self._title}")
+        from shared.localization import translate
+
+        show_action = menu.addAction(translate("Show {name}", name=self._title))
+        quit_action = menu.addAction(translate("Quit {name}", name=self._title))
         show_action.triggered.connect(lambda _checked=False: self.show_window())
         quit_action.triggered.connect(lambda _checked=False: self.quit())
         tray.setToolTip(self._title)

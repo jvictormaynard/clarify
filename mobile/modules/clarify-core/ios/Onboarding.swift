@@ -14,7 +14,7 @@ struct Onboarding {
     return !defaults.bool(forKey: key)
   }
   func complete(configured: Bool) throws {
-    guard configured else { throw ClarifyError("Configure o processamento antes de continuar.") }
+    guard configured else { throw ClarifyError(L("Configure o processamento antes de continuar.")) }
     defaults.set(true, forKey: key)
   }
 }

@@ -316,14 +316,27 @@ class QtAudioFileGateway:
 
     def __init__(self, provider):
         self.provider = provider
+        self._account_lock = threading.Lock()
 
     def transcribe(self, request, selection, cancel_token):
-        return self.provider.transcribe(
-            RecordingSnapshot(request.audio_path, request.audio_bytes, cancel_token),
-            "prompt",
-            selection.language,
-            selection=selection,
-        )
+        account = getattr(self.provider, "account", None)
+        managed = account is not None and getattr(account, "managed", False) is True
+        if managed:
+            # One hosted operation per account; keep guest batch concurrency.
+            while not self._account_lock.acquire(timeout=0.05):
+                cancel_token.raise_if_cancelled()
+        try:
+            return self.provider.transcribe(
+                RecordingSnapshot(
+                    request.audio_path, request.audio_bytes, cancel_token
+                ),
+                "prompt",
+                selection.language,
+                selection=selection,
+            )
+        finally:
+            if managed:
+                self._account_lock.release()
 
 
 class QtProviderGateway(WorkflowProviderService):
@@ -337,7 +350,7 @@ class QtProviderGateway(WorkflowProviderService):
     def prepare_dictation(self, recording) -> None:
         """Best-effort local preparation; never contact a cloud provider."""
         try:
-            if self.account is not None and self.account.hosted:
+            if self.account is not None and self.account.managed:
                 return
             with recording._lock:
                 if recording.preparation_done.is_set():
@@ -1488,6 +1501,12 @@ class QtWorkflowRuntime:
         if self.repositories is None:
             raise QtRuntimeError("The QML audio import route requires repositories")
         current = self.repositories.config.load()
+        if self.account is not None and self.account.managed:
+            return FileTranscriptionSelection(
+                provider_id="clarify",
+                model="whisper-large-v3-turbo",
+                language=str(language or current.ui.language or "auto"),
+            )
         route = current.workflow(WorkflowScope.TRANSCRIPTION)
         if not route.enabled:
             raise RuntimeError("transcription workflow is disabled")

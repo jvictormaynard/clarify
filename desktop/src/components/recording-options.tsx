@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { Field, Toggle } from "./ui";
 import type { RecordingDraft } from "../settings/recording";
 
@@ -27,33 +28,33 @@ export function RecordingOptions({
   );
   return (
     <details>
-      <summary>Limites e parada automática</summary>
+      <summary>{t("Limites e parada automática")}</summary>
       {input(
         "maximum",
-        "Duração máxima",
-        "Em segundos. Deixe vazio para não definir um limite.",
+        t("Duração máxima"),
+        t("Em segundos. Deixe vazio para não definir um limite."),
       )}
       {input(
         "warning",
-        "Aviso antes do limite",
-        "Segundos antes de atingir a duração máxima.",
+        t("Aviso antes do limite"),
+        t("Segundos antes de atingir a duração máxima."),
       )}
       <Toggle
-        title="Parar após fala e silêncio"
+        title={t("Parar após fala e silêncio")}
         checked={value.enabled}
         onChange={(enabled) => onChange({ ...value, enabled })}
       />
       {input(
         "threshold",
-        "Limiar de voz",
-        "De 0 a 1. Valores menores detectam sons mais baixos.",
+        t("Limiar de voz"),
+        t("De 0 a 1. Valores menores detectam sons mais baixos."),
         !value.enabled,
       )}
-      {input("speech", "Tempo mínimo de fala", "Em segundos.", !value.enabled)}
+      {input("speech", t("Tempo mínimo de fala"), t("Em segundos."), !value.enabled)}
       {input(
         "silence",
-        "Tempo de silêncio",
-        "Segundos de silêncio para encerrar a gravação.",
+        t("Tempo de silêncio"),
+        t("Segundos de silêncio para encerrar a gravação."),
         !value.enabled,
       )}
     </details>

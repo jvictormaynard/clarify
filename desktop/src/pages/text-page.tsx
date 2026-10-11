@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Picker, Row, Section, TextArea, Toggle } from "../components/ui";
 import { WorkflowRoute } from "../components/workflow-route";
@@ -5,13 +6,14 @@ import { WorkflowRoute } from "../components/workflow-route";
 export function TextPage({ controller }: SettingsPageProps) {
   const { state, navigate, prompt, setPrompt, setTextRouteEnabled } =
     controller;
+  if ((state.accountState?.managed || state.accountState?.signedIn)) return <p className="hint">{t("O Clarify gerencia os modelos e as instruções da sua conta.")}</p>;
   return (
     <>
-      <div className="segmented" aria-label="Fluxo de texto">
+      <div className="segmented" aria-label={t("Fluxo de texto")}>
         {[
-          { id: "refinement", label: "Revisão" },
-          { id: "rewrite", label: "Reescrita" },
-          { id: "translation", label: "Tradução" },
+          { id: "refinement", label: t("Revisão") },
+          { id: "rewrite", label: t("Reescrita") },
+          { id: "translation", label: t("Tradução") },
         ].map((item) => (
           <button
             type="button"
@@ -29,13 +31,13 @@ export function TextPage({ controller }: SettingsPageProps) {
       </div>
       {(state.selectedScope === "refinement" ||
         state.selectedScope === "local_asr_refinement") && (
-        <Row title="Revisar transcrições de">
+        <Row title={t("Revisar transcrições de")}>
           <Picker
-            label="Contexto da revisão"
+            label={t("Contexto da revisão")}
             value={state.selectedScope}
             options={[
-              { id: "refinement", label: "Ditado na nuvem" },
-              { id: "local_asr_refinement", label: "Transcrição local" },
+              { id: "refinement", label: t("Ditado na nuvem") },
+              { id: "local_asr_refinement", label: t("Transcrição local") },
             ]}
             onChange={(v) => void navigate("text", v)}
           />
@@ -44,7 +46,7 @@ export function TextPage({ controller }: SettingsPageProps) {
       <Section>
         <WorkflowRoute controller={controller} />
         <Toggle
-          title="Ativar este fluxo"
+          title={t("Ativar este fluxo")}
           checked={
             state.routeEnabled &&
             (state.selectedScope !== "local_asr_refinement" ||
@@ -53,16 +55,14 @@ export function TextPage({ controller }: SettingsPageProps) {
           onChange={(value) => void setTextRouteEnabled(value)}
         />
       </Section>
-      <Section title="Instruções">
-        <p className="hint">
-          Defina o tom e as alterações que a IA deve aplicar.
-        </p>
+      <Section title={t("Instruções")}>
+        <p className="hint">{t("Defina o tom e as alterações que a IA deve aplicar.")}</p>
         <TextArea
           className="prompt"
-          aria-label="Instruções"
+          aria-label={t("Instruções")}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Como o texto deve ser revisado?"
+          placeholder={t("Como o texto deve ser revisado?")}
         />
       </Section>
     </>

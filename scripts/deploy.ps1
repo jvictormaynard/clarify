@@ -201,6 +201,7 @@ foreach ($backendModule in @(
     "audio_file_batch.py",
     "audio_file_batch_ui.py",
     "clarify_account.py",
+    "cloud_defaults.py",
     "dictionary_settings.py",
     "dictionary_snippets.py",
     "history_store.py",
@@ -230,6 +231,10 @@ foreach ($backendModule in @(
     "workflows.py"
 )) {
     Copy-Item (Join-Path $repoRoot $backendModule) $sourceDir -Force
+}
+New-Item (Join-Path $sourceDir "shared") -ItemType Directory -Force | Out-Null
+foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json")) {
+    Copy-Item (Join-Path $repoRoot "shared\$catalogFile") (Join-Path $sourceDir "shared") -Force
 }
 Copy-Item $repoQml $qml -Recurse -Force
 Copy-Item $repoVersion $sourceDir -Force
@@ -278,6 +283,7 @@ $pyinstallerArgs = @(
     "--add-data", "${assets};assets",
     "--add-data", "${distribution};distribution",
     "--add-data", "${qml};qml",
+    "--add-data", "$(Join-Path $sourceDir 'shared\ui_strings.json');shared",
     "--add-data", "${localAsrManifest};.",
     "--add-data", "${localAsrLicenses};licenses",
     "--hidden-import", "version",

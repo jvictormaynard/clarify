@@ -2,6 +2,49 @@ import XCTest
 @testable import ClarifyContracts
 
 final class CloudAccountTests: XCTestCase {
+  func testSavingAnOpenDraftPreservesWordsReceivedDuringAutomaticRefresh() throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+    let account = CloudAccount(defaults: defaults), library = try LocalLibrary(root: root)
+    let original = VocabularyEntry(term: "A"), remote = VocabularyEntry(term: "Remote")
+    try library.saveDictionary([original, remote])
+    let edit = VocabularyEntry(term: "A", pronunciation: "ours")
+    try account.saveDictionaryDraft([edit], base: [original], library: library)
+    XCTAssertEqual(try library.dictionary(), [edit, remote])
+    XCTAssertThrowsError(try account.saveDictionaryDraft([VocabularyEntry(term: "A", pronunciation: "other")], base: [original], library: library))
+    XCTAssertEqual(try library.dictionary(), [edit, remote])
+  }
+  func testExpiredManagedSessionCannotUsePersonalCredentials() throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var state = CloudAccountState()
+    state.hosted = true
+    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    let account = CloudAccount(defaults: defaults)
+    XCTAssertTrue(account.managed)
+    XCTAssertFalse(account.hosted)
+    XCTAssertFalse(account.configured)
+  }
+  func testFirstAccountCacheImportsGuestWordsOnceWithoutChangingGuestData() throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+    var state = CloudAccountState()
+    state.userID = UUID().uuidString
+    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    let account = CloudAccount(defaults: defaults)
+    let library = try LocalLibrary(root: root)
+    try library.saveDictionary([VocabularyEntry(term: "Guest")])
+    try account.prepareLibrary(library)
+    try library.saveDictionary([VocabularyEntry(term: "Account")], scope: account.scope)
+    try account.prepareLibrary(library)
+    XCTAssertEqual(try library.dictionary().map(\.term), ["Guest"])
+    XCTAssertEqual(try library.dictionary(scope: account.scope).map(\.term), ["Account"])
+  }
   func testEndpointRejectsCredentialBearingURLsAndAllowsLocalSelfHosting() throws {
     for value in ["http://example.com", "https://user:secret@example.com", "https://example.com/path", "https://example.com?token=secret", "file:///tmp/x"] {
       XCTAssertThrowsError(try CloudAccount.validateEndpoint(value))

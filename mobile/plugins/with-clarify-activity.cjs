@@ -17,6 +17,7 @@ module.exports = function withClarifyActivity(config) {
     fs.copyFileSync(path.join(root, 'native/activity/ClarifyActivity.swift'), path.join(out, 'ClarifyActivity.swift'));
     fs.copyFileSync(path.join(root, 'modules/clarify-core/ios/ClarifyActivityAttributes.swift'), path.join(out, 'ClarifyActivityAttributes.swift'));
     fs.copyFileSync(path.join(root, 'modules/clarify-core/ios/ClarifyMark.swift'), path.join(out, 'ClarifyMark.swift'));
+    fs.copyFileSync(path.join(root, 'modules/clarify-core/ios/Localization.swift'), path.join(out, 'Localization.swift'));
     fs.writeFileSync(path.join(out, 'Info.plist'), plist.default.build({
       CFBundleDisplayName: 'Clarify', CFBundleName: targetName, CFBundleIdentifier: '$(PRODUCT_BUNDLE_IDENTIFIER)',
       CFBundleExecutable: '$(EXECUTABLE_NAME)', CFBundlePackageType: 'XPC!',
@@ -29,7 +30,7 @@ module.exports = function withClarifyActivity(config) {
     const project = mod.modResults;
     if (project.pbxTargetByName(targetName)) return mod;
     const target = project.addTarget(targetName, 'app_extension', targetName, bundle);
-    const files = ['ClarifyActivity.swift', 'ClarifyActivityAttributes.swift', 'ClarifyMark.swift'];
+    const files = ['ClarifyActivity.swift', 'ClarifyActivityAttributes.swift', 'ClarifyMark.swift', 'Localization.swift'];
     const group = project.addPbxGroup(files, targetName, targetName);
     project.addToPbxGroup(group.uuid, project.getFirstProject().firstProject.mainGroup);
     project.addBuildPhase(files.map((name) => `${targetName}/${name}`), 'PBXSourcesBuildPhase', 'Sources', target.uuid);

@@ -36,6 +36,7 @@ def main() -> None:
     verify_qt_notices(args.executable, args.settings.parent)
     verify_qt_payload(args.executable)
     verify_update_payload(args.executable, args.settings.parent)
+    verify_localization_payload(args.executable)
     print("Packaged Settings payload matches the build input.")
 
 
@@ -68,6 +69,17 @@ def verify_qt_payload(executable: Path) -> None:
     unexpected = unexpected_qt_payload(CArchiveReader(str(executable)).toc)
     if unexpected:
         raise ValueError("Unreviewed Qt payload: " + ", ".join(unexpected[:12]))
+
+
+def verify_localization_payload(executable: Path) -> None:
+    from PyInstaller.archive.readers import CArchiveReader
+
+    archive = CArchiveReader(str(executable))
+    name = "shared/ui_strings.json"
+    matches = [entry for entry in archive.toc if entry.replace("\\", "/") == name]
+    expected = (Path(__file__).resolve().parents[1] / name).read_bytes()
+    if len(matches) != 1 or archive.extract(matches[0]) != expected:
+        raise ValueError("Packaged UI translations differ from the source catalog")
 
 
 def verify_inventory(executable: Path, settings: Path) -> None:

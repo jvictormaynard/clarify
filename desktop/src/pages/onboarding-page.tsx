@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { AccountSignIn } from "../components/account-sign-in";
@@ -13,7 +14,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   const command = (action: string, value = "") => void run("accountCommand", action, value);
   const chooseLocal = async () => {
     if (account?.pending) await run("accountCommand", "logout", "");
-    if (account?.hosted) await run("accountCommand", "hosted", "0");
+    if (account?.signedIn) await run("accountCommand", "logout", "");
     setStep("local");
   };
   const complete = async (mode: "account" | "byok" | "local") => {
@@ -24,30 +25,29 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   return <main className="onboarding">
     <div className="onboarding-content">
       <ClarifyLogo />
-      <h1>{step === "byok" ? "Use sua chave Groq" : step === "local" ? "Use um modelo local" : account?.signedIn ? "Sua conta está pronta" : "Boas-vindas ao Clarify"}</h1>
-      <p className="hint">Fale. O Clarify transforma sua voz em texto claro.</p>
-      {error && <p className="error" role="alert">{error}</p>}
-      {account?.error && <p className="error" role="alert">{account.error}</p>}
-      <fieldset disabled={busy}>
+      <h1>{step === "byok" ? t("Use sua chave Groq") : step === "local" ? t("Use um modelo local") : account?.signedIn ? t("Sua conta está pronta") : t("Boas-vindas ao Clarify")}</h1>
+      <p className="hint">{t("Fale. O Clarify transforma sua voz em texto claro.")}</p>
+      {error && <p className="error" role="alert">{t(error)}</p>}
+      {account?.error && <p className="error" role="alert">{t(account.error)}</p>}
+      <fieldset disabled={busy || account?.busy}>
         {step === "byok" ? <>
-          <Field title="Chave de API do Groq" value={key} type="password" autoComplete="off" placeholder="gsk_…" onChange={e => setKey(e.target.value)} />
-          <p className="hint">A chave fica no armazenamento seguro deste computador. Áudio, texto e palavras ativas do dicionário são enviados diretamente ao Groq. Ao continuar, você autoriza esse processamento.</p>
-          <Button variant="primary" disabled={!key.trim()} onClick={() => void complete("byok")}>Salvar chave e continuar</Button>
+          <Field title={t("Chave de API do Groq")} value={key} type="password" autoComplete="off" placeholder="gsk_…" onChange={e => setKey(e.target.value)} />
+          <p className="hint">{t("A chave fica no armazenamento seguro deste computador. Áudio, texto e palavras ativas do dicionário são enviados ao serviço escolhido por você. Ao continuar, você autoriza esse processamento.")}</p>
+          <Button variant="primary" disabled={!key.trim()} onClick={() => void complete("byok")}>{t("Salvar chave e continuar")}</Button>
         </> : step === "local" ? <>
-          <p>Transcreva neste computador, sem conta nem chave de API. A próxima tela permite baixar e configurar o modelo.</p>
-          <p className="hint">O processamento local não envia áudio ao Clarify ou ao Groq. A reescrita por nuvem permanece desativada.</p>
-          <Button variant="primary" onClick={() => void complete("local")}>Continuar e configurar modelo</Button>
-          <Button variant="text" onClick={() => setStep("byok")}>Usar minha chave de API</Button>
+          <p>{t("Transcreva neste computador, sem conta nem chave de API. A próxima tela permite baixar e configurar o modelo.")}</p>
+          <p className="hint">{t("O processamento local não envia áudio para serviços externos. A reescrita por nuvem permanece desativada.")}</p>
+          <Button variant="primary" onClick={() => void complete("local")}>{t("Continuar e configurar modelo")}</Button>
+          <Button variant="text" onClick={() => setStep("byok")}>{t("Usar minha chave de API")}</Button>
         </> : account && (account.signedIn ? <>
           <p>{account.email}</p>
-          <p className="hint">Para transcrever e reescrever, áudio, texto e palavras ativas do dicionário serão enviados ao Clarify e ao Groq. O histórico fica neste computador. A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.</p>
-          {!account.hosted ? <Button variant="primary" onClick={() => command("hosted", "1")}>Ativar processamento do Clarify</Button> : <Button variant="primary" onClick={() => void complete("account")}>Começar</Button>}
+          <p className="hint">{t("Para transcrever e reescrever, áudio, texto e palavras ativas do dicionário serão processados pelo Clarify. O histórico fica neste computador. A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.")}</p>
+          {!account.hosted ? <Button variant="primary" onClick={() => command("hosted", "1")}>{t("Ativar processamento do Clarify")}</Button> : <Button variant="primary" onClick={() => void complete("account")}>{t("Começar")}</Button>}
         </> : <>
-          <AccountSignIn account={account} command={command} />
-          <Button variant="text" className="onboarding-skip" onClick={() => void chooseLocal()}>continuar 100% local</Button>
+          <AccountSignIn account={account} command={command} busy={busy || account.busy} />
+          {!account.pending && <Button variant="text" className="onboarding-skip" onClick={() => void chooseLocal()}>{t("Continuar sem conta")}</Button>}
         </>)}
-        {step !== "account" && <Button variant="text" onClick={() => { setStep(step === "byok" ? "local" : "account"); setKey(""); }}><ArrowLeft size={15} /> Voltar</Button>}
-        {busy && <p className="hint" role="status">Aguarde…</p>}
+        {step !== "account" && <Button variant="text" onClick={() => { setStep(step === "byok" ? "local" : "account"); setKey(""); }}><ArrowLeft size={15} />{t("Voltar")}</Button>}
       </fieldset>
     </div>
   </main>;

@@ -39,14 +39,14 @@ def allowance_limit(user):
     )
 
 
-def reserve(user, operation_id, fingerprint, audio_ms):
+def reserve(user, operation_id, fingerprint, audio_ms, *, text_operation=False):
     if (
         not settings.CLARIFY_FUNDED_ENABLED
         or not settings.CLARIFY_GROQ_KEY
         or not user.funded_access
     ):
         raise Rejected("hosted_unavailable", 503)
-    if not 250 <= audio_ms <= 300000:
+    if not (audio_ms == 0 if text_operation else 250 <= audio_ms <= 300000):
         raise Rejected("invalid_duration", 400)
     month = month_start()
     expire_leases()

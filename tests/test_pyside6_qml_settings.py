@@ -32,6 +32,7 @@ from repositories import (
     LocalUsageStatsRepository,
 )
 from secret_store import MemorySecretStore
+from shared.localization import translate
 from provider_types import ModelCatalog
 from workflow_config import WorkflowScope
 from microphone_controls import (
@@ -180,7 +181,11 @@ class QmlSettingsControllerTests(unittest.TestCase):
                     "fallback_default",
                 )
                 self.assertIn(
-                    "Saved microphone unavailable", controller.microphoneStatus
+                    translate(
+                        "Saved microphone unavailable; using current default: {name}",
+                        name="",
+                    ).strip(),
+                    controller.microphoneStatus,
                 )
                 self.assertEqual(controller.microphoneSelectionIndex, 0)
                 self.assertEqual(

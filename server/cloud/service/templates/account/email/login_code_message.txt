@@ -1,8 +1,8 @@
-Use este código para entrar na sua conta Clarify:
+{{ email_intro }}
 
 {{ code }}
 
-Digite o código no aplicativo Clarify, no celular ou no computador.
-Ele expira em 10 minutos.
+{{ email_instructions }}
+{{ email_expiry }}
 
-Se você não solicitou este código, ignore este e-mail.
+{{ email_ignore }}

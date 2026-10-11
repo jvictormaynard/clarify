@@ -1,21 +1,22 @@
+import { t } from "../i18n";
 import { Button, Confirm, Input } from "../components/ui";
 import type { SettingsController } from "./use-settings";
 
 const confirmations = {
   clearProvider: {
-    title: "Remover chave salva?",
+    title: t("Remover chave salva?"),
     description:
-      "A chave será removida do armazenamento seguro agora. Será necessário adicioná-la novamente para usar este serviço.",
+      t("A chave será removida do armazenamento seguro agora. Será necessário adicioná-la novamente para usar este serviço."),
   },
   removeLocalAsr: {
-    title: "Remover modelo local?",
+    title: t("Remover modelo local?"),
     description:
-      "Os arquivos deste modelo serão removidos agora. Para usá-lo novamente, será necessário reinstalá-lo.",
+      t("Os arquivos deste modelo serão removidos agora. Para usá-lo novamente, será necessário reinstalá-lo."),
   },
   resetAllHotkeys: {
-    title: "Restaurar atalhos?",
+    title: t("Restaurar atalhos?"),
     description:
-      "Os atalhos voltarão ao padrão. Use Salvar alterações para aplicar ou Descartar para manter os atalhos atuais.",
+      t("Os atalhos voltarão ao padrão. Use Salvar alterações para aplicar ou Descartar para manter os atalhos atuais."),
   },
 };
 
@@ -40,46 +41,36 @@ export function SettingsDialogs({
           variant="ghost"
           disabled={c.busy}
           onClick={() => c.setConfirmAction(null)}
-        >
-          Cancelar
-        </Button>
-        <Button disabled={c.busy} onClick={() => void c.confirmMutation()}>
-          Confirmar
-        </Button>
+        >{t("Cancelar")}</Button>
+        <Button disabled={c.busy} onClick={() => void c.confirmMutation()}>{t("Confirmar")}</Button>
       </Confirm>
       <Confirm
         open={(c.closing && c.dirty) || c.discarding}
         onOpenChange={(open) => {
           if (!open) c.cancelDiscard();
         }}
-        title="Alterações não salvas"
-        description="Salve suas alterações ou descarte-as para continuar."
+        title={t("Alterações não salvas")}
+        description={t("Salve suas alterações ou descarte-as para continuar.")}
       >
-        <Button variant="ghost" disabled={c.busy} onClick={c.cancelDiscard}>
-          Continuar editando
-        </Button>
-        <Button disabled={c.busy} onClick={() => void c.discardAndClose()}>
-          Descartar
-        </Button>
+        <Button variant="ghost" disabled={c.busy} onClick={c.cancelDiscard}>{t("Continuar editando")}</Button>
+        <Button disabled={c.busy} onClick={() => void c.discardAndClose()}>{t("Descartar")}</Button>
         <Button
           variant="primary"
           disabled={c.busy}
           onClick={() => void c.saveAndClose()}
-        >
-          Salvar
-        </Button>
+        >{t("Salvar")}</Button>
       </Confirm>
       <Confirm
         open={!!c.capture}
         onOpenChange={(open) => {
           if (!open) c.setCapture(undefined);
         }}
-        title="Definir atalho"
-        description="Clique no campo e pressione a combinação desejada."
+        title={t("Definir atalho")}
+        description={t("Clique no campo e pressione a combinação desejada.")}
       >
         <Input
-          aria-label="Novo atalho"
-          placeholder="Pressione as teclas…"
+          aria-label={t("Novo atalho")}
+          placeholder={t("Pressione as teclas…")}
           autoFocus
           readOnly
           onKeyDown={(event) => void c.captureHotkey(event)}

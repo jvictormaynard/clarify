@@ -180,7 +180,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("Transition", qml_source)
         self.assertRegex(qml_source, r"(Behavior|NumberAnimation|OpacityAnimator)")
         self.assertRegex(qml_source, r"Accessible\.(name|description)")
-        self.assertIn("Accessible.name: workflow.status", qml_source)
+        self.assertIn("Accessible.name: qsTr(workflow.status)", qml_source)
         self.assertIn("Accessible.name: workflow.result", qml_source)
         self.assertNotIn('Accessible.name: "Prototype result text"', qml_source)
 
@@ -194,6 +194,10 @@ class PySide6QmlFrontendTests(unittest.TestCase):
 
         main_source = (QML_ROOT / "Main.qml").read_text(encoding="utf-8")
         main_source += (QML_ROOT / "SettingsWindow.qml").read_text(encoding="utf-8")
+        # These assertions check layout and wiring, independent of translation wrappers.
+        import re
+
+        main_source = re.sub(r'qsTr\(("(?:[^"\\]|\\.)*")\)', r"\1", main_source)
         self.assertIn('objectName: "clarifyMainWindow"', main_source)
         self.assertIn('objectName: "appPages"', main_source)
         self.assertNotIn("PilotButton", main_source)

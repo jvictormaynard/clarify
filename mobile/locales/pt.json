@@ -1,0 +1,5 @@
+{
+  "ios": {
+    "NSMicrophoneUsageDescription": "O Clarify usa o microfone para transcrever e reescrever sua fala."
+  }
+}

@@ -1,7 +1,14 @@
 from django.urls import include, path
 from allauth.headless.constants import Client
 from .service.accounts import ContinueWithEmailView
-from .service.api import AccountView, DictionaryView, DictationView, UsageView, health
+from .service.api import (
+    AccountView,
+    DictionaryView,
+    DictationView,
+    TextView,
+    UsageView,
+    health,
+)
 
 urlpatterns = [
     path("health", health),
@@ -14,4 +21,5 @@ urlpatterns = [
     path("v1/usage", UsageView.as_view()),
     path("v1/dictionary", DictionaryView.as_view()),
     path("v1/dictations", DictationView.as_view()),
+    path("v1/text", TextView.as_view()),
 ]

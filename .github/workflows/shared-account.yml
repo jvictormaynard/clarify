@@ -1,7 +1,7 @@
 name: Shared account
 on:
   pull_request:
-    paths: ['server/**', 'shared/**', 'clarify_account.py', 'mobile/**', '.github/workflows/shared-account.yml']
+    paths: ['server/**', 'shared/**', 'clarify_account.py', 'mobile/**', 'scripts/sync_locales.py', '.github/workflows/shared-account.yml']
   push:
     branches: ['codex/clarify-cloud']
   workflow_dispatch:

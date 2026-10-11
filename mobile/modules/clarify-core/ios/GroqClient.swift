@@ -9,17 +9,17 @@ struct GroqClient {
     try Task.checkCancellation()
     let (data, response) = try await session.data(for: request)
     try Task.checkCancellation()
-    guard let http = response as? HTTPURLResponse else { throw ClarifyError("Resposta inválida do Groq.") }
+    guard let http = response as? HTTPURLResponse else { throw ClarifyError(L("Resposta inválida do Groq.")) }
     guard (200..<300).contains(http.statusCode) else {
       switch http.statusCode {
-      case 401, 403: throw ClarifyError("Verifique a chave e as permissões do Groq.")
-      case 413: throw ClarifyError("A gravação excedeu o limite do Groq.")
+      case 401, 403: throw ClarifyError(L("Verifique a chave e as permissões do Groq."))
+      case 413: throw ClarifyError(L("A gravação excedeu o limite do Groq."))
       case 429: throw ClarifyError("Limite do Groq atingido. Aguarde e tente novamente.")
-      default: throw ClarifyError("O Groq não respondeu. Tente novamente.")
+      default: throw ClarifyError(L("O Groq não respondeu. Tente novamente."))
       }
     }
     guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-      throw ClarifyError("Resposta inválida do Groq.")
+      throw ClarifyError(L("Resposta inválida do Groq."))
     }
     return json
   }
@@ -32,7 +32,7 @@ struct GroqClient {
   }
   func transcribe(_ audio: URL) async throws -> String {
     let data = try Data(contentsOf: audio)
-    guard data.count < 24_000_000 else { throw ClarifyError("A gravação é muito grande. Grave um trecho menor.") }
+    guard data.count < 24_000_000 else { throw ClarifyError(L("A gravação é muito grande. Grave um trecho menor.")) }
     let boundary = "Clarify-\(UUID().uuidString)"
     var body = Data()
     func append(_ value: String) { body.append(Data(value.utf8)) }
@@ -71,7 +71,7 @@ struct GroqClient {
           let choice = choices.first, choice["finish_reason"] as? String == "stop",
           let message = choice["message"] as? [String: Any], let text = message["content"] as? String,
           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      throw ClarifyError("A reescrita não foi concluída. A transcrição foi preservada.")
+      throw ClarifyError(L("A reescrita não foi concluída. A transcrição foi preservada."))
     }
     let result = text.trimmingCharacters(in: .whitespacesAndNewlines)
     func normalized(_ value: String) -> String {
@@ -85,7 +85,7 @@ struct GroqClient {
       var seen = Set<String>()
       let unique = separated.filter { seen.insert($0).inserted }
       guard unique.count < separated.count, normalized(result) == unique.joined(separator: " ") else {
-        throw ClarifyError("A reescrita removeu parte demais do texto. A transcrição foi preservada.")
+        throw ClarifyError(L("A reescrita removeu parte demais do texto. A transcrição foi preservada."))
       }
     }
     return result

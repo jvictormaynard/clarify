@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Command } from "cmdk";
@@ -12,7 +13,7 @@ export function Picker({
   onRefresh,
   busy,
   disabled,
-  empty = "Nenhuma opção disponível.",
+  empty = t("Nenhuma opção disponível."),
 }: {
   label: string;
   value: string;
@@ -42,9 +43,9 @@ export function Picker({
         disabled={disabled}
       >
         <span>
-          {options.find((item) => item.id === value)?.label ||
+          {t(options.find((item) => item.id === value)?.label ||
             value ||
-            "Selecionar…"}
+            "Selecionar…")}
         </span>
         <ChevronDown size={16} aria-hidden />
       </Popover.Trigger>
@@ -55,20 +56,20 @@ export function Picker({
           align="start"
           collisionPadding={12}
         >
-          <Command label={`Buscar ${label.toLowerCase()}`}>
+          <Command label={t("Buscar {label}", { label: label.toLowerCase() })}>
             <div className="search">
               <Search size={16} aria-hidden />
               <Command.Input
                 value={search}
                 onValueChange={setSearch}
-                aria-label={`Buscar ${label.toLowerCase()}`}
-                placeholder={`Buscar ${label.toLowerCase()}…`}
+                aria-label={t("Buscar {label}", { label: label.toLowerCase() })}
+                placeholder={t("Buscar {label}…", { label: label.toLowerCase() })}
               />
               {onRefresh && (
                 <button
                   type="button"
                   className="icon-button"
-                  aria-label={`Atualizar ${label.toLowerCase()}`}
+                  aria-label={t("Atualizar {label}", { label: label.toLowerCase() })}
                   onClick={onRefresh}
                   disabled={busy}
                 >
@@ -77,18 +78,18 @@ export function Picker({
               )}
             </div>
             <Command.List>
-              <Command.Empty>{busy ? "Carregando…" : empty}</Command.Empty>
+              <Command.Empty>{busy ? t("Carregando…") : empty}</Command.Empty>
               {options.map((item) => (
                 <Command.Item
                   key={item.id}
                   value={item.id || "system-default"}
-                  keywords={[item.label]}
+                  keywords={[item.label, t(item.label)]}
                   onSelect={() => {
                     onChange(item.id);
                     setOpen(false);
                   }}
                 >
-                  <span>{item.label}</span>
+                  <span>{t(item.label)}</span>
                   <Check
                     size={16}
                     style={{ opacity: item.id === value ? 1 : 0 }}

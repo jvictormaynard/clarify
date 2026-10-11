@@ -1,6 +1,7 @@
 """Isolated real-controller RPC fixture. Never opens user config or a microphone."""
 
 import json
+import os
 from dataclasses import replace
 import sys
 import threading
@@ -22,6 +23,13 @@ class OnboardingAccount:
     """Offline account double for first-run UI acceptance. Never sends e-mail."""
 
     scope = None
+
+    @property
+    def signed_in(self):
+        return self.state["signedIn"]
+
+    def refresh_if_due(self, service, *, force=False):
+        pass
 
     def __init__(self):
         self.state = dict(
@@ -135,6 +143,10 @@ def main():
     app = QCoreApplication([])
     with (
         TemporaryDirectory() as directory,
+        patch(
+            "shared.localization.device_language",
+            return_value=os.environ.get("CLARIFY_TEST_UI_LANGUAGE", "pt"),
+        ),
         patch("clarify.desktop.qml_settings._is_windows", return_value=False),
         patch(
             "local_asr_catalog.installer_for",

@@ -12,6 +12,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from django.http import JsonResponse
+from django.utils.translation import get_language
+from shared.localization import translate
 
 from .middleware import take_rate
 
@@ -48,6 +50,21 @@ class ContinueWithEmailView(RequestLoginCodeView):
 
 
 class AccountAdapter(DefaultAccountAdapter):
+    def render_mail(self, template_prefix, email, context, headers=None):
+        # LocaleMiddleware selects a supported device language from Accept-Language.
+        # Allauth still owns code creation, expiry, attempts, and session validation.
+        keys = (
+            "email_subject",
+            "email_intro",
+            "email_instructions",
+            "email_expiry",
+            "email_ignore",
+            "email_existing",
+            "email_unknown",
+        )
+        context = {**context, **{key: translate(key, get_language()) for key in keys}}
+        return super().render_mail(template_prefix, email, context, headers=headers)
+
     def send_mail(self, template_prefix, email, context):
         if not take_rate("email_day", "all", settings.CLARIFY_DAILY_EMAIL_LIMIT, 86400):
             # Headless signup converts ImmediateHttpResponse into a generic

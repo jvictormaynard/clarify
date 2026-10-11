@@ -6,7 +6,7 @@ import QtQuick.Window 6.5
 ApplicationWindow {
     id: root
     objectName: "clarifySettingsWindow"
-    title: "Clarify - Settings"
+    title: qsTr("Clarify - Settings")
     width: 1040
     height: 760
     minimumWidth: 820
@@ -26,6 +26,7 @@ ApplicationWindow {
     palette.highlightedText: theme.text
     palette.placeholderText: theme.subtleText
     property bool closeAfterDiscard: false
+    readonly property bool managedAccount: !!(settings.accountState.managed || settings.accountState.signedIn)
     readonly property bool editorDirty: activeFocusControl !== null
         && activeFocusControl.pendingEdit === true
     readonly property bool hasChanges: settings.dirty || settings.providerDirty || editorDirty
@@ -37,24 +38,24 @@ ApplicationWindow {
         if (historyBox.checked && retentionText !== ""
                 && (!isFinite(retention) || retention !== Math.floor(retention)
                     || retention < 0 || retention > 3650))
-            return "History retention must be between 0 and 3650 days."
+            return qsTr("History retention must be between 0 and 3650 days.")
         var maximumText = maximumDurationField.text.trim()
         var maximum = Number(maximumText)
         if (maximumText !== "" && (!isFinite(maximum) || maximum < 0.001))
-            return "Maximum recording duration must be positive, or blank for no limit."
+            return qsTr("Maximum recording duration must be positive, or blank for no limit.")
         var warning = Number(warningSecondsField.text)
         if (warningSecondsField.text.trim() === "" || !isFinite(warning) || warning < 0
                 || (maximumText !== "" && warning > maximum))
-            return "Warning seconds must be between zero and the maximum duration."
+            return qsTr("Warning seconds must be between zero and the maximum duration.")
         var threshold = Number(vadLevelField.text)
         var speech = Number(minimumSpeechField.text)
         var silence = Number(silenceDurationField.text)
         if (vadLevelField.text.trim() === "" || !isFinite(threshold) || threshold < 0 || threshold > 1)
-            return "Speech level must be between 0 and 1."
+            return qsTr("Speech level must be between 0 and 1.")
         if (minimumSpeechField.text.trim() === "" || !isFinite(speech) || speech < 0)
-            return "Minimum speech seconds must be zero or positive."
+            return qsTr("Minimum speech seconds must be zero or positive.")
         if (silenceDurationField.text.trim() === "" || !isFinite(silence) || silence < 0.001)
-            return "Silence seconds must be positive."
+            return qsTr("Silence seconds must be positive.")
         return ""
     }
     function saveDraft() {
@@ -82,13 +83,13 @@ ApplicationWindow {
     Dialog {
         implicitWidth: 400
         id: providerDraftDialog
-        title: "Unsaved service changes"
+        title: qsTr("Unsaved service changes")
         anchors.centerIn: parent
         modal: true
         standardButtons: Dialog.Discard | Dialog.Cancel
         Label {
             width: 340; wrapMode: Text.WordWrap; color: theme.text
-            text: "Discard the unsaved key and endpoint before switching services?"
+            text: qsTr("Discard the unsaved key and endpoint before switching services?")
         }
         onDiscarded: settings.selectProvider(root.pendingProvider)
     }
@@ -118,7 +119,7 @@ ApplicationWindow {
         id: unsavedDialog
         objectName: "unsavedSettingsDialog"
         anchors.centerIn: parent
-        title: "Unsaved changes"
+        title: qsTr("Unsaved changes")
         modal: true
         closePolicy: Popup.CloseOnEscape
         standardButtons: Dialog.Save | Dialog.Discard | Dialog.Cancel
@@ -126,8 +127,8 @@ ApplicationWindow {
             width: 340
             wrapMode: Text.WordWrap
             text: settings.providerDirty
-                ? "Service changes are not saved. Use Validate & save in Models & services, or discard the changes."
-                : "Save your changes before continuing?"
+                ? qsTr("Service changes are not saved. Use Validate & save in Models & services, or discard the changes.")
+                : qsTr("Save your changes before continuing?")
             color: theme.text
         }
         Component.onCompleted: {
@@ -174,49 +175,49 @@ ApplicationWindow {
         property int selectedSection: 0
         property string textWorkflowScope: "refinement"
         readonly property var sectionItems: [
-            { "label": "General", "icon": "settings.svg" },
+            { "label": qsTr("General"), "icon": "settings.svg" },
             { "label": "Dictation", "icon": "mic.svg" },
-            { "label": "Text", "icon": "sparkles.svg" },
-            { "label": "Shortcuts", "icon": "keyboard.svg" },
-            { "label": "Models & services", "icon": "server.svg" }
+            { "label": qsTr("Text"), "icon": "sparkles.svg" },
+            { "label": qsTr("Shortcuts"), "icon": "keyboard.svg" },
+            { "label": qsTr("Models & services"), "icon": "server.svg" }
         ]
         readonly property var textWorkflowItems: [
             { "scope": "refinement", "label": "Cleanup" },
-            { "scope": "rewrite", "label": "Rewrite" },
-            { "scope": "translation", "label": "Translation" }
+            { "scope": "rewrite", "label": qsTr("Rewrite") },
+            { "scope": "translation", "label": qsTr("Translation") }
         ]
 
         function workflowScopeLabel(scope) {
             var labels = {
                 "transcription": "Dictation",
                 "refinement": "Cleanup",
-                "rewrite": "Rewrite",
-                "translation": "Translation",
-                "local_asr_refinement": "Cleanup after local transcription"
+                "rewrite": qsTr("Rewrite"),
+                "translation": qsTr("Translation"),
+                "local_asr_refinement": qsTr("Cleanup after local transcription")
             }
             return labels[scope] || scope
         }
 
         function workflowDescription(scope) {
             var descriptions = {
-                "transcription": "Choose how recorded speech is transcribed before it is pasted.",
-                "refinement": "Improve dictated text while preserving its meaning.",
-                "rewrite": "Rewrite selected text while preserving its requirements.",
-                "translation": "Translate selected text using the configured language model.",
-                "local_asr_refinement": "Optional cleanup after on-device transcription. If enabled, the transcript is sent to the selected service. Audio stays on your computer."
+                "transcription": qsTr("Choose how recorded speech is transcribed before it is pasted."),
+                "refinement": qsTr("Improve dictated text while preserving its meaning."),
+                "rewrite": qsTr("Rewrite selected text while preserving its requirements."),
+                "translation": qsTr("Translate selected text using the configured language model."),
+                "local_asr_refinement": qsTr("Optional cleanup after on-device transcription. If enabled, the transcript is sent to the selected service. Audio stays on your computer.")
             }
-            return descriptions[scope] || "Configure this workflow."
+            return descriptions[scope] || qsTr("Configure this workflow.")
         }
 
         function workflowToggleLabel(scope) {
             var labels = {
-                "transcription": "Enable dictation",
-                "refinement": "Enable cleanup",
-                "rewrite": "Enable rewrite",
-                "translation": "Enable translation",
-                "local_asr_refinement": "Clean up local transcripts"
+                "transcription": qsTr("Enable dictation"),
+                "refinement": qsTr("Enable cleanup"),
+                "rewrite": qsTr("Enable rewrite"),
+                "translation": qsTr("Enable translation"),
+                "local_asr_refinement": qsTr("Clean up local transcripts")
             }
-            return labels[scope] || "Enable this feature"
+            return labels[scope] || qsTr("Enable this feature")
         }
 
         function selectWorkflowScope(scope) {
@@ -286,9 +287,10 @@ ApplicationWindow {
                                 required property int index
                                 required property var modelData
                                 objectName: "settingsSection" + index
+                                visible: !root.managedAccount || (index !== 2 && index !== 4)
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 40
-                                text: modelData.label
+                                text: qsTr(modelData.label)
                                 iconSource: "icons/" + modelData.icon
                                 theme: root.visualTheme
                                 primary: index === settingsPage.selectedSection
@@ -299,7 +301,7 @@ ApplicationWindow {
                                 contentAlignment: Text.AlignLeft
                                 leftPadding: 8
                                 rightPadding: 4
-                                Accessible.name: "Open " + modelData.label + " settings"
+                                Accessible.name: qsTr("Open ") + modelData.label + qsTr(" settings")
                                 onClicked: settingsPage.selectSection(index)
                             }
                         }
@@ -347,8 +349,8 @@ ApplicationWindow {
                         id: generalSettingsSection
                         objectName: "generalSettingsSection"
                         visualTheme: root.visualTheme
-                        title: "General"
-                        description: "App behavior and local history."
+                        title: qsTr("General")
+                        description: qsTr("App behavior and local history.")
                         Layout.fillWidth: true
                         visible: settingsPage.selectedSection === 0
 
@@ -359,7 +361,7 @@ ApplicationWindow {
                         rowSpacing: 14
 
                         Label {
-                            text: "Start with Windows"
+                            text: qsTr("Start with Windows")
                             color: theme.dim
                             font.pixelSize: 13
                         }
@@ -370,12 +372,12 @@ ApplicationWindow {
                             objectName: "autostartBox"
                             Layout.fillWidth: true
                             checked: settings.autostart
-                            Accessible.name: "Start with Windows"
+                            Accessible.name: qsTr("Start with Windows")
                             onToggled: settings.setAutostart(checked)
                         }
 
                         Label {
-                            text: "History"
+                            text: qsTr("History")
                             color: theme.dim
                             font.pixelSize: 13
                         }
@@ -389,7 +391,7 @@ ApplicationWindow {
                                 id: historyBox
                                 objectName: "historyBox"
                                 checked: settings.historyEnabled
-                                text: "Keep local history"
+                                text: qsTr("Keep local history")
                                 onToggled: settings.setHistoryEnabled(checked)
                             }
 
@@ -397,7 +399,7 @@ ApplicationWindow {
                                 visualTheme: theme
                                 id: historyRetentionField
                                 objectName: "historyRetentionField"
-                                Accessible.name: "History retention in days"
+                                Accessible.name: qsTr("History retention in days")
                                 Layout.preferredWidth: 62
                                 enabled: historyBox.checked
                                 text: settings.historyRetentionDays === null
@@ -422,13 +424,13 @@ ApplicationWindow {
                         id: shortcutSettingsSection
                         objectName: "shortcutSettingsSection"
                         visualTheme: root.visualTheme
-                        title: "Shortcuts"
+                        title: qsTr("Shortcuts")
                         Layout.fillWidth: true
                         visible: settingsPage.selectedSection === 3
 
                     Label {
                         Layout.fillWidth: true
-                        text: "Configure the global Clarify actions. Changes apply when you save Settings."
+                        text: qsTr("Configure the global Clarify actions. Changes apply when you save Settings.")
                         color: theme.dim
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -442,9 +444,9 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             text: settings.hotkeyCaptureAction === ""
                                   ? (settings.hotkeyPushToTalkSupported
-                                     ? "Recording activation"
-                                     : "Recording activation · push-to-talk unavailable")
-                                  : "Press a modifier and a key. Escape cancels."
+                                     ? qsTr("Recording activation")
+                                     : qsTr("Recording activation · push-to-talk unavailable"))
+                                  : qsTr("Press a modifier and a key. Escape cancels.")
                             color: settings.hotkeyCaptureAction === ""
                                    ? theme.dim : theme.secondaryText
                             font.pixelSize: 12
@@ -452,12 +454,12 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            text: "Reset all"
+                            text: qsTr("Reset all")
                             theme: root.visualTheme
                             quiet: true
                             Layout.preferredWidth: 70
                             Layout.preferredHeight: 34
-                            Accessible.name: "Reset all keyboard shortcuts"
+                            Accessible.name: qsTr("Reset all keyboard shortcuts")
                             onClicked: settings.resetAllHotkeys()
                         }
                     }
@@ -470,7 +472,7 @@ ApplicationWindow {
 
                         Label {
                             Layout.preferredWidth: 164
-                            text: "Recording activation"
+                            text: qsTr("Recording activation")
                             color: theme.dim
                             font.pixelSize: 13
                         }
@@ -480,9 +482,9 @@ ApplicationWindow {
                             objectName: "hotkeyActivationBox"
                             visualTheme: theme
                             Layout.fillWidth: true
-                            caption: "Recording activation"
+                            caption: qsTr("Recording activation")
                             searchable: false
-                            options: settings.hotkeyActivationModes.map(function(id) { return {id: id, label: id === "push_to_talk" ? "Push-to-talk" : "Toggle"} })
+                            options: settings.hotkeyActivationModes.map(function(id) { return {id: id, label: id === "push_to_talk" ? qsTr("Push-to-talk") : qsTr("Toggle")} })
                             value: settings.hotkeyActivationMode
                             onActivated: function(value) { settings.setHotkeyActivationMode(value) }
                         }
@@ -510,11 +512,11 @@ ApplicationWindow {
 
                                     AppButton {
                                         text: settings.hotkeyCaptureAction === modelData["id"]
-                                              ? "Press a key…" : modelData["display"]
+                                              ? qsTr("Press a key…") : modelData["display"]
                                         theme: root.visualTheme
                                         Layout.preferredWidth: 118
                                         Layout.preferredHeight: 34
-                                        Accessible.name: "Edit " + modelData["label"] + " shortcut"
+                                        Accessible.name: qsTr("Edit ") + modelData["label"] + qsTr(" shortcut")
                                         onClicked: {
                                             if (settings.hotkeyCaptureAction === modelData["id"]) {
                                                 settings.cancelHotkeyCapture()
@@ -525,12 +527,12 @@ ApplicationWindow {
                                     }
 
                                     AppButton {
-                                        text: "Reset"
+                                        text: qsTr("Reset")
                                         theme: root.visualTheme
                                         quiet: true
                                         Layout.preferredWidth: 110
                                         Layout.preferredHeight: 34
-                                        Accessible.name: "Reset " + modelData["label"] + " shortcut"
+                                        Accessible.name: qsTr("Reset ") + modelData["label"] + qsTr(" shortcut")
                                         onClicked: settings.resetHotkey(modelData["id"])
                                     }
                                 }
@@ -544,7 +546,7 @@ ApplicationWindow {
                         id: recordingSettingsSection
                         objectName: "recordingSettingsSection"
                         visualTheme: root.visualTheme
-                        title: "Audio"
+                        title: qsTr("Audio")
                         Layout.fillWidth: true
                         visible: settingsPage.selectedSection === 1
 
@@ -576,7 +578,7 @@ ApplicationWindow {
 
                         Label {
                             Layout.preferredWidth: 164
-                            text: "Input"
+                            text: qsTr("Input")
                             color: theme.dim
                             font.pixelSize: 13
                         }
@@ -590,8 +592,8 @@ ApplicationWindow {
                                 objectName: "microphoneBox"
                                 visualTheme: theme
                                 Layout.fillWidth: true
-                                caption: "Microphone"
-                                searchPlaceholder: "Search microphones"
+                                caption: qsTr("Microphone")
+                                searchPlaceholder: qsTr("Search microphones")
                                 options: settings.microphoneDevices
                                 value: options.length ? options[Math.max(0, settings.microphoneSelectionIndex)].id : ""
                                 refreshable: true
@@ -603,7 +605,7 @@ ApplicationWindow {
                         }
 
                         Label {
-                            text: "Input status"
+                            text: qsTr("Input status")
                             color: theme.dim
                             font.pixelSize: 13
                         }
@@ -614,7 +616,7 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
-                                text: settings.microphoneStatus
+                                text: qsTr(settings.microphoneStatus)
                                 color: settings.microphoneStatusKind === "error"
                                        ? theme.secondaryText
                                        : settings.microphoneStatusKind === "warning"
@@ -624,7 +626,7 @@ ApplicationWindow {
                             }
 
                             AppButton {
-                                text: "Use default"
+                                text: qsTr("Use default")
                                 theme: root.visualTheme
                                 quiet: true
                                 property bool fadeShown: settings.selectedMicrophoneId !== null
@@ -638,18 +640,18 @@ ApplicationWindow {
                                 }
                                 Layout.preferredWidth: 78
                                 Layout.preferredHeight: 34
-                                Accessible.name: "Use current system microphone"
+                                Accessible.name: qsTr("Use current system microphone")
                                 onClicked: settings.selectMicrophone("")
                             }
 
                             AppButton {
                                 objectName: "microphoneTestButton"
-                                text: settings.microphoneTestStopping ? "Stopping…" : settings.microphoneTestBusy ? "Stop" : "Test"
+                                text: settings.microphoneTestStopping ? qsTr("Stopping…") : settings.microphoneTestBusy ? qsTr("Stop") : qsTr("Test")
                                 theme: root.visualTheme
                                 enabled: !settings.microphoneTestStopping
                                 Layout.preferredWidth: 78
                                 Layout.preferredHeight: 34
-                                Accessible.name: settings.microphoneTestBusy ? "Stop microphone test" : "Test microphone input"
+                                Accessible.name: settings.microphoneTestBusy ? qsTr("Stop microphone test") : qsTr("Test microphone input")
                                 onClicked: {
                                     if (settings.microphoneTestBusy) settings.stopMicrophoneTest()
                                     else settings.testMicrophone()
@@ -670,7 +672,7 @@ ApplicationWindow {
                     Label {
                         Layout.fillWidth: true
                         visible: settings.microphoneTestStatus !== ""
-                        text: settings.microphoneTestStatus
+                        text: qsTr(settings.microphoneTestStatus)
                         color: theme.subtleText
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -680,9 +682,9 @@ ApplicationWindow {
                         objectName: "advancedRecordingGroup"
                         visualTheme: root.visualTheme
                         Layout.fillWidth: true
-                        title: "Advanced recording"
+                        title: qsTr("Advanced recording")
                         collapsible: true
-                        description: "Duration limits and automatic stop after speech."
+                        description: qsTr("Duration limits and automatic stop after speech.")
                         GridLayout {
                             Layout.fillWidth: true
                             columns: 2
@@ -690,7 +692,7 @@ ApplicationWindow {
                             rowSpacing: 14
                         Label {
                                 Layout.preferredWidth: 164
-                            text: "Maximum seconds"
+                            text: qsTr("Maximum seconds")
                             color: theme.dim
                             font.pixelSize: 13
                         }
@@ -699,18 +701,18 @@ ApplicationWindow {
                             visualTheme: theme
                             id: maximumDurationField
                             objectName: "maximumDurationField"
-                            Accessible.name: "Maximum recording seconds"
+                            Accessible.name: qsTr("Maximum recording seconds")
                             Layout.fillWidth: true
                             text: settings.recordingControls["max_duration_seconds"] === null
                                   || settings.recordingControls["max_duration_seconds"] === undefined
                                   ? "" : String(settings.recordingControls["max_duration_seconds"])
-                            placeholderText: "Blank = unlimited"
+                            placeholderText: qsTr("Blank = unlimited")
                             inputMethodHints: Qt.ImhFormattedNumbersOnly
                             onEditingFinished: recordingSettingsSection.updateRecordingControls()
                         }
 
                         Label {
-                            text: "Warning seconds"
+                            text: qsTr("Warning seconds")
                             color: theme.dim
                             font.pixelSize: 13
                         }
@@ -719,7 +721,7 @@ ApplicationWindow {
                             visualTheme: theme
                             id: warningSecondsField
                             objectName: "warningSecondsField"
-                            Accessible.name: "Recording warning seconds"
+                            Accessible.name: qsTr("Recording warning seconds")
                             Layout.fillWidth: true
                             text: String(settings.recordingControls["warning_seconds"])
                             inputMethodHints: Qt.ImhFormattedNumbersOnly
@@ -732,12 +734,12 @@ ApplicationWindow {
                             objectName: "vadEnabledBox"
                             Layout.columnSpan: 2
                             checked: settings.recordingControls["vad"]["enabled"]
-                            text: "Stop after speech and silence"
+                            text: qsTr("Stop after speech and silence")
                             onToggled: recordingSettingsSection.updateRecordingControls()
                         }
 
                         Label {
-                            text: "Level threshold"
+                            text: qsTr("Level threshold")
                             color: theme.dim
                             font.pixelSize: 13
                         }
@@ -746,7 +748,7 @@ ApplicationWindow {
                             visualTheme: theme
                             id: vadLevelField
                             objectName: "vadLevelField"
-                            Accessible.name: "Speech level threshold"
+                            Accessible.name: qsTr("Speech level threshold")
                             Layout.fillWidth: true
                             enabled: vadEnabledBox.checked
                             text: String(settings.recordingControls["vad"]["level_threshold"])
@@ -755,7 +757,7 @@ ApplicationWindow {
                         }
 
                         Label {
-                            text: "Minimum speech seconds"
+                            text: qsTr("Minimum speech seconds")
                             color: theme.dim
                             font.pixelSize: 13
                         }
@@ -764,7 +766,7 @@ ApplicationWindow {
                             visualTheme: theme
                             id: minimumSpeechField
                             objectName: "minimumSpeechField"
-                            Accessible.name: "Minimum speech seconds"
+                            Accessible.name: qsTr("Minimum speech seconds")
                             Layout.fillWidth: true
                             enabled: vadEnabledBox.checked
                             text: String(settings.recordingControls["vad"]["minimum_speech_seconds"])
@@ -773,7 +775,7 @@ ApplicationWindow {
                         }
 
                         Label {
-                            text: "Silence seconds"
+                            text: qsTr("Silence seconds")
                             color: theme.dim
                             font.pixelSize: 13
                         }
@@ -782,7 +784,7 @@ ApplicationWindow {
                             visualTheme: theme
                             id: silenceDurationField
                             objectName: "silenceDurationField"
-                            Accessible.name: "Silence seconds"
+                            Accessible.name: qsTr("Silence seconds")
                             Layout.fillWidth: true
                             enabled: vadEnabledBox.checked
                             text: String(settings.recordingControls["vad"]["silence_duration_seconds"])
@@ -800,10 +802,10 @@ ApplicationWindow {
                         objectName: "integrationsSettingsSection"
                         Layout.fillWidth: true
                         spacing: 8
-                        visible: settingsPage.selectedSection === 4
+                        visible: !root.managedAccount && settingsPage.selectedSection === 4
 
                     Label {
-                        text: "Models & services"
+                        text: qsTr("Models & services")
                         color: theme.secondaryText
                         font.pixelSize: 12
                         font.weight: Font.DemiBold
@@ -812,7 +814,7 @@ ApplicationWindow {
 
                     Label {
                         Layout.fillWidth: true
-                        text: "Connect services and manage credentials used by your workflows."
+                        text: qsTr("Connect services and manage credentials used by your workflows.")
                         color: theme.dim
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -821,8 +823,8 @@ ApplicationWindow {
                     SettingsGroup {
                         Layout.fillWidth: true
                         visualTheme: root.visualTheme
-                        title: "Connected services"
-                        description: "Credentials are shared by your tasks. Validate & save applies to this service only."
+                        title: qsTr("Connected services")
+                        description: qsTr("Credentials are shared by your tasks. Validate & save applies to this service only.")
 
                     GridLayout {
                         Layout.fillWidth: true
@@ -832,7 +834,7 @@ ApplicationWindow {
 
                         Label {
                             Layout.preferredWidth: 164
-                            text: "Service"
+                            text: qsTr("Service")
                             color: theme.dim
                             font.pixelSize: 13
                         }
@@ -842,7 +844,7 @@ ApplicationWindow {
                             objectName: "onboardingProviderBox"
                             visualTheme: theme
                             Layout.fillWidth: true
-                            caption: "Service"
+                            caption: qsTr("Service")
                             searchable: false
                             options: settings.providerIds.filter(function(id) { return id !== "local_asr" }).map(function(id) { return {id: id, label: settings.providerName(id)} })
                             value: settings.selectedProviderId
@@ -850,7 +852,7 @@ ApplicationWindow {
                         }
 
                         Label {
-                            text: "API key"
+                            text: qsTr("API key")
                             property bool fadeShown: settings.selectedProviderId !== "local_asr"
                             visible: fadeShown || opacity > 0.001
                             opacity: fadeShown ? 1.0 : 0.0
@@ -868,7 +870,7 @@ ApplicationWindow {
                             visualTheme: theme
                             id: providerApiKeyField
                             objectName: "providerApiKeyField"
-                            Accessible.name: "Service API key"
+                            Accessible.name: qsTr("Service API key")
                             property bool fadeShown: settings.selectedProviderId !== "local_asr"
                             visible: fadeShown || opacity > 0.001
                             opacity: fadeShown ? 1.0 : 0.0
@@ -881,14 +883,14 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             text: settings.providerApiKey
                             placeholderText: settings.providerHasApiKey
-                                             ? "Saved key; leave blank to keep it"
-                                             : "Paste API key"
+                                             ? qsTr("Saved key; leave blank to keep it")
+                                             : qsTr("Paste API key")
                             echoMode: TextInput.Password
                             onTextEdited: settings.setProviderApiKey(text)
                         }
 
                         Label {
-                            text: "Base URL"
+                            text: qsTr("Base URL")
                             property bool fadeShown: settings.selectedProviderId !== "local_asr"
                             visible: fadeShown || opacity > 0.001
                             opacity: fadeShown ? 1.0 : 0.0
@@ -906,7 +908,7 @@ ApplicationWindow {
                             visualTheme: theme
                             id: providerBaseUrlField
                             objectName: "providerBaseUrlField"
-                            Accessible.name: "Service base URL"
+                            Accessible.name: qsTr("Service base URL")
                             property bool fadeShown: settings.selectedProviderId !== "local_asr"
                             visible: fadeShown || opacity > 0.001
                             opacity: fadeShown ? 1.0 : 0.0
@@ -920,7 +922,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             text: settings.providerBaseUrl
                             onTextEdited: settings.setProviderBaseUrl(text)
-                            placeholderText: "Service endpoint"
+                            placeholderText: qsTr("Service endpoint")
                         }
                     }
 
@@ -935,9 +937,9 @@ ApplicationWindow {
                                 easing.type: Easing.OutCubic
                             }
                         }
-                        text: (({ "not_configured": "Not connected", "configured": "Key saved",
-                                 "active": "Connected", "validating": "Checking connection...",
-                                 "error": "Connection failed" })[settings.providerStatus] || settings.providerStatus)
+                        text: (({ "not_configured": qsTr("Not connected"), "configured": qsTr("Key saved"),
+                                 "active": "Connected", "validating": qsTr("Checking connection..."),
+                                 "error": qsTr("Connection failed") })[settings.providerStatus] || settings.providerStatus)
                               + (settings.providerError !== ""
                                  ? " — " + settings.providerError : "")
                         color: settings.providerError !== ""
@@ -962,24 +964,24 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
 
                         AppButton {
-                            text: settings.providerBusy ? "Validating…"
-                                  : "Validate & save"
+                            text: settings.providerBusy ? qsTr("Validating…")
+                                  : qsTr("Validate & save")
                             theme: root.visualTheme
                             enabled: !settings.providerBusy
                             Layout.preferredWidth: 108
                             Layout.preferredHeight: 34
-                            Accessible.name: "Validate and save provider"
+                            Accessible.name: qsTr("Validate and save provider")
                             onClicked: settings.validateProvider()
                         }
 
                         AppButton {
-                            text: "Clear key"
+                            text: qsTr("Clear key")
                             theme: root.visualTheme
                             quiet: true
                             enabled: settings.providerHasApiKey
                             Layout.preferredWidth: 68
                             Layout.preferredHeight: 34
-                            Accessible.name: "Clear provider API key"
+                            Accessible.name: qsTr("Clear provider API key")
                             onClicked: settings.clearProvider()
                         }
                     }
@@ -1000,10 +1002,10 @@ ApplicationWindow {
                         id: workflowSettingsSection
                         objectName: "workflowSettingsSection"
                         visualTheme: root.visualTheme
-                        title: settingsPage.selectedSection === 1 ? "Transcription" : "Text"
+                        title: settingsPage.selectedSection === 1 ? qsTr("Transcription") : qsTr("Text")
                         Layout.fillWidth: true
-                        visible: settingsPage.selectedSection === 1
-                                 || settingsPage.selectedSection === 2
+                        visible: !root.managedAccount && (settingsPage.selectedSection === 1
+                                 || settingsPage.selectedSection === 2)
 
                     RowLayout {
                         objectName: "textWorkflowTabs"
@@ -1025,7 +1027,7 @@ ApplicationWindow {
                                          || (modelData.scope === "refinement" && settings.selectedScope === "local_asr_refinement")
                                 quiet: !primary
                                 contentAlignment: Text.AlignHCenter
-                                Accessible.name: "Open " + modelData.label + " settings"
+                                Accessible.name: qsTr("Open ") + modelData.label + qsTr(" settings")
                                 onClicked: settingsPage.selectWorkflowScope(modelData.scope)
 
                                 TextMetrics {
@@ -1041,18 +1043,18 @@ ApplicationWindow {
                     SettingsRow {
                         Layout.fillWidth: true
                         visualTheme: root.visualTheme
-                        title: "Cleanup for"
+                        title: qsTr("Cleanup for")
                         visible: settingsPage.selectedSection === 2 && (settings.selectedScope === "refinement" || settings.selectedScope === "local_asr_refinement")
                         SearchSelect {
                             objectName: "cleanupContextBox"
                             Layout.fillWidth: true
                             visualTheme: root.visualTheme
                             searchable: false
-                            caption: "Cleanup context"
+                            caption: qsTr("Cleanup context")
                             value: settings.selectedScope
                             options: [
-                                {id: "refinement", label: "Standard dictation"},
-                                {id: "local_asr_refinement", label: "Local transcription"}
+                                {id: "refinement", label: qsTr("Standard dictation")},
+                                {id: "local_asr_refinement", label: qsTr("Local transcription")}
                             ]
                             onActivated: function(value) { settingsPage.selectWorkflowScope(value) }
                         }
@@ -1069,17 +1071,17 @@ ApplicationWindow {
                     SettingsRow {
                         Layout.fillWidth: true
                         visualTheme: root.visualTheme
-                        title: "Language"
+                        title: qsTr("Language")
                         visible: settingsPage.selectedSection === 1
                         SearchSelect {
                             id: settingsLanguageBox
                             objectName: "settingsLanguageBox"
                             visualTheme: root.visualTheme
                             Layout.fillWidth: true
-                            caption: "Language"
-                            searchPlaceholder: "Search languages"
+                            caption: qsTr("Language")
+                            searchPlaceholder: qsTr("Search languages")
                             options: settings.languages.map(function(id) {
-                                var names = {"en": "English", "pt": "Portuguese", "es": "Spanish", "de": "German", "ru": "Russian"}
+                                var names = {"en": qsTr("English"), "pt": qsTr("Portuguese"), "es": qsTr("Spanish"), "de": qsTr("German"), "ru": qsTr("Russian")}
                                 return {id: id, label: names[id] || id.toUpperCase(), icon: "flags/" + id + ".svg"}
                             })
                             value: settings.language
@@ -1111,15 +1113,15 @@ ApplicationWindow {
                     SettingsRow {
                         Layout.fillWidth: true
                         visualTheme: root.visualTheme
-                        title: "Audio files"
+                        title: qsTr("Audio files")
                         visible: settingsPage.selectedSection === 1
                         AppButton {
                             objectName: "settingsImportFilesButton"
                             Layout.preferredWidth: 136
-                            text: "Import audio files"
+                            text: qsTr("Import audio files")
                             theme: root.visualTheme
                             quiet: true
-                            Accessible.name: "Import audio files"
+                            Accessible.name: qsTr("Import audio files")
                             onClicked: workflow.openFiles()
                         }
                     }
@@ -1143,7 +1145,7 @@ ApplicationWindow {
                                 easing.type: Easing.OutCubic
                             }
                         }
-                        text: root.inputError || settings.lastError
+                        text: qsTr(root.inputError || settings.lastError)
                         color: theme.secondaryText
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -1155,8 +1157,8 @@ ApplicationWindow {
 
                 Label {
                     objectName: "settingsDirtyLabel"
-                    text: settings.providerDirty ? "Service changes: use Validate & save"
-                        : root.hasChanges ? "Unsaved changes" : "Saved"
+                    text: settings.providerDirty ? qsTr("Service changes: use Validate & save")
+                        : root.hasChanges ? qsTr("Unsaved changes") : "Saved"
                     color: root.hasChanges ? theme.secondaryText : theme.dim
                     font.pixelSize: 12
                 }
@@ -1164,34 +1166,34 @@ ApplicationWindow {
                 Item { Layout.fillWidth: true }
 
                 AppButton {
-                    text: "Discard changes"
+                    text: qsTr("Discard changes")
                     theme: root.visualTheme
                     quiet: true
                     Layout.preferredWidth: 110
                     Layout.preferredHeight: 34
-                    Accessible.name: "Discard unsaved settings"
+                    Accessible.name: qsTr("Discard unsaved settings")
                     enabled: root.hasChanges || root.inputError !== ""
                     onClicked: root.requestDiscard()
                 }
 
                 AppButton {
-                    text: "Save"
+                    text: qsTr("Save")
                     theme: root.visualTheme
                     enabled: root.hasChanges && !settings.providerDirty && root.inputError === ""
                     Layout.preferredWidth: 110
                     Layout.preferredHeight: 34
                     objectName: "saveSettingsButton"
-                    Accessible.name: "Save settings"
+                    Accessible.name: qsTr("Save settings")
                     onClicked: root.saveDraft()
                 }
 
                 AppButton {
-                    text: "Close"
+                    text: qsTr("Close")
                     theme: root.visualTheme
                     quiet: true
                     Layout.preferredWidth: 56
                     Layout.preferredHeight: 34
-                    Accessible.name: "Close settings"
+                    Accessible.name: qsTr("Close settings")
                     onClicked: root.requestClose()
                 }
             }

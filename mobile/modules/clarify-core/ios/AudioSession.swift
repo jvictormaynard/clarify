@@ -59,14 +59,14 @@ final class ClarifyAudioSession: NSObject {
     liveActivity.update(state)
   }
   func saveKey(_ key: String) throws {
-    guard !state.phase.busy else { throw ClarifyError("Finalize a gravação antes de alterar a chave.") }
+    guard !state.phase.busy else { throw ClarifyError(L("Finalize a gravação antes de alterar a chave.")) }
     try KeyStore.save(key)
     if !CloudAccount.shared.configured { deactivate() }
     publish()
   }
   func activate() throws {
-    guard store != nil else { throw ClarifyError("Não foi possível acessar os dados do teclado.") }
-    guard CloudAccount.shared.configured else { throw ClarifyError("Entre na conta Clarify ou configure sua chave Groq primeiro.") }
+    guard store != nil else { throw ClarifyError(L("Não foi possível acessar os dados do teclado.")) }
+    guard CloudAccount.shared.configured else { throw ClarifyError(L("Entre na conta Clarify ou configure sua chave Groq primeiro.")) }
     if engine.isRunning { lastActivity = Date(); publish(); return }
     let session = AVAudioSession.sharedInstance()
     do {
@@ -79,7 +79,7 @@ final class ClarifyAudioSession: NSObject {
       let input = engine.inputNode
       let format = input.outputFormat(forBus: 0)
       guard format.sampleRate > 0, format.channelCount > 0 else {
-        throw ClarifyError("O microfone está indisponível.")
+        throw ClarifyError(L("O microfone está indisponível."))
       }
       if hasTap { input.removeTap(onBus: 0) }
       input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
@@ -93,7 +93,7 @@ final class ClarifyAudioSession: NSObject {
             let failedURL = self.audioURL
             DispatchQueue.main.async {
               if let failedURL = failedURL, self.audioURL == failedURL {
-                self.fail("Não foi possível gravar o áudio.")
+                self.fail(L("Não foi possível gravar o áudio."))
               }
             }
           }
@@ -156,7 +156,7 @@ final class ClarifyAudioSession: NSObject {
       }
       guard !state.phase.busy else { return }
       guard state.sessionActive, engine.isRunning else {
-        deactivate(); fail("Abra o Clarify e ative o microfone."); return
+        deactivate(); fail(L("Abra o Clarify e ative o microfone.")); return
       }
       do { try start(id: id, locked: action == "lock", haptics: haptics) }
       catch { fail(error.localizedDescription) }
@@ -168,7 +168,7 @@ final class ClarifyAudioSession: NSObject {
     }
   }
   private func start(id: String, locked: Bool, haptics: Bool) throws {
-    guard !CloudAccount.shared.isBusy else { throw ClarifyError("Aguarde a operação da conta.") }
+    guard !CloudAccount.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
     clipVocabulary = try library().dictionary(scope: CloudAccount.shared.scope)
     let format = engine.inputNode.outputFormat(forBus: 0)
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("clarify-\(UUID().uuidString).m4a")
@@ -203,18 +203,18 @@ final class ClarifyAudioSession: NSObject {
     let recordedAt = startedAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
     let vocabulary = clipVocabulary
     startedAt = nil
-    guard let url = closeFile() else { fail("Não foi possível ler a gravação."); return }
+    guard let url = closeFile() else { fail(L("Não foi possível ler a gravação.")); return }
     playCue(starting: false)
     if haptics, UIApplication.shared.applicationState == .active { feedback.record("finish") }
     guard duration >= 0.3 else {
       try? FileManager.default.removeItem(at: url)
-      fail("Segure o botão e fale por mais tempo."); return
+      fail(L("Segure o botão e fale por mais tempo.")); return
     }
     let hosted = CloudAccount.shared.hosted
     let key = KeyStore.read()
-    guard hosted || key != nil else {
+    guard CloudAccount.shared.configured && (hosted || key != nil) else {
       try? FileManager.default.removeItem(at: url)
-      fail("Configure sua chave Groq."); return
+      fail(L("Configure sua chave Groq.")); return
     }
     state.phase = .transcribing; publish()
     backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Clarify transcription") { [weak self] in
@@ -235,7 +235,7 @@ final class ClarifyAudioSession: NSObject {
           transcript = outcome.transcript
           self.state.text = outcome.text
           self.state.phase = outcome.rewritten ? .ready : .error
-          if !outcome.rewritten { self.state.message = "A reescrita falhou. Você pode inserir a transcrição original." }
+          if !outcome.rewritten { self.state.message = L("A reescrita falhou. Você pode inserir a transcrição original.") }
         } else {
           let client = GroqClient(key: key!, vocabulary: vocabulary)
           transcript = try await client.transcribe(url)
@@ -249,7 +249,7 @@ final class ClarifyAudioSession: NSObject {
           } catch {
             guard !Task.isCancelled, self.state.operationID == id else { return }
             self.state.phase = .error
-            self.state.message = "A reescrita falhou. Você pode inserir a transcrição original."
+            self.state.message = L("A reescrita falhou. Você pode inserir a transcrição original.")
           }
         }
         // Save only the terminal result of this still-current operation. The
@@ -260,12 +260,12 @@ final class ClarifyAudioSession: NSObject {
             transcript: transcript, text: self.state.text ?? transcript, rewritten: self.state.phase == .ready))
           self.state.libraryRevision += 1
         } catch {
-          self.state.message = "O texto foi preservado, mas não foi possível salvar o histórico."
+          self.state.message = L("O texto foi preservado, mas não foi possível salvar o histórico.")
         }
         self.lastActivity = Date(); self.publish()
       } catch {
         guard !Task.isCancelled, self.state.operationID == id else { return }
-        self.fail(error is ClarifyError ? error.localizedDescription : "Falha de conexão. Verifique a internet e tente novamente.")
+        self.fail(error is ClarifyError ? error.localizedDescription : L("Falha de conexão. Verifique a internet e tente novamente."))
       }
     }
   }
@@ -318,20 +318,20 @@ final class ClarifyAudioSession: NSObject {
   @objc private func interrupted(_ notification: Notification) {
     guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
           AVAudioSession.InterruptionType(rawValue: raw) == .began else { return }
-    DispatchQueue.main.async { self.deactivate(); self.fail("O áudio foi interrompido. Abra o Clarify para reativar o microfone.") }
+    DispatchQueue.main.async { self.deactivate(); self.fail(L("O áudio foi interrompido. Abra o Clarify para reativar o microfone.")) }
   }
   @objc private func routeChanged(_ notification: Notification) {
     guard let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
           let reason = AVAudioSession.RouteChangeReason(rawValue: raw),
           [.oldDeviceUnavailable, .newDeviceAvailable].contains(reason) else { return }
     DispatchQueue.main.async {
-      if self.state.sessionActive { self.deactivate(); self.fail("O dispositivo de áudio mudou. Ative o microfone novamente.") }
+      if self.state.sessionActive { self.deactivate(); self.fail(L("O dispositivo de áudio mudou. Ative o microfone novamente.")) }
     }
   }
   @objc private func mediaReset() {
     DispatchQueue.main.async {
       self.deactivate(); self.engine = AVAudioEngine()
-      self.fail("O áudio foi reiniciado pelo iOS. Ative o microfone novamente.")
+      self.fail(L("O áudio foi reiniciado pelo iOS. Ative o microfone novamente."))
     }
   }
 }

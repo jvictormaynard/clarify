@@ -9,9 +9,10 @@ export type DictionaryEntry = {
   enabled: boolean;
 };
 export interface Settings {
+  uiLanguage?: string;
   onboardingRequired: boolean;
   accountState?: {
-    endpoint: string; signedIn: boolean; email: string; pending: string;
+    endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
     hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
     dictionaryConflict?: boolean; syncError?: string;
     usage: { month?: string; limit_ms?: number; used_ms?: number; reserved_ms?: number; hosted_available?: boolean };

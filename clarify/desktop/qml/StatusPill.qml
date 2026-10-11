@@ -43,7 +43,7 @@ Window {
             easing.type: Easing.OutCubic
         }
     }
-    title: "Clarify workflow status"
+    title: qsTr("Clarify workflow status")
 
     Theme { id: theme }
     property bool successVisible: false
@@ -59,7 +59,7 @@ Window {
     function syncFeedback() {
         feedbackTimer.stop()
         if (feedback) {
-            feedbackCaption = workflow.feedbackTitle
+            feedbackCaption = qsTr(workflow.feedbackTitle)
             if (!workflow.canRetryTranscription) {
                 feedbackTimer.operationId = workflow.feedbackOperationId
                 feedbackTimer.restart()
@@ -104,7 +104,7 @@ Window {
             }
         }
         function onStatusChanged() {
-            if (pill.feedback) pill.feedbackCaption = workflow.feedbackTitle
+            if (pill.feedback) pill.feedbackCaption = qsTr(workflow.feedbackTitle)
         }
     }
 
@@ -122,7 +122,7 @@ Window {
             color: theme.card
             border.color: theme.border
             border.width: 1
-            Accessible.name: workflow.status
+            Accessible.name: qsTr(workflow.status)
 
             Item {
                 x: pill.horizontalInset
@@ -141,7 +141,7 @@ Window {
                     fillMode: Image.PreserveAspectFit
                     smooth: true
                     mipmap: true
-                    Accessible.name: "Target application"
+                    Accessible.name: qsTr("Target application")
                 }
 
                 Item {
@@ -172,7 +172,7 @@ Window {
                         loops: Animation.Infinite
                         running: pill.visible && pill.starting
                     }
-                    Accessible.name: "Starting microphone"
+                    Accessible.name: qsTr("Starting microphone")
                 }
 
                 Item {
@@ -249,7 +249,7 @@ Window {
                         radius: height / 2
                         color: parent.hovered ? "#20ffffff" : "transparent"
                     }
-                    Accessible.name: workflow.language === "pt" ? "Parar gravação" : "Stop recording"
+                    Accessible.name: qsTr("Stop recording")
                     onClicked: workflow.stopRecording()
                 }
 
@@ -303,7 +303,7 @@ Window {
                     color: "#30d158"
                     font.pixelSize: 25
                     font.weight: Font.DemiBold
-                    Accessible.name: "Completed"
+                    Accessible.name: qsTr("Completed")
                 }
 
                 Label {
@@ -321,7 +321,7 @@ Window {
                     Behavior on opacity {
                         NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
                     }
-                    Accessible.name: workflow.status
+                    Accessible.name: qsTr(workflow.status)
                 }
 
                 Row {
@@ -344,7 +344,7 @@ Window {
                         width: Math.max(64, contentItem.implicitWidth + 24)
                         height: 32
                         padding: 0
-                        text: workflow.language === "pt" ? "Desfazer" : "Undo"
+                        text: qsTr("Undo")
                         focusPolicy: Qt.NoFocus
                         contentItem: Label {
                             text: undoButton.text
@@ -379,10 +379,10 @@ Window {
                             radius: height / 2
                             color: parent.hovered ? "#20ffffff" : "transparent"
                         }
-                        Accessible.name: "Retry transcription with the same audio"
+                        Accessible.name: qsTr("Retry transcription with the same audio")
                         Accessible.description: workflow.language === "pt"
-                            ? "Reenviar o mesmo áudio. Pode gerar outra cobrança."
-                            : "Resend the same audio. May incur another charge."
+                            ? qsTr("Reenviar o mesmo áudio. Pode gerar outra cobrança.")
+                            : qsTr("Resend the same audio. May incur another charge.")
                         onClicked: workflow.retryTranscription()
                     }
                     ToolButton {
@@ -413,7 +413,7 @@ Window {
                             radius: height / 2
                             color: parent.hovered ? "#20ffffff" : "transparent"
                         }
-                        Accessible.name: workflow.language === "pt" ? "Fechar aviso" : "Close feedback"
+                        Accessible.name: qsTr("Close feedback")
                         onClicked: workflow.reset()
                     }
                 }

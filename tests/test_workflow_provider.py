@@ -26,7 +26,23 @@ from workflows import RecordingSnapshot, TranscriptionTransportError
 
 
 class WorkflowProviderTests(unittest.TestCase):
-    def test_hosted_dictation_is_optional_and_file_import_keeps_personal_route(
+    def test_managed_text_ignores_disabled_personal_routes_and_does_not_fallback(self):
+        from clarify_account import AccountError
+
+        account = Mock(hosted=False, signed_in=True, managed=True)
+        account.transform_text.return_value = "Managed text."
+        self.service.account = account
+        self.assertEqual(self.service.rewrite("Source").text, "Managed text.")
+        self.assertEqual(self.service.translate("Source", "es").text, "Managed text.")
+        self.registry.rewrite.assert_not_called()
+        self.registry.translate.assert_not_called()
+        account.transform_text.side_effect = AccountError("Session expired")
+        account.signed_in = False
+        with self.assertRaises(AccountError):
+            self.service.rewrite("Source")
+        self.registry.rewrite.assert_not_called()
+
+    def test_hosted_dictation_and_import_ignore_personal_provider_selection(
         self,
     ):
         account = Mock(hosted=True)
@@ -46,8 +62,8 @@ class WorkflowProviderTests(unittest.TestCase):
             connection=ProviderConnection("test-only", ""),
         )
         self.service.transcribe(self.audio, "prompt", "pt", selection=selection)
-        account.transcribe.assert_not_called()
-        self.registry.transcribe.assert_called_once()
+        account.transcribe.assert_called_once_with(self.audio, "pt", self.dictionary)
+        self.registry.transcribe.assert_not_called()
         self.registry.transcribe.reset_mock()
         self.service.account = Mock(hosted=False)
         self.service.transcribe(self.audio, "transcription", "pt")

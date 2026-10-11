@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, useColorScheme, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, useColorScheme, View, type StyleProp, type ViewStyle } from 'react-native';
 
 export function usePalette() {
   const dark = useColorScheme() === 'dark';
@@ -13,11 +13,12 @@ export function Title({ children, subtitle }: { children: ReactNode; subtitle?: 
   const c = usePalette();
   return <View style={ui.heading}><Text accessibilityRole="header" style={[ui.title, { color: c.text }]}>{children}</Text>{subtitle && <Text style={[ui.body, { color: c.muted }]}>{subtitle}</Text>}</View>;
 }
-export function Button({ children, onPress, disabled = false, destructive = false }: { children: string; onPress: () => void; disabled?: boolean; destructive?: boolean }) {
+export function Button({ children, onPress, disabled = false, destructive = false, loading = false }: { children: string; onPress: () => void; disabled?: boolean; destructive?: boolean; loading?: boolean }) {
   const c = usePalette();
-  return <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
+  return <Pressable accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} disabled={disabled || loading} onPress={onPress}
     style={({ pressed }) => [ui.button, { backgroundColor: c.card, opacity: disabled ? 0.35 : pressed ? 0.65 : 1 }]}>
     <Text style={[ui.buttonText, { color: destructive ? c.danger : c.accent }]}>{children}</Text>
+    {loading && <ActivityIndicator size="small" color={destructive ? c.danger : c.accent} style={{ position: 'absolute', right: 12 }} />}
   </Pressable>;
 }
 export function TextButton({ children, onPress, disabled = false }: { children: string; onPress: () => void; disabled?: boolean }) {

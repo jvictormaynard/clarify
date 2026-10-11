@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import {
   Button,
@@ -15,21 +16,21 @@ export function DictationPage({ controller }: SettingsPageProps) {
   const { state, run, prompt, setPrompt, recording, setRecording } = controller;
   return (
     <>
-      {state.accountState?.hosted && <p className="hint">O ditado usa o processamento do Clarify. Os modelos e as instruções abaixo serão usados quando você voltar à sua chave ou aos modelos locais, em Conta Clarify.</p>}
-      <Section title="Entrada de áudio">
-        <Row title="Microfone">
+      {(state.accountState?.managed || state.accountState?.signedIn) && <p className="hint">{t("O Clarify gerencia os modelos de transcrição e reescrita da sua conta.")}</p>}
+      <Section title={t("Entrada de áudio")}>
+        <Row title={t("Microfone")}>
           <Picker
-            label="Microfone"
+            label={t("Microfone")}
             value={state.selectedMicrophoneId || ""}
             options={state.microphoneDevices.map((device) =>
-              device.id ? device : { ...device, label: "Padrão do sistema" },
+              device.id ? device : { ...device, label: t("Padrão do sistema") },
             )}
             onChange={(v) => void run("selectMicrophone", v)}
             onRefresh={() => void run("refreshMicrophones")}
           />
         </Row>
         <div className="mic-test">
-          <div className="wave" aria-label="Nível do microfone">
+          <div className="wave" aria-label={t("Nível do microfone")}>
             {Array.from({ length: 36 }, (_, i) => (
               <i
                 key={i}
@@ -48,45 +49,45 @@ export function DictationPage({ controller }: SettingsPageProps) {
               )
             }
           >
-            {state.microphoneTestBusy ? "Parar teste" : "Testar microfone"}
+            {state.microphoneTestBusy ? t("Parar teste") : t("Testar microfone")}
           </Button>
         </div>
         {state.microphoneTestStatus && (
           <p className="hint" role="status">
             {state.microphoneTestStatus === "Test stopped."
-              ? "Teste encerrado."
-              : state.microphoneTestStatus}
+              ? t("Teste encerrado.")
+              : t(state.microphoneTestStatus)}
           </p>
         )}
       </Section>
-      <Section title="Transcrição">
+      {!(state.accountState?.managed || state.accountState?.signedIn) && <Section title={t("Transcrição")}>
         <WorkflowRoute controller={controller} />
         <Toggle
-          title="Ativar ditado"
+          title={t("Ativar ditado")}
           checked={state.routeEnabled}
           onChange={(v) => void run("setRouteEnabled", v)}
         />
         <details>
-          <summary>Instruções da transcrição</summary>
+          <summary>{t("Instruções da transcrição")}</summary>
           <TextArea
             className="prompt"
-            aria-label="Instruções da transcrição"
+            aria-label={t("Instruções da transcrição")}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />
         </details>
-      </Section>
+      </Section>}
       <Section>
         <RecordingOptions
           value={recording ?? recordingDraft(state.recordingControls)}
           onChange={setRecording}
         />
       </Section>
-      {state.routeProviderId === "local_asr" && (
-        <Section title="Acabamento do texto">
+      {!(state.accountState?.managed || state.accountState?.signedIn) && state.routeProviderId === "local_asr" && (
+        <Section title={t("Acabamento do texto")}>
           <Toggle
-            title="Revisar com IA na nuvem"
-            hint="Após a transcrição local, envie o texto ao serviço de revisão configurado."
+            title={t("Revisar com IA na nuvem")}
+            hint={t("Após a transcrição local, envie o texto ao serviço de revisão configurado.")}
             checked={state.localAsrCloudRefinement}
             onChange={(v) => void run("setLocalAsrCloudRefinement", v)}
           />

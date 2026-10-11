@@ -224,6 +224,13 @@ class WorkflowProviderService:
             raise RuntimeError(f"No model configured for {scope.value}")
         return route
 
+    def _uses_account(self):
+        return self.account is not None and (
+            self.account.hosted
+            or getattr(self.account, "signed_in", False) is True
+            or getattr(self.account, "managed", False) is True
+        )
+
     def _connection(self, route):
         current = self.config.current()
         metadata = self.registry.describe(route.provider_id)
@@ -246,9 +253,11 @@ class WorkflowProviderService:
         *,
         selection: FileTranscriptionSelection | None = None,
     ) -> TranscriptionResult:
-        if selection is None and self.account is not None and self.account.hosted:
+        if self._uses_account():
             return self.account.transcribe(
-                audio_source, language, self.dictionary_service
+                audio_source,
+                selection.language if selection is not None else language,
+                self.dictionary_service,
             )
         route = self._route(WorkflowScope.TRANSCRIPTION)
         if selection is not None:
@@ -450,6 +459,12 @@ class WorkflowProviderService:
         source = str(text).strip()
         if not source:
             raise RuntimeError("No text selected")
+        if self._uses_account():
+            return RewriteResult(
+                self.account.transform_text(source, "rewrite"),
+                "clarify",
+                "openai/gpt-oss-20b",
+            )
         route = self._route(WorkflowScope.REWRITE)
         provider = route.provider_id
         if not self.registry.supports(provider, ProviderCapability.TEXT_GENERATION):
@@ -484,6 +499,13 @@ class WorkflowProviderService:
         source = str(text)
         if not source.strip():
             raise RuntimeError("No text selected")
+        if self._uses_account():
+            return TranslationResult(
+                self.account.transform_text(source, "translate", target_language),
+                "clarify",
+                "openai/gpt-oss-20b",
+                target_language,
+            )
         route = self._route(WorkflowScope.TRANSLATION)
         provider = route.provider_id
         target = str(target_language or "").strip().lower()

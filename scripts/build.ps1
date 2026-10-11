@@ -110,6 +110,7 @@ $pyInstallerArgs = @(
     "--add-data", "${assets};assets",
     "--add-data", "${distribution};distribution",
     "--add-data", "${qmlRoot};qml",
+    "--add-data", "$(Join-Path $repoRoot 'shared\ui_strings.json');shared",
     # The local provider is optional at runtime, but its pinned manifest and
     # license notices must travel inside the signed executable so an attacker
     # cannot redirect the product to an unreviewed asset definition.

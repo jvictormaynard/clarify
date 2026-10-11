@@ -8,7 +8,8 @@ const pending = new Map<number, (value: unknown) => void>();
 test.beforeEach(async ({ page }, testInfo) => {
   if (!process.env.CLARIFY_TEST_PYTHON || !process.env.CLARIFY_TEST_FIXTURE) throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
   const onboarding = testInfo.title.startsWith("onboarding:");
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : [])], { windowsHide: true });
+  const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);
@@ -27,7 +28,7 @@ test.beforeEach(async ({ page }, testInfo) => {
     } };
   });
   await page.goto("/");
-  await expect(onboarding ? page.getByRole("heading", { name: "Boas-vindas ao Clarify" }) : page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(onboarding ? page.getByRole("heading", { name: locale === "en" ? "Welcome to Clarify" : locale === "es" ? "Te damos la bienvenida a Clarify" : "Boas-vindas ao Clarify" }) : page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
 });
 test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
@@ -38,7 +39,7 @@ test("onboarding: first run shows email and a local link before Settings", async
   await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
   for (const name of ["Entrar", "Criar conta", "Usar minha chave de API"])
     await expect(page.getByRole("button", { name, exact: true })).toBeHidden();
-  await page.getByRole("button", { name: "continuar 100% local", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
   await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("invalid");
   await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
@@ -65,10 +66,14 @@ test("onboarding: email confirms its code inside the app and requests processing
   await page.getByRole("button", { name: "Ativar processamento do Clarify" }).click();
   await page.getByRole("button", { name: "Começar", exact: true }).click();
   await expect(page.getByRole("navigation")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(page.getByText("O Clarify gerencia os modelos e as instruções da sua conta.")).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Serviço", exact: true })).toBeHidden();
 });
 
 test("onboarding: local choice leads to model setup without a login", async ({ page }) => {
-  await page.getByRole("button", { name: "continuar 100% local", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
   await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Modelo local", exact: true })).toBeVisible();
@@ -423,3 +428,30 @@ test("local model removal requires confirmation and cancel keeps the model", asy
   await page.getByRole("dialog").getByRole("button", { name: "Cancelar", exact: true }).click();
   await expect(page.getByText("Pronto para usar", { exact: true })).toBeVisible();
 });
+
+for (const labels of [
+  { locale: "pt", email: "E-mail", skip: "Continuar sem conta", next: "Continuar", code: "Código recebido por e-mail", confirm: "Confirmar código", back: "Voltar" },
+  { locale: "en", email: "Email", skip: "Continue without an account", next: "Continue", code: "Code received by email", confirm: "Confirm code", back: "Back" },
+  { locale: "es", email: "Correo electrónico", skip: "Continuar sin cuenta", next: "Continuar", code: "Código recibido por correo", confirm: "Confirmar código", back: "Volver" },
+]) {
+  test(`onboarding: locale ${labels.locale} keeps auth geometry and restores the skip action on Back`, async ({ page }) => {
+    const email = page.getByRole("textbox", { name: labels.email, exact: true });
+    const next = page.getByRole("button", { name: labels.next, exact: true });
+    await expect(page.getByRole("button", { name: labels.skip, exact: true })).toBeVisible();
+    const first = await email.boundingBox(), submit = await next.boundingBox();
+    expect(first).not.toBeNull(); expect(submit).not.toBeNull();
+    expect(Math.abs(first!.x - submit!.x)).toBeLessThan(1);
+    expect(Math.abs(first!.width - submit!.width)).toBeLessThan(1);
+    await email.fill("test@example.test"); await next.click();
+    const code = page.getByRole("textbox", { name: labels.code, exact: true });
+    await expect(code).toBeVisible();
+    await expect(page.getByRole("button", { name: labels.skip, exact: true })).toBeHidden();
+    const verify = await code.boundingBox();
+    const confirm = await page.getByRole("button", { name: labels.confirm, exact: true }).boundingBox();
+    expect(Math.abs(verify!.x - confirm!.x)).toBeLessThan(1);
+    expect(Math.abs(verify!.width - confirm!.width)).toBeLessThan(1);
+    await page.getByRole("button", { name: labels.back, exact: true }).click();
+    await expect(email).toBeVisible();
+    await expect(page.getByRole("button", { name: labels.skip, exact: true })).toBeVisible();
+  });
+}

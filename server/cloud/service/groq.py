@@ -16,6 +16,9 @@ from .ledger import MAX_COST
 SYSTEM = json.loads(
     (Path(__file__).resolve().parents[3] / "shared/dictation_prompt.json").read_text()
 )["system"]
+TEXT_PROMPTS = json.loads(
+    (Path(__file__).resolve().parents[3] / "shared/text_prompts.json").read_text()
+)
 
 
 class ProviderFailure(Exception):
@@ -56,6 +59,59 @@ class Outcome:
     cost: Decimal
     input_tokens: int = 0
     output_tokens: int = 0
+
+
+def text_operation(source, action, language):
+    languages = {
+        "pt": "Portuguese",
+        "en": "English",
+        "es": "Spanish",
+        "de": "German",
+        "ru": "Russian",
+        "auto": "the source language",
+    }
+    system = TEXT_PROMPTS[action].format(lang=languages[language])
+    answer = perform(
+        "chat/completions",
+        json={
+            "model": "openai/gpt-oss-20b",
+            "temperature": 0.1,
+            "max_completion_tokens": 8192,
+            "reasoning_effort": "low",
+            "messages": [
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": "BEGIN_SELECTED_SOURCE\n"
+                    + source
+                    + "\nEND_SELECTED_SOURCE",
+                },
+            ],
+        },
+    )
+    usage = answer.get("usage", {})
+    incoming, outgoing = usage.get("prompt_tokens"), usage.get("completion_tokens")
+    if (
+        type(incoming) is not int
+        or type(outgoing) is not int
+        or not 0 <= incoming <= 128000
+        or not 0 <= outgoing <= 8192
+    ):
+        raise ProviderFailure()
+    choice = answer["choices"][0]
+    text = choice["message"]["content"]
+    if (
+        choice.get("finish_reason") != "stop"
+        or not isinstance(text, str)
+        or not text.strip()
+        or len(text.encode()) > 64000
+    ):
+        raise ProviderFailure()
+    cost = (
+        Decimal(incoming) * Decimal("0.075") / 1000000
+        + Decimal(outgoing) * Decimal("0.30") / 1000000
+    )
+    return Outcome({"text": text.strip()}, cost, incoming, outgoing)
 
 
 def dictation(audio, audio_ms, entries, language="auto"):

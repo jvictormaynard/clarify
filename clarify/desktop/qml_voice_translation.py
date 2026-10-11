@@ -141,15 +141,26 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         config_factory: Callable[[], AppConfig],
         *,
         registry: Any = PROVIDER_REGISTRY,
+        account=None,
+        dictionary_service=None,
     ) -> None:
         self._config_factory = config_factory
         self._registry = registry
+        self._account = account
+        self._dictionary_service = dictionary_service
 
     def _config(self) -> AppConfig:
         config = self._config_factory()
         if not isinstance(config, AppConfig):
             raise TypeError("voice translation config factory must return AppConfig")
         return config
+
+    def workflow_config(self) -> VoiceTranslationConfig:
+        config = self._config()
+        if self._account is not None and self._account.managed:
+            # Preserve language choices, while ignoring personal model routes.
+            return VoiceTranslationConfig(languages=config.voice_translation.languages)
+        return config.voice_translation
 
     def _provider_connection(
         self,
@@ -218,6 +229,10 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         audio_source: RecordingSnapshot,
         source_language: str,
     ) -> TranscriptionResult:
+        if self._account is not None and self._account.managed:
+            return self._account.transcribe(
+                audio_source, source_language, self._dictionary_service
+            )
         config = self._config()
         route = self._transcription_route(config)
         provider_id = route.provider_id
@@ -248,6 +263,16 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         return result
 
     def translate(self, request: VoiceTranslationRequest) -> TranslationResult:
+        if self._account is not None and self._account.managed:
+            text = self._account.transform_text(
+                request.text,
+                "translate",
+                request.target_language,
+                cancel=_registry_cancel_token(request.cancel_event),
+            )
+            return TranslationResult(
+                text, "clarify", "openai/gpt-oss-20b", request.target_language
+            )
         config = self._config()
         voice_config = self._voice_translation_config(config)
         route = voice_config.route
@@ -626,7 +651,9 @@ class QmlVoiceTranslationController(QObject):
             clipboard,
             recording_factory,
             scheduler,
-            lambda: self._config_factory().voice_translation,
+            actual_provider.workflow_config
+            if isinstance(actual_provider, QmlVoiceTranslationProvider)
+            else lambda: self._config_factory().voice_translation,
             on_state=self._queue_runtime_state,
             on_usage=on_usage,
         )

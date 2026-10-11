@@ -29,13 +29,14 @@ export interface HistoryPage { entries: HistoryEntry[]; nextCursor?: number }
 export interface MicrophoneActivation { active: boolean; message?: string }
 export interface AccountSnapshot {
   hasGroqKey?: boolean;
-  endpoint: string; signedIn: boolean; email: string; pending: string;
+  endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
   hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
   dictionaryConflict?: boolean;
   usage: { month?: string; limit_ms?: number; used_ms?: number; reserved_ms?: number; hosted_available?: boolean };
 }
 
 export default requireNativeModule<{
+  readonly uiLanguage: string;
   onboardingRequired(): Promise<boolean>;
   completeOnboarding(mode: 'account' | 'byok'): Promise<void>;
   getSnapshot(): Promise<Snapshot>;
@@ -52,5 +53,5 @@ export default requireNativeModule<{
   deleteHistory(id: string): Promise<void>;
   clearHistory(): Promise<void>;
   getDictionary(): Promise<VocabularyEntry[]>;
-  saveDictionary(entries: VocabularyEntry[]): Promise<void>;
+  saveDictionary(entries: VocabularyEntry[], base: VocabularyEntry[]): Promise<void>;
 }>('ClarifyCore');

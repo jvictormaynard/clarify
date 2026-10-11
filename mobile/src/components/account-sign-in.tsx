@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useState } from 'react';
 import { Text, TextInput } from 'react-native';
 import { Button, TextButton, ui, usePalette } from './ui';
@@ -13,13 +14,13 @@ export function AccountSignIn({ account, busy, command }: {
   const input = { color: c.text, borderColor: c.line };
   const send = () => { if (!busy && email.trim() && account.endpoint) command('login', email); };
   return account.pending ? <>
-    <Text style={[ui.small, { color: c.muted }]}>Digite o código enviado para {account.email}. O código vale por 10 minutos.</Text>
-    <TextInput accessibilityLabel="Código da conta Clarify" value={code} onChangeText={setCode} editable={!busy} textContentType="oneTimeCode" keyboardType="number-pad" maxLength={16} placeholder="Código" placeholderTextColor={c.muted} style={[ui.input, input]} />
-    <Button disabled={busy || !code.trim()} onPress={() => { command('confirm', code); setCode(''); }}>Confirmar código</Button>
-    <TextButton disabled={busy} onPress={() => command('logout')}>Usar outro e-mail</TextButton>
+    <Text style={[ui.small, { color: c.muted }]}>{t("Digite o código enviado para {v0}. O código vale por 10 minutos.", { v0: account.email })}</Text>
+    <TextInput accessibilityLabel={t("Código da conta Clarify")} value={code} onChangeText={setCode} editable={!busy} textContentType="oneTimeCode" keyboardType="number-pad" maxLength={16} placeholder={t("Código")} placeholderTextColor={c.muted} style={[ui.input, input]} />
+    <Button loading={busy} disabled={!code.trim()} onPress={() => { command('confirm', code); setCode(''); }}>{t("Confirmar código")}</Button>
+    <TextButton disabled={busy} onPress={() => command('logout')}>{t("Voltar")}</TextButton>
   </> : <>
-    <TextInput accessibilityLabel="E-mail da conta Clarify" value={email} onChangeText={setEmail} editable={!busy} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" returnKeyType="go" onSubmitEditing={send} maxLength={254} placeholder="E-mail" placeholderTextColor={c.muted} style={[ui.input, input]} />
-    <Text style={[ui.small, { color: c.muted }]}>Enviaremos um código para entrar ou criar sua conta. Você não precisa de senha.</Text>
-    <Button disabled={busy || !email.trim() || !account.endpoint} onPress={send}>Continuar</Button>
+    <TextInput accessibilityLabel={t("E-mail da conta Clarify")} value={email} onChangeText={setEmail} editable={!busy} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" returnKeyType="go" onSubmitEditing={send} maxLength={254} placeholder={t("E-mail")} placeholderTextColor={c.muted} style={[ui.input, input]} />
+    <Text style={[ui.small, { color: c.muted }]}>{t("Enviaremos um código para entrar ou criar sua conta. Você não precisa de senha.")}</Text>
+    <Button loading={busy} disabled={!email.trim() || !account.endpoint} onPress={send}>{t("Continuar")}</Button>
   </>;
 }

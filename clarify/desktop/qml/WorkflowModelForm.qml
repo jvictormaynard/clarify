@@ -6,7 +6,7 @@ ColumnLayout {
     id: form
     required property Theme visualTheme
     required property var settingsController
-    property string enabledLabel: "Enable this task"
+    property string enabledLabel: qsTr("Enable this task")
     property bool advancedExpanded: false
     signal connectProvider()
     signal manageLocalModels()
@@ -38,7 +38,7 @@ ColumnLayout {
     SettingsRow {
         Layout.fillWidth: true
         visualTheme: form.visualTheme
-        title: "Service"
+        title: qsTr("Service")
         SearchSelect {
             objectName: "workflowProviderBox"
             Layout.fillWidth: true
@@ -47,7 +47,7 @@ ColumnLayout {
                 return { id: id, label: settingsController.providerName(id) }
             })
             value: settingsController.routeProviderId
-            caption: "Choose a service"
+            caption: qsTr("Choose a service")
             searchable: false
             onActivated: function(value) { settingsController.setRouteProviderId(value) }
         }
@@ -55,7 +55,7 @@ ColumnLayout {
     SettingsRow {
         Layout.fillWidth: true
         visualTheme: form.visualTheme
-        title: "Model"
+        title: qsTr("Model")
         ModelPicker {
             Layout.fillWidth: true
             visualTheme: form.visualTheme
@@ -76,9 +76,9 @@ ColumnLayout {
         Layout.fillWidth: true; implicitHeight: 28
         hoverEnabled: true
         onClicked: form.advancedExpanded = !form.advancedExpanded
-        Accessible.name: "Advanced model settings"
+        Accessible.name: qsTr("Advanced model settings")
         contentItem: Label {
-            text: "Advanced"; color: advanced.hovered ? form.visualTheme.text : form.visualTheme.subtleText
+            text: qsTr("Advanced"); color: advanced.hovered ? form.visualTheme.text : form.visualTheme.subtleText
             font.pixelSize: 11; verticalAlignment: Text.AlignVCenter
         }
         DropdownIndicator {
@@ -93,33 +93,33 @@ ColumnLayout {
         ColumnLayout {
             Layout.fillWidth: true; spacing: 6
             visible: settingsController.routeProviderId !== "local_asr"
-            Label { text: "Model ID"; color: form.visualTheme.secondaryText; font.pixelSize: 11 }
+            Label { text: qsTr("Model ID"); color: form.visualTheme.secondaryText; font.pixelSize: 11 }
             SettingsField {
                 id: manualModel
                 objectName: "workflowModelField"
                 Layout.fillWidth: true
                 visualTheme: form.visualTheme
                 text: settingsController.routeModelId
-                placeholderText: "For models not listed by your service"
+                placeholderText: qsTr("For models not listed by your service")
                 onEditingFinished: settingsController.setRouteModelId(text)
             }
         }
         ColumnLayout {
             Layout.fillWidth: true; spacing: 6
             visible: settingsController.routeProviderId !== "local_asr"
-            Label { text: "Custom endpoint"; color: form.visualTheme.secondaryText; font.pixelSize: 11 }
+            Label { text: qsTr("Custom endpoint"); color: form.visualTheme.secondaryText; font.pixelSize: 11 }
             SettingsField {
                 objectName: "workflowEndpointField"
                 Layout.fillWidth: true
                 visualTheme: form.visualTheme
                 text: settingsController.routeCustomEndpoint
-                placeholderText: "Use the service default"
+                placeholderText: qsTr("Use the service default")
                 onEditingFinished: settingsController.setRouteCustomEndpoint(text)
             }
         }
         ColumnLayout {
             Layout.fillWidth: true; spacing: 6
-            Label { text: "Instructions"; color: form.visualTheme.secondaryText; font.pixelSize: 11 }
+            Label { text: qsTr("Instructions"); color: form.visualTheme.secondaryText; font.pixelSize: 11 }
             ScrollView {
                 Layout.fillWidth: true; Layout.preferredHeight: 96
                 clip: true
@@ -129,8 +129,8 @@ ColumnLayout {
                     objectName: "workflowPromptField"
                     width: parent.width
                     text: settingsController.routePrompt
-                    placeholderText: "Optional instructions for this task"
-                    Accessible.name: "Task instructions"
+                    placeholderText: qsTr("Optional instructions for this task")
+                    Accessible.name: qsTr("Task instructions")
                     onEditingFinished: settingsController.setRoutePrompt(text)
                 }
             }

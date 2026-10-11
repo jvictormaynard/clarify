@@ -8,12 +8,12 @@ struct VocabularyEntry: Codable, Equatable {
   var enabled = true
 
   static func validate(_ entries: [VocabularyEntry]) throws -> [VocabularyEntry] {
-    guard entries.count <= 512 else { throw ClarifyError("O limite é de 512 termos.") }
+    guard entries.count <= 512 else { throw ClarifyError(L("O limite é de 512 termos.")) }
     func text(_ value: String, optional: Bool = false) throws -> String {
       let value = value.precomposedStringWithCanonicalMapping.trimmingCharacters(in: .whitespacesAndNewlines)
       guard (optional || !value.isEmpty), value.count <= 256,
             !value.contains(where: { $0.isNewline }) else {
-        throw ClarifyError("Use termos de uma linha, com até 256 caracteres.")
+        throw ClarifyError(L("Use termos de uma linha, com até 256 caracteres."))
       }
       return value
     }
@@ -22,14 +22,14 @@ struct VocabularyEntry: Codable, Equatable {
       var result = entry
       result.term = try text(entry.term)
       guard seen.insert(result.term.lowercased()).inserted else {
-        throw ClarifyError("Este termo já está no dicionário.")
+        throw ClarifyError(L("Este termo já está no dicionário."))
       }
       result.pronunciation = try text(entry.pronunciation, optional: true)
-      guard entry.aliases.count <= 32 else { throw ClarifyError("Use até 32 variações por termo.") }
+      guard entry.aliases.count <= 32 else { throw ClarifyError(L("Use até 32 variações por termo.")) }
       var aliases = Set<String>()
       result.aliases = try entry.aliases.map {
         let value = try text($0)
-        guard aliases.insert(value.lowercased()).inserted else { throw ClarifyError("As variações devem ser diferentes.") }
+        guard aliases.insert(value.lowercased()).inserted else { throw ClarifyError(L("As variações devem ser diferentes.")) }
         return value
       }
       return result
@@ -107,7 +107,7 @@ final class LocalLibrary {
       let version = try statement("PRAGMA user_version")
       let schema: Int32
       do { defer { sqlite3_finalize(version) }; guard sqlite3_step(version) == SQLITE_ROW else { throw failure() }; schema = sqlite3_column_int(version, 0) }
-      guard schema <= 2 else { throw ClarifyError("Estes dados exigem uma versão mais recente do Clarify.") }
+      guard schema <= 2 else { throw ClarifyError(L("Estes dados exigem uma versão mais recente do Clarify.")) }
       try execute("PRAGMA journal_mode=WAL")
       try execute("PRAGMA synchronous=FULL")
       try execute("BEGIN IMMEDIATE")
@@ -121,7 +121,7 @@ final class LocalLibrary {
     } catch { sqlite3_close(db); db = nil; throw error }
   }
   deinit { sqlite3_close(db) }
-  private func failure() -> ClarifyError { ClarifyError("Não foi possível acessar o histórico ou o dicionário.") }
+  private func failure() -> ClarifyError { ClarifyError(L("Não foi possível acessar o histórico ou o dicionário.")) }
   private func execute(_ sql: String) throws {
     guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else { throw failure() }
   }

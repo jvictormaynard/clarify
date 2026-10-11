@@ -85,7 +85,7 @@ class DictationTests(TestCase):
         result = self.send(uuid.uuid4())
         self.assertEqual(result.status_code, 200)
         self.assertEqual(
-            result.json(),
+            {key: value for key, value in result.json().items() if key != "usage"},
             {"text": "Original.", "transcript": "Original.", "rewritten": False},
         )
         self.assertEqual(Operation.objects.get(user=self.user).cost, ledger.MAX_COST)

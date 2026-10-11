@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useState } from "react";
 import { Plus, Search, X } from "lucide-react";
 import type { DictionaryEntry } from "../settings/bridge";
@@ -19,11 +20,11 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
         (entry) => entry.term.toLocaleLowerCase() === value.toLocaleLowerCase(),
       )
     ) {
-      setError("Este termo já está no dicionário.");
+      setError(t("Este termo já está no dicionário."));
       return;
     }
     if (entries.length >= 512) {
-      setError("O limite é de 512 termos.");
+      setError(t("O limite é de 512 termos."));
       return;
     }
     onChange([
@@ -50,14 +51,12 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
     );
   return (
     <section className="dictionary">
-      <p className="hint">{controller.state.accountState?.syncEnabled ? `Dicionário da conta ${controller.state.accountState.email}. As alterações são sincronizadas ao salvar.` : "Dicionário deste computador."}</p>
-      <p className="hint">
-        Nomes e termos que você usa. Escreva como devem aparecer na transcrição.
-      </p>
+      <p className="hint">{controller.state.accountState?.syncEnabled ? t("Dicionário da conta {v0}. As alterações são sincronizadas ao salvar.", { v0: controller.state.accountState.email }) : t("Dicionário deste computador.")}</p>
+      <p className="hint">{t("Nomes e termos que você usa. Escreva como devem aparecer na transcrição.")}</p>
       <div className="dictionary-add">
         <Input
-          aria-label="Novo termo"
-          placeholder="Railway, pill ou Eva Desktop…"
+          aria-label={t("Novo termo")}
+          placeholder={t("Railway, pill ou Eva Desktop…")}
           maxLength={256}
           value={term}
           onChange={(e) => {
@@ -72,7 +71,7 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
           }}
         />
         <Button
-          aria-label="Adicionar termo"
+          aria-label={t("Adicionar termo")}
           disabled={!term.trim()}
           onClick={add}
         >
@@ -81,19 +80,19 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
       </div>
       {error && (
         <p className="error" role="alert">
-          {error}
+          {t(error)}
         </p>
       )}
       {entries.length > 0 && (
         <div className="dictionary-search">
           <Search size={16} aria-hidden="true" />
           <input
-            aria-label="Buscar termos"
-            placeholder="Buscar termos"
+            aria-label={t("Buscar termos")}
+            placeholder={t("Buscar termos")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <span className="hint">{entries.length}/512</span>
+          <span className="hint">{t("{v0}/512", { v0: entries.length })}</span>
         </div>
       )}
       <div className="dictionary-list">
@@ -102,7 +101,7 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
             <div className="dictionary-line">
               <Input
                 className="dictionary-term"
-                aria-label={`Termo ${index + 1}`}
+                aria-label={t("Termo {number}", { number: index + 1 })}
                 maxLength={256}
                 value={entry.term}
                 onFocus={() => setEditing(index)}
@@ -110,23 +109,23 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
                 onChange={(e) => update(index, { term: e.target.value })}
               />
               <Switch
-                label={`Usar termo ${index + 1}`}
+                label={t("Usar termo {number}", { number: index + 1 })}
                 checked={entry.enabled}
                 onChange={(enabled) => update(index, { enabled })}
               />
               <Button
                 variant="ghost"
-                aria-label={`Remover termo ${index + 1}`}
+                aria-label={t("Remover termo {number}", { number: index + 1 })}
                 onClick={() => onChange(entries.filter((_, i) => i !== index))}
               >
                 <X size={16} />
               </Button>
             </div>
             <details>
-              <summary>Pronúncia e variações</summary>
+              <summary>{t("Pronúncia e variações")}</summary>
               <Input
-                aria-label={`Pronúncia do termo ${index + 1}`}
-                placeholder="Pronúncia (opcional)"
+                aria-label={t("Pronúncia do termo {v0}", { v0: index + 1 })}
+                placeholder={t("Pronúncia (opcional)")}
                 maxLength={256}
                 value={entry.pronunciation}
                 onChange={(e) =>
@@ -134,36 +133,28 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
                 }
               />
               <Input
-                aria-label={`Variações do termo ${index + 1}`}
-                placeholder="Variações separadas por vírgula (opcional)"
+                aria-label={t("Variações do termo {v0}", { v0: index + 1 })}
+                placeholder={t("Variações separadas por vírgula (opcional)")}
                 value={entry.aliases.join(",")}
                 onChange={(e) =>
                   update(index, { aliases: e.target.value.split(",") })
                 }
               />
-              <p className="hint">
-                Referências para o reconhecimento, não regras de substituição.
-              </p>
+              <p className="hint">{t("Referências para o reconhecimento, não regras de substituição.")}</p>
             </details>
           </div>
         ))}
         {!visible.length && (
           <p className="hint dictionary-empty">
             {entries.length
-              ? "Nenhum termo encontrado."
-              : "Adicione seu primeiro termo acima."}
+              ? t("Nenhum termo encontrado.")
+              : t("Adicione seu primeiro termo acima.")}
           </p>
         )}
       </div>
       <details className="dictionary-help">
-        <summary>Como funciona</summary>
-        <p className="hint">
-          O vocabulário orienta modelos de transcrição compatíveis e a revisão,
-          quando ativada. Não treina o modelo nem garante a grafia. No modo
-          local, fica no dispositivo; em serviços na nuvem, os termos usados
-          como contexto são enviados ao serviço. Listas longas podem exceder o
-          contexto: priorize os termos mais importantes no início.
-        </p>
+        <summary>{t("Como funciona")}</summary>
+        <p className="hint">{t("O vocabulário orienta modelos de transcrição compatíveis e a revisão, quando ativada. Não treina o modelo nem garante a grafia. No modo local, fica no dispositivo; em serviços na nuvem, os termos usados como contexto são enviados ao serviço. Listas longas podem exceder o contexto: priorize os termos mais importantes no início.")}</p>
       </details>
     </section>
   );

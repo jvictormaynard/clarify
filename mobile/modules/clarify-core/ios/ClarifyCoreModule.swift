@@ -5,6 +5,7 @@ import UIKit
 public class ClarifyCoreModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ClarifyCore")
+    Constant("uiLanguage") { ClarifyLocale.language }
     AsyncFunction("onboardingRequired") { () -> Bool in
       let account = CloudAccount.shared.snapshot()
       return Onboarding().required(existingSetup: account["signedIn"] as? Bool == true || KeyStore.read() != nil)
@@ -12,7 +13,7 @@ public class ClarifyCoreModule: Module {
     AsyncFunction("completeOnboarding") { (mode: String) in
       let account = CloudAccount.shared.snapshot()
       let ready = mode == "account" ? CloudAccount.shared.hosted && CloudAccount.shared.configured
-        : mode == "byok" && KeyStore.read() != nil && (account["hosted"] as? Bool != true)
+        : mode == "byok" && KeyStore.read() != nil && (account["signedIn"] as? Bool != true)
       try Onboarding().complete(configured: ready)
     }.runOnQueue(.main)
     AsyncFunction("getSnapshot") { () -> [String: Any] in
@@ -24,22 +25,27 @@ public class ClarifyCoreModule: Module {
     AsyncFunction("getAccount") { () -> [String: Any] in CloudAccount.shared.snapshot() }.runOnQueue(.main)
     AsyncFunction("accountCommand") { (action: String, value: String, promise: Promise) in
       Task { @MainActor in
-        guard !ClarifyAudioSession.shared.state.phase.busy else { promise.reject("ACCOUNT_BUSY", "Finalize o ditado antes de alterar a conta."); return }
+        guard !ClarifyAudioSession.shared.state.phase.busy else {
+          if action == "auto" { promise.resolve(CloudAccount.shared.snapshot()); return }
+          promise.reject("ACCOUNT_BUSY", L("Finalize o ditado antes de alterar a conta.")); return
+        }
         do {
-          try await CloudAccount.shared.command(action, value: value, library: ClarifyAudioSession.shared.library())
-          if !CloudAccount.shared.configured { ClarifyAudioSession.shared.deactivate() }
-          ClarifyAudioSession.shared.libraryChanged()
+          let changed = try await CloudAccount.shared.command(action, value: value, library: ClarifyAudioSession.shared.library())
+          if changed {
+            if !CloudAccount.shared.configured { ClarifyAudioSession.shared.deactivate() }
+            ClarifyAudioSession.shared.libraryChanged()
+          }
           promise.resolve(CloudAccount.shared.snapshot())
         } catch {
           ClarifyAudioSession.shared.libraryChanged()
-          promise.reject("ACCOUNT_ERROR", error is ClarifyError ? error.localizedDescription : "Não foi possível acessar o Clarify. Verifique a conexão.")
+          promise.reject("ACCOUNT_ERROR", error is ClarifyError ? error.localizedDescription : L("Não foi possível acessar o Clarify. Verifique a conexão."))
         }
       }
     }.runOnQueue(.main)
     AsyncFunction("activate") { (promise: Promise) in
       AVAudioSession.sharedInstance().requestRecordPermission { allowed in
         Task { @MainActor in
-          guard allowed else { promise.resolve(["active": false, "message": "Ative o microfone em Ajustes > Clarify."] as [String: Any]); return }
+          guard allowed else { promise.resolve(["active": false, "message": L("Ative o microfone em Ajustes > Clarify.")] as [String: Any]); return }
           // The permission sheet and keyboard handoff can leave the app inactive.
           // Start audio only after that transition, and never from the background.
           let deadline = Date().addingTimeInterval(2)
@@ -47,7 +53,7 @@ public class ClarifyCoreModule: Module {
             try? await Task.sleep(nanoseconds: 50_000_000)
           }
           guard UIApplication.shared.applicationState == .active else {
-            promise.resolve(["active": false, "message": "Mantenha o Clarify aberto e tente ativar o microfone novamente."] as [String: Any]); return
+            promise.resolve(["active": false, "message": L("Mantenha o Clarify aberto e tente ativar o microfone novamente.")] as [String: Any]); return
           }
           do { try ClarifyAudioSession.shared.activate(); promise.resolve(["active": true]) }
           catch { promise.resolve(["active": false, "message": MicrophoneFailure.message(for: error)] as [String: Any]) }
@@ -85,21 +91,23 @@ public class ClarifyCoreModule: Module {
       ClarifyAudioSession.shared.libraryChanged()
     }.runOnQueue(.main)
     AsyncFunction("clearHistory") {
-      guard !ClarifyAudioSession.shared.state.phase.busy else { throw ClarifyError("Finalize a gravação antes de apagar o histórico.") }
+      guard !ClarifyAudioSession.shared.state.phase.busy else { throw ClarifyError(L("Finalize a gravação antes de apagar o histórico.")) }
       try ClarifyAudioSession.shared.library().clearHistory()
       ClarifyAudioSession.shared.libraryChanged()
     }.runOnQueue(.main)
     AsyncFunction("getDictionary") { () -> [[String: Any]] in
+      try CloudAccount.shared.prepareLibrary(ClarifyAudioSession.shared.library())
       let entries = try ClarifyAudioSession.shared.library().dictionary(scope: CloudAccount.shared.scope)
       return try JSONSerialization.jsonObject(with: JSONEncoder().encode(entries)) as? [[String: Any]] ?? []
     }.runOnQueue(.main)
-    AsyncFunction("saveDictionary") { (values: [[String: Any]], promise: Promise) in
+    AsyncFunction("saveDictionary") { (values: [[String: Any]], base: [[String: Any]], promise: Promise) in
       Task { @MainActor in
-        guard !ClarifyAudioSession.shared.state.phase.busy, !CloudAccount.shared.isBusy else { promise.reject("ACCOUNT_BUSY", "Finalize a operação antes de alterar o dicionário."); return }
+        guard !ClarifyAudioSession.shared.state.phase.busy, !CloudAccount.shared.isBusy else { promise.reject("ACCOUNT_BUSY", L("Finalize a operação antes de alterar o dicionário.")); return }
         do {
           let entries = try JSONDecoder().decode([VocabularyEntry].self, from: JSONSerialization.data(withJSONObject: values))
+          let original = try JSONDecoder().decode([VocabularyEntry].self, from: JSONSerialization.data(withJSONObject: base))
           let library = try ClarifyAudioSession.shared.library()
-          try library.saveDictionary(entries, scope: CloudAccount.shared.scope)
+          try CloudAccount.shared.saveDictionaryDraft(entries, base: original, library: library)
           if CloudAccount.shared.scope != nil { await CloudAccount.shared.syncAfterSave(library) }
           ClarifyAudioSession.shared.libraryChanged()
           promise.resolve(nil)
