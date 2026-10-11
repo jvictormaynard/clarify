@@ -32,8 +32,9 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Conta opcional com entrada por código de e-mail, dicionário compartilhado e cota de ditado
 - Modos locais e com chave própria disponíveis sem conta; sem telemetria
 
-A versão 0.6.0 mostra uma página de configuração no primeiro acesso. Escolha
-entrar, criar uma conta, usar sua chave Groq ou configurar um modelo local.
+A versão 0.6.0 mostra o campo de e-mail no primeiro acesso. O mesmo código
+permite entrar ou criar a conta, sem senha. O link **continuar 100% local**
+abre a configuração do modelo local; a chave Groq continua disponível nessa etapa.
 Confirme o código de e-mail dentro do aplicativo e ative o processamento do
 Clarify de forma explícita. As instalações existentes mantêm sua configuração.
 Os controles da conta e a conexão do dicionário continuam nas Configurações.
@@ -102,8 +103,8 @@ uma vez.
 1. Abra a [versão mais recente](https://github.com/jvictormaynard/clarify/releases/latest).
 2. Baixe `Clarify.exe` e salve-o em uma pasta sob seu controle.
 3. Abra o executável.
-4. A página inicial abre automaticamente. Escolha **Entrar**, **Criar conta**,
-   **Usar minha chave de API** ou **Usar modelo local**.
+4. A página inicial abre automaticamente. Digite seu e-mail e clique em **Continuar**,
+   ou use **continuar 100% local**. Não é necessário criar uma senha.
    - **Conta Clarify:** confirme o código dentro do aplicativo, leia o aviso
      sobre os dados enviados e ative o processamento. Não exige chave própria.
    - **Chave própria:** salve sua chave Groq. Outros provedores continuam

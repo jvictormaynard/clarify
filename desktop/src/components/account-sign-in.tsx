@@ -1,24 +1,27 @@
 import { useState } from "react";
-import { Button, Field, Row } from "./ui";
+import { Button, Field } from "./ui";
 import type { Settings } from "../settings/bridge";
 
-export function AccountSignIn({ account, command, intent }: {
+export function AccountSignIn({ account, command }: {
   account: NonNullable<Settings["accountState"]>;
   command: (action: string, value?: string) => void;
-  intent?: "login" | "signup";
 }) {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(account.email || "");
   const [code, setCode] = useState("");
-  return account.pending ? <>
+  return <form className="account-sign-in" onSubmit={event => {
+    event.preventDefault();
+    if (account.pending ? code.trim() : email.trim() && account.endpoint) {
+      command(account.pending ? "confirm" : "login", account.pending ? code : email);
+      setCode("");
+    }
+  }}>{account.pending ? <>
     <p className="hint">Digite o código enviado para {account.email}. O código vale por 10 minutos.</p>
-    <Field title="Código recebido por e-mail" value={code} inputMode="numeric" autoComplete="one-time-code" maxLength={16} onChange={e => setCode(e.target.value)} />
-    <Button variant="primary" disabled={!code.trim()} onClick={() => { command("confirm", code); setCode(""); }}>Confirmar código</Button>
-    <Button onClick={() => command("logout")}>Cancelar entrada</Button>
+    <Field title="Código recebido por e-mail" value={code} inputMode="numeric" autoComplete="one-time-code" maxLength={16} required onChange={e => setCode(e.target.value)} />
+    <Button variant="primary" type="submit" disabled={!code.trim()}>Confirmar código</Button>
+    <Button variant="text" onClick={() => command("logout")}>Usar outro e-mail</Button>
   </> : <>
-    <Field title="E-mail" type="email" value={email} autoComplete="email" onChange={e => setEmail(e.target.value)} />
-    <Row title="Receber um código por e-mail" hint="Você não precisa criar uma senha.">
-      {intent !== "signup" && <Button variant={intent ? "primary" : "default"} disabled={!email.trim() || !account.endpoint} onClick={() => command("login", email)}>Entrar</Button>}
-      {intent !== "login" && <Button variant={intent ? "primary" : "default"} disabled={!email.trim() || !account.endpoint} onClick={() => command("signup", email)}>Criar conta</Button>}
-    </Row>
-  </>;
+    <Field title="E-mail" type="email" value={email} autoComplete="email" required maxLength={254} placeholder="voce@exemplo.com" onChange={e => setEmail(e.target.value)} />
+    <p className="hint">Enviaremos um código para entrar ou criar sua conta. Você não precisa de senha.</p>
+    <Button variant="primary" type="submit" disabled={!email.trim() || !account.endpoint}>Continuar</Button>
+  </>}</form>;
 }

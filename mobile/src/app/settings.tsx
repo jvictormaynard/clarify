@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { Alert, Linking, ScrollView, Text, TextInput } from 'react-native';
-import Core from '../../../modules/clarify-core';
-import { Button, Card, Title, ui, usePalette } from '../../components/ui';
-import { isBusy, report, useClarify } from '../../state/clarify';
-import { AccountCard } from '../../components/account-card';
+import Core from '../../modules/clarify-core';
+import { Button, Card, ui, usePalette } from '../components/ui';
+import { isBusy, report, useClarify } from '../state/clarify';
 
 export default function Settings() {
   const c = usePalette();
-  const { state, refresh, refreshAccount, activate, activating, keyboardEntry, keyboardToken, accountBusy, account } = useClarify();
+  const { state, refresh, refreshAccount, activate, activating, keyboardEntry, keyboardToken, accountBusy, account, accountCommand } = useClarify();
   const [key, setKey] = useState('');
   const [saving, setSaving] = useState(false);
+  const [server, setServer] = useState('');
+  const [advanced, setAdvanced] = useState(false);
   const busy = isBusy(state) || accountBusy || !!account?.busy;
   async function saveKey(value: string) {
     setSaving(true);
@@ -21,8 +22,6 @@ export default function Settings() {
     finally { setSaving(false); }
   }
   return <ScrollView style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={ui.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
-    <Title>Ajustes</Title>
-    <AccountCard />
     <Card>
       <Text style={[ui.section, { color: c.text }]}>Sua chave Groq</Text>
       <TextInput value={key} onChangeText={setKey} editable={!busy && !saving} secureTextEntry autoCapitalize="none" autoCorrect={false} accessibilityLabel="Chave de API do Groq"
@@ -47,5 +46,12 @@ export default function Settings() {
       <Text style={[ui.small, { color: c.muted }]}>O histórico guarda a transcrição original e o texto revisado neste iPhone. Ele não é sincronizado com a conta. Os áudios são removidos após o processamento. Sua chave Groq não é enviada ao servidor Clarify.</Text>
       <Button disabled={busy} destructive onPress={() => Alert.alert('Apagar todo o histórico?', 'Esta ação remove todos os textos salvos neste iPhone. Seu dicionário e sua chave serão mantidos.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Apagar', style: 'destructive', onPress: () => void Core.clearHistory().then(refresh).catch(report) }])}>Apagar histórico</Button>
     </Card>
+    {!account?.signedIn && <Card>
+      <Button disabled={busy} onPress={() => { setServer(account?.endpoint || ''); setAdvanced(!advanced); }}>Servidor próprio</Button>
+      {advanced && <>
+        <TextInput accessibilityLabel="Servidor Clarify" value={server} onChangeText={setServer} editable={!busy} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://…" placeholderTextColor={c.muted} style={[ui.input, { color: c.text, borderColor: c.line }]} />
+        <Button disabled={busy} onPress={() => void accountCommand('configure', server).catch(report)}>Salvar servidor</Button>
+      </>}
+    </Card>}
   </ScrollView>;
 }

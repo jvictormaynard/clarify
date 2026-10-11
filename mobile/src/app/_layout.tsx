@@ -12,7 +12,11 @@ function Navigation() {
   </View>;
   return <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
     <Stack.Protected guard={onboardingRequired}><Stack.Screen name="onboarding" /></Stack.Protected>
-    <Stack.Protected guard={!onboardingRequired}><Stack.Screen name="(tabs)" /></Stack.Protected>
+    <Stack.Protected guard={!onboardingRequired}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="settings" options={{ headerShown: true, title: 'Ajustes', animation: 'slide_from_right' }} />
+      <Stack.Screen name="sign-in" options={{ headerShown: true, title: 'Conta', animation: 'slide_from_right' }} />
+    </Stack.Protected>
   </Stack>;
 }
 

@@ -1,32 +1,22 @@
-import { useState } from 'react';
-import { Alert, Switch, Text, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
+import { Alert, Switch, Text, View } from 'react-native';
 import { Button, Card, ui, usePalette } from './ui';
 import { isBusy, report, useClarify } from '../state/clarify';
-import { AccountSignIn } from './account-sign-in';
 
 export function AccountCard() {
   const c = usePalette();
   const { state, account, accountBusy, accountCommand } = useClarify();
-  const [server, setServer] = useState('');
-  const [advanced, setAdvanced] = useState(false);
   const busy = isBusy(state) || accountBusy || account?.busy;
   const command = (action: string, value = '') => void accountCommand(action, value).catch(report);
-  const input = { color: c.text, borderColor: c.line };
   if (!account) return null;
   const used = Math.ceil(((account.usage.used_ms || 0) + (account.usage.reserved_ms || 0)) / 60000);
   const limit = Math.floor((account.usage.limit_ms || 0) / 60000);
   return <Card>
     <Text style={[ui.section, { color: c.text }]}>Conta Clarify</Text>
-    <Text style={[ui.small, { color: c.muted }]}>Opcional. Use o processamento do Clarify sem chave de API e compartilhe seu dicionário com o desktop. O histórico continua neste iPhone.</Text>
+    <Text style={[ui.small, { color: c.muted }]}>{account.signedIn ? 'Seu dicionário e sua cota de uso são compartilhados com o computador.' : 'Entre para ditar sem chave de API e compartilhar seu dicionário com o computador.'}</Text>
     {account.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.text }]}>{account.error}</Text>}
     {!account.signedIn ? <>
-      {!account.endpoint && <Text style={[ui.small, { color: c.muted }]}>O serviço ainda não está configurado nesta versão. Você pode usar sua própria chave Groq abaixo.</Text>}
-      <AccountSignIn account={account} busy={!!busy} command={command} />
-      <Button disabled={busy} onPress={() => { setServer(account.endpoint); setAdvanced(!advanced); }}>Servidor próprio</Button>
-      {advanced && <>
-        <TextInput accessibilityLabel="Servidor Clarify" value={server} onChangeText={setServer} editable={!busy} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://…" placeholderTextColor={c.muted} style={[ui.input, input]} />
-        <Button disabled={busy} onPress={() => command('configure', server)}>Salvar servidor</Button>
-      </>}
+      <Button disabled={busy} onPress={() => router.push('/sign-in')}>Entrar ou criar conta</Button>
     </> : <>
       <Text style={[ui.body, { color: c.text }]}>{account.email}</Text>
       <View style={ui.row}><Text style={[ui.body, { color: c.text, flex: 1 }]}>Usar processamento do Clarify</Text><Switch accessibilityLabel="Usar processamento do Clarify" value={account.hosted} disabled={busy} onValueChange={value => command('hosted', value ? '1' : '0')} /></View>

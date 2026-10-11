@@ -10,10 +10,10 @@ Notable user-facing changes are documented here. This project follows
 ### Added
 
 - Optional Clarify accounts on Windows and iOS. Receive an email code and confirm it inside the app, without a password or browser link.
-- Show first-run setup before the main interface on both platforms: sign in, create an account or use a personal Groq key. Windows also offers local models. Preserve existing profiles and resume unfinished setup.
+- Show the email field on first launch. One passwordless code flow enters an existing account or creates a new one. Keep a small link for account-free setup; Windows links directly to local models. Preserve existing profiles and resume unfinished setup.
 - Connect the personal dictionary to the account and sync vocabulary between Windows and iPhone. Concurrent edits preserve both copies for explicit conflict resolution.
 - Optional hosted Groq transcription and rewriting with a shared monthly allowance. Local models and personal API keys remain available; signing in does not enable hosted processing automatically. Hosted availability depends on the service's global beta budget.
-- Open-source iOS client, keyboard extension and self-hostable account service in this repository. iOS 0.4.0 (18) adds first-run setup for internal TestFlight delivery, separately from the Windows release.
+- Open-source iOS client, keyboard extension and self-hostable account service in this repository. iOS 0.4.1 (19) adds the unified first-run flow and Account tab for internal TestFlight delivery, separately from the Windows release.
 
 ### Security
 
@@ -21,7 +21,8 @@ Notable user-facing changes are documented here. This project follows
 
 ### Changed
 
-- Add the Account page to Windows Settings and account controls to iOS Settings. History and snippets remain local in this release.
+- Add the Account page to Windows Settings and an iOS Account tab with a settings button and a sign-in invitation for account-free users. History and snippets remain local in this release.
+- Use the Clarify mark without an icon background in the account setup screens.
 
 ## [0.5.3] - 2026-10-08
 

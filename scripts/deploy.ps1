@@ -200,6 +200,7 @@ Copy-Item (Join-Path $repoQmlPython "qt_shell.py") $sourceQmlPython -Force
 foreach ($backendModule in @(
     "audio_file_batch.py",
     "audio_file_batch_ui.py",
+    "clarify_account.py",
     "dictionary_settings.py",
     "dictionary_snippets.py",
     "history_store.py",
