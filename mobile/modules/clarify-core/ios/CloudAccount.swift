@@ -109,7 +109,6 @@ final class CloudAccount {
       request.setValue(contentType, forHTTPHeaderField: "Content-Type")
     }
     let (data, response) = try await session.data(for: request)
-    try Task.checkCancellation()
     guard let response = response as? HTTPURLResponse, data.count <= 512 * 1024 else { throw ClarifyError(L("Resposta inválida do Clarify.")) }
     let result = data.isEmpty ? [:] : try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     if [401, 403].contains(response.statusCode), path.hasPrefix("/v1/") {
@@ -120,6 +119,7 @@ final class CloudAccount {
       try AccountCredential.save(token)
     }
     if let updatedUsage = result["usage"] as? [String: Any] { locked { usage = updatedUsage } }
+    try Task.checkCancellation()
     return (response.statusCode, result)
   }
   private func refresh() async throws {
