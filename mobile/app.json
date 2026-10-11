@@ -20,6 +20,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSSupportsLiveActivities": true,
         "ClarifyAppGroup": "group.com.jvictormaynard.clarify",
+        "ClarifyCloudURL": "https://clarify-api.victormaynard.com",
         "UIBackgroundModes": [
           "audio"
         ]

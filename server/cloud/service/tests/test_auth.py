@@ -20,7 +20,11 @@ class EmailAccountTests(TestCase):
 
     def email_code(self):
         self.assertTrue(mail.outbox)
-        match = re.search(r"\b\d{6}\b", mail.outbox[-1].body)
+        message = mail.outbox[-1]
+        self.assertTrue(message.subject.startswith("[Clarify] "))
+        self.assertNotIn("testserver", message.subject + message.body)
+        self.assertIn("10 minutos", message.body)
+        match = re.search(r"\b\d{6}\b", message.body)
         self.assertIsNotNone(match, "Verification email must contain a six digit code")
         return match.group(0)
 

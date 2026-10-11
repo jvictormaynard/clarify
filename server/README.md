@@ -38,6 +38,10 @@ Set its public host in `ALLOWED_HOSTS`. Limit request bodies to 25 MiB at ingres
 `GET /health` checks database connectivity. Only that path is exempt from the
 application's HTTPS redirect, for private host probes.
 
+On Railway, also include `healthcheck.railway.app` in `ALLOWED_HOSTS`; Railway
+uses that host for its deployment probe. Keep the generated service domain
+and the verified custom domain in the same explicit list. Do not use `*`.
+
 The beta uses Resend Free for outbound codes. Verify `victormaynard.com` in
 Resend and add the requested DNS records in Cloudflare, preserving existing
 mail records. SMTP uses `smtp.resend.com:465`, implicit TLS, user `resend`, and a

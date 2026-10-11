@@ -36,16 +36,37 @@ and shared-module imports after Gunicorn exec.
 
 Resend: existing `victormaynard.com` domain verified; Free transactional plan
 confirmed. A dedicated domain-restricted sending key is stored outside the repo
-with Windows DPAPI. SMTP authentication and NOOP passed. This does not establish
-email delivery through a deployed signup flow. Clarify defaults to 50 send
+with Windows DPAPI. SMTP authentication and NOOP passed; live email acceptance
+is recorded below. Clarify defaults to 50 send
 attempts per UTC day because the Resend quota is shared with other projects.
 
-GitHub CI must compile the iOS native module/app/extensions, run Linux/Windows
-checks and build/start the server container. Windows embedded-payload checks and
-manual native Windows/iPhone acceptance remain separate gates.
+GitHub run `38102687650` passed: PostgreSQL tests, container build/start/health,
+Swift native tests and full unsigned iOS app/extension compilation. Linux and
+Windows test jobs passed in `38102658699`; Windows packaging acceptance is tracked
+separately. Manual native Windows/iPhone acceptance is still required.
 
-No live Clarify account service, default client endpoint, public signup or new
-TestFlight release is claimed here. Hosted inference stays disabled until a
-dedicated Groq key and approved global budget exist. Staging must verify real
-email delivery, account isolation, sync, quota exhaustion, session revocation,
-account deletion and database backup/restore before public launch.
+A dedicated Railway API and PostgreSQL service are deployed. API deployment
+`ffe6f56c-d087-403c-9c6e-7ca0fd0e0650` reached `SUCCESS`; the generated HTTPS
+domain returned database health `200`. The custom domain
+`clarify-api.victormaynard.com` has a valid certificate and correct public DNS.
+Its HTTPS health returned `200` with TLS validation using the resolved public IP;
+the local Windows DNS resolver still held a negative result at that point.
+Desktop and iOS now default to that custom endpoint.
+
+With the user's approval, one real verification email was delivered through
+Resend to a temporary account. Signup was enabled only in the private test
+process, with public signup left disabled. Live HTTPS checks passed for email
+confirmation, verified account access, vocabulary read/write, stale revision
+rejection (`409`), usage, anonymous access rejection, disabled funded processing,
+account deletion (`204`) and rejection of the deleted session. The temporary
+account, code capture, session and temporary registered SSH key were removed.
+
+The initial email used allauth's default host-based wording. Custom signup and
+login templates now contain the Clarify name, code and instructions to enter the
+code in the mobile or desktop app, without a URL or browser instruction. The
+PostgreSQL authentication tests check both email types; all 22 server tests pass.
+
+Public signup and hosted inference remain disabled. A dedicated Groq key and
+approved global budget are still required. No new TestFlight release is claimed.
+Device activation/dictation, multi-device acceptance, live quota exhaustion and
+database backup/restore remain gates before public launch.
