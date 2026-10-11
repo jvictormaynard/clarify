@@ -9,6 +9,7 @@ export type DictionaryEntry = {
   enabled: boolean;
 };
 export interface Settings {
+  onboardingRequired: boolean;
   accountState?: {
     endpoint: string; signedIn: boolean; email: string; pending: string;
     hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
@@ -82,6 +83,7 @@ export interface Settings {
 
 // Argument tuples keep every frontend call checked without changing the pipe protocol.
 export type SettingsArguments = {
+  completeOnboarding: [mode: "account" | "byok" | "local", key: string];
   accountCommand: [action: string, value: string];
   snapshot: [];
   setLanguage: [value: string];

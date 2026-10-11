@@ -13,6 +13,22 @@ function useClarifyState() {
   const [state, setState] = useState(idle);
   const [account, setAccount] = useState<AccountSnapshot>();
   const [accountBusy, setAccountBusy] = useState(false);
+  const [onboardingRequired, setOnboardingRequired] = useState<boolean | null>(null);
+  const [setupError, setSetupError] = useState(false);
+  const refreshOnboarding = useCallback(async () => {
+    try { setOnboardingRequired(await Core.onboardingRequired()); setSetupError(false); }
+    catch { setSetupError(true); }
+  }, []);
+  const completeOnboarding = useCallback(async (mode: 'account' | 'byok') => {
+    await Core.completeOnboarding(mode);
+    setOnboardingRequired(false);
+  }, []);
+  useEffect(() => {
+    let active = true;
+    void Core.onboardingRequired().then(value => { if (active) setOnboardingRequired(value); })
+      .catch(() => { if (active) setSetupError(true); });
+    return () => { active = false; };
+  }, []);
   const refreshAccount = useCallback(async () => { const value = await Core.getAccount(); setAccount(value); return value; }, []);
   const accountCommand = useCallback(async (action: string, value = '') => {
     setAccountBusy(true);
@@ -69,7 +85,8 @@ function useClarifyState() {
     return () => { mounted.current = false; clearInterval(timer); listener.remove(); };
   }, [refresh]);
   return { state, refresh, activate, activating, keyboardEntry, setKeyboardEntry, keyboardToken, setKeyboardToken,
-    account, accountBusy, refreshAccount, accountCommand };
+    account, accountBusy, refreshAccount, accountCommand,
+    onboardingRequired, setupError, refreshOnboarding, completeOnboarding };
 }
 const Context = createContext<ReturnType<typeof useClarifyState> | null>(null);
 export function ClarifyProvider({ children }: { children: ReactNode }) {

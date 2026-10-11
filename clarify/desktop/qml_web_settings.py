@@ -12,6 +12,7 @@ from PySide6.QtCore import QObject, QProcess, QTimer
 
 # Never expose QObject reflection, repository access, saved API keys, or paths.
 PROPERTIES = (
+    "onboardingRequired",
     "accountState",
     "dirty",
     "dictionaryEntries",
@@ -77,6 +78,7 @@ PROPERTIES = (
 
 METHODS = frozenset(
     (
+        "completeOnboarding",
         "accountCommand",
         "setLanguage",
         "setDictionaryEntries",

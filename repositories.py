@@ -190,6 +190,7 @@ class AppConfig:
     local_asr_streaming: bool = False
     history_enabled: bool = False
     automatic_updates: bool = False
+    onboarding_completed: bool = False
     history_retention_days: int | None = 30
     hotkeys: HotkeySettings = field(default_factory=HotkeySettings.defaults)
     workflows: WorkflowConfig = field(default_factory=WorkflowConfig)
@@ -542,6 +543,8 @@ class AppConfig:
             local_asr_streaming=source.get("local_asr_streaming") is True,
             history_enabled=history_enabled,
             automatic_updates=source.get("automatic_updates") is True,
+            onboarding_completed=source.get("onboarding_completed", bool(values))
+            is True,
             history_retention_days=history_retention_days,
             hotkeys=hotkeys,
             workflows=workflows,
@@ -578,6 +581,7 @@ class AppConfig:
             "autostart": self.startup.autostart,
             "history_enabled": self.history_enabled,
             "automatic_updates": self.automatic_updates,
+            "onboarding_completed": self.onboarding_completed,
             "history_retention_days": self.history_retention_days,
             "hotkeys": self.hotkeys.to_mapping(),
             "workflows": self.workflows.to_mapping(),
@@ -1260,6 +1264,7 @@ class LocalConfigRepository(ConfigRepository):
                 # config to the migration boundary above.  Keep the explicit
                 # fresh-install defaults marker in that case.
                 runtime["hotkeys"] = self.defaults.get("hotkeys")
+                runtime["onboarding_completed"] = False
             return AppConfig.from_mapping(runtime, self.defaults)
 
     def _model_from_mapping(

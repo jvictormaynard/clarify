@@ -1,9 +1,14 @@
 # Clarify for iOS — MVP
 
-Expo application plus a small Swift keyboard extension. One user-supplied Groq
-API key handles speech recognition and rewriting. Native bottom tabs contain
+Expo application plus a small Swift keyboard extension. Use a Clarify account or
+a personal Groq API key for speech recognition and rewriting. Native bottom tabs contain
 Home, Dicionário and Ajustes. History and vocabulary are stored locally in SQLite.
-The 0.3.0 (17) release candidate adds an optional account and vocabulary sync.
+Version 0.4.0 (18) adds first-run setup before the bottom tabs. Choose sign in,
+create an account, or use a personal Groq key. Confirm email codes inside the app.
+The account path explicitly asks to enable hosted processing. The final step
+explains keyboard installation; microphone permission is requested when needed.
+An unfinished setup resumes on the next launch. Existing accounts and keys
+skip first-run setup after an upgrade. A setup preference contains no credentials.
 Billing, translation and local models are outside this mobile release.
 
 Version 0.3.0 (17) adds an optional shared account, vocabulary sync
@@ -27,8 +32,11 @@ handoff, and never opens the source app after a failed/interrupted activation.
 Provider models and rewrite prompts are unchanged. Physical call/permission
 flows still need iPhone acceptance; tests use synthetic native failures.
 
-Current TestFlight version: **0.2.2 (16)**, verified available to `Clarify Interno`
-on 2026-10-10 at 21:54:55 UTC. See the update evidence below for checks and limits.
+Last verified TestFlight version: **0.3.0 (17)**, available to `Clarify Interno`
+on 2026-10-11. [Direct delivery run 38107716912](https://github.com/jvictormaynard/clarify/actions/runs/38107716912)
+passed JavaScript, Swift and UIKit contracts, signed archive checks and Apple upload.
+Apple build `f98ad2f6-9618-4fe6-acfe-1465ac28f81a` is `VALID` and `IN_BETA_TESTING`.
+Build 18 is the next delivery candidate; availability must be checked after upload.
 
 The `iOS TestFlight` GitHub Actions workflow tests and builds the application with
 Xcode on a standard macOS runner, then uploads directly to App Store Connect.
@@ -70,8 +78,10 @@ establish TestFlight availability; verify `VALID` and `IN_BETA_TESTING` in Apple
 
 ## Use
 
-1. Open Clarify and save a Groq key in Ajustes. Saving authorizes audio/text
-   processing by Groq; the key is stored in the app's device-only Keychain.
+1. Open Clarify and choose **Entrar**, **Criar conta**, or **Usar minha chave de API**.
+   Confirm the account code inside Clarify and enable its processing, or save
+   your personal Groq key in the device-only Keychain. Read the processing notice
+   before continuing. Account and provider controls remain available in Ajustes.
 2. Add Clarify under iPhone Settings → General → Keyboard → Keyboards, and enable
    Full Access for the keyboard's shared command/result files.
 3. Activate the microphone in Clarify, then return to the application you use.

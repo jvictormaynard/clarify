@@ -5,9 +5,10 @@ import { createInterface } from "node:readline";
 let child: ChildProcessWithoutNullStreams;
 let id = 0;
 const pending = new Map<number, (value: unknown) => void>();
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, testInfo) => {
   if (!process.env.CLARIFY_TEST_PYTHON || !process.env.CLARIFY_TEST_FIXTURE) throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE], { windowsHide: true });
+  const onboarding = testInfo.title.startsWith("onboarding:");
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : [])], { windowsHide: true });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);
@@ -26,10 +27,50 @@ test.beforeEach(async ({ page }) => {
     } };
   });
   await page.goto("/");
-  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(onboarding ? page.getByRole("heading", { name: "Boas-vindas ao Clarify" }) : page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
 });
 test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
+
+test("onboarding: first run offers account, BYOK and local paths before Settings", async ({ page }) => {
+  await expect(page.getByRole("navigation", { name: "Configurações" })).toBeHidden();
+  for (const name of ["Entrar", "Criar conta", "Usar minha chave de API", "Usar modelo local"])
+    await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
+  await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("invalid");
+  await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await expect(page.getByRole("alert")).toContainText("chave válida");
+  await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
+  await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await expect(page.getByRole("navigation", { name: "Configurações" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
+});
+
+test("onboarding: signup confirms its code inside the app and requests processing consent", async ({ page }) => {
+  await page.getByRole("button", { name: "Criar conta", exact: true }).click();
+  await page.getByRole("textbox", { name: "E-mail", exact: true }).fill("test@example.test");
+  await page.getByRole("button", { name: "Criar conta", exact: true }).click();
+  await expect(page.getByText("Digite o código enviado para test@example.test.", { exact: false })).toBeVisible();
+  await page.getByRole("textbox", { name: "Código recebido por e-mail" }).fill("000000");
+  await page.getByRole("button", { name: "Confirmar código" }).click();
+  await expect(page.getByRole("alert")).toContainText("Código inválido");
+  await page.getByRole("textbox", { name: "Código recebido por e-mail" }).fill("123456");
+  await page.getByRole("button", { name: "Confirmar código" }).click();
+  await expect(page.getByRole("heading", { name: "Sua conta está pronta" })).toBeVisible();
+  await expect(page.getByRole("navigation")).toBeHidden();
+  await page.getByRole("button", { name: "Ativar processamento do Clarify" }).click();
+  await page.getByRole("button", { name: "Começar", exact: true }).click();
+  await expect(page.getByRole("navigation")).toBeVisible();
+});
+
+test("onboarding: local choice leads to model setup without a login", async ({ page }) => {
+  await page.getByRole("button", { name: "Usar modelo local", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
+  await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Modelo local", exact: true })).toBeVisible();
+});
 
 test("account remains optional and self-hosting configuration does not change dictation routes", async ({ page }) => {
   await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();

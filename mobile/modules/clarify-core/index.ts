@@ -36,6 +36,8 @@ export interface AccountSnapshot {
 }
 
 export default requireNativeModule<{
+  onboardingRequired(): Promise<boolean>;
+  completeOnboarding(mode: 'account' | 'byok'): Promise<void>;
   getSnapshot(): Promise<Snapshot>;
   getAccount(): Promise<AccountSnapshot>;
   accountCommand(action: string, value: string): Promise<AccountSnapshot>;

@@ -1,6 +1,7 @@
 """Isolated real-controller RPC fixture. Never opens user config or a microphone."""
 
 import json
+from dataclasses import replace
 import sys
 import threading
 from pathlib import Path
@@ -15,6 +16,48 @@ from microphone_controls import MicrophoneInventory, MicrophoneDevice
 from local_asr_product import LocalASRProductState
 from clarify.desktop.qml_settings import QmlSettingsController
 from clarify.desktop.qml_web_settings import SettingsProtocol, WebSettingsProcess
+
+
+class OnboardingAccount:
+    """Offline account double for first-run UI acceptance. Never sends e-mail."""
+
+    scope = None
+
+    def __init__(self):
+        self.state = dict(
+            endpoint="https://clarify.example",
+            signedIn=False,
+            email="",
+            pending="",
+            hosted=False,
+            syncEnabled=False,
+            usage={},
+        )
+
+    def snapshot(self):
+        return dict(self.state)
+
+    def begin_change(self):
+        return True
+
+    def end_change(self):
+        pass
+
+    def authenticate(self, action, value):
+        from clarify_account import AccountError
+
+        if action == "confirm":
+            if value != "123456":
+                raise AccountError("Código inválido. Tente novamente.")
+            self.state.update(signedIn=True, pending="")
+        else:
+            self.state.update(email=value, pending=action)
+
+    def set_hosted(self, value):
+        self.state["hosted"] = value
+
+    def logout(self, **_):
+        self.state.update(signedIn=False, pending="", hosted=False)
 
 
 def check_native_corners(process_id):
@@ -121,8 +164,15 @@ def main():
             return 0.5
 
         backend.test_microphone = preview
+        repositories = _repositories(directory)
+        onboarding = "--onboarding" in sys.argv
+        if not onboarding:
+            repositories.config.apply(
+                replace(repositories.config.load(), onboarding_completed=True)
+            )
         settings = QmlSettingsController(
-            _repositories(directory),
+            repositories,
+            account_service=OnboardingAccount() if onboarding else None,
             microphone_backend=backend,
             local_product=Mock(state=LocalASRProductState("installed"), busy=False),
         )

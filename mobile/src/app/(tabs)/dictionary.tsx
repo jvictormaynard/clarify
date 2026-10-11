@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { useIsFocused } from 'expo-router';
 import { Alert, FlatList, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Core, { type VocabularyEntry } from '../../modules/clarify-core';
-import { Button, Card, Title, ui, usePalette } from '../components/ui';
-import { isBusy, report, useClarify } from '../state/clarify';
+import Core, { type VocabularyEntry } from '../../../modules/clarify-core';
+import { Button, Card, Title, ui, usePalette } from '../../components/ui';
+import { isBusy, report, useClarify } from '../../state/clarify';
 
 const empty = (): VocabularyEntry => ({ term: '', pronunciation: '', aliases: [], enabled: true });
 export default function Dictionary() {

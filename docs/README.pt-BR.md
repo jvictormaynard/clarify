@@ -32,8 +32,11 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Conta opcional com entrada por código de e-mail, dicionário compartilhado e cota de ditado
 - Modos locais e com chave própria disponíveis sem conta; sem telemetria
 
-A versão 0.6.0 permite confirmar o código dentro das Configurações. Depois de
-entrar, conecte o dicionário ou ative o processamento do Clarify de forma explícita.
+A versão 0.6.0 mostra uma página de configuração no primeiro acesso. Escolha
+entrar, criar uma conta, usar sua chave Groq ou configurar um modelo local.
+Confirme o código de e-mail dentro do aplicativo e ative o processamento do
+Clarify de forma explícita. As instalações existentes mantêm sua configuração.
+Os controles da conta e a conexão do dicionário continuam nas Configurações.
 O histórico e os atalhos permanecem locais. O [aplicativo iOS](../mobile/README.md)
 é distribuído pelo TestFlight. O [servidor de contas](../server/README.md) também
 pode ser hospedado por você; as chaves de produção e os dados dos usuários são privados.
@@ -99,10 +102,13 @@ uma vez.
 1. Abra a [versão mais recente](https://github.com/jvictormaynard/clarify/releases/latest).
 2. Baixe `Clarify.exe` e salve-o em uma pasta sob seu controle.
 3. Abra o executável.
-4. Abra **Configurações → Modelos e serviços** e escolha um caminho:
-   - **Cloud:** selecione Gemini, OpenAI, Groq ou um endpoint compatível,
-     informe a chave de API e valide o provedor.
-   - **Local Whisper:** revise os requisitos e instale o modelo escolhido. A
+4. A página inicial abre automaticamente. Escolha **Entrar**, **Criar conta**,
+   **Usar minha chave de API** ou **Usar modelo local**.
+   - **Conta Clarify:** confirme o código dentro do aplicativo, leia o aviso
+     sobre os dados enviados e ative o processamento. Não exige chave própria.
+   - **Chave própria:** salve sua chave Groq. Outros provedores continuam
+     disponíveis em **Configurações → Modelos e serviços**.
+   - **Local Whisper:** continue para a configuração, revise os requisitos e instale o modelo escolhido. A
      transcrição local não exige chave. O refinamento cloud é opcional e pode
      ser ativado com **Allow cloud refinement**.
 5. Abra **Configurações → Ditado** ou **Configurações → Texto** para

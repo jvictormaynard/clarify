@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { Alert, Linking, ScrollView, Text, TextInput } from 'react-native';
-import Core from '../../modules/clarify-core';
-import { Button, Card, Title, ui, usePalette } from '../components/ui';
-import { isBusy, report, useClarify } from '../state/clarify';
-import { AccountCard } from '../components/account-card';
+import Core from '../../../modules/clarify-core';
+import { Button, Card, Title, ui, usePalette } from '../../components/ui';
+import { isBusy, report, useClarify } from '../../state/clarify';
+import { AccountCard } from '../../components/account-card';
 
 export default function Settings() {
   const c = usePalette();
