@@ -21,7 +21,8 @@ export function useSettings() {
   const [dictionary, setDictionary] = useState<DictionaryEntry[] | null>(null);
   const [page, setPage] = useState<PageId>("dictation");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [callBusy, setBusy] = useState(false);
+  const busy = callBusy || !!state?.accountState?.busy;
   const [navigating, setNavigating] = useState(false);
   const [saved, setSaved] = useState(false);
   const [discarding, setDiscarding] = useState(false);

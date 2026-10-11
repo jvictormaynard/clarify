@@ -1,0 +1,16 @@
+node_modules/
+.expo/
+/ios/
+/android/
+dist/
+**/.build/
+test-results/
+*.log
+.env
+.env.*
+credentials.json
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision

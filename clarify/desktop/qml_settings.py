@@ -10,6 +10,7 @@ autostart is handled by a small, local Run-key boundary.
 from __future__ import annotations
 
 import math
+import os
 import platform
 import subprocess
 import sys
@@ -21,6 +22,8 @@ from pathlib import Path
 from typing import Any, cast
 
 from PySide6.QtCore import Property, QObject, Qt, Signal, Slot
+from clarify_account import AccountService
+from cloud_defaults import DEFAULT_CLOUD_URL
 from dictionary_snippets import (
     DictionaryEntry,
     DictionarySnippets,
@@ -304,6 +307,8 @@ def _default_microphone_inventory_source() -> Any | None:
 
 
 class QmlSettingsController(QObject):
+    accountStateChanged = Signal()
+    _accountFinished = Signal(object)
     """Expose the typed application configuration to Qt Quick.
 
     The object owns an editable draft only.  ``load`` replaces that draft
@@ -346,10 +351,23 @@ class QmlSettingsController(QObject):
         microphone_inventory_source: Any | None = None,
         hotkey_applier: Callable[[HotkeySettings], Any] | None = None,
         dictionary_service: DictionarySnippetService | None = None,
+        account_service=None,
+        account_can_change=None,
     ) -> None:
         super().__init__(parent)
         self._updates = None
         self.repositories = repositories
+        self._account = account_service or AccountService(
+            Path(repositories.config.path).parent,
+            default_endpoint=os.environ.get("CLARIFY_CLOUD_URL", DEFAULT_CLOUD_URL),
+        )
+        self._account_can_change = account_can_change or (lambda: True)
+        self._account_busy = False
+        self._account_error = ""
+        self._account_shutdown = False
+        self._accountFinished.connect(
+            self._finish_account, Qt.ConnectionType.QueuedConnection
+        )
         self._config_repository: ConfigRepository = repositories.config
         self._dictionary_service = dictionary_service or DictionarySnippetService(
             LocalDictionarySnippetsRepository(
@@ -1830,6 +1848,7 @@ class QmlSettingsController(QObject):
 
     @Slot()
     def shutdown(self) -> None:
+        self._account_shutdown = True
         self._unsubscribe_local_state()
         self._local_inventory_thread.join(timeout=3.5)
         if self._local_benchmark_token is not None:
@@ -1876,6 +1895,89 @@ class QmlSettingsController(QObject):
         self.loaded.emit()
         return True
 
+    @Property("QVariantMap", notify=accountStateChanged)
+    def accountState(self):
+        return {
+            **self._account.snapshot(),
+            "busy": self._account_busy,
+            "error": self._account_error,
+        }
+
+    @Slot(str, str, result=bool)
+    def accountCommand(self, action, value=""):
+        if self._account_busy or not self._account_can_change():
+            self._set_error(ValueError("Finalize o ditado antes de alterar a conta."))
+            return False
+        if self.dirty or self.providerDirty:
+            self._set_error(
+                ValueError("Salve ou descarte as alterações antes de alterar a conta.")
+            )
+            return False
+        if action not in {
+            "configure",
+            "login",
+            "signup",
+            "confirm",
+            "refresh",
+            "sync",
+            "sync-local",
+            "sync-remote",
+            "logout",
+            "delete",
+            "hosted",
+        }:
+            return False
+        if not self._account.begin_change():
+            return False
+        self._account_busy, self._account_error = True, ""
+        self.accountStateChanged.emit()
+
+        def perform():
+            error = ""
+            try:
+                if action == "configure":
+                    self._account.configure(value)
+                elif action in {"login", "signup", "confirm"}:
+                    self._account.authenticate(action, value)
+                elif action == "refresh":
+                    self._account.refresh()
+                elif action in {"sync", "sync-local", "sync-remote"}:
+                    self._account.sync_dictionary(
+                        self._dictionary_service,
+                        prefer=action.removeprefix("sync-")
+                        if action != "sync"
+                        else None,
+                    )
+                elif action in {"logout", "delete"}:
+                    self._account.logout(delete=action == "delete")
+                    self._dictionary_service.reload()
+                elif action == "hosted":
+                    self._account.set_hosted(value == "1")
+            except Exception as problem:
+                from clarify_account import AccountError
+
+                error = (
+                    str(problem)
+                    if isinstance(problem, AccountError)
+                    else "Não foi possível concluir a operação da conta."
+                )
+            if not self._account_shutdown:
+                self._accountFinished.emit(error)
+
+        threading.Thread(target=perform, name="ClarifyAccount", daemon=True).start()
+        return True
+
+    @Slot(object)
+    def _finish_account(self, error):
+        self._account_busy = False
+        self._account_error = error
+        try:
+            self._dictionary_draft = self._dictionary_service.reload()
+        finally:
+            self._account.end_change()
+        self.accountStateChanged.emit()
+        self.loaded.emit()
+
     @Slot(result=bool)
     def save(self) -> bool:
         persisted_before: AppConfig | None = None
@@ -1920,6 +2022,8 @@ class QmlSettingsController(QObject):
         self._replace_loaded_config(persisted_config)
         self._set_error(None)
         self.saved.emit()
+        if self._account.scope and not self._account_busy:
+            self.accountCommand("sync", "")
         return True
 
     @Slot(str, result=bool)

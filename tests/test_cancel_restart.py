@@ -3,6 +3,7 @@
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
@@ -32,6 +33,15 @@ class Recorder:
 
 
 class CancelRestartTests(unittest.TestCase):
+    def test_account_change_blocks_new_capture_before_it_allocates_audio(self):
+        account = SimpleNamespace(busy=True)
+        gateway = QtRecordingAudioGateway(Recorder(), SimpleNamespace(account=account))
+        with patch("clarify.desktop.qml_runtime.QtRecordingSession") as session:
+            self.assertIsNone(gateway.create_session())
+            session.assert_not_called()
+            account.busy = False
+            self.assertIs(gateway.create_session(), session.return_value)
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])

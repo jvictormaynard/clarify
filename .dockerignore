@@ -1,0 +1,14 @@
+**/.git
+**/.venv
+**/node_modules
+**/__pycache__
+**/.env*
+**/*.sqlite3*
+**/account.json
+**/account-secrets*
+**/account-data
+**/recordings
+**/test-results
+**/.DS_Store
+**/dist
+mobile/ios

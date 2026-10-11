@@ -19,6 +19,8 @@ import time
 from transcription_performance import safe_timings
 from pathlib import Path
 from typing import Any, Callable
+from clarify_account import AccountService, AccountDictionaryRepository
+from cloud_defaults import DEFAULT_CLOUD_URL
 
 from PySide6.QtCore import QObject, Qt, Signal, Slot
 from workflow_provider import (
@@ -284,8 +286,9 @@ def create_runtime_repositories() -> ApplicationRepositories:
 class QtWorkflowConfig:
     """Read the typed route/configuration boundary for one operation."""
 
-    def __init__(self, repositories: ApplicationRepositories) -> None:
+    def __init__(self, repositories: ApplicationRepositories, account=None) -> None:
         self.repositories = repositories
+        self.account = account
 
     def current(self):
         return self.repositories.config.load()
@@ -294,6 +297,12 @@ class QtWorkflowConfig:
         return self.current().workflow(scope)
 
     def recording_usage_context(self, mode: str) -> dict[str, Any]:
+        if self.account is not None and self.account.hosted:
+            return {
+                "provider": "clarify",
+                "model": "whisper-large-v3-turbo",
+                "mode": str(mode),
+            }
         route = self.current().workflow(WorkflowScope.TRANSCRIPTION)
         return {
             "provider": route.provider_id,
@@ -328,6 +337,8 @@ class QtProviderGateway(WorkflowProviderService):
     def prepare_dictation(self, recording) -> None:
         """Best-effort local preparation; never contact a cloud provider."""
         try:
+            if self.account is not None and self.account.hosted:
+                return
             with recording._lock:
                 if recording.preparation_done.is_set():
                     return
@@ -1037,6 +1048,9 @@ class QtRecordingAudioGateway:
 
     def create_session(self) -> QtRecordingSession | None:
         with self._lock:
+            account = getattr(self.config, "account", None)
+            if account is not None and account.busy:
+                return None
             if self._active is not None and not self._active.shutdown_complete.is_set():
                 return None
             self._active = QtRecordingSession(self.recorder, self.config)
@@ -1448,6 +1462,7 @@ class QtWorkflowRuntime:
         history_recorder: QtHistoryRecorder | None = None,
         audio_batch_service: AudioFileBatchService | None = None,
         dictionary_service: DictionarySnippetService | None = None,
+        account=None,
     ) -> None:
         self.workflow_service = workflow_service
         self.recording_audio = recording_audio
@@ -1458,6 +1473,7 @@ class QtWorkflowRuntime:
         self.history_recorder = history_recorder
         self.audio_batch_service = audio_batch_service
         self.dictionary_service = dictionary_service
+        self.account = account
         self._shutdown = False
 
     def audio_file_selection(
@@ -1549,15 +1565,22 @@ def create_real_workflow_runtime(
     """Create the production workflow and shutdown boundary for QML."""
 
     active = repositories or create_runtime_repositories()
-    config = QtWorkflowConfig(active)
+    account = AccountService(
+        Path(active.config.path).parent,
+        default_endpoint=os.environ.get("CLARIFY_CLOUD_URL", DEFAULT_CLOUD_URL),
+    )
+    config = QtWorkflowConfig(active, account)
     dictionary_service = DictionarySnippetService(
-        LocalDictionarySnippetsRepository(
-            Path(active.config.path).parent / "dictionary.json"
+        AccountDictionaryRepository(
+            account,
+            LocalDictionarySnippetsRepository(
+                Path(active.config.path).parent / "dictionary.json"
+            ),
         )
     )
     recording_audio = QtRecordingAudioGateway(QtRecorder(config), config)
     clipboard = QtClipboardGateway()
-    provider = QtProviderGateway(config, dictionary_service)
+    provider = QtProviderGateway(config, dictionary_service, account=account)
     audio_batch_gateway = QtAudioFileGateway(provider)
     audio_batch_service = AudioFileBatchService(
         audio_batch_gateway,
@@ -1582,6 +1605,7 @@ def create_real_workflow_runtime(
         history_recorder=history_recorder,
         audio_batch_service=audio_batch_service,
         dictionary_service=dictionary_service,
+        account=account,
     )
 
 

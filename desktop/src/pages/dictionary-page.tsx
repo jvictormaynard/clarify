@@ -50,6 +50,7 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
     );
   return (
     <section className="dictionary">
+      <p className="hint">{controller.state.accountState?.syncEnabled ? `Dicionário da conta ${controller.state.accountState.email}. As alterações são sincronizadas ao salvar.` : "Dicionário deste computador."}</p>
       <p className="hint">
         Nomes e termos que você usa. Escreva como devem aparecer na transcrição.
       </p>

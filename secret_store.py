@@ -21,6 +21,7 @@ from typing import Callable, Mapping
 
 SECRET_STORE_VERSION = 1
 SUPPORTED_SECRET_PROVIDERS = ("gemini", "openai", "groq")
+SUPPORTED_SECRET_IDS = (*SUPPORTED_SECRET_PROVIDERS, "clarify_account")
 
 
 class SecretStoreError(OSError):
@@ -53,7 +54,7 @@ class SecretStore(ABC):
 
 def _provider(provider: str) -> str:
     value = str(provider).strip().lower()
-    if value not in SUPPORTED_SECRET_PROVIDERS:
+    if value not in SUPPORTED_SECRET_IDS:
         raise ValueError("Unsupported secret-store provider")
     return value
 
@@ -61,7 +62,8 @@ def _provider(provider: str) -> str:
 def _atomic_write_json(path: Path, payload: Mapping[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
     try:
         if os.name != "nt":
             os.fchmod(descriptor, 0o600)
@@ -100,22 +102,23 @@ class _JsonSecretStore(SecretStore):
             # used right now. Keep that distinct from a readable but invalid
             # file so callers can preserve a legacy credential and retry.
             raise SecretStoreUnavailableError(
-                "The credential store cannot be read") from None
+                "The credential store cannot be read"
+            ) from None
         except (ValueError, TypeError):
             raise SecretStoreCorruptedError(
-                "The credential store cannot be read") from None
+                "The credential store cannot be read"
+            ) from None
         if not isinstance(payload, Mapping):
             raise SecretStoreCorruptedError("The credential store is invalid")
         if payload.get("version") != SECRET_STORE_VERSION:
             raise SecretStoreCorruptedError(
-                "The credential store version is unsupported")
+                "The credential store version is unsupported"
+            )
         if payload.get("backend") != self.backend_name:
-            raise SecretStoreCorruptedError(
-                "The credential store backend is invalid")
+            raise SecretStoreCorruptedError("The credential store backend is invalid")
         entries = payload.get("entries")
         if not isinstance(entries, Mapping):
-            raise SecretStoreCorruptedError(
-                "The credential store entries are invalid")
+            raise SecretStoreCorruptedError("The credential store entries are invalid")
         return dict(entries)
 
     def _write_entries(self, entries: Mapping[str, object]) -> None:
@@ -124,17 +127,22 @@ class _JsonSecretStore(SecretStore):
                 self.path.unlink(missing_ok=True)
             except OSError:
                 raise SecretStoreUnavailableError(
-                    "The credential store could not be updated") from None
+                    "The credential store could not be updated"
+                ) from None
             return
         try:
-            _atomic_write_json(self.path, {
-                "version": SECRET_STORE_VERSION,
-                "backend": self.backend_name,
-                "entries": dict(entries),
-            })
+            _atomic_write_json(
+                self.path,
+                {
+                    "version": SECRET_STORE_VERSION,
+                    "backend": self.backend_name,
+                    "entries": dict(entries),
+                },
+            )
         except OSError:
             raise SecretStoreUnavailableError(
-                "The credential store could not be updated") from None
+                "The credential store could not be updated"
+            ) from None
 
     @abstractmethod
     def _encode(self, secret: str) -> object:
@@ -182,8 +190,7 @@ class PlaintextFileSecretStore(_JsonSecretStore):
 
     def _decode(self, encoded: object) -> str:
         if not isinstance(encoded, str) or not encoded:
-            raise SecretStoreCorruptedError(
-                "A credential-store entry is invalid")
+            raise SecretStoreCorruptedError("A credential-store entry is invalid")
         return encoded
 
 
@@ -198,26 +205,38 @@ class WindowsDpapiProtector:
     def __init__(self) -> None:
         if os.name != "nt":
             raise SecretStoreUnavailableError(
-                "Windows credential protection is unavailable")
+                "Windows credential protection is unavailable"
+            )
         try:
             self._crypt32 = ctypes.windll.crypt32
             self._kernel32 = ctypes.windll.kernel32
             blob_pointer = ctypes.POINTER(self._DataBlob)
             self._crypt32.CryptProtectData.argtypes = [
-                blob_pointer, ctypes.c_wchar_p, blob_pointer,
-                ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32, blob_pointer,
+                blob_pointer,
+                ctypes.c_wchar_p,
+                blob_pointer,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                blob_pointer,
             ]
             self._crypt32.CryptProtectData.restype = ctypes.c_bool
             self._crypt32.CryptUnprotectData.argtypes = [
-                blob_pointer, ctypes.POINTER(ctypes.c_wchar_p), blob_pointer,
-                ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32, blob_pointer,
+                blob_pointer,
+                ctypes.POINTER(ctypes.c_wchar_p),
+                blob_pointer,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                blob_pointer,
             ]
             self._crypt32.CryptUnprotectData.restype = ctypes.c_bool
             self._kernel32.LocalFree.argtypes = [ctypes.c_void_p]
             self._kernel32.LocalFree.restype = ctypes.c_void_p
         except (AttributeError, OSError):
             raise SecretStoreUnavailableError(
-                "Windows credential protection is unavailable") from None
+                "Windows credential protection is unavailable"
+            ) from None
 
     @classmethod
     def _input_blob(cls, value: bytes):
@@ -230,11 +249,18 @@ class WindowsDpapiProtector:
         protected = self._DataBlob()
         try:
             succeeded = self._crypt32.CryptProtectData(
-                ctypes.byref(source), None, None, None, None,
-                self._CRYPTPROTECT_UI_FORBIDDEN, ctypes.byref(protected))
+                ctypes.byref(source),
+                None,
+                None,
+                None,
+                None,
+                self._CRYPTPROTECT_UI_FORBIDDEN,
+                ctypes.byref(protected),
+            )
             if not succeeded:
                 raise SecretStoreUnavailableError(
-                    "Windows credential protection failed")
+                    "Windows credential protection failed"
+                )
             return ctypes.string_at(protected.pbData, protected.cbData)
         finally:
             del source_buffer
@@ -246,11 +272,18 @@ class WindowsDpapiProtector:
         clear = self._DataBlob()
         try:
             succeeded = self._crypt32.CryptUnprotectData(
-                ctypes.byref(source), None, None, None, None,
-                self._CRYPTPROTECT_UI_FORBIDDEN, ctypes.byref(clear))
+                ctypes.byref(source),
+                None,
+                None,
+                None,
+                None,
+                self._CRYPTPROTECT_UI_FORBIDDEN,
+                ctypes.byref(clear),
+            )
             if not succeeded:
                 raise SecretStoreCorruptedError(
-                    "A credential-store entry cannot be decrypted")
+                    "A credential-store entry cannot be decrypted"
+                )
             return ctypes.string_at(clear.pbData, clear.cbData)
         finally:
             del source_buffer
@@ -272,7 +305,8 @@ class DpapiSecretStore(_JsonSecretStore):
         super().__init__(path)
         if (protect is None) != (unprotect is None):
             raise ValueError(
-                "Both DPAPI callbacks must be supplied for an injected backend")
+                "Both DPAPI callbacks must be supplied for an injected backend"
+            )
         self._protect = protect
         self._unprotect = unprotect
 
@@ -294,28 +328,29 @@ class DpapiSecretStore(_JsonSecretStore):
             raise
         except Exception:
             raise SecretStoreUnavailableError(
-                "Windows credential protection failed") from None
+                "Windows credential protection failed"
+            ) from None
 
     def _decode(self, encoded: object) -> str:
         if not isinstance(encoded, str) or not encoded:
-            raise SecretStoreCorruptedError(
-                "A credential-store entry is invalid")
+            raise SecretStoreCorruptedError("A credential-store entry is invalid")
         try:
             protected = base64.b64decode(encoded, validate=True)
             _protect, unprotect = self._callbacks()
             clear = unprotect(protected).decode("utf-8")
             if not clear:
-                raise SecretStoreCorruptedError(
-                    "A credential-store entry is invalid")
+                raise SecretStoreCorruptedError("A credential-store entry is invalid")
             return clear
         except SecretStoreError:
             raise
         except (ValueError, UnicodeError, TypeError):
             raise SecretStoreCorruptedError(
-                "A credential-store entry is invalid") from None
+                "A credential-store entry is invalid"
+            ) from None
         except Exception:
             raise SecretStoreCorruptedError(
-                "A credential-store entry cannot be decrypted") from None
+                "A credential-store entry cannot be decrypted"
+            ) from None
 
 
 class MemorySecretStore(SecretStore):

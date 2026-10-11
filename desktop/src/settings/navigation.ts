@@ -5,9 +5,11 @@ import {
   Keyboard,
   Cpu,
   BookOpen,
+  UserRound,
 } from "lucide-react";
 
 export const settingsPages = [
+  { id: "account", label: "Conta Clarify", icon: UserRound },
   { id: "general", label: "Geral", icon: Settings2 },
   { id: "dictation", label: "Ditado", icon: Mic },
   { id: "text", label: "Texto", icon: Sparkles },

@@ -15,6 +15,7 @@ export function DictationPage({ controller }: SettingsPageProps) {
   const { state, run, prompt, setPrompt, recording, setRecording } = controller;
   return (
     <>
+      {state.accountState?.hosted && <p className="hint">O ditado usa o processamento do Clarify. Os modelos e as instruções abaixo serão usados quando você voltar à sua chave ou aos modelos locais, em Conta Clarify.</p>}
       <Section title="Entrada de áudio">
         <Row title="Microfone">
           <Picker

@@ -1,0 +1,117 @@
+name: iOS TestFlight
+
+on:
+  push:
+    branches: [codex/ios-testflight]
+    paths:
+      - mobile/**
+      - '!mobile/**/*.md'
+      - '!mobile/LICENSE'
+      - '!mobile/.gitignore'
+      - '!mobile/.easignore'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clarify-ios-testflight
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Test, sign and upload iOS
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: mobile
+        shell: bash
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.21.1
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Verify Xcode
+        run: xcodebuild -version
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Check prompts, types, lint and JavaScript contracts
+        run: npm run check
+      - name: Check Expo configuration
+        run: npx --yes expo-doctor
+      - name: Test Swift contracts
+        run: npm run test:native
+      - name: Test keyboard on iPhone simulator
+        env:
+          CLARIFY_NATIVE_TESTS: '1'
+        run: node scripts/test-keyboard-ui.cjs
+      - name: Generate native project
+        run: npx expo prebuild --clean --platform ios --no-install
+      - name: Install CocoaPods dependencies
+        run: pod install --project-directory=ios
+      - name: Install existing Apple signing credentials
+        env:
+          CLARIFY_IOS_CERTIFICATE_BASE64: ${{ secrets.CLARIFY_IOS_CERTIFICATE_BASE64 }}
+          CLARIFY_IOS_CERTIFICATE_PASSWORD: ${{ secrets.CLARIFY_IOS_CERTIFICATE_PASSWORD }}
+          CLARIFY_IOS_PROFILES_GZIP_BASE64: ${{ secrets.CLARIFY_IOS_PROFILES_GZIP_BASE64 }}
+        run: python3 scripts/ios-signing.py install
+      - name: Apply signing to generated app and extension targets
+        run: ruby scripts/ios-signing.rb
+      - name: Archive and export signed IPA
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Clarify.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/ClarifyDerivedData" archive | xcbeautify
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Clarify.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/clarify-signing/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/clarify-export" | xcbeautify
+      - name: Verify signed app and both extensions
+        run: python3 scripts/verify-ios-ipa.py "$RUNNER_TEMP/clarify-export/Clarify.ipa"
+      - name: Upload directly to App Store Connect
+        env:
+          CLARIFY_ASC_KEY_P8: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
+          CLARIFY_ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
+          CLARIFY_ASC_ISSUER_ID: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          key_dir="$RUNNER_TEMP/clarify-upload/private_keys"
+          mkdir -p "$key_dir"
+          chmod 700 "$RUNNER_TEMP/clarify-upload" "$key_dir"
+          printf '%s' "$CLARIFY_ASC_KEY_P8" > "$key_dir/AuthKey_${CLARIFY_ASC_KEY_ID}.p8"
+          chmod 600 "$key_dir/AuthKey_${CLARIFY_ASC_KEY_ID}.p8"
+          API_PRIVATE_KEYS_DIR="$key_dir" xcrun altool --upload-app --type ios \
+            --file "$RUNNER_TEMP/clarify-export/Clarify.ipa" \
+            --apiKey "$CLARIFY_ASC_KEY_ID" --apiIssuer "$CLARIFY_ASC_ISSUER_ID"
+      - name: Preserve verified IPA and checksum
+        if: success()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: clarify-ios-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/clarify-export/Clarify.ipa
+            ${{ runner.temp }}/clarify-export/Clarify.ipa.sha256
+            ${{ runner.temp }}/clarify-export/verification.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve simulator results
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: clarify-keyboard-tests-${{ github.sha }}
+          path: mobile/test-results/keyboard-ui.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Remove temporary signing credentials
+        if: always()
+        run: python3 scripts/ios-signing.py clean

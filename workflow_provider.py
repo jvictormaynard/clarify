@@ -205,10 +205,12 @@ class WorkflowProviderService:
         dictionary_service: DictionarySnippetService,
         *,
         registry: ProviderRegistry | None = None,
+        account=None,
     ) -> None:
         self.config = config
         self.dictionary_service = dictionary_service
         self._registry = registry
+        self.account = account
 
     @property
     def registry(self) -> ProviderRegistry:
@@ -244,6 +246,10 @@ class WorkflowProviderService:
         *,
         selection: FileTranscriptionSelection | None = None,
     ) -> TranscriptionResult:
+        if selection is None and self.account is not None and self.account.hosted:
+            return self.account.transcribe(
+                audio_source, language, self.dictionary_service
+            )
         route = self._route(WorkflowScope.TRANSCRIPTION)
         if selection is not None:
             route = replace(

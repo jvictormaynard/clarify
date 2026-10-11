@@ -5,6 +5,23 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-11
+
+### Added
+
+- Optional Clarify accounts on Windows and iOS. Receive an email code and confirm it inside the app, without a password or browser link.
+- Connect the personal dictionary to the account and sync vocabulary between Windows and iPhone. Concurrent edits preserve both copies for explicit conflict resolution.
+- Optional hosted Groq transcription and rewriting with a shared monthly allowance. Local models and personal API keys remain available; signing in does not enable hosted processing automatically. Hosted availability depends on the service's global beta budget.
+- Open-source iOS client, keyboard extension and self-hostable account service in this repository. iOS 0.3.0 (17) is prepared for internal TestFlight delivery, separately from the Windows release.
+
+### Security
+
+- Keep account sessions in Windows DPAPI or the containing iOS app's Keychain. Apply verified-account checks, request and concurrency limits, bounded audio, idempotency and atomic usage/cost reservations to hosted dictation. Provider credentials remain on the server.
+
+### Changed
+
+- Add the Account page to Windows Settings and account controls to iOS Settings. History and snippets remain local in this release.
+
 ## [0.5.3] - 2026-10-08
 
 ### Changed
@@ -286,7 +303,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/jvictormaynard/clarify/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/jvictormaynard/clarify/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/jvictormaynard/clarify/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/jvictormaynard/clarify/compare/v0.5.0...v0.5.1
