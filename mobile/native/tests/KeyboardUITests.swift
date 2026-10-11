@@ -51,6 +51,7 @@ final class KeyboardUITests: XCTestCase {
       var snapshot = DictationSnapshot(); snapshot.sessionActive = true; snapshot.configured = true
       try store.write(snapshot, to: "state.json")
       let keyboard = SelectionKeyboard(); keyboard.store = store
+      keyboard.overrideUserInterfaceStyle = .dark
       let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
       let host = UIViewController(); window.rootViewController = host; window.makeKeyAndVisible()
       defer { window.isHidden = true }
@@ -68,6 +69,9 @@ final class KeyboardUITests: XCTestCase {
         XCTAssertGreaterThan(action.bounds.width, 150)
         XCTAssertEqual(keyboard.view.bounds.height, 278)
       }
+      keyboard.view.frame.size.width = 393; keyboard.view.layoutIfNeeded()
+      let offered = XCTAttachment(image: UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) })
+      offered.name = "dictionary-selection-offered"; offered.lifetime = .keepAlways; self.add(offered)
       action.sendActions(for: .touchUpInside)
       XCTAssertFalse(action.isEnabled); XCTAssertEqual(action.title(for: .normal), L("Salvo"))
       XCTAssertEqual(store.keyboardAdditions(scope: "guest").map { $0.1.term }, ["João Victor"])
@@ -83,9 +87,11 @@ final class KeyboardUITests: XCTestCase {
       keyboard.view.frame.size.width = 393; keyboard.view.layoutIfNeeded()
       let capture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) })
       capture.name = "dictionary-selection-saved"; capture.lifetime = .keepAlways; self.add(capture)
+      keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
       snapshot.sessionActive = false; try store.write(snapshot, to: "state.json")
-      keyboard.field.selectedText = "Other"; keyboard.viewWillAppear(false)
-      defer { keyboard.viewDidDisappear(false) }
+      keyboard.field.selectedText = "Other"
+      keyboard.beginAppearanceTransition(true, animated: false); keyboard.endAppearanceTransition()
+      defer { keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition() }
       for width in [CGFloat(320), 393] {
         keyboard.view.frame.size.width = width
         for language in ["pt", "en", "es"] {

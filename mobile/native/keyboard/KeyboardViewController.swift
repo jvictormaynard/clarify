@@ -224,7 +224,9 @@ class KeyboardViewController: UIInputViewController {
     ])
     activation = host
     requestSupplementaryLexicon { [weak self] lexicon in
-      self?.typing.protect(lexicon); self?.updateSuggestions()
+      DispatchQueue.main.async { [weak self] in
+        self?.typing.protect(lexicon); self?.updateSuggestions()
+      }
     }
   }
   override func viewDidLayoutSubviews() {
@@ -350,9 +352,12 @@ class KeyboardViewController: UIInputViewController {
   private func updateToolbar(forceDictionaryRefresh: Bool = false) {
     let proxy = textDocumentProxy
     let term = proxy.isSecureTextEntry == true ? nil : KeyboardSelection.term(proxy.selectedText)
-    let selectionChanged = term != selectedTerm || selectedDocument != proxy.documentIdentifier
-    if selectionChanged { dictionaryError = nil }
-    selectedTerm = term; selectedDocument = proxy.documentIdentifier
+    // UIKit has no document identifier while this controller is detached.
+    // Access it only when the host actually supplies a text selection.
+    let document = term == nil ? nil : proxy.documentIdentifier
+    let selectionChanged = term != selectedTerm || selectedDocument != document
+    if selectionChanged { dictionaryError = nil; dictionaryCheckedAt = .distantPast }
+    selectedTerm = term; selectedDocument = document
     let available = !state.phase.busy && !mic.holding && !mic.locked && insert.isHidden
     let showDictionary = term != nil && available
     addToDictionary.isHidden = !showDictionary
