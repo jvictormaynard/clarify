@@ -12,7 +12,7 @@ const timestamp = (value: number) => new Date(value * 1000).toLocaleString(undef
 
 export default function Home() {
   const c = usePalette();
-  const { state, activate, activating, refresh, keyboardEntry, setKeyboardEntry, keyboardToken, setKeyboardToken } = useClarify();
+  const { state, activate, activating, refresh, keyboardEntry, setKeyboardEntry, keyboardToken, setKeyboardToken, accountBusy } = useClarify();
   const params = useLocalSearchParams<{ activate?: string; request?: string; token?: string }>();
   const handled = useRef('');
   useEffect(() => {
@@ -69,7 +69,7 @@ export default function Home() {
         <Card>
           <Text style={[ui.section, { color: c.text, textAlign: 'center' }]}>{activating ? 'Ativando microfone…' : keyboardEntry && state.sessionActive && !busy ? 'Microfone ativado' : labels[state.phase]}</Text>
           <Text style={[ui.body, { color: c.muted, textAlign: 'center' }]}>{state.message ?? (keyboardEntry && state.sessionActive && !busy ? 'Volte ao aplicativo anterior. O teclado Clarify está pronto para gravar.' : state.sessionActive ? 'Segure para falar. Deslize para cima para travar.' : 'Ative o microfone para ditar aqui ou pelo teclado.')}</Text>
-          {state.sessionActive ? <RecordButton /> : <Button disabled={activating} onPress={() => state.configured ? void activate(keyboardToken).catch(report) : router.navigate('/settings')}>{state.configured ? 'Ativar microfone' : 'Configurar chave Groq'}</Button>}
+          {state.sessionActive ? <RecordButton /> : <Button disabled={activating || accountBusy} onPress={() => state.configured ? void activate(keyboardToken).catch(report) : router.navigate('/settings')}>{state.configured ? 'Ativar microfone' : 'Configurar processamento'}</Button>}
         </Card>
         <Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>Histórico</Text>
       </View>}

@@ -27,9 +27,18 @@ export interface HistoryEntry {
 }
 export interface HistoryPage { entries: HistoryEntry[]; nextCursor?: number }
 export interface MicrophoneActivation { active: boolean; message?: string }
+export interface AccountSnapshot {
+  hasGroqKey?: boolean;
+  endpoint: string; signedIn: boolean; email: string; pending: string;
+  hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
+  dictionaryConflict?: boolean;
+  usage: { month?: string; limit_ms?: number; used_ms?: number; reserved_ms?: number; hosted_available?: boolean };
+}
 
 export default requireNativeModule<{
   getSnapshot(): Promise<Snapshot>;
+  getAccount(): Promise<AccountSnapshot>;
+  accountCommand(action: string, value: string): Promise<AccountSnapshot>;
   setKey(key: string): Promise<void>;
   activate(): Promise<MicrophoneActivation>;
   deactivate(): Promise<void>;

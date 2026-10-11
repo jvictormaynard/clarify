@@ -76,6 +76,12 @@ struct HistoryPage: Codable {
   let nextCursor: Int64?
 }
 
+struct CloudDictionary: Codable {
+  var entries: [VocabularyEntry] = []
+  var base: [VocabularyEntry] = []
+  var revision: Int?
+}
+
 // The containing app alone owns this database. The keyboard never reads history.
 // Calls are serialized on the app's main queue; tests use an isolated directory.
 final class LocalLibrary {
@@ -101,14 +107,15 @@ final class LocalLibrary {
       let version = try statement("PRAGMA user_version")
       let schema: Int32
       do { defer { sqlite3_finalize(version) }; guard sqlite3_step(version) == SQLITE_ROW else { throw failure() }; schema = sqlite3_column_int(version, 0) }
-      guard schema <= 1 else { throw ClarifyError("Estes dados exigem uma versão mais recente do Clarify.") }
+      guard schema <= 2 else { throw ClarifyError("Estes dados exigem uma versão mais recente do Clarify.") }
       try execute("PRAGMA journal_mode=WAL")
       try execute("PRAGMA synchronous=FULL")
       try execute("BEGIN IMMEDIATE")
       do {
         try execute("CREATE TABLE IF NOT EXISTS history (sequence INTEGER PRIMARY KEY AUTOINCREMENT, operation_id TEXT NOT NULL UNIQUE, payload BLOB NOT NULL)")
         try execute("CREATE TABLE IF NOT EXISTS vocabulary (id INTEGER PRIMARY KEY CHECK(id=1), payload BLOB NOT NULL)")
-        try execute("PRAGMA user_version=1")
+        try execute("CREATE TABLE IF NOT EXISTS account_vocabulary (account TEXT PRIMARY KEY, payload BLOB NOT NULL)")
+        try execute("PRAGMA user_version=2")
         try execute("COMMIT")
       } catch { try? execute("ROLLBACK"); throw error }
     } catch { sqlite3_close(db); db = nil; throw error }
@@ -131,7 +138,8 @@ final class LocalLibrary {
     guard let bytes = sqlite3_column_blob(value, index) else { throw failure() }
     return Data(bytes: bytes, count: Int(sqlite3_column_bytes(value, index)))
   }
-  func dictionary() throws -> [VocabularyEntry] {
+  func dictionary(scope: String? = nil) throws -> [VocabularyEntry] {
+    if let scope { return try cloudDictionary(scope).entries }
     let value = try statement("SELECT payload FROM vocabulary WHERE id=1"); defer { sqlite3_finalize(value) }
     switch sqlite3_step(value) {
     case SQLITE_DONE: return []
@@ -139,11 +147,44 @@ final class LocalLibrary {
     default: throw failure()
     }
   }
-  func saveDictionary(_ entries: [VocabularyEntry]) throws {
+  func saveDictionary(_ entries: [VocabularyEntry], scope: String? = nil) throws {
     let entries = try VocabularyEntry.validate(entries)
+    if let scope {
+      var snapshot = try cloudDictionary(scope)
+      snapshot.entries = entries
+      try saveCloudDictionary(snapshot, scope: scope)
+      return
+    }
     let value = try statement("INSERT INTO vocabulary(id,payload) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload")
     defer { sqlite3_finalize(value) }
     try bind(JSONEncoder().encode(entries), to: value, at: 1)
+    guard sqlite3_step(value) == SQLITE_DONE else { throw failure() }
+  }
+  func cloudDictionary(_ scope: String) throws -> CloudDictionary {
+    guard UUID(uuidString: scope) != nil else { throw failure() }
+    let value = try statement("SELECT payload FROM account_vocabulary WHERE account=?")
+    defer { sqlite3_finalize(value) }
+    sqlite3_bind_text(value, 1, scope, -1, transient)
+    switch sqlite3_step(value) {
+    case SQLITE_DONE: return CloudDictionary()
+    case SQLITE_ROW: return try JSONDecoder().decode(CloudDictionary.self, from: data(value, at: 0))
+    default: throw failure()
+    }
+  }
+  func saveCloudDictionary(_ snapshot: CloudDictionary, scope: String) throws {
+    guard UUID(uuidString: scope) != nil else { throw failure() }
+    _ = try VocabularyEntry.validate(snapshot.entries)
+    _ = try VocabularyEntry.validate(snapshot.base)
+    let value = try statement("INSERT INTO account_vocabulary(account,payload) VALUES(?,?) ON CONFLICT(account) DO UPDATE SET payload=excluded.payload")
+    defer { sqlite3_finalize(value) }
+    sqlite3_bind_text(value, 1, scope, -1, transient)
+    try bind(JSONEncoder().encode(snapshot), to: value, at: 2)
+    guard sqlite3_step(value) == SQLITE_DONE else { throw failure() }
+  }
+  func deleteCloudDictionary(_ scope: String) throws {
+    let value = try statement("DELETE FROM account_vocabulary WHERE account=?")
+    defer { sqlite3_finalize(value) }
+    sqlite3_bind_text(value, 1, scope, -1, transient)
     guard sqlite3_step(value) == SQLITE_DONE else { throw failure() }
   }
   func record(_ entry: HistoryEntry) throws {

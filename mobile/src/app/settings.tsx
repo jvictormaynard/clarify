@@ -4,30 +4,32 @@ import { Alert, Linking, ScrollView, Text, TextInput } from 'react-native';
 import Core from '../../modules/clarify-core';
 import { Button, Card, Title, ui, usePalette } from '../components/ui';
 import { isBusy, report, useClarify } from '../state/clarify';
+import { AccountCard } from '../components/account-card';
 
 export default function Settings() {
   const c = usePalette();
-  const { state, refresh, activate, activating, keyboardEntry, keyboardToken } = useClarify();
+  const { state, refresh, refreshAccount, activate, activating, keyboardEntry, keyboardToken, accountBusy, account } = useClarify();
   const [key, setKey] = useState('');
   const [saving, setSaving] = useState(false);
-  const busy = isBusy(state);
+  const busy = isBusy(state) || accountBusy || !!account?.busy;
   async function saveKey(value: string) {
     setSaving(true);
     try {
-      await Core.setKey(value); await refresh(); setKey('');
+      await Core.setKey(value); await refresh(); await refreshAccount(); setKey('');
       if (keyboardEntry && value.trim()) { router.navigate('/'); await activate(keyboardToken); }
     } catch (error) { report(error); }
     finally { setSaving(false); }
   }
   return <ScrollView style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={ui.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
     <Title>Ajustes</Title>
+    <AccountCard />
     <Card>
-      <Text style={[ui.section, { color: c.text }]}>Chave Groq</Text>
+      <Text style={[ui.section, { color: c.text }]}>Sua chave Groq</Text>
       <TextInput value={key} onChangeText={setKey} editable={!busy && !saving} secureTextEntry autoCapitalize="none" autoCorrect={false} accessibilityLabel="Chave de API do Groq"
-        placeholder={state.configured ? 'Digite outra chave para substituir' : 'gsk_…'} placeholderTextColor={c.muted} style={[ui.input, { color: c.text, borderColor: c.line }]} />
+        placeholder={account?.hasGroqKey ? 'Digite outra chave para substituir' : 'gsk_…'} placeholderTextColor={c.muted} style={[ui.input, { color: c.text, borderColor: c.line }]} />
       <Text style={[ui.small, { color: c.muted }]}>Sua chave fica no Keychain deste iPhone. O áudio, o texto e as palavras ativas do dicionário são enviados diretamente ao Groq para transcrição e reescrita. Ao salvar, você autoriza esse processamento.</Text>
       <Button disabled={saving || busy || !key.trim()} onPress={() => void saveKey(key)}>{saving ? 'Salvando…' : 'Salvar chave'}</Button>
-      {state.configured && <Button disabled={saving || busy} destructive onPress={() => Alert.alert('Remover chave?', 'O microfone será desativado.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Remover', style: 'destructive', onPress: () => void saveKey('') }])}>Remover chave</Button>}
+      {account?.hasGroqKey && <Button disabled={saving || busy} destructive onPress={() => Alert.alert('Remover chave?', 'O processamento com chave própria ficará indisponível.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Remover', style: 'destructive', onPress: () => void saveKey('') }])}>Remover chave</Button>}
     </Card>
     <Card>
       <Text style={[ui.section, { color: c.text }]}>Microfone</Text>
@@ -42,7 +44,7 @@ export default function Settings() {
     </Card>
     <Card>
       <Text style={[ui.section, { color: c.text }]}>Dados neste iPhone</Text>
-      <Text style={[ui.small, { color: c.muted }]}>O histórico guarda a transcrição original e o texto revisado. Os áudios são removidos após o processamento. Não há conta Clarify, sincronização ou servidor próprio.</Text>
+      <Text style={[ui.small, { color: c.muted }]}>O histórico guarda a transcrição original e o texto revisado neste iPhone. Ele não é sincronizado com a conta. Os áudios são removidos após o processamento. Sua chave Groq não é enviada ao servidor Clarify.</Text>
       <Button disabled={busy} destructive onPress={() => Alert.alert('Apagar todo o histórico?', 'Esta ação remove todos os textos salvos neste iPhone. Seu dicionário e sua chave serão mantidos.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Apagar', style: 'destructive', onPress: () => void Core.clearHistory().then(refresh).catch(report) }])}>Apagar histórico</Button>
     </Card>
   </ScrollView>;

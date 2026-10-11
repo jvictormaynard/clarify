@@ -518,6 +518,13 @@ def main(argv: list[str] | None = None) -> int:
         microphone_backend=runtime.recording_audio.recorder,
         hotkey_applier=apply_qml_hotkeys,
         dictionary_service=getattr(runtime, "dictionary_service", None),
+        account_service=getattr(runtime, "account", None),
+        account_can_change=lambda: (
+            workflow_service.state.phase.value
+            in {"ready", "completed", "failed", "cancelled", "microphone_unavailable"}
+            and not voice_translation.active
+            and not audio_batch.running
+        ),
     )
 
     def can_restart_for_update() -> bool:

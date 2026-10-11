@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, AppState } from 'react-native';
-import Core, { type Snapshot } from '../../modules/clarify-core';
+import Core, { type Snapshot, type AccountSnapshot } from '../../modules/clarify-core';
 import { activateMicrophone } from './activation';
 
 const idle: Snapshot = { sessionActive: false, heartbeat: 0, phase: 'idle', configured: false };
@@ -11,6 +11,14 @@ export function report(error: unknown) {
 
 function useClarifyState() {
   const [state, setState] = useState(idle);
+  const [account, setAccount] = useState<AccountSnapshot>();
+  const [accountBusy, setAccountBusy] = useState(false);
+  const refreshAccount = useCallback(async () => { const value = await Core.getAccount(); setAccount(value); return value; }, []);
+  const accountCommand = useCallback(async (action: string, value = '') => {
+    setAccountBusy(true);
+    try { setAccount(await Core.accountCommand(action, value)); }
+    finally { setAccountBusy(false); await refreshAccount(); }
+  }, [refreshAccount]);
   const [activating, setActivating] = useState(false);
   const [keyboardEntry, setKeyboardEntry] = useState(false);
   const [keyboardToken, setKeyboardToken] = useState<string | undefined>();
@@ -37,6 +45,11 @@ function useClarifyState() {
     return request.current;
   }, [refresh]);
   useEffect(() => {
+    let active = true;
+    void Core.getAccount().then(value => { if (active) setAccount(value); }).catch(report);
+    return () => { active = false; };
+  }, [state.libraryRevision]);
+  useEffect(() => {
     mounted.current = true;
     let pending = false;
     let reported = false;
@@ -55,7 +68,8 @@ function useClarifyState() {
     });
     return () => { mounted.current = false; clearInterval(timer); listener.remove(); };
   }, [refresh]);
-  return { state, refresh, activate, activating, keyboardEntry, setKeyboardEntry, keyboardToken, setKeyboardToken };
+  return { state, refresh, activate, activating, keyboardEntry, setKeyboardEntry, keyboardToken, setKeyboardToken,
+    account, accountBusy, refreshAccount, accountCommand };
 }
 const Context = createContext<ReturnType<typeof useClarifyState> | null>(null);
 export function ClarifyProvider({ children }: { children: ReactNode }) {

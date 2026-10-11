@@ -1,6 +1,7 @@
 """Copy the canonical desktop dictation rules without importing its runtime."""
 
 import ast
+import json
 import pathlib
 import sys
 import textwrap
@@ -8,6 +9,7 @@ import textwrap
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "workflow_provider.py"
 OUTPUT = ROOT / "mobile/modules/clarify-core/ios/RewritePrompt.swift"
+SERVER_OUTPUT = ROOT / "shared/dictation_prompt.json"
 names = {
     "FAITHFUL_REWRITE_INSTRUCTION",
     "TRANSFORMATION_BOUNDARY_INSTRUCTION",
@@ -56,5 +58,16 @@ if "--check" in sys.argv:
         raise SystemExit(
             "Mobile dictation prompt is out of sync. Run python3 scripts/sync-prompts.py"
         )
+    if json.loads(SERVER_OUTPUT.read_text(encoding="utf-8")) != {
+        "version": 1,
+        "system": prompt,
+    }:
+        raise SystemExit("Server dictation prompt is out of sync")
 else:
     OUTPUT.write_text(generated, encoding="utf-8")
+    SERVER_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    SERVER_OUTPUT.write_text(
+        json.dumps({"version": 1, "system": prompt}, ensure_ascii=False, indent=2)
+        + "\n",
+        encoding="utf-8",
+    )

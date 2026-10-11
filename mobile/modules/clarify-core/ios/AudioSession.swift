@@ -37,7 +37,7 @@ final class ClarifyAudioSession: NSObject {
       }
     }
     store = SharedState()
-    state.configured = KeyStore.read() != nil
+    state.configured = CloudAccount.shared.configured
     publish()
     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
       Unmanaged.passUnretained(self).toOpaque(), { _, observer, _, _, _ in
@@ -54,19 +54,19 @@ final class ClarifyAudioSession: NSObject {
   }
   func publish() {
     state.heartbeat = Date().timeIntervalSince1970
-    state.configured = KeyStore.read() != nil
+    state.configured = CloudAccount.shared.configured
     try? store?.write(state, to: "state.json")
     liveActivity.update(state)
   }
   func saveKey(_ key: String) throws {
     guard !state.phase.busy else { throw ClarifyError("Finalize a gravação antes de alterar a chave.") }
     try KeyStore.save(key)
-    if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { deactivate() }
+    if !CloudAccount.shared.configured { deactivate() }
     publish()
   }
   func activate() throws {
     guard store != nil else { throw ClarifyError("Não foi possível acessar os dados do teclado.") }
-    guard KeyStore.read() != nil else { throw ClarifyError("Configure sua chave Groq primeiro.") }
+    guard CloudAccount.shared.configured else { throw ClarifyError("Entre na conta Clarify ou configure sua chave Groq primeiro.") }
     if engine.isRunning { lastActivity = Date(); publish(); return }
     let session = AVAudioSession.sharedInstance()
     do {
@@ -168,7 +168,8 @@ final class ClarifyAudioSession: NSObject {
     }
   }
   private func start(id: String, locked: Bool, haptics: Bool) throws {
-    clipVocabulary = try library().dictionary()
+    guard !CloudAccount.shared.isBusy else { throw ClarifyError("Aguarde a operação da conta.") }
+    clipVocabulary = try library().dictionary(scope: CloudAccount.shared.scope)
     let format = engine.inputNode.outputFormat(forBus: 0)
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("clarify-\(UUID().uuidString).m4a")
     let newFile = try AVAudioFile(forWriting: url, settings: [
@@ -209,7 +210,9 @@ final class ClarifyAudioSession: NSObject {
       try? FileManager.default.removeItem(at: url)
       fail("Segure o botão e fale por mais tempo."); return
     }
-    guard let key = KeyStore.read() else {
+    let hosted = CloudAccount.shared.hosted
+    let key = KeyStore.read()
+    guard hosted || key != nil else {
       try? FileManager.default.removeItem(at: url)
       fail("Configure sua chave Groq."); return
     }
@@ -224,20 +227,30 @@ final class ClarifyAudioSession: NSObject {
         try? FileManager.default.removeItem(at: url)
         self.endBackgroundTask(backgroundID)
       }
-      let client = GroqClient(key: key, vocabulary: vocabulary)
       do {
-        let transcript = try await client.transcribe(url)
-        guard !Task.isCancelled, self.state.operationID == id else { return }
-        self.state.text = transcript
-        self.state.phase = .rewriting; self.publish()
-        do {
-          let text = try await client.rewrite(transcript)
+        let transcript: String
+        if hosted {
+          let outcome = try await CloudAccount.shared.dictate(url, operationID: id, library: self.library())
           guard !Task.isCancelled, self.state.operationID == id else { return }
-          self.state.text = text; self.state.phase = .ready
-        } catch {
+          transcript = outcome.transcript
+          self.state.text = outcome.text
+          self.state.phase = outcome.rewritten ? .ready : .error
+          if !outcome.rewritten { self.state.message = "A reescrita falhou. Você pode inserir a transcrição original." }
+        } else {
+          let client = GroqClient(key: key!, vocabulary: vocabulary)
+          transcript = try await client.transcribe(url)
           guard !Task.isCancelled, self.state.operationID == id else { return }
-          self.state.phase = .error
-          self.state.message = "A reescrita falhou. Você pode inserir a transcrição original."
+          self.state.text = transcript
+          self.state.phase = .rewriting; self.publish()
+          do {
+            let text = try await client.rewrite(transcript)
+            guard !Task.isCancelled, self.state.operationID == id else { return }
+            self.state.text = text; self.state.phase = .ready
+          } catch {
+            guard !Task.isCancelled, self.state.operationID == id else { return }
+            self.state.phase = .error
+            self.state.message = "A reescrita falhou. Você pode inserir a transcrição original."
+          }
         }
         // Save only the terminal result of this still-current operation. The
         // original remains available when rewriting fails; audio is never kept.

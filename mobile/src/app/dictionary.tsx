@@ -10,20 +10,20 @@ const empty = (): VocabularyEntry => ({ term: '', pronunciation: '', aliases: []
 export default function Dictionary() {
   const c = usePalette();
   const focused = useIsFocused();
-  const { state, refresh } = useClarify();
+  const { state, refresh, account, accountBusy } = useClarify();
   const [entries, setEntries] = useState<VocabularyEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<{ index: number; value: VocabularyEntry } | null>(null);
   const [aliases, setAliases] = useState('');
   const [saving, setSaving] = useState(false);
-  const busy = isBusy(state) || saving;
+  const busy = isBusy(state) || saving || accountBusy || !!account?.busy;
   useEffect(() => {
     if (!focused) return;
     let active = true;
     void Core.getDictionary().then((values) => { if (active) { setEntries(values); setLoaded(true); } }).catch(report);
     return () => { active = false; };
-  }, [focused, state.libraryRevision]);
+  }, [focused, state.libraryRevision, account?.signedIn, account?.syncEnabled]);
   const edit = (index = -1) => { const value = index < 0 ? empty() : { ...entries[index] }; setAliases(value.aliases.join(', ')); setEditing({ index, value }); };
   async function save(values: VocabularyEntry[]) {
     setSaving(true);
@@ -45,6 +45,8 @@ export default function Dictionary() {
       keyExtractor={({ index }) => String(index)}
       ListHeaderComponent={<View style={{ gap: 16, marginBottom: 16 }}>
         <Title subtitle="Adicione nomes e termos que o Clarify deve reconhecer.">Dicionário</Title>
+        {account?.syncEnabled && <Text style={[ui.small, { color: c.muted }]}>Dicionário da conta {account.email}. As alterações são sincronizadas ao salvar.</Text>}
+        {account?.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.text }]}>{account.error}</Text>}
         <TextInput accessibilityLabel="Buscar no dicionário" value={search} onChangeText={setSearch} placeholder="Buscar palavra" placeholderTextColor={c.muted} style={[ui.input, { color: c.text, backgroundColor: c.card, borderColor: c.line }]} />
         <Button disabled={busy || !loaded || entries.length >= 512} onPress={() => edit()}>Adicionar palavra</Button>
       </View>}
