@@ -73,7 +73,7 @@ final class ContractsTests: XCTestCase {
   func testAuthenticationErrorDoesNotLeakProviderResponse() async {
     MockProtocol.handle = { _ in (401, Data("private provider detail".utf8)) }
     do { _ = try await client().rewrite("text"); XCTFail("Unauthorized request succeeded") }
-    catch { XCTAssertEqual(error.localizedDescription, "Verifique a chave e as permissões do Groq.") }
+    catch { XCTAssertEqual(error.localizedDescription, L("Verifique a chave e as permissões do Groq.")) }
   }
   func testTranscriptionUploadsM4AWithTheSameGroqKey() async throws {
     let audio = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")

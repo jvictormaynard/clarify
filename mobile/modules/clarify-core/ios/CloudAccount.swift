@@ -229,7 +229,7 @@ final class CloudAccount {
     try locked { state.sync = true; dictionaryConflict = false; syncError = ""; try persist() }
   }
   func syncAfterSave(_ library: LocalLibrary) async {
-    do { try await command("sync", value: "", library: library) }
+    do { _ = try await command("sync", value: "", library: library) }
     catch { locked { syncError = L("As palavras foram salvas neste iPhone. A sincronização será tentada novamente ao abrir o aplicativo.") } }
   }
   func prepareLibrary(_ library: LocalLibrary) throws {
