@@ -374,7 +374,7 @@ class KeyboardViewController: UIInputViewController {
       addToDictionary.isEnabled = !saved && hasFullAccess && dictionaryContext != nil
       addToDictionary.backgroundColor = .label
       addToDictionary.setTitleColor(.systemBackground, for: .normal)
-      addToDictionary.setTitleColor(.systemBackground.withAlphaComponent(0.55), for: .disabled)
+      addToDictionary.setTitleColor(.systemBackground, for: .disabled)
       let title = saved ? L("Salvo") : dictionaryError == nil ? L("Adicionar ao dicionário") : L("Tentar novamente")
       addToDictionary.setTitle(title, for: .normal)
       addToDictionary.setImage(UIImage(systemName: saved ? "checkmark" : "plus"), for: .normal)

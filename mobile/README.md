@@ -13,7 +13,7 @@ An unfinished setup resumes on the next launch. Existing accounts and keys
 skip first-run setup after an upgrade. A setup preference contains no credentials.
 Billing, translation and local models are outside this mobile release.
 
-Version 0.6.0 (21) adds a dictionary action to the keyboard toolbar when one or
+Version 0.6.0 (22) adds a dictionary action to the keyboard toolbar when one or
 two words are selected. Tap **Adicionar ao dicionário** to save without changing
 the selected text. The button changes to **Salvo** and is disabled for an enabled
 term or a durable pending addition. Labels follow Portuguese, English or Spanish.
@@ -49,7 +49,7 @@ Previous verified TestFlight delivery: **0.5.0 (20)**, available to `Clarify Int
 on 2026-10-11. [Direct delivery run 38122247572](https://github.com/jvictormaynard/clarify/actions/runs/38122247572)
 passed native validation, signed archive checks and direct Apple upload.
 Apple processing is `VALID` and the internal state is `IN_BETA_TESTING`.
-For **0.6.0 (21)**, follow [direct delivery run 38164503475](https://github.com/jvictormaynard/clarify/actions/runs/38164503475).
+For **0.6.0 (22)**, follow the [direct delivery workflow](https://github.com/jvictormaynard/clarify/actions/workflows/ios-testflight.yml).
 The final Apple processing and internal-group availability are recorded in
 [delivery PR 144](https://github.com/jvictormaynard/clarify/pull/144) after upload.
 
