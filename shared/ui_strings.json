@@ -25,14 +25,14 @@
     "es": "Si no has solicitado este código, ignora este correo."
   },
   "email_existing": {
-    "pt": "Você já tem uma conta Clarify. No aplicativo, selecione Entrar e informe seu e-mail para receber um código.",
-    "en": "You already have a Clarify account. In the app, select Sign in and enter your email to receive a code.",
-    "es": "Ya tienes una cuenta Clarify. En la aplicación, selecciona Entrar e introduce tu correo para recibir un código."
+    "pt": "Você já tem uma conta Clarify. No aplicativo, informe seu e-mail para receber um código de acesso.",
+    "en": "You already have a Clarify account. In the app, enter your email to receive an access code.",
+    "es": "Ya tienes una cuenta Clarify. En la aplicación, introduce tu correo para recibir un código de acceso."
   },
   "email_unknown": {
-    "pt": "No aplicativo Clarify, selecione Criar conta e informe seu e-mail para receber um código.",
-    "en": "In the Clarify app, select Create account and enter your email to receive a code.",
-    "es": "En la aplicación Clarify, selecciona Crear cuenta e introduce tu correo para recibir un código."
+    "pt": "No aplicativo Clarify, informe seu e-mail para entrar ou criar uma conta com um código de acesso.",
+    "en": "In the Clarify app, enter your email to sign in or create an account with an access code.",
+    "es": "En la aplicación Clarify, introduce tu correo para entrar o crear una cuenta con un código de acceso."
   },
   "A chave fica no armazenamento seguro deste computador. Áudio, texto e palavras ativas do dicionário são enviados ao serviço escolhido por você. Ao continuar, você autoriza esse processamento.": {
     "pt": "A chave fica no armazenamento seguro deste computador. Áudio, texto e palavras ativas do dicionário são enviados ao serviço escolhido por você. Ao continuar, você autoriza esse processamento.",
@@ -3870,9 +3870,9 @@
     "es": "No se detectó entrada. Comprueba el micrófono o elige otra entrada."
   },
   "Input test failed": {
-    "pt": "O teste de entrada falhou",
+    "pt": "O teste do microfone falhou",
     "en": "Input test failed",
-    "es": "La prueba de entrada falló"
+    "es": "Falló la prueba del micrófono"
   },
   "Provider validation failed": {
     "pt": "A validação do provedor falhou",
@@ -4053,5 +4053,95 @@
     "pt": "Restaurar {name}",
     "en": "Restore {name}",
     "es": "Restaurar {name}"
+  },
+  "Refinement returned no text": {
+    "pt": "A reescrita não retornou texto",
+    "en": "Refinement returned no text",
+    "es": "La reescritura no devolvió texto"
+  },
+  "Refinement removed most of the transcript": {
+    "pt": "A reescrita removeu a maior parte da transcrição",
+    "en": "Refinement removed most of the transcript",
+    "es": "La reescritura eliminó la mayor parte de la transcripción"
+  },
+  "No text selected": {
+    "pt": "Nenhum texto selecionado",
+    "en": "No text selected",
+    "es": "No hay texto seleccionado"
+  },
+  "Provider returned an empty rewrite": {
+    "pt": "O serviço retornou uma reescrita vazia",
+    "en": "Provider returned an empty rewrite",
+    "es": "El servicio devolvió una reescritura vacía"
+  },
+  "Translation target language is required": {
+    "pt": "Selecione o idioma de destino da tradução",
+    "en": "Translation target language is required",
+    "es": "Selecciona el idioma de destino de la traducción"
+  },
+  "Provider returned an empty translation": {
+    "pt": "O serviço retornou uma tradução vazia",
+    "en": "Provider returned an empty translation",
+    "es": "El servicio devolvió una traducción vacía"
+  },
+  "Transcription connection failed": {
+    "pt": "A conexão de transcrição falhou",
+    "en": "Transcription connection failed",
+    "es": "Falló la conexión de transcripción"
+  },
+  "Recording session was not created": {
+    "pt": "A sessão de gravação não foi criada",
+    "en": "Recording session was not created",
+    "es": "No se creó la sesión de grabación"
+  },
+  "Translation selection was not captured": {
+    "pt": "Não foi possível capturar o texto para traduzir",
+    "en": "Translation selection was not captured",
+    "es": "No se pudo capturar el texto para traducir"
+  },
+  "Transcription returned no text": {
+    "pt": "A transcrição não retornou texto",
+    "en": "Transcription returned no text",
+    "es": "La transcripción no devolvió texto"
+  },
+  "Transcription transport failed": {
+    "pt": "O envio para transcrição falhou",
+    "en": "Transcription transport failed",
+    "es": "Falló el envío para transcribir"
+  },
+  "Local ASR installation requires the published Windows x64 runtime; no download was started on this host.": {
+    "pt": "A instalação do modelo local exige o aplicativo publicado para Windows x64. Nenhum download foi iniciado neste dispositivo.",
+    "en": "Local ASR installation requires the published Windows x64 runtime; no download was started on this host.",
+    "es": "La instalación del modelo local requiere la aplicación publicada para Windows x64. No se inició ninguna descarga en este dispositivo."
+  },
+  "Checking the installed local-ASR assets…": {
+    "pt": "Verificando os arquivos do modelo local…",
+    "en": "Checking the installed local-ASR assets…",
+    "es": "Comprobando los archivos del modelo local…"
+  },
+  "A local-ASR asset operation is already running": {
+    "pt": "Uma operação do modelo local já está em andamento",
+    "en": "A local-ASR asset operation is already running",
+    "es": "Ya hay una operación del modelo local en curso"
+  },
+  "Preparing the verified local-ASR asset operation": {
+    "pt": "Preparando a operação dos arquivos verificados do modelo local",
+    "en": "Preparing the verified local-ASR asset operation",
+    "es": "Preparando la operación de los archivos verificados del modelo local"
+  },
+  "Local ASR removal was cancelled": {
+    "pt": "A remoção do modelo local foi cancelada",
+    "en": "Local ASR removal was cancelled",
+    "es": "Se canceló la eliminación del modelo local"
+  },
+  "Local-ASR assets were removed.": {
+    "pt": "Os arquivos do modelo local foram removidos.",
+    "en": "Local-ASR assets were removed.",
+    "es": "Se eliminaron los archivos del modelo local."
+  },
+  "A opção de atualização deve ser um booleano.": {
+    "pt": "A opção de atualização deve estar ativada ou desativada.",
+    "en": "A opção de atualização deve ser um booleano.",
+    "es": "La opción de actualización debe estar activada o desactivada."
   }
 }
