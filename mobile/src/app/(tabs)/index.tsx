@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Core, { type HistoryEntry, type Snapshot } from '../../modules/clarify-core';
-import { Button, Card, Title, ui, usePalette } from '../components/ui';
-import { RecordButton } from '../components/record-button';
-import { isBusy, report, useClarify } from '../state/clarify';
+import Core, { type HistoryEntry, type Snapshot } from '../../../modules/clarify-core';
+import { Button, Card, Title, ui, usePalette } from '../../components/ui';
+import { RecordButton } from '../../components/record-button';
+import { isBusy, report, useClarify } from '../../state/clarify';
 
 const labels: Record<Snapshot['phase'], string> = { idle: 'Sua voz, com clareza.', recording: 'Ouvindo…', locked: 'Gravação travada', transcribing: 'Transcrevendo…', rewriting: 'Reescrevendo…', ready: 'Texto pronto', error: 'Verifique o ditado' };
 const timestamp = (value: number) => new Date(value * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });

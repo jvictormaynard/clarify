@@ -10,9 +10,10 @@ Notable user-facing changes are documented here. This project follows
 ### Added
 
 - Optional Clarify accounts on Windows and iOS. Receive an email code and confirm it inside the app, without a password or browser link.
+- Show first-run setup before the main interface on both platforms: sign in, create an account or use a personal Groq key. Windows also offers local models. Preserve existing profiles and resume unfinished setup.
 - Connect the personal dictionary to the account and sync vocabulary between Windows and iPhone. Concurrent edits preserve both copies for explicit conflict resolution.
 - Optional hosted Groq transcription and rewriting with a shared monthly allowance. Local models and personal API keys remain available; signing in does not enable hosted processing automatically. Hosted availability depends on the service's global beta budget.
-- Open-source iOS client, keyboard extension and self-hostable account service in this repository. iOS 0.3.0 (17) is prepared for internal TestFlight delivery, separately from the Windows release.
+- Open-source iOS client, keyboard extension and self-hostable account service in this repository. iOS 0.4.0 (18) adds first-run setup for internal TestFlight delivery, separately from the Windows release.
 
 ### Security
 

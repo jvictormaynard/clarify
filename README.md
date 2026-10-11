@@ -46,9 +46,11 @@ translate selected text without opening a separate editor.
 
 ## Features
 
-Version 0.6.0 adds optional shared accounts and vocabulary sync. Enter the emailed
-code inside Settings, then explicitly connect the dictionary or enable hosted
-dictation. History and snippets stay local. The [iOS client](mobile/README.md)
+Version 0.6.0 adds optional shared accounts and vocabulary sync. On first launch,
+choose sign in, create an account, a personal Groq key or a local model. Confirm
+the emailed code inside the app and explicitly enable hosted processing.
+Existing profiles retain their setup; account controls remain in Settings.
+Connect the dictionary there to sync vocabulary. History and snippets stay local. The [iOS client](mobile/README.md)
 is delivered through TestFlight. The [account service](server/README.md) can also
 be self-hosted. Production keys and user data are never public.
 
@@ -124,10 +126,13 @@ do not need Python, Node.js, or SoX.
 1. Open the [latest release](https://github.com/jvictormaynard/clarify/releases/latest).
 2. Download `Clarify.exe` and place it in a folder you control.
 3. Double-click the executable.
-4. Open **Settings → Modelos e serviços** (Models and services) and choose one explicit onboarding path:
-   - **Cloud setup (credential required):** select Gemini, OpenAI, Groq, or a
-     compatible custom endpoint, then add and validate an API key.
-   - **Local Whisper setup (keyless):** select **Local Whisper**, review its
+4. The first-run page opens automatically. Choose **Entrar**, **Criar conta**,
+   **Usar minha chave de API**, or **Usar modelo local**.
+   - **Clarify account:** confirm your email code inside the app, read the
+     processing notice and enable hosted dictation. No provider key is needed.
+   - **Personal key:** save your Groq key. Other providers remain available
+     under **Settings → Modelos e serviços** (Models and services).
+   - **Local Whisper setup (keyless):** continue to model setup, review its
      requirements, and use the model installation action. No API key is required for
      local transcription. Prompt-mode cloud refinement remains optional; enable
      **Allow cloud refinement** only when desired. The Windows/offline

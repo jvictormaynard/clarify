@@ -23,6 +23,14 @@ settings. A PostgreSQL lock serializes quota reservations and cost settlement.
 `shared/dictation_prompt.json` is generated from the canonical desktop prompt.
 See [server operations and release gates](../server/README.md).
 
+First-run setup precedes desktop Settings and the iOS native tabs. Desktop startup
+opens Settings for an unfinished setup; `AppConfig.onboarding_completed` is saved
+through the existing config transaction. Legacy profiles retain their choices.
+The iOS app uses an app-only onboarding preference and protected Router screens;
+existing keys/accounts migrate once before the new setup can save credentials.
+Setup does not acquire the microphone or send an email without a user action.
+Account authentication forms are shared with the respective Settings pages.
+
 ## Runtime flow
 
 ```text

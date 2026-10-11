@@ -652,6 +652,8 @@ def main(argv: list[str] | None = None) -> int:
 
     QTimer.singleShot(0, lambda: acknowledge_portable_update(__version__))
     updates.start()
+    if settings.onboardingRequired:
+        QTimer.singleShot(0, bridge.openSettings)
     return app.exec()
 
 

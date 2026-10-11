@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { Button, Field, Row, Section, Toggle } from "../components/ui";
 import type { SettingsPageProps } from "../settings/use-settings";
+import { AccountSignIn } from "../components/account-sign-in";
 
 export function AccountPage({ controller }: SettingsPageProps) {
   const { state, run, dirty } = controller;
   const account = state.accountState;
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
   const [server, setServer] = useState(account?.endpoint || "");
   const [deleting, setDeleting] = useState(false);
   const command = (action: string, value = "") => void run("accountCommand", action, value);
@@ -20,16 +19,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
     <fieldset disabled={account.busy || dirty}>
       {!account.signedIn ? <Section title="Entrar ou criar conta">
         {!account.endpoint && <p className="hint">O serviço ainda não está configurado nesta versão. Os modos locais e com chave própria continuam disponíveis.</p>}
-        <Field title="E-mail" type="email" value={email} autoComplete="email" onChange={e => setEmail(e.target.value)} />
-        <Row title="Receber um código por e-mail" hint="Você não precisa criar uma senha.">
-          <Button disabled={!email.trim() || !account.endpoint} onClick={() => command("login", email)}>Entrar</Button>
-          <Button disabled={!email.trim() || !account.endpoint} onClick={() => command("signup", email)}>Criar conta</Button>
-        </Row>
-        {account.pending && <>
-          <Field title="Código recebido por e-mail" value={code} inputMode="numeric" autoComplete="one-time-code" maxLength={16} onChange={e => setCode(e.target.value)} />
-          <Button disabled={!code.trim()} onClick={() => { command("confirm", code); setCode(""); }}>Confirmar código</Button>
-          <Button onClick={() => command("logout")}>Cancelar entrada</Button>
-        </>}
+        <AccountSignIn account={account} command={command} />
         <details><summary>Servidor próprio</summary>
           <Field title="Endereço do servidor" value={server} placeholder="https://…" onChange={e => setServer(e.target.value)} />
           <Button onClick={() => command("configure", server)}>Salvar servidor</Button>

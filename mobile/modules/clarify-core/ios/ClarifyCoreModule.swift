@@ -5,6 +5,16 @@ import UIKit
 public class ClarifyCoreModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ClarifyCore")
+    AsyncFunction("onboardingRequired") { () -> Bool in
+      let account = CloudAccount.shared.snapshot()
+      return Onboarding().required(existingSetup: account["signedIn"] as? Bool == true || KeyStore.read() != nil)
+    }.runOnQueue(.main)
+    AsyncFunction("completeOnboarding") { (mode: String) in
+      let account = CloudAccount.shared.snapshot()
+      let ready = mode == "account" ? CloudAccount.shared.hosted && CloudAccount.shared.configured
+        : mode == "byok" && KeyStore.read() != nil && (account["hosted"] as? Bool != true)
+      try Onboarding().complete(configured: ready)
+    }.runOnQueue(.main)
     AsyncFunction("getSnapshot") { () -> [String: Any] in
       let state = ClarifyAudioSession.shared.state
       let data = try JSONEncoder().encode(state)

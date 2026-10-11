@@ -4,6 +4,7 @@ import { Titlebar } from "./components/titlebar";
 import { Button } from "./components/ui";
 import { GeneralPage } from "./pages/general-page";
 import { AccountPage } from "./pages/account-page";
+import { OnboardingPage } from "./pages/onboarding-page";
 import { DictationPage } from "./pages/dictation-page";
 import { TextPage } from "./pages/text-page";
 import { DictionaryPage } from "./pages/dictionary-page";
@@ -39,7 +40,7 @@ export function App() {
         onClose={() => controller.setClosing(true)}
         onError={controller.setError}
       />
-      <div className="app" data-navigating={navigating || undefined}>
+      {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} /> : <div className="app" data-navigating={navigating || undefined}>
         <aside>
           <nav aria-label="Configurações">
             {settingsPages.map(({ id, label, icon: Icon }) => (
@@ -111,7 +112,7 @@ export function App() {
           </span>
         </main>
         <SettingsDialogs controller={controller} />
-      </div>
+      </div>}
     </div>
   );
 }

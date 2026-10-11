@@ -1903,6 +1903,83 @@ class QmlSettingsController(QObject):
             "error": self._account_error,
         }
 
+    @Property(bool, notify=configChanged)
+    def onboardingRequired(self):
+        return not self._config.onboarding_completed
+
+    @Slot(str, str, result=bool)
+    def completeOnboarding(self, mode, key=""):
+        """Commit the first-run choice through the existing config transaction."""
+        if (
+            self._account_busy
+            or not self._account_can_change()
+            or self.dirty
+            or self.providerDirty
+        ):
+            self._set_error(ValueError("Finalize a operação antes de continuar."))
+            return False
+        try:
+            config = self._config_repository.load()
+            if config.onboarding_completed:
+                return True
+            if mode == "account":
+                account = self._account.snapshot()
+                if not account.get("signedIn") or not account.get("hosted"):
+                    raise ValueError(
+                        "Confirme sua conta e ative o processamento do Clarify."
+                    )
+            elif mode in {"byok", "local"}:
+                if self._account.snapshot().get("hosted"):
+                    raise ValueError(
+                        "Desative o processamento da conta antes de usar esta opção."
+                    )
+                if mode == "byok":
+                    key = str(key).strip()
+                    if not key.startswith("gsk_") or any(c.isspace() for c in key):
+                        raise ValueError("Informe uma chave válida do Groq.")
+                    config = replace(config, groq=replace(config.groq, api_key=key))
+                provider = "groq" if mode == "byok" else "local_asr"
+                provider_config = getattr(config, provider)
+                routes = config.workflows.with_route(
+                    "transcription",
+                    replace(
+                        config.workflow("transcription"),
+                        provider_id=provider,
+                        model_id=provider_config.audio_model,
+                        custom_endpoint="",
+                        independent=True,
+                    ),
+                )
+                if mode == "byok":
+                    for scope in ("refinement", "rewrite", "translation"):
+                        routes = routes.with_route(
+                            scope,
+                            replace(
+                                config.workflow(scope),
+                                provider_id="groq",
+                                model_id=config.groq.text_model,
+                                custom_endpoint="",
+                                independent=True,
+                            ),
+                        )
+                config = replace(
+                    config, workflows=routes, local_asr_cloud_refinement=False
+                )
+            else:
+                raise ValueError("Escolha uma opção para continuar.")
+            persisted = self._config_repository.apply(
+                replace(config, onboarding_completed=True)
+            )
+        except Exception as error:
+            self._set_error(error)
+            return False
+        self._replace_loaded_config(persisted)
+        if mode == "byok":
+            self.selectProvider("groq")
+        self._set_error(None)
+        self.saved.emit()
+        return True
+
     @Slot(str, str, result=bool)
     def accountCommand(self, action, value=""):
         if self._account_busy or not self._account_can_change():
