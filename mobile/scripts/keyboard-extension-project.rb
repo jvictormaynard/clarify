@@ -85,6 +85,17 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     SWIFT
     File.write(source, original.sub('super.viewWillAppear(animated);', replacement))
   end
+  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'parent-fitting'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    replacement = <<~'SWIFT'
+      view.invalidateIntrinsicContentSize()
+      parent?.systemLayoutFittingSizeDidChange(forChildContentContainer: self)
+      NSLog("ClarifyFixtureSizing notified fitting parent=%@", String(describing: parent))
+      super.viewWillAppear(animated);
+    SWIFT
+    File.write(source, original.sub('super.viewWillAppear(animated);', replacement))
+  end
   if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'system-sizing'
     original = File.read(source)
     source = File.join(fixture, name)
