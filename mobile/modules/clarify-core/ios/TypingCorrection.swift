@@ -26,7 +26,8 @@ struct TypingCorrection {
   static func word(in context: TypingContext) -> String? {
     guard !context.hasSelection, context.before.last?.isLetter == true,
           context.after.first.map({ !$0.isLetter && !$0.isNumber && $0 != "_" }) ?? true else { return nil }
-    let token = String(context.before.split(whereSeparator: { $0.isWhitespace }).last ?? "")
+    let raw = context.before.split(whereSeparator: { $0.isWhitespace }).last ?? ""
+    let token = String(raw.drop(while: { "([{«“\"'¿¡".contains($0) }))
     guard (2...40).contains(token.count), token.allSatisfy({ $0.isLetter }) else { return nil }
     return token
   }

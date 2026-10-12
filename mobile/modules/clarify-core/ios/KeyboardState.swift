@@ -22,8 +22,19 @@ struct KeyboardState {
     shift = caps ? .caps : (shift == .off ? .once : .off)
   }
   mutating func didInsert(_ text: String) {
-    if shift == .once { shift = .off }
+    if shift == .once, text.contains(where: { $0.isLetter }) { shift = .off }
     if text == " " || text == "\n" { page = .letters }
+  }
+  static func startsSentence(after context: String) -> Bool {
+    if context.isEmpty { return true }
+    // Closing quotes/brackets and any number of spaces may follow punctuation.
+    // A newline starts a new sentence even after an unfinished previous line.
+    for character in context.reversed() {
+      if character.isNewline { return true }
+      if character.isWhitespace || "\"'”’»)]}".contains(character) { continue }
+      return ".?!…".contains(character)
+    }
+    return true
   }
   static func accents(for key: String) -> [String] {
     let values: [String: String] = ["a": "aáàâãä", "e": "eéèêë", "i": "iíìîï",

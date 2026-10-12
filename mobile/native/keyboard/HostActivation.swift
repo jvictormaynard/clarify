@@ -18,7 +18,7 @@ extension KeyboardViewController {
     }
     // Unknown source is handled by the system navigation fallback in the app.
     let request = ActivationRequest(sourceBundleID: source)
-    guard let store = SharedState(), (try? store.write(request, to: "activation.json")) != nil else {
+    guard let store = store, (try? store.write(request, to: "activation.json")) != nil else {
       return URL(string: "clarify://keyboard")!
     }
     var url = URLComponents(string: "clarify://keyboard")!

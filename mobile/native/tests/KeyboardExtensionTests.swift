@@ -104,5 +104,16 @@ final class KeyboardExtensionTests: XCTestCase {
       let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "extension-opening-\(index)"
       capture.lifetime = .keepAlways; add(capture)
     }
+    let start = app.buttons["clarify.keyboard.start"]
+    XCTAssertTrue(start.waitForExistence(timeout: 5), app.debugDescription)
+    start.tap()
+    // The helper consumes the actual keyboard nonce and calls the production
+    // bridge. A success return value alone cannot prove that the app opened.
+    let container = XCUIApplication(bundleIdentifier: "com.clarify.fixture.container")
+    let back = expectation(for: NSPredicate(format: "state == %d", XCUIApplication.State.runningForeground.rawValue), evaluatedWith: app)
+    wait(for: [back], timeout: 10)
+    XCTAssertNotEqual(container.state, .runningForeground, "Activation must return to the original host")
+    let diagnostic = XCTAttachment(string: app.staticTexts["return-trace"].value as? String ?? app.debugDescription)
+    diagnostic.name = "activation-return"; diagnostic.lifetime = .keepAlways; add(diagnostic)
   }
 }

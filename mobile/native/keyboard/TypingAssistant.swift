@@ -12,6 +12,7 @@ final class TypingAssistant {
   private let checker = UITextChecker()
   private var correction = TypingCorrection()
   private var protectedWords = Set<String>()
+  private var vocabularyWords = Set<String>()
   private let languages: [String] = {
     let available = UITextChecker.availableLanguages
     return [available.first { $0 == "pt_BR" } ?? available.first { $0.hasPrefix("pt") },
@@ -23,6 +24,9 @@ final class TypingAssistant {
 
   func protect(_ lexicon: UILexicon) {
     protectedWords = Set(lexicon.entries.flatMap { [$0.documentText.lowercased(), $0.userInput.lowercased()] })
+  }
+  func protectVocabulary(_ words: [String]) {
+    vocabularyWords = Set(words.flatMap { $0.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init) })
   }
   func reset() { correction.reset() }
   private func context(_ proxy: UITextDocumentProxy) -> TypingContext? {
@@ -36,7 +40,7 @@ final class TypingAssistant {
     return [.default, .alphabet, .twitter].contains(proxy.keyboardType ?? .default)
   }
   private func guesses(_ word: String, context: TypingContext) -> [String] {
-    guard !protectedWords.contains(word.lowercased()), !languages.isEmpty else { return [] }
+    guard !protectedWords.contains(word.lowercased()), !vocabularyWords.contains(word.lowercased()), !languages.isEmpty else { return [] }
     let range = NSRange(word.startIndex..<word.endIndex, in: word)
     // Do not correct a valid word in either supported language.
     if languages.contains(where: {
@@ -44,10 +48,12 @@ final class TypingAssistant {
     }) { return [] }
     var results: [String] = []
     let preceding = String(context.before.dropLast(word.count).suffix(200))
-    let english = preceding.count >= 8 && NLLanguageRecognizer.dominantLanguage(for: preceding) == .english
-    let ordered = english ? languages.sorted { $0.hasPrefix("en") && !$1.hasPrefix("en") } : languages
+    let language = preceding.count >= 8 ? NLLanguageRecognizer.dominantLanguage(for: preceding)?.rawValue : nil
+    let ordered = language.map { preferred in languages.sorted { $0.hasPrefix(preferred) && !$1.hasPrefix(preferred) } } ?? languages
+    let fullText = preceding + word
+    let fullRange = NSRange(location: (preceding as NSString).length, length: (word as NSString).length)
     for language in ordered {
-      for guess in (checker.guesses(forWordRange: range, in: word, language: language) ?? []).prefix(8) {
+      for guess in (checker.guesses(forWordRange: fullRange, in: fullText, language: language) ?? []).prefix(8) {
         let value = word.first?.isUppercase == true ? guess.prefix(1).uppercased() + guess.dropFirst() : guess
         if value != word, value.allSatisfy({ $0.isLetter }), !results.contains(value) { results.append(value) }
       }

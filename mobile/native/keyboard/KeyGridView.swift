@@ -5,6 +5,14 @@ private final class KeyButton: UIButton {
   var accessibleAction: (() -> Void)?
   var onHighlight: ((KeyButton, Bool) -> Void)?
   var acceptsPoint: ((CGPoint) -> Bool)?
+  weak var grid: KeyGridView?
+  var isGlobe = false
+  // Keep the original UIKit touch identity, but let the grid transfer a press
+  // to a neighbouring key. UIButton's default tracking drops such releases.
+  override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { grid?.track(touches, phase: .began, event: event) }
+  override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { grid?.track(touches, phase: .moved, event: event) }
+  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { grid?.track(touches, phase: .ended, event: event) }
+  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { grid?.track(touches, phase: .cancelled, event: event) }
   override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
     acceptsPoint?(point) ?? super.point(inside: point, with: event)
   }
@@ -40,6 +48,57 @@ final class KeyGridView: UIView {
   private var suppressKey = false
   private let preview = KeyPreview()
   private var touchKeys: [KeyButton] = []
+  private var presses: [AnyHashable: KeyButton] = [:]
+  private var rebuildPending = false
+  private var layoutSignature = ""
+
+  func track(_ touches: Set<UITouch>, phase: UITouch.Phase, event: UIEvent?) {
+    for touch in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
+      let id = AnyHashable(ObjectIdentifier(touch)), point = touch.location(in: self)
+      switch phase {
+      case .began: beginPress(id, at: point, event: event)
+      case .moved: movePress(id, to: point, event: event)
+      case .ended: endPress(id, at: point, event: event)
+      default: cancelPress(id)
+      }
+    }
+  }
+  func beginPress(_ id: AnyHashable, at point: CGPoint, event: UIEvent? = nil) {
+    guard presses[id] == nil, accentBar == nil, let key = nearestKey(at: point) else { return }
+    presses[id] = key; key.isHighlighted = true
+    if key.isGlobe { onNextKeyboard?(key, event) } else { key.sendActions(for: .touchDown) }
+  }
+  func movePress(_ id: AnyHashable, to point: CGPoint, event: UIEvent? = nil) {
+    guard let previous = presses[id], accentBar == nil else { return }
+    if previous.isGlobe { onNextKeyboard?(previous, event); return }
+    // A small release margin tolerates finger motion at the outer keyboard edge.
+    guard let next = releaseKey(at: point), next !== previous else { return }
+    presses[id] = next
+    if !presses.values.contains(where: { $0 === previous }) { previous.isHighlighted = false }
+    previous.sendActions(for: .touchDragExit)
+    next.isHighlighted = true
+    if !next.isGlobe { next.sendActions(for: .touchDown) }
+  }
+  func endPress(_ id: AnyHashable, at point: CGPoint, event: UIEvent? = nil) {
+    movePress(id, to: point, event: event)
+    guard let key = presses.removeValue(forKey: id) else { return }
+    if !presses.values.contains(where: { $0 === key }) { key.isHighlighted = false }
+    if key.isGlobe { onNextKeyboard?(key, event) }
+    else { key.sendActions(for: releaseKey(at: point) != nil && accentBar == nil ? .touchUpInside : .touchCancel) }
+    finishPresses()
+  }
+  func cancelPress(_ id: AnyHashable) {
+    guard let key = presses.removeValue(forKey: id) else { return }
+    if !presses.values.contains(where: { $0 === key }) { key.isHighlighted = false }
+    key.sendActions(for: .touchCancel); finishPresses()
+  }
+  private func finishPresses() {
+    if presses.isEmpty, rebuildPending { rebuildPending = false; rebuild() }
+  }
+  private func releaseKey(at point: CGPoint) -> KeyButton? {
+    guard bounds.insetBy(dx: -12, dy: -12).contains(point) else { return nil }
+    return nearestKey(at: CGPoint(x: min(max(0, point.x), bounds.maxX - 0.01), y: min(max(0, point.y), bounds.maxY - 0.01)))
+  }
 
   // Partition the visible grid by distance to each key's rectangle. This covers
   // row gaps and outside margins without changing the visible key geometry.
@@ -65,6 +124,7 @@ final class KeyGridView: UIView {
 
   override init(frame: CGRect) {
     super.init(frame: frame)
+    isMultipleTouchEnabled = true
     stack.axis = .vertical; stack.spacing = 10; stack.distribution = .fillEqually
     addSubview(stack); stack.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([
@@ -76,11 +136,17 @@ final class KeyGridView: UIView {
     rebuild()
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-  override func didMoveToWindow() { super.didMoveToWindow(); if window == nil { stopDelete(); preview.removeFromSuperview() } }
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    if window == nil { for id in Array(presses.keys) { cancelPress(id) }; stopDelete(); preview.removeFromSuperview() }
+  }
   deinit { repeatTimer?.invalidate() }
 
   func rebuild() {
-    guard accentBar == nil else { return }
+    guard accentBar == nil, presses.isEmpty else { rebuildPending = true; return }
+    let signature = "\(model.page):\(model.shift):\(needsGlobe):\(returnType.rawValue)"
+    guard layoutSignature != signature else { return }
+    layoutSignature = signature
     preview.removeFromSuperview()
     stopDelete()
     stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -156,6 +222,7 @@ final class KeyGridView: UIView {
     mode.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 0.113).isActive = true
     if needsGlobe {
       let globe = key("", special: true) {}; globe.setImage(UIImage(systemName: "globe"), for: .normal)
+      globe.isGlobe = true
       globe.accessibilityLabel = L("Próximo teclado")
       globe.accessibleAction = { [weak self, weak globe] in if let globe = globe { self?.onNextKeyboard?(globe, nil) } }
       globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
@@ -178,6 +245,7 @@ final class KeyGridView: UIView {
   }
   private func key(_ title: String, special: Bool = false, action: @escaping () -> Void) -> KeyButton {
     let button = KeyButton(type: .custom)
+    button.grid = self; button.isMultipleTouchEnabled = true
     button.restingColor = UIColor { traits in
       // Lift the system material below each dark key instead of covering it
       // with a fixed gray that can match the host application's background.
@@ -216,7 +284,7 @@ final class KeyGridView: UIView {
     button.addAction(UIAction { _ in action() }, for: .touchUpInside)
     return button
   }
-  private func insert(_ text: String) { onInsert?(text); model.didInsert(text); rebuild() }
+  private func insert(_ text: String) { model.didInsert(text); onInsert?(text); rebuild() }
   private func changeShiftOrSymbols() {
     if model.page == .letters {
       let now = Date(); model.toggleShift(caps: now.timeIntervalSince(lastShift) < 0.3); lastShift = now

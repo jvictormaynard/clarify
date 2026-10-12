@@ -72,6 +72,43 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertTrue(before.allSatisfy { $0.isDescendant(of: grid) }, "A refresh must not discard live key controls")
     }
   }
+  func testSlidingReleaseOverlapsAndCancelledTouchesDoNotLoseOrDuplicateLetters() async throws {
+    try await MainActor.run {
+      let grid = KeyGridView(frame: CGRect(x: 0, y: 0, width: 393, height: 220)); grid.layoutIfNeeded()
+      func key(_ title: String) throws -> UIButton {
+        try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == title })
+      }
+      func center(_ key: UIButton) -> CGPoint { key.convert(CGPoint(x: key.bounds.midX, y: key.bounds.midY), to: grid) }
+      let q = try key("Q"), w = try key("W")
+      let qPoint = center(q), wPoint = center(w)
+      var text = ""; grid.onInsert = { text += $0 }
+      grid.beginPress(1, at: qPoint); grid.movePress(1, to: wPoint); grid.endPress(1, at: wPoint)
+      XCTAssertEqual(text, "W", "Sliding onto a neighbouring key must insert it exactly once")
+      grid.layoutIfNeeded()
+      let a = try key("a"), s = try key("s")
+      grid.beginPress(2, at: center(a)); grid.beginPress(3, at: center(s))
+      grid.endPress(2, at: center(a)); grid.model.shift = .once; grid.rebuild()
+      XCTAssertTrue(s.isDescendant(of: grid), "Keep the second finger's key during a casing update")
+      grid.endPress(3, at: center(s)); XCTAssertEqual(text, "Was")
+      grid.layoutIfNeeded()
+      grid.beginPress(4, at: qPoint); grid.cancelPress(4); grid.endPress(4, at: qPoint)
+      XCTAssertEqual(text, "Was", "System cancellations must not insert a key")
+      grid.beginPress(5, at: CGPoint(x: 1, y: qPoint.y))
+      grid.endPress(5, at: CGPoint(x: -4, y: qPoint.y))
+      XCTAssertEqual(text.lowercased(), "wasq", "Small edge drift must not discard a tap")
+    }
+  }
+  func testCustomVocabularyIsNotReplacedAndQuotedWordsStillCorrect() async {
+    await MainActor.run {
+      let field = Field(), assistant = TypingAssistant()
+      assistant.protectVocabulary(["helllo", "obrigaddo"])
+      for word in ["helllo", "obrigaddo"] {
+        field.before = word; assistant.insert(" ", into: field); XCTAssertEqual(field.before, word + " ")
+      }
+      assistant.protectVocabulary([]); field.before = "“helllo"
+      assistant.insert(" ", into: field); XCTAssertEqual(field.before, "“hello ")
+    }
+  }
   @MainActor
   private func makeDictationFixture() throws -> (SelectionKeyboard, SharedState, UIWindow) {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

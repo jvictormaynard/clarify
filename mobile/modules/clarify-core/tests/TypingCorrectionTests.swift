@@ -2,6 +2,17 @@ import XCTest
 @testable import ClarifyContracts
 
 final class TypingCorrectionTests: XCTestCase {
+  func testSentenceStartsAfterTerminalPunctuationQuotesAndWhitespace() {
+    for text in ["", "Olá.", "Olá! ", "Olá?  ", "Olá!\u{00a0}", "“Olá.” ", "Olá\n", "Olá\n  "] {
+      XCTAssertTrue(KeyboardState.startsSentence(after: text), text)
+    }
+    for text in ["Olá", "Olá, ", "12.3", "https://example.com"] {
+      XCTAssertFalse(KeyboardState.startsSentence(after: text), text)
+    }
+    var state = KeyboardState(); state.didInsert(" "); XCTAssertEqual(state.shift, .once)
+    state.didInsert("Q"); XCTAssertEqual(state.shift, .off)
+    state.shift = .caps; state.didInsert("Q"); XCTAssertEqual(state.shift, .caps)
+  }
   private func context(_ before: String, after: String = "") -> TypingContext {
     TypingContext(document: UUID(), before: before, after: after)
   }

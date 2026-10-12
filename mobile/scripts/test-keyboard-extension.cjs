@@ -24,6 +24,10 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-extension-'));
 let exitCode = 1;
 try {
   run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture]);
+  const derived = path.join(fixture, 'DerivedData');
+  run('xcodebuild', ['build', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'), '-scheme', 'ActivationContainer',
+    '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO']);
+  run('xcrun', ['simctl', 'install', device.udid, path.join(derived, 'Build/Products/Debug-iphonesimulator/ActivationContainer.app')]);
   const resultPath = path.join(results, 'KeyboardExtension.xcresult');
   const result = spawnSync('xcodebuild', ['test', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'),
     '-scheme', 'KeyboardExtension', '-destination', `platform=iOS Simulator,id=${device.udid}`,
