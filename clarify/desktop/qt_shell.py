@@ -412,6 +412,8 @@ class WindowsGlobalHotkeyBackend(QObject):
         self._recording_active = False
         self._escape_registered = False
         self._recovery_window: WindowTarget | None = None
+        self._active_window: WindowTarget | None = None
+        self._capture_window: WindowTarget | None = None
         self._held_keys: tuple[int, ...] = ()
         self._release_timer = QTimer(self)
         self._release_timer.setInterval(8)
@@ -491,7 +493,20 @@ class WindowsGlobalHotkeyBackend(QObject):
             raise
 
         self._recovery_window = None
+        self._active_window = window
         return set(self.registered_ids)
+
+    def set_capture_active(self, active: bool) -> None:
+        """Release OS input ownership while Settings captures a new shortcut."""
+        if active:
+            if self._capture_window is None and self.is_running:
+                window = self._active_window
+                self.stop()
+                self._capture_window = window
+        else:
+            window, self._capture_window = self._capture_window, None
+            if window is not None:
+                self.start(window)
 
     def reconfigure(
         self,
@@ -554,6 +569,8 @@ class WindowsGlobalHotkeyBackend(QObject):
     def stop(self) -> None:
         """Remove the native filter and unregister every active shortcut."""
 
+        self._active_window = None
+        self._capture_window = None
         self._release_hold()
         self._stop_input_hook()
         event_filter = self._event_filter

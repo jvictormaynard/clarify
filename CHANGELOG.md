@@ -27,6 +27,7 @@ Notable user-facing changes are documented here. This project follows
 
 - Show loading while the account quota is unknown, instead of displaying 0 of 0. Start the query after startup operations finish and allow retry after a failed query.
 - Remove the quick-menu divider above Settings and the empty space from hidden update actions.
+- Release global shortcuts while capturing a new binding, so existing keyboard and side-mouse shortcuts cannot trigger a workflow or prevent capture. Restore bindings on cancellation and window close.
 - Show only the native back chevron on iOS Settings, instead of the internal “(tabs)” route name.
 - Scale and space the keyboard dictionary plus symbol. Publish the keyboard height before view loading and keep fitting requests independent of temporary host frames.
 

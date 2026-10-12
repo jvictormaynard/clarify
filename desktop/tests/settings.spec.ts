@@ -131,8 +131,11 @@ test("modifier and side mouse shortcuts can be captured and saved", async ({ pag
   await page.getByRole("button", { name: "Atalhos", exact: true }).click();
   const recording = page.locator(".shortcut").first();
   await recording.click();
+  const captureAction = () => page.evaluate(async () => (await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] })).hotkeyCaptureAction);
+  await expect.poll(captureAction).toBe("recording_hotkey");
   await page.getByRole("textbox", { name: "Novo atalho" }).press("Control");
   await expect(recording).toHaveText("Ctrl");
+  await expect.poll(captureAction).toBe("");
   await recording.click();
   await page.getByRole("textbox", { name: "Novo atalho" }).press("Meta");
   await expect(recording).toHaveText("Win");
@@ -144,6 +147,10 @@ test("modifier and side mouse shortcuts can be captured and saved", async ({ pag
   await expect(page.getByRole("dialog")).toBeVisible();
   await field.dispatchEvent("mouseup", { button: 3 });
   await expect(recording).toHaveText("Mouse 4");
+  await recording.click();
+  await page.getByRole("textbox", { name: "Novo atalho" }).press("Escape");
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect.poll(captureAction).toBe("");
   await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
   await page.reload();
   await page.getByRole("button", { name: "Atalhos", exact: true }).click();

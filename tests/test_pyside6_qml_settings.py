@@ -128,6 +128,38 @@ class QmlSettingsControllerTests(unittest.TestCase):
     def setUpClass(cls):
         cls.qt_app = QApplication.instance() or QApplication([])
 
+    def test_rpc_capture_pauses_and_restores_inputs_on_save_or_cancel(self):
+        from clarify.desktop.qml_web_settings import SettingsProtocol
+
+        with TemporaryDirectory() as directory:
+            changes = []
+            controller = QmlSettingsController(
+                _repositories(directory), hotkey_capture_changed=changes.append
+            )
+            protocol = SettingsProtocol(controller)
+            try:
+                reply = protocol.dispatch(
+                    {"method": "beginHotkeyCapture", "args": ["recording_hotkey"]}
+                )
+                self.assertEqual(
+                    reply["result"]["hotkeyCaptureAction"], "recording_hotkey"
+                )
+                self.assertEqual(changes, [True])
+                reply = protocol.dispatch(
+                    {"method": "setHotkey", "args": ["recording_hotkey", "XBUTTON1"]}
+                )
+                self.assertEqual(reply["result"]["hotkeyCaptureAction"], "")
+                self.assertEqual(changes, [True, False])
+                controller.beginHotkeyCapture("rewrite_hotkey")
+                protocol.dispatch({"method": "cancelHotkeyCapture", "args": []})
+                self.assertEqual(changes, [True, False, True, False])
+                self.assertEqual(controller.hotkeyCaptureAction, "")
+                controller.beginHotkeyCapture("recording_hotkey")
+                controller.load()
+                self.assertEqual(changes[-2:], [True, False])
+            finally:
+                controller.shutdown()
+
     def test_shutdown_releases_local_subscription_and_controller(self):
         with TemporaryDirectory() as directory:
             controller = QmlSettingsController(_repositories(directory))

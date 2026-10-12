@@ -53,6 +53,13 @@ cannot fall back to a saved personal key. Signing out explicitly restores the
 personal configuration. Signing in activates account processing automatically,
 including for existing signed-in profiles. There is no separate activation step.
 
+Shortcut capture is owned by the Qt Settings controller, including the React
+dialog's capture state. Capture temporarily releases native hotkeys and input
+hooks so an existing binding cannot trigger a workflow or consume a side button.
+Successful capture, cancellation, hidden or closed Settings restore the bindings.
+Late input events from the replaced hook are ignored; a registration collision
+can recover through the existing Apply transaction.
+
 Vocabulary sync runs after login and local edits, then at most once per minute
 while the app is active or before a hosted dictation. Failed attempts also use
 this interval. Conflicting edits require an explicit resolution. Each account

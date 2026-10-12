@@ -31,7 +31,7 @@ export function useSettings() {
   const [apiKey, setApiKey] = useState("");
   const [prompt, setPrompt] = useState("");
   const [endpoint, setEndpoint] = useState("");
-  const [capture, setCapture] = useState<string>();
+  const capture = state?.hotkeyCaptureAction || undefined;
   const [retention, setRetention] = useState("");
   const [recording, setRecording] = useState<RecordingDraft | null>(null);
   const [routeOverride, setRouteOverride] = useState<{
@@ -123,6 +123,10 @@ export function useSettings() {
         );
     };
     const visibility = () => {
+      if (document.hidden && current.current?.hotkeyCaptureAction)
+        void call("cancelHotkeyCapture").catch((error) => {
+          if (live) setError(String(error));
+        });
       if (document.hidden && current.current?.microphoneTestBusy)
         void call("stopMicrophoneTest").catch((error) => {
           if (live) setError(String(error));
@@ -280,6 +284,10 @@ export function useSettings() {
     }
   };
   const captureModifier = useRef<string | null>(null);
+  const setCapture = (action?: string) => {
+    if (action) void run("beginHotkeyCapture", action);
+    else void run("cancelHotkeyCapture");
+  };
   useEffect(() => { captureModifier.current = null; }, [capture]);
   const captureHotkey = async (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape" || !capture) return;
@@ -298,23 +306,20 @@ export function useSettings() {
       ...(event.shiftKey ? ["shift"] : []),
       ...(event.metaKey ? ["win"] : []),
     ];
-    if (
-      await run("setHotkey", capture, {
-        modifiers: modifiers.filter(name => name.toUpperCase() !== modifierKey),
-        key: modifierKey || (event.key === " " ? "SPACE" : event.key.toUpperCase()),
-      })
-    )
-      setCapture(undefined);
+    await run("setHotkey", capture, {
+      modifiers: modifiers.filter(name => name.toUpperCase() !== modifierKey),
+      key: modifierKey || (event.key === " " ? "SPACE" : event.key.toUpperCase()),
+    });
   };
   const captureMouseHotkey = async (event: MouseEvent<HTMLInputElement>) => {
     if (!capture || ![3, 4].includes(event.button)) return;
     event.preventDefault();
     captureModifier.current = null;
-    if (await run("setHotkey", capture, {
+    await run("setHotkey", capture, {
       key: event.button === 3 ? "XBUTTON1" : "XBUTTON2",
       modifiers: [...(event.ctrlKey ? ["ctrl"] : []), ...(event.altKey ? ["alt"] : []),
         ...(event.shiftKey ? ["shift"] : []), ...(event.metaKey ? ["win"] : [])],
-    })) setCapture(undefined);
+    });
   };
   const selectProvider = async (id: string) => {
     if (!state) return;
