@@ -71,10 +71,14 @@ final class KeyboardExtensionTests: XCTestCase {
       let access = settings.switches["Allow Full Access"]
       XCTAssertTrue(access.waitForExistence(timeout: 5), settings.debugDescription)
       if access.value as? String != "1" {
-        access.tap()
+        // New Settings exposes the whole labelled row as the switch's frame;
+        // the control itself is at its trailing edge.
+        access.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         let allow = settings.alerts.buttons["Allow"]
         if allow.waitForExistence(timeout: 3) { allow.tap() }
       }
+      let granted = expectation(for: NSPredicate(format: "value == %@", "1"), evaluatedWith: access)
+      wait(for: [granted], timeout: 5)
     }
     app.launch()
     app.textFields["composer"].tap()
