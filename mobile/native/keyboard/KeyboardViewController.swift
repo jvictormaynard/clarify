@@ -472,7 +472,12 @@ class KeyboardViewController: UIInputViewController {
     guard let term = selectedTerm, let scope = selectedScope, let store,
           hasFullAccess, selectedDocument == textDocumentProxy.documentIdentifier,
           term == KeyboardSelection.term(textDocumentProxy.selectedText), !state.phase.busy else { updateToolbar(); return }
-    do { try store.addKeyboardTerm(term, scope: scope); dictionaryError = nil; feedback.type() }
+    do {
+      try store.addKeyboardTerm(term, scope: scope); dictionaryError = nil
+      // Protect a durable keyboard addition before the next key, including
+      // hosts that do not send a selection-change callback after the save.
+      typingVocabularyCheckedAt = .distantPast; updateSuggestions(); feedback.type()
+    }
     catch { dictionaryError = error.localizedDescription; UIAccessibility.post(notification: .announcement, argument: dictionaryError) }
     updateToolbar(forceDictionaryRefresh: true)
   }

@@ -141,7 +141,10 @@ final class KeyboardUITests: XCTestCase {
   func testWordSavedFromTheKeyboardIsProtectedBeforeTheNextSpace() async throws {
     try await MainActor.run {
       let (keyboard, store, window) = try self.makeDictationFixture()
-      defer { window.isHidden = true }
+      defer {
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+        window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+      }
       try store.publishKeyboardDictionary(KeyboardDictionaryContext(scope: "guest", words: []))
       keyboard.field.before = "helllo"; keyboard.field.selectedText = "helllo"
       keyboard.selectionDidChange(nil)
