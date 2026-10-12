@@ -20,10 +20,12 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
       override init(nibName: String?, bundle: Bundle?) {
         super.init(nibName: nibName, bundle: bundle)
         preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
+        #{variant == 'eager-load' ? 'loadViewIfNeeded()' : ''}
       }
       required init?(coder: NSCoder) {
         super.init(coder: coder)
         preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
+        #{variant == 'eager-load' ? 'loadViewIfNeeded()' : ''}
       }
     SWIFT
     layout = case variant

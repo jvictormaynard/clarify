@@ -15,7 +15,7 @@ if (devices.status !== 0) throw new Error(devices.stderr);
 const device = Object.values(JSON.parse(devices.stdout).devices).flat().find(item => item.name.startsWith('iPhone'));
 if (!device) throw new Error('No iPhone simulator.');
 const output = path.join(root, 'test-results'); fs.mkdirSync(output, { recursive: true });
-const variants = process.argv.includes('--compare') ? ['stored-size', 'native-root', 'fixed-frame'] : ['baseline'];
+const variants = process.argv.includes('--compare') ? ['eager-load'] : ['baseline'];
 const results = [];
 for (const variant of variants) {
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), `clarify-extension-${variant}-`));
