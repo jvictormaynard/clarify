@@ -483,6 +483,41 @@ class QmlSettingsControllerTests(unittest.TestCase):
             finally:
                 controller.shutdown()
 
+    def test_modifier_and_side_mouse_capture_rejects_primary_mouse(self):
+        from PySide6.QtCore import Qt
+
+        with TemporaryDirectory() as directory:
+            controller = QmlSettingsController(_repositories(directory))
+            try:
+                self.assertTrue(
+                    controller.captureHotkey(
+                        "recording_hotkey",
+                        Qt.Key_Control.value,
+                        Qt.ControlModifier.value,
+                    )
+                )
+                self.assertEqual(
+                    controller.hotkeyDefinitions["recording_hotkey"]["display"], "Ctrl"
+                )
+                self.assertFalse(
+                    controller.captureMouseHotkey(
+                        "recording_hotkey", Qt.LeftButton.value, 0
+                    )
+                )
+                self.assertTrue(
+                    controller.captureMouseHotkey(
+                        "recording_hotkey",
+                        Qt.BackButton.value,
+                        Qt.ControlModifier.value,
+                    )
+                )
+                self.assertEqual(
+                    controller.hotkeyDefinitions["recording_hotkey"]["display"],
+                    "Ctrl+Mouse 4",
+                )
+            finally:
+                controller.shutdown()
+
     def test_hotkey_capture_rejects_conflicts_and_preserves_the_draft(self):
         with TemporaryDirectory() as directory:
             controller = QmlSettingsController(_repositories(directory))

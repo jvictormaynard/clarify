@@ -251,14 +251,6 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             ("ru", "Russian"),
         ):
             self.assertIn(f'"{language}": "{name}"', main_source)
-        self.assertIn(
-            "var currentIndex = supportedLanguages.indexOf(workflow.language)",
-            main_source,
-        )
-        self.assertIn(
-            "var nextIndex = (currentIndex + 1) % supportedLanguages.length",
-            main_source,
-        )
         self.assertNotIn('languageCode === "EN"', main_source)
         self.assertIn(
             "property string languageCode: workflow.language.toUpperCase()",

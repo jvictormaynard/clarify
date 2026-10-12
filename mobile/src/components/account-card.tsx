@@ -51,10 +51,7 @@ export function AccountCard() {
       </View>
       <Text style={[ui.small, { color: c.muted }]}>{t("Cota compartilhada com o computador.")}</Text>
     </View>
-    {!account.hosted && <View style={{ gap: 12 }}>
-      <Text style={[ui.small, { color: c.muted }]}>{t("O Clarify processa áudio, texto e palavras ativas do dicionário.")}</Text>
-      <Button loading={action === 'hosted'} disabled={busy} onPress={() => command('hosted', '1')}>{t("Ativar processamento do Clarify")}</Button>
-    </View>}
+    <Text style={[ui.small, { color: c.muted }]}>{t("O Clarify processa áudio, texto e palavras ativas do dicionário.")}</Text>
     {account.dictionaryConflict && <Card>
         <Text style={[ui.small, { color: c.muted }]}>{t("Escolha somente para as palavras alteradas nos dois dispositivos. As outras alterações serão combinadas.")}</Text>
         <Button loading={action === 'sync-local'} disabled={busy} onPress={() => command('sync-local')}>{t("Manter as versões deste iPhone")}</Button>

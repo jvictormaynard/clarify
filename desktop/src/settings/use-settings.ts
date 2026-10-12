@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
 } from "react";
 import {
   call,
@@ -139,14 +140,20 @@ export function useSettings() {
     if (state) setRetention(String(state.historyRetentionDays ?? ""));
   }, [state?.historyRetentionDays]);
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
     const refreshAccount = () => {
-      if (document.hidden || pending.current || !current.current?.accountState?.signedIn || dirtyRef.current) return;
-      void call("accountCommand", "auto", "").catch(() => undefined);
+      clearTimeout(timer);
+      const account = current.current?.accountState;
+      if (!account?.signedIn) return;
+      const blocked = document.hidden || pending.current || dirtyRef.current || account.busy;
+      if (!blocked) void call("accountCommand", "auto", "").catch(() => undefined);
+      // Startup model loading can briefly block the first account refresh.
+      // Retry when it clears instead of waiting a full minute with no quota.
+      timer = setTimeout(refreshAccount, blocked ? 1000 : 60000);
     };
     refreshAccount();
     document.addEventListener("visibilitychange", refreshAccount);
-    const timer = setInterval(refreshAccount, 60000);
-    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", refreshAccount); };
+    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", refreshAccount); };
   }, [state?.accountState?.signedIn]);
   useEffect(() => {
     if (state) setPrompt(state.routePrompt);
@@ -272,11 +279,19 @@ export function useSettings() {
       setConfirmAction(null);
     }
   };
+  const captureModifier = useRef<string | null>(null);
+  useEffect(() => { captureModifier.current = null; }, [capture]);
   const captureHotkey = async (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape" || !capture) return;
     event.preventDefault();
-    if (["Control", "Alt", "Shift", "Meta"].includes(event.key) || event.repeat)
+    if (event.repeat) return;
+    const modifierKey = ({ Control: "CTRL", Alt: "ALT", Shift: "SHIFT", Meta: "WIN" } as Record<string, string>)[event.key];
+    if (event.type === "keydown" && modifierKey) {
+      captureModifier.current = event.key;
       return;
+    }
+    if (event.type === "keyup" && (!modifierKey || captureModifier.current !== event.key)) return;
+    captureModifier.current = null;
     const modifiers = [
       ...(event.ctrlKey ? ["ctrl"] : []),
       ...(event.altKey ? ["alt"] : []),
@@ -285,11 +300,21 @@ export function useSettings() {
     ];
     if (
       await run("setHotkey", capture, {
-        modifiers,
-        key: event.key === " " ? "SPACE" : event.key.toUpperCase(),
+        modifiers: modifiers.filter(name => name.toUpperCase() !== modifierKey),
+        key: modifierKey || (event.key === " " ? "SPACE" : event.key.toUpperCase()),
       })
     )
       setCapture(undefined);
+  };
+  const captureMouseHotkey = async (event: MouseEvent<HTMLInputElement>) => {
+    if (!capture || ![3, 4].includes(event.button)) return;
+    event.preventDefault();
+    captureModifier.current = null;
+    if (await run("setHotkey", capture, {
+      key: event.button === 3 ? "XBUTTON1" : "XBUTTON2",
+      modifiers: [...(event.ctrlKey ? ["ctrl"] : []), ...(event.altKey ? ["alt"] : []),
+        ...(event.shiftKey ? ["shift"] : []), ...(event.metaKey ? ["win"] : [])],
+    })) setCapture(undefined);
   };
   const selectProvider = async (id: string) => {
     if (!state) return;
@@ -365,6 +390,7 @@ export function useSettings() {
     saveAndClose,
     confirmMutation,
     captureHotkey,
+    captureMouseHotkey,
     selectProvider,
     validateProvider,
     selectRouteProvider,

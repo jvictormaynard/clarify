@@ -29,7 +29,19 @@ class OnboardingAccount:
         return self.state["signedIn"]
 
     def refresh_if_due(self, service, *, force=False):
-        pass
+        if "--usage-error" in sys.argv:
+            from clarify_account import AccountError
+
+            raise AccountError("Não foi possível conectar ao Clarify. Tente novamente.")
+        if self.signed_in:
+            self.state["usage"] = {
+                "used_ms": 450000,
+                "reserved_ms": 60000,
+                "limit_ms": 18000000,
+            }
+
+    def refresh(self):
+        self.refresh_if_due(None)
 
     def __init__(self):
         self.state = dict(
@@ -41,6 +53,10 @@ class OnboardingAccount:
             syncEnabled=False,
             usage={},
         )
+        if "--signed-in" in sys.argv:
+            self.state.update(
+                signedIn=True, hosted=True, managed=True, email="test@example.test"
+            )
 
     def snapshot(self):
         return dict(self.state)
@@ -57,15 +73,17 @@ class OnboardingAccount:
         if action == "confirm":
             if value != "123456":
                 raise AccountError("Código inválido. Tente novamente.")
-            self.state.update(signedIn=True, pending="")
+            self.state.update(signedIn=True, pending="", hosted=True, managed=True)
+            self.state["usage"] = {
+                "used_ms": 450000,
+                "reserved_ms": 60000,
+                "limit_ms": 18000000,
+            }
         else:
             self.state.update(email=value, pending=action)
 
-    def set_hosted(self, value):
-        self.state["hosted"] = value
-
     def logout(self, **_):
-        self.state.update(signedIn=False, pending="", hosted=False)
+        self.state.update(signedIn=False, pending="", hosted=False, managed=False)
 
 
 def check_native_corners(process_id):
@@ -184,7 +202,9 @@ def main():
             )
         settings = QmlSettingsController(
             repositories,
-            account_service=OnboardingAccount() if onboarding else None,
+            account_service=OnboardingAccount()
+            if onboarding or "--signed-in" in sys.argv
+            else None,
             microphone_backend=backend,
             local_product=Mock(state=LocalASRProductState("installed"), busy=False),
         )

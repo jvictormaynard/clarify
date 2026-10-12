@@ -133,6 +133,9 @@ class AccountService:
             endpoint(self._state.get("endpoint", self.default_endpoint))
             if self._state.get("user_id"):
                 uuid.UUID(self._state["user_id"])
+                # Existing signed-in profiles use account processing immediately.
+                # Keep the marker after expiry so personal keys are not used.
+                self._state["mode"] = "hosted"
         except (TypeError, ValueError, AccountError):
             self._state = {}
 
@@ -171,9 +174,7 @@ class AccountService:
     @property
     def hosted(self):
         with self._lock:
-            return (
-                bool(self._state.get("user_id")) and self._state.get("mode") == "hosted"
-            )
+            return bool(self._state.get("user_id"))
 
     @property
     def managed(self):
@@ -305,7 +306,9 @@ class AccountService:
             raise AccountError("A sessão expirou. Entre na conta novamente.")
         user_id = str(uuid.UUID(result["id"]))
         with self._lock:
-            self._state.update(user_id=user_id, email=result["email"], pending="")
+            self._state.update(
+                user_id=user_id, email=result["email"], pending="", mode="hosted"
+            )
             self._save()
 
     def refresh_if_due(self, service, *, force=False):
@@ -354,17 +357,6 @@ class AccountService:
             # Remove only this account's cache, never the local profile.
             for name in ("dictionary.json", "sync.json"):
                 (target / name).unlink(missing_ok=True)
-
-    def set_hosted(self, value):
-        with self._lock:
-            if value and not self._state.get("user_id"):
-                raise AccountError("Entre na sua conta primeiro.")
-            if not value and self.signed_in:
-                raise AccountError(
-                    "Saia da conta para usar sua chave ou modelos locais."
-                )
-            self._state["mode"] = "hosted" if value else "personal"
-            self._save()
 
     def sync_dictionary(self, service, *, prefer=None):
         self._last_sync_attempt = self._clock()
@@ -440,7 +432,7 @@ class AccountService:
 
     def transcribe(self, source, language, dictionary_service):
         if not self.hosted:
-            raise AccountError("Ative o processamento do Clarify na sua conta.")
+            raise AccountError("Entre na conta novamente.")
         if source.cancel_token:
             source.cancel_token.raise_if_cancelled()
         if self.scope and self._clock() - self._last_sync_attempt >= 60:
@@ -493,7 +485,7 @@ class AccountService:
 
     def transform_text(self, text, action, language="auto", *, cancel=None):
         if not self.hosted:
-            raise AccountError("Ative o processamento do Clarify na sua conta.")
+            raise AccountError("Entre na conta novamente.")
         code, result = self._request(
             "POST",
             "/v1/text",

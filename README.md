@@ -133,8 +133,8 @@ do not need Python, Node.js, or SoX.
 3. Double-click the executable.
 4. The first-run page opens automatically. Enter your email and press **Continuar**,
    or follow **continuar 100% local**. No password is needed.
-   - **Clarify account:** confirm your email code inside the app, read the
-     processing notice and enable hosted dictation. No provider key is needed.
+   - **Clarify account:** confirm your email code inside the app. Account
+     processing is active automatically. No provider key is needed.
    - **Personal key:** save your Groq key. Other providers remain available
      under **Settings → Modelos e serviços** (Models and services).
    - **Local Whisper setup (keyless):** continue to model setup, review its
@@ -201,6 +201,11 @@ All five global shortcuts can be captured, validated, and reset in **Settings �
 Atalhos** (Shortcuts). Toggle starts and stops on successive presses. Hold records
 while the shortcut is pressed and stops on release. `Esc` cancels, including
 while holding the shortcut. The pill microphone button always uses toggle.
+You can also assign a modifier by itself (`Ctrl`, `Alt`, `Shift`, or `Win`) or
+a side mouse button (`Mouse 4` or `Mouse 5`). Modifier taps run on release;
+normal combinations such as `Ctrl+C` do not trigger a standalone modifier.
+Primary, secondary, and middle mouse buttons remain available for normal use.
+Hover over the pill's flag to open the animated vertical language menu.
 Cancellation feedback and Undo appear inside the pill, not in another window.
 While choosing a translation language, `Esc` closes the picker even if the
 source application keeps keyboard focus.

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ctypes
+import time
+from dataclasses import dataclass
 from ctypes import wintypes
 
 from hotkey_config import (
@@ -112,6 +114,12 @@ def _hotkey_virtual_key(key: str) -> int:
         "DOWN": 0x28,
         "LEFT": 0x25,
         "RIGHT": 0x27,
+        "CTRL": 0x11,
+        "ALT": 0x12,
+        "SHIFT": 0x10,
+        "WIN": 0x5B,
+        "XBUTTON1": 0x05,
+        "XBUTTON2": 0x06,
     }
     if key in special_keys:
         return special_keys[key]
@@ -162,6 +170,8 @@ def register_global_hotkeys(user32, hwnd, settings=None, *, strict=False) -> set
         try:
             definition = configured.definition(action)
         except KeyError:
+            continue
+        if definition.requires_hook:
             continue
         if user32.RegisterHotKey(
             hwnd,
@@ -236,6 +246,252 @@ class WindowsHotkeyRegistration:
                     # has no registered IDs and the next Apply can retry.
                     self.registered.clear()
             raise
+
+
+_MODIFIER_KEYS = {
+    0x11: "CTRL",
+    0xA2: "CTRL",
+    0xA3: "CTRL",
+    0x12: "ALT",
+    0xA4: "ALT",
+    0xA5: "ALT",
+    0x10: "SHIFT",
+    0xA0: "SHIFT",
+    0xA1: "SHIFT",
+    0x5B: "WIN",
+    0x5C: "WIN",
+}
+
+
+@dataclass
+class _ModifierPress:
+    hotkey_id: int
+    expected: set[str]
+    clean: bool
+    held: bool
+    started_at: float
+
+
+class HookHotkeyState:
+    """Match modifier taps and side buttons without capturing text.
+
+    Modifier taps wait for release. Holding a recording modifier waits 200 ms
+    and is cancelled when another input turns it into an ordinary chord.
+    """
+
+    def __init__(self, settings, *, clock=time.monotonic):
+        self.bindings = {
+            definition.combination: HOTKEY_IDS_BY_ACTION[action.value]
+            for action, definition in settings.hotkeys.items()
+            if definition.requires_hook
+        }
+        self.ids = set(self.bindings.values())
+        self.hold = settings.activation_mode.value == "push_to_talk"
+        self.clock = clock
+        self.down: dict[int, str] = {}
+        self.pending: dict[int, _ModifierPress] = {}
+        self.mouse_down: dict[str, int] = {}
+
+    def _invalidate(self, key):
+        events = []
+        for candidate in self.pending.values():
+            if key not in candidate.expected:
+                if candidate.held:
+                    events.append((candidate.hotkey_id, "release"))
+                candidate.clean = False
+                candidate.held = False
+        return events
+
+    def keyboard(self, virtual_key, pressed):
+        key = _MODIFIER_KEYS.get(virtual_key, str(virtual_key))
+        if pressed:
+            if virtual_key in self.down:
+                return []
+            events = self._invalidate(key)
+            duplicate_modifier = (
+                key in _MODIFIER_KEYS.values() and key in self.down.values()
+            )
+            if duplicate_modifier:
+                events.extend(self._invalidate("duplicate modifier"))
+            modifiers = frozenset(
+                k.lower()
+                for k in self.down.values()
+                if k in {"CTRL", "ALT", "SHIFT", "WIN"} and k != key
+            )
+            self.down[virtual_key] = key
+            identifier = self.bindings.get((modifiers, key))
+            if identifier is not None:
+                expected = {key, *(m.upper() for m in modifiers)}
+                clean = not duplicate_modifier and set(self.down.values()) <= expected
+                self.pending[virtual_key] = _ModifierPress(
+                    identifier, expected, clean, False, self.clock()
+                )
+            return events
+        self.down.pop(virtual_key, None)
+        candidate = self.pending.pop(virtual_key, None)
+        events = []
+        if candidate:
+            if candidate.held:
+                events.append((candidate.hotkey_id, "release"))
+            elif candidate.clean and not (self.hold and candidate.hotkey_id == 0x5101):
+                events.append((candidate.hotkey_id, "tap"))
+        # Releasing a required modifier also ends a special-key chord.
+        events.extend(self._invalidate(key + " released"))
+        return events
+
+    def mouse(self, key, pressed):
+        events = self._invalidate(key) if pressed else []
+        if not pressed:
+            identifier = self.mouse_down.pop(key, None)
+            return identifier is not None, events + (
+                [(identifier, "release")] if identifier is not None else []
+            )
+        if key in self.mouse_down:
+            return True, events
+        modifiers = frozenset(
+            k.lower()
+            for k in self.down.values()
+            if k in {"CTRL", "ALT", "SHIFT", "WIN"}
+        )
+        identifier = self.bindings.get((modifiers, key))
+        if identifier is None:
+            return False, events
+        self.mouse_down[key] = identifier
+        return True, events + [(identifier, "press")]
+
+    def poll(self):
+        events = []
+        if self.hold:
+            for candidate in self.pending.values():
+                if (
+                    candidate.hotkey_id == 0x5101
+                    and candidate.clean
+                    and not candidate.held
+                    and self.clock() - candidate.started_at >= 0.2
+                ):
+                    candidate.held = True
+                    events.append((candidate.hotkey_id, "press"))
+        return events
+
+
+class WindowsInputHook:
+    """Scoped low-level hooks. The owning Qt loop performs all application work."""
+
+    class KeyboardData(ctypes.Structure):
+        _fields_ = [
+            ("vkCode", wintypes.DWORD),
+            ("scanCode", wintypes.DWORD),
+            ("flags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("extra", ctypes.c_size_t),
+        ]
+
+    class MouseData(ctypes.Structure):
+        _fields_ = [
+            ("point", wintypes.POINT),
+            ("mouseData", wintypes.DWORD),
+            ("flags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("extra", ctypes.c_size_t),
+        ]
+
+    def __init__(self, user32, settings, emit):
+        self.user32 = user32
+        self.state = HookHotkeyState(settings)
+        self.ids = self.state.ids
+        self.needs_poll = self.state.hold and any(
+            key in _MODIFIER_KEYS.values() and identifier == 0x5101
+            for (_, key), identifier in self.state.bindings.items()
+        )
+        self.emit = emit
+        self.handles = []
+        self.callbacks = []
+
+    def start(self):
+        if not self.ids:
+            return
+        callback_type = ctypes.WINFUNCTYPE(
+            ctypes.c_ssize_t, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM
+        )
+        self.user32.SetWindowsHookExW.argtypes = [
+            ctypes.c_int,
+            callback_type,
+            wintypes.HINSTANCE,
+            wintypes.DWORD,
+        ]
+        self.user32.SetWindowsHookExW.restype = wintypes.HANDLE
+        self.user32.CallNextHookEx.argtypes = [
+            wintypes.HANDLE,
+            ctypes.c_int,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+        ]
+        self.user32.CallNextHookEx.restype = ctypes.c_ssize_t
+        self.user32.UnhookWindowsHookEx.argtypes = [wintypes.HANDLE]
+        self.user32.UnhookWindowsHookEx.restype = wintypes.BOOL
+        self.user32.keybd_event.argtypes = [
+            wintypes.BYTE,
+            wintypes.BYTE,
+            wintypes.DWORD,
+            ctypes.c_size_t,
+        ]
+        self.user32.keybd_event.restype = None
+        # A held modifier may predate startup or an Apply transaction. Seed
+        # its state without treating it as a new shortcut press.
+        for virtual_key in (0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C):
+            if physical_key_down(self.user32, virtual_key):
+                self.state.down[virtual_key] = _MODIFIER_KEYS[virtual_key]
+        try:
+            for kind, handler in ((13, self._keyboard), (14, self._mouse)):
+                callback = callback_type(handler)
+                self.callbacks.append(callback)
+                handle = self.user32.SetWindowsHookExW(kind, callback, None, 0)
+                if not handle:
+                    raise HotkeyRegistrationError(
+                        [], reason="Windows could not install the input hook"
+                    )
+                self.handles.append(handle)
+        except BaseException:
+            self.stop()
+            raise
+
+    def stop(self):
+        for handle in self.handles:
+            self.user32.UnhookWindowsHookEx(handle)
+        self.handles.clear()
+        self.callbacks.clear()
+
+    def poll(self):
+        self._emit(self.state.poll())
+
+    def _emit(self, events):
+        for identifier, phase in events:
+            self.emit(identifier, phase)
+
+    def _keyboard(self, code, message, pointer):
+        if code >= 0 and message in {0x100, 0x101, 0x104, 0x105}:
+            data = ctypes.cast(pointer, ctypes.POINTER(self.KeyboardData)).contents
+            if not data.flags & 0x10:  # Ignore synthetic clipboard and paste keys.
+                events = self.state.keyboard(data.vkCode, message in {0x100, 0x104})
+                if data.vkCode in {0x5B, 0x5C} and events and message in {0x101, 0x105}:
+                    # A harmless synthetic key prevents a clean Win tap from
+                    # opening Start. The real Win release still reaches Windows.
+                    self.user32.keybd_event(0xFF, 0, 0, 0)
+                    self.user32.keybd_event(0xFF, 0, 2, 0)
+                self._emit(events)
+        return self.user32.CallNextHookEx(None, code, message, pointer)
+
+    def _mouse(self, code, message, pointer):
+        if code >= 0 and message in {0x201, 0x204, 0x207, 0x20A, 0x20B, 0x20C, 0x20E}:
+            data = ctypes.cast(pointer, ctypes.POINTER(self.MouseData)).contents
+            if not data.flags & 1:
+                button = (data.mouseData >> 16) & 0xFFFF
+                key = f"XBUTTON{button}" if message in {0x20B, 0x20C} else "OTHER_MOUSE"
+                consumed, events = self.state.mouse(key, message != 0x20C)
+                self._emit(events)
+                if consumed:
+                    return 1
+        return self.user32.CallNextHookEx(None, code, message, pointer)
 
 
 def supports_push_to_talk() -> bool:

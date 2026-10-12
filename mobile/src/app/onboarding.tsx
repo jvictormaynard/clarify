@@ -70,7 +70,7 @@ function OnboardingFlow({ initialAccount }: { initialAccount: AccountSnapshot })
           </> : account.signedIn ? <>
             <Text style={[ui.body, { color: c.text }]}>{account.email}</Text>
             <Text style={[ui.small, { color: c.muted }]}>{t("Para transcrever e reescrever, áudio, texto e palavras ativas do dicionário serão processados pelo Clarify. O histórico fica neste iPhone. A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.")}</Text>
-            {!account.hosted ? <Button loading={accountBusy} disabled={busy} onPress={() => command('hosted', '1')}>{t("Ativar processamento do Clarify")}</Button> : <Button disabled={busy} onPress={() => { setMode('account'); setStep('keyboard'); }}>{t("Continuar")}</Button>}
+            <Button disabled={busy} onPress={() => { setMode('account'); setStep('keyboard'); }}>{t("Continuar")}</Button>
           </> : <>
             <AccountSignIn account={account} busy={busy} command={command} />
           </>}

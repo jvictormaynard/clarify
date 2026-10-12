@@ -7,7 +7,7 @@ see a short invitation and one sign-in/create-account button. History and vocabu
 Version 0.5.0 (20) shows the email field directly before the bottom tabs.
 The same emailed code enters an existing account or creates a new one, without
 a password. Use **Continuar sem conta** to configure a personal Groq key.
-The account path explicitly asks to enable hosted processing. The final step
+Signing in activates account processing automatically. The final step
 explains keyboard installation; microphone permission is requested when needed.
 An unfinished setup resumes on the next launch. Existing accounts and keys
 skip first-run setup after an upgrade. A setup preference contains no credentials.

@@ -5,17 +5,21 @@ import { createInterface } from "node:readline";
 let child: ChildProcessWithoutNullStreams;
 let id = 0;
 const pending = new Map<number, (value: unknown) => void>();
+let releaseUsage: () => void;
 test.beforeEach(async ({ page }, testInfo) => {
   if (!process.env.CLARIFY_TEST_PYTHON || !process.env.CLARIFY_TEST_FIXTURE) throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
   const onboarding = testInfo.title.startsWith("onboarding:");
+  const quota = testInfo.title.startsWith("quota:");
+  const usageReady = new Promise<void>(resolve => { releaseUsage = resolve; });
   const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(quota ? ["--signed-in"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);
   });
   await page.route("**/__test_rpc", async route => {
     const request = route.request().postDataJSON();
+    if (quota && request.method === "accountCommand") await usageReady;
     const key = ++id;
     const result = new Promise(resolve => pending.set(key, resolve));
     child.stdin.write(JSON.stringify({ id: key, ...request }) + "\n");
@@ -31,7 +35,30 @@ test.beforeEach(async ({ page }, testInfo) => {
   await expect(onboarding ? page.getByRole("heading", { name: locale === "en" ? "Welcome to Clarify" : locale === "es" ? "Te damos la bienvenida a Clarify" : "Boas-vindas ao Clarify" }) : page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
 });
-test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
+test.afterEach(async () => { releaseUsage?.(); child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
+
+test("quota: a signed-in startup shows loading until the quota arrives", async ({ page }) => {
+  await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Carregando…" })).toBeVisible();
+  await expect(page.getByText("0 de 0 minutos neste mês", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
+  releaseUsage();
+  await expect(page.getByRole("progressbar", { name: "Uso neste mês" })).toHaveAttribute("aria-valuetext", "7,5 de 300 minutos neste mês");
+  await expect(page.getByRole("status").filter({ hasText: "Carregando…" })).toHaveCount(0);
+});
+
+test("quota: a failed quota request shows an error and allows a retry", async ({ page }) => {
+  await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+  releaseUsage();
+  await expect(page.getByRole("alert")).toContainText("Não foi possível conectar ao Clarify.");
+  await expect(page.getByRole("status").filter({ hasText: "Carregando…" })).toHaveCount(0);
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
+  const retry = page.getByRole("button", { name: "Tentar novamente", exact: true });
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect(page.getByRole("alert")).toContainText("Não foi possível conectar ao Clarify.");
+  await expect(retry).toBeEnabled();
+});
 
 test("onboarding: first run shows email and a local link before Settings", async ({ page }) => {
   await expect(page.getByRole("navigation", { name: "Configurações" })).toBeHidden();
@@ -52,7 +79,7 @@ test("onboarding: first run shows email and a local link before Settings", async
   await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
 });
 
-test("onboarding: email confirms its code inside the app and requests processing consent", async ({ page }) => {
+test("onboarding: email confirmation activates account processing immediately", async ({ page }) => {
   await page.getByRole("textbox", { name: "E-mail", exact: true }).fill("test@example.test");
   await page.getByRole("textbox", { name: "E-mail", exact: true }).press("Enter");
   await expect(page.getByText("Digite o código enviado para test@example.test.", { exact: false })).toBeVisible();
@@ -63,13 +90,64 @@ test("onboarding: email confirms its code inside the app and requests processing
   await page.getByRole("button", { name: "Confirmar código" }).click();
   await expect(page.getByRole("heading", { name: "Sua conta está pronta" })).toBeVisible();
   await expect(page.getByRole("navigation")).toBeHidden();
-  await page.getByRole("button", { name: "Ativar processamento do Clarify" }).click();
+  await expect(page.getByRole("button", { name: "Ativar processamento do Clarify" })).toHaveCount(0);
   await page.getByRole("button", { name: "Começar", exact: true }).click();
   await expect(page.getByRole("navigation")).toBeVisible();
   await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toBeHidden();
-  await page.getByRole("button", { name: "Texto", exact: true }).click();
-  await expect(page.getByText("O Clarify gerencia os modelos e as instruções da sua conta.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Texto", exact: true })).toBeHidden();
   await expect(page.getByRole("combobox", { name: "Serviço", exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+  const usage = page.getByRole("progressbar", { name: "Uso neste mês" });
+  await expect(usage).toHaveAttribute("aria-valuenow", "2.5");
+  await expect(usage).toHaveAttribute("aria-valuetext", "7,5 de 300 minutos neste mês");
+  await expect(page.getByText("Atualizada após cada processamento.", { exact: false })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Ativar processamento do Clarify" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sair da conta", exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Excluir conta", exact: true })).toBeHidden();
+  await page.getByText("Zona de perigo", { exact: true }).click();
+  for (const label of ["Sair da conta", "Excluir conta"]) {
+    const button = page.getByRole("button", { name: label, exact: true });
+    await expect(button).toBeVisible();
+    expect(await button.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+  }
+  await page.getByRole("button", { name: "Excluir conta", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "Cancelar", exact: true })).toBeFocused();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancelar", exact: true }).click();
+  await expect(usage).toBeVisible();
+  await page.getByRole("button", { name: "Sair da conta", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancelar", exact: true }).click();
+  await expect(usage).toBeVisible();
+  await page.getByRole("button", { name: "Sair da conta", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Sair da conta", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Texto", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toBeVisible();
+});
+
+test("modifier and side mouse shortcuts can be captured and saved", async ({ page }) => {
+  await page.getByRole("button", { name: "Atalhos", exact: true }).click();
+  const recording = page.locator(".shortcut").first();
+  await recording.click();
+  await page.getByRole("textbox", { name: "Novo atalho" }).press("Control");
+  await expect(recording).toHaveText("Ctrl");
+  await recording.click();
+  await page.getByRole("textbox", { name: "Novo atalho" }).press("Meta");
+  await expect(recording).toHaveText("Win");
+  await recording.click();
+  const field = page.getByRole("textbox", { name: "Novo atalho" });
+  await field.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await field.dispatchEvent("mousedown", { button: 3, buttons: 8 });
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await field.dispatchEvent("mouseup", { button: 3 });
+  await expect(recording).toHaveText("Mouse 4");
+  await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Atalhos", exact: true }).click();
+  await expect(page.locator(".shortcut").first()).toHaveText("Mouse 4");
 });
 
 test("onboarding: local choice leads to model setup without a login", async ({ page }) => {

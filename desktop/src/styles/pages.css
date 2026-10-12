@@ -1,3 +1,27 @@
+.usage-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  background: var(--color-border);
+  margin-bottom: var(--space-3);
+}
+.usage-progress > div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+  transition: width var(--motion-control);
+}
+.button.destructive { color: var(--color-error); }
+.danger-zone {
+  border-top: 1px solid var(--color-subtle-border);
+  margin-top: var(--space-5);
+}
+.danger-zone > summary {
+  padding: var(--space-2) 0;
+  color: var(--color-text-bright);
+  font-weight: 500;
+}
+
 .mic-test {
   display: flex;
   align-items: center;

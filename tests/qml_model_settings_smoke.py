@@ -792,6 +792,49 @@ def main():
                 left = control.mapToScene(QPointF(0, 0)).x()
                 right = control.mapToScene(QPointF(control.width(), 0)).x()
                 assert 0 <= left < right <= window.width(), (name, left, right)
+            language_button = visible_item("languageButton")
+            language_menu = find_item(QObject, "languageMenu")
+            language_point = language_button.mapToScene(
+                QPointF(language_button.width() / 2, language_button.height() / 2)
+            ).toPoint()
+            QTest.mouseMove(window, language_point)
+            QTest.qWait(60)
+            assert language_menu.property("visible"), "hover must open languages"
+            assert 0 < language_menu.property("opacity") < 1, "languages must fade in"
+            settle()
+            assert language_menu.property("visible"), (
+                "language menu closed while the pointer stayed on its flag",
+                language_button.property("hovered"),
+                messages,
+            )
+            discovered_objects.append(language_menu.property("contentItem"))
+            for language in ("en", "pt", "es", "de", "ru"):
+                option = next(
+                    item
+                    for item in language_menu.property("contentItem").childItems()
+                    if item.objectName() == "languageOption_" + language
+                )
+                assert option.width() > 0 and option.height() > 0
+            option = next(
+                item
+                for item in language_menu.property("contentItem").childItems()
+                if item.objectName() == "languageOption_de"
+            )
+            QTest.mouseMove(
+                option.window(), option.mapToScene(QPointF(15, 15)).toPoint()
+            )
+            settle()
+            assert language_menu.property("visible"), "pointer must reach the popup"
+            if output:
+                assert (
+                    option.window().grabWindow().save(str(output / "language-menu.png"))
+                )
+            click(option)
+            assert bridge.language == "de"
+            assert not language_menu.property("visible")
+            bridge.setLanguage("en")
+            QTest.mouseMove(window, QPointF(1, 1).toPoint())
+            settle()
             with patch.object(bridge, "_submit", side_effect=lambda action: action()):
                 with patch.object(service, "dispatch", create=True) as dispatch:
                     click(microphone_button)
@@ -821,6 +864,21 @@ def main():
             click(visible_item("settingsButton"))
             quick_menu = find_item(QObject, "quickMenu")
             assert quick_menu.property("visible")
+            files_item = find_item(QObject, "quickFilesItem")
+            settings_item = find_item(QObject, "quickSettingsItem")
+            update_item = find_item(QObject, "quickUpdateItem")
+            assert abs(settings_item.y() - files_item.y() - files_item.height()) < 1
+            assert update_item.height() == 0, "hidden update must not leave a blank row"
+            assert (
+                abs(
+                    quick_menu.property("height")
+                    - settings_item.y()
+                    - settings_item.height()
+                    - quick_menu.property("topPadding")
+                    - quick_menu.property("bottomPadding")
+                )
+                < 1
+            )
             assert visible_item("settingsButton").property("checked")
             click(visible_item("settingsButton"))
             assert not quick_menu.property("visible"), (
@@ -868,6 +926,11 @@ def main():
             )
             settle()
             assert not quick_menu.property("visible")
+            if "--home-menus-only" in sys.argv:
+                print(
+                    "PASS: hover language selection, animated menus and compact quick-menu geometry"
+                )
+                return
             old_surface = bridge.surface
             bridge.openFiles()
             QTest.qWait(60)
