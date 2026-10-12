@@ -2,9 +2,14 @@ import XCTest
 
 final class KeyboardExtensionTests: XCTestCase {
   private func open(_ title: String, in app: XCUIApplication) {
-    let item = app.cells.containing(.staticText, identifier: title).firstMatch
     for _ in 0..<8 {
-      if item.exists && item.isHittable { item.tap(); return }
+      let headerBottom = app.navigationBars.firstMatch.frame.maxY
+      for item in app.staticTexts.matching(identifier: title).allElementsBoundByIndex {
+        let frame = item.frame
+        if !frame.isInfinite && frame.minY >= headerBottom && frame.maxY <= app.frame.maxY && item.isHittable {
+          item.tap(); return
+        }
+      }
       app.swipeUp()
     }
     XCTFail("Settings item unavailable: \(title). \(app.debugDescription)")
@@ -31,14 +36,14 @@ final class KeyboardExtensionTests: XCTestCase {
     let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
     XCTAssertTrue(globe.waitForExistence(timeout: 5), app.debugDescription)
     globe.press(forDuration: 1)
-    let clarify = app.staticTexts["Clarify"].firstMatch
+    let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
     XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
-    XCTAssertTrue(app.buttons["Start in Clarify"].waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertTrue(app.staticTexts["Allow Full Access"].waitForExistence(timeout: 5), app.debugDescription)
     try checkTrace(in: app, opening: "Switching to the extension")
     for index in 0..<4 {
       app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
       app.textFields["composer"].tap()
-      XCTAssertTrue(app.buttons["Start in Clarify"].waitForExistence(timeout: 5))
+      XCTAssertTrue(app.staticTexts["Allow Full Access"].waitForExistence(timeout: 5), app.debugDescription)
       // Querying after presentation keeps every earlier WillChangeFrame notification.
       try checkTrace(in: app, opening: "Opening \(index)")
       let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "extension-opening-\(index)"
