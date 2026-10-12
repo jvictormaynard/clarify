@@ -10,15 +10,13 @@ app.add_dependency(keyboard); tests.add_dependency(app)
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionHost.swift')))
 tests.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionTests.swift')))
 %w[KeyboardViewController.swift DictationEdit.swift KeyGridView.swift KeyPreview.swift TypingAssistant.swift HostActivation.swift KBHostArbiterHook.m].each do |name|
-  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/keyboard', name)))
-end
-%w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
-  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'modules/clarify-core/ios', name)))
-end
-if variant != 'baseline'
-  source = <<~SWIFT
-    import UIKit
-    final class SizingKeyboard: KeyboardViewController {
+  file = File.join(root, 'native/keyboard', name)
+  if name == 'KeyboardViewController.swift' && variant != 'baseline'
+    source = File.read(file)
+    start = source.index('  // The remote input host')
+    finish = source.index('  override func viewDidLoad()', start)
+    raise 'Sizing fixture source boundary changed' unless start && finish
+    initialization = <<~SWIFT
       override init(nibName: String?, bundle: Bundle?) {
         super.init(nibName: nibName, bundle: bundle)
         preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
@@ -27,15 +25,23 @@ if variant != 'baseline'
         super.init(coder: coder)
         preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
       }
-      override func loadView() {
-        super.loadView()
-        view.frame = CGRect(origin: .zero, size: preferredContentSize)
-        #{variant == 'constraints' ? 'view.translatesAutoresizingMaskIntoConstraints = false' : ''}
-      }
-    }
-  SWIFT
-  file = File.join(fixture, 'SizingKeyboard.swift'); File.write(file, source)
+    SWIFT
+    layout = case variant
+    when 'native-root'
+      'super.loadView(); view.heightAnchor.constraint(equalToConstant: KeyboardInputView.contentHeight).isActive = true'
+    when 'fixed-frame'
+      'inputView = UIInputView(frame: CGRect(origin: .zero, size: preferredContentSize), inputViewStyle: .keyboard)'
+    else
+      'inputView = KeyboardInputView(frame: CGRect(origin: .zero, size: preferredContentSize), inputViewStyle: .keyboard)'
+    end
+    replacement = initialization + "override func loadView() {\n#{layout}\nview.backgroundColor = .clear; view.isOpaque = false\n}\n"
+    source[start...finish] = replacement
+    file = File.join(fixture, name); File.write(file, source)
+  end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(file))
+end
+%w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
+  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'modules/clarify-core/ios', name)))
 end
 embed = app.new_copy_files_build_phase('Embed App Extensions'); embed.dst_subfolder_spec = '13'
 embed.add_file_reference(keyboard.product_reference).settings = { 'ATTRIBUTES' => ['RemoveHeadersOnCopy'] }
@@ -53,7 +59,7 @@ info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'ClarifyKeyboard'
   'CFBundleIdentifier' => '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundleExecutable' => '$(EXECUTABLE_NAME)',
   'CFBundlePackageType' => 'XPC!', 'CFBundleShortVersionString' => '1.0', 'CFBundleVersion' => '1',
   'NSExtension' => { 'NSExtensionPointIdentifier' => 'com.apple.keyboard-service',
-    'NSExtensionPrincipalClass' => "$(PRODUCT_MODULE_NAME).#{variant == 'baseline' ? 'KeyboardViewController' : 'SizingKeyboard'}",
+    'NSExtensionPrincipalClass' => '$(PRODUCT_MODULE_NAME).KeyboardViewController',
     'NSExtensionAttributes' => { 'IsASCIICapable' => true, 'PrimaryLanguage' => 'pt-BR', 'RequestsOpenAccess' => true } } }
 Xcodeproj::Plist.write_to_path(info, File.join(fixture, 'Keyboard.plist'))
 keyboard.build_configurations.each do |config|

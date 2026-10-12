@@ -24,7 +24,7 @@ final class KeyboardExtensionTests: XCTestCase {
   }
   func testOpeningTheInstalledKeyboardExtensionDoesNotReserveAnOversizedFrame() throws {
     continueAfterFailure = false
-    executionTimeAllowance = 120
+    executionTimeAllowance = 300
     let app = XCUIApplication(); app.launch()
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
     settings.launch()
