@@ -16,8 +16,8 @@ final class KeyboardExtensionTests: XCTestCase {
     open("General", in: settings)
     open("Keyboard", in: settings)
     open("Keyboards", in: settings)
-    let add = settings.tables.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Add New Keyboard")).firstMatch
-    XCTAssertTrue(add.waitForExistence(timeout: 5)); add.tap()
+    let addKeyboard = settings.tables.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Add New Keyboard")).firstMatch
+    XCTAssertTrue(addKeyboard.waitForExistence(timeout: 5)); addKeyboard.tap()
     open("Clarify", in: settings)
     let app = XCUIApplication(); app.launch()
     app.textFields["composer"].tap()
@@ -32,8 +32,9 @@ final class KeyboardExtensionTests: XCTestCase {
       app.textFields["composer"].tap()
       XCTAssertTrue(app.buttons["Start in Clarify"].waitForExistence(timeout: 5))
       // Querying after presentation keeps every earlier WillChangeFrame notification.
-      let raw = app.staticTexts["keyboard-frames"].label
-      let heights = try JSONDecoder().decode([Double].self, from: Data(raw.utf8))
+      let raw = try XCTUnwrap(app.staticTexts["keyboard-frames"].value as? String)
+      let values = try JSONDecoder().decode([String: [Double]].self, from: Data(raw.utf8))
+      let heights = values.values.flatMap { $0 }
       XCTAssertFalse(heights.isEmpty)
       XCTAssertTrue(heights.allSatisfy { $0 < 400 }, "Opening \(index): \(heights)")
       let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "extension-opening-\(index)"
