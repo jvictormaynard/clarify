@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Alert, SectionList, Modal, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { SymbolView } from 'expo-symbols';
 import Core, { type HistoryEntry } from '../../../modules/clarify-core';
 import { Button, Card, TableRow, Title, ui, usePalette } from '../../components/ui';
 import { report, useClarify } from '../../state/clarify';
@@ -82,10 +83,16 @@ export default function Home() {
       </View>}
       renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { color: c.text, paddingTop: 16, paddingBottom: 12 }]}>{historyDayTitle(section.date, today, uiLanguage, t("Hoje"))}</Text>}
       renderItem={({ item, index, section }) => <TableRow first={index === 0} last={index === section.data.length - 1}
-        accessibilityLabel={`${timestamp(item.createdAt)}. ${item.text}`} onPress={() => { setOriginal(false); setSelected(item); }}>
+        accessibilityLabel={`${timestamp(item.createdAt)}. ${item.sourceDevice === 'desktop' ? 'Desktop' : 'Mobile'}. ${item.text}`} onPress={() => { setOriginal(false); setSelected(item); }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
           <Text numberOfLines={4} style={[ui.body, { color: c.text, flex: 1 }]}>{item.text}</Text>
-          <Text style={[ui.small, { color: c.muted, fontVariant: ['tabular-nums'], textAlign: 'right' }]}>{historyTime(item.createdAt, uiLanguage)}</Text>
+          <View style={{ alignItems: 'flex-end', gap: 2 }}>
+            <Text style={[ui.small, { color: c.muted, fontVariant: ['tabular-nums'], textAlign: 'right' }]}>{historyTime(item.createdAt, uiLanguage)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <SymbolView name={item.sourceDevice === 'desktop' ? 'desktopcomputer' : 'iphone'} size={13} tintColor={c.muted} accessible={false} />
+              <Text style={[ui.small, { color: c.muted }]}>{item.sourceDevice === 'desktop' ? 'Desktop' : 'Mobile'}</Text>
+            </View>
+          </View>
         </View>
       </TableRow>}
       ListEmptyComponent={!loading && !error ? <View style={{ gap: 12, paddingVertical: 24 }}><Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t("Hoje")}</Text><Text style={[ui.body, { color: c.muted }]}>{t("Seus próximos ditados aparecerão aqui. O histórico fica somente neste iPhone.")}</Text></View> : null}

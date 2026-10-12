@@ -5,6 +5,10 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+
+- iOS 0.7.1 (24): show a small device icon and Mobile or Desktop below each history timestamp. Preserve the source in each record and identify earlier iPhone records as Mobile. History remains local.
+
 ## [0.8.0] - 2026-10-12
 
 ### Added
