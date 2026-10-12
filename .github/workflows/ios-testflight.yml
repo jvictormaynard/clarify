@@ -28,7 +28,7 @@ on:
       diagnostic_variant:
         description: Change one factor in the installed extension fixture
         type: choice
-        options: [production, without-host-hooks, without-swiftui, without-preferred-size, initial-width, system-sizing, window-height, default-root, window-height-visible, native-autosize, controller-fitting, stored-preferred-size]
+        options: [production, without-host-hooks, without-swiftui, without-preferred-size, initial-width, system-sizing, window-height, default-root, window-height-visible, native-autosize, controller-fitting, stored-preferred-size, root-autolayout, parent-preferred-size]
         default: production
 
 permissions:

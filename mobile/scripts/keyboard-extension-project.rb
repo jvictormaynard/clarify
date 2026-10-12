@@ -48,6 +48,22 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     source = File.join(fixture, name)
     File.write(source, original.sub('    inputView = input', "    super.preferredContentSize = CGSize(width: 0, height: KeyboardInputView.contentHeight)\n    inputView = input"))
   end
+  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'root-autolayout'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    File.write(source, original.sub('    inputView = input', "    input.translatesAutoresizingMaskIntoConstraints = false\n    inputView = input"))
+  end
+  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'parent-preferred-size'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    replacement = <<~'SWIFT'
+      super.viewWillAppear(animated)
+      super.preferredContentSize = CGSize(width: view.bounds.width, height: KeyboardInputView.contentHeight)
+      parent?.preferredContentSizeDidChange(forChildContentContainer: self)
+      NSLog("ClarifyFixtureSizing notified parent=%@", String(describing: parent))
+    SWIFT
+    File.write(source, original.sub('super.viewWillAppear(animated);', replacement))
+  end
   if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'system-sizing'
     original = File.read(source)
     source = File.join(fixture, name)
