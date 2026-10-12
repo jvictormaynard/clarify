@@ -1,194 +1,16 @@
 require 'xcodeproj'
-require 'fileutils'
 root, fixture = ARGV
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
-variant = ENV.fetch('CLARIFY_KEYBOARD_VARIANT', 'baseline')
-controller_policy = variant.start_with?('controller-') || variant == 'align-content'
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
 tests = project.new_target(:ui_test_bundle, 'ExtensionTests', :ios, '16.4')
 app.add_dependency(keyboard); tests.add_dependency(app)
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionHost.swift')))
-test_file = File.join(root, 'native/tests/KeyboardExtensionTests.swift')
-if variant == 'full-access'
-  test_source = File.read(test_file).sub('let testFullAccess = false', 'let testFullAccess = true')
-  test_file = File.join(fixture, 'KeyboardExtensionTests.swift'); File.write(test_file, test_source)
-end
-tests.source_build_phase.add_file_reference(project.main_group.new_file(test_file))
+tests.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionTests.swift')))
 %w[KeyboardViewController.swift DictationEdit.swift KeyGridView.swift KeyPreview.swift TypingAssistant.swift HostActivation.swift KBHostArbiterHook.m].each do |name|
-  file = File.join(root, 'native/keyboard', name)
-  if name == 'KeyboardViewController.swift' && !['baseline', 'full-access'].include?(variant)
-    source = File.read(file)
-    start = source.index('  // The remote input host')
-    finish = source.index('  override func viewDidLoad()', start)
-    raise 'Sizing fixture source boundary changed' unless start && finish
-    initialization = <<~SWIFT
-      override init(nibName: String?, bundle: Bundle?) {
-        #{controller_policy ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
-        super.init(nibName: nibName, bundle: bundle)
-        #{['no-preferred', 'native-constrained'].include?(variant) ? '' : 'preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)'}
-        #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
-        #{variant == 'eager-layout' ? 'view.layoutIfNeeded()' : ''}
-      }
-      required init?(coder: NSCoder) {
-        #{controller_policy ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
-        super.init(coder: coder)
-        #{['no-preferred', 'native-constrained'].include?(variant) ? '' : 'preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)'}
-        #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
-        #{variant == 'eager-layout' ? 'view.layoutIfNeeded()' : ''}
-      }
-    SWIFT
-    layout = case variant
-    when 'native-root'
-      'super.loadView(); view.heightAnchor.constraint(equalToConstant: KeyboardInputView.contentHeight).isActive = true'
-    when 'native-constrained'
-      'super.loadView(); view.translatesAutoresizingMaskIntoConstraints = false; view.heightAnchor.constraint(equalToConstant: KeyboardInputView.contentHeight).isActive = true'
-    when 'fixed-frame'
-      'inputView = UIInputView(frame: CGRect(origin: .zero, size: preferredContentSize), inputViewStyle: .keyboard)'
-    when 'no-preferred'
-      'inputView = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight), inputViewStyle: .keyboard)'
-    else
-      'inputView = KeyboardInputView(frame: CGRect(origin: .zero, size: preferredContentSize), inputViewStyle: .keyboard)'
-    end
-    replacement = initialization + "override func loadView() {\n#{layout}\nview.backgroundColor = .clear; view.isOpaque = false\n}\n"
-    source[start...finish] = replacement
-    source[start...(start + replacement.length)] = '' if variant == 'storyboard-root'
-    source.sub!('allowsSelfSizing = true', 'allowsSelfSizing = false') if variant == 'no-self-sizing'
-    source.gsub!('inputViewStyle: .keyboard', 'inputViewStyle: .default') if variant == 'style-default'
-    if variant == 'plain-view'
-      source.sub!('inputView = KeyboardInputView(frame: CGRect(origin: .zero, size: preferredContentSize), inputViewStyle: .keyboard)', 'view = UIView(frame: CGRect(origin: .zero, size: preferredContentSize)); view.heightAnchor.constraint(equalToConstant: 278).isActive = true')
-    end
-    if variant == 'root-frame'
-      source.sub!('final class KeyboardInputView: UIInputView {', <<~SWIFT)
-        final class KeyboardInputView: UIInputView {
-          override var frame: CGRect {
-            get { super.frame }
-            set { var value = newValue; value.origin.y = 0; value.size.height = Self.contentHeight; super.frame = value }
-          }
-          override var bounds: CGRect {
-            get { super.bounds }
-            set { var value = newValue; value.origin.y = 0; value.size.height = Self.contentHeight; super.bounds = value }
-          }
-      SWIFT
-    end
-    if variant == 'layer-frame'
-      source.sub!('final class KeyboardInputView: UIInputView {', <<~SWIFT)
-        final class KeyboardLayer: CALayer {
-          override var bounds: CGRect {
-            get { super.bounds }
-            set {
-              var value = newValue; value.origin.y = 0
-              if value.height > 0 { value.size.height = KeyboardInputView.contentHeight }
-              super.bounds = value
-              super.position = CGPoint(x: super.position.x, y: value.height / 2)
-            }
-          }
-          override var position: CGPoint {
-            get { super.position }
-            set { super.position = CGPoint(x: newValue.x, y: bounds.height / 2) }
-          }
-        }
-        final class KeyboardInputView: UIInputView {
-          override class var layerClass: AnyClass { KeyboardLayer.self }
-      SWIFT
-    end
-    source.sub!('    super.viewDidLayoutSubviews()', '    super.viewDidLayoutSubviews(); NSLog("Clarify sizing geometry: frame=%@ bounds=%@ parent=%@", NSCoder.string(for: view.frame), NSCoder.string(for: view.bounds), NSCoder.string(for: view.superview?.frame ?? .zero))')
-    if variant == 'no-hosting'
-      host_start = source.index('    let host = UIHostingController(rootView: ActivationLink')
-      host_end = source.index('    requestSupplementaryLexicon', host_start)
-      source[host_start...host_end] = ''
-    end
-    if variant == 'no-globe-query'
-      source.sub!(/    if keys.needsGlobe != needsInputModeSwitchKey \{.*?\n    \}/m, '')
-    end
-    source.sub!(/    requestSupplementaryLexicon.*?\n    \}/m, '') if variant == 'no-lexicon'
-    source.sub!('hasDictationKey = true', 'hasDictationKey = false') if variant == 'no-dictation-key'
-    if variant == 'parent-preferred'
-      source.sub!('super.viewWillAppear(animated);', 'NSLog("Clarify sizing parent: %@", String(describing: parent)); parent?.preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight); super.viewWillAppear(animated);')
-    end
-    if variant.start_with?('minimal-')
-      source = <<~SWIFT
-        import UIKit
-        class KeyboardViewController: UIInputViewController {
-          override func viewDidLoad() {
-            super.viewDidLoad()
-            #{variant == 'minimal-height' ? 'let height = view.heightAnchor.constraint(equalToConstant: 278); height.priority = UILayoutPriority(999); height.isActive = true' : ''}
-            let label = UILabel(); label.text = "Allow Full Access"; label.frame = CGRect(x: 12, y: 8, width: 200, height: 24)
-            view.addSubview(label)
-            let key = UIButton(type: .system); key.setTitle("q", for: .normal); key.frame = CGRect(x: 30, y: 60, width: 60, height: 60)
-            key.accessibilityIdentifier = "clarify.keyboard.record"
-            key.addAction(UIAction { [weak self] _ in self?.textDocumentProxy.insertText("q") }, for: .touchUpInside)
-            view.addSubview(key)
-          }
-        }
-      SWIFT
-    end
-    file = File.join(fixture, name); File.write(file, source)
-  end
-  if name == 'KeyboardViewController.swift'
-    source = File.read(file).sub('mic.accessibilityLabel = L("Gravar")', 'mic.accessibilityIdentifier = "clarify.keyboard.record"; mic.accessibilityLabel = L("Gravar")')
-    file = File.join(fixture, name); File.write(file, source)
-  end
-  if name == 'KBHostArbiterHook.m' && (variant == 'no-arbiter' || variant.start_with?('minimal-'))
-    source = File.read(file).sub('[self installHooks];', '// Diagnostic fixture: leave UIKit arbiter behavior unchanged.')
-    source.sub!('#import "KBHostArbiterHook.h"', "#import \"#{File.join(root, 'native/keyboard/KBHostArbiterHook.h')}\"")
-    file = File.join(fixture, name); File.write(file, source)
-  end
-  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(file))
+  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/keyboard', name)))
 end
 bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
-if controller_policy
-  source = <<~OBJC
-    #import <UIKit/UIKit.h>
-    #import <objc/runtime.h>
-    #include <string.h>
-    static BOOL matches(Method method, unsigned int index, const char *expected) {
-      char *type = method_copyArgumentType(method, index);
-      BOOL valid = type && strcmp(type, expected) == 0; free(type); return valid;
-    }
-    static void installBoolean(Class target, NSString *name, BOOL value) {
-      SEL selector = NSSelectorFromString(name); Method method = class_getInstanceMethod(UIInputViewController.class, selector);
-      char *type = method ? method_copyReturnType(method) : NULL;
-      BOOL valid = type && strcmp(type, @encode(BOOL)) == 0 && method_getNumberOfArguments(method) == 2; free(type);
-      NSLog(@"Clarify sizing fixture: %@ compatible=%d", name, valid);
-      if (!valid) return;
-      IMP implementation = imp_implementationWithBlock(^BOOL(id controller) { return value; });
-      if (!class_addMethod(target, selector, implementation, method_getTypeEncoding(method))) imp_removeBlock(implementation);
-    }
-    void KBInstallFixtureSizing(Class target) {
-      static dispatch_once_t once; dispatch_once(&once, ^{
-        unsigned int count = 0; Method *methods = class_copyMethodList(UIInputViewController.class, &count);
-        for (unsigned int index = 0; index < count; index++) {
-          NSString *name = NSStringFromSelector(method_getName(methods[index]));
-          NSString *lower = name.lowercaseString;
-          if ([lower containsString:@"size"] || [lower containsString:@"height"] || [lower containsString:@"frame"]) NSLog(@"Clarify sizing method: %@ %s", name, method_getTypeEncoding(methods[index]));
-        }
-        free(methods);
-        #{variant == 'align-content' ? 'installBoolean(target, @"_alignsToContentViewController", YES); return;' : ''}
-        #{variant == 'controller-no-autosize' ? 'installBoolean(target, @"_autosizeToCurrentKeyboard", NO); return;' : ''}
-        #{variant == 'controller-forward' ? 'installBoolean(target, @"_shouldForwardSystemLayoutFittingSizeChanges", YES);' : ''}
-        SEL selector = NSSelectorFromString(@"_systemLayoutSizeFittingSize:withHorizontalFittingPriority:verticalFittingPriority:");
-        Method method = class_getInstanceMethod(UIInputViewController.class, selector);
-        char *result = method ? method_copyReturnType(method) : NULL;
-        BOOL valid = result && strcmp(result, @encode(CGSize)) == 0 && method_getNumberOfArguments(method) == 5 &&
-          matches(method, 2, @encode(CGSize)) && matches(method, 3, @encode(float)) && matches(method, 4, @encode(float));
-        free(result);
-        NSLog(@"Clarify sizing fixture: compatible=%d", valid);
-        if (!valid) return;
-        IMP implementation = imp_implementationWithBlock(^CGSize(id controller, CGSize size, float horizontal, float vertical) {
-          CGFloat width = size.width > 0 && size.width < 2000 ? size.width : UIScreen.mainScreen.bounds.size.width;
-          NSLog(@"Clarify sizing fixture: request=%.1fx%.1f", size.width, size.height);
-          return CGSizeMake(width, 278);
-        });
-        if (!class_addMethod(target, selector, implementation, method_getTypeEncoding(method))) imp_removeBlock(implementation);
-      });
-    }
-  OBJC
-  file = File.join(fixture, 'ControllerSizing.m'); File.write(file, source)
-  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(file))
-  header = "#import \"#{bridge}\"\nvoid KBInstallFixtureSizing(Class target);\n"
-  bridge = File.join(fixture, 'Bridge.h'); File.write(bridge, header)
-end
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'modules/clarify-core/ios', name)))
 end
@@ -218,30 +40,6 @@ info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'ClarifyKeyboard'
   'NSExtension' => { 'NSExtensionPointIdentifier' => 'com.apple.keyboard-service',
     'NSExtensionPrincipalClass' => '$(PRODUCT_MODULE_NAME).KeyboardViewController',
     'NSExtensionAttributes' => { 'IsASCIICapable' => true, 'PrimaryLanguage' => 'pt-BR', 'RequestsOpenAccess' => true } } }
-if variant.start_with?('storyboard')
-  info['NSExtension'].delete('NSExtensionPrincipalClass')
-  info['NSExtension']['NSExtensionMainStoryboard'] = 'Keyboard'
-  storyboard = <<~XML
-    <?xml version="1.0" encoding="UTF-8"?>
-    <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="24506" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="keyboard">
-      <device id="retina6_12" orientation="portrait" appearance="light"/>
-      <dependencies><plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="24504"/><capability name="Safe area layout guides" minToolsVersion="9.0"/></dependencies>
-      <scenes><scene sceneID="scene"><objects>
-        <viewController id="keyboard" customClass="KeyboardViewController" customModule="ClarifyKeyboard" customModuleProvider="target">
-          <view key="view" contentMode="scaleToFill" id="root" customClass="UIInputView">
-            <rect key="frame" x="0.0" y="0.0" width="402" height="278"/>
-            <autoresizingMask key="autoresizingMask" widthSizable="YES"/>
-            <viewLayoutGuide key="safeArea" id="safe"/>
-            <constraints><constraint firstAttribute="height" constant="278" id="height"/></constraints>
-          </view>
-        </viewController>
-        <placeholder placeholderIdentifier="IBFirstResponder" id="responder" userLabel="First Responder" customClass="UIResponder"/>
-      </objects></scene></scenes>
-    </document>
-  XML
-  file = File.join(fixture, 'Keyboard.storyboard'); File.write(file, storyboard)
-  keyboard.resources_build_phase.add_file_reference(project.main_group.new_file(file))
-end
 Xcodeproj::Plist.write_to_path(info, File.join(fixture, 'Keyboard.plist'))
 keyboard.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.host.keyboard',

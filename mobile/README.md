@@ -13,6 +13,11 @@ An unfinished setup resumes on the next launch. Existing accounts and keys
 skip first-run setup after an upgrade. A setup preference contains no credentials.
 Billing, translation and local models are outside this mobile release.
 
+The unreleased history change shows the source device below the time, using the same caption size.
+New records preserve their source; earlier iPhone records default to Mobile.
+History remains on the device. Account dictionary and usage synchronization do
+not transfer history between desktop and mobile.
+
 Version **0.7.0 (23)** groups Home history by the device's calendar day, with
 continuous rows containing text and time. A large switch above history turns
 Clarify on or off, centered between Off and On. It reflects the native microphone state and shows loading
@@ -36,6 +41,27 @@ acceptance. These fixtures do not prove that the device-reported jump is gone.
 Use the direct workflow's `tests_only` input to run native checks without signing
 or uploading an existing build number. Uploads retain the full check sequence.
 Mobile versions are independent of the Windows release tags.
+
+### Installed keyboard opening diagnostic
+
+Build 23 still has an opening-height defect. On the iPhone 17 Pro simulator
+(iOS 26.4.1), the installed extension briefly reserves 598 points on reopening
+before returning to 370. The ordinary keyboard-frame notification reports only
+the final height. A `CADisplayLink` trace of the host's `keyboardLayoutGuide`
+captures the transient height. The test retains video for comparison with the
+device recording. The system-keyboard control passes in the same host.
+This is an observation, not a confirmed root cause or a validated fix.
+
+Run `node scripts/test-keyboard-extension.cjs` from `mobile/` on macOS, or select
+both `tests_only` and `extension_diagnostic` in the iOS workflow. The generated
+UIKit host installs the real extension sources, tests the system keyboard as
+a control, and checks initial switching plus four dismiss/reopen cycles. It
+also verifies text insertion and the bottom keyboard row. The diagnostic uses
+only synthetic text, with no microphone, provider key or user profile.
+The current extension is expected to fail the height assertion. The workflow
+retains traces, screenshots, video and the result bundle for investigation.
+Passing the separate in-process UIKit tests does not resolve this open gate.
+No new signing or upload occurs when `tests_only` is selected.
 
 Version 0.6.0 (22) adds a dictionary action to the keyboard toolbar when one or
 two words are selected. Tap **Adicionar ao dicionário** to save without changing

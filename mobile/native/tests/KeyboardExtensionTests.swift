@@ -8,7 +8,11 @@ final class KeyboardExtensionTests: XCTestCase {
       for item in candidates {
         let frame = item.frame
         if !frame.isInfinite && frame.minY >= headerBottom && frame.maxY <= app.frame.maxY && item.isHittable {
-          item.tap(); return
+          item.tap()
+          if ["General", "Keyboard", "Keyboards"].contains(title) {
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 10), "Settings navigation did not complete: \(title)")
+          }
+          return
         }
       }
       app.swipeUp()
@@ -25,10 +29,11 @@ final class KeyboardExtensionTests: XCTestCase {
     continueAfterFailure = true
     defer { continueAfterFailure = false }
     XCTAssertTrue(heights.allSatisfy { $0 < 400 }, "\(opening): \(values)")
+    XCTAssertGreaterThanOrEqual(values["displayFrames"]?.last ?? 0, 278, "The keyboard must remain fully visible")
   }
   func testNativeSystemKeyboardDoesNotReserveAnOversizedFrame() throws {
     continueAfterFailure = false
-    let app = XCUIApplication(); app.launch()
+    let app = XCUIApplication(); app.launchArguments = ["--system-keyboard"]; app.launch()
     app.textFields["composer"].tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
     try checkTrace(in: app, opening: "Native keyboard initial opening")
@@ -42,7 +47,7 @@ final class KeyboardExtensionTests: XCTestCase {
   func testOpeningTheInstalledKeyboardExtensionDoesNotReserveAnOversizedFrame() throws {
     continueAfterFailure = false
     executionTimeAllowance = 300
-    let testFullAccess = false
+    let testFullAccess = true
     let app = XCUIApplication(); app.launch()
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
     settings.launch()
@@ -79,6 +84,10 @@ final class KeyboardExtensionTests: XCTestCase {
     let letter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch
     XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription); letter.tap()
     XCTAssertEqual((app.textFields["composer"].value as? String)?.lowercased(), "q", "The installed extension must be connected to the host field")
+    let space = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["space", "espaço", "espacio"])).firstMatch
+    XCTAssertTrue(space.isHittable, "The bottom keyboard row must be usable")
+    space.tap()
+    XCTAssertEqual((app.textFields["composer"].value as? String)?.lowercased(), "q ")
     for index in 0..<4 {
       app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
       app.textFields["composer"].tap()

@@ -59,15 +59,15 @@ jobs:
         run: npm run check
       - name: Check Expo configuration
         run: npx --yes expo-doctor
-      - name: Test installed keyboard extension
-        if: ${{ inputs.extension_diagnostic }}
-        run: node scripts/test-keyboard-extension.cjs --compare
       - name: Test Swift contracts
         run: npm run test:native
       - name: Test keyboard on iPhone simulator
         env:
           CLARIFY_NATIVE_TESTS: '1'
         run: node scripts/test-keyboard-ui.cjs
+      - name: Test installed keyboard extension
+        if: ${{ inputs.extension_diagnostic }}
+        run: node scripts/test-keyboard-extension.cjs
       - name: Generate native project
         if: ${{ !inputs.tests_only }}
         run: npx expo prebuild --clean --platform ios --no-install
@@ -132,10 +132,7 @@ jobs:
           name: clarify-keyboard-tests-${{ github.sha }}
           path: |
             mobile/test-results/keyboard-ui.zip
-            mobile/test-results/KeyboardExtension-*.xcresult
-            mobile/test-results/extension-captures-*
-            mobile/test-results/extension-results.json
-            mobile/test-results/extension-log-*.txt
+            mobile/test-results/installed-keyboard-*
           if-no-files-found: ignore
           retention-days: 7
       - name: Remove temporary signing credentials

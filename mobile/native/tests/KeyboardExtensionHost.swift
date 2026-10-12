@@ -21,6 +21,7 @@ final class KeyboardHostController: UIViewController {
   override func viewDidLoad() {
     super.viewDidLoad(); view.backgroundColor = .systemBackground
     field.borderStyle = .roundedRect; field.placeholder = "Type here"; field.accessibilityIdentifier = "composer"
+    field.isSecureTextEntry = ProcessInfo.processInfo.arguments.contains("--system-keyboard")
     trace.text = "Keyboard frame trace"; trace.accessibilityIdentifier = "keyboard-frames"
     let dismiss = UIButton(type: .system); dismiss.setTitle("Dismiss", for: .normal)
     dismiss.addAction(UIAction { [weak self] _ in self?.field.resignFirstResponder() }, for: .touchUpInside)

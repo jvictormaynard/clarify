@@ -7,6 +7,7 @@ Notable user-facing changes are documented here. This project follows
 
 ### Added
 
+- iOS history: show a small device icon and Mobile or Desktop below the time. Preserve the source in each record and identify earlier iPhone records as Mobile.
 - iOS keyboard: select one or two words to add them directly to the dictionary. The localized action confirms Saved, prevents duplicate additions and preserves the selected text. Offline additions stay on the device and account words synchronize automatically.
 - iOS keyboard: undo or redo the last inserted dictation from the toolbar. Preserve existing text and clear the action after typing or changing the document context.
 
