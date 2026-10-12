@@ -3,6 +3,7 @@ require 'fileutils'
 root, fixture = ARGV
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
 variant = ENV.fetch('CLARIFY_KEYBOARD_VARIANT', 'baseline')
+controller_policy = variant.start_with?('controller-') || variant == 'align-content'
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
 tests = project.new_target(:ui_test_bundle, 'ExtensionTests', :ios, '16.4')
@@ -18,14 +19,14 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     raise 'Sizing fixture source boundary changed' unless start && finish
     initialization = <<~SWIFT
       override init(nibName: String?, bundle: Bundle?) {
-        #{variant == 'controller-policy' ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
+        #{controller_policy ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
         super.init(nibName: nibName, bundle: bundle)
         preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
         #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
         #{variant == 'eager-layout' ? 'view.layoutIfNeeded()' : ''}
       }
       required init?(coder: NSCoder) {
-        #{variant == 'controller-policy' ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
+        #{controller_policy ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
         super.init(coder: coder)
         preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
         #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
@@ -42,6 +43,41 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     end
     replacement = initialization + "override func loadView() {\n#{layout}\nview.backgroundColor = .clear; view.isOpaque = false\n}\n"
     source[start...finish] = replacement
+    if variant == 'root-frame'
+      source.sub!('final class KeyboardInputView: UIInputView {', <<~SWIFT)
+        final class KeyboardInputView: UIInputView {
+          override var frame: CGRect {
+            get { super.frame }
+            set { var value = newValue; value.origin.y = 0; value.size.height = Self.contentHeight; super.frame = value }
+          }
+          override var bounds: CGRect {
+            get { super.bounds }
+            set { var value = newValue; value.origin.y = 0; value.size.height = Self.contentHeight; super.bounds = value }
+          }
+      SWIFT
+    end
+    if variant == 'layer-frame'
+      source.sub!('final class KeyboardInputView: UIInputView {', <<~SWIFT)
+        final class KeyboardLayer: CALayer {
+          override var bounds: CGRect {
+            get { super.bounds }
+            set {
+              var value = newValue; value.origin.y = 0
+              if value.height > 0 { value.size.height = KeyboardInputView.contentHeight }
+              super.bounds = value
+              super.position = CGPoint(x: super.position.x, y: value.height / 2)
+            }
+          }
+          override var position: CGPoint {
+            get { super.position }
+            set { super.position = CGPoint(x: newValue.x, y: bounds.height / 2) }
+          }
+        }
+        final class KeyboardInputView: UIInputView {
+          override class var layerClass: AnyClass { KeyboardLayer.self }
+      SWIFT
+    end
+    source.sub!('    super.viewDidLayoutSubviews()', '    super.viewDidLayoutSubviews(); NSLog("Clarify sizing geometry: frame=%@ bounds=%@ parent=%@", NSStringFromCGRect(view.frame), NSStringFromCGRect(view.bounds), NSStringFromCGRect(view.superview?.frame ?? .zero))')
     if variant == 'no-hosting'
       host_start = source.index('    let host = UIHostingController(rootView: ActivationLink')
       host_end = source.index('    requestSupplementaryLexicon', host_start)
@@ -52,7 +88,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(file))
 end
 bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
-if variant == 'controller-policy'
+if controller_policy
   source = <<~OBJC
     #import <UIKit/UIKit.h>
     #import <objc/runtime.h>
@@ -61,8 +97,26 @@ if variant == 'controller-policy'
       char *type = method_copyArgumentType(method, index);
       BOOL valid = type && strcmp(type, expected) == 0; free(type); return valid;
     }
+    static void installBoolean(Class target, NSString *name) {
+      SEL selector = NSSelectorFromString(name); Method method = class_getInstanceMethod(UIInputViewController.class, selector);
+      char *type = method ? method_copyReturnType(method) : NULL;
+      BOOL valid = type && strcmp(type, @encode(BOOL)) == 0 && method_getNumberOfArguments(method) == 2; free(type);
+      NSLog(@"Clarify sizing fixture: %@ compatible=%d", name, valid);
+      if (!valid) return;
+      IMP implementation = imp_implementationWithBlock(^BOOL(id controller) { return YES; });
+      if (!class_addMethod(target, selector, implementation, method_getTypeEncoding(method))) imp_removeBlock(implementation);
+    }
     void KBInstallFixtureSizing(Class target) {
       static dispatch_once_t once; dispatch_once(&once, ^{
+        unsigned int count = 0; Method *methods = class_copyMethodList(UIInputViewController.class, &count);
+        for (unsigned int index = 0; index < count; index++) {
+          NSString *name = NSStringFromSelector(method_getName(methods[index]));
+          NSString *lower = name.lowercaseString;
+          if ([lower containsString:@"size"] || [lower containsString:@"height"] || [lower containsString:@"frame"]) NSLog(@"Clarify sizing method: %@ %s", name, method_getTypeEncoding(methods[index]));
+        }
+        free(methods);
+        #{variant == 'align-content' ? 'installBoolean(target, @"_alignsToContentViewController"); return;' : ''}
+        #{variant == 'controller-forward' ? 'installBoolean(target, @"_shouldForwardSystemLayoutFittingSizeChanges");' : ''}
         SEL selector = NSSelectorFromString(@"_systemLayoutSizeFittingSize:withHorizontalFittingPriority:verticalFittingPriority:");
         Method method = class_getInstanceMethod(UIInputViewController.class, selector);
         char *result = method ? method_copyReturnType(method) : NULL;

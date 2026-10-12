@@ -16,7 +16,7 @@ const device = Object.values(JSON.parse(devices.stdout).devices).flat().find(ite
 if (!device) throw new Error('No iPhone simulator.');
 run('xcrun', ['simctl', 'bootstatus', device.udid, '-b']);
 const output = path.join(root, 'test-results'); fs.mkdirSync(output, { recursive: true });
-const variants = process.argv.includes('--compare') ? ['controller-policy'] : ['baseline'];
+const variants = process.env.CLARIFY_KEYBOARD_VARIANTS?.split(',') ?? (process.argv.includes('--compare') ? ['controller-policy'] : ['baseline']);
 const results = [];
 for (const variant of variants) {
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), `clarify-extension-${variant}-`));
