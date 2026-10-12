@@ -26,6 +26,19 @@ final class KeyboardExtensionTests: XCTestCase {
     defer { continueAfterFailure = false }
     XCTAssertTrue(heights.allSatisfy { $0 < 400 }, "\(opening): \(values)")
   }
+  func testNativeSystemKeyboardDoesNotReserveAnOversizedFrame() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication(); app.launch()
+    app.textFields["composer"].tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+    try checkTrace(in: app, opening: "Native keyboard initial opening")
+    for index in 0..<4 {
+      app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
+      app.textFields["composer"].tap()
+      XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+      try checkTrace(in: app, opening: "Native keyboard opening \(index)")
+    }
+  }
   func testOpeningTheInstalledKeyboardExtensionDoesNotReserveAnOversizedFrame() throws {
     continueAfterFailure = false
     executionTimeAllowance = 300

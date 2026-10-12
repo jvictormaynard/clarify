@@ -12,8 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {variant: native-constrained, toolchain: '26.4.1', runner: macos-26, runtime: iOS-26-4, xcode: /Applications/Xcode_26.4.1.app/Contents/Developer}
-          - {variant: no-self-sizing, toolchain: '26.4.1', runner: macos-26, runtime: iOS-26-4, xcode: /Applications/Xcode_26.4.1.app/Contents/Developer}
+          - {variant: baseline, toolchain: '26.4.1', runner: macos-26, runtime: iOS-26-4, xcode: /Applications/Xcode_26.4.1.app/Contents/Developer}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     defaults:
