@@ -24,9 +24,12 @@ final class KeyboardExtensionTests: XCTestCase {
   private func open(_ title: String, in app: XCUIApplication) {
     // Keep a live query. Binding the row's snapshot identity can fail when
     // Settings rebuilds its SwiftUI list between finding a row and tapping it.
-    let item = app.descendants(matching: .any)
-      .matching(NSPredicate(format: "label == %@ OR identifier == %@", title, title)).firstMatch
+    // The keyboard settings page and its first row can both be titled
+    // "Keyboards". Restrict the query to actionable rows, excluding headers.
+    let row = app.cells.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
+    let button = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ OR identifier == %@", title, title)).firstMatch
     for _ in 0..<8 {
+      let item = row.exists ? row : button
       if item.exists && item.isHittable {
         item.tap()
         if ["General", "Keyboard", "Keyboards"].contains(title) {
