@@ -161,6 +161,7 @@ class KeyboardViewController: UIInputViewController {
     detail.numberOfLines = 1; detail.lineBreakMode = .byTruncatingTail
     mic.backgroundColor = .label; mic.layer.cornerRadius = 22
     mic.isAccessibilityElement = true; mic.accessibilityTraits = .button
+    mic.accessibilityIdentifier = "clarify.keyboard.record"
     mic.accessibilityLabel = L("Gravar")
     mic.accessibilityHint = L("Segure para falar. Deslize para cima para travar.")
     mic.onAction = { [weak self] action in self?.send(action) }

@@ -47,6 +47,35 @@ Use the direct workflow's `tests_only` input to run native checks without signin
 or uploading an existing build number. Uploads retain the full check sequence.
 Mobile versions are independent of the Windows release tags.
 
+### Installed keyboard opening diagnostic
+
+Build 23 still has an opening-height defect. On the iPhone 17 Pro simulator
+(iOS 26.4.1), the installed extension briefly reserves 598 points on reopening
+before returning to 370. The ordinary keyboard-frame notification reports only
+the final height. A `CADisplayLink` trace of the host's `keyboardLayoutGuide`
+captures the transient height. The test retains video for comparison with the
+device recording. The system-keyboard control passes in the same host.
+This is an observation, not a confirmed root cause or a validated fix.
+
+Run `node scripts/test-keyboard-extension.cjs` from `mobile/` on macOS, or select
+both `tests_only` and `extension_diagnostic` in the iOS workflow. The generated
+UIKit host installs the real extension sources, tests the system keyboard as
+a control, and checks initial switching plus four dismiss/reopen cycles. It
+also verifies text insertion and the bottom keyboard row. The diagnostic uses
+only synthetic text, with no microphone, provider key or user profile.
+The current extension is expected to fail the height assertion. The workflow
+retains traces, screenshots, video and the result bundle for investigation.
+Passing the separate in-process UIKit tests does not resolve this open gate.
+No new signing or upload occurs when `tests_only` is selected.
+Selecting both diagnostic inputs runs the installed-extension fixture directly;
+regular tests-only runs and every signed upload retain all product checks.
+
+The optional `self_sizing_off` experiment disables `allowsSelfSizing` only in
+a generated temporary copy of the controller. It preserves the production
+source and fixed-height fitting paths. The result summary records the variant;
+compare the system control and all five extension openings before drawing a
+conclusion. This experiment is not part of build 24.
+
 Version 0.6.0 (22) adds a dictionary action to the keyboard toolbar when one or
 two words are selected. Tap **Adicionar ao dicionário** to save without changing
 the selected text. The button changes to **Salvo** and is disabled for an enabled
