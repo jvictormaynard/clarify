@@ -629,7 +629,9 @@ final class KeyboardUITests: XCTestCase {
           XCTAssertTrue(buttons.allSatisfy { $0.bounds.width > 20 && $0.bounds.height > 30 })
         }
         grid.model.page = .letters; grid.rebuild(); host.view.layoutIfNeeded()
-        let button = descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "A" }!
+        guard let button = descendants(grid).compactMap({ $0 as? UIButton }).first(where: { $0.title(for: .normal)?.lowercased() == "a" }) else {
+          XCTFail("Missing A key"); return
+        }
         button.isHighlighted = true
         let preview = descendants(keyboard.view).compactMap { $0 as? KeyPreview }.first
         XCTAssertNotNil(preview)
