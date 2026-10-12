@@ -46,13 +46,15 @@ translate selected text without opening a separate editor.
 
 ## Features
 
-Version 0.7.0 uses the device language for Portuguese, English and Spanish,
+Version 0.8.0 uses the device language for Portuguese, English and Spanish,
 including the passwordless authentication email. On first launch, enter your
 email and confirm the code inside the app to enter or create an account.
 **Continue without an account** opens local-model setup; a personal API key is
-also available there. Account processing requires explicit consent.
+also available there. Signing in activates Clarify processing automatically.
 Signed-in accounts use Clarify-managed models; personal provider and local-model
-settings appear only in account-free mode. Vocabulary sync runs automatically,
+settings and the Text page appear only in account-free mode. Monthly consumption
+has a progress bar; an unknown quota shows a loading state. Sign-out and deletion
+are inside a collapsed Danger zone, with separate confirmations. Vocabulary sync runs automatically,
 and usage updates after processing. Local caches preserve offline edits and
 conflicts keep both copies until resolved. History and snippets stay local.
 Existing profiles retain their setup. The [iOS client](mobile/README.md) is
@@ -65,8 +67,7 @@ be self-hosted. Production keys and user data are never public.
 - Translation picker for selected text
 - Gemini, OpenAI, Groq, Local Whisper, and compatible custom endpoints
 - Native Windows hotkeys and system tray integration
-- English, Portuguese, Spanish, German, and Russian in the QML interface;
-  the new Settings interface currently uses Portuguese
+- Portuguese, English and Spanish interfaces, independently of dictation language
 - React/Tauri Settings organized into Account, General, Dictation, Text, Dictionary,
   Shortcuts, and Models and services
 - Toggle or hold-to-record keyboard activation; the microphone button uses toggle
@@ -198,7 +199,10 @@ their current limitations.
 | `Alt + R` (default) | Show or hide Clarify |
 
 All five global shortcuts can be captured, validated, and reset in **Settings →
-Atalhos** (Shortcuts). Toggle starts and stops on successive presses. Hold records
+Atalhos** (Shortcuts). Standalone Ctrl, Alt, Shift or Windows keys and the Mouse 4
+and Mouse 5 side buttons are also supported. Ordinary combinations such as Ctrl+C
+keep their behavior. Hover over the pill's flag to open the vertical language list
+and select a flag. Toggle starts and stops on successive presses. Hold records
 while the shortcut is pressed and stops on release. `Esc` cancels, including
 while holding the shortcut. The pill microphone button always uses toggle.
 You can also assign a modifier by itself (`Ctrl`, `Alt`, `Shift`, or `Win`) or
