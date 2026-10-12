@@ -4,8 +4,13 @@ final class KeyboardExtensionTests: XCTestCase {
   private func open(_ title: String, in app: XCUIApplication) {
     for _ in 0..<8 {
       let headerBottom = app.navigationBars.firstMatch.frame.maxY
-      let candidates = app.buttons.matching(identifier: title).allElementsBoundByIndex + app.staticTexts.matching(identifier: title).allElementsBoundByIndex
+      // Settings can expose the same row as Other or StaticText while its
+      // snapshot changes. Bind by accessibility identity, not by list index.
+      let candidates = app.descendants(matching: .any)
+        .matching(NSPredicate(format: "label == %@ OR identifier == %@", title, title))
+        .allElementsBoundByAccessibilityElement
       for item in candidates {
+        guard item.exists else { continue }
         let frame = item.frame
         if !frame.isInfinite && frame.minY >= headerBottom && frame.maxY <= app.frame.maxY && item.isHittable {
           item.tap()

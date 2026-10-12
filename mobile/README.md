@@ -67,6 +67,8 @@ The current extension is expected to fail the height assertion. The workflow
 retains traces, screenshots, video and the result bundle for investigation.
 Passing the separate in-process UIKit tests does not resolve this open gate.
 No new signing or upload occurs when `tests_only` is selected.
+Selecting both diagnostic inputs runs the installed-extension fixture directly;
+regular tests-only runs and every signed upload retain all product checks.
 
 The optional `self_sizing_off` experiment disables `allowsSelfSizing` only in
 a generated temporary copy of the controller. It preserves the production
