@@ -28,6 +28,9 @@ final class KeyboardExtensionTests: XCTestCase {
     // "Keyboards". Restrict the query to actionable rows, excluding headers.
     let row = app.cells.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
     let button = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ OR identifier == %@", title, title)).firstMatch
+    // Settings can finish its tap event before publishing the next list.
+    // Wait for its rows before scrolling; an early swipe can dismiss the sheet.
+    if !row.waitForExistence(timeout: 3) { _ = button.waitForExistence(timeout: 3) }
     for _ in 0..<8 {
       let item = row.exists ? row : button
       if item.exists && item.isHittable {
@@ -85,7 +88,7 @@ final class KeyboardExtensionTests: XCTestCase {
     open("Keyboard", in: settings)
     open("Keyboards", in: settings)
     if !settings.cells.matching(NSPredicate(format: "label BEGINSWITH %@", "Clarify")).firstMatch.exists {
-      let addKeyboard = settings.buttons["AddNewKeyboard"]
+      let addKeyboard = settings.cells["AddNewKeyboard"]
       XCTAssertTrue(addKeyboard.waitForExistence(timeout: 5), settings.debugDescription); addKeyboard.tap()
       open("Clarify", in: settings)
     }
