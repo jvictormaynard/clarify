@@ -140,7 +140,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
       original = File.read(source)
       File.write(source, original.sub('    super.viewDidLoad()', "    super.viewDidLoad()\n    ClarifyFixtureInstallFitting(self)"))
     end
-    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'early-intrinsic-message'
+    if ['early-intrinsic-message', 'service-max-size'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
       original = File.read(source)
       File.write(source, original.sub('super.viewWillAppear(animated);', "ClarifyFixturePublishIntrinsicSize(self); super.viewWillAppear(animated);"))
     end
@@ -212,7 +212,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         }
       OBJC
     end
-    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'early-intrinsic-message'
+    if ['early-intrinsic-message', 'service-max-size'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
       File.open(source, 'a') { |file| file.write(<<~'OBJC') }
         void ClarifyFixturePublishIntrinsicSize(UIInputViewController *controller) {
           @try {
@@ -232,6 +232,14 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
           } @catch (__unused NSException *error) { NSLog(@"ClarifyFixtureSizing intrinsic message exception"); }
         }
       OBJC
+      if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'service-max-size'
+        original = File.read(source)
+        File.write(source, original.sub('__viewServiceInstrinsicContentSizeDidChange:fence:', '__setServiceMaxFrameSize:')
+          .sub('signature.numberOfArguments != 4', 'signature.numberOfArguments != 3')
+          .sub("\n        || [signature getArgumentTypeAtIndex:3][0] != '@'", '')
+          .sub('((void (*)(id, SEL, CGSize, id))objc_msgSend)(proxy, selector, size, nil);', '((void (*)(id, SEL, CGSize))objc_msgSend)(proxy, selector, size);')
+          .sub('published intrinsic size=', 'published maximum size='))
+      end
     end
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
@@ -245,7 +253,7 @@ if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'controller-fitting'
   original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
   File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixtureInstallFitting(UIInputViewController *controller);\n")
 end
-if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'early-intrinsic-message'
+if ['early-intrinsic-message', 'service-max-size'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
   original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
   File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixturePublishIntrinsicSize(UIInputViewController *controller);\n")
 end

@@ -28,7 +28,7 @@ on:
       diagnostic_variant:
         description: Change one factor in the installed extension fixture
         type: choice
-        options: [production, without-host-hooks, without-swiftui, without-preferred-size, initial-width, system-sizing, window-height, default-root, window-height-visible, native-autosize, controller-fitting, stored-preferred-size, root-autolayout, parent-preferred-size, early-valid-size, root-frame, parent-fitting, early-intrinsic-message]
+        options: [production, without-host-hooks, without-swiftui, without-preferred-size, initial-width, system-sizing, window-height, default-root, window-height-visible, native-autosize, controller-fitting, stored-preferred-size, root-autolayout, parent-preferred-size, early-valid-size, root-frame, parent-fitting, early-intrinsic-message, service-max-size]
         default: production
 
 permissions:
@@ -80,10 +80,10 @@ jobs:
           CLARIFY_NATIVE_TESTS: '1'
         run: node scripts/test-keyboard-ui.cjs
       - name: Test installed keyboard extension
-        if: ${{ inputs.extension_diagnostic }}
+        if: ${{ !inputs.tests_only || inputs.extension_diagnostic }}
         env:
-          CLARIFY_DIAGNOSTIC_SELF_SIZING: ${{ inputs.self_sizing_off && 'off' || 'on' }}
-          CLARIFY_DIAGNOSTIC_VARIANT: ${{ inputs.diagnostic_variant }}
+          CLARIFY_DIAGNOSTIC_SELF_SIZING: ${{ inputs.tests_only && inputs.self_sizing_off && 'off' || 'on' }}
+          CLARIFY_DIAGNOSTIC_VARIANT: ${{ inputs.tests_only && inputs.diagnostic_variant || 'production' }}
         run: node scripts/test-keyboard-extension.cjs
       - name: Generate native project
         if: ${{ !inputs.tests_only }}
