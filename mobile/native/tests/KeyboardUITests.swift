@@ -19,6 +19,7 @@ private final class Field: NSObject, UITextDocumentProxy {
   var spellCheckingType: UITextSpellCheckingType = .yes
   var keyboardType: UIKeyboardType = .default
   var isSecureTextEntry = false
+  var autocapitalizationType: UITextAutocapitalizationType = .sentences
   func insertText(_ text: String) { before += text; selectedText = nil }
   func deleteBackward() { if !before.isEmpty { before.removeLast() } }
   func adjustTextPosition(byCharacterOffset offset: Int) {}
@@ -49,6 +50,28 @@ private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
 }
 
 final class KeyboardUITests: XCTestCase {
+  func testOwnTypingCapitalizesTheNextSentenceWithoutAHostNotification() async throws {
+    try await MainActor.run {
+      let keyboard = SelectionKeyboard(); keyboard.loadViewIfNeeded()
+      let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+      for punctuation in [".", "?", "!"] {
+        keyboard.field.before = "Olá" + punctuation; keyboard.textDidChange(nil)
+        let space = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == L("espaço") })
+        space.sendActions(for: .touchUpInside)
+        XCTAssertEqual(grid.model.shift, .once)
+        let letter = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal)?.lowercased() == "q" })
+        letter.sendActions(for: .touchUpInside)
+        XCTAssertEqual(keyboard.field.before, "Olá" + punctuation + " Q")
+      }
+    }
+  }
+  func testUnchangedLayoutKeepsTheKeysThatMayStillBeTrackingAnotherFinger() async throws {
+    try await MainActor.run {
+      let grid = KeyGridView(); let before = self.descendants(grid).compactMap { $0 as? UIButton }
+      grid.rebuild()
+      XCTAssertTrue(before.allSatisfy { $0.isDescendant(of: grid) }, "A refresh must not discard live key controls")
+    }
+  }
   @MainActor
   private func makeDictationFixture() throws -> (SelectionKeyboard, SharedState, UIWindow) {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
