@@ -235,6 +235,32 @@ final class KeyboardUITests: XCTestCase {
       edit.sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "Prefix Replacement")
     }
   }
+  @MainActor
+  func testDictationAndUndoRefreshSentenceCasingWithoutAHostNotification() async throws {
+    let (keyboard, store, window) = try makeDictationFixture()
+    defer {
+      keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+      window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+    }
+    keyboard.field.before = "hello"; keyboard.textDidChange(nil)
+    let grid = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+    XCTAssertEqual(grid.model.shift, .off)
+    let mic = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
+    XCTAssertTrue(mic.accessibilityActivate()); XCTAssertTrue(mic.accessibilityActivate())
+    let command = try XCTUnwrap(store.commands().last?.1)
+    var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970
+    state.operationID = command.operationID; state.phase = .ready; state.text = " world. "
+    try store.write(state, to: "state.json")
+    let inserted = expectation(for: NSPredicate { _, _ in keyboard.field.before == "hello world. " }, evaluatedWith: nil)
+    await fulfillment(of: [inserted], timeout: 2)
+    XCTAssertEqual(grid.model.shift, .once)
+    let undo = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? UIButton }
+      .first { $0.accessibilityIdentifier == "clarify.undo-dictation" })
+    undo.sendActions(for: .touchUpInside)
+    XCTAssertEqual(keyboard.field.before, "hello"); XCTAssertEqual(grid.model.shift, .off)
+    undo.sendActions(for: .touchUpInside)
+    XCTAssertEqual(keyboard.field.before, "hello world. "); XCTAssertEqual(grid.model.shift, .once)
+  }
   func testDictationEditInvalidatesForExternalEditsSelectionAndAnotherDocument() async throws {
     try await MainActor.run {
       let (keyboard, store, window) = try self.makeDictationFixture()
