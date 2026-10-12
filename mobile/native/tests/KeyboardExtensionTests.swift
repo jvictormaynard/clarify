@@ -151,9 +151,6 @@ final class KeyboardExtensionTests: XCTestCase {
     }
     if Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyDiagnosticVariant") as? String == "without-swiftui" { return }
     let start = app.buttons["clarify.keyboard.start"]
-    XCTAssertTrue(start.waitForExistence(timeout: 5), app.debugDescription)
-    start.tap()
-    acceptSystemOpenPrompt()
     // The helper consumes the actual keyboard nonce and calls the production
     // bridge. A success return value alone cannot prove that the app opened.
     let container = XCUIApplication(bundleIdentifier: "com.clarify.fixture.container")
@@ -161,16 +158,21 @@ final class KeyboardExtensionTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: URL(fileURLWithPath: root).appendingPathComponent("container-ready.json").path),
                   "The isolated containing app must initialize before testing its activation URL")
     let receipt = URL(fileURLWithPath: root).appendingPathComponent("return-trace.json")
-    let activated = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: receipt.path) }, evaluatedWith: nil)
-    wait(for: [activated], timeout: 10)
-    let diagnostic = XCTAttachment(string: (try? String(contentsOf: receipt, encoding: .utf8)) ?? container.debugDescription)
-    diagnostic.name = "activation-return"; diagnostic.lifetime = .keepAlways; add(diagnostic)
-    let values = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: receipt))
-    XCTAssertEqual(values["nonceConsumed"], "true", "The real activation request must be consumed")
-    XCTAssertEqual(values["source"], "com.clarify.fixture.host", "Resolve the current origin, not an old app")
-    XCTAssertEqual(values["opened"], "true", "The production return bridge must accept the source")
-    let back = expectation(for: NSPredicate(format: "state == %d", XCUIApplication.State.runningForeground.rawValue), evaluatedWith: app)
-    wait(for: [back], timeout: 10)
-    XCTAssertNotEqual(container.state, .runningForeground, "Activation must return to the original host")
+    for attempt in 0..<2 {
+      if FileManager.default.fileExists(atPath: receipt.path) { try FileManager.default.removeItem(at: receipt) }
+      XCTAssertTrue(start.waitForExistence(timeout: 5), app.debugDescription)
+      start.tap(); acceptSystemOpenPrompt()
+      let activated = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: receipt.path) }, evaluatedWith: nil)
+      wait(for: [activated], timeout: 10)
+      let diagnostic = XCTAttachment(string: (try? String(contentsOf: receipt, encoding: .utf8)) ?? container.debugDescription)
+      diagnostic.name = "activation-return-\(attempt)"; diagnostic.lifetime = .keepAlways; add(diagnostic)
+      let values = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: receipt))
+      XCTAssertEqual(values["nonceConsumed"], "true", "The real activation request must be consumed")
+      XCTAssertEqual(values["source"], "com.clarify.fixture.host", "Resolve the current origin, not an old app")
+      XCTAssertEqual(values["opened"], "true", "The production return bridge must accept the source")
+      let back = expectation(for: NSPredicate(format: "state == %d", XCUIApplication.State.runningForeground.rawValue), evaluatedWith: app)
+      wait(for: [back], timeout: 10)
+      XCTAssertNotEqual(container.state, .runningForeground, "Activation must return to the original host")
+    }
   }
 }

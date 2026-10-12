@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 if (process.platform !== 'darwin') throw new Error('The installed extension diagnostic requires macOS.');
 const root = process.cwd();
 function run(command, args, options = {}) {
@@ -23,6 +23,7 @@ const output = path.join(root, 'test-results'); fs.mkdirSync(output, { recursive
 const results = fs.mkdtempSync(path.join(output, 'installed-keyboard-'));
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-extension-'));
 let exitCode = 1;
+let recording;
 try {
   run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture]);
   const derived = path.join(fixture, 'DerivedData');
@@ -37,6 +38,8 @@ try {
     if (!fs.existsSync(file)) throw new Error(`The isolated container did not publish ${path.basename(file)}`);
   }
   waitForFile(ready);
+  recording = spawn('xcrun', ['simctl', 'io', device.udid, 'recordVideo', '--codec=h264', '--force', path.join(results, 'opening.mov')], { stdio: 'ignore' });
+  recording.on('error', error => console.warn(`Simulator video unavailable: ${error.message}`));
   // URL delivery has its own UI test. A routing failure must not prevent the
   // independent keyboard geometry test from collecting its display frames.
   const resultPath = path.join(results, 'KeyboardExtension.xcresult');
@@ -51,6 +54,9 @@ try {
   exitCode = 1;
   throw error;
 } finally {
+  // SIGINT lets simctl finalize the movie. Its child-process handle keeps Node
+  // alive until that write finishes, before the workflow uploads the results.
+  recording?.kill('SIGINT');
   spawnSync('xcrun', ['simctl', 'io', device.udid, 'screenshot', path.join(results, 'final-screen.png')], { stdio: 'ignore' });
   const logs = spawnSync('xcrun', ['simctl', 'spawn', device.udid, 'log', 'show', '--style', 'compact', '--last', '15m', '--predicate', 'process IN {"ClarifyKeyboard", "ActivationContainer", "KeyboardHost"}'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   fs.writeFileSync(path.join(results, 'extension-log.txt'), (logs.stdout ?? '') + (logs.stderr ?? ''));
