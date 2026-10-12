@@ -43,6 +43,13 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     source = File.join(fixture, name)
     File.write(source, original.sub('width: 0, height: KeyboardInputView.contentHeight', 'width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight'))
   end
+  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'system-sizing'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    File.write(source, original.sub(/final class KeyboardInputView: UIInputView \{.*?\n\}/m, "final class KeyboardInputView: UIInputView { static let contentHeight: CGFloat = 278 }")
+      .sub(/  override var preferredContentSize: CGSize \{.*?\n  \}/m, '// Isolated diagnostic: let UIKit own the root height.')
+      .sub('keys.heightAnchor.constraint(equalToConstant: 220)', 'keys.bottomAnchor.constraint(equalTo: view.bottomAnchor)'))
+  end
   if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_SELF_SIZING'] == 'off'
     original = File.read(source)
     raise 'Self-sizing experiment no longer matches the production source' unless original.scan('allowsSelfSizing = true').length == 1
