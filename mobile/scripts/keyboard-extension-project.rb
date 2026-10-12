@@ -70,6 +70,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   end
   if name == 'KeyboardViewController.swift'
     original = File.read(source)
+    original = original.sub('        openURL(url)', '        openURL(url) { accepted in NSLog("ClarifyFixtureOpen accepted=%d", accepted) }')
     source = File.join(fixture, name)
     instrumentation = <<~'SWIFT'
         var chain: [UIView] = []; var ancestor: UIView? = view
@@ -78,7 +79,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         NSLog("ClarifyFixtureGeometry %@", geometry)
     SWIFT
     File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + instrumentation))
-    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'window-height'
+    if ['window-height', 'window-height-visible'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
       original = File.read(source)
       correction = <<~'SWIFT'
           if extensionContext != nil, let window = view.window, window.bounds.height != KeyboardInputView.contentHeight {
@@ -89,6 +90,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
             }
           }
       SWIFT
+      correction = correction.sub('if extensionContext != nil', 'if attached, extensionContext != nil') if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'window-height-visible'
       File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + correction))
     end
   end
@@ -102,6 +104,17 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     source = File.join(fixture, name)
     File.write(source, original.sub('        let generation = KBHostArbiterHook.captureGeneration()', '        NSLog("ClarifyFixtureHost cached=%@", KBHostArbiterHook.lastCapturedHostBundleId() ?? "unknown")' + "\n" + '        let generation = KBHostArbiterHook.captureGeneration()')
       .sub('    let request = ActivationRequest(sourceBundleID: source)', '    NSLog("ClarifyFixtureHost resolved=%@", source ?? "unknown")' + "\n" + '    let request = ActivationRequest(sourceBundleID: source)'))
+  end
+  if name == 'KBHostArbiterHook.m' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] != 'without-host-hooks'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    File.write(source, original.sub("    os_unfair_lock_unlock(&sHookLock);\n}\n\n+ (void)activeArbiterCheck", <<~'OBJC'))
+        os_unfair_lock_unlock(&sHookLock);
+        NSLog(@"ClarifyFixtureHook queue=%s handled=%s installed=%d/%d enabled=%d", method ? method_getTypeEncoding(method) : "missing", handled ? method_getTypeEncoding(handled) : "missing", sOriginalIMP != NULL, sOriginalHandledIMP != NULL, sEnabledInstalled);
+    }
+
+    + (void)activeArbiterCheck
+    OBJC
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end

@@ -126,6 +126,8 @@ final class KeyboardExtensionTests: XCTestCase {
     // bridge. A success return value alone cannot prove that the app opened.
     let container = XCUIApplication(bundleIdentifier: "com.clarify.fixture.container")
     let root = try XCTUnwrap(Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyFixtureDirectory") as? String)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: URL(fileURLWithPath: root).appendingPathComponent("container-ready.json").path),
+                  "The isolated containing app must initialize before testing its activation URL")
     let receipt = URL(fileURLWithPath: root).appendingPathComponent("return-trace.json")
     let activated = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: receipt.path) }, evaluatedWith: nil)
     wait(for: [activated], timeout: 10)

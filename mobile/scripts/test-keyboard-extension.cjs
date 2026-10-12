@@ -44,6 +44,8 @@ try {
   exitCode = 1;
   throw error;
 } finally {
+  const ready = path.join(fixture, 'Shared/container-ready.json');
+  if (fs.existsSync(ready)) fs.copyFileSync(ready, path.join(results, 'container-ready.json'));
   const receipt = path.join(fixture, 'Shared/return-trace.json');
   if (fs.existsSync(receipt)) fs.copyFileSync(receipt, path.join(results, 'activation-return.json'));
   // This directory is created by this process and contains only the generated fixture.
