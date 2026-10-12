@@ -66,6 +66,19 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         NSLog("ClarifyFixtureGeometry %@", geometry)
     SWIFT
     File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + instrumentation))
+    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'window-height'
+      original = File.read(source)
+      correction = <<~'SWIFT'
+          if extensionContext != nil, let window = view.window, window.bounds.height != KeyboardInputView.contentHeight {
+            UIView.performWithoutAnimation {
+              var frame = window.frame; frame.size.height = KeyboardInputView.contentHeight; window.frame = frame
+              window.rootViewController?.view.frame = window.bounds
+              self.view.frame = CGRect(x: 0, y: 0, width: window.bounds.width, height: KeyboardInputView.contentHeight)
+            }
+          }
+      SWIFT
+      File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + correction))
+    end
   end
   if name == 'KeyGridView.swift'
     original = File.read(source)
