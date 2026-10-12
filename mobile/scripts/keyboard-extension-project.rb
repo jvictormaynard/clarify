@@ -140,6 +140,10 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
       original = File.read(source)
       File.write(source, original.sub('    super.viewDidLoad()', "    super.viewDidLoad()\n    ClarifyFixtureInstallFitting(self)"))
     end
+    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'early-intrinsic-message'
+      original = File.read(source)
+      File.write(source, original.sub('super.viewWillAppear(animated);', "ClarifyFixturePublishIntrinsicSize(self); super.viewWillAppear(animated);"))
+    end
     if ['window-height', 'window-height-visible'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
       original = File.read(source)
       correction = <<~'SWIFT'
@@ -208,6 +212,27 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         }
       OBJC
     end
+    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'early-intrinsic-message'
+      File.open(source, 'a') { |file| file.write(<<~'OBJC') }
+        void ClarifyFixturePublishIntrinsicSize(UIInputViewController *controller) {
+          @try {
+            id parent = controller.parentViewController;
+            Ivar ivar = class_getInstanceVariable([parent class], "_remoteViewControllerProxyToOperator");
+            id proxy = ivar ? object_getIvar(parent, ivar) : nil;
+            SEL selector = NSSelectorFromString(@"__viewServiceInstrinsicContentSizeDidChange:fence:");
+            NSMethodSignature *signature = [proxy methodSignatureForSelector:selector];
+            if (!signature || signature.numberOfArguments != 4 || strcmp(signature.methodReturnType, "v") != 0
+                || strncmp([signature getArgumentTypeAtIndex:2], "{CGSize=", 8) != 0
+                || [signature getArgumentTypeAtIndex:3][0] != '@') {
+              NSLog(@"ClarifyFixtureSizing intrinsic message unsupported parent=%@ proxy=%@", parent, proxy); return;
+            }
+            CGSize size = CGSizeMake(controller.view.bounds.size.width, 278);
+            ((void (*)(id, SEL, CGSize, id))objc_msgSend)(proxy, selector, size, nil);
+            NSLog(@"ClarifyFixtureSizing published intrinsic size=%@", NSStringFromCGSize(size));
+          } @catch (__unused NSException *error) { NSLog(@"ClarifyFixtureSizing intrinsic message exception"); }
+        }
+      OBJC
+    end
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
@@ -219,6 +244,10 @@ end
 if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'controller-fitting'
   original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
   File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixtureInstallFitting(UIInputViewController *controller);\n")
+end
+if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'early-intrinsic-message'
+  original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
+  File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixturePublishIntrinsicSize(UIInputViewController *controller);\n")
 end
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   source = name == 'SharedState.swift' ? shared_source : File.join(root, 'modules/clarify-core/ios', name)
