@@ -38,6 +38,11 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     source = File.join(fixture, name)
     File.write(source, original.sub(/  override var preferredContentSize: CGSize \{.*?\n  \}/m, '// Isolated diagnostic: use UIKit preferred sizing.'))
   end
+  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'initial-width'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    File.write(source, original.sub('width: 0, height: KeyboardInputView.contentHeight', 'width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight'))
+  end
   if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_SELF_SIZING'] == 'off'
     original = File.read(source)
     raise 'Self-sizing experiment no longer matches the production source' unless original.scan('allowsSelfSizing = true').length == 1
@@ -54,6 +59,17 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         NSLog("ClarifyFixtureGeometry %@", geometry)
     SWIFT
     File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + instrumentation))
+  end
+  if name == 'KeyGridView.swift'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    File.write(source, original.sub('    for touch in touches.sorted', '    NSLog("ClarifyFixtureTouch phase=%ld count=%ld", phase.rawValue, touches.count)' + "\n" + '    for touch in touches.sorted'))
+  end
+  if name == 'HostActivation.swift'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    File.write(source, original.sub('        let generation = KBHostArbiterHook.captureGeneration()', '        NSLog("ClarifyFixtureHost cached=%@", KBHostArbiterHook.lastCapturedHostBundleId() ?? "unknown")' + "\n" + '        let generation = KBHostArbiterHook.captureGeneration()')
+      .sub('    let request = ActivationRequest(sourceBundleID: source)', '    NSLog("ClarifyFixtureHost resolved=%@", source ?? "unknown")' + "\n" + '    let request = ActivationRequest(sourceBundleID: source)'))
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
