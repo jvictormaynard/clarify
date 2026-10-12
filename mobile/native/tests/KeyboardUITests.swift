@@ -266,8 +266,11 @@ final class KeyboardUITests: XCTestCase {
     var heights: [CGFloat] = []
     for _ in 0..<3 {
       let shown = expectation(description: "System keyboard finished presenting")
+      var didShow = false
       let observer = NotificationCenter.default.addObserver(forName: UIResponder.keyboardDidShowNotification,
         object: nil, queue: .main) { note in
+          guard !didShow else { return }
+          didShow = true
           if let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
             heights.append(frame.height)
           }
@@ -278,8 +281,12 @@ final class KeyboardUITests: XCTestCase {
       NotificationCenter.default.removeObserver(observer)
       XCTAssertEqual(field.keyboard.view.bounds.height, 278, accuracy: 0.5)
       let hidden = expectation(description: "System keyboard finished dismissing")
+      var didHide = false
       let hideObserver = NotificationCenter.default.addObserver(forName: UIResponder.keyboardDidHideNotification,
-        object: nil, queue: .main) { _ in hidden.fulfill() }
+        object: nil, queue: .main) { _ in
+          guard !didHide else { return }
+          didHide = true; hidden.fulfill()
+        }
       field.resignFirstResponder()
       await fulfillment(of: [hidden], timeout: 5)
       NotificationCenter.default.removeObserver(hideObserver)

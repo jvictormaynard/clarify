@@ -1,19 +1,19 @@
-import { t } from "../../i18n";
+import { t, uiLanguage } from "../../i18n";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, SectionList, Modal, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Core, { type HistoryEntry, type Snapshot } from '../../../modules/clarify-core';
-import { Button, Card, Title, ui, usePalette } from '../../components/ui';
-import { RecordButton } from '../../components/record-button';
-import { isBusy, report, useClarify } from '../../state/clarify';
+import Core, { type HistoryEntry } from '../../../modules/clarify-core';
+import { Button, Card, TableRow, Title, ui, usePalette } from '../../components/ui';
+import { report, useClarify } from '../../state/clarify';
 
-const labels: Record<Snapshot['phase'], string> = { idle: t("Sua voz, com clareza."), recording: t("Ouvindo…"), locked: t("Gravação travada"), transcribing: t("Transcrevendo…"), rewriting: t("Reescrevendo…"), ready: t("Texto pronto"), error: t("Verifique o ditado") };
-const timestamp = (value: number) => new Date(value * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+import { groupHistory, historyDayTitle, historyTime } from '../../history';
+
+const timestamp = (value: number) => new Date(value * 1000).toLocaleString(uiLanguage, { dateStyle: 'medium', timeStyle: 'short' });
 
 export default function Home() {
   const c = usePalette();
-  const { state, activate, activating, refresh, keyboardEntry, setKeyboardEntry, keyboardToken, setKeyboardToken, accountBusy } = useClarify();
+  const { state, activate, refresh, setKeyboardEntry, setKeyboardToken } = useClarify();
   const params = useLocalSearchParams<{ activate?: string; request?: string; token?: string }>();
   const handled = useRef('');
   useEffect(() => {
@@ -64,23 +64,27 @@ export default function Home() {
       void Core.deleteHistory(entry.id).then(async () => { setSelected(null); await refresh(); await load(); }).catch(report).finally(() => setAction(null));
     } },
   ]);
-  const busy = isBusy(state);
+  const sections = groupHistory(entries);
+  const [today, setToday] = useState(() => new Date());
+  useEffect(() => {
+    const next = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    const timer = setTimeout(() => setToday(new Date()), Math.max(0, next.getTime() - Date.now()));
+    return () => clearTimeout(timer);
+  }, [today]);
   return <>
-    <FlatList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={ui.content} contentInsetAdjustmentBehavior="automatic"
-      data={entries} keyExtractor={(entry) => entry.id} onEndReached={() => { if (cursor) void load(cursor, true); }} onEndReachedThreshold={0.4}
-      ListHeaderComponent={<View style={{ gap: 16, marginBottom: 16 }}>
-        <Title subtitle={t("Fale. O Clarify transcreve e revisa suas palavras.")}>{t("Boas-vindas ao Clarify")}</Title>
-        <Card>
-          <Text style={[ui.section, { color: c.text, textAlign: 'center' }]}>{keyboardEntry && state.sessionActive && !busy ? t("Microfone ativado") : labels[state.phase]}</Text>
-          <Text style={[ui.body, { color: c.muted, textAlign: 'center' }]}>{state.message ?? (keyboardEntry && state.sessionActive && !busy ? t("Volte ao aplicativo anterior. O teclado Clarify está pronto para gravar.") : state.sessionActive ? t("Segure para falar. Deslize para cima para travar.") : t("Ative o microfone para ditar aqui ou pelo teclado."))}</Text>
-          {state.sessionActive ? <RecordButton /> : <Button loading={activating} disabled={accountBusy} onPress={() => state.configured ? void activate(keyboardToken).catch(report) : router.navigate('/settings')}>{state.configured ? t("Ativar microfone") : t("Configurar processamento")}</Button>}
-        </Card>
-        <Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t("Histórico")}</Text>
-      </View>}
-      renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`${timestamp(item.createdAt)}. ${item.text}`} onPress={() => { setOriginal(false); setSelected(item); }} style={({ pressed }) => ({ marginBottom: 12, opacity: pressed ? 0.6 : 1 })}>
-        <Card><Text style={[ui.small, { color: c.muted }]}>{timestamp(item.createdAt)}{!item.rewritten ? t("· Transcrição original") : ''}</Text><Text numberOfLines={4} style={[ui.body, { color: c.text }]}>{item.text}</Text></Card>
-      </Pressable>}
-      ListEmptyComponent={!loading && !error ? <Card><Text style={[ui.body, { color: c.muted }]}>{t("Seus próximos ditados aparecerão aqui. O histórico fica somente neste iPhone.")}</Text></Card> : null}
+    <SectionList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[ui.content, { gap: 0 }]} contentInsetAdjustmentBehavior="automatic"
+      sections={sections} stickySectionHeadersEnabled={false} keyExtractor={(entry) => entry.id}
+      onEndReached={() => { if (cursor) void load(cursor, true); }} onEndReachedThreshold={0.4}
+      ListHeaderComponent={<Title subtitle={t("Fale. O Clarify transcreve e revisa suas palavras.")}>{t("Boas-vindas ao Clarify")}</Title>}
+      renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { color: c.text, paddingTop: 16, paddingBottom: 12 }]}>{historyDayTitle(section.date, today, uiLanguage, t("Hoje"))}</Text>}
+      renderItem={({ item, index, section }) => <TableRow first={index === 0} last={index === section.data.length - 1}
+        accessibilityLabel={`${timestamp(item.createdAt)}. ${item.text}`} onPress={() => { setOriginal(false); setSelected(item); }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
+          <Text numberOfLines={4} style={[ui.body, { color: c.text, flex: 1 }]}>{item.text}</Text>
+          <Text style={[ui.small, { color: c.muted, fontVariant: ['tabular-nums'], textAlign: 'right' }]}>{historyTime(item.createdAt, uiLanguage)}</Text>
+        </View>
+      </TableRow>}
+      ListEmptyComponent={!loading && !error ? <View style={{ gap: 12, paddingVertical: 24 }}><Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t("Hoje")}</Text><Text style={[ui.body, { color: c.muted }]}>{t("Seus próximos ditados aparecerão aqui. O histórico fica somente neste iPhone.")}</Text></View> : null}
       ListFooterComponent={loading ? <ActivityIndicator style={{ padding: 20 }} /> : error ? <Button onPress={() => void load()}>{t("Tentar carregar novamente")}</Button> : cursor ? <Button onPress={() => void load(cursor, true)}>{t("Carregar mais")}</Button> : null}
     />
     <Modal visible={selected !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSelected(null)}>
