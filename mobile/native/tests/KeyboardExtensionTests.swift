@@ -125,10 +125,11 @@ final class KeyboardExtensionTests: XCTestCase {
     expectText("Q w", in: app)
     var sentence = "Q w"
     for punctuation in [".", "?", "!"] {
-      app.buttons["123"].tap()
-      app.buttons[punctuation].tap()
-      app.buttons.matching(NSPredicate(format: "label IN %@", ["space", "espaço", "espacio"])).firstMatch.tap()
-      let capital = app.buttons["A"]
+      // Letter and number controls expose keyboardKey, not the button trait.
+      app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "123")).firstMatch.tap()
+      app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", punctuation)).firstMatch.tap()
+      app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["space", "espaço", "espacio"])).firstMatch.tap()
+      let capital = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "A")).firstMatch
       XCTAssertTrue(capital.waitForExistence(timeout: 5), "Sentence shift must activate after \(punctuation)")
       capital.tap()
       sentence += punctuation + " A"
