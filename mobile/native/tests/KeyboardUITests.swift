@@ -138,6 +138,24 @@ final class KeyboardUITests: XCTestCase {
       assistant.insert(" ", into: field); XCTAssertEqual(field.before, "“hello ")
     }
   }
+  func testWordSavedFromTheKeyboardIsProtectedBeforeTheNextSpace() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer { window.isHidden = true }
+      try store.publishKeyboardDictionary(KeyboardDictionaryContext(scope: "guest", words: []))
+      keyboard.field.before = "helllo"; keyboard.field.selectedText = "helllo"
+      keyboard.selectionDidChange(nil)
+      let save = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" })
+      XCTAssertTrue(save.isEnabled); save.sendActions(for: .touchUpInside)
+      XCTAssertEqual(store.keyboardAdditions(scope: "guest").map { $0.1.term }, ["helllo"])
+      keyboard.field.selectedText = nil; keyboard.selectionDidChange(nil)
+      let space = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.title(for: .normal) == L("espaço") })
+      space.sendActions(for: .touchUpInside)
+      XCTAssertEqual(keyboard.field.before, "helllo ", "A newly saved word must not wait for the vocabulary cache to expire")
+    }
+  }
   @MainActor
   private func makeDictationFixture() throws -> (SelectionKeyboard, SharedState, UIWindow) {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
