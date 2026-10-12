@@ -106,7 +106,7 @@ final class KeyboardExtensionTests: XCTestCase {
       let granted = expectation(for: NSPredicate(format: "value == %@", "1"), evaluatedWith: access)
       wait(for: [granted], timeout: 5)
     }
-    app.launch()
+    app.activate()
     app.textFields["composer"].tap()
     let keyboard = app.buttons["clarify.keyboard.record"]
     if !keyboard.waitForExistence(timeout: 2) {
