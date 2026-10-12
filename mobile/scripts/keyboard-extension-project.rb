@@ -5,7 +5,7 @@ app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
 tests = project.new_target(:ui_test_bundle, 'ExtensionTests', :ios, '16.4')
 container = project.new_target(:application, 'ActivationContainer', :ios, '16.4')
-app.add_dependency(keyboard); tests.add_dependency(app)
+container.add_dependency(keyboard); tests.add_dependency(app)
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionHost.swift')))
 shared_root = File.join(fixture, 'Shared'); Dir.mkdir(shared_root)
 shared_source = File.join(fixture, 'SharedState.swift')
@@ -78,7 +78,7 @@ bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
   source = name == 'SharedState.swift' ? shared_source : File.join(root, 'modules/clarify-core/ios', name)
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
-embed = app.new_copy_files_build_phase('Embed App Extensions'); embed.dst_subfolder_spec = '13'
+embed = container.new_copy_files_build_phase('Embed App Extensions'); embed.dst_subfolder_spec = '13'
 embed.add_file_reference(keyboard.product_reference).settings = { 'ATTRIBUTES' => ['RemoveHeadersOnCopy'] }
 project.targets.each do |target|
   target.build_configurations.each do |config|
@@ -100,7 +100,7 @@ app_info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'KeyboardHost
 Xcodeproj::Plist.write_to_path(app_info, File.join(fixture, 'App.plist'))
 container_info = Marshal.load(Marshal.dump(app_info))
 container_info['CFBundleName'] = 'ActivationContainer'
-container_info['CFBundleDisplayName'] = 'Activation Fixture'
+container_info['CFBundleDisplayName'] = 'Clarify'
 container_info['CFBundleURLTypes'] = [{ 'CFBundleURLSchemes' => ['clarify'] }]
 container_info['UIApplicationSceneManifest']['UISceneConfigurations']['UIWindowSceneSessionRoleApplication'][0]['UISceneDelegateClassName'] = '$(PRODUCT_MODULE_NAME).ActivationFixtureScene'
 Xcodeproj::Plist.write_to_path(container_info, File.join(fixture, 'Container.plist'))
@@ -117,7 +117,7 @@ info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'ClarifyKeyboard'
     'NSExtensionAttributes' => { 'IsASCIICapable' => true, 'PrimaryLanguage' => 'pt-BR', 'RequestsOpenAccess' => true } } }
 Xcodeproj::Plist.write_to_path(info, File.join(fixture, 'Keyboard.plist'))
 keyboard.build_configurations.each do |config|
-  config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.host.keyboard',
+  config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.container.keyboard',
     'APPLICATION_EXTENSION_API_ONLY' => 'YES', 'SKIP_INSTALL' => 'YES', 'GENERATE_INFOPLIST_FILE' => 'NO',
     'INFOPLIST_FILE' => File.join(fixture, 'Keyboard.plist'),
     'HEADER_SEARCH_PATHS' => File.join(root, 'native/keyboard'),
