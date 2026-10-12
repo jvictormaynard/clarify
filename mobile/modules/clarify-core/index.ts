@@ -24,6 +24,7 @@ export interface HistoryEntry {
   transcript: string;
   text: string;
   rewritten: boolean;
+  sourceDevice: 'mobile' | 'desktop';
 }
 export interface HistoryPage { entries: HistoryEntry[]; nextCursor?: number }
 export interface MicrophoneActivation { active: boolean; message?: string }

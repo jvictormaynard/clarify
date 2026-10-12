@@ -63,12 +63,33 @@ struct VocabularyEntry: Codable, Equatable {
   }
 }
 
+enum HistorySourceDevice: String, Codable { case mobile, desktop }
+
 struct HistoryEntry: Codable, Equatable {
   let id: String
   let createdAt: TimeInterval
   let transcript: String
   let text: String
   let rewritten: Bool
+  let sourceDevice: HistorySourceDevice
+
+  init(id: String, createdAt: TimeInterval, transcript: String, text: String,
+       rewritten: Bool, sourceDevice: HistorySourceDevice = .mobile) {
+    self.id = id; self.createdAt = createdAt; self.transcript = transcript
+    self.text = text; self.rewritten = rewritten; self.sourceDevice = sourceDevice
+  }
+
+  private enum CodingKeys: String, CodingKey { case id, createdAt, transcript, text, rewritten, sourceDevice }
+  init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(String.self, forKey: .id)
+    createdAt = try values.decode(TimeInterval.self, forKey: .createdAt)
+    transcript = try values.decode(String.self, forKey: .transcript)
+    text = try values.decode(String.self, forKey: .text)
+    rewritten = try values.decode(Bool.self, forKey: .rewritten)
+    // Earlier records were created only on this iPhone. History is not synced.
+    sourceDevice = try values.decodeIfPresent(HistorySourceDevice.self, forKey: .sourceDevice) ?? .mobile
+  }
 }
 
 struct HistoryPage: Codable {
