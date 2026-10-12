@@ -88,6 +88,7 @@ keyboard.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.host.keyboard',
     'APPLICATION_EXTENSION_API_ONLY' => 'YES', 'SKIP_INSTALL' => 'YES', 'GENERATE_INFOPLIST_FILE' => 'NO',
     'INFOPLIST_FILE' => File.join(fixture, 'Keyboard.plist'),
+    'HEADER_SEARCH_PATHS' => File.join(root, 'native/keyboard'),
     'SWIFT_OBJC_BRIDGING_HEADER' => bridge })
 end
 tests.build_configurations.each do |config|
