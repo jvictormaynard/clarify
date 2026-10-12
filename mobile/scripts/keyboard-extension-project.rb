@@ -2,6 +2,7 @@ require 'xcodeproj'
 require 'fileutils'
 root, fixture = ARGV
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
+variant = ENV.fetch('CLARIFY_KEYBOARD_VARIANT', 'baseline')
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
 tests = project.new_target(:ui_test_bundle, 'ExtensionTests', :ios, '16.4')
@@ -13,6 +14,28 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
 end
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'modules/clarify-core/ios', name)))
+end
+if variant != 'baseline'
+  source = <<~SWIFT
+    import UIKit
+    final class SizingKeyboard: KeyboardViewController {
+      override init(nibName: String?, bundle: Bundle?) {
+        super.init(nibName: nibName, bundle: bundle)
+        preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
+      }
+      required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
+      }
+      override func loadView() {
+        super.loadView()
+        view.frame = CGRect(origin: .zero, size: preferredContentSize)
+        #{variant == 'constraints' ? 'view.translatesAutoresizingMaskIntoConstraints = false' : ''}
+      }
+    }
+  SWIFT
+  file = File.join(fixture, 'SizingKeyboard.swift'); File.write(file, source)
+  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(file))
 end
 embed = app.new_copy_files_build_phase('Embed App Extensions'); embed.dst_subfolder_spec = '13'
 embed.add_file_reference(keyboard.product_reference).settings = { 'ATTRIBUTES' => ['RemoveHeadersOnCopy'] }
@@ -30,7 +53,7 @@ info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'ClarifyKeyboard'
   'CFBundleIdentifier' => '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundleExecutable' => '$(EXECUTABLE_NAME)',
   'CFBundlePackageType' => 'XPC!', 'CFBundleShortVersionString' => '1.0', 'CFBundleVersion' => '1',
   'NSExtension' => { 'NSExtensionPointIdentifier' => 'com.apple.keyboard-service',
-    'NSExtensionPrincipalClass' => '$(PRODUCT_MODULE_NAME).KeyboardViewController',
+    'NSExtensionPrincipalClass' => "$(PRODUCT_MODULE_NAME).#{variant == 'baseline' ? 'KeyboardViewController' : 'SizingKeyboard'}",
     'NSExtensionAttributes' => { 'IsASCIICapable' => true, 'PrimaryLanguage' => 'pt-BR', 'RequestsOpenAccess' => true } } }
 Xcodeproj::Plist.write_to_path(info, File.join(fixture, 'Keyboard.plist'))
 keyboard.build_configurations.each do |config|

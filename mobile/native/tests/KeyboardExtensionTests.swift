@@ -4,7 +4,8 @@ final class KeyboardExtensionTests: XCTestCase {
   private func open(_ title: String, in app: XCUIApplication) {
     for _ in 0..<8 {
       let headerBottom = app.navigationBars.firstMatch.frame.maxY
-      for item in app.staticTexts.matching(identifier: title).allElementsBoundByIndex {
+      let candidates = app.buttons.matching(identifier: title).allElementsBoundByIndex + app.staticTexts.matching(identifier: title).allElementsBoundByIndex
+      for item in candidates {
         let frame = item.frame
         if !frame.isInfinite && frame.minY >= headerBottom && frame.maxY <= app.frame.maxY && item.isHittable {
           item.tap(); return
@@ -23,21 +24,27 @@ final class KeyboardExtensionTests: XCTestCase {
   }
   func testOpeningTheInstalledKeyboardExtensionDoesNotReserveAnOversizedFrame() throws {
     continueAfterFailure = false
+    executionTimeAllowance = 120
+    let app = XCUIApplication(); app.launch()
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
     settings.launch()
     open("General", in: settings)
     open("Keyboard", in: settings)
     open("Keyboards", in: settings)
-    let addKeyboard = settings.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Add New Keyboard")).firstMatch
-    XCTAssertTrue(addKeyboard.waitForExistence(timeout: 5), settings.debugDescription); addKeyboard.tap()
-    open("Clarify", in: settings)
-    let app = XCUIApplication(); app.launch()
+    if !settings.cells.matching(NSPredicate(format: "label BEGINSWITH %@", "Clarify")).firstMatch.exists {
+      let addKeyboard = settings.buttons["AddNewKeyboard"]
+      XCTAssertTrue(addKeyboard.waitForExistence(timeout: 5), settings.debugDescription); addKeyboard.tap()
+      open("Clarify", in: settings)
+    }
+    app.launch()
     app.textFields["composer"].tap()
-    let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
-    XCTAssertTrue(globe.waitForExistence(timeout: 5), app.debugDescription)
-    globe.press(forDuration: 1)
-    let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
-    XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
+    if !app.staticTexts["Allow Full Access"].waitForExistence(timeout: 2) {
+      let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
+      XCTAssertTrue(globe.waitForExistence(timeout: 5), app.debugDescription)
+      globe.press(forDuration: 1)
+      let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
+      XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
+    }
     XCTAssertTrue(app.staticTexts["Allow Full Access"].waitForExistence(timeout: 5), app.debugDescription)
     try checkTrace(in: app, opening: "Switching to the extension")
     for index in 0..<4 {

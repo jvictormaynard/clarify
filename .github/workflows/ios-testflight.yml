@@ -61,7 +61,7 @@ jobs:
         run: npx --yes expo-doctor
       - name: Test installed keyboard extension
         if: ${{ inputs.extension_diagnostic }}
-        run: node scripts/test-keyboard-extension.cjs
+        run: node scripts/test-keyboard-extension.cjs --compare
       - name: Test Swift contracts
         run: npm run test:native
       - name: Test keyboard on iPhone simulator
@@ -132,8 +132,9 @@ jobs:
           name: clarify-keyboard-tests-${{ github.sha }}
           path: |
             mobile/test-results/keyboard-ui.zip
-            mobile/test-results/KeyboardExtension.xcresult
-            mobile/test-results/extension-captures
+            mobile/test-results/KeyboardExtension-*.xcresult
+            mobile/test-results/extension-captures-*
+            mobile/test-results/extension-results.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Remove temporary signing credentials
