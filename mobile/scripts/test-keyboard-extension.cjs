@@ -16,7 +16,7 @@ const device = Object.values(JSON.parse(devices.stdout).devices).flat().find(ite
 if (!device) throw new Error('No iPhone simulator.');
 run('xcrun', ['simctl', 'bootstatus', device.udid, '-b']);
 const output = path.join(root, 'test-results'); fs.mkdirSync(output, { recursive: true });
-const variants = process.argv.includes('--compare') ? ['stored-size', 'no-hosting', 'eager-layout'] : ['baseline'];
+const variants = process.argv.includes('--compare') ? ['controller-policy'] : ['baseline'];
 const results = [];
 for (const variant of variants) {
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), `clarify-extension-${variant}-`));
@@ -28,6 +28,8 @@ const result = spawnSync('xcodebuild', ['test', '-project', path.join(fixture, '
   '-test-timeouts-enabled', 'YES', '-maximum-test-execution-time-allowance', '300',
   '-resultBundlePath', resultPath, 'CODE_SIGNING_ALLOWED=NO'], { stdio: 'inherit', timeout: 600000, killSignal: 'SIGINT' });
 if (fs.existsSync(resultPath)) run('xcrun', ['xcresulttool', 'export', 'attachments', '--path', resultPath, '--output-path', path.join(output, `extension-captures-${variant}`)]);
+const logs = spawnSync('xcrun', ['simctl', 'spawn', device.udid, 'log', 'show', '--style', 'compact', '--last', '15m', '--predicate', 'process == "ClarifyKeyboard"'], { encoding: 'utf8' });
+fs.writeFileSync(path.join(output, `extension-log-${variant}.txt`), (logs.stdout ?? '') + (logs.stderr ?? ''));
 results.push({ variant, exitCode: result.status ?? 1 });
 }
 fs.writeFileSync(path.join(output, 'extension-results.json'), JSON.stringify(results, null, 2));

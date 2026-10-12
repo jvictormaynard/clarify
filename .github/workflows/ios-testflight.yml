@@ -135,6 +135,7 @@ jobs:
             mobile/test-results/KeyboardExtension-*.xcresult
             mobile/test-results/extension-captures-*
             mobile/test-results/extension-results.json
+            mobile/test-results/extension-log-*.txt
           if-no-files-found: ignore
           retention-days: 7
       - name: Remove temporary signing credentials

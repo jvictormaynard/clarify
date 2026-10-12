@@ -18,12 +18,14 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     raise 'Sizing fixture source boundary changed' unless start && finish
     initialization = <<~SWIFT
       override init(nibName: String?, bundle: Bundle?) {
+        #{variant == 'controller-policy' ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
         super.init(nibName: nibName, bundle: bundle)
         preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
         #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
         #{variant == 'eager-layout' ? 'view.layoutIfNeeded()' : ''}
       }
       required init?(coder: NSCoder) {
+        #{variant == 'controller-policy' ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
         super.init(coder: coder)
         preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
         #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
@@ -48,6 +50,40 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     file = File.join(fixture, name); File.write(file, source)
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(file))
+end
+bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
+if variant == 'controller-policy'
+  source = <<~OBJC
+    #import <UIKit/UIKit.h>
+    #import <objc/runtime.h>
+    #include <string.h>
+    static BOOL matches(Method method, unsigned int index, const char *expected) {
+      char *type = method_copyArgumentType(method, index);
+      BOOL valid = type && strcmp(type, expected) == 0; free(type); return valid;
+    }
+    void KBInstallFixtureSizing(Class target) {
+      static dispatch_once_t once; dispatch_once(&once, ^{
+        SEL selector = NSSelectorFromString(@"_systemLayoutSizeFittingSize:withHorizontalFittingPriority:verticalFittingPriority:");
+        Method method = class_getInstanceMethod(UIInputViewController.class, selector);
+        char *result = method ? method_copyReturnType(method) : NULL;
+        BOOL valid = result && strcmp(result, @encode(CGSize)) == 0 && method_getNumberOfArguments(method) == 5 &&
+          matches(method, 2, @encode(CGSize)) && matches(method, 3, @encode(float)) && matches(method, 4, @encode(float));
+        free(result);
+        NSLog(@"Clarify sizing fixture: compatible=%d", valid);
+        if (!valid) return;
+        IMP implementation = imp_implementationWithBlock(^CGSize(id controller, CGSize size, float horizontal, float vertical) {
+          CGFloat width = size.width > 0 && size.width < 2000 ? size.width : UIScreen.mainScreen.bounds.size.width;
+          NSLog(@"Clarify sizing fixture: request=%.1fx%.1f", size.width, size.height);
+          return CGSizeMake(width, 278);
+        });
+        if (!class_addMethod(target, selector, implementation, method_getTypeEncoding(method))) imp_removeBlock(implementation);
+      });
+    }
+  OBJC
+  file = File.join(fixture, 'ControllerSizing.m'); File.write(file, source)
+  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(file))
+  header = "#import \"#{bridge}\"\nvoid KBInstallFixtureSizing(Class target);\n"
+  bridge = File.join(fixture, 'Bridge.h'); File.write(bridge, header)
 end
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'modules/clarify-core/ios', name)))
@@ -75,7 +111,7 @@ keyboard.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.host.keyboard',
     'APPLICATION_EXTENSION_API_ONLY' => 'YES', 'SKIP_INSTALL' => 'YES', 'GENERATE_INFOPLIST_FILE' => 'NO',
     'INFOPLIST_FILE' => File.join(fixture, 'Keyboard.plist'),
-    'SWIFT_OBJC_BRIDGING_HEADER' => File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h') })
+    'SWIFT_OBJC_BRIDGING_HEADER' => bridge })
 end
 tests.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.tests', 'TEST_TARGET_NAME' => 'KeyboardHost' })
