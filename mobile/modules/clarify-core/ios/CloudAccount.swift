@@ -52,12 +52,13 @@ final class CloudAccount {
     self.defaults = defaults
     state = defaults.data(forKey: "clarify.account.metadata").flatMap { try? JSONDecoder().decode(CloudAccountState.self, from: $0) } ?? CloudAccountState()
     if state.endpoint.isEmpty { state.endpoint = Bundle.main.object(forInfoDictionaryKey: "ClarifyCloudURL") as? String ?? "" }
+    if state.userID != nil { state.hosted = true }
   }
   private func locked<T>(_ body: () throws -> T) rethrows -> T {
     lock.lock(); defer { lock.unlock() }; return try body()
   }
   private func persist() throws { defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata") }
-  var hosted: Bool { locked { state.userID != nil && state.hosted } }
+  var hosted: Bool { locked { state.userID != nil } }
   var managed: Bool { locked { state.userID != nil || state.hosted } }
   var scope: String? { locked { state.userID } }
   func dictionaryChanged() {
@@ -66,7 +67,7 @@ final class CloudAccount {
     locked { lastSyncAttempt = -.infinity; lastRefreshAttempt = -.infinity }
   }
   var isBusy: Bool { locked { busy } }
-  var configured: Bool { locked { managed ? state.userID != nil && state.hosted && AccountCredential.read() != nil : KeyStore.read() != nil } }
+  var configured: Bool { locked { managed ? hosted && AccountCredential.read() != nil : KeyStore.read() != nil } }
   func snapshot() -> [String: Any] {
     locked { ["endpoint": state.endpoint, "signedIn": state.userID != nil, "managed": managed, "email": state.email,
       "pending": state.pending, "hosted": hosted, "syncEnabled": state.sync,
@@ -133,7 +134,7 @@ final class CloudAccount {
     guard code == 200, let userID = result["id"] as? String, UUID(uuidString: userID) != nil,
       let email = result["email"] as? String else { throw ClarifyError(L("A sessão expirou. Entre na conta novamente.")) }
     try locked {
-      state.userID = userID; state.email = email; state.pending = ""
+      state.userID = userID; state.email = email; state.pending = ""; state.hosted = true
       usage = result["usage"] as? [String: Any] ?? [:]
       try persist()
     }
@@ -169,12 +170,6 @@ final class CloudAccount {
     case "auto":
       do { try await refresh(); try prepareLibrary(library); await syncQuietly(library) }
       catch { locked { syncError = L("Não foi possível atualizar a conta. Os dados locais foram preservados.") } }
-    case "hosted":
-      try locked {
-        guard state.userID != nil || value != "1" else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
-        guard state.userID == nil || value == "1" else { throw ClarifyError(L("Saia da conta para usar sua chave ou modelos locais.")) }
-        state.hosted = value == "1"; try persist()
-      }
     case "sync", "sync-local", "sync-remote":
       try await syncImpl(library, prefer: action == "sync-local" ? "local" : action == "sync-remote" ? "remote" : nil)
     case "logout", "delete":
@@ -259,7 +254,7 @@ final class CloudAccount {
     catch { locked { syncError = L("Não foi possível sincronizar. As palavras salvas neste dispositivo foram preservadas.") } }
   }
   func dictate(_ audio: URL, operationID: String, library: LocalLibrary) async throws -> CloudDictation {
-    guard hosted else { throw ClarifyError(L("Ative o processamento do Clarify na sua conta.")) }
+    guard hosted else { throw ClarifyError(L("Entre na conta novamente.")) }
     try await waitForAutomaticRefresh()
     try begin(); defer { end() }
     if scope != nil && ProcessInfo.processInfo.systemUptime - lastSyncAttempt >= 60 {

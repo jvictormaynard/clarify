@@ -7,16 +7,21 @@ see a short invitation and one sign-in/create-account button. History and vocabu
 Version 0.5.0 (20) shows the email field directly before the bottom tabs.
 The same emailed code enters an existing account or creates a new one, without
 a password. Use **Continuar sem conta** to configure a personal Groq key.
-The account path explicitly asks to enable hosted processing. The final step
+Signing in activates account processing automatically. The final step
 explains keyboard installation; microphone permission is requested when needed.
 An unfinished setup resumes on the next launch. Existing accounts and keys
 skip first-run setup after an upgrade. A setup preference contains no credentials.
 Billing, translation and local models are outside this mobile release.
 
-The unreleased history change shows the source device below the time, using the same caption size.
-New records preserve their source; earlier iPhone records default to Mobile.
-History remains on the device. Account dictionary and usage synchronization do
-not transfer history between desktop and mobile.
+Version **0.7.1 (24)** adds a small Mobile or Desktop icon and label below each
+history timestamp, using the same caption size. Earlier iPhone records default
+to Mobile. History remains local; account dictionary and usage synchronization
+do not transfer history between devices. Off and On align with the center of
+the Home switch. Dark keys lift the system material instead of using a fixed
+gray fill, with a stronger fill for increased contrast or reduced transparency.
+The keyboard opening-height defect
+reported in build 23 remains unresolved. This build does not include a sizing
+workaround or the separate experimental installed-extension diagnostic.
 
 Version **0.7.0 (23)** groups Home history by the device's calendar day, with
 continuous rows containing text and time. A large switch above history turns

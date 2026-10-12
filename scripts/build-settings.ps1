@@ -28,7 +28,7 @@ Get-ChildItem -LiteralPath $taskStage -Force -Exclude node_modules,target,dist,t
     }
 }
 New-Item -ItemType Directory -Path (Join-Path $taskStageRoot 'shared') -Force | Out-Null
-foreach ($taskFile in @('i18n.ts', 'ui_strings.json')) {
+foreach ($taskFile in @('i18n.ts', 'ui_strings.json', 'usage.ts')) {
     Copy-Item -LiteralPath (Join-Path $taskRepo "shared\$taskFile") -Destination (Join-Path $taskStageRoot "shared\$taskFile") -Force
 }
 Push-Location $taskStage

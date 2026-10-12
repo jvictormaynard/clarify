@@ -68,7 +68,7 @@ class AccountTests(unittest.TestCase):
         self.signed_in()
         self.assertNotIn("test-session-only", json.dumps(self.account.snapshot()))
         self.assertNotIn("test-session-only", self.account.path.read_text())
-        self.assertFalse(self.account.hosted)
+        self.assertTrue(self.account.hosted)
 
     def test_device_language_is_sent_without_changing_the_auth_payload(self):
         self.account.ui_language = "es"
@@ -113,16 +113,59 @@ class AccountTests(unittest.TestCase):
             self.account._request("POST", "/v1/text", cancel=token, json={})
         self.assertEqual(self.account.snapshot()["usage"]["used_ms"], 500)
 
-    def test_signed_in_processing_requires_consent_and_cannot_switch_to_byok(self):
+    def test_signed_in_processing_is_ready_without_a_separate_activation(self):
         self.signed_in()
         self.assertTrue(self.account.signed_in)
-        self.assertFalse(self.account.hosted)
-        with self.assertRaises(AccountError):
-            self.account.transcribe(Mock(), "auto", self.service)
-        self.account.set_hosted(True)
-        with self.assertRaises(AccountError):
-            self.account.set_hosted(False)
         self.assertTrue(self.account.hosted)
+        self.request.return_value = self.response({"text": "Processed text."})
+        self.assertEqual(
+            self.account.transform_text("Source text.", "rewrite"), "Processed text."
+        )
+        self.assertEqual(
+            self.request.call_args.args[1], "https://clarify.example/v1/text"
+        )
+
+    def test_existing_signed_in_profiles_process_without_activation_and_fail_closed(
+        self,
+    ):
+        from provider_http import CancellationToken
+        from workflows import RecordingSnapshot
+
+        for mode in (None, "personal", "hosted"):
+            with self.subTest(mode=mode):
+                state = {"user_id": str(uuid.uuid4()), "email": "user@example.test"}
+                if mode is not None:
+                    state["mode"] = mode
+                self.account.path.write_text(json.dumps(state), encoding="utf-8")
+                account = AccountService(
+                    self.root,
+                    secrets=self.account.secrets,
+                    request=self.request,
+                    default_endpoint="https://clarify.example",
+                )
+                self.assertTrue(account.hosted)
+                account._last_sync_attempt = account._clock()
+                self.request.return_value = self.response(
+                    {"transcript": "Source.", "text": "Processed.", "rewritten": True}
+                )
+                result = account.transcribe(
+                    RecordingSnapshot(
+                        Path("unused.wav"), b"fake audio", CancellationToken()
+                    ),
+                    "pt",
+                    self.service,
+                )
+                self.assertEqual(result.provider_id, "clarify")
+                self.assertEqual(
+                    self.request.call_args.args[1],
+                    "https://clarify.example/v1/dictations",
+                )
+                self.request.return_value = self.response({}, 403)
+                with self.assertRaises(AccountError):
+                    account.refresh()
+                restored = AccountService(self.root, secrets=self.account.secrets)
+                self.assertFalse(restored.hosted)
+                self.assertTrue(restored.managed)
 
     def test_automatic_refresh_has_a_network_cooldown(self):
         self.signed_in()
@@ -154,6 +197,7 @@ class AccountTests(unittest.TestCase):
             self.response({"id": user_id, "email": "user@example.test"}),
         ]
         self.account.authenticate("confirm", "123456")
+        self.assertTrue(self.account.hosted)
         confirm = self.request.call_args_list[-2]
         self.assertEqual(
             confirm.args[1], "https://clarify.example/_allauth/app/v1/auth/code/confirm"
@@ -231,9 +275,8 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(self.service.state.dictionary[0].pronunciation, "")
         self.assertFalse(self.account.snapshot()["syncEnabled"])
 
-    def test_expired_session_restores_local_scope_and_preserves_hosted_choice(self):
+    def test_expired_session_restores_local_scope_and_keeps_managed_processing(self):
         self.signed_in()
-        self.account.set_hosted(True)
         self.request.return_value = self.response({}, 403)
         with self.assertRaises(AccountError):
             self.account.refresh()

@@ -524,11 +524,16 @@ def main(argv: list[str] | None = None) -> int:
         if hotkeys is not None:
             hotkeys.reconfigure(settings)
 
+    def capture_qml_hotkeys(active: bool) -> None:
+        if hotkeys is not None:
+            hotkeys.set_capture_active(active)
+
     settings = QmlSettingsController(
         repositories,
         parent=app,
         microphone_backend=runtime.recording_audio.recorder,
         hotkey_applier=apply_qml_hotkeys,
+        hotkey_capture_changed=capture_qml_hotkeys,
         dictionary_service=getattr(runtime, "dictionary_service", None),
         account_service=getattr(runtime, "account", None),
         account_can_change=lambda: (

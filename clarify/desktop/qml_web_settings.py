@@ -73,6 +73,7 @@ PROPERTIES = (
     "localBenchmarkDetail",
     "localAsrCloudRefinement",
     "hotkeyActions",
+    "hotkeyCaptureAction",
     "hotkeyActivationMode",
     "hotkeyPushToTalkSupported",
 )
@@ -80,6 +81,8 @@ PROPERTIES = (
 METHODS = frozenset(
     (
         "completeOnboarding",
+        "beginHotkeyCapture",
+        "cancelHotkeyCapture",
         "accountCommand",
         "setLanguage",
         "setDictionaryEntries",
@@ -247,6 +250,7 @@ class WebSettingsProcess(QObject):
         if self._visible:
             self._visible = False
             self.settings.stopMicrophoneTest()
+            self.settings.cancelHotkeyCapture()
             self._window_command("hide")
 
     def activate(self):
@@ -283,6 +287,7 @@ class WebSettingsProcess(QObject):
         self.settings.stopMicrophoneTest()
         if self._shutting_down:
             return
+        self.settings.cancelHotkeyCapture()
         if code != 0:
             self.failed = True
             if self.bridge.surface == "settings":

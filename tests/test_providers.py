@@ -65,6 +65,9 @@ class FakeResponse:
 class ProviderTests(unittest.TestCase):
     def setUp(self):
         self.original_config = app.APP_CONFIG.copy()
+        # These compatibility tests start with flat provider settings. A typed
+        # config loaded by another test must not override their legacy edits.
+        app.APP_CONFIG.pop("workflows", None)
         self.audio = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         self.audio.write(b"RIFF-test-audio")
         self.audio.close()

@@ -5,7 +5,7 @@ import QtQuick.Layouts
 MenuItem {
     id: control
     required property Theme visualTheme
-    implicitHeight: 36
+    implicitHeight: visible ? 36 : 0
     leftPadding: 10; rightPadding: 28
     topPadding: 0; bottomPadding: 0
     contentItem: RowLayout {

@@ -65,7 +65,7 @@ class OnboardingControllerTests(unittest.TestCase):
             finally:
                 controller.shutdown()
 
-    def test_account_requires_verified_session_and_explicit_hosted_choice(self):
+    def test_verified_account_completes_setup_without_an_activation_choice(self):
         with TemporaryDirectory() as directory:
             account = Mock(snapshot=lambda: {"signedIn": False, "hosted": False})
             controller = QmlSettingsController(
@@ -74,8 +74,6 @@ class OnboardingControllerTests(unittest.TestCase):
             try:
                 self.assertFalse(controller.completeOnboarding("account", ""))
                 account.snapshot = lambda: {"signedIn": True, "hosted": False}
-                self.assertFalse(controller.completeOnboarding("account", ""))
-                account.snapshot = lambda: {"signedIn": True, "hosted": True}
                 self.assertTrue(controller.completeOnboarding("account", ""))
             finally:
                 controller.shutdown()

@@ -42,7 +42,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
         </> : account && (account.signedIn ? <>
           <p>{account.email}</p>
           <p className="hint">{t("Para transcrever e reescrever, áudio, texto e palavras ativas do dicionário serão processados pelo Clarify. O histórico fica neste computador. A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.")}</p>
-          {!account.hosted ? <Button variant="primary" onClick={() => command("hosted", "1")}>{t("Ativar processamento do Clarify")}</Button> : <Button variant="primary" onClick={() => void complete("account")}>{t("Começar")}</Button>}
+          <Button variant="primary" onClick={() => void complete("account")}>{t("Começar")}</Button>
         </> : <>
           <AccountSignIn account={account} command={command} busy={busy || account.busy} />
           {!account.pending && <Button variant="text" className="onboarding-skip" onClick={() => void chooseLocal()}>{t("Continuar sem conta")}</Button>}

@@ -369,6 +369,139 @@ class WindowsHotkeyEventFilterTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
 class WindowsGlobalHotkeyBackendTests(unittest.TestCase):
+    def test_capture_restore_collision_can_recover_on_apply(self):
+        blocked = [False]
+
+        def register(*_args, **_kwargs):
+            if blocked[0]:
+                raise HotkeyRegistrationError(["recording_hotkey"])
+            return {0x5101}
+
+        backend = WindowsGlobalHotkeyBackend(
+            FakeNativeEventTarget(),
+            user32="fake",
+            register_hotkeys=register,
+            unregister_hotkeys=lambda *_args: None,
+        )
+        try:
+            backend.start(FakeWindow())
+            backend.set_capture_active(True)
+            blocked[0] = True
+            with self.assertRaises(HotkeyRegistrationError):
+                backend.set_capture_active(False)
+            self.assertFalse(backend.is_running)
+            blocked[0] = False
+            self.assertEqual(backend.reconfigure(HotkeySettings.defaults()), {0x5101})
+        finally:
+            backend.stop()
+
+    def test_capture_releases_global_inputs_and_drops_queued_actions(self):
+        app = QApplication.instance() or QApplication([])
+        hooks = []
+
+        class Hook:
+            def __init__(self, _user32, _settings, emit):
+                self.ids, self.needs_poll = {0x5101}, False
+                self.emit, self.stopped = emit, False
+                hooks.append(self)
+
+            def start(self):
+                pass
+
+            def stop(self):
+                self.stopped = True
+
+        backend = WindowsGlobalHotkeyBackend(
+            FakeNativeEventTarget(),
+            user32="fake",
+            register_hotkeys=lambda *_args, **_kwargs: {0x5102},
+            unregister_hotkeys=lambda *_args: None,
+            input_hook_factory=Hook,
+        )
+        received = []
+        backend.triggered.connect(received.append)
+        try:
+            backend.start(FakeWindow())
+            hooks[0].emit(0x5101, "tap")
+            backend.set_capture_active(True)
+            self.assertFalse(backend.registered_ids)
+            self.assertTrue(hooks[0].stopped)
+            backend.set_capture_active(False)
+            app.processEvents()
+            self.assertEqual(received, [])
+            self.assertEqual(backend.registered_ids, {0x5101, 0x5102})
+            hooks[1].emit(0x5101, "tap")
+            app.processEvents()
+            self.assertEqual(received, ["recording_hotkey"])
+            backend.set_capture_active(True)
+            backend.stop()
+            backend.set_capture_active(False)
+            self.assertFalse(
+                backend.is_running, "shutdown must not resume capture bindings"
+            )
+        finally:
+            backend.stop()
+
+    def test_hook_replacement_drops_old_events_and_keeps_old_hook_on_failure(self):
+        app = QApplication.instance() or QApplication([])
+        hooks = []
+
+        class Hook:
+            def __init__(self, _user32, _settings, emit):
+                self.ids = {0x5101}
+                self.needs_poll = False
+                self.emit = emit
+                self.stopped = False
+                hooks.append(self)
+
+            def start(self):
+                pass
+
+            def stop(self):
+                self.stopped = True
+
+            def poll(self):
+                pass
+
+        fail = [False]
+
+        def register(*_args, **_kwargs):
+            if fail[0]:
+                fail[0] = False
+                raise HotkeyRegistrationError(["recording_hotkey"])
+            return set()
+
+        backend = WindowsGlobalHotkeyBackend(
+            FakeNativeEventTarget(),
+            user32="fake",
+            register_hotkeys=register,
+            unregister_hotkeys=lambda *_args: None,
+            input_hook_factory=Hook,
+        )
+        received = []
+        backend.triggered.connect(received.append)
+        try:
+            self.assertEqual(backend.start(FakeWindow()), {0x5101})
+            hooks[0].emit(0x5101, "tap")
+            backend.reconfigure(HotkeySettings.defaults())
+            app.processEvents()
+            self.assertEqual(
+                received, [], "queued events from the replaced hook must be ignored"
+            )
+            self.assertTrue(hooks[0].stopped)
+            hooks[1].emit(0x5101, "tap")
+            app.processEvents()
+            self.assertEqual(received, ["recording_hotkey"])
+            fail[0] = True
+            with self.assertRaises(HotkeyRegistrationError):
+                backend.reconfigure(HotkeySettings.defaults())
+            self.assertTrue(hooks[2].stopped)
+            self.assertFalse(hooks[1].stopped)
+            self.assertEqual(backend.registered_ids, {0x5101})
+        finally:
+            backend.stop()
+        self.assertTrue(hooks[1].stopped)
+
     def test_backend_registers_filters_and_emits_canonical_action(self):
         target = FakeNativeEventTarget()
         window = FakeWindow()

@@ -2,6 +2,18 @@ import XCTest
 @testable import ClarifyContracts
 
 final class CloudAccountTests: XCTestCase {
+  func testExistingSignedInAccountProcessesWithoutSeparateActivation() throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var state = CloudAccountState()
+    state.userID = UUID().uuidString
+    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    let account = CloudAccount(defaults: defaults)
+    XCTAssertTrue(account.hosted)
+    XCTAssertTrue(account.managed)
+    XCTAssertEqual(account.snapshot()["hosted"] as? Bool, true)
+  }
   func testSavingAnOpenDraftPreservesWordsReceivedDuringAutomaticRefresh() throws {
     let suite = "ClarifyTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!

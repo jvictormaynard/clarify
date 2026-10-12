@@ -25,6 +25,7 @@ from PySide6.QtCore import (
     QLockFile,
     QObject,
     QTimer,
+    Qt,
     Signal,
     Slot,
 )
@@ -35,6 +36,7 @@ from hotkey_config import HotkeyAction, HotkeySettings
 from windows_hotkeys import (
     ESCAPE_HOTKEY_ID,
     HotkeyRegistrationError,
+    WindowsInputHook,
     WM_HOTKEY,
     action_for_hotkey_id,
     hotkey_physical_keys,
@@ -365,6 +367,7 @@ class WindowsGlobalHotkeyBackend(QObject):
 
     triggered = Signal(str)
     restarted = Signal()
+    _inputEvent = Signal(object, int, str)
 
     def __init__(
         self,
@@ -381,6 +384,7 @@ class WindowsGlobalHotkeyBackend(QObject):
         ] = WindowsHotkeyEventFilter,
         message_decoder: Callable[[Any, Any], int | None] | None = None,
         action_for_id: Callable[[int], str | None] = action_for_hotkey_id,
+        input_hook_factory=WindowsInputHook,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -394,12 +398,22 @@ class WindowsGlobalHotkeyBackend(QObject):
         self._event_filter_factory = event_filter_factory
         self._message_decoder = message_decoder
         self._action_for_id = action_for_id
+        self._input_hook_factory = input_hook_factory
+        self._input_hook = None
+        self._inputEvent.connect(
+            self._handle_input_event, Qt.ConnectionType.QueuedConnection
+        )
+        self._hook_timer = QTimer(self)
+        self._hook_timer.setInterval(8)
+        self._hook_timer.timeout.connect(self._poll_input_hook)
         self._event_filter: QAbstractNativeEventFilter | None = None
         self._registered: set[int] = set()
         self._hwnd: int | None = None
         self._recording_active = False
         self._escape_registered = False
         self._recovery_window: WindowTarget | None = None
+        self._active_window: WindowTarget | None = None
+        self._capture_window: WindowTarget | None = None
         self._held_keys: tuple[int, ...] = ()
         self._release_timer = QTimer(self)
         self._release_timer.setInterval(8)
@@ -412,6 +426,8 @@ class WindowsGlobalHotkeyBackend(QObject):
     @property
     def registered_ids(self) -> frozenset[int]:
         registered = set(self._registered)
+        if self._input_hook is not None:
+            registered.update(self._input_hook.ids)
         if self._escape_registered:
             registered.add(ESCAPE_HOTKEY_ID)
         return frozenset(registered)
@@ -427,7 +443,7 @@ class WindowsGlobalHotkeyBackend(QObject):
         """Register configured shortcuts against the QML window handle."""
 
         if self.is_running:
-            return set(self._registered)
+            return set(self.registered_ids)
 
         hwnd = self._window_handle(window)
         user32 = self._user32 if self._user32 is not None else _load_user32()
@@ -453,8 +469,12 @@ class WindowsGlobalHotkeyBackend(QObject):
             self._hwnd = hwnd
             self._registered = registered
             self._event_filter = event_filter
+            self._input_hook = self._start_input_hook(user32, self._settings)
+            if self._input_hook.needs_poll:
+                self._hook_timer.start()
             self._set_escape_hotkey(self._recording_active)
         except BaseException as error:
+            self._stop_input_hook()
             try:
                 self._set_escape_hotkey(False)
             finally:
@@ -473,7 +493,20 @@ class WindowsGlobalHotkeyBackend(QObject):
             raise
 
         self._recovery_window = None
+        self._active_window = window
         return set(self.registered_ids)
+
+    def set_capture_active(self, active: bool) -> None:
+        """Release OS input ownership while Settings captures a new shortcut."""
+        if active:
+            if self._capture_window is None and self.is_running:
+                window = self._active_window
+                self.stop()
+                self._capture_window = window
+        else:
+            window, self._capture_window = self._capture_window, None
+            if window is not None:
+                self.start(window)
 
     def reconfigure(
         self,
@@ -494,6 +527,7 @@ class WindowsGlobalHotkeyBackend(QObject):
 
         user32 = self._user32 if self._user32 is not None else _load_user32()
         previous = self._settings
+        next_hook = self._start_input_hook(user32, selected)
         current_registered = set(self._registered)
         self._unregister_hotkeys(user32, self._hwnd, current_registered)
         self._registered.clear()
@@ -507,6 +541,7 @@ class WindowsGlobalHotkeyBackend(QObject):
                 )
             )
         except BaseException:
+            next_hook.stop()
             self._settings = previous
             try:
                 restored = set(
@@ -525,12 +560,19 @@ class WindowsGlobalHotkeyBackend(QObject):
 
         self._settings = selected
         self._registered = registered
+        self._stop_input_hook()
+        self._input_hook = next_hook
+        if next_hook.needs_poll:
+            self._hook_timer.start()
         return set(self.registered_ids)
 
     def stop(self) -> None:
         """Remove the native filter and unregister every active shortcut."""
 
+        self._active_window = None
+        self._capture_window = None
         self._release_hold()
+        self._stop_input_hook()
         event_filter = self._event_filter
         if event_filter is None:
             return
@@ -548,6 +590,44 @@ class WindowsGlobalHotkeyBackend(QObject):
                 self._hwnd = None
                 self._event_filter = None
                 self._recovery_window = None
+
+    def _start_input_hook(self, user32, settings):
+        hook = self._input_hook_factory(
+            user32,
+            settings,
+            lambda identifier, phase: self._inputEvent.emit(hook, identifier, phase),
+        )
+        try:
+            hook.start()
+        except BaseException:
+            hook.stop()
+            raise
+        return hook
+
+    def _stop_input_hook(self):
+        self._hook_timer.stop()
+        hook, self._input_hook = self._input_hook, None
+        if hook is not None:
+            hook.stop()
+
+    def _poll_input_hook(self):
+        if self._input_hook is not None:
+            self._input_hook.poll()
+
+    @Slot(object, int, str)
+    def _handle_input_event(self, hook, identifier, phase):
+        if hook is not self._input_hook or identifier not in self.registered_ids:
+            return
+        if (
+            identifier == 0x5101
+            and self._settings.activation_mode.value == "push_to_talk"
+        ):
+            if phase == "press":
+                self._handle_hotkey_id(identifier)
+            elif phase == "release":
+                self._release_hold()
+        elif phase in {"tap", "press"}:
+            self._handle_hotkey_id(identifier)
 
     def _set_escape_hotkey(self, enabled: bool) -> None:
         if self._hwnd is None:
