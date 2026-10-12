@@ -14,6 +14,8 @@ final class ActivationFixtureScene: UIResponder, UIWindowSceneDelegate {
     let window = UIWindow(windowScene: scene); window.rootViewController = UIViewController()
     window.rootViewController?.view.backgroundColor = .systemBackground
     window.makeKeyAndVisible(); self.window = window
+    NotificationCenter.default.addObserver(self, selector: #selector(returnToSource), name: UIApplication.didBecomeActiveNotification, object: nil)
+    if let store = SharedState() { try? store.write(["ready": true], to: "container-ready.json") }
     pending = options.urlContexts.first?.url
     opener = options.urlContexts.first?.options.sourceApplication
   }
@@ -21,7 +23,7 @@ final class ActivationFixtureScene: UIResponder, UIWindowSceneDelegate {
     pending = contexts.first?.url; opener = contexts.first?.options.sourceApplication; returnToSource()
   }
   func sceneDidBecomeActive(_ scene: UIScene) { returnToSource() }
-  private func returnToSource() {
+  @objc private func returnToSource() {
     guard UIApplication.shared.applicationState == .active, let url = pending else { return }
     pending = nil
     let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "token" }?.value

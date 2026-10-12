@@ -20,6 +20,7 @@ static NSString *const kEnabledSelectorName      = @"enabled";
 static NSString *const kAutoSharedSelectorName   = @"automaticSharedArbiterClient";
 static NSString *const kCheckConnSelectorName    = @"checkConnection";
 static NSString *const kSwizzleSelectorName      = @"queue_keyboardChanged:onComplete:";
+static NSString *const kHandledSelectorName      = @"_didHandleKeyboardClientChange:shouldConsiderSnapshottingKeyboard:isLocalEvent:";
 static NSString *const kSourceBundleIdKey        = @"_sourceBundleIdentifier";
 
 static os_unfair_lock sHookLock = OS_UNFAIR_LOCK_INIT;
@@ -27,7 +28,8 @@ static NSString *_Nullable sLastCapturedBundleId = nil;
 static uint64_t sCaptureGeneration = 0;
 static uint64_t sInvalidationGeneration = 0;
 static IMP _Nullable sOriginalIMP = NULL;
-static BOOL sInstalled = NO;
+static IMP _Nullable sOriginalHandledIMP = NULL;
+static BOOL sEnabledInstalled = NO;
 
 #pragma mark - Validation
 
@@ -65,7 +67,7 @@ static void CommitHostBundleId(NSString *_Nullable bid) {
 
 // Replacement for -[_UIKeyboardArbiterClientInputDestination queue_keyboardChanged:onComplete:].
 // The bundle identifier lives on the `change` argument (arg1), not on `self`.
-static void SwizzledKeyboardChanged(id self, SEL _cmd, id change, id completion) {
+static void CaptureHost(id change) {
     NSString *bundleId = nil;
     if (change) {
         @try {
@@ -78,9 +80,36 @@ static void SwizzledKeyboardChanged(id self, SEL _cmd, id change, id completion)
         }
     }
     CommitHostBundleId(bundleId);
+}
+
+static void SwizzledKeyboardChanged(id self, SEL _cmd, id change, id completion) {
+    CaptureHost(change);
     if (sOriginalIMP) {
         ((void (*)(id, SEL, id, id))sOriginalIMP)(self, _cmd, change, completion);
     }
+}
+
+// Current UIKit can deliver its initial connection update directly to this
+// handler, without passing through queue_keyboardChanged:onComplete:.
+static void SwizzledHandledChange(id self, SEL _cmd, id change, BOOL snapshot, BOOL local) {
+    CaptureHost(change);
+    if (sOriginalHandledIMP) {
+        ((void (*)(id, SEL, id, BOOL, BOOL))sOriginalHandledIMP)(self, _cmd, change, snapshot, local);
+    }
+}
+
+static BOOL IsBooleanType(const char *type) { return strcmp(type, "B") == 0 || strcmp(type, "c") == 0; }
+
+static BOOL ValidChangeMethod(Method method, BOOL flags) {
+    if (!method || method_getNumberOfArguments(method) != (flags ? 5 : 4)) return NO;
+    char result[16] = {0}, first[16] = {0}, second[16] = {0}, third[16] = {0};
+    method_getReturnType(method, result, sizeof(result));
+    method_getArgumentType(method, 2, first, sizeof(first));
+    method_getArgumentType(method, 3, second, sizeof(second));
+    if (strcmp(result, "v") != 0 || first[0] != '@') return NO;
+    if (!flags) return second[0] == '@';
+    method_getArgumentType(method, 4, third, sizeof(third));
+    return IsBooleanType(second) && IsBooleanType(third);
 }
 
 // Replacement for +[_UIKeyboardArbiterClient enabled]. iOS 26.4 gates the
@@ -127,17 +156,11 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
 
 + (void)installHooks {
     os_unfair_lock_lock(&sHookLock);
-    if (sInstalled) {
-        os_unfair_lock_unlock(&sHookLock);
-        return;
-    }
-    sInstalled = YES;
-    os_unfair_lock_unlock(&sHookLock);
 
     // Step 1: force +[_UIKeyboardArbiterClient enabled] to return YES so the
     // arbiter dispatches destination-changed callbacks into our swizzle.
     Class clientCls = NSClassFromString(kArbiterClientClassName);
-    if (clientCls) {
+    if (clientCls && !sEnabledInstalled) {
         SEL enabledSel = NSSelectorFromString(kEnabledSelectorName);
         Method enabledMethod = class_getClassMethod(clientCls, enabledSel);
         char returnType[16] = {0};
@@ -145,24 +168,24 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
         if (enabledMethod && method_getNumberOfArguments(enabledMethod) == 2
             && (strcmp(returnType, "B") == 0 || strcmp(returnType, "c") == 0)) {
             method_setImplementation(enabledMethod, (IMP)&AlwaysEnabledIMP);
+            sEnabledInstalled = YES;
         }
     }
 
     // Step 2: swap the destination's queue_keyboardChanged:onComplete: IMP.
     Class destCls = NSClassFromString(kDestinationClassName);
-    if (!destCls) return;
     SEL sel = NSSelectorFromString(kSwizzleSelectorName);
-    Method method = class_getInstanceMethod(destCls, sel);
-    if (!method || method_getNumberOfArguments(method) != 4) return;
-    char returnType[16] = {0};
-    method_getReturnType(method, returnType, sizeof(returnType));
-    if (strcmp(returnType, "v") != 0) return;
-    char changeType[16] = {0}, completionType[16] = {0};
-    method_getArgumentType(method, 2, changeType, sizeof(changeType));
-    method_getArgumentType(method, 3, completionType, sizeof(completionType));
-    if (changeType[0] != '@' || completionType[0] != '@') return;
-    sOriginalIMP = method_getImplementation(method);
-    method_setImplementation(method, (IMP)&SwizzledKeyboardChanged);
+    Method method = destCls ? class_getInstanceMethod(destCls, sel) : NULL;
+    if (!sOriginalIMP && ValidChangeMethod(method, NO)) {
+        sOriginalIMP = method_getImplementation(method);
+        method_setImplementation(method, (IMP)&SwizzledKeyboardChanged);
+    }
+    Method handled = destCls ? class_getInstanceMethod(destCls, NSSelectorFromString(kHandledSelectorName)) : NULL;
+    if (!sOriginalHandledIMP && ValidChangeMethod(handled, YES)) {
+        sOriginalHandledIMP = method_getImplementation(handled);
+        method_setImplementation(handled, (IMP)&SwizzledHandledChange);
+    }
+    os_unfair_lock_unlock(&sHookLock);
 }
 
 + (void)activeArbiterCheck {
@@ -185,6 +208,8 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
       id (*getMsg)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
       id client = getMsg(cls, getter);
       if (!client) return; // lazy initialization not complete yet; try again later
+      // UIKit may load the destination class after this image's +load.
+      [self installHooks];
       SEL ping = NSSelectorFromString(kCheckConnSelectorName);
       if (![client respondsToSelector:ping]) return;
       NSMethodSignature *pingSignature = [client methodSignatureForSelector:ping];

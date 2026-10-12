@@ -29,6 +29,7 @@ try {
   run('xcodebuild', ['build', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'), '-scheme', 'ActivationContainer',
     '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO']);
   run('xcrun', ['simctl', 'install', device.udid, path.join(derived, 'Build/Products/Debug-iphonesimulator/ActivationContainer.app')]);
+  run('xcrun', ['simctl', 'launch', device.udid, 'com.clarify.fixture.container']);
   const resultPath = path.join(results, 'KeyboardExtension.xcresult');
   const result = spawnSync('xcodebuild', ['test', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'),
     '-scheme', 'KeyboardExtension', '-destination', `platform=iOS Simulator,id=${device.udid}`,
