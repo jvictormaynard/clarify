@@ -28,7 +28,7 @@ on:
       diagnostic_variant:
         description: Change one factor in the installed extension fixture
         type: choice
-        options: [production, without-host-hooks, without-swiftui]
+        options: [production, without-host-hooks, without-swiftui, without-preferred-size]
         default: production
 
 permissions:

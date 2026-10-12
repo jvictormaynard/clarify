@@ -33,6 +33,11 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     source = File.join(fixture, name)
     File.write(source, original.sub(/    let host = UIHostingController.*?    activation = host/m, '// Isolated diagnostic: omit the activation hosting controller.'))
   end
+  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-preferred-size'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    File.write(source, original.sub(/  override var preferredContentSize: CGSize \{.*?\n  \}/m, '// Isolated diagnostic: use UIKit preferred sizing.'))
+  end
   if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_SELF_SIZING'] == 'off'
     original = File.read(source)
     raise 'Self-sizing experiment no longer matches the production source' unless original.scan('allowsSelfSizing = true').length == 1

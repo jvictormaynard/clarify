@@ -69,4 +69,12 @@ final class TypingCorrectionTests: XCTestCase {
     XCTAssertEqual(engine.keepOriginal(in: field), TypingEdit(deleteCount: 0, text: " "))
     XCTAssertNil(engine.replacement(in: field, candidate: "você", separator: " ", automatic: true))
   }
+  func testCorrectionUndoSurvivesTheDocumentProxyContextLimit() {
+    var engine = TypingCorrection()
+    var field = context(String(repeating: "a ", count: 23) + "teh")
+    XCTAssertNotNil(engine.replacement(in: field, candidate: "the", separator: " ", automatic: true))
+    field.before = String((String(field.before.dropLast(3)) + "the ").suffix(49))
+    XCTAssertEqual(engine.original(in: field), "teh")
+    XCTAssertEqual(engine.revert(in: field), TypingEdit(deleteCount: 4, text: "teh"))
+  }
 }

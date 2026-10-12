@@ -95,6 +95,10 @@ final class KeyboardExtensionTests: XCTestCase {
     XCTAssertTrue(space.isHittable, "The bottom keyboard row must be usable")
     space.tap()
     XCTAssertEqual((app.textFields["composer"].value as? String)?.lowercased(), "q ")
+    let w = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "w", "W")).firstMatch
+    letter.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.03,
+      thenDragTo: w.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+    XCTAssertEqual((app.textFields["composer"].value as? String)?.lowercased(), "q w", "A real sliding touch must commit its destination key once")
     for index in 0..<4 {
       app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
       app.textFields["composer"].tap()

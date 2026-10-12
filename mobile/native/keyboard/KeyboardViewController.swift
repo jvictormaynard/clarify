@@ -278,7 +278,7 @@ class KeyboardViewController: UIInputViewController {
     updateSuggestions()
   }
   private func updateCapitalization() {
-    guard keys.model.shift != .caps, let context = textDocumentProxy.documentContextBeforeInput else { return }
+    guard !keys.model.shiftIsManual, let context = textDocumentProxy.documentContextBeforeInput else { return }
     let type = textDocumentProxy.autocapitalizationType ?? .sentences
     let next: KeyboardState.Shift = type == .allCharacters ? .caps :
       ((type == .sentences && KeyboardState.startsSentence(after: context)) ||

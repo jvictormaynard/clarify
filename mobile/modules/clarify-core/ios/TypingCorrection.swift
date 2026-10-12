@@ -89,13 +89,22 @@ struct TypingCorrection {
   }
 
   func original(in context: TypingContext) -> String? {
-    guard undo?.context == context else { return nil }
-    return undo?.original
+    guard let undo, matchesUndo(undo, context: context) else { return nil }
+    return undo.original
+  }
+
+  private func matchesUndo(_ undo: Undo, context: TypingContext) -> Bool {
+    guard undo.context.document == context.document, undo.context.after == context.after,
+          !context.hasSelection, context.before.count >= undo.replacement.count + undo.separator.count else { return false }
+    // Document proxies expose a bounded suffix. An insertion can push one
+    // character out of that window without changing the correction at its end.
+    return undo.context.before == context.before ||
+      (context.before.count < undo.context.before.count && undo.context.before.hasSuffix(context.before))
   }
 
   mutating func revert(in context: TypingContext, keepSeparator: Bool = false) -> TypingEdit? {
     defer { undo = nil }
-    guard let undo = undo, undo.context == context else { return nil }
+    guard let undo = undo, matchesUndo(undo, context: context) else { return nil }
     rejectedWord = undo.original
     return TypingEdit(deleteCount: undo.replacement.count + undo.separator.count,
       text: undo.original + (keepSeparator ? undo.separator : ""))

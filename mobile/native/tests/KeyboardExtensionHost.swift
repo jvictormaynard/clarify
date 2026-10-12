@@ -51,8 +51,10 @@ final class KeyboardHostController: UIViewController {
   @objc private func sampleFrame() {
     guard field.isFirstResponder else { return }
     let height = view.keyboardLayoutGuide.layoutFrame.height
-    if height > 0, sampledHeights.last != height { sampledHeights.append(height) }
     let visible = view.bounds.maxY - (field.layer.presentation()?.frame.maxY ?? field.frame.maxY) - 8
+    let changed = (height > 0 && sampledHeights.last != height) || (visible > 0 && visibleHeights.last != visible)
+    guard changed else { return }
+    if height > 0, sampledHeights.last != height { sampledHeights.append(height) }
     if visible > 0, visibleHeights.last != visible { visibleHeights.append(visible) }
     publishTrace()
   }

@@ -243,6 +243,11 @@ final class KeyGridView: UIView {
       }
     }
     touchKeys = buttons(in: stack)
+    // A second tap can arrive before the next display frame. Publish the new
+    // hit regions now, rather than leaving freshly created keys at zero size.
+    if bounds.width > 0, bounds.height > 0 {
+      setNeedsLayout(); layoutIfNeeded(); stack.setNeedsLayout(); stack.layoutIfNeeded()
+    }
   }
   private func key(_ title: String, special: Bool = false, action: @escaping () -> Void) -> KeyButton {
     let button = KeyButton(type: .custom)

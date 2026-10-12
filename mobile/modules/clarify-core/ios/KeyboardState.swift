@@ -6,6 +6,7 @@ struct KeyboardState {
   enum Shift { case off, once, caps }
   var page: Page = .letters
   var shift: Shift = .once
+  private(set) var shiftIsManual = false
   var rows: [[String]] {
     switch page {
     case .letters:
@@ -19,10 +20,14 @@ struct KeyboardState {
     }
   }
   mutating func toggleShift(caps: Bool = false) {
+    shiftIsManual = true
     shift = caps ? .caps : (shift == .off ? .once : .off)
   }
   mutating func didInsert(_ text: String) {
-    if shift == .once, text.contains(where: { $0.isLetter }) { shift = .off }
+    if text.contains(where: { $0.isLetter }), shift != .caps {
+      if shift == .once { shift = .off }
+      shiftIsManual = false
+    }
     if text == " " || text == "\n" { page = .letters }
   }
   static func startsSentence(after context: String) -> Bool {

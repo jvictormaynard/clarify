@@ -134,6 +134,10 @@ final class KeyboardUITests: XCTestCase {
   private func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
   @MainActor
   private func publish(_ text: String, to keyboard: SelectionKeyboard, store: SharedState) throws {
+    // The real containing app refreshes its heartbeat during editing. This
+    // isolated fixture has no audio session or background heartbeat producer.
+    var live = store.snapshot(); live.heartbeat = Date().timeIntervalSince1970
+    try store.write(live, to: "state.json"); keyboard.viewWillAppear(false)
     let mic = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
     XCTAssertTrue(mic.accessibilityActivate())
     XCTAssertTrue(mic.accessibilityActivate(), "Finish the locked recording before publishing its result")
