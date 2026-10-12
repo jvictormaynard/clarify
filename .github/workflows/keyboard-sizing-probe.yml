@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [full-access, minimal-height, parent-preferred, controller-no-autosize]
+        variant: [storyboard, storyboard-root, style-default, plain-view]
     runs-on: macos-26
     timeout-minutes: 20
     defaults:

@@ -50,7 +50,12 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(test_fil
     end
     replacement = initialization + "override func loadView() {\n#{layout}\nview.backgroundColor = .clear; view.isOpaque = false\n}\n"
     source[start...finish] = replacement
+    source[start...(start + replacement.length)] = '' if variant == 'storyboard-root'
     source.sub!('allowsSelfSizing = true', 'allowsSelfSizing = false') if variant == 'no-self-sizing'
+    source.gsub!('inputViewStyle: .keyboard', 'inputViewStyle: .default') if variant == 'style-default'
+    if variant == 'plain-view'
+      source.sub!('inputView = KeyboardInputView(frame: CGRect(origin: .zero, size: preferredContentSize), inputViewStyle: .keyboard)', 'view = UIView(frame: CGRect(origin: .zero, size: preferredContentSize)); view.heightAnchor.constraint(equalToConstant: 278).isActive = true')
+    end
     if variant == 'root-frame'
       source.sub!('final class KeyboardInputView: UIInputView {', <<~SWIFT)
         final class KeyboardInputView: UIInputView {
@@ -203,6 +208,30 @@ info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'ClarifyKeyboard'
   'NSExtension' => { 'NSExtensionPointIdentifier' => 'com.apple.keyboard-service',
     'NSExtensionPrincipalClass' => '$(PRODUCT_MODULE_NAME).KeyboardViewController',
     'NSExtensionAttributes' => { 'IsASCIICapable' => true, 'PrimaryLanguage' => 'pt-BR', 'RequestsOpenAccess' => true } } }
+if variant.start_with?('storyboard')
+  info['NSExtension'].delete('NSExtensionPrincipalClass')
+  info['NSExtension']['NSExtensionMainStoryboard'] = 'Keyboard'
+  storyboard = <<~XML
+    <?xml version="1.0" encoding="UTF-8"?>
+    <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="24506" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="keyboard">
+      <device id="retina6_12" orientation="portrait" appearance="light"/>
+      <dependencies><plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="24504"/><capability name="Safe area layout guides" minToolsVersion="9.0"/></dependencies>
+      <scenes><scene sceneID="scene"><objects>
+        <viewController id="keyboard" customClass="KeyboardViewController" customModule="ClarifyKeyboard" customModuleProvider="target">
+          <view key="view" contentMode="scaleToFill" id="root" customClass="UIInputView">
+            <rect key="frame" x="0.0" y="0.0" width="402" height="278"/>
+            <autoresizingMask key="autoresizingMask" widthSizable="YES"/>
+            <viewLayoutGuide key="safeArea" id="safe"/>
+            <constraints><constraint firstAttribute="height" constant="278" id="height"/></constraints>
+          </view>
+        </viewController>
+        <placeholder placeholderIdentifier="IBFirstResponder" id="responder" userLabel="First Responder" customClass="UIResponder"/>
+      </objects></scene></scenes>
+    </document>
+  XML
+  file = File.join(fixture, 'Keyboard.storyboard'); File.write(file, storyboard)
+  keyboard.resources_build_phase.add_file_reference(project.main_group.new_file(file))
+end
 Xcodeproj::Plist.write_to_path(info, File.join(fixture, 'Keyboard.plist'))
 keyboard.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.host.keyboard',
