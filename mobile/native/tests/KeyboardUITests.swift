@@ -552,6 +552,15 @@ final class KeyboardUITests: XCTestCase {
         capture.lifetime = .keepAlways; self.add(capture)
         button.isHighlighted = false
         XCTAssertFalse(descendants(keyboard.view).contains { $0 is KeyPreview })
+        // Capture keys against lighter host materials as well as the transparent
+        // fixture. A fixed dark-gray fill can disappear against these surfaces.
+        for background in [CGFloat(0.12), 0.28, 0.4] where appearance == .dark {
+          keyboard.view.backgroundColor = UIColor(white: background, alpha: 1)
+          let material = XCTAttachment(image: renderer.image { keyboard.view.layer.render(in: $0.cgContext) })
+          material.name = "keyboard-dark-material-\(background)"
+          material.lifetime = .keepAlways; self.add(material)
+        }
+        keyboard.view.backgroundColor = .clear
       }
       window.isHidden = true
     }

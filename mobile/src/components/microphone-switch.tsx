@@ -29,7 +29,7 @@ export function MicrophoneSwitch() {
       <Text style={{ width: 44, textAlign: 'right', fontSize: 16, fontWeight: enabled ? '400' : '600', color: enabled ? c.muted : c.text }}>Off</Text>
       <Switch accessibilityLabel={t("Ativar Clarify")} accessibilityState={{ busy: changing }} value={enabled}
         disabled={blocked} onValueChange={value => void change(value)}
-        style={{ transform: [{ scale: 1.25 }], marginHorizontal: 8 }} />
+        style={{ alignSelf: 'center', transform: [{ scale: 1.25 }], marginHorizontal: 8 }} />
       <Text style={{ width: 44, fontSize: 16, fontWeight: enabled ? '600' : '400', color: enabled ? c.text : c.muted }}>On</Text>
       {changing && <ActivityIndicator size="small" color={c.accent} style={{ position: 'absolute', right: 0 }} />}
     </View>

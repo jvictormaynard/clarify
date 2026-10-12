@@ -16,6 +16,18 @@ final class LibraryTests: XCTestCase {
     XCTAssertEqual(try store.history().entries, [entry])
     XCTAssertNil(try store.history().nextCursor)
   }
+  func testHistoryKeepsItsSourceDeviceAndReadsOlderIPhoneRecords() throws {
+    let root = try root(); defer { try? FileManager.default.removeItem(at: root) }
+    let legacy = Data(#"{"id":"old","createdAt":1000,"transcript":"olá","text":"Olá.","rewritten":true}"#.utf8)
+    let oldEntry = try JSONDecoder().decode(HistoryEntry.self, from: legacy)
+    XCTAssertEqual(oldEntry.sourceDevice, .mobile)
+    let desktop = HistoryEntry(id: "desktop", createdAt: 2000, transcript: "hi", text: "Hi.", rewritten: true, sourceDevice: .desktop)
+    do { let store = try LocalLibrary(root: root); try store.record(oldEntry); try store.record(desktop) }
+    let entries = try LocalLibrary(root: root).history().entries
+    XCTAssertEqual(entries.map(\.sourceDevice), [.desktop, .mobile])
+    let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(entries)) as? [[String: Any]]
+    XCTAssertEqual(encoded?.map { $0["sourceDevice"] as? String }, ["desktop", "mobile"])
+  }
   func testHistoryPagesAndDeletionPreserveOtherEntriesAndVocabulary() throws {
     let root = try root(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try LocalLibrary(root: root)

@@ -179,7 +179,15 @@ final class KeyGridView: UIView {
   private func key(_ title: String, special: Bool = false, action: @escaping () -> Void) -> KeyButton {
     let button = KeyButton(type: .custom)
     button.restingColor = UIColor { traits in
-      traits.userInterfaceStyle == .dark ? UIColor(white: 0.25, alpha: 1) : (special ? UIColor(white: 0.68, alpha: 1) : .white)
+      // Lift the system material below each dark key instead of covering it
+      // with a fixed gray that can match the host application's background.
+      if traits.userInterfaceStyle == .dark {
+        let stronger = traits.accessibilityContrast == .high
+        return UIAccessibility.isReduceTransparencyEnabled
+          ? UIColor(white: stronger ? 0.6 : 0.47, alpha: 1)
+          : UIColor(white: 1, alpha: stronger ? 0.36 : 0.24)
+      }
+      return special ? UIColor(white: 0.68, alpha: 1) : .white
     }
     button.backgroundColor = button.restingColor; button.layer.cornerRadius = 10
     button.layer.cornerCurve = .continuous
