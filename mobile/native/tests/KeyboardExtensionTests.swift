@@ -1,6 +1,22 @@
 import XCTest
 
 final class KeyboardExtensionTests: XCTestCase {
+  private var fixtureRoot: URL {
+    URL(fileURLWithPath: Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyFixtureDirectory") as! String)
+  }
+  func testActivationContainerReceivesOpenURL() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication(); app.launch()
+    app.buttons["Open activation fixture"].tap()
+    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    if springboard.alerts.buttons["Open"].waitForExistence(timeout: 2) { springboard.alerts.buttons["Open"].tap() }
+    let receipt = fixtureRoot.appendingPathComponent("return-trace.json")
+    let delivered = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: receipt.path) }, evaluatedWith: nil)
+    wait(for: [delivered], timeout: 10)
+    try FileManager.default.copyItem(at: receipt, to: fixtureRoot.appendingPathComponent("container-preflight.json"))
+    try FileManager.default.removeItem(at: receipt)
+    app.activate()
+  }
   private func open(_ title: String, in app: XCUIApplication) {
     for _ in 0..<8 {
       let headerBottom = app.navigationBars.firstMatch.frame.maxY
@@ -133,6 +149,10 @@ final class KeyboardExtensionTests: XCTestCase {
     wait(for: [activated], timeout: 10)
     let diagnostic = XCTAttachment(string: (try? String(contentsOf: receipt, encoding: .utf8)) ?? container.debugDescription)
     diagnostic.name = "activation-return"; diagnostic.lifetime = .keepAlways; add(diagnostic)
+    let values = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: receipt))
+    XCTAssertEqual(values["nonceConsumed"], "true", "The real activation request must be consumed")
+    XCTAssertEqual(values["source"], "com.clarify.fixture.host", "Resolve the current origin, not an old app")
+    XCTAssertEqual(values["opened"], "true", "The production return bridge must accept the source")
     let back = expectation(for: NSPredicate(format: "state == %d", XCUIApplication.State.runningForeground.rawValue), evaluatedWith: app)
     wait(for: [back], timeout: 10)
     XCTAssertNotEqual(container.state, .runningForeground, "Activation must return to the original host")

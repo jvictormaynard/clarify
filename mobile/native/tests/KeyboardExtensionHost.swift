@@ -31,13 +31,16 @@ final class KeyboardHostController: UIViewController {
     dismiss.addAction(UIAction { [weak self] _ in self?.field.resignFirstResponder() }, for: .touchUpInside)
     let reset = UIButton(type: .system); reset.setTitle("Reset trace", for: .normal)
     reset.addAction(UIAction { [weak self] _ in self?.heights = []; self?.sampledHeights = []; self?.visibleHeights = []; self?.publishTrace() }, for: .touchUpInside)
-    for element in [field, trace, returnTrace, dismiss, reset] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
+    let activate = UIButton(type: .system); activate.setTitle("Open activation fixture", for: .normal)
+    activate.addAction(UIAction { _ in UIApplication.shared.open(URL(string: "clarify://fixture-preflight")!) }, for: .touchUpInside)
+    for element in [field, trace, returnTrace, dismiss, reset, activate] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
     NSLayoutConstraint.activate([
       trace.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
       trace.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20), trace.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
       dismiss.topAnchor.constraint(equalTo: trace.bottomAnchor, constant: 20), dismiss.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       reset.topAnchor.constraint(equalTo: dismiss.topAnchor), reset.trailingAnchor.constraint(equalTo: trace.trailingAnchor),
       returnTrace.topAnchor.constraint(equalTo: reset.bottomAnchor, constant: 16), returnTrace.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
+      activate.topAnchor.constraint(equalTo: returnTrace.bottomAnchor, constant: 16), activate.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       field.leadingAnchor.constraint(equalTo: trace.leadingAnchor), field.trailingAnchor.constraint(equalTo: trace.trailingAnchor),
       field.heightAnchor.constraint(equalToConstant: 44), field.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8)
     ])

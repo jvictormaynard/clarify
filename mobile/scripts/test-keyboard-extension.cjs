@@ -37,10 +37,8 @@ try {
     if (!fs.existsSync(file)) throw new Error(`The isolated container did not publish ${path.basename(file)}`);
   }
   waitForFile(ready);
-  // Establish the fixture's URL routing before diagnosing the keyboard handoff.
-  run('xcrun', ['simctl', 'openurl', device.udid, 'clarify://fixture-preflight']);
-  const probe = path.join(fixture, 'Shared/return-trace.json'); waitForFile(probe);
-  fs.copyFileSync(probe, path.join(results, 'container-preflight.json')); fs.unlinkSync(probe);
+  // URL delivery has its own UI test. A routing failure must not prevent the
+  // independent keyboard geometry test from collecting its display frames.
   const resultPath = path.join(results, 'KeyboardExtension.xcresult');
   const result = spawnSync('xcodebuild', ['test', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'),
     '-scheme', 'KeyboardExtension', '-destination', `platform=iOS Simulator,id=${device.udid}`,
@@ -53,6 +51,7 @@ try {
   exitCode = 1;
   throw error;
 } finally {
+  spawnSync('xcrun', ['simctl', 'io', device.udid, 'screenshot', path.join(results, 'final-screen.png')], { stdio: 'ignore' });
   const logs = spawnSync('xcrun', ['simctl', 'spawn', device.udid, 'log', 'show', '--style', 'compact', '--last', '15m', '--predicate', 'process IN {"ClarifyKeyboard", "ActivationContainer", "KeyboardHost"}'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   fs.writeFileSync(path.join(results, 'extension-log.txt'), (logs.stdout ?? '') + (logs.stderr ?? ''));
   const events = path.join(fixture, 'Shared/container-events.json');
@@ -61,6 +60,8 @@ try {
   if (fs.existsSync(ready)) fs.copyFileSync(ready, path.join(results, 'container-ready.json'));
   const receipt = path.join(fixture, 'Shared/return-trace.json');
   if (fs.existsSync(receipt)) fs.copyFileSync(receipt, path.join(results, 'activation-return.json'));
+  const preflight = path.join(fixture, 'Shared/container-preflight.json');
+  if (fs.existsSync(preflight)) fs.copyFileSync(preflight, path.join(results, 'container-preflight.json'));
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
   fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, selfSizing, variant, exitCode }, null, 2));
