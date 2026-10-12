@@ -173,9 +173,10 @@ final class KeyboardExtensionTests: XCTestCase {
       XCTAssertEqual(values["nonceConsumed"], "true", "The real activation request must be consumed")
       XCTAssertEqual(values["source"], "com.clarify.fixture.host", "Resolve the current origin, not an old app")
       XCTAssertEqual(values["opened"], "true", "The production return bridge must accept the source")
-      let back = expectation(for: NSPredicate(format: "state == %d", XCUIApplication.State.runningForeground.rawValue), evaluatedWith: app)
+      let back = expectation(for: NSPredicate { _, _ in
+        app.state == .runningForeground && container.state != .runningForeground
+      }, evaluatedWith: nil)
       wait(for: [back], timeout: 10)
-      XCTAssertNotEqual(container.state, .runningForeground, "Activation must return to the original host")
     }
   }
 }
