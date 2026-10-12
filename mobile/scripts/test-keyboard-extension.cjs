@@ -49,12 +49,14 @@ try {
     '-resultBundlePath', resultPath, 'CODE_SIGNING_ALLOWED=NO'], { stdio: 'inherit', timeout: 600000, killSignal: 'SIGINT' });
   exitCode = result.status ?? 1;
   if (fs.existsSync(resultPath)) run('xcrun', ['xcresulttool', 'export', 'attachments', '--path', resultPath, '--output-path', path.join(results, 'captures')]);
-  const logs = spawnSync('xcrun', ['simctl', 'spawn', device.udid, 'log', 'show', '--style', 'compact', '--last', '15m', '--predicate', 'process IN {"ClarifyKeyboard", "ActivationContainer", "KeyboardHost"}'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
-  fs.writeFileSync(path.join(results, 'extension-log.txt'), (logs.stdout ?? '') + (logs.stderr ?? ''));
 } catch (error) {
   exitCode = 1;
   throw error;
 } finally {
+  const logs = spawnSync('xcrun', ['simctl', 'spawn', device.udid, 'log', 'show', '--style', 'compact', '--last', '15m', '--predicate', 'process IN {"ClarifyKeyboard", "ActivationContainer", "KeyboardHost"}'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  fs.writeFileSync(path.join(results, 'extension-log.txt'), (logs.stdout ?? '') + (logs.stderr ?? ''));
+  const events = path.join(fixture, 'Shared/container-events.json');
+  if (fs.existsSync(events)) fs.copyFileSync(events, path.join(results, 'container-events.json'));
   const ready = path.join(fixture, 'Shared/container-ready.json');
   if (fs.existsSync(ready)) fs.copyFileSync(ready, path.join(results, 'container-ready.json'));
   const receipt = path.join(fixture, 'Shared/return-trace.json');
