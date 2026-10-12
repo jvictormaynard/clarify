@@ -77,12 +77,16 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
           override class var layerClass: AnyClass { KeyboardLayer.self }
       SWIFT
     end
-    source.sub!('    super.viewDidLayoutSubviews()', '    super.viewDidLayoutSubviews(); NSLog("Clarify sizing geometry: frame=%@ bounds=%@ parent=%@", NSStringFromCGRect(view.frame), NSStringFromCGRect(view.bounds), NSStringFromCGRect(view.superview?.frame ?? .zero))')
+    source.sub!('    super.viewDidLayoutSubviews()', '    super.viewDidLayoutSubviews(); NSLog("Clarify sizing geometry: frame=%@ bounds=%@ parent=%@", NSCoder.string(for: view.frame), NSCoder.string(for: view.bounds), NSCoder.string(for: view.superview?.frame ?? .zero))')
     if variant == 'no-hosting'
       host_start = source.index('    let host = UIHostingController(rootView: ActivationLink')
       host_end = source.index('    requestSupplementaryLexicon', host_start)
       source[host_start...host_end] = ''
     end
+    file = File.join(fixture, name); File.write(file, source)
+  end
+  if name == 'KBHostArbiterHook.m' && variant == 'no-arbiter'
+    source = File.read(file).sub('[self installHooks];', '// Diagnostic fixture: leave UIKit arbiter behavior unchanged.')
     file = File.join(fixture, name); File.write(file, source)
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(file))

@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [root-frame, layer-frame, controller-forward, align-content]
+        variant: [root-frame, layer-frame, controller-forward, align-content, no-arbiter]
     runs-on: macos-26
     timeout-minutes: 20
     defaults:
