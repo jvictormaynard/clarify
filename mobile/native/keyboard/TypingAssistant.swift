@@ -42,7 +42,7 @@ final class TypingAssistant {
   private func guesses(_ word: String, context: TypingContext) -> [String] {
     guard !protectedWords.contains(word.lowercased()), !vocabularyWords.contains(word.lowercased()), !languages.isEmpty else { return [] }
     let range = NSRange(word.startIndex..<word.endIndex, in: word)
-    // Do not correct a valid word in either supported language.
+    // Do not correct a valid word in any supported language.
     if languages.contains(where: {
       checker.rangeOfMisspelledWord(in: word, range: range, startingAt: 0, wrap: false, language: $0).location == NSNotFound
     }) { return [] }

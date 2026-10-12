@@ -72,6 +72,29 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertTrue(before.allSatisfy { $0.isDescendant(of: grid) }, "A refresh must not discard live key controls")
     }
   }
+  func testEmptyFieldWithoutContextCapitalizesButUnknownNonemptyContextDoesNot() async throws {
+    try await MainActor.run {
+      let keyboard = SelectionKeyboard(); keyboard.loadViewIfNeeded()
+      let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+      keyboard.field.contextAvailable = false; grid.model.shift = .off
+      keyboard.textDidChange(nil); XCTAssertEqual(grid.model.shift, .once)
+      keyboard.field.before = "word"; grid.model.shift = .off
+      keyboard.textDidChange(nil); XCTAssertEqual(grid.model.shift, .off)
+      keyboard.field.before = ""; keyboard.field.autocapitalizationType = .none
+      keyboard.textDidChange(nil); XCTAssertEqual(grid.model.shift, .off)
+    }
+  }
+  func testLocalAutocorrectionUsesPortugueseEnglishAndSpanishContext() async {
+    await MainActor.run {
+      let examples = [("pt", "Muito obrigaddo", "Muito obrigado "),
+        ("en", "I would say helllo", "I would say hello "),
+        ("es", "Nos vemos mañanna", "Nos vemos mañana ")]
+      for (language, original, expected) in examples where UITextChecker.availableLanguages.contains(where: { $0.hasPrefix(language) }) {
+        let field = Field(), assistant = TypingAssistant(); field.before = original
+        assistant.insert(" ", into: field); XCTAssertEqual(field.before, expected, language)
+      }
+    }
+  }
   func testSlidingReleaseOverlapsAndCancelledTouchesDoNotLoseOrDuplicateLetters() async throws {
     try await MainActor.run {
       let grid = KeyGridView(frame: CGRect(x: 0, y: 0, width: 393, height: 220)); grid.layoutIfNeeded()
