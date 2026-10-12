@@ -2,7 +2,7 @@ import XCTest
 
 final class KeyboardExtensionTests: XCTestCase {
   private func open(_ title: String, in app: XCUIApplication) {
-    let item = app.staticTexts[title].firstMatch
+    let item = app.cells.containing(.staticText, identifier: title).firstMatch
     for _ in 0..<8 {
       if item.exists && item.isHittable { item.tap(); return }
       app.swipeUp()
@@ -24,7 +24,7 @@ final class KeyboardExtensionTests: XCTestCase {
     open("Keyboard", in: settings)
     open("Keyboards", in: settings)
     let addKeyboard = settings.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Add New Keyboard")).firstMatch
-    XCTAssertTrue(addKeyboard.waitForExistence(timeout: 5)); addKeyboard.tap()
+    XCTAssertTrue(addKeyboard.waitForExistence(timeout: 5), settings.debugDescription); addKeyboard.tap()
     open("Clarify", in: settings)
     let app = XCUIApplication(); app.launch()
     app.textFields["composer"].tap()
