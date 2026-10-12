@@ -4198,5 +4198,25 @@
     "pt": "O Clarify processa áudio, texto e palavras ativas do dicionário.",
     "en": "Clarify processes audio, text and active dictionary words.",
     "es": "Clarify procesa audio, texto y palabras activas del diccionario."
+  },
+  "Ligado": {
+    "pt": "Ligado",
+    "en": "On",
+    "es": "Encendido"
+  },
+  "Desligado": {
+    "pt": "Desligado",
+    "en": "Off",
+    "es": "Apagado"
+  },
+  "Ativar Clarify": {
+    "pt": "Ativar Clarify",
+    "en": "Enable Clarify",
+    "es": "Activar Clarify"
+  },
+  "{v0} Não desliga por inatividade. Cada gravação pode durar até 5 minutos.": {
+    "pt": "{v0} Não desliga por inatividade. Cada gravação pode durar até 5 minutos.",
+    "en": "{v0} Does not turn off when idle. Each recording can last up to 5 minutes.",
+    "es": "{v0} No se apaga por inactividad. Cada grabación puede durar hasta 5 minutos."
   }
 }

@@ -7,22 +7,22 @@ final class SessionDeadlineTests: XCTestCase {
   func testIdleReadyAndErrorSessionsHaveNoInactivityDeadline() {
     for phase in [DictationPhase.idle, .ready, .error] {
       for interval in [300.0, 3_600, 86_400] {
-        XCTAssertNil(SessionDeadline.action(startedAt: nil, idleSince: origin, phase: phase,
+        XCTAssertNil(SessionDeadline.action(startedAt: nil, phase: phase,
           now: origin.addingTimeInterval(interval)), "Only the user or an OS interruption ends an idle session")
       }
     }
   }
   func testHeldAndLockedClipsKeepTheirFiveMinuteLimit() {
     for phase in [DictationPhase.recording, .locked] {
-      XCTAssertNil(SessionDeadline.action(startedAt: origin, idleSince: origin, phase: phase,
+      XCTAssertNil(SessionDeadline.action(startedAt: origin, phase: phase,
         now: origin.addingTimeInterval(299.9)))
-      XCTAssertEqual(SessionDeadline.action(startedAt: origin, idleSince: origin, phase: phase,
+      XCTAssertEqual(SessionDeadline.action(startedAt: origin, phase: phase,
         now: origin.addingTimeInterval(300)), .finishRecording)
     }
   }
   func testProcessingHasNoSessionDeadlineAfterTheClipIsClosed() {
     for phase in [DictationPhase.transcribing, .rewriting] {
-      XCTAssertNil(SessionDeadline.action(startedAt: nil, idleSince: origin, phase: phase,
+      XCTAssertNil(SessionDeadline.action(startedAt: nil, phase: phase,
         now: origin.addingTimeInterval(3_600)))
     }
   }

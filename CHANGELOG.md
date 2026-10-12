@@ -14,6 +14,7 @@ Notable user-facing changes are documented here. This project follows
 
 - iOS 0.7.0 (23): show history in continuous tables grouped by local day, remove the Home recorder, and use continuous dictionary rows. Center the word-editor title between Cancel and Save.
 - Simplify the iOS account page into identity, monthly usage and account actions. Show actual consumed minutes, a percentage and an accessible progress bar.
+- Add a large Clarify switch above Home history. Keep the microphone session active until the user switches it off or iOS interrupts it; remove the five-minute inactivity timeout and retain the five-minute limit per recording.
 
 ### Fixed
 

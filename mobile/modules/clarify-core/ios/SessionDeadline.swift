@@ -1,11 +1,11 @@
 import Foundation
 
 enum SessionDeadline: Equatable {
-  case finishRecording, deactivate
+  case finishRecording
 
-  static func action(startedAt: Date?, idleSince: Date, phase: DictationPhase, now: Date) -> Self? {
-    if let startedAt, now.timeIntervalSince(startedAt) >= 300 { return .finishRecording }
-    if !phase.busy && now.timeIntervalSince(idleSince) >= 300 { return .deactivate }
+  static func action(startedAt: Date?, phase: DictationPhase, now: Date) -> Self? {
+    if (phase == .recording || phase == .locked), let startedAt,
+       now.timeIntervalSince(startedAt) >= 300 { return .finishRecording }
     return nil
   }
 }

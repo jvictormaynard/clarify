@@ -16,7 +16,6 @@ final class ClarifyAudioSession: NSObject {
   private var store: SharedState?
   private var timer: Timer?
   private var task: Task<Void, Never>?
-  private var lastActivity = Date()
   private var startedAt: Date?
   private var hasTap = false
   private var backgroundTask = UIBackgroundTaskIdentifier.invalid
@@ -81,7 +80,7 @@ final class ClarifyAudioSession: NSObject {
   func activate() throws {
     guard store != nil else { throw ClarifyError(L("Não foi possível acessar os dados do teclado.")) }
     guard CloudAccount.shared.configured else { throw ClarifyError(L("Entre na conta Clarify ou configure sua chave Groq primeiro.")) }
-    if engine.isRunning { lastActivity = Date(); publish(); return }
+    if engine.isRunning { publish(); return }
     let session = AVAudioSession.sharedInstance()
     do {
       try session.setCategory(.playAndRecord, mode: .default,
@@ -117,7 +116,6 @@ final class ClarifyAudioSession: NSObject {
       engine.prepare(); try engine.start()
       state.sessionActive = true
       if state.phase == .error { state.phase = .idle; state.message = nil }
-      lastActivity = Date()
       timer?.invalidate()
       timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.tick() }
       publish()
@@ -151,19 +149,13 @@ final class ClarifyAudioSession: NSObject {
         handle(command.action, id: command.operationID, haptics: false)
       }
     }
-    switch SessionDeadline.action(startedAt: startedAt, idleSince: lastActivity, phase: state.phase, now: Date()) {
-    case .finishRecording:
+    if SessionDeadline.action(startedAt: startedAt, phase: state.phase, now: Date()) == .finishRecording {
       finish()
-    case .deactivate:
-      deactivate()
-      return
-    case nil: break
     }
     // Refresh liveness once per second, without disk writes on every audio buffer.
     if Date().timeIntervalSince1970 - state.heartbeat >= 1 { try? importKeyboardVocabulary(); publish() }
   }
   func handle(_ action: String, id: String, haptics: Bool = true) {
-    lastActivity = Date()
     switch action {
     case "start", "lock":
       if action == "lock", state.operationID == id, state.phase == .recording {
@@ -279,7 +271,7 @@ final class ClarifyAudioSession: NSObject {
         } catch {
           self.state.message = L("O texto foi preservado, mas não foi possível salvar o histórico.")
         }
-        self.lastActivity = Date(); self.publish()
+        self.publish()
       } catch {
         guard !Task.isCancelled, self.state.operationID == id else { return }
         self.fail(error is ClarifyError ? error.localizedDescription : L("Falha de conexão. Verifique a internet e tente novamente."))

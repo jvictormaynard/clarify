@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Core, { type HistoryEntry } from '../../../modules/clarify-core';
 import { Button, Card, TableRow, Title, ui, usePalette } from '../../components/ui';
 import { report, useClarify } from '../../state/clarify';
+import { MicrophoneSwitch } from '../../components/microphone-switch';
 
 import { groupHistory, historyDayTitle, historyTime } from '../../history';
 
@@ -75,7 +76,10 @@ export default function Home() {
     <SectionList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[ui.content, { gap: 0 }]} contentInsetAdjustmentBehavior="automatic"
       sections={sections} stickySectionHeadersEnabled={false} keyExtractor={(entry) => entry.id}
       onEndReached={() => { if (cursor) void load(cursor, true); }} onEndReachedThreshold={0.4}
-      ListHeaderComponent={<Title subtitle={t("Fale. O Clarify transcreve e revisa suas palavras.")}>{t("Boas-vindas ao Clarify")}</Title>}
+      ListHeaderComponent={<View style={{ gap: 16 }}>
+        <Title subtitle={t("Fale. O Clarify transcreve e revisa suas palavras.")}>{t("Boas-vindas ao Clarify")}</Title>
+        <MicrophoneSwitch />
+      </View>}
       renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { color: c.text, paddingTop: 16, paddingBottom: 12 }]}>{historyDayTitle(section.date, today, uiLanguage, t("Hoje"))}</Text>}
       renderItem={({ item, index, section }) => <TableRow first={index === 0} last={index === section.data.length - 1}
         accessibilityLabel={`${timestamp(item.createdAt)}. ${item.text}`} onPress={() => { setOriginal(false); setSelected(item); }}>

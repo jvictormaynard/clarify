@@ -14,7 +14,9 @@ skip first-run setup after an upgrade. A setup preference contains no credential
 Billing, translation and local models are outside this mobile release.
 
 Version **0.7.0 (23)** groups Home history by the device's calendar day, with
-continuous rows containing text and time. Home no longer contains a recorder.
+continuous rows containing text and time. A large switch above history turns
+Clarify on or off. It reflects the native microphone state and shows loading
+inside the same row. Home no longer contains a recorder.
 Dictionary words use the same continuous table. The word editor has Cancel,
 a centered title and Save in one header. Account uses compact identity, monthly
 minutes/progress and account-action sections. Consumption excludes pending
@@ -131,8 +133,10 @@ establish TestFlight availability; verify `VALID` and `IN_BETA_TESTING` in Apple
    explicit insertion. Cancellation discards the current operation.
 
 The app owns the microphone, including while backgrounded. Between clips, audio
-buffers are discarded. An idle session ends after five minutes; a clip ends at
-five minutes. Calls, audio-route changes, and media resets stop the session.
+buffers are discarded. There is no inactivity timeout: the microphone stays
+active until the user switches Clarify off or iOS interrupts the session. A clip
+still ends at five minutes. Calls, audio-route changes, and media resets stop
+the session. iOS can also end a terminated app's session.
 The system microphone indicator remains visible while the session is active.
 Activate the session again after it expires. The inactive keyboard's “Começar”
 button uses SwiftUI OpenURL to open the container and activate the session,
