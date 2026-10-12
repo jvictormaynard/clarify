@@ -94,6 +94,7 @@ end
 tests.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.tests', 'TEST_TARGET_NAME' => 'KeyboardHost',
     'INFOPLIST_KEY_ClarifyFixtureDirectory' => shared_root })
+  config.build_settings['INFOPLIST_KEY_ClarifyDiagnosticVariant'] = ENV['CLARIFY_DIAGNOSTIC_VARIANT'] || 'production'
 end
 project.save
 scheme = Xcodeproj::XCScheme.new

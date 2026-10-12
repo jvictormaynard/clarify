@@ -104,6 +104,7 @@ final class KeyboardExtensionTests: XCTestCase {
       let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "extension-opening-\(index)"
       capture.lifetime = .keepAlways; add(capture)
     }
+    if Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyDiagnosticVariant") as? String == "without-swiftui" { return }
     let start = app.buttons["clarify.keyboard.start"]
     XCTAssertTrue(start.waitForExistence(timeout: 5), app.debugDescription)
     start.tap()
