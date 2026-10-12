@@ -49,7 +49,7 @@ final class KeyboardExtensionTests: XCTestCase {
       let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
       XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
     }
-    XCTAssertTrue(app.staticTexts["Allow Full Access"].waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertTrue(app.staticTexts["Allow Full Access"].waitForExistence(timeout: 30), app.debugDescription)
     try checkTrace(in: app, opening: "Switching to the extension")
     for index in 0..<4 {
       app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()

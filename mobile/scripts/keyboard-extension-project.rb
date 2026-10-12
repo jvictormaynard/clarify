@@ -21,14 +21,14 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
       override init(nibName: String?, bundle: Bundle?) {
         #{controller_policy ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
         super.init(nibName: nibName, bundle: bundle)
-        preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
+        #{variant == 'no-preferred' ? '' : 'preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)'}
         #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
         #{variant == 'eager-layout' ? 'view.layoutIfNeeded()' : ''}
       }
       required init?(coder: NSCoder) {
         #{controller_policy ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
         super.init(coder: coder)
-        preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
+        #{variant == 'no-preferred' ? '' : 'preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)'}
         #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
         #{variant == 'eager-layout' ? 'view.layoutIfNeeded()' : ''}
       }
@@ -38,11 +38,14 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
       'super.loadView(); view.heightAnchor.constraint(equalToConstant: KeyboardInputView.contentHeight).isActive = true'
     when 'fixed-frame'
       'inputView = UIInputView(frame: CGRect(origin: .zero, size: preferredContentSize), inputViewStyle: .keyboard)'
+    when 'no-preferred'
+      'inputView = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight), inputViewStyle: .keyboard)'
     else
       'inputView = KeyboardInputView(frame: CGRect(origin: .zero, size: preferredContentSize), inputViewStyle: .keyboard)'
     end
     replacement = initialization + "override func loadView() {\n#{layout}\nview.backgroundColor = .clear; view.isOpaque = false\n}\n"
     source[start...finish] = replacement
+    source.sub!('allowsSelfSizing = true', 'allowsSelfSizing = false') if variant == 'no-self-sizing'
     if variant == 'root-frame'
       source.sub!('final class KeyboardInputView: UIInputView {', <<~SWIFT)
         final class KeyboardInputView: UIInputView {
@@ -87,6 +90,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   end
   if name == 'KBHostArbiterHook.m' && variant == 'no-arbiter'
     source = File.read(file).sub('[self installHooks];', '// Diagnostic fixture: leave UIKit arbiter behavior unchanged.')
+    source.sub!('#import "KBHostArbiterHook.h"', "#import \"#{File.join(root, 'native/keyboard/KBHostArbiterHook.h')}\"")
     file = File.join(fixture, name); File.write(file, source)
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(file))
