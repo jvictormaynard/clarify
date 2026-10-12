@@ -123,10 +123,14 @@ keyboard.build_configurations.each do |config|
     'HEADER_SEARCH_PATHS' => File.join(root, 'native/keyboard'),
     'SWIFT_OBJC_BRIDGING_HEADER' => bridge })
 end
+test_info = { 'CFBundleName' => 'ExtensionTests', 'CFBundleIdentifier' => '$(PRODUCT_BUNDLE_IDENTIFIER)',
+  'CFBundleExecutable' => '$(EXECUTABLE_NAME)', 'CFBundlePackageType' => 'BNDL',
+  'CFBundleShortVersionString' => '1.0', 'CFBundleVersion' => '1',
+  'ClarifyFixtureDirectory' => shared_root, 'ClarifyDiagnosticVariant' => ENV['CLARIFY_DIAGNOSTIC_VARIANT'] || 'production' }
+Xcodeproj::Plist.write_to_path(test_info, File.join(fixture, 'Tests.plist'))
 tests.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.tests', 'TEST_TARGET_NAME' => 'KeyboardHost',
-    'INFOPLIST_KEY_ClarifyFixtureDirectory' => shared_root })
-  config.build_settings['INFOPLIST_KEY_ClarifyDiagnosticVariant'] = ENV['CLARIFY_DIAGNOSTIC_VARIANT'] || 'production'
+    'GENERATE_INFOPLIST_FILE' => 'NO', 'INFOPLIST_FILE' => File.join(fixture, 'Tests.plist') })
 end
 project.save
 scheme = Xcodeproj::XCScheme.new
