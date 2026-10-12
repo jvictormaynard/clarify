@@ -1,15 +1,24 @@
 import XCTest
 
 final class KeyboardExtensionTests: XCTestCase {
+  private func open(_ title: String, in app: XCUIApplication) {
+    let item = app.tables.staticTexts[title].firstMatch
+    for _ in 0..<8 {
+      if item.exists && item.isHittable { item.tap(); return }
+      app.swipeUp()
+    }
+    XCTFail("Settings item unavailable: \(title). \(app.debugDescription)")
+  }
   func testOpeningTheInstalledKeyboardExtensionDoesNotReserveAnOversizedFrame() throws {
     continueAfterFailure = false
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
     settings.launch()
-    settings.tables.staticTexts["General"].tap()
-    settings.tables.staticTexts["Keyboard"].tap()
-    settings.tables.staticTexts["Keyboards"].firstMatch.tap()
-    settings.tables.staticTexts["Add New Keyboard…"].tap()
-    settings.tables.staticTexts["Clarify"].tap()
+    open("General", in: settings)
+    open("Keyboard", in: settings)
+    open("Keyboards", in: settings)
+    let add = settings.tables.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Add New Keyboard")).firstMatch
+    XCTAssertTrue(add.waitForExistence(timeout: 5)); add.tap()
+    open("Clarify", in: settings)
     let app = XCUIApplication(); app.launch()
     app.textFields["composer"].tap()
     let globe = app.buttons["Next keyboard"].firstMatch
@@ -17,11 +26,11 @@ final class KeyboardExtensionTests: XCTestCase {
     globe.press(forDuration: 1)
     let clarify = app.staticTexts["Clarify"].firstMatch
     XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
-    XCTAssertTrue(app.buttons["Começar no Clarify"].waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertTrue(app.buttons["Start in Clarify"].waitForExistence(timeout: 5), app.debugDescription)
     for index in 0..<4 {
       app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
       app.textFields["composer"].tap()
-      XCTAssertTrue(app.buttons["Começar no Clarify"].waitForExistence(timeout: 5))
+      XCTAssertTrue(app.buttons["Start in Clarify"].waitForExistence(timeout: 5))
       // Querying after presentation keeps every earlier WillChangeFrame notification.
       let raw = app.staticTexts["keyboard-frames"].label
       let heights = try JSONDecoder().decode([Double].self, from: Data(raw.utf8))
