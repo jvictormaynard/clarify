@@ -30,6 +30,17 @@ try {
     '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO']);
   run('xcrun', ['simctl', 'install', device.udid, path.join(derived, 'Build/Products/Debug-iphonesimulator/ActivationContainer.app')]);
   run('xcrun', ['simctl', 'launch', device.udid, 'com.clarify.fixture.container']);
+  const ready = path.join(fixture, 'Shared/container-ready.json');
+  function waitForFile(file) {
+    const deadline = Date.now() + 5000;
+    while (!fs.existsSync(file) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+    if (!fs.existsSync(file)) throw new Error(`The isolated container did not publish ${path.basename(file)}`);
+  }
+  waitForFile(ready);
+  // Establish the fixture's URL routing before diagnosing the keyboard handoff.
+  run('xcrun', ['simctl', 'openurl', device.udid, 'clarify://fixture-preflight']);
+  const probe = path.join(fixture, 'Shared/return-trace.json'); waitForFile(probe);
+  fs.copyFileSync(probe, path.join(results, 'container-preflight.json')); fs.unlinkSync(probe);
   const resultPath = path.join(results, 'KeyboardExtension.xcresult');
   const result = spawnSync('xcodebuild', ['test', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'),
     '-scheme', 'KeyboardExtension', '-destination', `platform=iOS Simulator,id=${device.udid}`,
