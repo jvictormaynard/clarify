@@ -29,6 +29,7 @@ final class KeyboardExtensionTests: XCTestCase {
   func testOpeningTheInstalledKeyboardExtensionDoesNotReserveAnOversizedFrame() throws {
     continueAfterFailure = false
     executionTimeAllowance = 300
+    let testFullAccess = false
     let app = XCUIApplication(); app.launch()
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
     settings.launch()
@@ -40,16 +41,27 @@ final class KeyboardExtensionTests: XCTestCase {
       XCTAssertTrue(addKeyboard.waitForExistence(timeout: 5), settings.debugDescription); addKeyboard.tap()
       open("Clarify", in: settings)
     }
+    if testFullAccess {
+      open("Clarify", in: settings)
+      let access = settings.switches["Allow Full Access"]
+      XCTAssertTrue(access.waitForExistence(timeout: 5), settings.debugDescription)
+      if access.value as? String != "1" {
+        access.tap()
+        let allow = settings.alerts.buttons["Allow"]
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+      }
+    }
     app.launch()
     app.textFields["composer"].tap()
-    if !app.staticTexts["Allow Full Access"].waitForExistence(timeout: 2) {
+    let keyboard = app.buttons["clarify.keyboard.record"]
+    if !keyboard.waitForExistence(timeout: 2) {
       let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
       XCTAssertTrue(globe.waitForExistence(timeout: 5), app.debugDescription)
       globe.press(forDuration: 1)
       let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
       XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
     }
-    XCTAssertTrue(app.staticTexts["Allow Full Access"].waitForExistence(timeout: 30), app.debugDescription)
+    XCTAssertTrue(keyboard.waitForExistence(timeout: 30), app.debugDescription)
     try checkTrace(in: app, opening: "Switching to the extension")
     let letter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch
     XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription); letter.tap()
@@ -57,7 +69,7 @@ final class KeyboardExtensionTests: XCTestCase {
     for index in 0..<4 {
       app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
       app.textFields["composer"].tap()
-      XCTAssertTrue(app.staticTexts["Allow Full Access"].waitForExistence(timeout: 5), app.debugDescription)
+      XCTAssertTrue(keyboard.waitForExistence(timeout: 5), app.debugDescription)
       // Querying after presentation keeps every earlier WillChangeFrame notification.
       try checkTrace(in: app, opening: "Opening \(index)")
       let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "extension-opening-\(index)"

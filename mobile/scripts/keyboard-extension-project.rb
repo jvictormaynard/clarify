@@ -9,10 +9,15 @@ keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
 tests = project.new_target(:ui_test_bundle, 'ExtensionTests', :ios, '16.4')
 app.add_dependency(keyboard); tests.add_dependency(app)
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionHost.swift')))
-tests.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionTests.swift')))
+test_file = File.join(root, 'native/tests/KeyboardExtensionTests.swift')
+if variant == 'full-access'
+  test_source = File.read(test_file).sub('let testFullAccess = false', 'let testFullAccess = true')
+  test_file = File.join(fixture, 'KeyboardExtensionTests.swift'); File.write(test_file, test_source)
+end
+tests.source_build_phase.add_file_reference(project.main_group.new_file(test_file))
 %w[KeyboardViewController.swift DictationEdit.swift KeyGridView.swift KeyPreview.swift TypingAssistant.swift HostActivation.swift KBHostArbiterHook.m].each do |name|
   file = File.join(root, 'native/keyboard', name)
-  if name == 'KeyboardViewController.swift' && variant != 'baseline'
+  if name == 'KeyboardViewController.swift' && !['baseline', 'full-access'].include?(variant)
     source = File.read(file)
     start = source.index('  // The remote input host')
     finish = source.index('  override func viewDidLoad()', start)
@@ -91,15 +96,20 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     end
     source.sub!(/    requestSupplementaryLexicon.*?\n    \}/m, '') if variant == 'no-lexicon'
     source.sub!('hasDictationKey = true', 'hasDictationKey = false') if variant == 'no-dictation-key'
-    if variant == 'minimal-native'
+    if variant == 'parent-preferred'
+      source.sub!('super.viewWillAppear(animated);', 'NSLog("Clarify sizing parent: %@", String(describing: parent)); parent?.preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight); super.viewWillAppear(animated);')
+    end
+    if variant.start_with?('minimal-')
       source = <<~SWIFT
         import UIKit
         class KeyboardViewController: UIInputViewController {
           override func viewDidLoad() {
             super.viewDidLoad()
+            #{variant == 'minimal-height' ? 'let height = view.heightAnchor.constraint(equalToConstant: 278); height.priority = UILayoutPriority(999); height.isActive = true' : ''}
             let label = UILabel(); label.text = "Allow Full Access"; label.frame = CGRect(x: 12, y: 8, width: 200, height: 24)
             view.addSubview(label)
             let key = UIButton(type: .system); key.setTitle("q", for: .normal); key.frame = CGRect(x: 30, y: 60, width: 60, height: 60)
+            key.accessibilityIdentifier = "clarify.keyboard.record"
             key.addAction(UIAction { [weak self] _ in self?.textDocumentProxy.insertText("q") }, for: .touchUpInside)
             view.addSubview(key)
           }
@@ -108,7 +118,11 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     end
     file = File.join(fixture, name); File.write(file, source)
   end
-  if name == 'KBHostArbiterHook.m' && ['no-arbiter', 'minimal-native'].include?(variant)
+  if name == 'KeyboardViewController.swift'
+    source = File.read(file).sub('mic.accessibilityLabel = L("Gravar")', 'mic.accessibilityIdentifier = "clarify.keyboard.record"; mic.accessibilityLabel = L("Gravar")')
+    file = File.join(fixture, name); File.write(file, source)
+  end
+  if name == 'KBHostArbiterHook.m' && (variant == 'no-arbiter' || variant.start_with?('minimal-'))
     source = File.read(file).sub('[self installHooks];', '// Diagnostic fixture: leave UIKit arbiter behavior unchanged.')
     source.sub!('#import "KBHostArbiterHook.h"', "#import \"#{File.join(root, 'native/keyboard/KBHostArbiterHook.h')}\"")
     file = File.join(fixture, name); File.write(file, source)
@@ -125,13 +139,13 @@ if controller_policy
       char *type = method_copyArgumentType(method, index);
       BOOL valid = type && strcmp(type, expected) == 0; free(type); return valid;
     }
-    static void installBoolean(Class target, NSString *name) {
+    static void installBoolean(Class target, NSString *name, BOOL value) {
       SEL selector = NSSelectorFromString(name); Method method = class_getInstanceMethod(UIInputViewController.class, selector);
       char *type = method ? method_copyReturnType(method) : NULL;
       BOOL valid = type && strcmp(type, @encode(BOOL)) == 0 && method_getNumberOfArguments(method) == 2; free(type);
       NSLog(@"Clarify sizing fixture: %@ compatible=%d", name, valid);
       if (!valid) return;
-      IMP implementation = imp_implementationWithBlock(^BOOL(id controller) { return YES; });
+      IMP implementation = imp_implementationWithBlock(^BOOL(id controller) { return value; });
       if (!class_addMethod(target, selector, implementation, method_getTypeEncoding(method))) imp_removeBlock(implementation);
     }
     void KBInstallFixtureSizing(Class target) {
@@ -143,8 +157,9 @@ if controller_policy
           if ([lower containsString:@"size"] || [lower containsString:@"height"] || [lower containsString:@"frame"]) NSLog(@"Clarify sizing method: %@ %s", name, method_getTypeEncoding(methods[index]));
         }
         free(methods);
-        #{variant == 'align-content' ? 'installBoolean(target, @"_alignsToContentViewController"); return;' : ''}
-        #{variant == 'controller-forward' ? 'installBoolean(target, @"_shouldForwardSystemLayoutFittingSizeChanges");' : ''}
+        #{variant == 'align-content' ? 'installBoolean(target, @"_alignsToContentViewController", YES); return;' : ''}
+        #{variant == 'controller-no-autosize' ? 'installBoolean(target, @"_autosizeToCurrentKeyboard", NO); return;' : ''}
+        #{variant == 'controller-forward' ? 'installBoolean(target, @"_shouldForwardSystemLayoutFittingSizeChanges", YES);' : ''}
         SEL selector = NSSelectorFromString(@"_systemLayoutSizeFittingSize:withHorizontalFittingPriority:verticalFittingPriority:");
         Method method = class_getInstanceMethod(UIInputViewController.class, selector);
         char *result = method ? method_copyReturnType(method) : NULL;
