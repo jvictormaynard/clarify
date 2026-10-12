@@ -4,12 +4,16 @@ final class KeyboardExtensionTests: XCTestCase {
   private var fixtureRoot: URL {
     URL(fileURLWithPath: Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyFixtureDirectory") as! String)
   }
+  private func acceptSystemOpenPrompt() {
+    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    let open = springboard.alerts.buttons["Open"]
+    if open.waitForExistence(timeout: 5) { open.tap() }
+  }
   func testActivationContainerReceivesOpenURL() throws {
     continueAfterFailure = false
     let app = XCUIApplication(); app.launch()
     app.buttons["Open activation fixture"].tap()
-    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-    if springboard.alerts.buttons["Open"].waitForExistence(timeout: 2) { springboard.alerts.buttons["Open"].tap() }
+    acceptSystemOpenPrompt()
     let receipt = fixtureRoot.appendingPathComponent("return-trace.json")
     let delivered = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: receipt.path) }, evaluatedWith: nil)
     wait(for: [delivered], timeout: 10)
@@ -138,6 +142,7 @@ final class KeyboardExtensionTests: XCTestCase {
     let start = app.buttons["clarify.keyboard.start"]
     XCTAssertTrue(start.waitForExistence(timeout: 5), app.debugDescription)
     start.tap()
+    acceptSystemOpenPrompt()
     // The helper consumes the actual keyboard nonce and calls the production
     // bridge. A success return value alone cannot prove that the app opened.
     let container = XCUIApplication(bundleIdentifier: "com.clarify.fixture.container")
