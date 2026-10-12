@@ -12,6 +12,11 @@ on:
       - '!mobile/.gitignore'
       - '!mobile/.easignore'
   workflow_dispatch:
+    inputs:
+      tests_only:
+        description: Run checks without signing or upload
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -57,18 +62,23 @@ jobs:
           CLARIFY_NATIVE_TESTS: '1'
         run: node scripts/test-keyboard-ui.cjs
       - name: Generate native project
+        if: ${{ !inputs.tests_only }}
         run: npx expo prebuild --clean --platform ios --no-install
       - name: Install CocoaPods dependencies
+        if: ${{ !inputs.tests_only }}
         run: pod install --project-directory=ios
       - name: Install existing Apple signing credentials
+        if: ${{ !inputs.tests_only }}
         env:
           CLARIFY_IOS_CERTIFICATE_BASE64: ${{ secrets.CLARIFY_IOS_CERTIFICATE_BASE64 }}
           CLARIFY_IOS_CERTIFICATE_PASSWORD: ${{ secrets.CLARIFY_IOS_CERTIFICATE_PASSWORD }}
           CLARIFY_IOS_PROFILES_GZIP_BASE64: ${{ secrets.CLARIFY_IOS_PROFILES_GZIP_BASE64 }}
         run: python3 scripts/ios-signing.py install
       - name: Apply signing to generated app and extension targets
+        if: ${{ !inputs.tests_only }}
         run: ruby scripts/ios-signing.rb
       - name: Archive and export signed IPA
+        if: ${{ !inputs.tests_only }}
         run: |
           set -euo pipefail
           xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
@@ -79,8 +89,10 @@ jobs:
             -exportOptionsPlist "$RUNNER_TEMP/clarify-signing/ExportOptions.plist" \
             -exportPath "$RUNNER_TEMP/clarify-export" | xcbeautify
       - name: Verify signed app and both extensions
+        if: ${{ !inputs.tests_only }}
         run: python3 scripts/verify-ios-ipa.py "$RUNNER_TEMP/clarify-export/Clarify.ipa"
       - name: Upload directly to App Store Connect
+        if: ${{ !inputs.tests_only }}
         env:
           CLARIFY_ASC_KEY_P8: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
           CLARIFY_ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
@@ -96,7 +108,7 @@ jobs:
             --file "$RUNNER_TEMP/clarify-export/Clarify.ipa" \
             --apiKey "$CLARIFY_ASC_KEY_ID" --apiIssuer "$CLARIFY_ASC_ISSUER_ID"
       - name: Preserve verified IPA and checksum
-        if: success()
+        if: success() && !inputs.tests_only
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: clarify-ios-${{ github.sha }}
@@ -115,5 +127,5 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Remove temporary signing credentials
-        if: always()
+        if: always() && !inputs.tests_only
         run: python3 scripts/ios-signing.py clean

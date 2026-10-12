@@ -12,7 +12,7 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-keyboard-ui-'));
 const sources = path.join(fixture, 'Sources/KeyboardUI');
 const tests = path.join(fixture, 'Tests/KeyboardUITests');
 fs.mkdirSync(sources, { recursive: true }); fs.mkdirSync(tests, { recursive: true });
-for (const name of ['KeyboardViewController.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift']) {
+for (const name of ['KeyboardViewController.swift', 'DictationEdit.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift']) {
   fs.copyFileSync(path.join(root, 'native/keyboard', name), path.join(sources, name));
 }
 for (const name of ['KeyboardState.swift', 'SharedState.swift', 'KeyboardVocabulary.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'LocalLibrary.swift', 'KeyStore.swift', 'MicrophoneFailure.swift', 'Localization.swift']) {

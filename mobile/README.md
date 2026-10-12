@@ -13,6 +13,30 @@ An unfinished setup resumes on the next launch. Existing accounts and keys
 skip first-run setup after an upgrade. A setup preference contains no credentials.
 Billing, translation and local models are outside this mobile release.
 
+Version **0.7.0 (23)** groups Home history by the device's calendar day, with
+continuous rows containing text and time. A large switch above history turns
+Clarify on or off, centered between Off and On. It reflects the native microphone state and shows loading
+inside the same row. Home no longer contains a recorder.
+Dictionary words use the same continuous table. The word editor has Cancel,
+a centered title and Save in one header. Account uses compact identity, monthly
+minutes/progress and account-action sections. Consumption excludes pending
+reservations. These changes preserve local storage, account sync and BYOK.
+
+The keyboard dictionary capsule uses a smaller, spaced plus symbol. After
+inserting a dictation, a left-hand undo button removes only the inserted text;
+redo restores it. Typing, changed selection/context, another document or keyboard
+dismissal clears this temporary action. Secure or unavailable contexts fail
+closed. Existing field text and replaced selections are preserved.
+
+Keyboard height is published before view loading, and `sizeThatFits` uses the
+same fixed height as Auto Layout fitting. Regression tests cover temporary
+oversized proposals and repeated presentation through a real `UITextField`
+input host. The actual WhatsApp extension transition still needs iPhone
+acceptance. These fixtures do not prove that the device-reported jump is gone.
+Use the direct workflow's `tests_only` input to run native checks without signing
+or uploading an existing build number. Uploads retain the full check sequence.
+Mobile versions are independent of the Windows release tags.
+
 Version 0.6.0 (22) adds a dictionary action to the keyboard toolbar when one or
 two words are selected. Tap **Adicionar ao dicionário** to save without changing
 the selected text. The button changes to **Salvo** and is disabled for an enabled
@@ -109,8 +133,10 @@ establish TestFlight availability; verify `VALID` and `IN_BETA_TESTING` in Apple
    explicit insertion. Cancellation discards the current operation.
 
 The app owns the microphone, including while backgrounded. Between clips, audio
-buffers are discarded. An idle session ends after five minutes; a clip ends at
-five minutes. Calls, audio-route changes, and media resets stop the session.
+buffers are discarded. There is no inactivity timeout: the microphone stays
+active until the user switches Clarify off or iOS interrupts the session. A clip
+still ends at five minutes. Calls, audio-route changes, and media resets stop
+the session. iOS can also end a terminated app's session.
 The system microphone indicator remains visible while the session is active.
 Activate the session again after it expires. The inactive keyboard's “Começar”
 button uses SwiftUI OpenURL to open the container and activate the session,
@@ -225,8 +251,9 @@ EAS_NO_VCS=1 EAS_PROJECT_ROOT="$PWD" npx eas-cli@24.12.0 submit --platform ios -
 
 `src/app/` owns the three native-tab pages and system-link routing.
 `src/components/` contains shared interface elements; `src/state/clarify.tsx`
-owns the app snapshot and activation request. `src/press-to-talk.ts` owns the app
-gesture. Leaving Home cancels a held clip and preserves a locked clip.
+owns the app snapshot and activation request. Home's switch uses that activation
+flow and native deactivation. `src/press-to-talk.ts` retains the tested gesture
+contract; recording controls are in the keyboard.
 `modules/clarify-core/ios` owns microphone lifetime, Keychain, Groq
 requests, local history/vocabulary, cancellation and shared state. `native/keyboard` owns keyboard
 gestures, local spelling and safe insertion. `plugins/with-clarify-keyboard.cjs`

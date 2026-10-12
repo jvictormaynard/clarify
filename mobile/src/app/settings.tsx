@@ -40,7 +40,7 @@ export default function Settings() {
     </Card>}
     <Card>
       <Text style={[ui.section, { color: c.text }]}>{t("Microfone")}</Text>
-      <Text style={[ui.body, { color: c.muted }]}>{t("{v0} A sessão termina após 5 minutos sem uso. Cada gravação pode durar até 5 minutos.", { v0: state.sessionActive ? t('Ativo entre ditados.') : t('Desativado.') })}</Text>
+      <Text style={[ui.body, { color: c.muted }]}>{t("{v0} Não desliga por inatividade. Cada gravação pode durar até 5 minutos.", { v0: state.sessionActive ? t('Ativo entre ditados.') : t('Desativado.') })}</Text>
       <Button loading={activating || action === 'microphone'} disabled={busy || !state.configured} onPress={() => void perform('microphone', () => state.sessionActive ? Core.deactivate().then(refresh) : activate())}>{state.sessionActive ? t("Desativar microfone") : t("Ativar microfone")}</Button>
     </Card>
     <Card>

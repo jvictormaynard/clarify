@@ -37,3 +37,32 @@ export const ui = StyleSheet.create({
   button: { minHeight: 48, paddingHorizontal: 16, paddingVertical: 13, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   buttonText: { fontSize: 16, fontWeight: '500' }, input: { minHeight: 48, borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
 });
+
+export function TableRow({ children, first, last, onPress, disabled = false, accessibilityLabel }: {
+  children: ReactNode; first: boolean; last: boolean; onPress: () => void; disabled?: boolean; accessibilityLabel?: string;
+}) {
+  const c = usePalette();
+  return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} disabled={disabled} onPress={onPress}
+    style={({ pressed }) => ({ backgroundColor: c.card, paddingHorizontal: 18, paddingVertical: 16, minHeight: 64, gap: 6,
+      borderTopLeftRadius: first ? 18 : 0, borderTopRightRadius: first ? 18 : 0,
+      borderBottomLeftRadius: last ? 18 : 0, borderBottomRightRadius: last ? 18 : 0,
+      borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth, borderBottomColor: c.line,
+      opacity: pressed ? 0.65 : 1 })}>{children}</Pressable>;
+}
+export function ModalHeader({ title, cancelLabel, saveLabel, onCancel, onSave, disabled, loading, busy = loading }: {
+  title: string; cancelLabel: string; saveLabel: string; onCancel: () => void; onSave: () => void; disabled: boolean; loading: boolean; busy?: boolean;
+}) {
+  const c = usePalette();
+  const action = (label: string, onPress: () => void, blocked: boolean, saving = false) =>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: blocked, busy: saving }}
+      disabled={blocked} onPress={onPress} style={({ pressed }) => ({ width: 84, minHeight: 44, alignItems: 'center', justifyContent: 'center', opacity: blocked && !saving ? 0.35 : pressed ? 0.65 : 1 })}>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ fontSize: 17, color: c.accent, opacity: saving ? 0 : 1 }}>{label}</Text>
+      {saving && <ActivityIndicator color={c.accent} style={{ position: 'absolute' }} />}
+    </Pressable>;
+  return <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, minHeight: 56 }}>
+    {action(cancelLabel, onCancel, busy)}
+    <Text accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}
+      style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', color: c.text }}>{title}</Text>
+    {action(saveLabel, onSave, disabled || loading, loading)}
+  </View>;
+}

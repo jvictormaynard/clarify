@@ -13,6 +13,9 @@ final class KeyboardInputView: UIInputView {
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
   override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: Self.contentHeight) }
+  override func sizeThatFits(_ size: CGSize) -> CGSize {
+    CGSize(width: size.width, height: Self.contentHeight)
+  }
   override func systemLayoutSizeFitting(_ targetSize: CGSize) -> CGSize {
     CGSize(width: targetSize.width, height: Self.contentHeight)
   }
@@ -114,6 +117,9 @@ class KeyboardViewController: UIInputViewController {
   private let typing = TypingAssistant()
   private let suggestions = UIStackView()
   private let addToDictionary = UIButton(type: .system)
+  private let undoDictation = UIButton(type: .system)
+  private var dictationEdit: DictationEdit?
+  private var applyingDictationEdit = false
   private var dictionaryTrailing: NSLayoutConstraint?
   private var selectedTerm: String?
   private var selectedScope: String?
@@ -131,9 +137,15 @@ class KeyboardViewController: UIInputViewController {
   private var attached = false
   private var state = DictationSnapshot()
 
+  // The remote input host can ask before loadView, and can propose another size
+  // during presentation. Both measurement paths must advertise the same height.
+  override var preferredContentSize: CGSize {
+    get { CGSize(width: super.preferredContentSize.width, height: KeyboardInputView.contentHeight) }
+    set { super.preferredContentSize = CGSize(width: newValue.width, height: KeyboardInputView.contentHeight) }
+  }
+
   override func loadView() {
     let input = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: 0, height: KeyboardInputView.contentHeight), inputViewStyle: .keyboard)
-    preferredContentSize = CGSize(width: 0, height: KeyboardInputView.contentHeight)
     inputView = input
     // Let the system keyboard material remain visible behind the extension.
     view.backgroundColor = .clear
@@ -168,10 +180,12 @@ class KeyboardViewController: UIInputViewController {
     keys.onKeyPress = { [weak self] in self?.feedback.type() }
     keys.onInsert = { [weak self] text in
       guard let self = self else { return }
+      self.dictationEdit = nil
       self.typing.insert(text, into: self.textDocumentProxy); self.updateSuggestions()
     }
     keys.onDelete = { [weak self] in
       guard let self = self else { return }
+      self.dictationEdit = nil
       self.typing.delete(in: self.textDocumentProxy); self.updateSuggestions()
     }
     keys.onNextKeyboard = { [weak self] button, event in
@@ -183,11 +197,17 @@ class KeyboardViewController: UIInputViewController {
     addToDictionary.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
     addToDictionary.titleLabel?.adjustsFontSizeToFitWidth = true
     addToDictionary.titleLabel?.minimumScaleFactor = 0.75
+    addToDictionary.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 16, weight: .regular), forImageIn: .normal)
+    addToDictionary.imageEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: -10)
     addToDictionary.layer.cornerRadius = 22
     addToDictionary.addAction(UIAction { [weak self] _ in self?.saveSelectedTerm() }, for: .touchUpInside)
-    addToDictionary.contentEdgeInsets = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
+    addToDictionary.contentEdgeInsets = UIEdgeInsets(top: 0, left: 18, bottom: 0, right: 28)
     addToDictionary.isHidden = true
-    for element in [status, detail, mic, insert, keys, cancel, suggestions, addToDictionary] {
+    undoDictation.accessibilityIdentifier = "clarify.undo-dictation"
+    undoDictation.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 22, weight: .medium), forImageIn: .normal)
+    undoDictation.tintColor = .label; undoDictation.isHidden = true
+    undoDictation.addAction(UIAction { [weak self] _ in self?.toggleDictationEdit() }, for: .touchUpInside)
+    for element in [status, detail, mic, insert, keys, cancel, suggestions, addToDictionary, undoDictation] {
       element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element)
     }
     NSLayoutConstraint.activate([
@@ -207,6 +227,11 @@ class KeyboardViewController: UIInputViewController {
       suggestions.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -8),
       suggestions.topAnchor.constraint(equalTo: view.topAnchor, constant: 7),
       suggestions.heightAnchor.constraint(equalToConstant: 44)
+    ])
+    NSLayoutConstraint.activate([
+      undoDictation.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
+      undoDictation.centerYAnchor.constraint(equalTo: mic.centerYAnchor),
+      undoDictation.widthAnchor.constraint(equalToConstant: 44), undoDictation.heightAnchor.constraint(equalToConstant: 44)
     ])
     dictionaryTrailing = addToDictionary.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -8)
     NSLayoutConstraint.activate([
@@ -264,6 +289,7 @@ class KeyboardViewController: UIInputViewController {
   }
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated); attached = false; timer?.invalidate(); timer = nil
+    dictationEdit = nil; undoDictation.isHidden = true
     invalidateActivationSource()
     typing.reset()
     suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -274,6 +300,7 @@ class KeyboardViewController: UIInputViewController {
     guard hasFullAccess, state.isLive, let store = store else { return }
     if action == "start" {
       guard !state.phase.busy else { return }
+      dictationEdit = nil
       operationID = UUID().uuidString; documentID = textDocumentProxy.documentIdentifier
     }
     guard let id = operationID else { return }
@@ -330,7 +357,10 @@ class KeyboardViewController: UIInputViewController {
           let id = state.operationID, store.receipt() != id else { return }
     // Claim publication before insertion, so repeated polling cannot insert twice.
     do { try store.acknowledge(id) } catch { return }
-    typing.reset(); textDocumentProxy.insertText(text); insert.isHidden = true; updateSuggestions()
+    let proxy = textDocumentProxy, replaced = textDocumentProxy.selectedText ?? ""
+    typing.reset(); dictationEdit = nil; proxy.insertText(text)
+    dictationEdit = DictationEdit(text: text, replaced: replaced, proxy: proxy)
+    insert.isHidden = true; updateSuggestions()
   }
   private func updateSuggestions() {
     suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -343,6 +373,7 @@ class KeyboardViewController: UIInputViewController {
       button.accessibilityLabel = suggestion.undo ? L("Desfazer correção: {word}", ["word": suggestion.value]) : L("Usar {word}", ["word": suggestion.value])
       button.addAction(UIAction { [weak self] _ in
         guard let self = self else { return }
+        self.dictationEdit = nil
         self.feedback.type(); self.typing.choose(suggestion, in: self.textDocumentProxy); self.updateSuggestions()
       }, for: .touchUpInside)
       suggestions.addArrangedSubview(button)
@@ -360,6 +391,13 @@ class KeyboardViewController: UIInputViewController {
     selectedTerm = term; selectedDocument = document
     let available = !state.phase.busy && !mic.holding && !mic.locked && insert.isHidden
     let showDictionary = term != nil && available
+    if !applyingDictationEdit, let edit = dictationEdit, !edit.isCurrent(proxy) { dictationEdit = nil }
+    let showEdit = dictationEdit != nil && available && !showDictionary
+    undoDictation.isHidden = !showEdit
+    if let edit = dictationEdit {
+      undoDictation.setImage(UIImage(systemName: edit.removed ? "arrow.uturn.forward" : "arrow.uturn.backward"), for: .normal)
+      undoDictation.accessibilityLabel = edit.removed ? L("Refazer ditado") : L("Desfazer ditado")
+    }
     addToDictionary.isHidden = !showDictionary
     if showDictionary, let term {
       // Selection and taps refresh immediately. Idle polling must not scan the
@@ -392,9 +430,16 @@ class KeyboardViewController: UIInputViewController {
       addToDictionary.accessibilityHint = dictionaryError ?? term
       dictionaryTrailing?.constant = state.isLive ? -8 : -82
     }
-    let showSuggestions = !showDictionary && !suggestions.arrangedSubviews.isEmpty && available
+    let showSuggestions = !showDictionary && !showEdit && !suggestions.arrangedSubviews.isEmpty && available
     suggestions.isHidden = !showSuggestions
-    status.isHidden = showDictionary || showSuggestions; detail.isHidden = status.isHidden
+    status.isHidden = showDictionary || showSuggestions || showEdit; detail.isHidden = status.isHidden
+  }
+  private func toggleDictationEdit() {
+    guard !state.phase.busy, !applyingDictationEdit, var edit = dictationEdit else { return }
+    applyingDictationEdit = true
+    dictationEdit = edit.toggle(in: textDocumentProxy) ? edit : nil
+    applyingDictationEdit = false
+    typing.reset(); feedback.type(); updateSuggestions()
   }
   private func saveSelectedTerm() {
     guard let term = selectedTerm, let scope = selectedScope, let store,

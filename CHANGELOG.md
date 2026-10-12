@@ -8,10 +8,18 @@ Notable user-facing changes are documented here. This project follows
 ### Added
 
 - iOS keyboard: select one or two words to add them directly to the dictionary. The localized action confirms Saved, prevents duplicate additions and preserves the selected text. Offline additions stay on the device and account words synchronize automatically.
+- iOS keyboard: undo or redo the last inserted dictation from the toolbar. Preserve existing text and clear the action after typing or changing the document context.
+
+### Changed
+
+- iOS 0.7.0 (23): show history in continuous tables grouped by local day, remove the Home recorder, and use continuous dictionary rows. Center the word-editor title between Cancel and Save.
+- Simplify the iOS account page into identity, monthly usage and account actions. Show actual consumed minutes, a percentage and an accessible progress bar.
+- Add a large Clarify switch above Home history. Keep the microphone session active until the user switches it off or iOS interrupts it; remove the five-minute inactivity timeout and retain the five-minute limit per recording.
 
 ### Fixed
 
 - Show only the native back chevron on iOS Settings, instead of the internal “(tabs)” route name.
+- Scale and space the keyboard dictionary plus symbol. Publish the keyboard height before view loading and keep fitting requests independent of temporary host frames.
 
 ## [0.7.0] - 2026-10-11
 

@@ -8,8 +8,10 @@ private final class Field: NSObject, UITextDocumentProxy {
   var documentIdentifier = UUID()
   var before = ""
   var after = ""
-  var documentContextBeforeInput: String? { before }
-  var documentContextAfterInput: String? { after }
+  var contextAvailable = true
+  var contextLimit = 50
+  var documentContextBeforeInput: String? { contextAvailable ? String(before.suffix(contextLimit)) : nil }
+  var documentContextAfterInput: String? { contextAvailable ? String(after.prefix(contextLimit)) : nil }
   var documentInputMode: UITextInputMode? { nil }
   var selectedText: String?
   var hasText: Bool { !before.isEmpty || !after.isEmpty }
@@ -17,7 +19,7 @@ private final class Field: NSObject, UITextDocumentProxy {
   var spellCheckingType: UITextSpellCheckingType = .yes
   var keyboardType: UIKeyboardType = .default
   var isSecureTextEntry = false
-  func insertText(_ text: String) { before += text }
+  func insertText(_ text: String) { before += text; selectedText = nil }
   func deleteBackward() { if !before.isEmpty { before.removeLast() } }
   func adjustTextPosition(byCharacterOffset offset: Int) {}
   func setMarkedText(_ markedText: String, selectedRange: NSRange) {}
@@ -33,6 +35,12 @@ private final class SelectionKeyboard: KeyboardViewController {
 }
 
 @MainActor
+private final class InputField: UITextField {
+  let keyboard = KeyboardViewController()
+  override var inputViewController: UIInputViewController? { keyboard }
+}
+
+@MainActor
 private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
   var pulses = 0
   var preparations = 0
@@ -41,6 +49,103 @@ private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
 }
 
 final class KeyboardUITests: XCTestCase {
+  @MainActor
+  private func makeDictationFixture() throws -> (SelectionKeyboard, SharedState, UIWindow) {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let store = SharedState(root: root)
+    var state = DictationSnapshot(); state.sessionActive = true; state.configured = true
+    try store.write(state, to: "state.json")
+    let keyboard = SelectionKeyboard(); keyboard.store = store
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+    let host = UIViewController(); window.rootViewController = host; window.makeKeyAndVisible()
+    host.addChild(keyboard); host.view.addSubview(keyboard.view); keyboard.didMove(toParent: host)
+    keyboard.view.frame = CGRect(x: 0, y: 574, width: 393, height: 278)
+    keyboard.beginAppearanceTransition(true, animated: false); keyboard.endAppearanceTransition()
+    return (keyboard, store, window)
+  }
+  @MainActor
+  private func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
+  @MainActor
+  private func publish(_ text: String, to keyboard: SelectionKeyboard, store: SharedState) throws {
+    let mic = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
+    XCTAssertTrue(mic.accessibilityActivate())
+    XCTAssertTrue(mic.accessibilityActivate(), "Finish the locked recording before publishing its result")
+    let command = try XCTUnwrap(store.commands().last?.1)
+    XCTAssertEqual(command.action, "finish")
+    var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970
+    state.operationID = command.operationID; state.phase = .ready; state.text = text
+    try store.write(state, to: "state.json")
+    keyboard.viewWillAppear(false)
+    XCTAssertEqual(store.receipt(), command.operationID)
+  }
+  func testDictationUndoRedoPreservesExistingTextAndStopsAfterTyping() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer {
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+        window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+      }
+      let edit = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.accessibilityIdentifier == "clarify.undo-dictation" })
+      XCTAssertTrue(edit.isHidden)
+      keyboard.field.before = "Keep this. "; keyboard.field.after = " Keep this too."
+      let text = String(repeating: "Texto com ação e 👨‍👩‍👧‍👦. ", count: 60)
+      try self.publish(text, to: keyboard, store: store)
+      XCTAssertFalse(edit.isHidden); XCTAssertEqual(edit.accessibilityLabel, L("Desfazer ditado"))
+      XCTAssertEqual(keyboard.field.before, "Keep this. " + text)
+      for _ in 0..<3 {
+        edit.sendActions(for: .touchUpInside)
+        XCTAssertEqual(keyboard.field.before, "Keep this. ")
+        XCTAssertEqual(keyboard.field.after, " Keep this too.")
+        XCTAssertEqual(edit.accessibilityLabel, L("Refazer ditado")); XCTAssertFalse(edit.isHidden)
+        edit.sendActions(for: .touchUpInside)
+        XCTAssertEqual(keyboard.field.before, "Keep this. " + text)
+        XCTAssertEqual(edit.accessibilityLabel, L("Desfazer ditado"))
+      }
+      keyboard.view.layoutIfNeeded()
+      let capture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) })
+      capture.name = "dictation-undo"; capture.lifetime = .keepAlways; self.add(capture)
+      let key = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "Q" })
+      key.sendActions(for: .touchUpInside)
+      XCTAssertTrue(edit.isHidden)
+      let current = keyboard.field.before; edit.sendActions(for: .touchUpInside)
+      XCTAssertEqual(keyboard.field.before, current, "A stale action must never delete typed text")
+      keyboard.field.before = ""; keyboard.field.after = ""
+      try self.publish("Empty field", to: keyboard, store: store)
+      edit.sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "")
+      edit.sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "Empty field")
+      keyboard.field.before = "Prefix "; keyboard.field.selectedText = "original selection"
+      try self.publish("Replacement", to: keyboard, store: store)
+      edit.sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "Prefix original selection")
+      edit.sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "Prefix Replacement")
+    }
+  }
+  func testDictationEditInvalidatesForExternalEditsSelectionAndAnotherDocument() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer {
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+        window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+      }
+      let edit = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.accessibilityIdentifier == "clarify.undo-dictation" })
+      try self.publish("Result", to: keyboard, store: store)
+      keyboard.field.before += "x"
+      let external = keyboard.field.before; edit.sendActions(for: .touchUpInside)
+      XCTAssertEqual(keyboard.field.before, external, "Validate again on tap even before the host notifies the keyboard")
+      keyboard.textDidChange(nil); XCTAssertTrue(edit.isHidden)
+      try self.publish("Next", to: keyboard, store: store)
+      keyboard.field.selectedText = "Next"; keyboard.selectionDidChange(nil); XCTAssertTrue(edit.isHidden)
+      keyboard.field.selectedText = nil
+      try self.publish("Other", to: keyboard, store: store)
+      keyboard.field.documentIdentifier = UUID(); keyboard.textDidChange(nil); XCTAssertTrue(edit.isHidden)
+      let current = keyboard.field.before; edit.sendActions(for: .touchUpInside)
+      XCTAssertEqual(keyboard.field.before, current)
+      keyboard.field.contextAvailable = false
+      try self.publish("Unavailable", to: keyboard, store: store); XCTAssertTrue(edit.isHidden)
+    }
+  }
   @MainActor
   private func assertSavedTitleIsVisible(_ button: UIButton, in appearance: UIUserInterfaceStyle) throws {
     button.overrideUserInterfaceStyle = appearance; button.layoutIfNeeded()
@@ -144,6 +249,76 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertNotNil(action, "A selected word must offer the dictionary action")
       XCTAssertEqual(keyboard.field.before, "Original text ")
       XCTAssertEqual(keyboard.field.selectedText, "Clarify")
+    }
+  }
+  func testKeyboardPublishesHeightBeforeTheSystemLoadsItsView() async {
+    await MainActor.run {
+      let keyboard = KeyboardViewController()
+      XCTAssertFalse(keyboard.isViewLoaded)
+      XCTAssertEqual(keyboard.preferredContentSize.height, 278,
+        "The host needs the final height before it measures the unloaded extension")
+      keyboard.loadViewIfNeeded()
+      for proposedHeight in [CGFloat(0), 278, 540, 956] {
+        keyboard.view.bounds.size = CGSize(width: 393, height: proposedHeight)
+        XCTAssertEqual(keyboard.view.sizeThatFits(CGSize(width: 393, height: proposedHeight)).height, 278,
+          "A temporary host frame must not become the requested keyboard height")
+      }
+    }
+  }
+  @MainActor
+  func testRepeatedOpeningThroughTheSystemInputHostKeepsOneHeight() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let window = UIWindow(frame: UIScreen.main.bounds)
+    let host = UIViewController(); window.rootViewController = host
+    let field = InputField(frame: CGRect(x: 20, y: 100, width: 250, height: 44))
+    field.keyboard.store = SharedState(root: root)
+    host.view.addSubview(field); window.makeKeyAndVisible()
+    defer { field.resignFirstResponder(); window.isHidden = true }
+    var heights: [CGFloat] = []
+    var requestedHeights: [CGFloat] = []
+    let frameObserver = NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification,
+      object: nil, queue: .main) { note in
+        guard field.isFirstResponder,
+              let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              frame.height > 0 else { return }
+        requestedHeights.append(frame.height)
+      }
+    defer { NotificationCenter.default.removeObserver(frameObserver) }
+    for _ in 0..<3 {
+      let shown = expectation(description: "System keyboard finished presenting")
+      var didShow = false
+      let observer = NotificationCenter.default.addObserver(forName: UIResponder.keyboardDidShowNotification,
+        object: nil, queue: .main) { note in
+          guard !didShow else { return }
+          didShow = true
+          if let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+            heights.append(frame.height)
+          }
+          shown.fulfill()
+        }
+      XCTAssertTrue(field.becomeFirstResponder(), "The fixture must reach the real input host")
+      await fulfillment(of: [shown], timeout: 5)
+      NotificationCenter.default.removeObserver(observer)
+      XCTAssertEqual(field.keyboard.view.bounds.height, 278, accuracy: 0.5)
+      let hidden = expectation(description: "System keyboard finished dismissing")
+      var didHide = false
+      let hideObserver = NotificationCenter.default.addObserver(forName: UIResponder.keyboardDidHideNotification,
+        object: nil, queue: .main) { _ in
+          guard !didHide else { return }
+          didHide = true; hidden.fulfill()
+        }
+      field.resignFirstResponder()
+      await fulfillment(of: [hidden], timeout: 5)
+      NotificationCenter.default.removeObserver(hideObserver)
+    }
+    XCTAssertEqual(heights.count, 3)
+    if let height = heights.first {
+      XCTAssertLessThan(height, window.bounds.height / 2, "Opening must not reserve a screen-sized keyboard")
+      XCTAssertTrue(heights.allSatisfy { abs($0 - height) < 0.5 })
+      XCTAssertFalse(requestedHeights.isEmpty)
+      XCTAssertTrue(requestedHeights.allSatisfy { $0 <= height + 0.5 }, "No presentation frame may reserve an oversized keyboard")
     }
   }
   func testKeyboardPublishesItsHeightBeforeAttachment() async {
