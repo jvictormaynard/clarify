@@ -66,7 +66,7 @@ export default function Dictionary() {
     <Modal visible={editing !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { if (!saving) setEditing(null); }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>
         <ModalHeader title={editing?.index === -1 ? t("Adicionar palavra") : t("Editar palavra")} cancelLabel={t("Cancelar")} saveLabel={t("Salvar")}
-          onCancel={() => setEditing(null)} onSave={commit} loading={saving} disabled={busy || !editing?.value.term.trim()} />
+          onCancel={() => setEditing(null)} onSave={commit} busy={saving} loading={saving && !deleting} disabled={busy || !editing?.value.term.trim()} />
         <ScrollView contentContainerStyle={[ui.content, { paddingTop: 12 }]} keyboardShouldPersistTaps="handled">
         {editing && <Card>
           {field(t("Palavra"), editing.value.term, (term) => setEditing({ ...editing, value: { ...editing.value, term } }), t("Nome ou termo"))}

@@ -13,6 +13,28 @@ An unfinished setup resumes on the next launch. Existing accounts and keys
 skip first-run setup after an upgrade. A setup preference contains no credentials.
 Billing, translation and local models are outside this mobile release.
 
+Version **0.7.0 (23)** groups Home history by the device's calendar day, with
+continuous rows containing text and time. Home no longer contains a recorder.
+Dictionary words use the same continuous table. The word editor has Cancel,
+a centered title and Save in one header. Account uses compact identity, monthly
+minutes/progress and account-action sections. Consumption excludes pending
+reservations. These changes preserve local storage, account sync and BYOK.
+
+The keyboard dictionary capsule uses a smaller, spaced plus symbol. After
+inserting a dictation, a left-hand undo button removes only the inserted text;
+redo restores it. Typing, changed selection/context, another document or keyboard
+dismissal clears this temporary action. Secure or unavailable contexts fail
+closed. Existing field text and replaced selections are preserved.
+
+Keyboard height is published before view loading, and `sizeThatFits` uses the
+same fixed height as Auto Layout fitting. Regression tests cover temporary
+oversized proposals and repeated presentation through a real `UITextField`
+input host. The actual WhatsApp extension transition still needs iPhone
+acceptance. These fixtures do not prove that the device-reported jump is gone.
+Use the direct workflow's `tests_only` input to run native checks without signing
+or uploading an existing build number. Uploads retain the full check sequence.
+Mobile versions are independent of the Windows release tags.
+
 Version 0.6.0 (22) adds a dictionary action to the keyboard toolbar when one or
 two words are selected. Tap **Adicionar ao dicionário** to save without changing
 the selected text. The button changes to **Salvo** and is disabled for an enabled

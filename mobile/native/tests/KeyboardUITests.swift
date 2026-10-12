@@ -70,7 +70,9 @@ final class KeyboardUITests: XCTestCase {
   private func publish(_ text: String, to keyboard: SelectionKeyboard, store: SharedState) throws {
     let mic = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
     XCTAssertTrue(mic.accessibilityActivate())
+    XCTAssertTrue(mic.accessibilityActivate(), "Finish the locked recording before publishing its result")
     let command = try XCTUnwrap(store.commands().last?.1)
+    XCTAssertEqual(command.action, "finish")
     var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970
     state.operationID = command.operationID; state.phase = .ready; state.text = text
     try store.write(state, to: "state.json")
@@ -109,6 +111,14 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertTrue(edit.isHidden)
       let current = keyboard.field.before; edit.sendActions(for: .touchUpInside)
       XCTAssertEqual(keyboard.field.before, current, "A stale action must never delete typed text")
+      keyboard.field.before = ""; keyboard.field.after = ""
+      try self.publish("Empty field", to: keyboard, store: store)
+      edit.sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "")
+      edit.sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "Empty field")
+      keyboard.field.before = "Prefix "; keyboard.field.selectedText = "original selection"
+      try self.publish("Replacement", to: keyboard, store: store)
+      edit.sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "Prefix original selection")
+      edit.sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "Prefix Replacement")
     }
   }
   func testDictationEditInvalidatesForExternalEditsSelectionAndAnotherDocument() async throws {
@@ -121,7 +131,10 @@ final class KeyboardUITests: XCTestCase {
       let edit = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
         .first { $0.accessibilityIdentifier == "clarify.undo-dictation" })
       try self.publish("Result", to: keyboard, store: store)
-      keyboard.field.before += "x"; keyboard.textDidChange(nil); XCTAssertTrue(edit.isHidden)
+      keyboard.field.before += "x"
+      let external = keyboard.field.before; edit.sendActions(for: .touchUpInside)
+      XCTAssertEqual(keyboard.field.before, external, "Validate again on tap even before the host notifies the keyboard")
+      keyboard.textDidChange(nil); XCTAssertTrue(edit.isHidden)
       try self.publish("Next", to: keyboard, store: store)
       keyboard.field.selectedText = "Next"; keyboard.selectionDidChange(nil); XCTAssertTrue(edit.isHidden)
       keyboard.field.selectedText = nil
@@ -264,6 +277,15 @@ final class KeyboardUITests: XCTestCase {
     host.view.addSubview(field); window.makeKeyAndVisible()
     defer { field.resignFirstResponder(); window.isHidden = true }
     var heights: [CGFloat] = []
+    var requestedHeights: [CGFloat] = []
+    let frameObserver = NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification,
+      object: nil, queue: .main) { note in
+        guard field.isFirstResponder,
+              let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              frame.height > 0 else { return }
+        requestedHeights.append(frame.height)
+      }
+    defer { NotificationCenter.default.removeObserver(frameObserver) }
     for _ in 0..<3 {
       let shown = expectation(description: "System keyboard finished presenting")
       var didShow = false
@@ -295,6 +317,8 @@ final class KeyboardUITests: XCTestCase {
     if let height = heights.first {
       XCTAssertLessThan(height, window.bounds.height / 2, "Opening must not reserve a screen-sized keyboard")
       XCTAssertTrue(heights.allSatisfy { abs($0 - height) < 0.5 })
+      XCTAssertFalse(requestedHeights.isEmpty)
+      XCTAssertTrue(requestedHeights.allSatisfy { $0 <= height + 0.5 }, "No presentation frame may reserve an oversized keyboard")
     }
   }
   func testKeyboardPublishesItsHeightBeforeAttachment() async {

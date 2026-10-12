@@ -11,7 +11,7 @@ test('history groups local calendar days, sorts entries, and joins a paginated d
     assert.deepEqual(sections.map(s => s.data.map(e => e.id)), [['latest', 'first'], ['old']]);
     assert.deepEqual(entries.map(e => e.id), ['old', 'first', 'latest']);
     assert.deepEqual(groupHistory([]), []);
-  } finally { process.env.TZ = prior; }
+  } finally { if (prior === undefined) delete process.env.TZ; else process.env.TZ = prior; }
 });
 
 test('a daylight saving day uses its calendar boundary and not a 24 hour window', () => {
@@ -19,7 +19,7 @@ test('a daylight saving day uses its calendar boundary and not a 24 hour window'
   try {
     const entries = ['2026-03-28T23:00:00Z', '2026-03-29T21:59:00Z', '2026-03-29T22:00:00Z'].map(iso => ({ createdAt: Date.parse(iso) / 1000 }));
     assert.deepEqual(groupHistory(entries).map(s => s.data.length), [1, 2]);
-  } finally { process.env.TZ = prior; }
+  } finally { if (prior === undefined) delete process.env.TZ; else process.env.TZ = prior; }
 });
 
 test('day titles and row times use Portuguese, English and Spanish', () => {

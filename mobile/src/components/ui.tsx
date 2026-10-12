@@ -49,8 +49,8 @@ export function TableRow({ children, first, last, onPress, disabled = false, acc
       borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth, borderBottomColor: c.line,
       opacity: pressed ? 0.65 : 1 })}>{children}</Pressable>;
 }
-export function ModalHeader({ title, cancelLabel, saveLabel, onCancel, onSave, disabled, loading }: {
-  title: string; cancelLabel: string; saveLabel: string; onCancel: () => void; onSave: () => void; disabled: boolean; loading: boolean;
+export function ModalHeader({ title, cancelLabel, saveLabel, onCancel, onSave, disabled, loading, busy = loading }: {
+  title: string; cancelLabel: string; saveLabel: string; onCancel: () => void; onSave: () => void; disabled: boolean; loading: boolean; busy?: boolean;
 }) {
   const c = usePalette();
   const action = (label: string, onPress: () => void, blocked: boolean, saving = false) =>
@@ -60,7 +60,7 @@ export function ModalHeader({ title, cancelLabel, saveLabel, onCancel, onSave, d
       {saving && <ActivityIndicator color={c.accent} style={{ position: 'absolute' }} />}
     </Pressable>;
   return <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, minHeight: 56 }}>
-    {action(cancelLabel, onCancel, loading)}
+    {action(cancelLabel, onCancel, busy)}
     <Text accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}
       style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', color: c.text }}>{title}</Text>
     {action(saveLabel, onSave, disabled || loading, loading)}

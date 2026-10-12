@@ -23,7 +23,7 @@ export function AccountCard() {
     </Card>;
   const usage = usageProgress(account.usage.used_ms, account.usage.limit_ms);
   const minutes = new Intl.NumberFormat(uiLanguage, { maximumFractionDigits: 1 });
-  const percent = new Intl.NumberFormat(uiLanguage, { style: 'percent', maximumFractionDigits: 0 }).format(usage.percent / 100);
+  const percent = new Intl.NumberFormat(uiLanguage, { style: 'percent', maximumFractionDigits: 1 }).format(usage.percent / 100);
   const usageLabel = t("{v0} de {v1} min", { v0: minutes.format(usage.usedMinutes), v1: minutes.format(usage.limitMinutes) });
   const actionRow = (label: string, name: string, onPress: () => void, destructive = false) =>
     <Pressable accessibilityRole="button" accessibilityState={{ disabled: !!busy, busy: action === name }} disabled={!!busy} onPress={onPress}
