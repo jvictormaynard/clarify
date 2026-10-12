@@ -91,11 +91,12 @@ static void SwizzledKeyboardChanged(id self, SEL _cmd, id change, id completion)
 
 // Current UIKit can deliver its initial connection update directly to this
 // handler, without passing through queue_keyboardChanged:onComplete:.
-static void SwizzledHandledChange(id self, SEL _cmd, id change, BOOL snapshot, BOOL local) {
+static BOOL SwizzledHandledChange(id self, SEL _cmd, id change, BOOL snapshot, BOOL local) {
     CaptureHost(change);
     if (sOriginalHandledIMP) {
-        ((void (*)(id, SEL, id, BOOL, BOOL))sOriginalHandledIMP)(self, _cmd, change, snapshot, local);
+        return ((BOOL (*)(id, SEL, id, BOOL, BOOL))sOriginalHandledIMP)(self, _cmd, change, snapshot, local);
     }
+    return NO;
 }
 
 static BOOL IsBooleanType(const char *type) { return strcmp(type, "B") == 0 || strcmp(type, "c") == 0; }
@@ -106,7 +107,7 @@ static BOOL ValidChangeMethod(Method method, BOOL flags) {
     method_getReturnType(method, result, sizeof(result));
     method_getArgumentType(method, 2, first, sizeof(first));
     method_getArgumentType(method, 3, second, sizeof(second));
-    if (strcmp(result, "v") != 0 || first[0] != '@') return NO;
+    if ((flags ? !IsBooleanType(result) : strcmp(result, "v") != 0) || first[0] != '@') return NO;
     if (!flags) return second[0] == '@';
     method_getArgumentType(method, 4, third, sizeof(third));
     return IsBooleanType(second) && IsBooleanType(third);
