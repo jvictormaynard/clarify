@@ -167,7 +167,8 @@ final class KeyGridView: UIView {
         let button = key(text) { [weak self] in
           guard let self = self else { return }
           if self.suppressKey { self.suppressKey = false; return }
-          self.insert(text)
+          let value = text.allSatisfy(\.isLetter) ? (self.model.shift == .off ? text.lowercased() : text.uppercased()) : text
+          self.insert(value)
         }
         if !KeyboardState.accents(for: text).isEmpty {
           let long = UILongPressGestureRecognizer(target: self, action: #selector(accent(_:)))

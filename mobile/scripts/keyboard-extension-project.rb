@@ -92,7 +92,8 @@ keyboard.build_configurations.each do |config|
     'SWIFT_OBJC_BRIDGING_HEADER' => bridge })
 end
 tests.build_configurations.each do |config|
-  config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.tests', 'TEST_TARGET_NAME' => 'KeyboardHost' })
+  config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.tests', 'TEST_TARGET_NAME' => 'KeyboardHost',
+    'INFOPLIST_KEY_ClarifyFixtureDirectory' => shared_root })
 end
 project.save
 scheme = Xcodeproj::XCScheme.new

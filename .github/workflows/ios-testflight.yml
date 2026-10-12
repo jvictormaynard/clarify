@@ -35,7 +35,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: clarify-ios-testflight
+  group: clarify-ios-${{ inputs.tests_only && github.run_id || 'testflight' }}
   cancel-in-progress: false
 
 jobs:

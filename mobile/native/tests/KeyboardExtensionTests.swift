@@ -110,10 +110,14 @@ final class KeyboardExtensionTests: XCTestCase {
     // The helper consumes the actual keyboard nonce and calls the production
     // bridge. A success return value alone cannot prove that the app opened.
     let container = XCUIApplication(bundleIdentifier: "com.clarify.fixture.container")
+    let root = try XCTUnwrap(Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyFixtureDirectory") as? String)
+    let receipt = URL(fileURLWithPath: root).appendingPathComponent("return-trace.json")
+    let activated = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: receipt.path) }, evaluatedWith: nil)
+    wait(for: [activated], timeout: 10)
+    let diagnostic = XCTAttachment(string: (try? String(contentsOf: receipt, encoding: .utf8)) ?? container.debugDescription)
+    diagnostic.name = "activation-return"; diagnostic.lifetime = .keepAlways; add(diagnostic)
     let back = expectation(for: NSPredicate(format: "state == %d", XCUIApplication.State.runningForeground.rawValue), evaluatedWith: app)
     wait(for: [back], timeout: 10)
     XCTAssertNotEqual(container.state, .runningForeground, "Activation must return to the original host")
-    let diagnostic = XCTAttachment(string: app.staticTexts["return-trace"].value as? String ?? app.debugDescription)
-    diagnostic.name = "activation-return"; diagnostic.lifetime = .keepAlways; add(diagnostic)
   }
 }

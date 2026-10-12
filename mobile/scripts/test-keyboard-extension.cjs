@@ -42,6 +42,8 @@ try {
   exitCode = 1;
   throw error;
 } finally {
+  const receipt = path.join(fixture, 'Shared/return-trace.json');
+  if (fs.existsSync(receipt)) fs.copyFileSync(receipt, path.join(results, 'activation-return.json'));
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
   fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, selfSizing, exitCode }, null, 2));

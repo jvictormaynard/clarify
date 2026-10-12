@@ -89,13 +89,19 @@ final class KeyboardUITests: XCTestCase {
       grid.beginPress(2, at: center(a)); grid.beginPress(3, at: center(s))
       grid.endPress(2, at: center(a)); grid.model.shift = .once; grid.rebuild()
       XCTAssertTrue(s.isDescendant(of: grid), "Keep the second finger's key during a casing update")
-      grid.endPress(3, at: center(s)); XCTAssertEqual(text, "Was")
+      grid.endPress(3, at: center(s)); XCTAssertEqual(text, "WaS")
       grid.layoutIfNeeded()
       grid.beginPress(4, at: qPoint); grid.cancelPress(4); grid.endPress(4, at: qPoint)
-      XCTAssertEqual(text, "Was", "System cancellations must not insert a key")
+      XCTAssertEqual(text, "WaS", "System cancellations must not insert a key")
       grid.beginPress(5, at: CGPoint(x: 1, y: qPoint.y))
       grid.endPress(5, at: CGPoint(x: -4, y: qPoint.y))
       XCTAssertEqual(text.lowercased(), "wasq", "Small edge drift must not discard a tap")
+      grid.model.shift = .once; grid.rebuild(); grid.layoutIfNeeded()
+      let upperQ = try key("Q"), upperW = try key("W")
+      let first = center(upperQ), second = center(upperW)
+      grid.beginPress(6, at: first); grid.beginPress(7, at: second)
+      grid.endPress(6, at: first); grid.endPress(7, at: second)
+      XCTAssertTrue(text.hasSuffix("Qw"), "Two overlapping fingers consume one-shot shift only once")
     }
   }
   func testCustomVocabularyIsNotReplacedAndQuotedWordsStillCorrect() async {
