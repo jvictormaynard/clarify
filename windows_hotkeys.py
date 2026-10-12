@@ -410,7 +410,7 @@ class WindowsInputHook:
     def start(self):
         if not self.ids:
             return
-        callback_type = ctypes.WINFUNCTYPE(
+        callback_type = getattr(ctypes, "WINFUNCTYPE")(
             ctypes.c_ssize_t, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM
         )
         self.user32.SetWindowsHookExW.argtypes = [
