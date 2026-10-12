@@ -4,18 +4,25 @@ import KeyboardHostSupport
 #endif
 
 extension KeyboardViewController {
-  func activationURL() -> URL {
+  func activationURL() async -> URL? {
+    guard !Task.isCancelled, isViewLoaded, view.window != nil else { return nil }
     var source: String?
-    if isViewLoaded, view.window != nil {
-      if #available(iOS 26.4, *) {
-        let generation = KBHostArbiterHook.captureGeneration()
-        KBHostArbiterHook.activeArbiterCheck()
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
-        if view.window != nil { source = KBHostArbiterHook.hostBundleId(capturedAfter: generation) }
-      } else {
-        source = KBHostArbiterHook.legacyHostBundleID(for: self)
+    if #available(iOS 26.4, *) {
+      let generation = KBHostArbiterHook.captureGeneration()
+      KBHostArbiterHook.activeArbiterCheck()
+      let clock = ContinuousClock(), deadline = clock.now.advanced(by: .milliseconds(400))
+      // Yield the main actor so UIKit can deliver its destination callback.
+      // A nested run loop inside the button action cannot drain a queued main
+      // dispatch block while the current block is still executing.
+      while view.window != nil, !Task.isCancelled {
+        source = KBHostArbiterHook.hostBundleId(capturedAfter: generation)
+        if source != nil || clock.now >= deadline { break }
+        do { try await Task.sleep(nanoseconds: 20_000_000) } catch { return nil }
       }
+    } else {
+      source = KBHostArbiterHook.legacyHostBundleID(for: self)
     }
+    guard !Task.isCancelled, view.window != nil else { return nil }
     // Unknown source is handled by the system navigation fallback in the app.
     let request = ActivationRequest(sourceBundleID: source)
     guard let store = store, (try? store.write(request, to: "activation.json")) != nil else {

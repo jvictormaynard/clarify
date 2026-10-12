@@ -92,17 +92,27 @@ final class RecordControl: UIControl {
 // SwiftUI opens the container; the experimental source resolver supplies a nonce.
 private struct ActivationLink: View {
   @Environment(\.openURL) private var openURL
-  let destination: () -> URL
+  @State private var launchTask: Task<Void, Never>?
+  @State private var opening = false
+  let destination: () async -> URL?
   var body: some View {
-    Button { openURL(destination()) } label: {
+    Button {
+      guard !opening else { return }; opening = true
+      launchTask = Task {
+        defer { opening = false; launchTask = nil }
+        guard let url = await destination(), !Task.isCancelled else { return }
+        openURL(url)
+      }
+    } label: {
       HStack(spacing: 7) {
         ClarifyMark().fill(Color(uiColor: .systemBackground)).frame(width: 22, height: 24)
         Text(L("Começar")).font(.system(size: 14, weight: .semibold))
       }.foregroundStyle(Color(uiColor: .systemBackground))
         .frame(width: 118, height: 44).background(Color(uiColor: .label), in: Capsule())
-    }.buttonStyle(.plain).accessibilityLabel(L("Começar no Clarify"))
+    }.buttonStyle(.plain).disabled(opening).accessibilityLabel(L("Começar no Clarify"))
       .accessibilityIdentifier("clarify.keyboard.start")
       .accessibilityHint(L("Abre o Clarify para ativar o microfone."))
+      .onDisappear { launchTask?.cancel(); launchTask = nil; opening = false }
   }
 }
 
@@ -243,7 +253,7 @@ class KeyboardViewController: UIInputViewController {
       dictionaryTrailing!, addToDictionary.centerYAnchor.constraint(equalTo: mic.centerYAnchor),
       addToDictionary.heightAnchor.constraint(equalToConstant: 44)
     ])
-    let host = UIHostingController(rootView: ActivationLink { [weak self] in self?.activationURL() ?? URL(string: "clarify://keyboard")! })
+    let host = UIHostingController(rootView: ActivationLink { [weak self] in await self?.activationURL() })
     if #available(iOS 16.4, *) { host.safeAreaRegions = [] }
     addChild(host); view.addSubview(host.view); host.didMove(toParent: self)
     host.view.backgroundColor = .clear; host.view.translatesAutoresizingMaskIntoConstraints = false
