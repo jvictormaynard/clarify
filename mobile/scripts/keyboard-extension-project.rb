@@ -26,7 +26,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   if name == 'KBHostArbiterHook.m' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-host-hooks'
     original = File.read(source)
     source = File.join(fixture, name)
-    File.write(source, original.sub('[self installHooks];', '// Isolated diagnostic: no process-wide arbiter hooks.'))
+    File.write(source, original.gsub('[self installHooks];', '// Isolated diagnostic: no process-wide arbiter hooks.'))
   end
   if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-swiftui'
     original = File.read(source)

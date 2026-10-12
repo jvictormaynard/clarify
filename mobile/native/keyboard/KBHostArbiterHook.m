@@ -195,6 +195,7 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
         return;
     }
 
+    [self installHooks];
     Class cls = NSClassFromString(kArbiterClientClassName);
     if (!cls) return;
 
