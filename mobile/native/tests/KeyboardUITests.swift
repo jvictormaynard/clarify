@@ -146,6 +146,20 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(keyboard.field.selectedText, "Clarify")
     }
   }
+  func testKeyboardPublishesHeightBeforeTheSystemLoadsItsView() async {
+    await MainActor.run {
+      let keyboard = KeyboardViewController()
+      XCTAssertFalse(keyboard.isViewLoaded)
+      XCTAssertEqual(keyboard.preferredContentSize.height, 278,
+        "The host needs the final height before it measures the unloaded extension")
+      keyboard.loadViewIfNeeded()
+      for proposedHeight in [CGFloat(0), 278, 540, 956] {
+        keyboard.view.bounds.size = CGSize(width: 393, height: proposedHeight)
+        XCTAssertEqual(keyboard.view.sizeThatFits(CGSize(width: 393, height: proposedHeight)).height, 278,
+          "A temporary host frame must not become the requested keyboard height")
+      }
+    }
+  }
   func testKeyboardPublishesItsHeightBeforeAttachment() async {
     await MainActor.run {
       let keyboard = KeyboardViewController()
