@@ -12,10 +12,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {variant: baseline, toolchain: '26.6', runner: macos-26, xcode: /Applications/Xcode_26.6.app/Contents/Developer}
-          - {variant: full-access, toolchain: '26.6', runner: macos-26, xcode: /Applications/Xcode_26.6.app/Contents/Developer}
-          - {variant: baseline, toolchain: '27.0', runner: xcode-27, xcode: /Applications/Xcode_27.app/Contents/Developer}
-          - {variant: full-access, toolchain: '27.0', runner: xcode-27, xcode: /Applications/Xcode_27.app/Contents/Developer}
+          - {variant: baseline, toolchain: '26.6', runner: macos-26, runtime: iOS-26-5, xcode: /Applications/Xcode_26.6.app/Contents/Developer}
+          - {variant: full-access, toolchain: '26.6', runner: macos-26, runtime: iOS-26-5, xcode: /Applications/Xcode_26.6.app/Contents/Developer}
+          - {variant: baseline, toolchain: '27.0', runner: xcode-27, runtime: iOS-27-0, xcode: /Applications/Xcode_27.app/Contents/Developer}
+          - {variant: full-access, toolchain: '27.0', runner: xcode-27, runtime: iOS-27-0, xcode: /Applications/Xcode_27.app/Contents/Developer}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     defaults:
@@ -24,6 +24,7 @@ jobs:
     env:
       DEVELOPER_DIR: ${{ matrix.xcode }}
       CLARIFY_KEYBOARD_VARIANTS: ${{ matrix.variant }}
+      CLARIFY_IOS_RUNTIME: ${{ matrix.runtime }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
