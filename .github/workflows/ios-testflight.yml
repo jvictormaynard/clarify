@@ -21,6 +21,10 @@ on:
         description: Test the installed keyboard extension in a separate host
         type: boolean
         default: false
+      self_sizing_off:
+        description: Disable self-sizing only in the diagnostic fixture
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -67,6 +71,8 @@ jobs:
         run: node scripts/test-keyboard-ui.cjs
       - name: Test installed keyboard extension
         if: ${{ inputs.extension_diagnostic }}
+        env:
+          CLARIFY_DIAGNOSTIC_SELF_SIZING: ${{ inputs.self_sizing_off && 'off' || 'on' }}
         run: node scripts/test-keyboard-extension.cjs
       - name: Generate native project
         if: ${{ !inputs.tests_only }}

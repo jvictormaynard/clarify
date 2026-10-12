@@ -68,6 +68,12 @@ retains traces, screenshots, video and the result bundle for investigation.
 Passing the separate in-process UIKit tests does not resolve this open gate.
 No new signing or upload occurs when `tests_only` is selected.
 
+The optional `self_sizing_off` experiment disables `allowsSelfSizing` only in
+a generated temporary copy of the controller. It preserves the production
+source and fixed-height fitting paths. The result summary records the variant;
+compare the system control and all five extension openings before drawing a
+conclusion. This experiment is not part of build 24.
+
 Version 0.6.0 (22) adds a dictionary action to the keyboard toolbar when one or
 two words are selected. Tap **Adicionar ao dicionário** to save without changing
 the selected text. The button changes to **Salvo** and is disabled for an enabled
