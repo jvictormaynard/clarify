@@ -83,6 +83,10 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
       original = File.read(source)
       File.write(source, original.sub('    super.viewDidLoad()', "    super.viewDidLoad()\n    ClarifyFixtureDisableAutosizing(self)"))
     end
+    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'controller-fitting'
+      original = File.read(source)
+      File.write(source, original.sub('    super.viewDidLoad()', "    super.viewDidLoad()\n    ClarifyFixtureInstallFitting(self)"))
+    end
     if ['window-height', 'window-height-visible'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
       original = File.read(source)
       correction = <<~'SWIFT'
@@ -133,6 +137,24 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         }
       OBJC
     end
+    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'controller-fitting'
+      File.open(source, 'a') { |file| file.write(<<~'OBJC') }
+        static CGSize ClarifyFixtureFitting(id self, SEL command, CGSize size, float horizontal, float vertical) {
+          NSLog(@"ClarifyFixtureSizing fitting proposed=%@", NSStringFromCGSize(size));
+          return CGSizeMake(size.width, 278);
+        }
+        void ClarifyFixtureInstallFitting(UIInputViewController *controller) {
+          SEL selector = NSSelectorFromString(@"_systemLayoutSizeFittingSize:withHorizontalFittingPriority:verticalFittingPriority:");
+          NSMethodSignature *signature = [controller methodSignatureForSelector:selector];
+          if (!signature || signature.numberOfArguments != 5 || strncmp(signature.methodReturnType, "{CGSize=", 8) != 0
+              || strncmp([signature getArgumentTypeAtIndex:2], "{CGSize=", 8) != 0
+              || strcmp([signature getArgumentTypeAtIndex:3], "f") != 0 || strcmp([signature getArgumentTypeAtIndex:4], "f") != 0) return;
+          Method original = class_getInstanceMethod(controller.class, selector);
+          BOOL installed = class_addMethod(controller.class, selector, (IMP)&ClarifyFixtureFitting, method_getTypeEncoding(original));
+          NSLog(@"ClarifyFixtureSizing controller fitting installed=%d", installed);
+        }
+      OBJC
+    end
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
@@ -140,6 +162,10 @@ bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
 if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'native-autosize'
   original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
   File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixtureDisableAutosizing(UIInputViewController *controller);\n")
+end
+if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'controller-fitting'
+  original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
+  File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixtureInstallFitting(UIInputViewController *controller);\n")
 end
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   source = name == 'SharedState.swift' ? shared_source : File.join(root, 'modules/clarify-core/ios', name)
