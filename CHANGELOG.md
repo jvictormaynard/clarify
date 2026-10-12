@@ -9,6 +9,10 @@ Notable user-facing changes are documented here. This project follows
 
 - iOS 0.7.1 (24): show a small device icon and Mobile or Desktop below each history timestamp. Preserve the source in each record and identify earlier iPhone records as Mobile. History remains local.
 
+### Fixed
+
+- Center the iOS Home switch vertically between Off and On. Increase dark keyboard key separation from the system material on brighter backgrounds, while preserving the transparent keyboard surface.
+
 ## [0.8.0] - 2026-10-12
 
 ### Added

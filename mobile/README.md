@@ -16,7 +16,10 @@ Billing, translation and local models are outside this mobile release.
 Version **0.7.1 (24)** adds a small Mobile or Desktop icon and label below each
 history timestamp, using the same caption size. Earlier iPhone records default
 to Mobile. History remains local; account dictionary and usage synchronization
-do not transfer history between devices. The keyboard opening-height defect
+do not transfer history between devices. Off and On align with the center of
+the Home switch. Dark keys lift the system material instead of using a fixed
+gray fill, with a stronger fill for increased contrast or reduced transparency.
+The keyboard opening-height defect
 reported in build 23 remains unresolved. This build does not include a sizing
 workaround or the separate experimental installed-extension diagnostic.
 
