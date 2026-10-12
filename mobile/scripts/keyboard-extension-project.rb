@@ -44,6 +44,17 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     source = File.join(fixture, name)
     File.write(source, original.sub('allowsSelfSizing = true', 'allowsSelfSizing = false'))
   end
+  if name == 'KeyboardViewController.swift'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    instrumentation = <<~'SWIFT'
+        var chain: [UIView] = []; var ancestor: UIView? = view
+        while let item = ancestor, chain.count < 8 { chain.append(item); ancestor = item.superview }
+        let geometry = chain.map { "\(type(of: $0)):\($0.frame):\($0.bounds)" }.joined(separator: " > ")
+        NSLog("ClarifyFixtureGeometry %@", geometry)
+    SWIFT
+    File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + instrumentation))
+  end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
 bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
