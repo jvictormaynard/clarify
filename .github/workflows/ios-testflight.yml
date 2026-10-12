@@ -25,6 +25,11 @@ on:
         description: Disable self-sizing only in the diagnostic fixture
         type: boolean
         default: false
+      diagnostic_variant:
+        description: Change one factor in the installed extension fixture
+        type: choice
+        options: [production, without-host-hooks, without-swiftui]
+        default: production
 
 permissions:
   contents: read
@@ -77,6 +82,7 @@ jobs:
         if: ${{ inputs.extension_diagnostic }}
         env:
           CLARIFY_DIAGNOSTIC_SELF_SIZING: ${{ inputs.self_sizing_off && 'off' || 'on' }}
+          CLARIFY_DIAGNOSTIC_VARIANT: ${{ inputs.diagnostic_variant }}
         run: node scripts/test-keyboard-extension.cjs
       - name: Generate native project
         if: ${{ !inputs.tests_only }}

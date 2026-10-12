@@ -9,6 +9,16 @@ app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(
 tests.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionTests.swift')))
 %w[KeyboardViewController.swift DictationEdit.swift KeyGridView.swift KeyPreview.swift TypingAssistant.swift HostActivation.swift KBHostArbiterHook.m].each do |name|
   source = File.join(root, 'native/keyboard', name)
+  if name == 'KBHostArbiterHook.m' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-host-hooks'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    File.write(source, original.sub('[self installHooks];', '// Isolated diagnostic: no process-wide arbiter hooks.'))
+  end
+  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-swiftui'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    File.write(source, original.sub(/    let host = UIHostingController.*?    activation = host/m, '// Isolated diagnostic: omit the activation hosting controller.'))
+  end
   if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_SELF_SIZING'] == 'off'
     original = File.read(source)
     raise 'Self-sizing experiment no longer matches the production source' unless original.scan('allowsSelfSizing = true').length == 1
