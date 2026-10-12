@@ -43,6 +43,11 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     source = File.join(fixture, name)
     File.write(source, original.sub('width: 0, height: KeyboardInputView.contentHeight', 'width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight'))
   end
+  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'stored-preferred-size'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    File.write(source, original.sub('    inputView = input', "    super.preferredContentSize = CGSize(width: 0, height: KeyboardInputView.contentHeight)\n    inputView = input"))
+  end
   if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'system-sizing'
     original = File.read(source)
     source = File.join(fixture, name)
