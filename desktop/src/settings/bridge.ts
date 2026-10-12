@@ -72,6 +72,7 @@ export interface Settings {
   localAsrCloudRefinement: boolean;
   localBenchmarkBusy: boolean;
   localBenchmarkDetail: string;
+  hotkeyCaptureAction: string;
   hotkeyActions: {
     id: string;
     label: string;
@@ -120,6 +121,8 @@ export type SettingsArguments = {
   setLocalStreaming: [value: boolean];
   setLocalAsrCloudRefinement: [value: boolean];
   setHotkey: [action: string, definition: { modifiers: string[]; key: string }];
+  beginHotkeyCapture: [action: string];
+  cancelHotkeyCapture: [];
   setHotkeyActivationMode: [value: string];
   resetHotkey: [action: string];
   resetAllHotkeys: [];

@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
 } from "react";
 import {
   call,
@@ -30,7 +31,7 @@ export function useSettings() {
   const [apiKey, setApiKey] = useState("");
   const [prompt, setPrompt] = useState("");
   const [endpoint, setEndpoint] = useState("");
-  const [capture, setCapture] = useState<string>();
+  const capture = state?.hotkeyCaptureAction || undefined;
   const [retention, setRetention] = useState("");
   const [recording, setRecording] = useState<RecordingDraft | null>(null);
   const [routeOverride, setRouteOverride] = useState<{
@@ -122,6 +123,10 @@ export function useSettings() {
         );
     };
     const visibility = () => {
+      if (document.hidden && current.current?.hotkeyCaptureAction)
+        void call("cancelHotkeyCapture").catch((error) => {
+          if (live) setError(String(error));
+        });
       if (document.hidden && current.current?.microphoneTestBusy)
         void call("stopMicrophoneTest").catch((error) => {
           if (live) setError(String(error));
@@ -139,14 +144,20 @@ export function useSettings() {
     if (state) setRetention(String(state.historyRetentionDays ?? ""));
   }, [state?.historyRetentionDays]);
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
     const refreshAccount = () => {
-      if (document.hidden || pending.current || !current.current?.accountState?.signedIn || dirtyRef.current) return;
-      void call("accountCommand", "auto", "").catch(() => undefined);
+      clearTimeout(timer);
+      const account = current.current?.accountState;
+      if (!account?.signedIn) return;
+      const blocked = document.hidden || pending.current || dirtyRef.current || account.busy;
+      if (!blocked) void call("accountCommand", "auto", "").catch(() => undefined);
+      // Startup model loading can briefly block the first account refresh.
+      // Retry when it clears instead of waiting a full minute with no quota.
+      timer = setTimeout(refreshAccount, blocked ? 1000 : 60000);
     };
     refreshAccount();
     document.addEventListener("visibilitychange", refreshAccount);
-    const timer = setInterval(refreshAccount, 60000);
-    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", refreshAccount); };
+    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", refreshAccount); };
   }, [state?.accountState?.signedIn]);
   useEffect(() => {
     if (state) setPrompt(state.routePrompt);
@@ -272,24 +283,43 @@ export function useSettings() {
       setConfirmAction(null);
     }
   };
+  const captureModifier = useRef<string | null>(null);
+  const setCapture = (action?: string) => {
+    if (action) void run("beginHotkeyCapture", action);
+    else void run("cancelHotkeyCapture");
+  };
+  useEffect(() => { captureModifier.current = null; }, [capture]);
   const captureHotkey = async (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape" || !capture) return;
     event.preventDefault();
-    if (["Control", "Alt", "Shift", "Meta"].includes(event.key) || event.repeat)
+    if (event.repeat) return;
+    const modifierKey = ({ Control: "CTRL", Alt: "ALT", Shift: "SHIFT", Meta: "WIN" } as Record<string, string>)[event.key];
+    if (event.type === "keydown" && modifierKey) {
+      captureModifier.current = event.key;
       return;
+    }
+    if (event.type === "keyup" && (!modifierKey || captureModifier.current !== event.key)) return;
+    captureModifier.current = null;
     const modifiers = [
       ...(event.ctrlKey ? ["ctrl"] : []),
       ...(event.altKey ? ["alt"] : []),
       ...(event.shiftKey ? ["shift"] : []),
       ...(event.metaKey ? ["win"] : []),
     ];
-    if (
-      await run("setHotkey", capture, {
-        modifiers,
-        key: event.key === " " ? "SPACE" : event.key.toUpperCase(),
-      })
-    )
-      setCapture(undefined);
+    await run("setHotkey", capture, {
+      modifiers: modifiers.filter(name => name.toUpperCase() !== modifierKey),
+      key: modifierKey || (event.key === " " ? "SPACE" : event.key.toUpperCase()),
+    });
+  };
+  const captureMouseHotkey = async (event: MouseEvent<HTMLInputElement>) => {
+    if (!capture || ![3, 4].includes(event.button)) return;
+    event.preventDefault();
+    captureModifier.current = null;
+    await run("setHotkey", capture, {
+      key: event.button === 3 ? "XBUTTON1" : "XBUTTON2",
+      modifiers: [...(event.ctrlKey ? ["ctrl"] : []), ...(event.altKey ? ["alt"] : []),
+        ...(event.shiftKey ? ["shift"] : []), ...(event.metaKey ? ["win"] : [])],
+    });
   };
   const selectProvider = async (id: string) => {
     if (!state) return;
@@ -365,6 +395,7 @@ export function useSettings() {
     saveAndClose,
     confirmMutation,
     captureHotkey,
+    captureMouseHotkey,
     selectProvider,
     validateProvider,
     selectRouteProvider,

@@ -42,9 +42,11 @@ class ActivationMode(str, Enum):
 
 SUPPORTED_MODIFIERS = frozenset({"alt", "ctrl", "shift", "win"})
 _MODIFIER_ORDER = ("ctrl", "alt", "shift", "win")
+HOOK_KEYS = frozenset({"CTRL", "ALT", "SHIFT", "WIN", "XBUTTON1", "XBUTTON2"})
 _KEY_RE = re.compile(
     r"^(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|SPACE|TAB|ENTER|ESCAPE|"
-    r"UP|DOWN|LEFT|RIGHT)$")
+    r"UP|DOWN|LEFT|RIGHT)$"
+)
 
 
 class HotkeyValidationError(ValueError):
@@ -62,7 +64,8 @@ class HotkeyConflictError(HotkeyValidationError):
         self.conflicts = dict(conflicts)
         details = "; ".join(
             f"{combo}: {', '.join(actions)}"
-            for combo, actions in sorted(self.conflicts.items()))
+            for combo, actions in sorted(self.conflicts.items())
+        )
         super().__init__(
             f"Hotkey conflict between Clarify actions ({details})",
             code="conflict",
@@ -86,27 +89,32 @@ def _normalise_modifiers(value: Any) -> frozenset[str]:
             f"Unsupported modifier(s): {', '.join(sorted(unknown))}",
             code="unsupported_modifier",
         )
-    if not modifiers:
-        raise HotkeyValidationError(
-            "A global hotkey must include a modifier", code="missing_modifier")
     return modifiers
 
 
 def _normalise_key(value: Any) -> str:
     key = str(value or "").strip().upper()
-    aliases = {"ESC": "ESCAPE", "RETURN": "ENTER", "SPACEBAR": "SPACE"}
+    aliases = {
+        "ESC": "ESCAPE",
+        "RETURN": "ENTER",
+        "SPACEBAR": "SPACE",
+        "CONTROL": "CTRL",
+        "META": "WIN",
+        "WINDOWS": "WIN",
+    }
     key = aliases.get(key, key)
-    # RegisterHotKey supports virtual-key constants.  The four actions only
-    # expose printable keys and function keys to keep capture deterministic.
-    if not _KEY_RE.fullmatch(key):
+    # Ordinary combinations use RegisterHotKey. Modifiers and side mouse
+    # buttons use the scoped native input hook.
+    if key not in HOOK_KEYS and not _KEY_RE.fullmatch(key):
         raise HotkeyValidationError(
-            f"Unsupported hotkey key: {value!r}", code="unsupported_key")
+            f"Unsupported hotkey key: {value!r}", code="unsupported_key"
+        )
     return key
 
 
 @dataclass(frozen=True)
 class HotkeyDefinition:
-    """One canonical modifier/key pair suitable for RegisterHotKey."""
+    """One canonical keyboard or side-mouse binding."""
 
     modifiers: frozenset[str] = field(default_factory=lambda: frozenset({"alt"}))
     key: str = "L"
@@ -114,6 +122,12 @@ class HotkeyDefinition:
     def __post_init__(self) -> None:
         modifiers = _normalise_modifiers(self.modifiers)
         key = _normalise_key(self.key)
+        if not modifiers and key not in HOOK_KEYS:
+            raise HotkeyValidationError(
+                "A global hotkey must include a modifier", code="missing_modifier"
+            )
+        if key.lower() in modifiers:
+            raise HotkeyValidationError("A modifier cannot modify itself")
         object.__setattr__(self, "modifiers", modifiers)
         object.__setattr__(self, "key", key)
 
@@ -121,14 +135,16 @@ class HotkeyDefinition:
     def from_mapping(cls, value: Any) -> "HotkeyDefinition":
         if isinstance(value, str):
             parts = [part.strip() for part in value.split("+") if part.strip()]
-            if len(parts) < 2:
+            if not parts:
                 raise HotkeyValidationError(
                     "Hotkey text must contain a modifier and a key",
                     code="invalid_format",
                 )
             return cls(_normalise_modifiers(parts[:-1]), parts[-1])
         if not isinstance(value, Mapping):
-            raise HotkeyValidationError("Hotkey must be an object", code="invalid_format")
+            raise HotkeyValidationError(
+                "Hotkey must be an object", code="invalid_format"
+            )
         return cls(value.get("modifiers", value.get("mods", ())), value.get("key", ""))
 
     @classmethod
@@ -156,8 +172,22 @@ class HotkeyDefinition:
     @property
     def display(self) -> str:
         labels = {"ctrl": "Ctrl", "alt": "Alt", "shift": "Shift", "win": "Win"}
-        prefix = "+".join(labels[name] for name in _MODIFIER_ORDER if name in self.modifiers)
-        return f"{prefix}+{self.key}"
+        prefix = "+".join(
+            labels[name] for name in _MODIFIER_ORDER if name in self.modifiers
+        )
+        key_label = {
+            "CTRL": "Ctrl",
+            "ALT": "Alt",
+            "SHIFT": "Shift",
+            "WIN": "Win",
+            "XBUTTON1": "Mouse 4",
+            "XBUTTON2": "Mouse 5",
+        }.get(self.key, self.key)
+        return f"{prefix}+{key_label}" if prefix else key_label
+
+    @property
+    def requires_hook(self) -> bool:
+        return self.key in HOOK_KEYS
 
     def to_mapping(self) -> dict[str, Any]:
         return {
@@ -214,12 +244,9 @@ def validate_hotkeys(
     registering a new global shortcut unexpectedly.
     """
     includes_voice = any(
-        _action(raw_action) is HotkeyAction.VOICE_TRANSLATION
-        for raw_action in values
+        _action(raw_action) is HotkeyAction.VOICE_TRANSLATION for raw_action in values
     )
-    normalised = dict(
-        DEFAULT_HOTKEYS if includes_voice else _LEGACY_DEFAULT_HOTKEYS
-    )
+    normalised = dict(DEFAULT_HOTKEYS if includes_voice else _LEGACY_DEFAULT_HOTKEYS)
     for raw_action, raw_definition in values.items():
         action = _action(raw_action)
         if action is None:
@@ -248,15 +275,19 @@ class HotkeySettings:
     """Versioned user preference consumed by repositories and the tray."""
 
     hotkeys: Mapping[HotkeyAction, HotkeyDefinition] = field(
-        default_factory=lambda: dict(DEFAULT_HOTKEYS))
+        default_factory=lambda: dict(DEFAULT_HOTKEYS)
+    )
     activation_mode: ActivationMode = ActivationMode.TOGGLE
     schema_version: int = HOTKEY_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
         normalised = validate_hotkeys(self.hotkeys)
         try:
-            mode = (self.activation_mode if isinstance(self.activation_mode, ActivationMode)
-                    else ActivationMode(str(self.activation_mode)))
+            mode = (
+                self.activation_mode
+                if isinstance(self.activation_mode, ActivationMode)
+                else ActivationMode(str(self.activation_mode))
+            )
         except ValueError as error:
             raise HotkeyValidationError(
                 f"Unsupported recording activation mode: {self.activation_mode!r}",
@@ -289,7 +320,9 @@ class HotkeySettings:
                 if key in value:
                     parsed[action] = value[key]
                     break
-        mode = value.get("activation_mode", value.get("recording_activation_mode", "toggle"))
+        mode = value.get(
+            "activation_mode", value.get("recording_activation_mode", "toggle")
+        )
         defaults = (
             DEFAULT_HOTKEYS
             if HotkeyAction.VOICE_TRANSLATION in parsed
@@ -307,7 +340,9 @@ class HotkeySettings:
                     if parsed_action is None:
                         continue
                     try:
-                        repaired[parsed_action] = HotkeyDefinition.from_mapping(definition)
+                        repaired[parsed_action] = HotkeyDefinition.from_mapping(
+                            definition
+                        )
                     except HotkeyValidationError:
                         continue
             try:
@@ -340,8 +375,11 @@ class HotkeySettings:
         if parsed is None:
             raise HotkeyValidationError(f"Unknown hotkey action: {action!r}")
         updated = dict(self.hotkeys)
-        updated[parsed] = (definition if isinstance(definition, HotkeyDefinition)
-                           else HotkeyDefinition.from_mapping(definition))
+        updated[parsed] = (
+            definition
+            if isinstance(definition, HotkeyDefinition)
+            else HotkeyDefinition.from_mapping(definition)
+        )
         return HotkeySettings(updated, self.activation_mode)
 
     def reset(self, action: HotkeyAction | str) -> "HotkeySettings":
@@ -360,7 +398,9 @@ class HotkeySettings:
         push_to_talk_supported: bool = False,
     ) -> "HotkeySettings":
         try:
-            parsed = mode if isinstance(mode, ActivationMode) else ActivationMode(str(mode))
+            parsed = (
+                mode if isinstance(mode, ActivationMode) else ActivationMode(str(mode))
+            )
         except ValueError as error:
             raise HotkeyValidationError(
                 f"Unsupported recording activation mode: {mode!r}",
@@ -382,7 +422,9 @@ class HotkeySettingsController:
     native registration never observe a conflicting intermediate state.
     """
 
-    def __init__(self, settings: HotkeySettings | None = None, *, push_to_talk_supported=False):
+    def __init__(
+        self, settings: HotkeySettings | None = None, *, push_to_talk_supported=False
+    ):
         self._settings = settings or HotkeySettings.defaults()
         self.push_to_talk_supported = bool(push_to_talk_supported)
         self._lock = threading.RLock()
@@ -410,8 +452,10 @@ class HotkeySettingsController:
         """Replace the draft when the Settings window restores its baseline."""
         with self._lock:
             self._settings = (
-                settings if isinstance(settings, HotkeySettings)
-                else HotkeySettings.from_mapping(settings))
+                settings
+                if isinstance(settings, HotkeySettings)
+                else HotkeySettings.from_mapping(settings)
+            )
             return self._settings
 
     def reset(self, action: HotkeyAction | str) -> HotkeySettings:
@@ -427,7 +471,8 @@ class HotkeySettingsController:
     def set_activation_mode(self, mode: ActivationMode | str) -> HotkeySettings:
         with self._lock:
             self._settings = self._settings.with_activation_mode(
-                mode, push_to_talk_supported=self.push_to_talk_supported)
+                mode, push_to_talk_supported=self.push_to_talk_supported
+            )
             return self._settings
 
 
@@ -459,7 +504,9 @@ class RecordingActivationController:
         self._on_start = on_start
         self._on_stop = on_stop
         self._on_cancel = on_cancel or on_stop
-        self._mode = mode if isinstance(mode, ActivationMode) else ActivationMode(str(mode))
+        self._mode = (
+            mode if isinstance(mode, ActivationMode) else ActivationMode(str(mode))
+        )
         self._lock = threading.RLock()
         self._state = ActivationRaceState.IDLE
         self._generation = 0
@@ -481,7 +528,10 @@ class RecordingActivationController:
         with self._lock:
             if self._closed:
                 return False
-            if self._mode is ActivationMode.TOGGLE and self._state is ActivationRaceState.ACTIVE:
+            if (
+                self._mode is ActivationMode.TOGGLE
+                and self._state is ActivationRaceState.ACTIVE
+            ):
                 self._state = ActivationRaceState.STOPPING
                 generation = self._generation
                 callback = self._on_stop
@@ -532,7 +582,9 @@ class RecordingActivationController:
 
     shutdown = cancel
 
-    def _invoke_edge(self, callback: Callable[[], Any], generation: int, *, starting: bool) -> None:
+    def _invoke_edge(
+        self, callback: Callable[[], Any], generation: int, *, starting: bool
+    ) -> None:
         try:
             result = callback()
             succeeded = result is not False
@@ -545,7 +597,9 @@ class RecordingActivationController:
                 if stale or not succeeded:
                     self._state = (
                         ActivationRaceState.CLOSED
-                        if self._closed else ActivationRaceState.IDLE)
+                        if self._closed
+                        else ActivationRaceState.IDLE
+                    )
                     if succeeded and stale and not self._cancel_notified:
                         self._cancel_notified = True
                         follow_up = self._on_cancel
@@ -556,7 +610,11 @@ class RecordingActivationController:
                 else:
                     self._state = ActivationRaceState.ACTIVE
             elif not stale:
-                self._state = ActivationRaceState.IDLE if succeeded else ActivationRaceState.ACTIVE
+                self._state = (
+                    ActivationRaceState.IDLE
+                    if succeeded
+                    else ActivationRaceState.ACTIVE
+                )
         if follow_up is not None:
             try:
                 follow_up()
@@ -565,13 +623,29 @@ class RecordingActivationController:
         with self._lock:
             if starting and follow_up is self._on_stop and not self._closed:
                 self._state = ActivationRaceState.IDLE
-            elif not starting and not self._closed and self._state is ActivationRaceState.STOPPING:
-                self._state = ActivationRaceState.IDLE if succeeded else ActivationRaceState.ACTIVE
+            elif (
+                not starting
+                and not self._closed
+                and self._state is ActivationRaceState.STOPPING
+            ):
+                self._state = (
+                    ActivationRaceState.IDLE
+                    if succeeded
+                    else ActivationRaceState.ACTIVE
+                )
 
 
 __all__ = [
-    "ActivationMode", "ActivationRaceState", "DEFAULT_HOTKEYS", "HOTKEY_SCHEMA_VERSION",
-    "HotkeyAction", "HotkeyConflictError", "HotkeyDefinition", "HotkeySettings",
-    "HotkeySettingsController", "HotkeyValidationError", "RecordingActivationController",
+    "ActivationMode",
+    "ActivationRaceState",
+    "DEFAULT_HOTKEYS",
+    "HOTKEY_SCHEMA_VERSION",
+    "HotkeyAction",
+    "HotkeyConflictError",
+    "HotkeyDefinition",
+    "HotkeySettings",
+    "HotkeySettingsController",
+    "HotkeyValidationError",
+    "RecordingActivationController",
     "validate_hotkeys",
 ]

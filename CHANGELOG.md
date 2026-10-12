@@ -5,19 +5,29 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-12
+
 ### Added
 
+- Windows shortcuts accept standalone Ctrl, Alt, Shift and Windows keys, plus the two side mouse buttons. Ordinary keyboard combinations keep their behavior.
+- Hover over the pill's language flag to open an animated vertical list of all supported dictation languages.
 - iOS keyboard: select one or two words to add them directly to the dictionary. The localized action confirms Saved, prevents duplicate additions and preserves the selected text. Offline additions stay on the device and account words synchronize automatically.
 - iOS keyboard: undo or redo the last inserted dictation from the toolbar. Preserve existing text and clear the action after typing or changing the document context.
 
 ### Changed
 
+- Activate Clarify processing when signing in, including for existing signed-in profiles. Remove the separate activation step and preserve personal settings for account-free use.
+- Show consumed minutes with a quota progress bar. Keep account sign-out and deletion in a collapsed Danger zone with visible buttons and separate confirmation dialogs.
+- Hide the Text settings page when Clarify manages its models and instructions.
 - iOS 0.7.0 (23): show history in continuous tables grouped by local day, remove the Home recorder, and use continuous dictionary rows. Center the word-editor title between Cancel and Save.
 - Simplify the iOS account page into identity, monthly usage and account actions. Show actual consumed minutes, a percentage and an accessible progress bar.
 - Add a large Clarify switch above Home history. Keep the microphone session active until the user switches it off or iOS interrupts it; remove the five-minute inactivity timeout and retain the five-minute limit per recording.
 
 ### Fixed
 
+- Show loading while the account quota is unknown, instead of displaying 0 of 0. Start the query after startup operations finish and allow retry after a failed query.
+- Remove the quick-menu divider above Settings and the empty space from hidden update actions.
+- Release global shortcuts while capturing a new binding, so existing keyboard and side-mouse shortcuts cannot trigger a workflow or prevent capture. Restore bindings on cancellation and window close.
 - Show only the native back chevron on iOS Settings, instead of the internal “(tabs)” route name.
 - Scale and space the keyboard dictionary plus symbol. Publish the keyboard height before view loading and keep fitting requests independent of temporary host frames.
 
@@ -342,7 +352,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/jvictormaynard/clarify/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jvictormaynard/clarify/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jvictormaynard/clarify/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/jvictormaynard/clarify/compare/v0.5.2...v0.5.3

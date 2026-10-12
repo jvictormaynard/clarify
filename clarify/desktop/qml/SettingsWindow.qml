@@ -152,6 +152,8 @@ ApplicationWindow {
         enabled: workflow.surface === "settings"
                  && settings.hotkeyCaptureAction !== ""
         focus: enabled
+        property int pendingModifier: 0
+        onEnabledChanged: pendingModifier = 0
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
@@ -162,8 +164,30 @@ ApplicationWindow {
                 settings.cancelHotkeyCapture()
                 return
             }
+            if ([Qt.Key_Control, Qt.Key_Alt, Qt.Key_Shift, Qt.Key_Meta].indexOf(event.key) >= 0) {
+                pendingModifier = event.key
+                return
+            }
+            pendingModifier = 0
             settings.captureHotkey(
                 settings.hotkeyCaptureAction, event.key, event.modifiers)
+        }
+        Keys.onReleased: function(event) {
+            event.accepted = true
+            if (!event.isAutoRepeat && event.key === pendingModifier) {
+                pendingModifier = 0
+                settings.captureHotkey(settings.hotkeyCaptureAction, event.key, event.modifiers)
+            }
+        }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        z: 100
+        enabled: hotkeyCaptureItem.enabled
+        acceptedButtons: Qt.BackButton | Qt.ForwardButton
+        onClicked: function(mouse) {
+            settings.captureMouseHotkey(settings.hotkeyCaptureAction, mouse.button, mouse.modifiers)
         }
     }
 

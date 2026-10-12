@@ -1,6 +1,6 @@
 # Clarify privacy notice
 
-Effective date: 11 October 2026.
+Effective date: 12 October 2026.
 
 Clarify is an open-source app maintained by João Victor Maynard Mota. This
 notice describes the optional hosted beta at `clarify-api.victormaynard.com`
@@ -13,8 +13,9 @@ operators and policies.
   to the selected provider. The Clarify account service does not receive them.
 - Desktop local inference processes audio on the device. It does not silently
   switch to a cloud provider. Local inference is not available on iOS.
-- With hosted processing enabled, the Clarify service receives audio and the
-  vocabulary needed for that request. It sends audio to Groq for transcription,
+- When you sign in, account processing is active automatically. The Clarify
+  service receives audio and the vocabulary needed for that request. It sends
+  audio to Groq for transcription,
   then sends the transcript and vocabulary to Groq for rewriting. The result
   returns to the device.
 

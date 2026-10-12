@@ -34,8 +34,8 @@ export function App() {
   }, [page]);
   const managed = !!(state?.accountState?.managed || state?.accountState?.signedIn);
   const settingsPages = getSettingsPages();
-  const visiblePages = settingsPages.filter(item => !managed || item.id !== "models");
-  const activePage = managed && page === "models" ? "account" : page;
+  const visiblePages = settingsPages.filter(item => !managed || (item.id !== "models" && item.id !== "text"));
+  const activePage = managed && (page === "models" || page === "text") ? "account" : page;
   const Page = pageComponents[activePage];
   const info = settingsPages.find((item) => item.id === activePage)!;
 
@@ -53,7 +53,7 @@ export function App() {
                 key={id}
                 disabled={busy}
                 aria-label={label}
-                aria-current={id === page ? "page" : undefined}
+                aria-current={id === activePage ? "page" : undefined}
                 onClick={() => void controller.navigate(id)}
               >
                 <Icon size={18} strokeWidth={1.6} />

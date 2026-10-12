@@ -4209,6 +4209,16 @@
     "en": "Off",
     "es": "Apagado"
   },
+  "Cota compartilhada entre desktop e iPhone.": {
+    "pt": "Cota compartilhada entre desktop e iPhone.",
+    "en": "Quota shared between desktop and iPhone.",
+    "es": "Cuota compartida entre escritorio y iPhone."
+  },
+  "Zona de perigo": {
+    "pt": "Zona de perigo",
+    "en": "Danger zone",
+    "es": "Zona de peligro"
+  },
   "Ativar Clarify": {
     "pt": "Ativar Clarify",
     "en": "Enable Clarify",

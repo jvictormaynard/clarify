@@ -172,7 +172,12 @@ class WebSettingsTests(unittest.TestCase):
         bridge = SimpleNamespace(surface="settings", closeSettings=Mock())
         fallback = Mock()
         host = WebSettingsProcess(self.settings, bridge, fallback)
+        capture_changed = Mock()
+        self.settings._hotkey_capture_changed = capture_changed
+        self.request("beginHotkeyCapture", "recording_hotkey")
         host._finished(0, None)
+        self.assertEqual(self.settings.hotkeyCaptureAction, "")
+        self.assertEqual(capture_changed.call_args_list, [((True,),), ((False,),)])
         fallback.assert_not_called()
         self.assertIn("error", self.request("openLegacy"))
         bridge.closeSettings.assert_called_once()

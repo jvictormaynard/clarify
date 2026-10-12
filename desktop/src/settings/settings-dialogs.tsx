@@ -74,6 +74,10 @@ export function SettingsDialogs({
           autoFocus
           readOnly
           onKeyDown={(event) => void c.captureHotkey(event)}
+          onKeyUp={(event) => void c.captureHotkey(event)}
+          onMouseDown={(event) => { if ([3, 4].includes(event.button)) event.preventDefault(); }}
+          onMouseUp={(event) => void c.captureMouseHotkey(event)}
+          onAuxClick={(event) => event.preventDefault()}
         />
       </Confirm>
     </>

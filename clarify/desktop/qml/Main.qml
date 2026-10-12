@@ -30,6 +30,10 @@ ApplicationWindow {
         value: settings.updateInstalling !== true
     }
     onPresentationVisibleChanged: {
+        if (!presentationVisible) {
+            languageMenu.close()
+            quickMenu.close()
+        }
         // Tray/visibility shortcuts reopen the toolbar, not a settings placeholder.
         if (presentationVisible && workflow.surface === "settings")
             workflow.closeSettings()
@@ -95,7 +99,10 @@ ApplicationWindow {
     Connections {
         target: workflow
         function onSurfaceChanged() {
-            if (workflow.surface !== "idle") quickMenu.close()
+            if (workflow.surface !== "idle") {
+                quickMenu.close()
+                languageMenu.close()
+            }
             // The Python visibility controller receives this same signal. Let it
             // decide whether to hide or restore the window before changing layout.
             if (root.displayedSurface === "translation_picker")
@@ -109,6 +116,17 @@ ApplicationWindow {
         NumberAnimation { target: root; property: "surfaceOpacity"; to: 0; duration: theme.fadeDuration; easing.type: Easing.OutCubic }
         ScriptAction { script: root.displayedSurface = workflow.surface }
         NumberAnimation { target: root; property: "surfaceOpacity"; to: 1; duration: theme.fadeDuration; easing.type: Easing.OutCubic }
+    }
+
+    LanguageMenu {
+        id: languageMenu
+        objectName: "languageMenu"
+        parent: root.contentItem
+        visualTheme: root.visualTheme
+        languages: languageButton.supportedLanguages
+        languageNames: languageButton.languageNames
+        selectedLanguage: workflow.language
+        onSelected: function(language) { workflow.setLanguage(language) }
     }
 
     QuickMenu {
@@ -182,10 +200,6 @@ ApplicationWindow {
                 workflow.openFiles()
                 root.requestActivate()
             })
-        }
-        MenuSeparator {
-            topPadding: 4; bottomPadding: 4
-            contentItem: Rectangle { implicitHeight: 1; color: theme.controlPressed }
         }
         QuickMenuItem {
             objectName: "quickSettingsItem"
@@ -356,6 +370,7 @@ ApplicationWindow {
                             text: ""
                             theme: root.visualTheme
                             quiet: true
+                            checked: languageMenu.visible
                             Layout.preferredWidth: 36
                             Layout.preferredHeight: 26
                             Accessible.name: qsTr("Language: ")
@@ -368,12 +383,17 @@ ApplicationWindow {
                                 height: 16
                                 source: "flags/" + workflow.language + ".svg"
                             }
-                            onClicked: {
+                            function openLanguages() {
+                                languageMenu.keepOpen()
+                                if (languageMenu.visible) return
                                 quickMenu.close()
-                                var currentIndex = supportedLanguages.indexOf(workflow.language)
-                                var nextIndex = (currentIndex + 1) % supportedLanguages.length
-                                workflow.setLanguage(supportedLanguages[nextIndex])
+                                var position = mapToItem(root.contentItem, width / 2, height)
+                                languageMenu.x = position.x - languageMenu.width / 2
+                                languageMenu.y = position.y + 4
+                                languageMenu.open()
                             }
+                            onHoveredChanged: hovered ? openLanguages() : languageMenu.closeSoon()
+                            onClicked: openLanguages()
                         }
 
                         AppButton {
@@ -399,6 +419,7 @@ ApplicationWindow {
                                 anchors.margins: 2
                             }
                             onClicked: {
+                                languageMenu.close()
                                 if (quickMenu.visible) {
                                     quickMenu.close()
                                     return

@@ -112,6 +112,10 @@ def _qml_hotkey_definition(
 
     key = _qt_enum_value(key_code)
     special_keys = {
+        _qt_enum_value(Qt.Key.Key_Control): "CTRL",
+        _qt_enum_value(Qt.Key.Key_Alt): "ALT",
+        _qt_enum_value(Qt.Key.Key_Shift): "SHIFT",
+        _qt_enum_value(Qt.Key.Key_Meta): "WIN",
         _qt_enum_value(Qt.Key.Key_Space): "SPACE",
         _qt_enum_value(Qt.Key.Key_Tab): "TAB",
         _qt_enum_value(Qt.Key.Key_Enter): "ENTER",
@@ -140,6 +144,12 @@ def _qml_hotkey_definition(
                 code="unsupported_key",
             )
 
+    return HotkeyDefinition(
+        _qml_hotkey_modifiers(modifier_flags) - {key_name.lower()}, key_name
+    )
+
+
+def _qml_hotkey_modifiers(modifier_flags: object) -> set[str]:
     modifiers_value = _qt_enum_value(modifier_flags)
     modifiers = []
     for name, modifier in (
@@ -150,7 +160,7 @@ def _qml_hotkey_definition(
     ):
         if modifiers_value & _qt_enum_value(modifier):
             modifiers.append(name)
-    return HotkeyDefinition(modifiers, key_name)
+    return set(modifiers)
 
 
 def _is_windows() -> bool:
@@ -350,6 +360,7 @@ class QmlSettingsController(QObject):
         microphone_backend: Any | None = None,
         microphone_inventory_source: Any | None = None,
         hotkey_applier: Callable[[HotkeySettings], Any] | None = None,
+        hotkey_capture_changed: Callable[[bool], None] | None = None,
         dictionary_service: DictionarySnippetService | None = None,
         account_service=None,
         account_can_change=None,
@@ -389,6 +400,7 @@ class QmlSettingsController(QObject):
             {"id": "cpu", "label": "CPU"},
         ]
         self._hotkey_applier = hotkey_applier
+        self._hotkey_capture_changed = hotkey_capture_changed
         self._microphone_backend = microphone_backend
         self._microphone_inventory_source = (
             microphone_inventory_source
@@ -993,6 +1005,9 @@ class QmlSettingsController(QObject):
     def beginHotkeyCapture(self, action: str) -> bool:
         """Put one QML row into capture mode without changing the draft."""
 
+        if not self._account_can_change():
+            self._set_error(ValueError("Finalize a operação antes de continuar."))
+            return False
         try:
             parsed = _hotkey_action(action)
         except HotkeyValidationError as error:
@@ -1001,6 +1016,12 @@ class QmlSettingsController(QObject):
         self._set_error(None)
         next_action = parsed.value
         if next_action != self._hotkey_capture_action:
+            if not self._hotkey_capture_action and self._hotkey_capture_changed:
+                try:
+                    self._hotkey_capture_changed(True)
+                except Exception as error:
+                    self._set_error(error)
+                    return False
             self._hotkey_capture_action = next_action
             self.hotkeyChanged.emit()
         return True
@@ -1012,6 +1033,12 @@ class QmlSettingsController(QObject):
         if self._hotkey_capture_action:
             self._hotkey_capture_action = ""
             self.hotkeyChanged.emit()
+            if self._hotkey_capture_changed:
+                try:
+                    self._hotkey_capture_changed(False)
+                except Exception as error:
+                    self._set_error(error)
+                    return False
         return True
 
     @Slot(str, object, result=bool)
@@ -1026,7 +1053,7 @@ class QmlSettingsController(QObject):
             return False
         updated = self._update_config(replace(self._config, hotkeys=settings))
         if updated:
-            self.cancelHotkeyCapture()
+            return self.cancelHotkeyCapture()
         return updated
 
     @Slot(str, int, int, result=bool)
@@ -1044,6 +1071,19 @@ class QmlSettingsController(QObject):
             self._set_error(error)
             return False
         return self.setHotkey(action, definition)
+
+    @Slot(str, int, int, result=bool)
+    def captureMouseHotkey(self, action: str, button: int, modifier_flags: int) -> bool:
+        keys = {
+            _qt_enum_value(Qt.MouseButton.BackButton): "XBUTTON1",
+            _qt_enum_value(Qt.MouseButton.ForwardButton): "XBUTTON2",
+        }
+        if button not in keys:
+            return False
+        return self.setHotkey(
+            action,
+            HotkeyDefinition(_qml_hotkey_modifiers(modifier_flags), keys[button]),
+        )
 
     @Slot(str, result=bool)
     def resetHotkey(self, action: str) -> bool:
@@ -1889,6 +1929,8 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def load(self) -> bool:
         self.stopMicrophoneTest()
+        if not self.cancelHotkeyCapture():
+            return False
         try:
             loaded_config = self._config_repository.load()
             self._dictionary_draft = self._dictionary_service.state
@@ -1935,10 +1977,8 @@ class QmlSettingsController(QObject):
                 return True
             if mode == "account":
                 account = self._account.snapshot()
-                if not account.get("signedIn") or not account.get("hosted"):
-                    raise ValueError(
-                        "Confirme sua conta e ative o processamento do Clarify."
-                    )
+                if not account.get("signedIn"):
+                    raise ValueError("Entre na conta novamente.")
             elif mode in {"byok", "local"}:
                 if self._account.snapshot().get("signedIn"):
                     raise ValueError(
@@ -2021,7 +2061,6 @@ class QmlSettingsController(QObject):
             "sync-remote",
             "logout",
             "delete",
-            "hosted",
         }:
             return False
         if not self._account.begin_change():
@@ -2055,8 +2094,6 @@ class QmlSettingsController(QObject):
                 elif action in {"logout", "delete"}:
                     self._account.logout(delete=action == "delete")
                     self._dictionary_service.reload()
-                elif action == "hosted":
-                    self._account.set_hosted(value == "1")
             except Exception as problem:
                 from clarify_account import AccountError
 
@@ -2084,6 +2121,8 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def save(self) -> bool:
+        if not self.cancelHotkeyCapture():
+            return False
         persisted_before: AppConfig | None = None
         hotkeys_applied = False
         persisted_config = None
@@ -2579,20 +2618,22 @@ class QmlSettingsController(QObject):
             self._selected_scope
         )
         self._config = config
+        capture_restored = True
+        capture_changed = bool(self._hotkey_capture_action)
         if hotkeys_changed:
             self._hotkey_settings_controller.replace(config.hotkeys)
-            self._hotkey_capture_action = ""
+            capture_restored = self.cancelHotkeyCapture()
         if not self._dirty:
             self._dirty = True
             self.dirtyChanged.emit()
         self.configChanged.emit()
-        if hotkeys_changed:
+        if hotkeys_changed and not capture_changed:
             self.hotkeyChanged.emit()
         if microphone_changed:
             self.microphoneChanged.emit()
         if route_changed:
             self.routeChanged.emit()
-        return True
+        return capture_restored
 
     def _persist_ui_preference(
         self,
@@ -2622,7 +2663,7 @@ class QmlSettingsController(QObject):
         config_changed = config != self._config
         self._config = config
         self._hotkey_settings_controller.replace(config.hotkeys)
-        self._hotkey_capture_action = ""
+        self.cancelHotkeyCapture()
         self._provider_api_key_draft = ""
         self._provider_base_url_draft = self._config_provider_base_url(
             self._selected_provider_id
@@ -2631,7 +2672,7 @@ class QmlSettingsController(QObject):
             self.configChanged.emit()
         if microphone_changed:
             self.microphoneChanged.emit()
-        if hotkeys_changed or capture_changed:
+        if hotkeys_changed and not capture_changed:
             self.hotkeyChanged.emit()
         self.providerStateChanged.emit()
         if route_changed:

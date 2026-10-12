@@ -22,8 +22,7 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Reescrita segura de texto selecionado com verificação de foco
 - Tradução de texto selecionado
 - Integração nativa com atalhos e bandeja do Windows
-- Interface QML em inglês, português, espanhol, alemão e russo;
-  as novas Configurações usam português por enquanto
+- Interface em português, inglês e espanhol, independente do idioma do ditado
 - Configurações em React/Tauri: Conta Clarify, Geral, Ditado, Texto, Dicionário, Atalhos e
   Modelos e serviços
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
@@ -32,13 +31,16 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Conta opcional com entrada por código de e-mail, dicionário compartilhado e cota de ditado
 - Modos locais e com chave própria disponíveis sem conta; sem telemetria
 
-A versão 0.7.0 usa o idioma do dispositivo: português, inglês ou espanhol,
+A versão 0.8.0 usa o idioma do dispositivo: português, inglês ou espanhol,
 incluindo o e-mail de autenticação. No primeiro acesso, informe seu e-mail e
 confirme o código dentro do aplicativo para entrar ou criar uma conta.
 **Continuar sem conta** abre a configuração do modelo local; a chave própria
-continua disponível nessa etapa. O processamento da conta exige consentimento.
+continua disponível nessa etapa. Entrar na conta ativa o processamento do Clarify automaticamente.
 Contas autenticadas usam os modelos gerenciados pelo Clarify. As configurações
-de provedores, chaves e modelos locais aparecem apenas no modo sem conta.
+de provedores, chaves e modelos locais e a aba Texto aparecem apenas no modo sem conta.
+O consumo mensal tem uma barra de progresso. Enquanto a cota não é conhecida,
+a tela mostra o carregamento. Sair e excluir conta ficam em uma Zona de perigo
+fechada por padrão, com confirmações separadas.
 O dicionário sincroniza automaticamente e o consumo é atualizado após o uso.
 O cache local preserva alterações offline; conflitos mantêm ambas as cópias
 até a resolução. O histórico e os atalhos permanecem locais. As instalações
@@ -156,7 +158,11 @@ dependências automaticamente.
 | `Alt + R` | Mostrar ou esconder o Clarify |
 
 Os cinco atalhos globais podem ser capturados, validados e redefinidos em
-**Configurações → Atalhos**. No modo Hold, mantenha o atalho pressionado para
+**Configurações → Atalhos**. Também é possível usar Ctrl, Alt, Shift ou Windows
+sozinhos e os botões laterais Mouse 4 e Mouse 5. Combinações comuns, como Ctrl+C,
+continuam funcionando. Passe o mouse sobre a bandeira da pill para abrir a lista
+vertical de idiomas e selecionar uma bandeira.
+No modo Hold, mantenha o atalho pressionado para
 gravar e solte para finalizar. `Esc` cancela mesmo enquanto o atalho está
 pressionado. O botão de microfone da pill continua funcionando por clique.
 O aviso de cancelamento e a opção Desfazer aparecem na própria pill.

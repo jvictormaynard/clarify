@@ -50,7 +50,15 @@ An authenticated account uses Clarify-managed processing for dictation, imported
 audio, selected-text rewrite and translation. Personal provider and local-model
 controls are hidden in this mode. An expired managed session fails closed; it
 cannot fall back to a saved personal key. Signing out explicitly restores the
-personal configuration. Processing consent is separate from authentication.
+personal configuration. Signing in activates account processing automatically,
+including for existing signed-in profiles. There is no separate activation step.
+
+Shortcut capture is owned by the Qt Settings controller, including the React
+dialog's capture state. Capture temporarily releases native hotkeys and input
+hooks so an existing binding cannot trigger a workflow or consume a side button.
+Successful capture, cancellation, hidden or closed Settings restore the bindings.
+Late input events from the replaced hook are ignored; a registration collision
+can recover through the existing Apply transaction.
 
 Vocabulary sync runs after login and local edits, then at most once per minute
 while the app is active or before a hosted dictation. Failed attempts also use
@@ -392,7 +400,8 @@ formats. See [Provider HTTP reliability and diagnostics](http-resilience.md).
 
 ### `windows_hotkeys.py`
 
-Owns native Windows `RegisterHotKey` registration and Ctrl-key synthesis. The
+Owns native Windows `RegisterHotKey` registration, scoped low-level keyboard
+and mouse hooks for modifier keys and side buttons, and Ctrl-key synthesis. The
 typed `HotkeySettings` value in `hotkey_config.py` persists the five actions
 (recording, rewrite, selected-text translation, voice translation, and
 visibility) without coupling them to provider adapters. Legacy installations
@@ -400,6 +409,12 @@ are normalised to Alt+L, Alt+K, Alt+T, Alt+V, and Alt+R. Conflicts are rejected
 before registration, and strict registration rolls back every accepted ID if
 Windows rejects one combination; settings therefore cannot leave a stale or
 partially active set.
+
+The Qt backend owns hook installation, replacement, polling, and cleanup.
+Callbacks queue action IDs to Qt and never record text. Standalone modifiers
+run on clean release, so ordinary chords do not trigger them. Modifier Hold
+recording starts after 200 ms and ends when released or used in a chord. Only
+configured side mouse buttons are consumed. Injected input is ignored.
 
 `RegisterHotKey` delivers key-down notifications and has no key-up edge. The
 production Qt shell adds a scoped physical-key timer for Hold recording: key
