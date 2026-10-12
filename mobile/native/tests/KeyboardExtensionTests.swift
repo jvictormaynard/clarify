@@ -103,8 +103,8 @@ final class KeyboardExtensionTests: XCTestCase {
         let allow = settings.alerts.buttons["Allow"]
         if allow.waitForExistence(timeout: 3) { allow.tap() }
       }
-      let granted = expectation(for: NSPredicate(format: "value == %@", "1"), evaluatedWith: access)
-      wait(for: [granted], timeout: 5)
+      // The Settings switch can keep a stale AX value after its alert closes.
+      // Verify the permission in the extension below, where it affects Start.
     }
     app.activate()
     app.textFields["composer"].tap()
@@ -117,6 +117,8 @@ final class KeyboardExtensionTests: XCTestCase {
       XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
     }
     XCTAssertTrue(keyboard.waitForExistence(timeout: 30), app.debugDescription)
+    XCTAssertTrue(app.buttons["clarify.keyboard.start"].waitForExistence(timeout: 5),
+                  "The installed extension must receive Full Access before testing activation")
     try checkTrace(in: app, opening: "Switching to the extension")
     let letter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch
     XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription); letter.tap()
