@@ -50,6 +50,18 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
       .sub(/  override var preferredContentSize: CGSize \{.*?\n  \}/m, '// Isolated diagnostic: let UIKit own the root height.')
       .sub('keys.heightAnchor.constraint(equalToConstant: 220)', 'keys.bottomAnchor.constraint(equalTo: view.bottomAnchor)'))
   end
+  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'default-root'
+    original = File.read(source)
+    source = File.join(fixture, name)
+    replacement = <<~'SWIFT'
+      override func loadView() {
+        super.loadView()
+        view.heightAnchor.constraint(equalToConstant: KeyboardInputView.contentHeight).isActive = true
+        view.backgroundColor = .clear; view.isOpaque = false
+      }
+    SWIFT
+    File.write(source, original.sub(/  override func loadView\(\) \{.*?\n  \}/m, replacement))
+  end
   if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_SELF_SIZING'] == 'off'
     original = File.read(source)
     raise 'Self-sizing experiment no longer matches the production source' unless original.scan('allowsSelfSizing = true').length == 1
