@@ -22,25 +22,19 @@ final class KeyboardExtensionTests: XCTestCase {
     app.activate()
   }
   private func open(_ title: String, in app: XCUIApplication) {
+    // Keep a live query. Binding the row's snapshot identity can fail when
+    // Settings rebuilds its SwiftUI list between finding a row and tapping it.
+    let item = app.descendants(matching: .any)
+      .matching(NSPredicate(format: "label == %@ OR identifier == %@", title, title)).firstMatch
     for _ in 0..<8 {
-      let headerBottom = app.navigationBars.firstMatch.frame.maxY
-      // Settings can expose the same row as Other or StaticText while its
-      // snapshot changes. Bind by accessibility identity, not by list index.
-      let candidates = app.descendants(matching: .any)
-        .matching(NSPredicate(format: "label == %@ OR identifier == %@", title, title))
-        .allElementsBoundByAccessibilityElement
-      for item in candidates {
-        guard item.exists else { continue }
-        let frame = item.frame
-        if !frame.isInfinite && frame.minY >= headerBottom && frame.maxY <= app.frame.maxY && item.isHittable {
-          item.tap()
-          if ["General", "Keyboard", "Keyboards"].contains(title) {
-            let titles = title == "Keyboard" ? ["Keyboard", "Keyboards"] : [title]
-            let header = app.navigationBars.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", titles, titles)).firstMatch
-            XCTAssertTrue(header.waitForExistence(timeout: 10), "Settings navigation did not complete: \(title)")
-          }
-          return
+      if item.exists && item.isHittable {
+        item.tap()
+        if ["General", "Keyboard", "Keyboards"].contains(title) {
+          let titles = title == "Keyboard" ? ["Keyboard", "Keyboards"] : [title]
+          let header = app.navigationBars.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", titles, titles)).firstMatch
+          XCTAssertTrue(header.waitForExistence(timeout: 10), "Settings navigation did not complete: \(title)")
         }
+        return
       }
       app.swipeUp()
     }

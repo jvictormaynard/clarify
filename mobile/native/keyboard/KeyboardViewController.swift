@@ -381,7 +381,7 @@ class KeyboardViewController: UIInputViewController {
     let proxy = textDocumentProxy, replaced = textDocumentProxy.selectedText ?? ""
     typing.reset(); dictationEdit = nil; proxy.insertText(text)
     dictationEdit = DictationEdit(text: text, replaced: replaced, proxy: proxy)
-    insert.isHidden = true; updateSuggestions()
+    insert.isHidden = true; updateCapitalization(); updateSuggestions()
   }
   private func updateSuggestions() {
     if typingVocabularyRevision != state.libraryRevision || Date().timeIntervalSince(typingVocabularyCheckedAt) >= 1 {
@@ -466,7 +466,7 @@ class KeyboardViewController: UIInputViewController {
     applyingDictationEdit = true
     dictationEdit = edit.toggle(in: textDocumentProxy) ? edit : nil
     applyingDictationEdit = false
-    typing.reset(); feedback.type(); updateSuggestions()
+    typing.reset(); feedback.type(); updateCapitalization(); updateSuggestions()
   }
   private func saveSelectedTerm() {
     guard let term = selectedTerm, let scope = selectedScope, let store,
