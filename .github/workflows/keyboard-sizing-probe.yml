@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [no-preferred, no-self-sizing, no-arbiter, controller-forward]
+        variant: [minimal-native, no-globe-query, no-lexicon, no-dictation-key]
     runs-on: macos-26
     timeout-minutes: 20
     defaults:

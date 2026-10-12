@@ -86,9 +86,29 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
       host_end = source.index('    requestSupplementaryLexicon', host_start)
       source[host_start...host_end] = ''
     end
+    if variant == 'no-globe-query'
+      source.sub!(/    if keys.needsGlobe != needsInputModeSwitchKey \{.*?\n    \}/m, '')
+    end
+    source.sub!(/    requestSupplementaryLexicon.*?\n    \}/m, '') if variant == 'no-lexicon'
+    source.sub!('hasDictationKey = true', 'hasDictationKey = false') if variant == 'no-dictation-key'
+    if variant == 'minimal-native'
+      source = <<~SWIFT
+        import UIKit
+        class KeyboardViewController: UIInputViewController {
+          override func viewDidLoad() {
+            super.viewDidLoad()
+            let label = UILabel(); label.text = "Allow Full Access"; label.frame = CGRect(x: 12, y: 8, width: 200, height: 24)
+            view.addSubview(label)
+            let key = UIButton(type: .system); key.setTitle("q", for: .normal); key.frame = CGRect(x: 30, y: 60, width: 60, height: 60)
+            key.addAction(UIAction { [weak self] _ in self?.textDocumentProxy.insertText("q") }, for: .touchUpInside)
+            view.addSubview(key)
+          }
+        }
+      SWIFT
+    end
     file = File.join(fixture, name); File.write(file, source)
   end
-  if name == 'KBHostArbiterHook.m' && variant == 'no-arbiter'
+  if name == 'KBHostArbiterHook.m' && ['no-arbiter', 'minimal-native'].include?(variant)
     source = File.read(file).sub('[self installHooks];', '// Diagnostic fixture: leave UIKit arbiter behavior unchanged.')
     source.sub!('#import "KBHostArbiterHook.h"', "#import \"#{File.join(root, 'native/keyboard/KBHostArbiterHook.h')}\"")
     file = File.join(fixture, name); File.write(file, source)
