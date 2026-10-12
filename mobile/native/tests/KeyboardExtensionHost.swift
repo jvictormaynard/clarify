@@ -1,12 +1,14 @@
 import UIKit
 
 @main
-final class KeyboardHostApp: UIResponder, UIApplicationDelegate {
+final class KeyboardHostApp: UIResponder, UIApplicationDelegate {}
+
+final class KeyboardHostScene: UIResponder, UIWindowSceneDelegate {
   var window: UIWindow?
-  func application(_ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-    let window = UIWindow(frame: UIScreen.main.bounds)
+  func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+    guard let scene = scene as? UIWindowScene else { return }
+    let window = UIWindow(windowScene: scene)
     window.rootViewController = KeyboardHostController(); window.makeKeyAndVisible(); self.window = window
-    return true
   }
 }
 

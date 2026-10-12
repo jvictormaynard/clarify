@@ -12,8 +12,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - {variant: baseline, toolchain: '26.4.1', runner: macos-26, runtime: iOS-26-4, xcode: /Applications/Xcode_26.4.1.app/Contents/Developer}
           - {variant: baseline, toolchain: '26.6', runner: macos-26, runtime: iOS-26-5, xcode: /Applications/Xcode_26.6.app/Contents/Developer}
-          - {variant: full-access, toolchain: '26.6', runner: macos-26, runtime: iOS-26-5, xcode: /Applications/Xcode_26.6.app/Contents/Developer}
           - {variant: baseline, toolchain: '27.0', runner: xcode-27, runtime: iOS-27-0, xcode: /Applications/Xcode_27.app/Contents/Developer}
           - {variant: full-access, toolchain: '27.0', runner: xcode-27, runtime: iOS-27-0, xcode: /Applications/Xcode_27.app/Contents/Developer}
     runs-on: ${{ matrix.runner }}

@@ -12,7 +12,7 @@ function run(command, args, options = {}) {
 run('defaults', ['write', 'com.apple.iphonesimulator', 'ConnectHardwareKeyboard', '-bool', 'NO']);
 const devices = spawnSync('xcrun', ['simctl', 'list', 'devices', 'available', '--json'], { encoding: 'utf8' });
 if (devices.status !== 0) throw new Error(devices.stderr);
-const runtimes = Object.entries(JSON.parse(devices.stdout).devices).filter(([runtime]) => !process.env.CLARIFY_IOS_RUNTIME || runtime.endsWith(process.env.CLARIFY_IOS_RUNTIME));
+const runtimes = Object.entries(JSON.parse(devices.stdout).devices).filter(([runtime]) => !process.env.CLARIFY_IOS_RUNTIME || runtime.startsWith(`com.apple.CoreSimulator.SimRuntime.${process.env.CLARIFY_IOS_RUNTIME}`));
 const device = runtimes.flatMap(([, items]) => items).find(item => item.name.startsWith('iPhone'));
 if (!device) throw new Error('No iPhone simulator.');
 console.log(JSON.stringify({ runtime: runtimes.find(([, items]) => items.some(item => item.udid === device.udid))?.[0], device: device.name }));
