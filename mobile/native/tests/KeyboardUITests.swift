@@ -75,10 +75,10 @@ final class KeyboardUITests: XCTestCase {
   func testSlidingReleaseOverlapsAndCancelledTouchesDoNotLoseOrDuplicateLetters() async throws {
     try await MainActor.run {
       let grid = KeyGridView(frame: CGRect(x: 0, y: 0, width: 393, height: 220)); grid.layoutIfNeeded()
-      func key(_ title: String) throws -> UIButton {
+      @MainActor func key(_ title: String) throws -> UIButton {
         try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == title })
       }
-      func center(_ key: UIButton) -> CGPoint { key.convert(CGPoint(x: key.bounds.midX, y: key.bounds.midY), to: grid) }
+      @MainActor func center(_ key: UIButton) -> CGPoint { key.convert(CGPoint(x: key.bounds.midX, y: key.bounds.midY), to: grid) }
       let q = try key("Q"), w = try key("W")
       let qPoint = center(q), wPoint = center(w)
       var text = ""; grid.onInsert = { text += $0 }
