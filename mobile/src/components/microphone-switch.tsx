@@ -15,7 +15,7 @@ export function MicrophoneSwitch() {
   const blocked = changing || accountBusy || !!account?.busy || (!state.sessionActive && isBusy(state));
   async function change(enabled: boolean) {
     if (pending.current || blocked || enabled === state.sessionActive) return;
-    if (!state.configured) { router.navigate('/settings'); return; }
+    if (enabled && !state.configured) { router.navigate('/settings'); return; }
     pending.current = true; setRequested(enabled);
     try {
       if (enabled) await activate();

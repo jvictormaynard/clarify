@@ -15,7 +15,7 @@ Billing, translation and local models are outside this mobile release.
 
 Version **0.7.0 (23)** groups Home history by the device's calendar day, with
 continuous rows containing text and time. A large switch above history turns
-Clarify on or off. It reflects the native microphone state and shows loading
+Clarify on or off, centered between Off and On. It reflects the native microphone state and shows loading
 inside the same row. Home no longer contains a recorder.
 Dictionary words use the same continuous table. The word editor has Cancel,
 a centered title and Save in one header. Account uses compact identity, monthly
@@ -251,8 +251,9 @@ EAS_NO_VCS=1 EAS_PROJECT_ROOT="$PWD" npx eas-cli@24.12.0 submit --platform ios -
 
 `src/app/` owns the three native-tab pages and system-link routing.
 `src/components/` contains shared interface elements; `src/state/clarify.tsx`
-owns the app snapshot and activation request. `src/press-to-talk.ts` owns the app
-gesture. Leaving Home cancels a held clip and preserves a locked clip.
+owns the app snapshot and activation request. Home's switch uses that activation
+flow and native deactivation. `src/press-to-talk.ts` retains the tested gesture
+contract; recording controls are in the keyboard.
 `modules/clarify-core/ios` owns microphone lifetime, Keychain, Groq
 requests, local history/vocabulary, cancellation and shared state. `native/keyboard` owns keyboard
 gestures, local spelling and safe insertion. `plugins/with-clarify-keyboard.cjs`
