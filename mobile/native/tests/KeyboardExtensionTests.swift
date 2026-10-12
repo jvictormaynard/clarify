@@ -20,6 +20,10 @@ final class KeyboardExtensionTests: XCTestCase {
     let values = try JSONDecoder().decode([String: [Double]].self, from: Data(raw.utf8))
     let heights = values.values.flatMap { $0 }
     XCTAssertFalse(heights.isEmpty)
+    let trace = XCTAttachment(string: "\(opening): \(raw)"); trace.name = opening
+    trace.lifetime = .keepAlways; add(trace)
+    continueAfterFailure = true
+    defer { continueAfterFailure = false }
     XCTAssertTrue(heights.allSatisfy { $0 < 400 }, "\(opening): \(values)")
   }
   func testOpeningTheInstalledKeyboardExtensionDoesNotReserveAnOversizedFrame() throws {

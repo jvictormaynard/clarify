@@ -20,12 +20,14 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
       override init(nibName: String?, bundle: Bundle?) {
         super.init(nibName: nibName, bundle: bundle)
         preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
-        #{variant == 'eager-load' ? 'loadViewIfNeeded()' : ''}
+        #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
+        #{variant == 'eager-layout' ? 'view.layoutIfNeeded()' : ''}
       }
       required init?(coder: NSCoder) {
         super.init(coder: coder)
         preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)
-        #{variant == 'eager-load' ? 'loadViewIfNeeded()' : ''}
+        #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
+        #{variant == 'eager-layout' ? 'view.layoutIfNeeded()' : ''}
       }
     SWIFT
     layout = case variant
@@ -38,6 +40,11 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     end
     replacement = initialization + "override func loadView() {\n#{layout}\nview.backgroundColor = .clear; view.isOpaque = false\n}\n"
     source[start...finish] = replacement
+    if variant == 'no-hosting'
+      host_start = source.index('    let host = UIHostingController(rootView: ActivationLink')
+      host_end = source.index('    requestSupplementaryLexicon', host_start)
+      source[host_start...host_end] = ''
+    end
     file = File.join(fixture, name); File.write(file, source)
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(file))
