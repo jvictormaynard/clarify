@@ -26,14 +26,14 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(test_fil
       override init(nibName: String?, bundle: Bundle?) {
         #{controller_policy ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
         super.init(nibName: nibName, bundle: bundle)
-        #{variant == 'no-preferred' ? '' : 'preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)'}
+        #{['no-preferred', 'native-constrained'].include?(variant) ? '' : 'preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)'}
         #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
         #{variant == 'eager-layout' ? 'view.layoutIfNeeded()' : ''}
       }
       required init?(coder: NSCoder) {
         #{controller_policy ? 'KBInstallFixtureSizing(KeyboardViewController.self)' : ''}
         super.init(coder: coder)
-        #{variant == 'no-preferred' ? '' : 'preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)'}
+        #{['no-preferred', 'native-constrained'].include?(variant) ? '' : 'preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight)'}
         #{variant.start_with?('eager-') ? 'loadViewIfNeeded()' : ''}
         #{variant == 'eager-layout' ? 'view.layoutIfNeeded()' : ''}
       }
@@ -41,6 +41,8 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(test_fil
     layout = case variant
     when 'native-root'
       'super.loadView(); view.heightAnchor.constraint(equalToConstant: KeyboardInputView.contentHeight).isActive = true'
+    when 'native-constrained'
+      'super.loadView(); view.translatesAutoresizingMaskIntoConstraints = false; view.heightAnchor.constraint(equalToConstant: KeyboardInputView.contentHeight).isActive = true'
     when 'fixed-frame'
       'inputView = UIInputView(frame: CGRect(origin: .zero, size: preferredContentSize), inputViewStyle: .keyboard)'
     when 'no-preferred'
