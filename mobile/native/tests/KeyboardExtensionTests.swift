@@ -38,6 +38,12 @@ final class KeyboardExtensionTests: XCTestCase {
     XCTAssertTrue(heights.allSatisfy { $0 < 400 }, "\(opening): \(values)")
     XCTAssertGreaterThanOrEqual(values["displayFrames"]?.last ?? 0, 278, "The keyboard must remain fully visible")
   }
+  private func expectText(_ text: String, in app: XCUIApplication) {
+    let inserted = expectation(for: NSPredicate { _, _ in
+      (app.textFields["composer"].value as? String)?.lowercased() == text
+    }, evaluatedWith: nil)
+    wait(for: [inserted], timeout: 3)
+  }
   func testNativeSystemKeyboardDoesNotReserveAnOversizedFrame() throws {
     continueAfterFailure = false
     let app = XCUIApplication(); app.launchArguments = ["--system-keyboard"]; app.launch()
@@ -94,15 +100,15 @@ final class KeyboardExtensionTests: XCTestCase {
     try checkTrace(in: app, opening: "Switching to the extension")
     let letter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch
     XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription); letter.tap()
-    XCTAssertEqual((app.textFields["composer"].value as? String)?.lowercased(), "q", "The installed extension must be connected to the host field")
+    expectText("q", in: app)
     let space = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["space", "espaço", "espacio"])).firstMatch
     XCTAssertTrue(space.isHittable, "The bottom keyboard row must be usable")
     space.tap()
-    XCTAssertEqual((app.textFields["composer"].value as? String)?.lowercased(), "q ")
+    expectText("q ", in: app)
     let w = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "w", "W")).firstMatch
     letter.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.03,
       thenDragTo: w.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
-    XCTAssertEqual((app.textFields["composer"].value as? String)?.lowercased(), "q w", "A real sliding touch must commit its destination key once")
+    expectText("q w", in: app)
     for index in 0..<4 {
       app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
       app.textFields["composer"].tap()
