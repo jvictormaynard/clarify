@@ -79,6 +79,10 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         NSLog("ClarifyFixtureGeometry %@", geometry)
     SWIFT
     File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + instrumentation))
+    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'native-autosize'
+      original = File.read(source)
+      File.write(source, original.sub('    super.viewDidLoad()', "    super.viewDidLoad()\n    ClarifyFixtureDisableAutosizing(self)"))
+    end
     if ['window-height', 'window-height-visible'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
       original = File.read(source)
       correction = <<~'SWIFT'
@@ -115,10 +119,28 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
 
     + (void)activeArbiterCheck
     OBJC
+    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'native-autosize'
+      File.open(source, 'a') { |file| file.write(<<~'OBJC') }
+        void ClarifyFixtureDisableAutosizing(UIInputViewController *controller) {
+          @try {
+            SEL selector = NSSelectorFromString(@"_setAutosizeToCurrentKeyboard:");
+            NSMethodSignature *signature = [controller methodSignatureForSelector:selector];
+            if (!signature || signature.numberOfArguments != 3 || strcmp(signature.methodReturnType, "v") != 0
+                || !IsBooleanType([signature getArgumentTypeAtIndex:2])) return;
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(controller, selector, NO);
+            NSLog(@"ClarifyFixtureSizing disabled native autosizing");
+          } @catch (__unused NSException *error) { NSLog(@"ClarifyFixtureSizing unsupported"); }
+        }
+      OBJC
+    end
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
 bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
+if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'native-autosize'
+  original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
+  File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixtureDisableAutosizing(UIInputViewController *controller);\n")
+end
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   source = name == 'SharedState.swift' ? shared_source : File.join(root, 'modules/clarify-core/ios', name)
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
