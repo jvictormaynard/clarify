@@ -151,11 +151,13 @@ final class ClarifyAudioSession: NSObject {
         handle(command.action, id: command.operationID, haptics: false)
       }
     }
-    if let started = startedAt, Date().timeIntervalSince(started) >= 300 {
+    switch SessionDeadline.action(startedAt: startedAt, idleSince: lastActivity, phase: state.phase, now: Date()) {
+    case .finishRecording:
       finish()
-    } else if !state.phase.busy && Date().timeIntervalSince(lastActivity) >= 300 {
+    case .deactivate:
       deactivate()
       return
+    case nil: break
     }
     // Refresh liveness once per second, without disk writes on every audio buffer.
     if Date().timeIntervalSince1970 - state.heartbeat >= 1 { try? importKeyboardVocabulary(); publish() }
