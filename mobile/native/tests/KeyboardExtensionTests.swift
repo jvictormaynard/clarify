@@ -10,7 +10,9 @@ final class KeyboardExtensionTests: XCTestCase {
         if !frame.isInfinite && frame.minY >= headerBottom && frame.maxY <= app.frame.maxY && item.isHittable {
           item.tap()
           if ["General", "Keyboard", "Keyboards"].contains(title) {
-            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 10), "Settings navigation did not complete: \(title)")
+            let titles = title == "Keyboard" ? ["Keyboard", "Keyboards"] : [title]
+            let header = app.navigationBars.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", titles, titles)).firstMatch
+            XCTAssertTrue(header.waitForExistence(timeout: 10), "Settings navigation did not complete: \(title)")
           }
           return
         }
@@ -34,12 +36,12 @@ final class KeyboardExtensionTests: XCTestCase {
   func testNativeSystemKeyboardDoesNotReserveAnOversizedFrame() throws {
     continueAfterFailure = false
     let app = XCUIApplication(); app.launchArguments = ["--system-keyboard"]; app.launch()
-    app.textFields["composer"].tap()
+    app.secureTextFields["composer"].tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
     try checkTrace(in: app, opening: "Native keyboard initial opening")
     for index in 0..<4 {
       app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
-      app.textFields["composer"].tap()
+      app.secureTextFields["composer"].tap()
       XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
       try checkTrace(in: app, opening: "Native keyboard opening \(index)")
     }
