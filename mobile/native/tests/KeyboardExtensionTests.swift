@@ -60,7 +60,7 @@ final class KeyboardExtensionTests: XCTestCase {
   }
   private func expectText(_ text: String, in app: XCUIApplication) {
     let inserted = expectation(for: NSPredicate { _, _ in
-      (app.textFields["composer"].value as? String)?.lowercased() == text
+      app.textFields["composer"].value as? String == text
     }, evaluatedWith: nil)
     wait(for: [inserted], timeout: 3)
   }
@@ -120,15 +120,26 @@ final class KeyboardExtensionTests: XCTestCase {
     try checkTrace(in: app, opening: "Switching to the extension")
     let letter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch
     XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription); letter.tap()
-    expectText("q", in: app)
+    expectText("Q", in: app)
     let space = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["space", "espaço", "espacio"])).firstMatch
     XCTAssertTrue(space.isHittable, "The bottom keyboard row must be usable")
     space.tap()
-    expectText("q ", in: app)
+    expectText("Q ", in: app)
     let w = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "w", "W")).firstMatch
     letter.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.03,
       thenDragTo: w.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
-    expectText("q w", in: app)
+    expectText("Q w", in: app)
+    var sentence = "Q w"
+    for punctuation in [".", "?", "!"] {
+      app.buttons["123"].tap()
+      app.buttons[punctuation].tap()
+      app.buttons.matching(NSPredicate(format: "label IN %@", ["space", "espaço", "espacio"])).firstMatch.tap()
+      let capital = app.buttons["A"]
+      XCTAssertTrue(capital.waitForExistence(timeout: 5), "Sentence shift must activate after \(punctuation)")
+      capital.tap()
+      sentence += punctuation + " A"
+      expectText(sentence, in: app)
+    }
     for index in 0..<4 {
       app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
       app.textFields["composer"].tap()

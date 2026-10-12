@@ -23,6 +23,7 @@ final class KeyboardHostController: UIViewController {
   override func viewDidLoad() {
     super.viewDidLoad(); view.backgroundColor = .systemBackground
     field.borderStyle = .roundedRect; field.placeholder = "Type here"; field.accessibilityIdentifier = "composer"
+    field.autocapitalizationType = .sentences
     field.isSecureTextEntry = ProcessInfo.processInfo.arguments.contains("--system-keyboard")
     trace.text = "Keyboard frame trace"; trace.accessibilityIdentifier = "keyboard-frames"
     returnTrace.text = "Return trace"; returnTrace.accessibilityIdentifier = "return-trace"
