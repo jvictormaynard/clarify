@@ -81,18 +81,17 @@ with tempfile.TemporaryDirectory(prefix="clarify-runtime-inspect-") as folder:
     )
     pid = launched.rsplit(":", 1)[1].strip()
     methods = [
-        "-[UIInputWindowController sizeForInputViewController:inputView:]",
+        "-[UIInputWindowController _inputViewPadding]",
         "-[UIInputWindowControllerHostingItem _aligningInsetsForChildInputViewController:includeSceneBounds:]",
-        "-[_UIKBCompatInputView setFrame:]",
-        "-[_UIKBCompatInputView _compatibleBounds]",
-        "-[UICompatibilityInputViewController generateCompatibleSizeConstraintsIfNecessary]",
-        "-[UICompatibilityInputViewController rebuildChildConstraints]",
+        "-[UIInputWindowControllerHostingItem updateViewSizingConstraints]",
+        "-[UIInputWindowController sizeForInputViewController:inputView:includeAssistantBar:]",
+        "-[_UIRemoteViewController __hostReadyToReceiveMessagesFromServiceViewController]",
     ]
     commands = [
         "settings set target.process.stop-on-sharedlibrary-events false",
         "settings set interpreter.stop-command-source-on-error false",
     ]
-    commands += [f'disassemble --count 180 --name "{method}"' for method in methods]
+    commands += [f'disassemble --name "{method}"' for method in methods]
     commands += ["process detach", "quit"]
     script = root / "inspect.lldb"
     script.write_text("\n".join(commands) + "\n")
