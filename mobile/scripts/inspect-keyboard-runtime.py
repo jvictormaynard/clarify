@@ -4,7 +4,6 @@ Diagnostic only. No app profiles, keys, recording, or product changes.
 """
 
 import json
-import os
 from pathlib import Path
 import plistlib
 import subprocess
@@ -82,13 +81,12 @@ with tempfile.TemporaryDirectory(prefix="clarify-runtime-inspect-") as folder:
     )
     pid = launched.rsplit(":", 1)[1].strip()
     methods = [
-        "__95-[_UIViewServiceViewControllerOperator systemLayoutFittingSizeDidChangeForChildViewController:]_block_invoke",
-        "-[_UIViewServiceViewControllerOperator __createViewControllerWithOptions:completionBlock:]",
-        "-[_UIViewServiceViewControllerOperator __setContentSize:boundingPath:]",
-        "-[UIInputViewController _shouldForwardSystemLayoutFittingSizeChanges]",
-        "-[UIInputViewController _setupInputController]",
-        "-[UIInputViewController setView:]",
-        "-[_UIKBCompatInputView intrinsicContentSize]",
+        "-[_UIRemoteViewControllerLegacyImpl __viewServiceInstrinsicContentSizeDidChange:fence:]",
+        "-[UIInputWindowController sizeForInputViewController:inputView:includeAssistantBar:]",
+        "-[UIInputWindowController updateViewSizingConstraints]",
+        "-[UIInputWindowController checkPlaceholdersForRemoteKeyboardsAndForceConstraintsUpdate:layoutSubviews:]",
+        "-[_UIRemoteKeyboardPlaceholderView refreshPlaceholder]",
+        "-[UICompatibilityInputViewController addSnapshotViewForInputMode:orientation:]",
     ]
     commands = [
         "settings set target.process.stop-on-sharedlibrary-events false",
