@@ -7,6 +7,7 @@ tests = project.new_target(:ui_test_bundle, 'ExtensionTests', :ios, '16.4')
 container = project.new_target(:application, 'ActivationContainer', :ios, '16.4')
 container.add_dependency(keyboard); tests.add_dependency(app)
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionHost.swift')))
+app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/HostGeometryProbe.m')))
 shared_root = File.join(fixture, 'Shared'); Dir.mkdir(shared_root)
 shared_source = File.join(fixture, 'SharedState.swift')
 File.write(shared_source, File.read(File.join(root, 'modules/clarify-core/ios/SharedState.swift')).sub(/  init\?\(\) \{.*?\n  \}/m, "  init?() { self.root = URL(fileURLWithPath: #{shared_root.inspect}) }"))
@@ -73,6 +74,7 @@ embed.add_file_reference(keyboard.product_reference).settings = { 'ATTRIBUTES' =
 project.targets.each do |target|
   target.build_configurations.each do |config|
     config.build_settings.merge!({ 'SWIFT_VERSION' => '5.0', 'CODE_SIGNING_ALLOWED' => 'NO',
+      'CLANG_ENABLE_OBJC_ARC' => 'YES',
       'GENERATE_INFOPLIST_FILE' => 'YES', 'TARGETED_DEVICE_FAMILY' => '1', 'CURRENT_PROJECT_VERSION' => '1', 'MARKETING_VERSION' => '1.0' })
   end
 end
