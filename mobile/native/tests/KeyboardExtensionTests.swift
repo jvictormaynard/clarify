@@ -84,7 +84,7 @@ final class KeyboardExtensionTests: XCTestCase {
   }
   func testInstalledKeyboardTypingAndActivation() throws {
     continueAfterFailure = false
-    executionTimeAllowance = 300
+    executionTimeAllowance = 540
     let strictHeight = Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyStrictOpeningHeight") as? Bool ?? true
     let minimalProbe = Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyMinimalHeightProbe") as? Bool ?? false
     let testFullAccess = true
@@ -166,7 +166,19 @@ final class KeyboardExtensionTests: XCTestCase {
       let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "extension-opening-\(index)"
       capture.lifetime = .keepAlways; add(capture)
     }
-    if minimalProbe { return }
+    if minimalProbe {
+      for variant in ["baseline", "operator-no-auto", "operator-fullscreen", "native-autosize", "align-content", "operator-fitting", "operator-preferred", "incoming-size"] {
+        app.buttons["Dismiss"].tap()
+        try variant.write(to: fixtureRoot.appendingPathComponent("geometry-variant.txt"), atomically: true, encoding: .utf8)
+        for index in 0..<3 {
+          app.buttons["Reset trace"].tap(); app.textFields["composer"].tap()
+          XCTAssertTrue(keyboard.waitForExistence(timeout: 5), app.debugDescription)
+          try checkTrace(in: app, opening: "Matrix \(variant) opening \(index)", strict: strictHeight)
+          app.buttons["Dismiss"].tap()
+        }
+      }
+      return
+    }
     let start = app.buttons["clarify.keyboard.start"]
     // The helper consumes the actual keyboard nonce and calls the production
     // bridge. A success return value alone cannot prove that the app opened.

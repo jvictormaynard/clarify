@@ -8,14 +8,14 @@ final class KeyboardViewController: UIInputViewController {
   private var recordedParents = false
   override init(nibName: String?, bundle: Bundle?) {
     super.init(nibName: nibName, bundle: bundle)
-    modalPresentationStyle = .fullScreen
   }
   required init?(coder: NSCoder) {
     super.init(coder: coder)
-    modalPresentationStyle = .fullScreen
   }
   override func viewDidLoad() {
     super.viewDidLoad()
+    ClarifyGeometryConfigure(self)
+    NSLog("ClarifyGeometryExperiment %@", ClarifyGeometryVariant())
     ClarifyGeometryLogController(self, "loaded")
     let probe = UIButton(type: .system)
     probe.setTitle("Minimal keyboard", for: .normal)
@@ -31,6 +31,8 @@ final class KeyboardViewController: UIInputViewController {
     ])
   }
   override func viewWillAppear(_ animated: Bool) {
+    ClarifyGeometryConfigure(self)
+    if ClarifyGeometryVariant() == "operator-fullscreen" { parent?.modalPresentationStyle = .fullScreen }
     super.viewWillAppear(animated)
     ClarifyGeometryLogController(self, "willAppear")
   }
