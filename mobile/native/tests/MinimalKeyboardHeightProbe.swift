@@ -2,6 +2,9 @@ import UIKit
 
 // Isolated diagnostic: no logging from the layout callbacks.
 final class KeyboardViewController: UIInputViewController {
+  override var canBecomeFirstResponder: Bool {
+    ClarifyGeometryVariant() == "no-first-responder" ? false : super.canBecomeFirstResponder
+  }
   override func willMove(toParent parent: UIViewController?) {
     ClarifyGeometryPrepareParent(parent)
     super.willMove(toParent: parent)
