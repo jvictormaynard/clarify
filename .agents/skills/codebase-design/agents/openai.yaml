@@ -1,0 +1,5 @@
+interface:
+  display_name: "Codebase Design"
+  short_description: "Design owners, interfaces, and test boundaries"
+policy:
+  allow_implicit_invocation: true

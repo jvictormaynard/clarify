@@ -1,0 +1,5 @@
+interface:
+  display_name: "Setup Pre Commit"
+  short_description: "Inspect and repair project commit checks"
+policy:
+  allow_implicit_invocation: true

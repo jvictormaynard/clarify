@@ -1,0 +1,5 @@
+interface:
+  display_name: "Resolving Merge Conflicts"
+  short_description: "Resolve conflicts while preserving both contracts"
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,5 @@
+interface:
+  display_name: "To Spec"
+  short_description: "Write acceptance criteria and implementation scope"
+policy:
+  allow_implicit_invocation: true

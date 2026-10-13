@@ -1,0 +1,5 @@
+interface:
+  display_name: "Pr"
+  short_description: "Explain the final change and validation for reviewers"
+policy:
+  allow_implicit_invocation: true

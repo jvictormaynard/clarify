@@ -60,6 +60,12 @@ criteria](docs/release-readiness.md).
 
 ## Making a change
 
+For agent implementation, read [AGENTS.md](AGENTS.md) and the
+[project workflow](docs/agents/workflow.md). Use a linked worktree from freshly
+fetched `origin/main`. Independent writers use separate worktrees; follow the
+[parallel-work rules](docs/agents/workflow.md#worktrees-and-parallel-work) for setup
+and integration.
+
 1. Fork the repository and create a focused branch from the default branch.
 2. Keep unrelated refactors out of the same pull request.
 3. Add or update tests when behavior changes.

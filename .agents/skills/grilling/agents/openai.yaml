@@ -1,0 +1,5 @@
+interface:
+  display_name: "Grilling"
+  short_description: "Resolve consequential product and design ambiguity"
+policy:
+  allow_implicit_invocation: true
