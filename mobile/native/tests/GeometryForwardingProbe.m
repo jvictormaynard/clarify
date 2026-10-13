@@ -8,6 +8,7 @@
 static IMP windowInit;
 static IMP handleFactory;
 static IMP targetedForward;
+static IMP hostReady;
 static __weak UIViewController *geometryParent;
 NSString *ClarifyGeometryVariant(void) {
   return [NSString stringWithContentsOfFile:CLARIFY_GEOMETRY_CONFIG encoding:NSUTF8StringEncoding error:nil] ?: @"baseline";
@@ -64,6 +65,12 @@ static void TargetedForward(id self, SEL command, NSInvocation *invocation) {
   }
   ((void (*)(id, SEL, NSInvocation *))targetedForward)(self, command, invocation);
 }
+static void HostReady(id self, SEL command) {
+  NSLog(@"ClarifyInitialSize host-ready %@", ClarifyGeometryVariant());
+  if ([ClarifyGeometryVariant() isEqualToString:@"ready-before"]) PublishSize(self, 216);
+  ((void (*)(id, SEL))hostReady)(self, command);
+  if ([ClarifyGeometryVariant() isEqualToString:@"ready-after"]) PublishSize(self, 216);
+}
 static void Install(Class cls, SEL selector, IMP replacement, IMP *original) {
   Method method = cls ? class_getInstanceMethod(cls, selector) : NULL;
   if (!method) { NSLog(@"ClarifyInitialSize missing %@", NSStringFromSelector(selector)); return; }
@@ -73,6 +80,7 @@ static void Install(Class cls, SEL selector, IMP replacement, IMP *original) {
 @interface ClarifyInitialGeometryProbe : NSObject @end
 @implementation ClarifyInitialGeometryProbe
 + (void)load {
+  Install(NSClassFromString(@"_UIViewServiceViewControllerOperator"), NSSelectorFromString(@"__hostReadyToReceiveMessagesFromServiceViewController"), (IMP)HostReady, &hostReady);
   Install(NSClassFromString(@"_UIHostedWindow"), @selector(initWithFrame:), (IMP)WindowInit, &windowInit);
   Install(object_getClass(NSClassFromString(@"_UIHostedWindowHostingHandle")),
           NSSelectorFromString(@"hostedWindowHostingHandleWithContextID:rootLayerTransform:rootLayerFrame:"), (IMP)HandleFactory, &handleFactory);
