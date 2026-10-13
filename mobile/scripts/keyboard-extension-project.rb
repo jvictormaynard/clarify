@@ -8,6 +8,8 @@ container = project.new_target(:application, 'ActivationContainer', :ios, '16.4'
 container.add_dependency(keyboard); tests.add_dependency(app)
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionHost.swift')))
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/HostGeometryProbe.m')))
+host_bridge = File.join(fixture, 'Host-Bridging-Header.h')
+File.write(host_bridge, "void ClarifyInstallHostGeometry(void);\n")
 shared_root = File.join(fixture, 'Shared'); Dir.mkdir(shared_root)
 shared_source = File.join(fixture, 'SharedState.swift')
 File.write(shared_source, File.read(File.join(root, 'modules/clarify-core/ios/SharedState.swift')).sub(/  init\?\(\) \{.*?\n  \}/m, "  init?() { self.root = URL(fileURLWithPath: #{shared_root.inspect}) }"))
@@ -80,6 +82,7 @@ project.targets.each do |target|
 end
 app.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.host',
+    'SWIFT_OBJC_BRIDGING_HEADER' => host_bridge,
     'GENERATE_INFOPLIST_FILE' => 'NO', 'INFOPLIST_FILE' => File.join(fixture, 'App.plist') })
 end
 app_info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'KeyboardHost',

@@ -21,6 +21,7 @@ final class KeyboardHostController: UIViewController {
   private var visibleHeights: [CGFloat] = []
   private var displayLink: CADisplayLink?
   override func viewDidLoad() {
+    ClarifyInstallHostGeometry()
     super.viewDidLoad(); view.backgroundColor = .systemBackground
     field.borderStyle = .roundedRect; field.placeholder = "Type here"; field.accessibilityIdentifier = "composer"
     field.autocapitalizationType = .sentences

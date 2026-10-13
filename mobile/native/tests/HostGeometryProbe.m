@@ -49,18 +49,20 @@ static void GuideFrame(id self, SEL command, CGRect frame, BOOL layout) {
 }
 static void Install(NSString *name, NSString *selector, IMP replacement, IMP *original) {
   Class cls = NSClassFromString(name); SEL sel = NSSelectorFromString(selector);
-  Method method = class_getInstanceMethod(cls,sel); if (!method) return;
+  Method method = cls ? class_getInstanceMethod(cls,sel) : NULL;
+  NSLog(@"ClarifyHostGeometry install %@ %@ available=%d", name, selector, method != NULL);
+  if (!method) return;
   *original = method_getImplementation(method);
   if (!class_addMethod(cls,sel,replacement,method_getTypeEncoding(method))) method_setImplementation(method,replacement);
 }
-@interface ClarifyHostGeometryProbe : NSObject @end
-@implementation ClarifyHostGeometryProbe
-+ (void)load {
+void ClarifyInstallHostGeometry(void) {
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
   previous = [NSMutableDictionary new];
   Install(@"UIInputWindowControllerHosting", @"updateViewSizingConstraints", (IMP)HostingSizing, &hostingSizing);
   Install(@"UIInputWindowControllerHostingItem", @"updateViewSizingConstraints", (IMP)ItemSizing, &itemSizing);
   Install(@"UIInputLayoutHostingItem", @"updateViewSizingConstraints", (IMP)LayoutSizing, &layoutSizing);
   Install(@"_UIRemoteInputViewController", @"intrinsicContentSizeForServiceSize:", (IMP)RemoteIntrinsic, &remoteIntrinsic);
   Install(@"UIInputWindowController", @"updateKeyboardLayoutGuideWithFrame:layoutViews:", (IMP)GuideFrame, &guideFrame);
+  });
 }
-@end
