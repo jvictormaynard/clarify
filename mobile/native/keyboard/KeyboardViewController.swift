@@ -162,8 +162,8 @@ class KeyboardViewController: UIInputViewController {
   // The remote input host can ask before loadView, and can propose another size
   // during presentation. Both measurement paths must advertise the same height.
   override var preferredContentSize: CGSize {
-    get { CGSize(width: super.preferredContentSize.width, height: (inputView as? KeyboardInputView)?.presentedHeight ?? 0) }
-    set { super.preferredContentSize = CGSize(width: newValue.width, height: (inputView as? KeyboardInputView)?.presentedHeight ?? 0) }
+    get { CGSize(width: super.preferredContentSize.width, height: isViewLoaded ? (inputView as? KeyboardInputView)?.presentedHeight ?? 0 : 0) }
+    set { super.preferredContentSize = CGSize(width: newValue.width, height: isViewLoaded ? (inputView as? KeyboardInputView)?.presentedHeight ?? 0 : 0) }
   }
 
   override func loadView() {
