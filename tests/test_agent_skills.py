@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -161,6 +163,44 @@ class AgentSkillsTests(unittest.TestCase):
         self.assertTrue(
             any("license is missing or modified" in e for e in check(self.repo))
         )
+
+    def test_git_checkout_keeps_pinned_license_with_windows_line_endings(self):
+        root = Path(__file__).resolve().parents[1]
+        upstream = json.loads(
+            (root / ".agents/skills/upstream-lock.json").read_text(encoding="utf-8")
+        )
+        relative = upstream["license_file"]
+        canonical = (
+            (root / ".agents/skills" / relative).read_bytes().replace(b"\r\n", b"\n")
+        )
+        license_path = self.base / relative
+        license_path.parent.mkdir(parents=True)
+        license_path.write_bytes(canonical)
+        self.manifest["license_file"] = relative
+        self.manifest["license_sha256"] = upstream["license_sha256"]
+        self.write_manifest()
+        (self.repo / ".gitattributes").write_bytes(
+            (root / ".gitattributes").read_bytes()
+        )
+        environment = dict(os.environ)
+        for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+            environment.pop(name, None)
+        environment.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+
+        def run_git(*args):
+            subprocess.run(
+                ["git", "-C", str(self.repo), "-c", "core.autocrlf=true", *args],
+                env=environment,
+                capture_output=True,
+                check=True,
+            )
+
+        run_git("init")
+        run_git("add", "--", ".gitattributes", ".agents", "guide.md")
+        license_path.unlink()
+        run_git("checkout-index", "--all", "--force")
+        self.assertEqual(check(self.repo), [])
+        self.assertEqual(license_path.read_bytes(), canonical)
 
     def test_global_skill_symlink_is_rejected(self):
         with tempfile.TemporaryDirectory(prefix="clarify-outside-skill-") as outside:

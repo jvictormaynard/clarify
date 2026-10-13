@@ -252,3 +252,9 @@ The operational desktop path is Community. The signed path is documented as
 blocked because its manual workflow conflicts with the preflight's tag-trigger
 expectation and the unconditional Community tag trigger. Workflow repair is
 outside this instruction-only integration.
+
+Windows CI exposed Git's CRLF conversion of the pinned upstream license. The
+existing `.gitattributes` notice policy now also keeps skill licenses as LF,
+preserving their exact hashes. A real-Git checkout regression failed before the
+rule and passed afterward. The focused checks passed 43 tests on Linux and all
+17 validator tests on Windows; the license hash check was not weakened.
