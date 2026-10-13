@@ -150,6 +150,10 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
       original = File.read(source)
       File.write(source, original.sub('    super.viewDidLoad()', "    super.viewDidLoad()\n    ClarifyFixtureInstallFitting(self)"))
     end
+    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-fitting-forwarding'
+      original = File.read(source)
+      File.write(source, original.sub('    super.viewDidLoad()', "    super.viewDidLoad()\n    ClarifyFixtureStopFittingForwarding(self)"))
+    end
     if ['early-intrinsic-message', 'service-max-size'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
       original = File.read(source)
       File.write(source, original.sub('super.viewWillAppear(animated);', "ClarifyFixturePublishIntrinsicSize(self); super.viewWillAppear(animated);"))
@@ -222,6 +226,22 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         }
       OBJC
     end
+    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-fitting-forwarding'
+      File.open(source, 'a') { |file| file.write(<<~'OBJC') }
+        static BOOL ClarifyFixtureNoFittingForwarding(id self, SEL command) {
+          NSLog(@"ClarifyFixtureSizing suppressed fitting forwarding"); return NO;
+        }
+        void ClarifyFixtureStopFittingForwarding(UIInputViewController *controller) {
+          SEL selector = NSSelectorFromString(@"_shouldForwardSystemLayoutFittingSizeChanges");
+          NSMethodSignature *signature = [controller methodSignatureForSelector:selector];
+          if (!signature || signature.numberOfArguments != 2 || !IsBooleanType(signature.methodReturnType)) return;
+          BOOL original = ((BOOL (*)(id, SEL))objc_msgSend)(controller, selector);
+          Method method = class_getInstanceMethod(controller.class, selector);
+          BOOL installed = class_addMethod(controller.class, selector, (IMP)&ClarifyFixtureNoFittingForwarding, method_getTypeEncoding(method));
+          NSLog(@"ClarifyFixtureSizing fitting forwarding baseline=%d override=%d", original, installed);
+        }
+      OBJC
+    end
     if ['early-intrinsic-message', 'service-max-size'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
       File.open(source, 'a') { |file| file.write(<<~'OBJC') }
         void ClarifyFixturePublishIntrinsicSize(UIInputViewController *controller) {
@@ -262,6 +282,10 @@ end
 if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'controller-fitting'
   original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
   File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixtureInstallFitting(UIInputViewController *controller);\n")
+end
+if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-fitting-forwarding'
+  original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
+  File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixtureStopFittingForwarding(UIInputViewController *controller);\n")
 end
 if ['early-intrinsic-message', 'service-max-size'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
   original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
