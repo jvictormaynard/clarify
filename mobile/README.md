@@ -85,12 +85,15 @@ No new signing or upload occurs when `tests_only` is selected.
 Selecting both diagnostic inputs runs the installed-extension fixture directly;
 regular tests-only runs and every signed upload retain all product checks.
 
-Every signed upload runs the installed typing, casing and two-return checks
-against production sources. It also records all five opening traces and requires
-the final keyboard height and bottom row to be usable. The transient overshoot
-assertion remains in the strict diagnostic above; the user explicitly deferred
-that known defect to test the other improvements in build 25. This exception does
-not allow typing, activation, final-height or native-control failures to pass.
+Every signed upload runs the installed typing, casing, two-return and strict
+opening-height checks against production sources. All sampled heights must stay
+within the larger of the starting and settled heights, plus one point. This
+allows a legitimate keyboard switch but rejects a transient overshoot, including
+one smaller than the previous 400-point threshold. Build 25 deferred this check
+to publish the other improvements; that exception does not apply to a claimed
+opening-height fix. The harness compiles keyboard sources without injecting
+layout callbacks or logs. The separate host samples its layout guide and the
+visible position of its text field on each display refresh.
 Temporary sizing experiments have been removed from the workflow. An in-process
 UIKit test alone is insufficient evidence for a correction to remote keyboard
 geometry or return to a separate application.

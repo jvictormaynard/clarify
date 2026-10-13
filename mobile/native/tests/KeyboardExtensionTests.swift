@@ -46,7 +46,12 @@ final class KeyboardExtensionTests: XCTestCase {
     }
     XCTFail("Settings item unavailable: \(title). \(app.debugDescription)")
   }
-  private func checkTrace(in app: XCUIApplication, opening: String, strict: Bool = true) throws {
+  private func currentKeyboardHeight(in app: XCUIApplication) throws -> Double {
+    let raw = try XCTUnwrap(app.staticTexts["keyboard-frames"].value as? String)
+    let values = try JSONDecoder().decode([String: [Double]].self, from: Data(raw.utf8))
+    return try XCTUnwrap(values["displayFrames"]?.last)
+  }
+  private func checkTrace(in app: XCUIApplication, opening: String, strict: Bool = true, startingHeight: Double = 0) throws {
     let raw = try XCTUnwrap(app.staticTexts["keyboard-frames"].value as? String)
     let values = try JSONDecoder().decode([String: [Double]].self, from: Data(raw.utf8))
     let heights = values.values.flatMap { $0 }
@@ -56,7 +61,11 @@ final class KeyboardExtensionTests: XCTestCase {
     continueAfterFailure = true
     defer { continueAfterFailure = false }
     if strict {
-      XCTAssertTrue(heights.allSatisfy { $0 < 400 }, "\(opening): \(values)")
+      let settledHeight = try XCTUnwrap(values["displayFrames"]?.last)
+      // A normal transition can start with the previous keyboard's height.
+      // Reject any overshoot beyond both endpoints, including small jumps.
+      let maximumHeight = max(startingHeight, settledHeight) + 1
+      XCTAssertTrue(heights.allSatisfy { $0 <= maximumHeight }, "\(opening): maximum \(maximumHeight), \(values)")
     }
     // Publication may defer the known transient overshoot, but must still
     // reject a keyboard that stays oversized or covers the bottom row.
@@ -120,8 +129,10 @@ final class KeyboardExtensionTests: XCTestCase {
     // Wait for either input view before deciding whether a switch is needed.
     let inputReady = expectation(for: NSPredicate { _, _ in keyboard.exists || globe.exists }, evaluatedWith: nil)
     wait(for: [inputReady], timeout: 30)
+    var startingHeight: Double = 0
     if !keyboard.exists {
       XCTAssertTrue(globe.exists, app.debugDescription)
+      startingHeight = try currentKeyboardHeight(in: app)
       globe.press(forDuration: 1)
       let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
       XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
@@ -129,7 +140,7 @@ final class KeyboardExtensionTests: XCTestCase {
     XCTAssertTrue(keyboard.waitForExistence(timeout: 30), app.debugDescription)
     XCTAssertTrue(app.buttons["clarify.keyboard.start"].waitForExistence(timeout: 5),
                   "The installed extension must receive Full Access before testing activation")
-    try checkTrace(in: app, opening: "Switching to the extension", strict: strictHeight)
+    try checkTrace(in: app, opening: "Switching to the extension", strict: strictHeight, startingHeight: startingHeight)
     let letter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch
     XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription); letter.tap()
     expectText("Q", in: app)

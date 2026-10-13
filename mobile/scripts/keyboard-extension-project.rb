@@ -22,42 +22,9 @@ container_bridge = File.join(fixture, 'Container-Bridging-Header.h')
 File.write(container_bridge, "#import #{File.join(root, 'modules/clarify-core/ios/ClarifyReturnBridge.h').inspect}\nNSDictionary *ClarifyReturnDiagnostics(void);\n")
 tests.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionTests.swift')))
 %w[KeyboardViewController.swift DictationEdit.swift KeyGridView.swift KeyPreview.swift TypingAssistant.swift HostActivation.swift KBHostArbiterHook.m].each do |name|
-  source = File.join(root, 'native/keyboard', name)
-  if name == 'KeyboardViewController.swift'
-    original = File.read(source)
-    original = original.sub('        openURL(url)', '        openURL(url) { accepted in NSLog("ClarifyFixtureOpen accepted=%d", accepted) }')
-    source = File.join(fixture, name)
-    instrumentation = <<~'SWIFT'
-        var chain: [UIView] = []; var ancestor: UIView? = view
-        while let item = ancestor, chain.count < 8 { chain.append(item); ancestor = item.superview }
-        let geometry = chain.map { "\(type(of: $0)):\($0.frame):\($0.bounds)" }.joined(separator: " > ")
-        NSLog("ClarifyFixtureGeometry %@", geometry)
-    SWIFT
-    File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + instrumentation))
-  end
-  if name == 'KeyGridView.swift'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    File.write(source, original.sub('    for touch in touches.sorted', '    NSLog("ClarifyFixtureTouch phase=%ld count=%ld", phase.rawValue, touches.count)' + "\n" + '    for touch in touches.sorted'))
-  end
-  if name == 'HostActivation.swift'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    File.write(source, original.sub('        let generation = KBHostArbiterHook.captureGeneration()', '        NSLog("ClarifyFixtureHost cached=%@", KBHostArbiterHook.lastCapturedHostBundleId() ?? "unknown")' + "\n" + '        let generation = KBHostArbiterHook.captureGeneration()')
-      .sub('    let request = ActivationRequest(sourceBundleID: source)', '    NSLog("ClarifyFixtureHost resolved=%@", source ?? "unknown")' + "\n" + '    let request = ActivationRequest(sourceBundleID: source)'))
-  end
-  if name == 'KBHostArbiterHook.m'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    File.write(source, original.sub("    os_unfair_lock_unlock(&sHookLock);\n}\n\n+ (void)activeArbiterCheck", <<~'OBJC'))
-        os_unfair_lock_unlock(&sHookLock);
-        NSLog(@"ClarifyFixtureHook queue=%s handled=%s installed=%d/%d enabled=%d", method ? method_getTypeEncoding(method) : "missing", handled ? method_getTypeEncoding(handled) : "missing", sOriginalIMP != NULL, sOriginalHandledIMP != NULL, sEnabledInstalled);
-    }
-
-    + (void)activeArbiterCheck
-    OBJC
-  end
-  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
+  # Sample geometry in the separate host. Logging inside extension layout
+  # callbacks can change the timing of the defect being measured.
+  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/keyboard', name)))
 end
 bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
