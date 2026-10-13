@@ -30,6 +30,13 @@ try {
   const derived = path.join(fixture, 'DerivedData');
   run('xcodebuild', ['build', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'), '-scheme', 'ActivationContainer',
     '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO', 'ONLY_ACTIVE_ARCH=YES']);
+  // Diagnostic only: isolate UIKit's linked-SDK compatibility behavior. Never
+  // publish these modified binaries. A positive result requires a real SDK build.
+  const probeBinary = path.join(derived, 'Build/Products/Release-iphonesimulator/ActivationContainer.app/PlugIns/ClarifyKeyboard.appex/ClarifyKeyboard');
+  const compatibilityBinary = `${probeBinary}.compatibility`;
+  run('xcrun', ['vtool', '-set-build-version', 'iossimulator', '16.4', '18.5', '-replace', '-output', compatibilityBinary, probeBinary]);
+  fs.renameSync(compatibilityBinary, probeBinary);
+  run('xcrun', ['vtool', '-show-build', probeBinary]);
   run('xcrun', ['simctl', 'install', device.udid, path.join(derived, 'Build/Products/Release-iphonesimulator/ActivationContainer.app')]);
   run('xcrun', ['simctl', 'launch', device.udid, 'com.clarify.fixture.container']);
   const ready = path.join(fixture, 'Shared/container-ready.json');
