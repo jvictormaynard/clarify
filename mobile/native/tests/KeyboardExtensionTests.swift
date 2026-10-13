@@ -167,12 +167,15 @@ final class KeyboardExtensionTests: XCTestCase {
       capture.lifetime = .keepAlways; add(capture)
     }
     if minimalProbe {
-      for variant in ["baseline", "initial-window", "initial-handle", "early-parent", "early-one", "preempt-size"] {
+      for variant in ["baseline", "early-parent", "early-one", "preempt-size", "initial-handle", "initial-window"] {
         app.buttons["Dismiss"].tap()
         try variant.write(to: fixtureRoot.appendingPathComponent("geometry-variant.txt"), atomically: true, encoding: .utf8)
         for index in 0..<3 {
           app.buttons["Reset trace"].tap(); app.textFields["composer"].tap()
-          XCTAssertTrue(keyboard.waitForExistence(timeout: 5), app.debugDescription)
+          let usable = keyboard.waitForExistence(timeout: 5)
+          continueAfterFailure = true
+          XCTAssertTrue(usable, "Matrix \(variant) opening \(index): keyboard is unavailable")
+          continueAfterFailure = false
           try checkTrace(in: app, opening: "Matrix \(variant) opening \(index)", strict: strictHeight)
           app.buttons["Dismiss"].tap()
         }
