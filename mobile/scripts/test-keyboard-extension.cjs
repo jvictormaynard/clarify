@@ -15,9 +15,7 @@ const runtimes = Object.entries(JSON.parse(devices.stdout).devices).filter(([run
 const device = runtimes.flatMap(([, items]) => items).find(item => item.name.startsWith('iPhone'));
 if (!device) throw new Error('No matching iPhone simulator.');
 const runtime = runtimes.find(([, items]) => items.some(item => item.udid === device.udid))[0];
-const selfSizing = process.env.CLARIFY_DIAGNOSTIC_SELF_SIZING === 'off' ? 'off' : 'on';
-const variant = process.env.CLARIFY_DIAGNOSTIC_VARIANT || 'production';
-console.log(JSON.stringify({ runtime, device: device.name, selfSizing, variant }));
+console.log(JSON.stringify({ runtime, device: device.name }));
 run('xcrun', ['simctl', 'bootstatus', device.udid, '-b']);
 const output = path.join(root, 'test-results'); fs.mkdirSync(output, { recursive: true });
 const results = fs.mkdtempSync(path.join(output, 'installed-keyboard-'));
@@ -70,6 +68,6 @@ try {
   if (fs.existsSync(preflight)) fs.copyFileSync(preflight, path.join(results, 'container-preflight.json'));
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
-  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, selfSizing, variant, exitCode }, null, 2));
+  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, exitCode }, null, 2));
 }
 process.exitCode = exitCode;

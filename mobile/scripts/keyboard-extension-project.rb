@@ -23,114 +23,6 @@ File.write(container_bridge, "#import #{File.join(root, 'modules/clarify-core/io
 tests.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionTests.swift')))
 %w[KeyboardViewController.swift DictationEdit.swift KeyGridView.swift KeyPreview.swift TypingAssistant.swift HostActivation.swift KBHostArbiterHook.m].each do |name|
   source = File.join(root, 'native/keyboard', name)
-  if name == 'KBHostArbiterHook.m' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-host-hooks'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    File.write(source, original.gsub('[self installHooks];', '// Isolated diagnostic: no process-wide arbiter hooks.'))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-swiftui'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    File.write(source, original.sub(/    let host = UIHostingController.*?    activation = host/m, '// Isolated diagnostic: omit the activation hosting controller.'))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-preferred-size'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    File.write(source, original.sub(/  override var preferredContentSize: CGSize \{.*?\n  \}/m, '// Isolated diagnostic: use UIKit preferred sizing.'))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'initial-width'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    File.write(source, original.sub('width: 0, height: KeyboardInputView.contentHeight', 'width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight'))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'early-valid-size'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    File.write(source, original.sub('width: 0, height: KeyboardInputView.contentHeight', 'width: UIScreen.main.bounds.width, height: KeyboardInputView.contentHeight')
-      .sub('    inputView = input', "    super.preferredContentSize = input.bounds.size\n    inputView = input"))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'root-frame'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    sizing = <<~'SWIFT'
-      override var frame: CGRect {
-        get { super.frame }
-        set { var value = newValue; value.size.height = Self.contentHeight; super.frame = value }
-      }
-      override var bounds: CGRect {
-        get { super.bounds }
-        set { var value = newValue; value.size.height = Self.contentHeight; super.bounds = value }
-      }
-    SWIFT
-    File.write(source, original.sub('  static let contentHeight: CGFloat = 278', '  static let contentHeight: CGFloat = 278' + "\n" + sizing))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'stored-preferred-size'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    File.write(source, original.sub('    inputView = input', "    super.preferredContentSize = CGSize(width: 0, height: KeyboardInputView.contentHeight)\n    inputView = input"))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'root-autolayout'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    File.write(source, original.sub('    inputView = input', "    input.translatesAutoresizingMaskIntoConstraints = false\n    inputView = input"))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'parent-preferred-size'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    replacement = <<~'SWIFT'
-      super.viewWillAppear(animated)
-      super.preferredContentSize = CGSize(width: view.bounds.width, height: KeyboardInputView.contentHeight)
-      parent?.preferredContentSizeDidChange(forChildContentContainer: self)
-      NSLog("ClarifyFixtureSizing notified parent=%@", String(describing: parent))
-    SWIFT
-    File.write(source, original.sub('super.viewWillAppear(animated);', replacement))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'parent-fitting'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    replacement = <<~'SWIFT'
-      view.invalidateIntrinsicContentSize()
-      parent?.systemLayoutFittingSizeDidChange(forChildContentContainer: self)
-      NSLog("ClarifyFixtureSizing notified fitting parent=%@", String(describing: parent))
-      super.viewWillAppear(animated);
-    SWIFT
-    File.write(source, original.sub('super.viewWillAppear(animated);', replacement))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'operator-preferred-size'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    replacement = <<~'SWIFT'
-      parent?.preferredContentSize = CGSize(width: view.bounds.width, height: KeyboardInputView.contentHeight)
-      NSLog("ClarifyFixtureSizing operator preferred=%@", String(describing: parent?.preferredContentSize))
-      super.viewWillAppear(animated);
-    SWIFT
-    File.write(source, original.sub('super.viewWillAppear(animated);', replacement))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'system-sizing'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    File.write(source, original.sub(/final class KeyboardInputView: UIInputView \{.*?\n\}/m, "final class KeyboardInputView: UIInputView { static let contentHeight: CGFloat = 278 }")
-      .sub(/  override var preferredContentSize: CGSize \{.*?\n  \}/m, '// Isolated diagnostic: let UIKit own the root height.')
-      .sub('keys.heightAnchor.constraint(equalToConstant: 220)', 'keys.bottomAnchor.constraint(equalTo: view.bottomAnchor)'))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'default-root'
-    original = File.read(source)
-    source = File.join(fixture, name)
-    replacement = <<~'SWIFT'
-      override func loadView() {
-        super.loadView()
-        view.heightAnchor.constraint(equalToConstant: KeyboardInputView.contentHeight).isActive = true
-        view.backgroundColor = .clear; view.isOpaque = false
-      }
-    SWIFT
-    File.write(source, original.sub(/  override func loadView\(\) \{.*?\n  \}/m, replacement))
-  end
-  if name == 'KeyboardViewController.swift' && ENV['CLARIFY_DIAGNOSTIC_SELF_SIZING'] == 'off'
-    original = File.read(source)
-    raise 'Self-sizing experiment no longer matches the production source' unless original.scan('allowsSelfSizing = true').length == 1
-    source = File.join(fixture, name)
-    File.write(source, original.sub('allowsSelfSizing = true', 'allowsSelfSizing = false'))
-  end
   if name == 'KeyboardViewController.swift'
     original = File.read(source)
     original = original.sub('        openURL(url)', '        openURL(url) { accepted in NSLog("ClarifyFixtureOpen accepted=%d", accepted) }')
@@ -142,36 +34,6 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         NSLog("ClarifyFixtureGeometry %@", geometry)
     SWIFT
     File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + instrumentation))
-    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'native-autosize'
-      original = File.read(source)
-      File.write(source, original.sub('    super.viewDidLoad()', "    super.viewDidLoad()\n    ClarifyFixtureDisableAutosizing(self)"))
-    end
-    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'controller-fitting'
-      original = File.read(source)
-      File.write(source, original.sub('    super.viewDidLoad()', "    super.viewDidLoad()\n    ClarifyFixtureInstallFitting(self)"))
-    end
-    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-fitting-forwarding'
-      original = File.read(source)
-      File.write(source, original.sub('    super.viewDidLoad()', "    super.viewDidLoad()\n    ClarifyFixtureStopFittingForwarding(self)"))
-    end
-    if ['early-intrinsic-message', 'service-max-size'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
-      original = File.read(source)
-      File.write(source, original.sub('super.viewWillAppear(animated);', "ClarifyFixturePublishIntrinsicSize(self); super.viewWillAppear(animated);"))
-    end
-    if ['window-height', 'window-height-visible'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
-      original = File.read(source)
-      correction = <<~'SWIFT'
-          if extensionContext != nil, let window = view.window, window.bounds.height != KeyboardInputView.contentHeight {
-            UIView.performWithoutAnimation {
-              var frame = window.frame; frame.size.height = KeyboardInputView.contentHeight; window.frame = frame
-              window.rootViewController?.view.frame = window.bounds
-              self.view.frame = CGRect(x: 0, y: 0, width: window.bounds.width, height: KeyboardInputView.contentHeight)
-            }
-          }
-      SWIFT
-      correction = correction.sub('if extensionContext != nil', 'if attached, extensionContext != nil') if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'window-height-visible'
-      File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + correction))
-    end
   end
   if name == 'KeyGridView.swift'
     original = File.read(source)
@@ -184,7 +46,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     File.write(source, original.sub('        let generation = KBHostArbiterHook.captureGeneration()', '        NSLog("ClarifyFixtureHost cached=%@", KBHostArbiterHook.lastCapturedHostBundleId() ?? "unknown")' + "\n" + '        let generation = KBHostArbiterHook.captureGeneration()')
       .sub('    let request = ActivationRequest(sourceBundleID: source)', '    NSLog("ClarifyFixtureHost resolved=%@", source ?? "unknown")' + "\n" + '    let request = ActivationRequest(sourceBundleID: source)'))
   end
-  if name == 'KBHostArbiterHook.m' && ENV['CLARIFY_DIAGNOSTIC_VARIANT'] != 'without-host-hooks'
+  if name == 'KBHostArbiterHook.m'
     original = File.read(source)
     source = File.join(fixture, name)
     File.write(source, original.sub("    os_unfair_lock_unlock(&sHookLock);\n}\n\n+ (void)activeArbiterCheck", <<~'OBJC'))
@@ -194,103 +56,10 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
 
     + (void)activeArbiterCheck
     OBJC
-    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'native-autosize'
-      File.open(source, 'a') { |file| file.write(<<~'OBJC') }
-        void ClarifyFixtureDisableAutosizing(UIInputViewController *controller) {
-          @try {
-            SEL selector = NSSelectorFromString(@"_setAutosizeToCurrentKeyboard:");
-            NSMethodSignature *signature = [controller methodSignatureForSelector:selector];
-            if (!signature || signature.numberOfArguments != 3 || strcmp(signature.methodReturnType, "v") != 0
-                || !IsBooleanType([signature getArgumentTypeAtIndex:2])) return;
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(controller, selector, NO);
-            NSLog(@"ClarifyFixtureSizing disabled native autosizing");
-          } @catch (__unused NSException *error) { NSLog(@"ClarifyFixtureSizing unsupported"); }
-        }
-      OBJC
-    end
-    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'controller-fitting'
-      File.open(source, 'a') { |file| file.write(<<~'OBJC') }
-        static CGSize ClarifyFixtureFitting(id self, SEL command, CGSize size, float horizontal, float vertical) {
-          NSLog(@"ClarifyFixtureSizing fitting proposed=%@", NSStringFromCGSize(size));
-          return CGSizeMake(size.width, 278);
-        }
-        void ClarifyFixtureInstallFitting(UIInputViewController *controller) {
-          SEL selector = NSSelectorFromString(@"_systemLayoutSizeFittingSize:withHorizontalFittingPriority:verticalFittingPriority:");
-          NSMethodSignature *signature = [controller methodSignatureForSelector:selector];
-          if (!signature || signature.numberOfArguments != 5 || strncmp(signature.methodReturnType, "{CGSize=", 8) != 0
-              || strncmp([signature getArgumentTypeAtIndex:2], "{CGSize=", 8) != 0
-              || strcmp([signature getArgumentTypeAtIndex:3], "f") != 0 || strcmp([signature getArgumentTypeAtIndex:4], "f") != 0) return;
-          Method original = class_getInstanceMethod(controller.class, selector);
-          BOOL installed = class_addMethod(controller.class, selector, (IMP)&ClarifyFixtureFitting, method_getTypeEncoding(original));
-          NSLog(@"ClarifyFixtureSizing controller fitting installed=%d", installed);
-        }
-      OBJC
-    end
-    if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-fitting-forwarding'
-      File.open(source, 'a') { |file| file.write(<<~'OBJC') }
-        static BOOL ClarifyFixtureNoFittingForwarding(id self, SEL command) {
-          NSLog(@"ClarifyFixtureSizing suppressed fitting forwarding"); return NO;
-        }
-        void ClarifyFixtureStopFittingForwarding(UIInputViewController *controller) {
-          SEL selector = NSSelectorFromString(@"_shouldForwardSystemLayoutFittingSizeChanges");
-          NSMethodSignature *signature = [controller methodSignatureForSelector:selector];
-          if (!signature || signature.numberOfArguments != 2 || !IsBooleanType(signature.methodReturnType)) return;
-          BOOL original = ((BOOL (*)(id, SEL))objc_msgSend)(controller, selector);
-          Method method = class_getInstanceMethod(controller.class, selector);
-          BOOL installed = class_addMethod(controller.class, selector, (IMP)&ClarifyFixtureNoFittingForwarding, method_getTypeEncoding(method));
-          NSLog(@"ClarifyFixtureSizing fitting forwarding baseline=%d override=%d", original, installed);
-        }
-      OBJC
-    end
-    if ['early-intrinsic-message', 'service-max-size'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
-      File.open(source, 'a') { |file| file.write(<<~'OBJC') }
-        void ClarifyFixturePublishIntrinsicSize(UIInputViewController *controller) {
-          @try {
-            id parent = controller.parentViewController;
-            Ivar ivar = class_getInstanceVariable([parent class], "_remoteViewControllerProxyToOperator");
-            id proxy = ivar ? object_getIvar(parent, ivar) : nil;
-            SEL selector = NSSelectorFromString(@"__viewServiceInstrinsicContentSizeDidChange:fence:");
-            NSMethodSignature *signature = [proxy methodSignatureForSelector:selector];
-            if (!signature || signature.numberOfArguments != 4 || strcmp(signature.methodReturnType, "v") != 0
-                || strncmp([signature getArgumentTypeAtIndex:2], "{CGSize=", 8) != 0
-                || [signature getArgumentTypeAtIndex:3][0] != '@') {
-              NSLog(@"ClarifyFixtureSizing intrinsic message unsupported parent=%@ proxy=%@", parent, proxy); return;
-            }
-            CGSize size = CGSizeMake(controller.view.bounds.size.width, 278);
-            ((void (*)(id, SEL, CGSize, id))objc_msgSend)(proxy, selector, size, nil);
-            NSLog(@"ClarifyFixtureSizing published intrinsic size=%@", NSStringFromCGSize(size));
-          } @catch (__unused NSException *error) { NSLog(@"ClarifyFixtureSizing intrinsic message exception"); }
-        }
-      OBJC
-      if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'service-max-size'
-        original = File.read(source)
-        File.write(source, original.sub('__viewServiceInstrinsicContentSizeDidChange:fence:', '__setServiceMaxFrameSize:')
-          .sub('signature.numberOfArguments != 4', 'signature.numberOfArguments != 3')
-          .sub("\n        || [signature getArgumentTypeAtIndex:3][0] != '@'", '')
-          .sub('((void (*)(id, SEL, CGSize, id))objc_msgSend)(proxy, selector, size, nil);', '((void (*)(id, SEL, CGSize))objc_msgSend)(proxy, selector, size);')
-          .sub('published intrinsic size=', 'published maximum size='))
-      end
-    end
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
 bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
-if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'native-autosize'
-  original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
-  File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixtureDisableAutosizing(UIInputViewController *controller);\n")
-end
-if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'controller-fitting'
-  original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
-  File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixtureInstallFitting(UIInputViewController *controller);\n")
-end
-if ENV['CLARIFY_DIAGNOSTIC_VARIANT'] == 'without-fitting-forwarding'
-  original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
-  File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixtureStopFittingForwarding(UIInputViewController *controller);\n")
-end
-if ['early-intrinsic-message', 'service-max-size'].include?(ENV['CLARIFY_DIAGNOSTIC_VARIANT'])
-  original_bridge = bridge; bridge = File.join(fixture, 'Keyboard-Bridging-Header.h')
-  File.write(bridge, "#import #{original_bridge.inspect}\nvoid ClarifyFixturePublishIntrinsicSize(UIInputViewController *controller);\n")
-end
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   source = name == 'SharedState.swift' ? shared_source : File.join(root, 'modules/clarify-core/ios', name)
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
@@ -343,7 +112,7 @@ end
 test_info = { 'CFBundleName' => 'ExtensionTests', 'CFBundleIdentifier' => '$(PRODUCT_BUNDLE_IDENTIFIER)',
   'CFBundleExecutable' => '$(EXECUTABLE_NAME)', 'CFBundlePackageType' => 'BNDL',
   'CFBundleShortVersionString' => '1.0', 'CFBundleVersion' => '1',
-  'ClarifyFixtureDirectory' => shared_root, 'ClarifyDiagnosticVariant' => ENV['CLARIFY_DIAGNOSTIC_VARIANT'] || 'production' }
+  'ClarifyFixtureDirectory' => shared_root }
 Xcodeproj::Plist.write_to_path(test_info, File.join(fixture, 'Tests.plist'))
 tests.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.tests', 'TEST_TARGET_NAME' => 'KeyboardHost',

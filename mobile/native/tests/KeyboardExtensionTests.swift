@@ -109,9 +109,13 @@ final class KeyboardExtensionTests: XCTestCase {
     app.activate()
     app.textFields["composer"].tap()
     let keyboard = app.buttons["clarify.keyboard.record"]
-    if !keyboard.waitForExistence(timeout: 2) {
-      let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
-      XCTAssertTrue(globe.waitForExistence(timeout: 5), app.debugDescription)
+    let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
+    // The first keyboard can still be loading after Settings changes its list.
+    // Wait for either input view before deciding whether a switch is needed.
+    let inputReady = expectation(for: NSPredicate { _, _ in keyboard.exists || globe.exists }, evaluatedWith: nil)
+    wait(for: [inputReady], timeout: 30)
+    if !keyboard.exists {
+      XCTAssertTrue(globe.exists, app.debugDescription)
       globe.press(forDuration: 1)
       let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
       XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
