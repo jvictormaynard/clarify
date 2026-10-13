@@ -3,7 +3,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const strictOpeningHeight = process.argv.includes('--check-opening-height');
-if (process.argv.slice(2).some(argument => argument !== '--check-opening-height')) throw new Error('Unknown installed keyboard test argument.');
+const minimalProbe = process.argv.includes('--minimal-height-probe');
+if (process.argv.slice(2).some(argument => !['--check-opening-height', '--minimal-height-probe'].includes(argument))) throw new Error('Unknown installed keyboard test argument.');
 if (process.platform !== 'darwin') throw new Error('The installed extension diagnostic requires macOS.');
 const root = process.cwd();
 function run(command, args, options = {}) {
@@ -25,10 +26,10 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-extension-'));
 let exitCode = 1;
 let recording;
 try {
-  run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture, String(strictOpeningHeight)]);
+  run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture, String(strictOpeningHeight), String(minimalProbe)]);
   const derived = path.join(fixture, 'DerivedData');
   run('xcodebuild', ['build', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'), '-scheme', 'ActivationContainer',
-    '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO']);
+    '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO', 'ONLY_ACTIVE_ARCH=YES']);
   run('xcrun', ['simctl', 'install', device.udid, path.join(derived, 'Build/Products/Release-iphonesimulator/ActivationContainer.app')]);
   run('xcrun', ['simctl', 'launch', device.udid, 'com.clarify.fixture.container']);
   const ready = path.join(fixture, 'Shared/container-ready.json');
@@ -47,7 +48,7 @@ try {
     '-scheme', 'KeyboardExtension', '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived,
     '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never',
     '-test-timeouts-enabled', 'YES', '-maximum-test-execution-time-allowance', '300',
-    '-resultBundlePath', resultPath, 'CODE_SIGNING_ALLOWED=NO'], { stdio: 'inherit', timeout: 600000, killSignal: 'SIGINT' });
+    '-resultBundlePath', resultPath, 'CODE_SIGNING_ALLOWED=NO', 'ONLY_ACTIVE_ARCH=YES'], { stdio: 'inherit', timeout: 600000, killSignal: 'SIGINT' });
   exitCode = result.status ?? 1;
   if (fs.existsSync(resultPath)) run('xcrun', ['xcresulttool', 'export', 'attachments', '--path', resultPath, '--output-path', path.join(results, 'captures')]);
 } catch (error) {
@@ -70,6 +71,6 @@ try {
   if (fs.existsSync(preflight)) fs.copyFileSync(preflight, path.join(results, 'container-preflight.json'));
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
-  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, exitCode }, null, 2));
+  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, minimalProbe, exitCode }, null, 2));
 }
 process.exitCode = exitCode;

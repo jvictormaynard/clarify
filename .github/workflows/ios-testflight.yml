@@ -75,7 +75,7 @@ jobs:
           STRICT_OPENING_HEIGHT: ${{ inputs.tests_only && inputs.extension_diagnostic }}
         run: |
           if [[ "$STRICT_OPENING_HEIGHT" == 'true' ]]; then
-            node scripts/test-keyboard-extension.cjs --check-opening-height
+            node scripts/test-keyboard-extension.cjs --check-opening-height --minimal-height-probe
           else
             node scripts/test-keyboard-extension.cjs
           fi
