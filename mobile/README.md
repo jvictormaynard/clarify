@@ -13,6 +13,19 @@ An unfinished setup resumes on the next launch. Existing accounts and keys
 skip first-run setup after an upgrade. A setup preference contains no credentials.
 Billing, translation and local models are outside this mobile release.
 
+Version **0.7.3 (26)** fixes short speech such as “oi” when a personal Groq key
+and dictionary are active. Whisper receives plain enabled spellings, bounded to
+896 characters without splitting a term. Saved aliases, pronunciations and
+enabled flags are unchanged; rewriting keeps its vocabulary context. Account
+processing uses the same correction already deployed to the Clarify service.
+Native tests, live synthetic-speech acceptance and signed TestFlight delivery
+are required before reporting this candidate as available. Live acceptance is
+explicitly enabled with the workflow's `short_dictation_acceptance` input and a
+temporary `CLARIFY_SHORT_DICTATION_ACCEPTANCE` secret. It runs the production
+Swift client with synthetic M4A clips, then checks dictionary and history
+persistence. Remove the temporary secret after the run. It does not prove
+physical microphone capture or insertion in another app on the user's iPhone.
+
 Version **0.7.2 (25)** improves touch coverage between keys, sliding to adjacent
 keys, fast overlapping taps and automatic capitalization after `.?!`. Local
 correction protects active dictionary words, including terms just saved from

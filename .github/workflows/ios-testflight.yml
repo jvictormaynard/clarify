@@ -21,6 +21,10 @@ on:
         description: Also enforce the unresolved opening-height diagnostic (tests only)
         type: boolean
         default: false
+      short_dictation_acceptance:
+        description: Validate synthetic short speech with the live Groq client
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -65,6 +69,11 @@ jobs:
       - name: Test Swift contracts
         if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
         run: npm run test:native
+      - name: Validate short speech with the live mobile client
+        if: ${{ inputs.short_dictation_acceptance }}
+        env:
+          CLARIFY_SHORT_DICTATION_ACCEPTANCE: ${{ secrets.CLARIFY_SHORT_DICTATION_ACCEPTANCE }}
+        run: node scripts/test-short-dictation.cjs
       - name: Test keyboard on iPhone simulator
         if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
         env:
@@ -144,7 +153,23 @@ jobs:
           path: |
             mobile/test-results/keyboard-ui.zip
             mobile/test-results/installed-keyboard-*
+            mobile/test-results/short-dictation-acceptance.json
           if-no-files-found: ignore
+          retention-days: 7
+      - name: Verify processing and publish to the existing internal group
+        if: success() && !inputs.tests_only
+        env:
+          CLARIFY_ASC_KEY_P8: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
+          CLARIFY_ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
+          CLARIFY_ASC_ISSUER_ID: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
+        run: node scripts/publish-testflight.cjs
+      - name: Preserve TestFlight availability evidence
+        if: success() && !inputs.tests_only
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: clarify-testflight-${{ github.sha }}
+          path: mobile/test-results/testflight-availability.json
+          if-no-files-found: error
           retention-days: 7
       - name: Remove temporary signing credentials
         if: always() && !inputs.tests_only
