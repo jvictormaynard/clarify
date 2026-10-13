@@ -104,7 +104,8 @@ final class ContractsTests: XCTestCase {
       XCTAssertFalse(body.contains("HiddenTerm"))
       if request.url?.path.hasSuffix("transcriptions") == true {
         XCTAssertTrue(body.contains("name=\"prompt\""))
-        XCTAssertTrue(body.contains("clarifai"))
+        XCTAssertTrue(body.contains("\r\n\r\nClarify\r\n"))
+        XCTAssertFalse(body.contains("clarifai"))
         return (200, Data(#"{"text":"Uso o Clarify."}"#.utf8))
       }
       let json = try JSONSerialization.jsonObject(with: self.body(request)) as! [String: Any]
@@ -117,6 +118,35 @@ final class ContractsTests: XCTestCase {
     let transcript = try await client.transcribe(audio)
     let text = try await client.rewrite(transcript)
     XCTAssertEqual(text, "Uso o Clarify.")
+  }
+  func testShortDictationPreservesVocabularyMetadataAndStoresTheResult() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let library = try LocalLibrary(root: root)
+    let entries = [VocabularyEntry(term: "Clarify", pronunciation: "clarifai", aliases: ["Clarifai"]),
+      VocabularyEntry(term: "Maynard"), VocabularyEntry(term: "HiddenTerm", enabled: false)]
+    try library.saveDictionary(entries)
+    var client = client()
+    client.vocabulary = try library.dictionary()
+    let audio = root.appendingPathComponent("short.m4a")
+    try Data("isolated short speech fixture".utf8).write(to: audio)
+    MockProtocol.handle = { request in
+      let body = String(data: try self.body(request), encoding: .utf8)!
+      if request.url?.path.hasSuffix("transcriptions") == true {
+        // The live provider returned an empty transcript for instruction-heavy
+        // vocabulary on "oi". Only plain canonical spellings avoid that case.
+        let plain = body.contains("\r\n\r\nClarify, Maynard\r\n")
+        return (200, Data((plain ? #"{"text":"Oi."}"# : #"{"text":""}"#).utf8))
+      }
+      return (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":"Oi."}}]}"#.utf8))
+    }
+    let transcript = try await client.transcribe(audio)
+    let text = try await client.rewrite(transcript)
+    try library.record(HistoryEntry(id: "short-oi", createdAt: 1000, transcript: transcript, text: text, rewritten: true))
+    XCTAssertEqual(text, "Oi.")
+    XCTAssertEqual(try library.dictionary(), entries)
+    XCTAssertEqual(try LocalLibrary(root: root).dictionary(), entries)
+    XCTAssertEqual(try library.history().entries.first?.text, "Oi.")
   }
   func testStateFromPreviousVersionPreservesTheLiveSession() throws {
     let data = Data(#"{"sessionActive":true,"heartbeat":123,"phase":"locked","operationID":"existing","configured":true}"#.utf8)
