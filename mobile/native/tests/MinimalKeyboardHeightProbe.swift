@@ -2,6 +2,10 @@ import UIKit
 
 // Diagnostic only: default UIKit sizing, one control, no layout callbacks or logs.
 final class KeyboardViewController: UIInputViewController {
+  override var preferredContentSize: CGSize {
+    get { CGSize(width: UIScreen.main.bounds.width, height: 216) }
+    set { super.preferredContentSize = newValue }
+  }
   override func viewDidLoad() {
     super.viewDidLoad()
     let button = UIButton(type: .system)
