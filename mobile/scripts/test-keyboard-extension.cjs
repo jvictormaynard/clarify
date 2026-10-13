@@ -28,8 +28,8 @@ try {
   run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture]);
   const derived = path.join(fixture, 'DerivedData');
   run('xcodebuild', ['build', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'), '-scheme', 'ActivationContainer',
-    '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO']);
-  run('xcrun', ['simctl', 'install', device.udid, path.join(derived, 'Build/Products/Debug-iphonesimulator/ActivationContainer.app')]);
+    '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO']);
+  run('xcrun', ['simctl', 'install', device.udid, path.join(derived, 'Build/Products/Release-iphonesimulator/ActivationContainer.app')]);
   run('xcrun', ['simctl', 'launch', device.udid, 'com.clarify.fixture.container']);
   const ready = path.join(fixture, 'Shared/container-ready.json');
   function waitForFile(file) {
@@ -44,7 +44,7 @@ try {
   // independent keyboard geometry test from collecting its display frames.
   const resultPath = path.join(results, 'KeyboardExtension.xcresult');
   const result = spawnSync('xcodebuild', ['test', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'),
-    '-scheme', 'KeyboardExtension', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived,
+    '-scheme', 'KeyboardExtension', '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived,
     '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never',
     '-test-timeouts-enabled', 'YES', '-maximum-test-execution-time-allowance', '300',
     '-resultBundlePath', resultPath, 'CODE_SIGNING_ALLOWED=NO'], { stdio: 'inherit', timeout: 600000, killSignal: 'SIGINT' });

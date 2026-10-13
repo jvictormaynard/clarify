@@ -328,7 +328,7 @@ end
 project.save
 scheme = Xcodeproj::XCScheme.new
 scheme.add_build_target(app); scheme.add_test_target(tests); scheme.set_launch_target(app)
-scheme.test_action.build_configuration = 'Debug'
+scheme.test_action.build_configuration = 'Release'
 scheme.save_as(project.path, 'KeyboardExtension', true)
 container_scheme = Xcodeproj::XCScheme.new
 container_scheme.add_build_target(container); container_scheme.set_launch_target(container)
