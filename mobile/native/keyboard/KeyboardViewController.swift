@@ -92,16 +92,27 @@ final class RecordControl: UIControl {
 // SwiftUI opens the container; the experimental source resolver supplies a nonce.
 private struct ActivationLink: View {
   @Environment(\.openURL) private var openURL
-  let destination: () -> URL
+  @State private var launchTask: Task<Void, Never>?
+  @State private var opening = false
+  let destination: () async -> URL?
   var body: some View {
-    Button { openURL(destination()) } label: {
+    Button {
+      guard !opening else { return }; opening = true
+      launchTask = Task {
+        defer { opening = false; launchTask = nil }
+        guard let url = await destination(), !Task.isCancelled else { return }
+        openURL(url)
+      }
+    } label: {
       HStack(spacing: 7) {
         ClarifyMark().fill(Color(uiColor: .systemBackground)).frame(width: 22, height: 24)
         Text(L("Começar")).font(.system(size: 14, weight: .semibold))
       }.foregroundStyle(Color(uiColor: .systemBackground))
         .frame(width: 118, height: 44).background(Color(uiColor: .label), in: Capsule())
-    }.buttonStyle(.plain).accessibilityLabel(L("Começar no Clarify"))
+    }.buttonStyle(.plain).disabled(opening).accessibilityLabel(L("Começar no Clarify"))
+      .accessibilityIdentifier("clarify.keyboard.start")
       .accessibilityHint(L("Abre o Clarify para ativar o microfone."))
+      .onDisappear { launchTask?.cancel(); launchTask = nil; opening = false }
   }
 }
 
@@ -115,6 +126,8 @@ class KeyboardViewController: UIInputViewController {
   private let cancel = UIButton(type: .system)
   private let keys = KeyGridView()
   private let typing = TypingAssistant()
+  private var typingVocabularyRevision = -1
+  private var typingVocabularyCheckedAt = Date.distantPast
   private let suggestions = UIStackView()
   private let addToDictionary = UIButton(type: .system)
   private let undoDictation = UIButton(type: .system)
@@ -161,6 +174,7 @@ class KeyboardViewController: UIInputViewController {
     detail.numberOfLines = 1; detail.lineBreakMode = .byTruncatingTail
     mic.backgroundColor = .label; mic.layer.cornerRadius = 22
     mic.isAccessibilityElement = true; mic.accessibilityTraits = .button
+    mic.accessibilityIdentifier = "clarify.keyboard.record"
     mic.accessibilityLabel = L("Gravar")
     mic.accessibilityHint = L("Segure para falar. Deslize para cima para travar.")
     mic.onAction = { [weak self] action in self?.send(action) }
@@ -181,12 +195,12 @@ class KeyboardViewController: UIInputViewController {
     keys.onInsert = { [weak self] text in
       guard let self = self else { return }
       self.dictationEdit = nil
-      self.typing.insert(text, into: self.textDocumentProxy); self.updateSuggestions()
+      self.typing.insert(text, into: self.textDocumentProxy); self.updateCapitalization(); self.updateSuggestions()
     }
     keys.onDelete = { [weak self] in
       guard let self = self else { return }
       self.dictationEdit = nil
-      self.typing.delete(in: self.textDocumentProxy); self.updateSuggestions()
+      self.typing.delete(in: self.textDocumentProxy); self.updateCapitalization(); self.updateSuggestions()
     }
     keys.onNextKeyboard = { [weak self] button, event in
       if let event = event { self?.handleInputModeList(from: button, with: event) }
@@ -239,7 +253,7 @@ class KeyboardViewController: UIInputViewController {
       dictionaryTrailing!, addToDictionary.centerYAnchor.constraint(equalTo: mic.centerYAnchor),
       addToDictionary.heightAnchor.constraint(equalToConstant: 44)
     ])
-    let host = UIHostingController(rootView: ActivationLink { [weak self] in self?.activationURL() ?? URL(string: "clarify://keyboard")! })
+    let host = UIHostingController(rootView: ActivationLink { [weak self] in await self?.activationURL() })
     if #available(iOS 16.4, *) { host.safeAreaRegions = [] }
     addChild(host); view.addSubview(host.view); host.didMove(toParent: self)
     host.view.backgroundColor = .clear; host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -265,26 +279,33 @@ class KeyboardViewController: UIInputViewController {
     // Context is used only locally for casing; it is never saved or sent to Groq.
     let proxy = textDocumentProxy
     let appearance: UIUserInterfaceStyle = proxy.keyboardAppearance == .dark ? .dark : (proxy.keyboardAppearance == .light ? .light : .unspecified)
-    let shift = keys.model.shift
     let returnType = proxy.returnKeyType ?? .default
     let changed = view.overrideUserInterfaceStyle != appearance || keys.returnType != returnType
     view.overrideUserInterfaceStyle = appearance
     keys.returnType = returnType
-    if keys.model.shift != .caps {
-      let context = proxy.documentContextBeforeInput ?? ""
-      let sentenceStart = context.isEmpty || context.hasSuffix("\n") || [". ", "! ", "? "].contains { context.hasSuffix($0) }
-      let type = proxy.autocapitalizationType ?? .sentences
-      keys.model.shift = type == .allCharacters ? .caps : ((type == .sentences && sentenceStart) || (type == .words && (context.isEmpty || context.last?.isWhitespace == true)) ? .once : .off)
-    }
-    if changed || shift != keys.model.shift { keys.rebuild() }
+    updateCapitalization()
+    if changed { keys.rebuild() }
     updateSuggestions()
+  }
+  private func updateCapitalization() {
+    let proxy = textDocumentProxy
+    guard !keys.model.shiftIsManual else { return }
+    // An empty host field may expose nil context. Do not mistake unavailable
+    // context in a nonempty field for the beginning of a sentence.
+    guard let context = proxy.documentContextBeforeInput ?? (proxy.hasText ? nil : "") else { return }
+    let type = proxy.autocapitalizationType ?? .sentences
+    let next: KeyboardState.Shift = type == .allCharacters ? .caps :
+      ((type == .sentences && KeyboardState.startsSentence(after: context)) ||
+       (type == .words && (context.isEmpty || context.last?.isWhitespace == true)) ? .once : .off)
+    if keys.model.shift != next { keys.model.shift = next; keys.rebuild() }
   }
   override func selectionDidChange(_ textInput: UITextInput?) {
     super.selectionDidChange(textInput)
+    updateCapitalization()
     updateSuggestions()
   }
   override func viewWillAppear(_ animated: Bool) {
-    super.viewWillAppear(animated); attached = true; feedback.prepare(); refresh(); updateSuggestions(); timer?.invalidate()
+    super.viewWillAppear(animated); attached = true; feedback.prepare(); refresh(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
     timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in self?.refresh() }
   }
   override func viewDidDisappear(_ animated: Bool) {
@@ -360,9 +381,15 @@ class KeyboardViewController: UIInputViewController {
     let proxy = textDocumentProxy, replaced = textDocumentProxy.selectedText ?? ""
     typing.reset(); dictationEdit = nil; proxy.insertText(text)
     dictationEdit = DictationEdit(text: text, replaced: replaced, proxy: proxy)
-    insert.isHidden = true; updateSuggestions()
+    insert.isHidden = true; updateCapitalization(); updateSuggestions()
   }
   private func updateSuggestions() {
+    if typingVocabularyRevision != state.libraryRevision || Date().timeIntervalSince(typingVocabularyCheckedAt) >= 1 {
+      let vocabulary = store?.keyboardDictionary()
+      let pending = vocabulary.map { store?.keyboardAdditions(scope: $0.scope).map { $0.1.term } ?? [] } ?? []
+      typing.protectVocabulary((vocabulary?.words.filter(\.enabled).map(\.term) ?? []) + pending)
+      typingVocabularyRevision = state.libraryRevision; typingVocabularyCheckedAt = Date()
+    }
     suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
     for suggestion in typing.suggestions(textDocumentProxy) {
       let button = UIButton(type: .system)
@@ -374,7 +401,7 @@ class KeyboardViewController: UIInputViewController {
       button.addAction(UIAction { [weak self] _ in
         guard let self = self else { return }
         self.dictationEdit = nil
-        self.feedback.type(); self.typing.choose(suggestion, in: self.textDocumentProxy); self.updateSuggestions()
+        self.feedback.type(); self.typing.choose(suggestion, in: self.textDocumentProxy); self.updateCapitalization(); self.updateSuggestions()
       }, for: .touchUpInside)
       suggestions.addArrangedSubview(button)
     }
@@ -439,13 +466,18 @@ class KeyboardViewController: UIInputViewController {
     applyingDictationEdit = true
     dictationEdit = edit.toggle(in: textDocumentProxy) ? edit : nil
     applyingDictationEdit = false
-    typing.reset(); feedback.type(); updateSuggestions()
+    typing.reset(); feedback.type(); updateCapitalization(); updateSuggestions()
   }
   private func saveSelectedTerm() {
     guard let term = selectedTerm, let scope = selectedScope, let store,
           hasFullAccess, selectedDocument == textDocumentProxy.documentIdentifier,
           term == KeyboardSelection.term(textDocumentProxy.selectedText), !state.phase.busy else { updateToolbar(); return }
-    do { try store.addKeyboardTerm(term, scope: scope); dictionaryError = nil; feedback.type() }
+    do {
+      try store.addKeyboardTerm(term, scope: scope); dictionaryError = nil
+      // Protect a durable keyboard addition before the next key, including
+      // hosts that do not send a selection-change callback after the save.
+      typingVocabularyCheckedAt = .distantPast; updateSuggestions(); feedback.type()
+    }
     catch { dictionaryError = error.localizedDescription; UIAccessibility.post(notification: .announcement, argument: dictionaryError) }
     updateToolbar(forceDictionaryRefresh: true)
   }

@@ -2,6 +2,17 @@ import XCTest
 @testable import ClarifyContracts
 
 final class TypingCorrectionTests: XCTestCase {
+  func testSentenceStartsAfterTerminalPunctuationQuotesAndWhitespace() {
+    for text in ["", "Olá.", "Olá! ", "Olá?  ", "Olá!\u{00a0}", "“Olá.” ", "Olá\n", "Olá\n  "] {
+      XCTAssertTrue(KeyboardState.startsSentence(after: text), text)
+    }
+    for text in ["Olá", "Olá, ", "12.3", "https://example.com"] {
+      XCTAssertFalse(KeyboardState.startsSentence(after: text), text)
+    }
+    var state = KeyboardState(); state.didInsert(" "); XCTAssertEqual(state.shift, .once)
+    state.didInsert("Q"); XCTAssertEqual(state.shift, .off)
+    state.shift = .caps; state.didInsert("Q"); XCTAssertEqual(state.shift, .caps)
+  }
   private func context(_ before: String, after: String = "") -> TypingContext {
     TypingContext(document: UUID(), before: before, after: after)
   }
@@ -57,5 +68,13 @@ final class TypingCorrectionTests: XCTestCase {
     let field = context("voce")
     XCTAssertEqual(engine.keepOriginal(in: field), TypingEdit(deleteCount: 0, text: " "))
     XCTAssertNil(engine.replacement(in: field, candidate: "você", separator: " ", automatic: true))
+  }
+  func testCorrectionUndoSurvivesTheDocumentProxyContextLimit() {
+    var engine = TypingCorrection()
+    var field = context(String(repeating: "a ", count: 23) + "teh")
+    XCTAssertNotNil(engine.replacement(in: field, candidate: "the", separator: " ", automatic: true))
+    field.before = String((String(field.before.dropLast(3)) + "the ").suffix(49))
+    XCTAssertEqual(engine.original(in: field), "teh")
+    XCTAssertEqual(engine.revert(in: field), TypingEdit(deleteCount: 4, text: "teh"))
   }
 }

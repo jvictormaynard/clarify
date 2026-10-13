@@ -13,6 +13,15 @@ An unfinished setup resumes on the next launch. Existing accounts and keys
 skip first-run setup after an upgrade. A setup preference contains no credentials.
 Billing, translation and local models are outside this mobile release.
 
+Version **0.7.2 (25)** improves touch coverage between keys, sliding to adjacent
+keys, fast overlapping taps and automatic capitalization after `.?!`. Local
+correction protects active dictionary words, including terms just saved from
+the keyboard. Start waits for a fresh source-app capture and uses the corrected
+native callback signature. Two consecutive returns passed in a separate
+Release simulator host; return after real microphone authorization still needs
+testing on the physical iOS 26.6.2 device. The opening-height jump remains
+unresolved and is explicitly deferred for this TestFlight release.
+
 Version **0.7.1 (24)** adds a small Mobile or Desktop icon and label below each
 history timestamp, using the same caption size. Earlier iPhone records default
 to Mobile. History remains local; account dictionary and usage synchronization
@@ -46,6 +55,45 @@ acceptance. These fixtures do not prove that the device-reported jump is gone.
 Use the direct workflow's `tests_only` input to run native checks without signing
 or uploading an existing build number. Uploads retain the full check sequence.
 Mobile versions are independent of the Windows release tags.
+
+### Installed keyboard opening diagnostic
+
+The opening-height defect remains open. On the iPhone 17 Pro simulator
+(iOS 26.5), the installed extension briefly reserves 553/598 points before
+returning to 370. The ordinary keyboard-frame notification can report only
+the final height. A `CADisplayLink` trace of the host's `keyboardLayoutGuide`
+and visible composer captures the transient height. The test retains video
+for comparison with the device recording. The system-keyboard control passes
+in the same host. This simulator result does not establish behavior on the
+reported physical iOS 26.6.2 device.
+This is an observation, not a confirmed root cause or a validated fix.
+
+Run `node scripts/test-keyboard-extension.cjs --check-opening-height` from
+`mobile/` on macOS, or select both `tests_only` and `extension_diagnostic` in
+the iOS workflow. The generated
+UIKit host installs the real extension sources, tests the system keyboard as
+a control, and checks initial switching plus four dismiss/reopen cycles. It
+also verifies text insertion, sliding to a neighboring key, sentence casing
+after `.?!`, and the bottom keyboard row. Two consecutive activation handoffs
+must capture a fresh origin, consume the real one-use nonce and return through
+the production native bridge. The fixture uses Release builds and synthetic
+text, with no microphone, provider key or user profile.
+The current extension is expected to fail the height assertion. The workflow
+retains traces, screenshots, video and the result bundle for investigation.
+Passing the separate in-process UIKit tests does not resolve this open gate.
+No new signing or upload occurs when `tests_only` is selected.
+Selecting both diagnostic inputs runs the installed-extension fixture directly;
+regular tests-only runs and every signed upload retain all product checks.
+
+Every signed upload runs the installed typing, casing and two-return checks
+against production sources. It also records all five opening traces and requires
+the final keyboard height and bottom row to be usable. The transient overshoot
+assertion remains in the strict diagnostic above; the user explicitly deferred
+that known defect to test the other improvements in build 25. This exception does
+not allow typing, activation, final-height or native-control failures to pass.
+Temporary sizing experiments have been removed from the workflow. An in-process
+UIKit test alone is insufficient evidence for a correction to remote keyboard
+geometry or return to a separate application.
 
 Version 0.6.0 (22) adds a dictionary action to the keyboard toolbar when one or
 two words are selected. Tap **Adicionar ao dicionário** to save without changing

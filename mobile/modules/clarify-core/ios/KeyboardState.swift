@@ -6,6 +6,7 @@ struct KeyboardState {
   enum Shift { case off, once, caps }
   var page: Page = .letters
   var shift: Shift = .once
+  private(set) var shiftIsManual = false
   var rows: [[String]] {
     switch page {
     case .letters:
@@ -19,11 +20,26 @@ struct KeyboardState {
     }
   }
   mutating func toggleShift(caps: Bool = false) {
+    shiftIsManual = true
     shift = caps ? .caps : (shift == .off ? .once : .off)
   }
   mutating func didInsert(_ text: String) {
-    if shift == .once { shift = .off }
+    if text.contains(where: { $0.isLetter }), shift != .caps {
+      if shift == .once { shift = .off }
+      shiftIsManual = false
+    }
     if text == " " || text == "\n" { page = .letters }
+  }
+  static func startsSentence(after context: String) -> Bool {
+    if context.isEmpty { return true }
+    // Closing quotes/brackets and any number of spaces may follow punctuation.
+    // A newline starts a new sentence even after an unfinished previous line.
+    for character in context.reversed() {
+      if character.isNewline { return true }
+      if character.isWhitespace || "\"'”’»)]}".contains(character) { continue }
+      return ".?!…".contains(character)
+    }
+    return true
   }
   static func accents(for key: String) -> [String] {
     let values: [String: String] = ["a": "aáàâãä", "e": "eéèêë", "i": "iíìîï",

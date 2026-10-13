@@ -19,6 +19,7 @@ private final class Field: NSObject, UITextDocumentProxy {
   var spellCheckingType: UITextSpellCheckingType = .yes
   var keyboardType: UIKeyboardType = .default
   var isSecureTextEntry = false
+  var autocapitalizationType: UITextAutocapitalizationType = .sentences
   func insertText(_ text: String) { before += text; selectedText = nil }
   func deleteBackward() { if !before.isEmpty { before.removeLast() } }
   func adjustTextPosition(byCharacterOffset offset: Int) {}
@@ -49,6 +50,115 @@ private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
 }
 
 final class KeyboardUITests: XCTestCase {
+  func testOwnTypingCapitalizesTheNextSentenceWithoutAHostNotification() async throws {
+    try await MainActor.run {
+      let keyboard = SelectionKeyboard(); keyboard.loadViewIfNeeded()
+      let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+      for punctuation in [".", "?", "!"] {
+        keyboard.field.before = "Olá" + punctuation; keyboard.textDidChange(nil)
+        let space = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == L("espaço") })
+        space.sendActions(for: .touchUpInside)
+        XCTAssertEqual(grid.model.shift, .once)
+        let letter = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal)?.lowercased() == "q" })
+        letter.sendActions(for: .touchUpInside)
+        XCTAssertEqual(keyboard.field.before, "Olá" + punctuation + " Q")
+      }
+    }
+  }
+  func testUnchangedLayoutKeepsTheKeysThatMayStillBeTrackingAnotherFinger() async throws {
+    try await MainActor.run {
+      let grid = KeyGridView(); let before = self.descendants(grid).compactMap { $0 as? UIButton }
+      grid.rebuild()
+      XCTAssertTrue(before.allSatisfy { $0.isDescendant(of: grid) }, "A refresh must not discard live key controls")
+    }
+  }
+  func testEmptyFieldWithoutContextCapitalizesButUnknownNonemptyContextDoesNot() async throws {
+    try await MainActor.run {
+      let keyboard = SelectionKeyboard(); keyboard.loadViewIfNeeded()
+      let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+      keyboard.field.contextAvailable = false; grid.model.shift = .off
+      keyboard.textDidChange(nil); XCTAssertEqual(grid.model.shift, .once)
+      keyboard.field.before = "word"; grid.model.shift = .off
+      keyboard.textDidChange(nil); XCTAssertEqual(grid.model.shift, .off)
+      keyboard.field.before = ""; keyboard.field.autocapitalizationType = .none
+      keyboard.textDidChange(nil); XCTAssertEqual(grid.model.shift, .off)
+    }
+  }
+  func testLocalAutocorrectionUsesPortugueseEnglishAndSpanishContext() async {
+    await MainActor.run {
+      let examples = [("pt", "Muito obrigaddo", "Muito obrigado "),
+        ("en", "I would say helllo", "I would say hello "),
+        ("es", "Nos vemos mañanna", "Nos vemos mañana ")]
+      for (language, original, expected) in examples where UITextChecker.availableLanguages.contains(where: { $0.hasPrefix(language) }) {
+        let field = Field(), assistant = TypingAssistant(); field.before = original
+        assistant.insert(" ", into: field); XCTAssertEqual(field.before, expected, language)
+      }
+    }
+  }
+  func testSlidingReleaseOverlapsAndCancelledTouchesDoNotLoseOrDuplicateLetters() async throws {
+    try await MainActor.run {
+      let grid = KeyGridView(frame: CGRect(x: 0, y: 0, width: 393, height: 220)); grid.layoutIfNeeded()
+      @MainActor func key(_ title: String) throws -> UIButton {
+        try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == title })
+      }
+      @MainActor func center(_ key: UIButton) -> CGPoint { key.convert(CGPoint(x: key.bounds.midX, y: key.bounds.midY), to: grid) }
+      let q = try key("Q"), w = try key("W")
+      let qPoint = center(q), wPoint = center(w)
+      var text = ""; grid.onInsert = { text += $0 }
+      grid.beginPress(1, at: qPoint); grid.movePress(1, to: wPoint); grid.endPress(1, at: wPoint)
+      XCTAssertEqual(text, "W", "Sliding onto a neighbouring key must insert it exactly once")
+      grid.layoutIfNeeded()
+      let a = try key("a"), s = try key("s")
+      grid.beginPress(2, at: center(a)); grid.beginPress(3, at: center(s))
+      grid.endPress(2, at: center(a)); grid.model.shift = .once; grid.rebuild()
+      XCTAssertTrue(s.isDescendant(of: grid), "Keep the second finger's key during a casing update")
+      grid.endPress(3, at: center(s)); XCTAssertEqual(text, "WaS")
+      grid.layoutIfNeeded()
+      grid.beginPress(4, at: qPoint); grid.cancelPress(4); grid.endPress(4, at: qPoint)
+      XCTAssertEqual(text, "WaS", "System cancellations must not insert a key")
+      grid.beginPress(5, at: CGPoint(x: 1, y: qPoint.y))
+      grid.endPress(5, at: CGPoint(x: -4, y: qPoint.y))
+      XCTAssertEqual(text.lowercased(), "wasq", "Small edge drift must not discard a tap")
+      grid.model.shift = .once; grid.rebuild(); grid.layoutIfNeeded()
+      let upperQ = try key("Q"), upperW = try key("W")
+      let first = center(upperQ), second = center(upperW)
+      grid.beginPress(6, at: first); grid.beginPress(7, at: second)
+      grid.endPress(6, at: first); grid.endPress(7, at: second)
+      XCTAssertTrue(text.hasSuffix("Qw"), "Two overlapping fingers consume one-shot shift only once")
+    }
+  }
+  func testCustomVocabularyIsNotReplacedAndQuotedWordsStillCorrect() async {
+    await MainActor.run {
+      let field = Field(), assistant = TypingAssistant()
+      assistant.protectVocabulary(["helllo", "obrigaddo"])
+      for word in ["helllo", "obrigaddo"] {
+        field.before = word; assistant.insert(" ", into: field); XCTAssertEqual(field.before, word + " ")
+      }
+      assistant.protectVocabulary([]); field.before = "“helllo"
+      assistant.insert(" ", into: field); XCTAssertEqual(field.before, "“hello ")
+    }
+  }
+  func testWordSavedFromTheKeyboardIsProtectedBeforeTheNextSpace() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer {
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+        window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+      }
+      try store.publishKeyboardDictionary(KeyboardDictionaryContext(scope: "guest", words: []))
+      keyboard.field.before = "helllo"; keyboard.field.selectedText = "helllo"
+      keyboard.selectionDidChange(nil)
+      let save = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" })
+      XCTAssertTrue(save.isEnabled); save.sendActions(for: .touchUpInside)
+      XCTAssertEqual(store.keyboardAdditions(scope: "guest").map { $0.1.term }, ["helllo"])
+      keyboard.field.selectedText = nil; keyboard.selectionDidChange(nil)
+      let space = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.title(for: .normal) == L("espaço") })
+      space.sendActions(for: .touchUpInside)
+      XCTAssertEqual(keyboard.field.before, "helllo ", "A newly saved word must not wait for the vocabulary cache to expire")
+    }
+  }
   @MainActor
   private func makeDictationFixture() throws -> (SelectionKeyboard, SharedState, UIWindow) {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -68,6 +178,10 @@ final class KeyboardUITests: XCTestCase {
   private func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
   @MainActor
   private func publish(_ text: String, to keyboard: SelectionKeyboard, store: SharedState) throws {
+    // The real containing app refreshes its heartbeat during editing. This
+    // isolated fixture has no audio session or background heartbeat producer.
+    var live = store.snapshot(); live.heartbeat = Date().timeIntervalSince1970
+    try store.write(live, to: "state.json"); keyboard.viewWillAppear(false)
     let mic = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
     XCTAssertTrue(mic.accessibilityActivate())
     XCTAssertTrue(mic.accessibilityActivate(), "Finish the locked recording before publishing its result")
@@ -120,6 +234,32 @@ final class KeyboardUITests: XCTestCase {
       edit.sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "Prefix original selection")
       edit.sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "Prefix Replacement")
     }
+  }
+  @MainActor
+  func testDictationAndUndoRefreshSentenceCasingWithoutAHostNotification() async throws {
+    let (keyboard, store, window) = try makeDictationFixture()
+    defer {
+      keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+      window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+    }
+    keyboard.field.before = "hello"; keyboard.textDidChange(nil)
+    let grid = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+    XCTAssertEqual(grid.model.shift, .off)
+    let mic = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
+    XCTAssertTrue(mic.accessibilityActivate()); XCTAssertTrue(mic.accessibilityActivate())
+    let command = try XCTUnwrap(store.commands().last?.1)
+    var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970
+    state.operationID = command.operationID; state.phase = .ready; state.text = " world. "
+    try store.write(state, to: "state.json")
+    let inserted = expectation(for: NSPredicate { _, _ in keyboard.field.before == "hello world. " }, evaluatedWith: nil)
+    await fulfillment(of: [inserted], timeout: 2)
+    XCTAssertEqual(grid.model.shift, .once)
+    let undo = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? UIButton }
+      .first { $0.accessibilityIdentifier == "clarify.undo-dictation" })
+    undo.sendActions(for: .touchUpInside)
+    XCTAssertEqual(keyboard.field.before, "hello"); XCTAssertEqual(grid.model.shift, .off)
+    undo.sendActions(for: .touchUpInside)
+    XCTAssertEqual(keyboard.field.before, "hello world. "); XCTAssertEqual(grid.model.shift, .once)
   }
   func testDictationEditInvalidatesForExternalEditsSelectionAndAnotherDocument() async throws {
     try await MainActor.run {
@@ -536,7 +676,9 @@ final class KeyboardUITests: XCTestCase {
           XCTAssertTrue(buttons.allSatisfy { $0.bounds.width > 20 && $0.bounds.height > 30 })
         }
         grid.model.page = .letters; grid.rebuild(); host.view.layoutIfNeeded()
-        let button = descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "A" }!
+        guard let button = descendants(grid).compactMap({ $0 as? UIButton }).first(where: { $0.title(for: .normal)?.lowercased() == "a" }) else {
+          XCTFail("Missing A key"); return
+        }
         button.isHighlighted = true
         let preview = descendants(keyboard.view).compactMap { $0 as? KeyPreview }.first
         XCTAssertNotNil(preview)

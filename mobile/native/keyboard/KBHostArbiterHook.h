@@ -19,10 +19,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// Captures the host app's Bundle ID from inside a keyboard extension on
 /// iOS 26.4+ by swizzling the private `_UIKeyboardArbiterClientInputDestination`
 /// `queue_keyboardChanged:onComplete:` callback.
+/// Also captures direct `_didHandleKeyboardClientChange:` delivery on current
+/// UIKit. Each selector's complete argument/return signature is checked first.
 ///
 /// The hook installs automatically via `+load` when the extension loads on
 /// iOS 26.4 or later. On earlier iOS versions the hook is a no-op and callers
 /// should fall back to the legacy PKService path (see `LegacyHostResolver`).
+/// Installation retries when a query initializes a lazily loaded UIKit class.
 @interface KBHostArbiterHook : NSObject
 
 /// Returns the most recent host Bundle ID observed by the swizzle in the
