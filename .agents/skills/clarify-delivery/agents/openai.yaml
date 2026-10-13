@@ -1,0 +1,5 @@
+interface:
+  display_name: "Clarify Delivery"
+  short_description: "Implement, test, repair, and review Clarify changes"
+policy:
+  allow_implicit_invocation: true

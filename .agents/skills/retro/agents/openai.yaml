@@ -1,0 +1,5 @@
+interface:
+  display_name: "Retro"
+  short_description: "Learn from delivery evidence and failures"
+policy:
+  allow_implicit_invocation: true

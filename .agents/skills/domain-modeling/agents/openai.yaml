@@ -1,0 +1,5 @@
+interface:
+  display_name: "Domain Modeling"
+  short_description: "Define project terms and architecture decisions"
+policy:
+  allow_implicit_invocation: true

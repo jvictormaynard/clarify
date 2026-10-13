@@ -10,9 +10,17 @@ tag, documentation, executable, or source state to drift apart.
 
 ## Required context
 
-Operate on `/home/ork/repos/clarify` unless the user supplies another
-Clarify checkout. Read [references/release-contract.md](references/release-contract.md)
+Use a dedicated linked release worktree under the
+[project workflow](../../../docs/agents/workflow.md#worktrees-and-parallel-work),
+based on freshly fetched `origin/main`. Preserve the primary checkout and other
+tasks. Read [references/release-contract.md](references/release-contract.md)
 completely before changing release state.
+
+The current operational path is `community`. Signed publication is blocked:
+the preflight expects a tag-triggered `Release`, but that workflow is manual-only,
+and every `v*` tag also starts `Community Release`. Do not dispatch a competing
+signed release. Repair track selection and preflight under a separate authorized
+change before using the signed path; preserve its signing and acceptance gates.
 
 Use local `git` for branches, commits, tags, and pushes. Prefer the GitHub
 connector for PR creation and metadata; use `gh` for authentication, Actions,
@@ -22,8 +30,9 @@ release inspection, downloads, and gaps in connector coverage.
 
 ### 1. Establish the release boundary
 
-1. Fetch and prune `origin`, including tags.
-2. Require an understood, clean worktree before creating a release branch.
+1. Fetch `origin`, including tags, and inspect the source state.
+2. Preserve unrelated changes. Require a clean linked release worktree before
+   editing release files; an unrelated dirty checkout is not the release target.
 3. Inspect the latest GitHub release, existing tags, open PRs, and commits since
    the latest tag.
 4. Choose the next SemVer:
@@ -35,7 +44,8 @@ release inspection, downloads, and gaps in connector coverage.
 
 ### 2. Prepare release documentation
 
-Create `codex/release-vX.Y.Z` from current `origin/main`.
+Create or verify `codex/release-vX.Y.Z` in its own linked worktree using the
+project workflow. Repeat the current-base check before final review and delivery.
 
 Update `CHANGELOG.md`:
 
@@ -68,11 +78,16 @@ Run:
 ```bash
 python3 .agents/skills/clarify-release/scripts/release_preflight.py \
   --repo . \
-  --version X.Y.Z
+  --version X.Y.Z \
+  --track <signed-or-community>
 git diff --check
 npm run check
 npm test
 ```
+
+Replace the track placeholder with `signed` or `community` for the selected
+release contract. This skill covers desktop publication; for iOS/TestFlight use
+the mobile guide and publication rules in the project workflow.
 
 For Windows UI, dependency, packaging, hotkey, focus, microphone, or
 transparency changes, also run `npm run deploy`. Confirm that
@@ -111,18 +126,16 @@ git tag -a vX.Y.Z <main-sha> -m "Clarify vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-Watch the tag-triggered `Release` workflow. It must run tests, build on Windows,
-sign and verify the EXE, MSI, and manifest CAB through the protected Azure OIDC
-environment, create checksums, ZIP, and provenance attestations, obtain the
-verified SoX source archive, and publish the GitHub release.
-
-When sponsored signing is unavailable, use the tag-triggered
-`Community Release` workflow instead. It publishes only the unsigned portable
+Watch the tag-triggered `Community Release` workflow. It publishes the unsigned portable
 EXE, checksum, runtime SBOM, ZIP, Qt and SoX source archives, and provenance
 attestations. From v0.5.0 it also publishes Ed25519-authenticated portable
 metadata and its signature, as specified in the release contract. Verify these
 against the bundled public key, executable hash, version, and source SHA.
 It must not publish an MSI or an Authenticode CAB update manifest.
+
+The blocked signed path retains its protected Azure OIDC, timestamped EXE/MSI/CAB
+signatures, checksums, source archives, and provenance gates. It is not an
+alternative publication command until the trigger/preflight conflict is repaired.
 
 Do not create a second manual release while the workflow is running.
 
@@ -161,8 +174,9 @@ Report:
 - manual installer acceptance evidence and any unmet rollout gate from
   `docs/windows-distribution.md`.
 
-Keep the local checkout on clean, synchronized `main`. Prune merged temporary
-branches from remote-tracking refs.
+Preserve the starting checkout, branch, and unrelated work. Retain the verified
+release source and evidence. Clean up only task-owned temporary resources after
+their results are preserved; do not switch the primary checkout to `main`.
 
 ## Stop conditions
 

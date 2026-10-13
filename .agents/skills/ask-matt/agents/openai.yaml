@@ -1,0 +1,5 @@
+interface:
+  display_name: "Ask Matt"
+  short_description: "Choose the workflow for the current task"
+policy:
+  allow_implicit_invocation: true

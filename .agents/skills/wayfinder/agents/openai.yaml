@@ -1,0 +1,5 @@
+interface:
+  display_name: "Wayfinder"
+  short_description: "Map unresolved decisions for a large project effort"
+policy:
+  allow_implicit_invocation: true
