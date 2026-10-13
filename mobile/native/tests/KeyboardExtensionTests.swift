@@ -113,7 +113,8 @@ final class KeyboardExtensionTests: XCTestCase {
       // The Settings switch can keep a stale AX value after its alert closes.
       // Verify the permission in the extension below, where it affects Start.
     }
-    app.activate()
+    // Start a new text-input session after Settings changes the keyboard list.
+    app.terminate(); app.launch()
     app.textFields["composer"].tap()
     let keyboard = app.buttons["clarify.keyboard.record"]
     let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
