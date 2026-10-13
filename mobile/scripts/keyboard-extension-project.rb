@@ -68,7 +68,7 @@ bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
 if minimal_probe == 'true'
   File.write(File.join(fixture, 'GeometryConfig.h'), "#define CLARIFY_GEOMETRY_CONFIG @#{File.join(shared_root, 'geometry-variant.txt').inspect}\n")
   bridge = File.join(fixture, 'Geometry-Bridging-Header.h')
-  File.write(bridge, "#import <UIKit/UIKit.h>\nvoid ClarifyGeometryLogController(UIInputViewController *controller, NSString *phase);\nNSString *ClarifyGeometryVariant(void);\nvoid ClarifyGeometryConfigure(UIInputViewController *controller);\n")
+  File.write(bridge, "#import <UIKit/UIKit.h>\nvoid ClarifyGeometryLogController(UIInputViewController *controller, NSString *phase);\nNSString *ClarifyGeometryVariant(void);\nvoid ClarifyGeometryConfigure(UIInputViewController *controller);\nvoid ClarifyGeometryPrepareParent(UIViewController *parent);\n")
 end
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   source = name == 'SharedState.swift' ? shared_source : File.join(root, 'modules/clarify-core/ios', name)
@@ -114,6 +114,7 @@ info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'ClarifyKeyboard'
 Xcodeproj::Plist.write_to_path(info, File.join(fixture, 'Keyboard.plist'))
 keyboard.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.container.keyboard',
+    'CLANG_ENABLE_OBJC_ARC' => 'YES',
     'APPLICATION_EXTENSION_API_ONLY' => 'YES', 'SKIP_INSTALL' => 'YES', 'GENERATE_INFOPLIST_FILE' => 'NO',
     'INFOPLIST_FILE' => File.join(fixture, 'Keyboard.plist'),
     'HEADER_SEARCH_PATHS' => [File.join(root, 'native/keyboard'), fixture],

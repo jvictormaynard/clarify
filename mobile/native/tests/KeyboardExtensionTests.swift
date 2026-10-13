@@ -167,7 +167,7 @@ final class KeyboardExtensionTests: XCTestCase {
       capture.lifetime = .keepAlways; add(capture)
     }
     if minimalProbe {
-      for variant in ["baseline", "operator-no-auto", "operator-fullscreen", "native-autosize", "align-content", "operator-fitting", "operator-preferred", "incoming-size"] {
+      for variant in ["baseline", "initial-window", "initial-handle", "early-parent", "preempt-size"] {
         app.buttons["Dismiss"].tap()
         try variant.write(to: fixtureRoot.appendingPathComponent("geometry-variant.txt"), atomically: true, encoding: .utf8)
         for index in 0..<3 {
