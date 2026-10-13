@@ -92,22 +92,20 @@ with tempfile.TemporaryDirectory(prefix="clarify-runtime-inspect-") as folder:
         "settings set target.process.stop-on-sharedlibrary-events false",
         "settings set interpreter.stop-command-source-on-error false",
     ]
-    commands += [f'disassemble --name "{method}"' for method in methods]
-    commands += [
-        'image lookup --regex --name "updateViewSizingConstraints|sizeForInputView|updateSizeFromRemote"',
-    ]
+    commands += [f'disassemble --count 180 --name "{method}"' for method in methods]
     commands += ["process detach", "quit"]
     script = root / "inspect.lldb"
     script.write_text("\n".join(commands) + "\n")
     print("Reading UIKit functions", flush=True)
-    result = subprocess.run(
-        ["lldb", "--batch", "-p", pid, "-s", str(script)],
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
-    (results / "geometry-disassembly.txt").write_text(result.stdout + result.stderr)
+    with (results / "geometry-disassembly.txt").open("w") as debugger_output:
+        result = subprocess.run(
+            ["lldb", "--batch", "-p", pid, "-s", str(script)],
+            text=True,
+            stdout=debugger_output,
+            stderr=subprocess.STDOUT,
+            timeout=180,
+        )
     print("Debugger exit", result.returncode, flush=True)
     if result.returncode:
-        print((result.stdout + result.stderr)[-2000:])
+        print((results / "geometry-disassembly.txt").read_text()[-2000:])
         raise SystemExit(result.returncode)
