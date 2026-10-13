@@ -25,6 +25,10 @@ on:
         description: Validate synthetic short speech with the live Groq client
         type: boolean
         default: false
+      availability_only:
+        description: Complete internal TestFlight delivery of the already uploaded build
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -34,8 +38,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  availability:
+    name: Verify the uploaded TestFlight build
+    if: ${{ inputs.availability_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.21.1
+      - name: Verify processing and publish to the existing internal group
+        working-directory: mobile
+        env:
+          CLARIFY_ASC_KEY_P8: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
+          CLARIFY_ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
+          CLARIFY_ASC_ISSUER_ID: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
+        run: node scripts/publish-testflight.cjs
+      - name: Preserve TestFlight availability evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: clarify-testflight-${{ github.sha }}
+          path: mobile/test-results/testflight-availability.json
+          if-no-files-found: error
+          retention-days: 7
   publish:
     name: Test, sign and upload iOS
+    if: ${{ !inputs.availability_only }}
     runs-on: macos-26
     timeout-minutes: 90
     defaults:
