@@ -24,6 +24,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
 keyboard_sources = minimal_probe == 'true' ? [] : %w[KeyboardViewController.swift DictationEdit.swift KeyGridView.swift KeyPreview.swift TypingAssistant.swift HostActivation.swift KBHostArbiterHook.m]
 if minimal_probe == 'true'
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/MinimalKeyboardHeightProbe.swift')))
+  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/GeometryForwardingProbe.m')))
 end
 keyboard_sources.each do |name|
   source = File.join(root, 'native/keyboard', name)
@@ -64,6 +65,10 @@ keyboard_sources.each do |name|
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
 bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
+if minimal_probe == 'true'
+  bridge = File.join(fixture, 'Geometry-Bridging-Header.h')
+  File.write(bridge, "#import <UIKit/UIKit.h>\nvoid ClarifyGeometryLogController(UIInputViewController *controller, NSString *phase);\n")
+end
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   source = name == 'SharedState.swift' ? shared_source : File.join(root, 'modules/clarify-core/ios', name)
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
@@ -111,7 +116,7 @@ keyboard.build_configurations.each do |config|
     'APPLICATION_EXTENSION_API_ONLY' => 'YES', 'SKIP_INSTALL' => 'YES', 'GENERATE_INFOPLIST_FILE' => 'NO',
     'INFOPLIST_FILE' => File.join(fixture, 'Keyboard.plist'),
     'HEADER_SEARCH_PATHS' => File.join(root, 'native/keyboard'),
-    'SWIFT_OBJC_BRIDGING_HEADER' => minimal_probe == 'true' ? '' : bridge })
+    'SWIFT_OBJC_BRIDGING_HEADER' => bridge })
 end
 test_info = { 'CFBundleName' => 'ExtensionTests', 'CFBundleIdentifier' => '$(PRODUCT_BUNDLE_IDENTIFIER)',
   'CFBundleExecutable' => '$(EXECUTABLE_NAME)', 'CFBundlePackageType' => 'BNDL',
