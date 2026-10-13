@@ -33,7 +33,9 @@ final class KeyboardViewController: UIInputViewController {
     view.addSubview(probe)
     NSLayoutConstraint.activate([
       probe.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      probe.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
+      // Keep the probe visible even during the provisional fullscreen layout.
+      // A bottom-anchored control is outside the remote host's clipped area.
+      probe.topAnchor.constraint(equalTo: view.topAnchor, constant: 7),
       probe.heightAnchor.constraint(equalToConstant: 44)
     ])
   }
