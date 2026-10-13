@@ -86,6 +86,7 @@ final class KeyboardExtensionTests: XCTestCase {
     continueAfterFailure = false
     executionTimeAllowance = 300
     let strictHeight = Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyStrictOpeningHeight") as? Bool ?? true
+    let minimalProbe = Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyMinimalHeightProbe") as? Bool ?? false
     let testFullAccess = true
     let app = XCUIApplication(); app.launch()
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
@@ -127,9 +128,11 @@ final class KeyboardExtensionTests: XCTestCase {
       XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
     }
     XCTAssertTrue(keyboard.waitForExistence(timeout: 30), app.debugDescription)
-    XCTAssertTrue(app.buttons["clarify.keyboard.start"].waitForExistence(timeout: 5),
+    if !minimalProbe { XCTAssertTrue(app.buttons["clarify.keyboard.start"].waitForExistence(timeout: 5),
                   "The installed extension must receive Full Access before testing activation")
+    }
     try checkTrace(in: app, opening: "Switching to the extension", strict: strictHeight)
+    if !minimalProbe {
     let letter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch
     XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription); letter.tap()
     expectText("Q", in: app)
@@ -153,6 +156,7 @@ final class KeyboardExtensionTests: XCTestCase {
       sentence += punctuation + " A"
       expectText(sentence, in: app)
     }
+    }
     for index in 0..<4 {
       app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
       app.textFields["composer"].tap()
@@ -162,6 +166,7 @@ final class KeyboardExtensionTests: XCTestCase {
       let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "extension-opening-\(index)"
       capture.lifetime = .keepAlways; add(capture)
     }
+    if minimalProbe { return }
     let start = app.buttons["clarify.keyboard.start"]
     // The helper consumes the actual keyboard nonce and calls the production
     // bridge. A success return value alone cannot prove that the app opened.
