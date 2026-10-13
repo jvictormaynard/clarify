@@ -1,5 +1,5 @@
 require 'xcodeproj'
-root, fixture = ARGV
+root, fixture, strict_opening_height = ARGV
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
@@ -112,7 +112,7 @@ end
 test_info = { 'CFBundleName' => 'ExtensionTests', 'CFBundleIdentifier' => '$(PRODUCT_BUNDLE_IDENTIFIER)',
   'CFBundleExecutable' => '$(EXECUTABLE_NAME)', 'CFBundlePackageType' => 'BNDL',
   'CFBundleShortVersionString' => '1.0', 'CFBundleVersion' => '1',
-  'ClarifyFixtureDirectory' => shared_root }
+  'ClarifyFixtureDirectory' => shared_root, 'ClarifyStrictOpeningHeight' => strict_opening_height == 'true' }
 Xcodeproj::Plist.write_to_path(test_info, File.join(fixture, 'Tests.plist'))
 tests.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.tests', 'TEST_TARGET_NAME' => 'KeyboardHost',

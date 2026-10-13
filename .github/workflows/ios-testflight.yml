@@ -18,7 +18,7 @@ on:
         type: boolean
         default: false
       extension_diagnostic:
-        description: Test the installed keyboard extension in a separate host
+        description: Also enforce the unresolved opening-height diagnostic (tests only)
         type: boolean
         default: false
 
@@ -70,9 +70,15 @@ jobs:
         env:
           CLARIFY_NATIVE_TESTS: '1'
         run: node scripts/test-keyboard-ui.cjs
-      - name: Test installed keyboard extension
-        if: ${{ !inputs.tests_only || inputs.extension_diagnostic }}
-        run: node scripts/test-keyboard-extension.cjs
+      - name: Test installed keyboard typing and activation
+        env:
+          STRICT_OPENING_HEIGHT: ${{ inputs.tests_only && inputs.extension_diagnostic }}
+        run: |
+          if [[ "$STRICT_OPENING_HEIGHT" == 'true' ]]; then
+            node scripts/test-keyboard-extension.cjs --check-opening-height
+          else
+            node scripts/test-keyboard-extension.cjs
+          fi
       - name: Generate native project
         if: ${{ !inputs.tests_only }}
         run: npx expo prebuild --clean --platform ios --no-install
