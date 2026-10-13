@@ -113,7 +113,7 @@ if minimal_probe == 'true'
   storyboard = File.join(fixture, 'KeyboardInterface.storyboard')
   File.write(storyboard, <<~'XML')
     <?xml version="1.0" encoding="UTF-8"?>
-    <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="keyboard-controller">
+    <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="23501" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="keyboard-controller">
       <device id="retina6_12" orientation="portrait" appearance="light"/>
       <dependencies>
         <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="1"/>
