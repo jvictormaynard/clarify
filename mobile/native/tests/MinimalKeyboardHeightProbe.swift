@@ -36,7 +36,7 @@ final class KeyboardViewController: UIInputViewController {
       recordedParents = true
       var controller: UIViewController? = self
       while let current = controller {
-        NSLog("ClarifyMinimalParent %@ preferred=%@", String(describing: type(of: current)), NSStringFromCGSize(current.preferredContentSize))
+        NSLog("ClarifyMinimalParent %@ preferred=%@", String(describing: type(of: current)), String(describing: current.preferredContentSize))
         var runtimeClass: AnyClass? = object_getClass(current)
         while let cls = runtimeClass, cls != UIViewController.self {
           var count: UInt32 = 0
