@@ -16,6 +16,10 @@ based on freshly fetched `origin/main`. Preserve the primary checkout and other
 tasks. Read [references/release-contract.md](references/release-contract.md)
 completely before changing release state.
 
+Follow the project workflow for authorization. A release audit is read-only;
+publication requires a publication request. Resolve checkout and deployment
+paths from Git and the current installation instead of machine-specific defaults.
+
 The current operational path is `community`. Signed publication is blocked:
 the preflight expects a tag-triggered `Release`, but that workflow is manual-only,
 and every `v*` tag also starts `Community Release`. Do not dispatch a competing
@@ -79,19 +83,22 @@ Run:
 python3 .agents/skills/clarify-release/scripts/release_preflight.py \
   --repo . \
   --version X.Y.Z \
-  --track <signed-or-community>
+  --track community
 git diff --check
 npm run check
 npm test
 ```
 
-Replace the track placeholder with `signed` or `community` for the selected
-release contract. This skill covers desktop publication; for iOS/TestFlight use
-the mobile guide and publication rules in the project workflow.
+The commands show Linux/WSL. On Windows, use the configured Python interpreter.
+This skill covers desktop publication; for iOS/TestFlight use the mobile guide
+and publication rules in the project workflow.
 
 For Windows UI, dependency, packaging, hotkey, focus, microphone, or
-transparency changes, also run `npm run deploy`. Confirm that
-`C:\repos\clarify\dist\Clarify.exe` restarted and is responding.
+transparency changes, perform the Windows build and applicable acceptance from
+the release contract. For local deployment, use `scripts/deploy.ps1` with the
+observed installation path or `CLARIFY_INSTALL_PATH`. From PowerShell on a WSL
+UNC checkout, invoke the script directly if npm cannot use that directory.
+Verify the resulting executable hash, process path, and responsiveness.
 When the user explicitly requests publication, treat that request as approval
 of visible and interaction changes. Do not require a second manual-acceptance
 confirmation. Report any manual interaction check that was not performed as an

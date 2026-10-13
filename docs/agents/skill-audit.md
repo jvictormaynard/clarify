@@ -238,6 +238,8 @@ local skill framework was reused without copying unfinished product changes.
 The current remote release contract was retained instead of the older local
 draft. Its skill now uses the shared worktree rules and preserves the starting
 checkout instead of forcing it back to `main`.
+The existing local corrections for configured Python and observed deployment
+paths are preserved in the current release skill and contract.
 Descriptions and bodies omit repeated project-only prefixes; AGENTS.md owns scope.
 See [the workflow](workflow.md#worktrees-and-parallel-work) for delegation and
 integration. No global agent configuration or model setting is changed.

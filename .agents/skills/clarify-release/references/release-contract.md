@@ -69,8 +69,11 @@ Before the release-preparation PR:
 
 For Windows-facing changes:
 
-- `npm run deploy`
-- installed process path and responsiveness check
+- Windows build and applicable acceptance checks
+- for local deployment, `scripts/deploy.ps1` with the observed installation path
+  or `CLARIFY_INSTALL_PATH`; invoke directly from PowerShell when npm cannot use
+  a WSL UNC working directory
+- installed executable hash, process path, and responsiveness check
 - an explicit publication request is sufficient approval for visible behavior
   and relevant hotkeys; do not require a second manual confirmation
 - disclose any manual interaction check that was not performed
