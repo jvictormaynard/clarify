@@ -4,6 +4,8 @@
 #import <objc/message.h>
 
 static IMP hostingSizing, itemSizing, layoutSizing, remoteIntrinsic, guideFrame;
+static IMP compatFrame, inputSize;
+static NSUInteger oversizedFrames;
 static NSUInteger eventCount;
 static NSMutableDictionary *previous;
 static id Read(id object, NSString *key) {
@@ -47,6 +49,24 @@ static void GuideFrame(id self, SEL command, CGRect frame, BOOL layout) {
   }
   ((void (*)(id,SEL,CGRect,BOOL))guideFrame)(self,command,frame,layout);
 }
+static void CompatFrame(id self, SEL command, CGRect frame) {
+  if (frame.size.height > 400 && oversizedFrames++ < 12) {
+    UIView *view = self;
+    NSLog(@"ClarifyHostFrame incoming=%@ before=%@ stack=%@", NSStringFromCGRect(frame), ViewGeometry(view), NSThread.callStackSymbols);
+    for (NSUInteger depth = 0; view && depth < 5; depth++, view = view.superview) {
+      NSLog(@"ClarifyHostFrame ancestor %lu %@ constraints=%@", (unsigned long)depth, ViewGeometry(view), view.constraints);
+    }
+  }
+  ((void (*)(id,SEL,CGRect))compatFrame)(self,command,frame);
+}
+static CGSize InputSize(id self, SEL command, id controller, UIView *view, BOOL assistant) {
+  CGSize result = ((CGSize (*)(id,SEL,id,UIView *,BOOL))inputSize)(self,command,controller,view,assistant);
+  if (eventCount < 350) {
+    eventCount++;
+    NSLog(@"ClarifyHostFrame size-for controller=%@ view=%@ assistant=%d result=%@ padding=%@", NSStringFromClass([controller class]), ViewGeometry(view), assistant, NSStringFromCGSize(result), Read(self,@"_inputViewPadding"));
+  }
+  return result;
+}
 static void Install(NSString *name, NSString *selector, IMP replacement, IMP *original) {
   Class cls = NSClassFromString(name); SEL sel = NSSelectorFromString(selector);
   Method method = cls ? class_getInstanceMethod(cls,sel) : NULL;
@@ -64,5 +84,7 @@ void ClarifyInstallHostGeometry(void) {
   Install(@"UIInputLayoutHostingItem", @"updateViewSizingConstraints", (IMP)LayoutSizing, &layoutSizing);
   Install(@"_UIRemoteInputViewController", @"intrinsicContentSizeForServiceSize:", (IMP)RemoteIntrinsic, &remoteIntrinsic);
   Install(@"UIInputWindowController", @"updateKeyboardLayoutGuideWithFrame:layoutViews:", (IMP)GuideFrame, &guideFrame);
+  Install(@"_UIKBCompatInputView", @"setFrame:", (IMP)CompatFrame, &compatFrame);
+  Install(@"UIInputWindowController", @"sizeForInputViewController:inputView:includeAssistantBar:", (IMP)InputSize, &inputSize);
   });
 }
