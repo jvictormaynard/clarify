@@ -81,11 +81,9 @@ with tempfile.TemporaryDirectory(prefix="clarify-runtime-inspect-") as folder:
     )
     pid = launched.rsplit(":", 1)[1].strip()
     methods = [
-        "-[UIInputWindowController _inputViewPadding]",
-        "-[UIInputWindowControllerHostingItem _aligningInsetsForChildInputViewController:includeSceneBounds:]",
-        "-[UIInputWindowControllerHostingItem updateViewSizingConstraints]",
-        "-[UIInputWindowController sizeForInputViewController:inputView:includeAssistantBar:]",
-        "-[_UIRemoteViewController __hostReadyToReceiveMessagesFromServiceViewController]",
+        "-[UIInputWindowControllerHostingItem updateViewSizingConstraints:]",
+        "-[UIKeyboard sizeForInterfaceOrientation:includingAssistantBar:ignoreInputView:]",
+        "-[_UIViewServiceViewControllerOperator __hostWillAppear:completion:]",
     ]
     commands = [
         "settings set target.process.stop-on-sharedlibrary-events false",
