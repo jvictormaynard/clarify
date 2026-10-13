@@ -12,24 +12,31 @@ static __weak UIViewController *geometryParent;
 NSString *ClarifyGeometryVariant(void) {
   return [NSString stringWithContentsOfFile:CLARIFY_GEOMETRY_CONFIG encoding:NSUTF8StringEncoding error:nil] ?: @"baseline";
 }
-static void PublishSize(UIViewController *parent) {
+static void PublishSize(UIViewController *parent, CGFloat height) {
   Ivar ivar = parent ? class_getInstanceVariable(object_getClass(parent), "_remoteViewControllerProxyToOperator") : NULL;
   id proxy = ivar ? object_getIvar(parent, ivar) : nil;
   SEL selector = NSSelectorFromString(@"__viewServiceInstrinsicContentSizeDidChange:fence:");
   NSMethodSignature *signature = [proxy methodSignatureForSelector:selector];
   if (signature.numberOfArguments != 4 || strcmp(signature.methodReturnType, "v") ||
       strncmp([signature getArgumentTypeAtIndex:2], "{CGSize=", 8) || [signature getArgumentTypeAtIndex:3][0] != '@') return;
-  CGSize size = CGSizeMake(UIScreen.mainScreen.bounds.size.width, 216);
+  CGSize size = CGSizeMake(UIScreen.mainScreen.bounds.size.width, height);
   ((void (*)(id, SEL, CGSize, id))objc_msgSend)(proxy, selector, size, nil);
   NSLog(@"ClarifyInitialSize published %@ %@", ClarifyGeometryVariant(), NSStringFromCGSize(size));
 }
 void ClarifyGeometryPrepareParent(UIViewController *parent) {
   geometryParent = parent;
-  if ([ClarifyGeometryVariant() isEqualToString:@"early-parent"]) PublishSize(parent);
+  NSString *variant = ClarifyGeometryVariant();
+  if ([variant isEqualToString:@"early-parent"]) PublishSize(parent, 216);
+  if ([variant isEqualToString:@"early-one"]) PublishSize(parent, 1);
 }
 void ClarifyGeometryConfigure(UIInputViewController *controller) {
   geometryParent = controller.parentViewController;
-  if ([ClarifyGeometryVariant() isEqualToString:@"early-parent"]) PublishSize(geometryParent);
+  NSString *variant = ClarifyGeometryVariant();
+  if ([variant isEqualToString:@"early-parent"]) PublishSize(geometryParent, 216);
+  if ([variant isEqualToString:@"early-one"]) PublishSize(geometryParent, 1);
+}
+void ClarifyGeometryFinish(void) {
+  if ([ClarifyGeometryVariant() isEqualToString:@"early-one"]) PublishSize(geometryParent, 216);
 }
 void ClarifyGeometryLogController(UIInputViewController *controller, NSString *phase) {}
 
@@ -53,7 +60,7 @@ static void TargetedForward(id self, SEL command, NSInvocation *invocation) {
       invocation.methodSignature.numberOfArguments > 2 &&
       !strncmp([invocation.methodSignature getArgumentTypeAtIndex:2], "{CGSize=", 8)) {
     CGSize size; [invocation getArgument:&size atIndex:2];
-    if (size.height > 216) PublishSize(geometryParent);
+    if (size.height > 216) PublishSize(geometryParent, 216);
   }
   ((void (*)(id, SEL, NSInvocation *))targetedForward)(self, command, invocation);
 }

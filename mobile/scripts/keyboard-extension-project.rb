@@ -68,7 +68,7 @@ bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
 if minimal_probe == 'true'
   File.write(File.join(fixture, 'GeometryConfig.h'), "#define CLARIFY_GEOMETRY_CONFIG @#{File.join(shared_root, 'geometry-variant.txt').inspect}\n")
   bridge = File.join(fixture, 'Geometry-Bridging-Header.h')
-  File.write(bridge, "#import <UIKit/UIKit.h>\nvoid ClarifyGeometryLogController(UIInputViewController *controller, NSString *phase);\nNSString *ClarifyGeometryVariant(void);\nvoid ClarifyGeometryConfigure(UIInputViewController *controller);\nvoid ClarifyGeometryPrepareParent(UIViewController *parent);\n")
+  File.write(bridge, "#import <UIKit/UIKit.h>\nvoid ClarifyGeometryLogController(UIInputViewController *controller, NSString *phase);\nNSString *ClarifyGeometryVariant(void);\nvoid ClarifyGeometryConfigure(UIInputViewController *controller);\nvoid ClarifyGeometryPrepareParent(UIViewController *parent);\nvoid ClarifyGeometryFinish(void);\n")
 end
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   source = name == 'SharedState.swift' ? shared_source : File.join(root, 'modules/clarify-core/ios', name)
