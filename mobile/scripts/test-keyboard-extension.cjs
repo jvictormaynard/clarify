@@ -34,7 +34,7 @@ try {
   // publish these modified binaries. A positive result requires a real SDK build.
   const probeBinary = path.join(derived, 'Build/Products/Release-iphonesimulator/ActivationContainer.app/PlugIns/ClarifyKeyboard.appex/ClarifyKeyboard');
   const compatibilityBinary = `${probeBinary}.compatibility`;
-  run('xcrun', ['vtool', '-set-build-version', 'iossimulator', '16.4', '18.5', '-replace', '-output', compatibilityBinary, probeBinary]);
+  run('xcrun', ['vtool', '-set-build-version', '7', '16.4', '18.5', '-replace', '-output', compatibilityBinary, probeBinary]);
   fs.renameSync(compatibilityBinary, probeBinary);
   run('xcrun', ['vtool', '-show-build', probeBinary]);
   run('xcrun', ['simctl', 'install', device.udid, path.join(derived, 'Build/Products/Release-iphonesimulator/ActivationContainer.app')]);
