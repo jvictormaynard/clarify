@@ -81,18 +81,21 @@ with tempfile.TemporaryDirectory(prefix="clarify-runtime-inspect-") as folder:
     )
     pid = launched.rsplit(":", 1)[1].strip()
     methods = [
-        "-[_UIRemoteViewControllerLegacyImpl __viewServiceInstrinsicContentSizeDidChange:fence:]",
-        "-[UIInputWindowController sizeForInputViewController:inputView:includeAssistantBar:]",
-        "-[UIInputWindowController updateViewSizingConstraints]",
-        "-[UIInputWindowController checkPlaceholdersForRemoteKeyboardsAndForceConstraintsUpdate:layoutSubviews:]",
-        "-[_UIRemoteKeyboardPlaceholderView refreshPlaceholder]",
-        "-[UICompatibilityInputViewController addSnapshotViewForInputMode:orientation:]",
+        "-[UIInputWindowControllerHosting updateViewSizingConstraints]",
+        "-[UIInputWindowControllerHosting visibleFrame]",
+        "-[UIInputWindowController updateSizingFromRemoteChange]",
+        "-[UIInputWindowController updateTrackingElementsWithSize:]",
+        "__87-[_UIRemoteViewControllerLegacyImpl __viewServiceInstrinsicContentSizeDidChange:fence:]_block_invoke",
+        "-[_UIRemoteInputViewController intrinsicContentSizeForServiceSize:]",
     ]
     commands = [
         "settings set target.process.stop-on-sharedlibrary-events false",
         "settings set interpreter.stop-command-source-on-error false",
     ]
     commands += [f'disassemble --name "{method}"' for method in methods]
+    commands += [
+        'image lookup --regex --name "updateViewSizingConstraints|sizeForInputView|updateSizeFromRemote"',
+    ]
     commands += ["process detach", "quit"]
     script = root / "inspect.lldb"
     script.write_text("\n".join(commands) + "\n")
