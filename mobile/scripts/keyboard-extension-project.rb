@@ -105,6 +105,40 @@ info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'ClarifyKeyboard'
   'NSExtension' => { 'NSExtensionPointIdentifier' => 'com.apple.keyboard-service',
     'NSExtensionPrincipalClass' => '$(PRODUCT_MODULE_NAME).KeyboardViewController',
     'NSExtensionAttributes' => { 'IsASCIICapable' => true, 'PrimaryLanguage' => 'pt-BR', 'RequestsOpenAccess' => true } } }
+if minimal_probe == 'true'
+  # Compare extension bootstrap only: UIKit instantiates the same controller
+  # from a storyboard instead of NSExtensionPrincipalClass. No custom sizing.
+  info['NSExtension'].delete('NSExtensionPrincipalClass')
+  info['NSExtension']['NSExtensionMainStoryboard'] = 'KeyboardInterface'
+  storyboard = File.join(fixture, 'KeyboardInterface.storyboard')
+  File.write(storyboard, <<~'XML')
+    <?xml version="1.0" encoding="UTF-8"?>
+    <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="keyboard-controller">
+      <device id="retina6_12" orientation="portrait" appearance="light"/>
+      <dependencies>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="1"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+      </dependencies>
+      <scenes>
+        <scene sceneID="keyboard-scene">
+          <objects>
+            <viewController id="keyboard-controller" customClass="KeyboardViewController" customModule="ClarifyKeyboard" customModuleProvider="target" sceneMemberID="viewController">
+              <view key="view" contentMode="scaleToFill" id="keyboard-view" customClass="UIInputView">
+                <rect key="frame" x="0.0" y="0.0" width="402" height="216"/>
+                <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                <viewLayoutGuide key="safeArea" id="keyboard-safe-area"/>
+              </view>
+              <freeformSimulatedSizeMetrics key="simulatedDestinationMetrics"/>
+            </viewController>
+            <placeholder placeholderIdentifier="IBFirstResponder" id="keyboard-first-responder" sceneMemberID="firstResponder"/>
+          </objects>
+        </scene>
+      </scenes>
+    </document>
+  XML
+  keyboard.resources_build_phase.add_file_reference(project.main_group.new_file(storyboard))
+end
 Xcodeproj::Plist.write_to_path(info, File.join(fixture, 'Keyboard.plist'))
 keyboard.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.container.keyboard',
