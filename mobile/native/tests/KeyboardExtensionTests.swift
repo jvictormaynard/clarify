@@ -175,7 +175,10 @@ final class KeyboardExtensionTests: XCTestCase {
       XCTAssertTrue(start.waitForExistence(timeout: 5), app.debugDescription)
       start.tap(); acceptSystemOpenPrompt()
       let activated = expectation(for: NSPredicate { _, _ in FileManager.default.fileExists(atPath: receipt.path) }, evaluatedWith: nil)
-      wait(for: [activated], timeout: 10)
+      // On a cold CI simulator, SpringBoard accepted the URL 16 seconds after
+      // the tap and relaunched the containing app. Keep this bounded, but do
+      // not time out before that system handoff can publish its receipt.
+      wait(for: [activated], timeout: 30)
       let diagnostic = XCTAttachment(string: (try? String(contentsOf: receipt, encoding: .utf8)) ?? container.debugDescription)
       diagnostic.name = "activation-return-\(attempt)"; diagnostic.lifetime = .keepAlways; add(diagnostic)
       let values = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: receipt))
@@ -185,7 +188,7 @@ final class KeyboardExtensionTests: XCTestCase {
       let back = expectation(for: NSPredicate { _, _ in
         app.state == .runningForeground && container.state != .runningForeground
       }, evaluatedWith: nil)
-      wait(for: [back], timeout: 10)
+      wait(for: [back], timeout: 30)
     }
   }
 }
