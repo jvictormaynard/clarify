@@ -2,6 +2,14 @@ import UIKit
 
 // Diagnostic only: default UIKit sizing, one control, no layout callbacks or logs.
 final class KeyboardViewController: UIInputViewController {
+  override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+    super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
+    loadViewIfNeeded()
+  }
+  required init?(coder: NSCoder) {
+    super.init(coder: coder)
+    loadViewIfNeeded()
+  }
   override func viewDidLoad() {
     super.viewDidLoad()
     let button = UIButton(type: .system)
