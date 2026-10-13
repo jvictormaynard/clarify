@@ -61,6 +61,13 @@ static void CompatFrame(id self, SEL command, CGRect frame) {
 }
 static CGSize InputSize(id self, SEL command, id controller, UIView *view, BOOL assistant) {
   CGSize result = ((CGSize (*)(id,SEL,id,UIView *,BOOL))inputSize)(self,command,controller,view,assistant);
+  // Causal control in the synthetic host only. This is not a keyboard fix and
+  // must never be shipped: Clarify does not control third-party host apps.
+  if ([NSStringFromClass(view.class) isEqualToString:@"_UIKBCompatInputView"] &&
+      view.intrinsicContentSize.height == UIViewNoIntrinsicMetric) {
+    NSLog(@"ClarifyHostFallback %@ -> 216", NSStringFromCGSize(result));
+    result.height = 216;
+  }
   if (eventCount < 350) {
     eventCount++;
     NSLog(@"ClarifyHostFrame size-for controller=%@ view=%@ assistant=%d result=%@ padding=%@", NSStringFromClass([controller class]), ViewGeometry(view), assistant, NSStringFromCGSize(result), Read(self,@"_inputViewPadding"));
