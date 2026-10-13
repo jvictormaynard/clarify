@@ -105,6 +105,9 @@ info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'ClarifyKeyboard'
   'NSExtension' => { 'NSExtensionPointIdentifier' => 'com.apple.keyboard-service',
     'NSExtensionPrincipalClass' => '$(PRODUCT_MODULE_NAME).KeyboardViewController',
     'NSExtensionAttributes' => { 'IsASCIICapable' => true, 'PrimaryLanguage' => 'pt-BR', 'RequestsOpenAccess' => true } } }
+# Diagnostic only: check the extension's UI compatibility mode. Keep the host
+# on the current system design so this does not change the app being typed in.
+info['UIDesignRequiresCompatibility'] = true
 Xcodeproj::Plist.write_to_path(info, File.join(fixture, 'Keyboard.plist'))
 keyboard.build_configurations.each do |config|
   config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.clarify.fixture.container.keyboard',
