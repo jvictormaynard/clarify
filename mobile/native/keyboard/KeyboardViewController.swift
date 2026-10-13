@@ -3,21 +3,30 @@ import SwiftUI
 
 final class KeyboardInputView: UIInputView {
   static let contentHeight: CGFloat = 278
+  private(set) var presentedHeight: CGFloat = 0
+  private var fixedHeight: NSLayoutConstraint!
   override init(frame: CGRect, inputViewStyle: UIInputView.Style) {
     super.init(frame: frame, inputViewStyle: inputViewStyle)
     // Publish one height before UIKit attaches and animates this input view.
     // The host can resize its width without changing the keyboard's height.
     autoresizingMask = [.flexibleWidth]
     allowsSelfSizing = true
-    heightAnchor.constraint(equalToConstant: Self.contentHeight).isActive = true
+    fixedHeight = heightAnchor.constraint(equalToConstant: presentedHeight)
+    fixedHeight.isActive = true
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-  override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: Self.contentHeight) }
+  func present(_ active: Bool) {
+    presentedHeight = active ? Self.contentHeight : 0
+    fixedHeight.constant = presentedHeight
+    invalidateIntrinsicContentSize()
+    NSLog("ClarifyFixtureSizing staged height=%g", presentedHeight)
+  }
+  override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: presentedHeight) }
   override func sizeThatFits(_ size: CGSize) -> CGSize {
-    CGSize(width: size.width, height: Self.contentHeight)
+    CGSize(width: size.width, height: presentedHeight)
   }
   override func systemLayoutSizeFitting(_ targetSize: CGSize) -> CGSize {
-    CGSize(width: targetSize.width, height: Self.contentHeight)
+    CGSize(width: targetSize.width, height: presentedHeight)
   }
   override func systemLayoutSizeFitting(_ targetSize: CGSize, withHorizontalFittingPriority horizontal: UILayoutPriority,
                                       verticalFittingPriority vertical: UILayoutPriority) -> CGSize {
@@ -153,12 +162,12 @@ class KeyboardViewController: UIInputViewController {
   // The remote input host can ask before loadView, and can propose another size
   // during presentation. Both measurement paths must advertise the same height.
   override var preferredContentSize: CGSize {
-    get { CGSize(width: super.preferredContentSize.width, height: KeyboardInputView.contentHeight) }
-    set { super.preferredContentSize = CGSize(width: newValue.width, height: KeyboardInputView.contentHeight) }
+    get { CGSize(width: super.preferredContentSize.width, height: (inputView as? KeyboardInputView)?.presentedHeight ?? 0) }
+    set { super.preferredContentSize = CGSize(width: newValue.width, height: (inputView as? KeyboardInputView)?.presentedHeight ?? 0) }
   }
 
   override func loadView() {
-    let input = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: 0, height: KeyboardInputView.contentHeight), inputViewStyle: .keyboard)
+    let input = KeyboardInputView(frame: .zero, inputViewStyle: .keyboard)
     inputView = input
     // Let the system keyboard material remain visible behind the extension.
     view.backgroundColor = .clear
@@ -315,6 +324,13 @@ class KeyboardViewController: UIInputViewController {
     typing.reset()
     suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
     if !mic.locked { send("cancel") }
+    (inputView as? KeyboardInputView)?.present(false)
+    preferredContentSize = .zero
+  }
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    (inputView as? KeyboardInputView)?.present(true)
+    preferredContentSize = CGSize(width: view.bounds.width, height: KeyboardInputView.contentHeight)
   }
   deinit { timer?.invalidate() }
   private func send(_ action: String) {
