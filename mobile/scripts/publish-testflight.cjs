@@ -25,7 +25,11 @@ async function request(route, method = 'GET', body) {
     headers: { Authorization: 'Bearer ' + token(), 'Content-Type': 'application/json' },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
-  if (!response.ok) throw new Error(`Apple API request failed: ${response.status}`);
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    const detail = (failure.errors || []).map((error) => `${error.code}: ${error.detail || error.title}`).join('; ');
+    throw new Error(`Apple API ${response.status} for ${method} ${route.split('?')[0]}: ${detail}`);
+  }
   return response.status === 204 ? { data: [] } : response.json();
 }
 async function main() {
