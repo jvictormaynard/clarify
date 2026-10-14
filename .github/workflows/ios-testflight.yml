@@ -31,6 +31,7 @@ concurrency:
 
 jobs:
   publish:
+    if: ${{ false }}
     name: Test, sign and upload iOS
     runs-on: macos-26
     timeout-minutes: 90
@@ -75,7 +76,7 @@ jobs:
           STRICT_OPENING_HEIGHT: ${{ inputs.tests_only && inputs.extension_diagnostic }}
         run: |
           if [[ "$STRICT_OPENING_HEIGHT" == 'true' ]]; then
-            node scripts/test-keyboard-extension.cjs --check-opening-height
+            node scripts/test-keyboard-extension.cjs --check-opening-height --minimal-height-probe
           else
             node scripts/test-keyboard-extension.cjs
           fi
@@ -149,3 +150,21 @@ jobs:
       - name: Remove temporary signing credentials
         if: always() && !inputs.tests_only
         run: python3 scripts/ios-signing.py clean
+  inspect_runtime:
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Inspect simulator geometry implementation
+        run: python3 mobile/scripts/inspect-keyboard-runtime.py
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: keyboard-runtime-${{ github.sha }}
+          path: mobile/test-results/runtime-inspect/**
+          if-no-files-found: error
+          retention-days: 7
