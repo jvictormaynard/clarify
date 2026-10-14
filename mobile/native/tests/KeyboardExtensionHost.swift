@@ -19,6 +19,7 @@ final class KeyboardHostController: UIViewController {
   private var heights: [CGFloat] = []
   private var sampledHeights: [CGFloat] = []
   private var visibleHeights: [CGFloat] = []
+  private var stableFrames = 0
   private var displayLink: CADisplayLink?
   override func viewDidLoad() {
     super.viewDidLoad(); view.backgroundColor = .systemBackground
@@ -31,7 +32,7 @@ final class KeyboardHostController: UIViewController {
     let dismiss = UIButton(type: .system); dismiss.setTitle("Dismiss", for: .normal)
     dismiss.addAction(UIAction { [weak self] _ in self?.field.resignFirstResponder() }, for: .touchUpInside)
     let reset = UIButton(type: .system); reset.setTitle("Reset trace", for: .normal)
-    reset.addAction(UIAction { [weak self] _ in self?.heights = []; self?.sampledHeights = []; self?.visibleHeights = []; self?.publishTrace() }, for: .touchUpInside)
+    reset.addAction(UIAction { [weak self] _ in self?.heights = []; self?.sampledHeights = []; self?.visibleHeights = []; self?.stableFrames = 0; self?.publishTrace() }, for: .touchUpInside)
     let activate = UIButton(type: .system); activate.setTitle("Open activation fixture", for: .normal)
     activate.addAction(UIAction { _ in UIApplication.shared.open(URL(string: "clarify://fixture-preflight")!) }, for: .touchUpInside)
     for element in [field, trace, returnTrace, dismiss, reset, activate] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
@@ -57,18 +58,25 @@ final class KeyboardHostController: UIViewController {
     let height = view.keyboardLayoutGuide.layoutFrame.height
     let visible = view.bounds.maxY - (field.layer.presentation()?.frame.maxY ?? field.frame.maxY) - 8
     let changed = (height > 0 && sampledHeights.last != height) || (visible > 0 && visibleHeights.last != visible)
-    guard changed else { return }
+    let aligned = height >= 100 && abs(height - visible) <= 0.5
+    let unchanged = sampledHeights.last.map { abs($0 - height) <= 0.5 } == true &&
+      visibleHeights.last.map { abs($0 - visible) <= 0.5 } == true
+    let wasStable = stableFrames == 12
+    stableFrames = aligned && unchanged ? min(stableFrames + 1, 12) : 0
+    // Publish the stable endpoint once, rather than rewriting AX state each frame.
+    guard changed || (!wasStable && stableFrames == 12) else { return }
     if height > 0, sampledHeights.last != height { sampledHeights.append(height) }
     if visible > 0, visibleHeights.last != visible { visibleHeights.append(visible) }
     publishTrace()
   }
   private func publishTrace() {
-    let values = ["notifications": heights.map(Double.init), "displayFrames": sampledHeights.map(Double.init), "visibleFrames": visibleHeights.map(Double.init)]
+    let values = ["notifications": heights.map(Double.init), "displayFrames": sampledHeights.map(Double.init), "visibleFrames": visibleHeights.map(Double.init), "stableFrames": [Double(stableFrames)]]
     if let data = try? JSONSerialization.data(withJSONObject: values) { trace.accessibilityValue = String(data: data, encoding: .utf8) }
   }
   @objc private func frameChanged(_ note: Notification) {
     guard field.isFirstResponder, let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
     let height = view.bounds.intersection(view.convert(frame, from: nil)).height
+    stableFrames = 0
     if height > 0 { heights.append(height) }
     publishTrace()
   }

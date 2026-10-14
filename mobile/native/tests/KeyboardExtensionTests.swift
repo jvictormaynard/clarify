@@ -46,20 +46,56 @@ final class KeyboardExtensionTests: XCTestCase {
     }
     XCTFail("Settings item unavailable: \(title). \(app.debugDescription)")
   }
-  private func checkTrace(in app: XCUIApplication, opening: String, strict: Bool = true) throws {
+  private func waitForSettledTrace(in app: XCUIApplication) {
+    let settled = expectation(for: NSPredicate { _, _ in
+      guard let raw = app.staticTexts["keyboard-frames"].value as? String,
+            let values = try? JSONDecoder().decode([String: [Double]].self, from: Data(raw.utf8)) else { return false }
+      return values["stableFrames"]?.last == 12
+    }, evaluatedWith: nil)
+    wait(for: [settled], timeout: 10)
+  }
+  private func currentKeyboardHeight(in app: XCUIApplication) throws -> Double {
+    waitForSettledTrace(in: app)
     let raw = try XCTUnwrap(app.staticTexts["keyboard-frames"].value as? String)
     let values = try JSONDecoder().decode([String: [Double]].self, from: Data(raw.utf8))
-    let heights = values.values.flatMap { $0 }
+    return try XCTUnwrap(values["displayFrames"]?.last)
+  }
+  private func selectKeyboard(_ names: [String], in app: XCUIApplication) {
+    let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
+    XCTAssertTrue(globe.waitForExistence(timeout: 5), app.debugDescription)
+    globe.press(forDuration: 1)
+    let keyboard = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", names)).firstMatch
+    XCTAssertTrue(keyboard.waitForExistence(timeout: 5), app.debugDescription)
+    keyboard.tap()
+  }
+  private func expectOrdinaryNativeKeyboard(in app: XCUIApplication) {
+    let native = app.keyboards.firstMatch
+    let ready = expectation(for: NSPredicate { _, _ in
+      native.keys["space"].exists && (native.keys["q"].exists || native.keys["Q"].exists) &&
+        !app.buttons["clarify.keyboard.record"].exists && !app.buttons["clarify.keyboard.start"].exists
+    }, evaluatedWith: nil)
+    wait(for: [ready], timeout: 10)
+    XCTAssertTrue(app.textFields["composer"].exists, "The matched native control must use the ordinary composer")
+    XCTAssertFalse(app.secureTextFields["composer"].exists, "Secure input changes the native keyboard's traits")
+  }
+  private func checkTrace(in app: XCUIApplication, opening: String, strict: Bool = true, startingHeight: Double = 0) throws {
+    waitForSettledTrace(in: app)
+    let raw = try XCTUnwrap(app.staticTexts["keyboard-frames"].value as? String)
+    let values = try JSONDecoder().decode([String: [Double]].self, from: Data(raw.utf8))
+    let heights = ["notifications", "displayFrames", "visibleFrames"].flatMap { values[$0] ?? [] }
     XCTAssertFalse(heights.isEmpty)
     let trace = XCTAttachment(string: "\(opening): \(raw)"); trace.name = opening
     trace.lifetime = .keepAlways; add(trace)
     continueAfterFailure = true
     defer { continueAfterFailure = false }
     if strict {
-      XCTAssertTrue(heights.allSatisfy { $0 < 400 }, "\(opening): \(values)")
+      let settledHeight = try XCTUnwrap(values["displayFrames"]?.last)
+      // Switching can start at the previous keyboard's height. Any excursion
+      // beyond both endpoints is still a transient opening defect.
+      let maximumHeight = max(startingHeight, settledHeight) + 1
+      XCTAssertTrue(heights.allSatisfy { $0 <= maximumHeight }, "\(opening): maximum \(maximumHeight), \(values)")
     }
-    // Publication may defer the known transient overshoot, but must still
-    // reject a keyboard that stays oversized or covers the bottom row.
+    // A correct endpoint does not excuse an earlier oversized frame.
     XCTAssertLessThan(values["displayFrames"]?.last ?? .infinity, 400, "The keyboard must settle at its usable height")
     XCTAssertGreaterThanOrEqual(values["displayFrames"]?.last ?? 0, 278, "The keyboard must remain fully visible")
   }
@@ -120,16 +156,28 @@ final class KeyboardExtensionTests: XCTestCase {
     // Wait for either input view before deciding whether a switch is needed.
     let inputReady = expectation(for: NSPredicate { _, _ in keyboard.exists || globe.exists }, evaluatedWith: nil)
     wait(for: [inputReady], timeout: 30)
-    if !keyboard.exists {
-      XCTAssertTrue(globe.exists, app.debugDescription)
-      globe.press(forDuration: 1)
-      let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
-      XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
+    // Keep the exact same ordinary field and text-input traits for both paths.
+    // The separate secure-field test remains a useful, but different, control.
+    selectKeyboard(["English (US)", "English (United States)"], in: app)
+    expectOrdinaryNativeKeyboard(in: app)
+    waitForSettledTrace(in: app)
+    app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
+    app.textFields["composer"].tap()
+    expectOrdinaryNativeKeyboard(in: app)
+    try checkTrace(in: app, opening: "Matched native keyboard initial opening")
+    for index in 0..<4 {
+      app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
+      app.textFields["composer"].tap()
+      expectOrdinaryNativeKeyboard(in: app)
+      try checkTrace(in: app, opening: "Matched native keyboard opening \(index)")
     }
+    let startingHeight = try currentKeyboardHeight(in: app)
+    app.buttons["Reset trace"].tap()
+    selectKeyboard(["Clarify"], in: app)
     XCTAssertTrue(keyboard.waitForExistence(timeout: 30), app.debugDescription)
     XCTAssertTrue(app.buttons["clarify.keyboard.start"].waitForExistence(timeout: 5),
                   "The installed extension must receive Full Access before testing activation")
-    try checkTrace(in: app, opening: "Switching to the extension", strict: strictHeight)
+    try checkTrace(in: app, opening: "Switching to the extension", strict: strictHeight, startingHeight: startingHeight)
     let letter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch
     XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription); letter.tap()
     expectText("Q", in: app)

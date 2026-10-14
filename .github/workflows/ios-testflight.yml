@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   publish:
-    if: ${{ false }}
+    if: ${{ inputs.tests_only && inputs.extension_diagnostic }}
     name: Test, sign and upload iOS
     runs-on: macos-26
     timeout-minutes: 90
@@ -76,7 +76,7 @@ jobs:
           STRICT_OPENING_HEIGHT: ${{ inputs.tests_only && inputs.extension_diagnostic }}
         run: |
           if [[ "$STRICT_OPENING_HEIGHT" == 'true' ]]; then
-            node scripts/test-keyboard-extension.cjs --check-opening-height --minimal-height-probe
+            node scripts/test-keyboard-extension.cjs --check-opening-height
           else
             node scripts/test-keyboard-extension.cjs
           fi
