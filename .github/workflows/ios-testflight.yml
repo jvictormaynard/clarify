@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   publish:
-    if: ${{ inputs.tests_only && inputs.extension_diagnostic }}
+    if: ${{ false }}
     name: Measure installed keyboard opening
     runs-on: macos-26
     timeout-minutes: 90
@@ -151,7 +151,7 @@ jobs:
         if: always() && !inputs.tests_only
         run: python3 scripts/ios-signing.py clean
   inspect_runtime:
-    if: ${{ false }}
+    if: ${{ inputs.tests_only && inputs.extension_diagnostic }}
     runs-on: macos-26
     timeout-minutes: 15
     env:

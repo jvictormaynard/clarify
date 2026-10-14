@@ -81,10 +81,17 @@ with tempfile.TemporaryDirectory(prefix="clarify-runtime-inspect-") as folder:
     )
     pid = launched.rsplit(":", 1)[1].strip()
     methods = [
-        "_UIRemoteViewControllerSceneShimEnabledForBundleIdentifierAndExtensionPointIdentifier",
-        "__95-[_UIViewServiceViewControllerOperator systemLayoutFittingSizeDidChangeForChildViewController:]_block_invoke",
-        "-[_UIRemoteViewControllerLegacyImpl __viewServicePopoverDidChangeContentSize:animated:fence:withReplyHandler:]",
-        "-[_UIViewServiceViewControllerOperator __hostViewWillAppear:inInterfaceOrientation:traitCollection:statusBarHeight:underlapsStatusBar:completionHandler:]",
+        "-[_UIViewServiceViewControllerOperator __hostReadyToReceiveMessagesFromServiceViewController]",
+        "__90-[_UIViewServiceViewControllerOperator __createViewControllerWithOptions:completionBlock:]_block_invoke",
+        "__110-[_UIRemoteViewControllerLegacyImpl __viewServicePopoverDidChangeContentSize:animated:fence:withReplyHandler:]_block_invoke",
+        "__87-[_UIRemoteViewControllerLegacyImpl __viewServiceInstrinsicContentSizeDidChange:fence:]_block_invoke",
+        "-[UIWindow _synchronizeDrawingWithFence:]",
+        "-[_UIRemoteInputViewController intrinsicContentSizeForServiceSize:]",
+        "-[UIInputViewSet isCustomInputView]",
+        "-[UIInputViewSet initWithInputView:accessoryView:assistantView:isKeyboard:]",
+        "-[UIInputViewSet setInputViewController:]",
+        "-[UIInputViewController _setAutosizeToCurrentKeyboard:]",
+        "-[UIInputViewController _updateConformanceCache]",
     ]
     commands = [
         "settings set target.process.stop-on-sharedlibrary-events false",
