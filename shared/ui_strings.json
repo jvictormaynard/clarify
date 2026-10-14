@@ -4228,5 +4228,75 @@
     "pt": "{v0} Não desliga por inatividade. Cada gravação pode durar até 5 minutos.",
     "en": "{v0} Does not turn off when idle. Each recording can last up to 5 minutes.",
     "es": "{v0} No se apaga por inactividad. Cada grabación puede durar hasta 5 minutos."
+  },
+  "Teste de abertura do teclado": {
+    "pt": "Teste de abertura do teclado",
+    "en": "Keyboard opening test",
+    "es": "Prueba de apertura del teclado"
+  },
+  "Escolha abaixo o teclado que vai testar. Toque no campo e use o globo para selecionar esse mesmo teclado. Depois, inicie o teste. Não digite durante as dez aberturas.": {
+    "pt": "Escolha abaixo o teclado que vai testar. Toque no campo e use o globo para selecionar esse mesmo teclado. Depois, inicie o teste. Não digite durante as dez aberturas.",
+    "en": "Choose the keyboard to test below. Tap the field and use the globe to select that same keyboard. Then start the test. Do not type during the ten openings.",
+    "es": "Elige abajo el teclado que vas a probar. Toca el campo y usa el globo para seleccionar ese mismo teclado. Después, inicia la prueba. No escribas durante las diez aperturas."
+  },
+  "O resultado contém apenas medidas e tempos. Nenhum áudio ou texto digitado é coletado.": {
+    "pt": "O resultado contém apenas medidas e tempos. Nenhum áudio ou texto digitado é coletado.",
+    "en": "The result contains only measurements and timings. No audio or typed text is collected.",
+    "es": "El resultado solo contiene medidas y tiempos. No se recopila audio ni texto escrito."
+  },
+  "Teclado em teste": {
+    "pt": "Teclado em teste",
+    "en": "Keyboard being tested",
+    "es": "Teclado en prueba"
+  },
+  "Selecione o teclado no campo abaixo.": {
+    "pt": "Selecione o teclado no campo abaixo.",
+    "en": "Select the keyboard in the field below.",
+    "es": "Selecciona el teclado en el campo de abajo."
+  },
+  "Testar dez aberturas": {
+    "pt": "Testar dez aberturas",
+    "en": "Test ten openings",
+    "es": "Probar diez aperturas"
+  },
+  "Compartilhar resultado": {
+    "pt": "Compartilhar resultado",
+    "en": "Share result",
+    "es": "Compartir resultado"
+  },
+  "Toque para selecionar o teclado": {
+    "pt": "Toque para selecionar o teclado",
+    "en": "Tap to select the keyboard",
+    "es": "Toca para seleccionar el teclado"
+  },
+  "Primeiro, abra o campo e selecione o teclado pelo globo.": {
+    "pt": "Primeiro, abra o campo e selecione o teclado pelo globo.",
+    "en": "First, open the field and select the keyboard with the globe.",
+    "es": "Primero, abre el campo y selecciona el teclado con el globo."
+  },
+  "Abertura {v0} de 10": {
+    "pt": "Abertura {v0} de 10",
+    "en": "Opening {v0} of 10",
+    "es": "Apertura {v0} de 10"
+  },
+  "Teste concluído. Compartilhe o resultado e repita com os outros teclados.": {
+    "pt": "Teste concluído. Compartilhe o resultado e repita com os outros teclados.",
+    "en": "Test completed. Share the result and repeat with the other keyboards.",
+    "es": "Prueba completada. Comparte el resultado y repite con los otros teclados."
+  },
+  "Teste interrompido. Você pode compartilhar o resultado parcial ou tentar novamente.": {
+    "pt": "Teste interrompido. Você pode compartilhar o resultado parcial ou tentar novamente.",
+    "en": "Test interrupted. You can share the partial result or try again.",
+    "es": "Prueba interrumpida. Puedes compartir el resultado parcial o intentarlo de nuevo."
+  },
+  "Não foi possível exportar o teste. Tente novamente.": {
+    "pt": "Não foi possível exportar o teste. Tente novamente.",
+    "en": "Could not export the test. Try again.",
+    "es": "No se pudo exportar la prueba. Inténtalo de nuevo."
+  },
+  "Não foi possível abrir o teste do teclado. Tente novamente.": {
+    "pt": "Não foi possível abrir o teste do teclado. Tente novamente.",
+    "en": "Could not open the keyboard test. Try again.",
+    "es": "No se pudo abrir la prueba del teclado. Inténtalo de nuevo."
   }
 }

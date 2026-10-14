@@ -15,11 +15,12 @@ fs.mkdirSync(sources, { recursive: true }); fs.mkdirSync(tests, { recursive: tru
 for (const name of ['KeyboardViewController.swift', 'DictationEdit.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift']) {
   fs.copyFileSync(path.join(root, 'native/keyboard', name), path.join(sources, name));
 }
-for (const name of ['KeyboardState.swift', 'SharedState.swift', 'KeyboardVocabulary.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'LocalLibrary.swift', 'KeyStore.swift', 'MicrophoneFailure.swift', 'Localization.swift']) {
+for (const name of ['KeyboardState.swift', 'SharedState.swift', 'KeyboardVocabulary.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'LocalLibrary.swift', 'KeyStore.swift', 'MicrophoneFailure.swift', 'Localization.swift', 'KeyboardOpeningDiagnostic.swift']) {
   fs.copyFileSync(path.join(root, 'modules/clarify-core/ios', name), path.join(sources, name));
 }
 fs.copyFileSync(path.join(root, 'native/tests/KeyboardUITests.swift'), path.join(tests, 'KeyboardUITests.swift'));
 fs.copyFileSync(path.join(root, 'native/tests/MicrophoneFailureTests.swift'), path.join(tests, 'MicrophoneFailureTests.swift'));
+fs.copyFileSync(path.join(root, 'native/tests/KeyboardOpeningDiagnosticTests.swift'), path.join(tests, 'KeyboardOpeningDiagnosticTests.swift'));
 fs.writeFileSync(path.join(tests, 'LibraryTests.swift'), fs.readFileSync(path.join(root, 'modules/clarify-core/tests/LibraryTests.swift'), 'utf8').replace('@testable import ClarifyContracts', '@testable import KeyboardUI'));
 const support = path.join(fixture, 'Sources/KeyboardHostSupport');
 fs.mkdirSync(path.join(support, 'include'), { recursive: true });

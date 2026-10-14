@@ -48,6 +48,7 @@ export default function Settings() {
       <Text style={[ui.body, { color: c.muted }]}>{t("Ajustes do iPhone → Geral → Teclado → Teclados → Adicionar Novo Teclado → Clarify. Depois, ative “Acesso Total”.")}</Text>
       <Text style={[ui.body, { color: c.muted }]}>{t("Use o globo para selecionar o Clarify. Ative o microfone pelo botão “Começar” do teclado.")}</Text>
       <Button onPress={() => void Linking.openSettings().catch(report)}>{t("Abrir Ajustes do iPhone")}</Button>
+      {Core.keyboardDiagnosticAvailable && <Button loading={action === 'keyboard-test'} disabled={busy} onPress={() => void perform('keyboard-test', () => Core.openKeyboardDiagnostic())}>{t("Teste de abertura do teclado")}</Button>}
     </Card>
     <Card>
       <Text style={[ui.section, { color: c.text }]}>{t("Dados neste iPhone")}</Text>

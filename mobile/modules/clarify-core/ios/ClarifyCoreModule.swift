@@ -6,6 +6,19 @@ public class ClarifyCoreModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ClarifyCore")
     Constant("uiLanguage") { ClarifyLocale.language }
+    Constant("keyboardDiagnosticAvailable") { Bundle.main.object(forInfoDictionaryKey: "ClarifyKeyboardDiagnostic") as? Bool == true }
+    AsyncFunction("openKeyboardDiagnostic") {
+      guard Bundle.main.object(forInfoDictionaryKey: "ClarifyKeyboardDiagnostic") as? Bool == true,
+            UIApplication.shared.applicationState == .active,
+            !ClarifyAudioSession.shared.state.phase.busy,
+            let presenter = self.appContext?.utilities?.currentViewController(),
+            presenter.presentedViewController == nil else {
+        throw ClarifyError(L("Não foi possível abrir o teste do teclado. Tente novamente."))
+      }
+      let navigation = UINavigationController(rootViewController: KeyboardOpeningDiagnostic())
+      navigation.modalPresentationStyle = .fullScreen
+      presenter.present(navigation, animated: true)
+    }.runOnQueue(.main)
     AsyncFunction("onboardingRequired") { () -> Bool in
       let account = CloudAccount.shared.snapshot()
       return Onboarding().required(existingSetup: account["signedIn"] as? Bool == true || KeyStore.read() != nil)

@@ -28,7 +28,8 @@
           "pt",
           "en",
           "es"
-        ]
+        ],
+        "ClarifyKeyboardDiagnostic": true
       },
       "entitlements": {
         "com.apple.security.application-groups": [

@@ -38,6 +38,8 @@ export interface AccountSnapshot {
 
 export default requireNativeModule<{
   readonly uiLanguage: string;
+  readonly keyboardDiagnosticAvailable: boolean;
+  openKeyboardDiagnostic(): Promise<void>;
   onboardingRequired(): Promise<boolean>;
   completeOnboarding(mode: 'account' | 'byok'): Promise<void>;
   getSnapshot(): Promise<Snapshot>;
