@@ -12,6 +12,7 @@ app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(
   target = project.targets.find { |item| item.name == name }
   target.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardOpeningOrderProbe.m')))
 end
+keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardEarlyFenceProbe.m')))
 shared_root = File.join(fixture, 'Shared'); Dir.mkdir(shared_root)
 shared_source = File.join(fixture, 'SharedState.swift')
 File.write(shared_source, File.read(File.join(root, 'modules/clarify-core/ios/SharedState.swift')).sub(/  init\?\(\) \{.*?\n  \}/m, "  init?() { self.root = URL(fileURLWithPath: #{shared_root.inspect}) }"))

@@ -85,7 +85,7 @@ with tempfile.TemporaryDirectory(prefix="clarify-runtime-inspect-") as folder:
         "__90-[_UIViewServiceViewControllerOperator __createViewControllerWithOptions:completionBlock:]_block_invoke",
         "__110-[_UIRemoteViewControllerLegacyImpl __viewServicePopoverDidChangeContentSize:animated:fence:withReplyHandler:]_block_invoke",
         "__87-[_UIRemoteViewControllerLegacyImpl __viewServiceInstrinsicContentSizeDidChange:fence:]_block_invoke",
-        "-[UIWindow _synchronizeDrawingWithFence:]",
+        "-[UIWindowScene _synchronizeDrawingWithFence:]",
         "-[_UIRemoteInputViewController intrinsicContentSizeForServiceSize:]",
         "-[UIInputViewSet isCustomInputView]",
         "-[UIInputViewSet initWithInputView:accessoryView:assistantView:isKeyboard:]",
@@ -97,7 +97,20 @@ with tempfile.TemporaryDirectory(prefix="clarify-runtime-inspect-") as folder:
         "settings set target.process.stop-on-sharedlibrary-events false",
         "settings set interpreter.stop-command-source-on-error false",
     ]
-    commands += [f'disassemble --name "{method}"' for method in methods]
+    # An unavailable private symbol is diagnostic data. Keep reading the other
+    # contracts instead of letting LLDB abort the command-source file.
+    debugger_commands = [
+        'image lookup -rn "_synchronizeDrawingWithFence:"',
+        *[f'disassemble --name "{method}"' for method in methods],
+    ]
+    inspect = "import lldb\ninterpreter = lldb.debugger.GetCommandInterpreter()\n"
+    inspect += f"for command in {debugger_commands!r}:\n"
+    inspect += "    result = lldb.SBCommandReturnObject()\n"
+    inspect += "    interpreter.HandleCommand(command, result)\n"
+    inspect += "    print(command, flush=True)\n"
+    inspect += "    print(result.GetOutput() or '', flush=True)\n"
+    inspect += "    print(result.GetError() or '', flush=True)\n"
+    commands += [f"script exec({inspect!r})"]
     commands += ["process detach", "quit"]
     script = root / "inspect.lldb"
     script.write_text("\n".join(commands) + "\n")
