@@ -8,6 +8,8 @@ struct KeyboardOpeningReport: Encodable {
     let elapsed: Double
     let opening: Int
     let phase: String
+    var displayElapsed: Double?
+    var targetElapsed: Double?
     let guideHeight: Double
     let composerHeight: Double
   }
@@ -27,13 +29,15 @@ struct KeyboardOpeningReport: Encodable {
   let keyboardLabel: String
   let screenWidth: Double
   let screenHeight: Double
+  let requestedFPS: Int
   var frames: [Frame] = []
   var openings: [Opening] = []
   var outcome = "running"
 
   mutating func append(_ frame: Frame) -> Bool {
     guard frames.count < 12_000, frame.elapsed.isFinite,
-          frame.guideHeight.isFinite, frame.composerHeight.isFinite else { return false }
+          frame.guideHeight.isFinite, frame.composerHeight.isFinite,
+          frame.displayElapsed?.isFinite != false, frame.targetElapsed?.isFinite != false else { return false }
     frames.append(frame)
     return true
   }
@@ -154,7 +158,8 @@ final class KeyboardOpeningDiagnostic: UIViewController {
       appVersion: info["CFBundleShortVersionString"] as? String ?? "",
       appBuild: info["CFBundleVersion"] as? String ?? "",
       keyboardLabel: choice.titleForSegment(at: choice.selectedSegmentIndex) ?? "",
-      screenWidth: Double(view.bounds.width), screenHeight: Double(view.bounds.height))
+      screenWidth: Double(view.bounds.width), screenHeight: Double(view.bounds.height),
+      requestedFPS: view.window?.windowScene?.screen.maximumFramesPerSecond ?? 60)
     started = CACurrentMediaTime(); opening = 0
     choice.isEnabled = false; runButton.isEnabled = false; shareButton.isEnabled = false
     phase = "closing"; resetPhase()
@@ -162,6 +167,8 @@ final class KeyboardOpeningDiagnostic: UIViewController {
     // A weak proxy prevents CADisplayLink from retaining a dismissed screen.
     let proxy = KeyboardDiagnosticDisplayTarget(self)
     let display = CADisplayLink(target: proxy, selector: #selector(KeyboardDiagnosticDisplayTarget.tick(_:)))
+    let maximum = Float(report?.requestedFPS ?? 60)
+    display.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, maximum), maximum: maximum, preferred: maximum)
     display.add(to: .main, forMode: .common); link = display
   }
 
@@ -170,13 +177,15 @@ final class KeyboardOpeningDiagnostic: UIViewController {
     previousGuide = -1; previousComposer = -1; didShow = false
   }
 
-  fileprivate func sample(_ time: CFTimeInterval) {
+  fileprivate func sample(_ display: CADisplayLink) {
     guard link != nil else { return }
+    let time = CACurrentMediaTime()
     let guide = view.keyboardLayoutGuide.layoutFrame.height
     let bottom = field.layer.presentation()?.frame.maxY ?? field.frame.maxY
     let composer = view.bounds.maxY - bottom - 8
     let frame = KeyboardOpeningReport.Frame(elapsed: time - started, opening: opening,
-      phase: phase, guideHeight: Double(guide), composerHeight: Double(composer))
+      phase: phase, displayElapsed: display.timestamp - started, targetElapsed: display.targetTimestamp - started,
+      guideHeight: Double(guide), composerHeight: Double(composer))
     guard report?.append(frame) == true else { stop("sample-limit"); return }
     if time - phaseStarted > 10 { stop("timeout"); return }
     let steady = abs(previousGuide - guide) < 0.5 && abs(previousComposer - composer) < 0.5
@@ -241,5 +250,5 @@ final class KeyboardOpeningDiagnostic: UIViewController {
 private final class KeyboardDiagnosticDisplayTarget: NSObject {
   weak var owner: KeyboardOpeningDiagnostic?
   init(_ owner: KeyboardOpeningDiagnostic) { self.owner = owner }
-  @objc func tick(_ display: CADisplayLink) { owner?.sample(CACurrentMediaTime()) }
+  @objc func tick(_ display: CADisplayLink) { owner?.sample(display) }
 }

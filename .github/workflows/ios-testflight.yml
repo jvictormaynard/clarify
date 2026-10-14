@@ -44,7 +44,7 @@ concurrency:
 jobs:
   availability:
     name: Verify the uploaded TestFlight build
-    if: ${{ inputs.availability_only }}
+    if: ${{ inputs.availability_only && !inputs.status_only && !inputs.tests_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -69,9 +69,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   publish:
-    if: ${{ !inputs.status_only }}
     name: Test, sign and upload iOS
-    if: ${{ !inputs.availability_only }}
+    if: ${{ !inputs.availability_only && !inputs.status_only }}
     runs-on: macos-26
     timeout-minutes: 90
     defaults:
@@ -238,7 +237,11 @@ jobs:
           (async () => {
             const builds = await get('builds?filter[app]=6820869157&sort=-uploadedDate&limit=10&include=preReleaseVersion,buildBetaDetail');
             console.log(JSON.stringify({ checkedAt: new Date().toISOString(), builds }, null, 2));
-            const groups = await get('apps/6820869157/betaGroups?limit=50&include=builds');
+            const groups = await get('betaGroups?filter[app]=6820869157&limit=100');
+            for (const group of groups.data.filter(item => item.attributes.isInternalGroup)) {
+              group.builds = (await get('betaGroups/' + group.id + '/builds?limit=100')).data.map(item => item.id);
+              group.existingTesters = (await get('betaGroups/' + group.id + '/relationships/betaTesters?limit=200')).data.length;
+            }
             console.log(JSON.stringify({ groups }, null, 2));
           })().catch(error => { console.error(error.message); process.exitCode = 1; });
           JS

@@ -69,6 +69,29 @@ Use the direct workflow's `tests_only` input to run native checks without signin
 or uploading an existing build number. Uploads retain the full check sequence.
 Mobile versions are independent of the Windows release tags.
 
+### Physical-device opening diagnostic — 0.7.4 (27)
+
+This TestFlight candidate adds **Account → Settings → Keyboard opening test**.
+It preserves the short-speech correction already shipped in 0.7.3 (26).
+It does not change keyboard sizing or claim to fix the opening jump.
+Select a label, open the ordinary text field, select that same keyboard with
+its globe, and run ten dismiss/reopen cycles. Repeat with Apple and Wispr Flow.
+The keyboard label is supplied by the tester, not discovered by the app.
+
+A display link records the host keyboard layout guide and the composer's
+presentation position. It requests the screen's maximum refresh rate and
+exports callback/display/target timestamps so gaps in sampling remain visible.
+iOS controls the actual cadence; no trace proves that every physical frame was
+captured. Each phase waits for settled geometry; opening also requires the
+system's did-show notification. Timeout, app interruption or dismissal stops
+the run. The report retains individual samples, peaks and final heights.
+
+The explicit share action exports temporary JSON with OS/app version, geometry,
+timing and the keyboard label. It collects no audio, typed text, credentials or
+library data and sends nothing automatically. Sharing completion removes the
+temporary export. The tool is enabled only by the temporary containing-app
+`ClarifyKeyboardDiagnostic` plist flag. Remove that flag after device acceptance.
+
 ### Installed keyboard opening diagnostic
 
 The opening-height defect remains open. On the iPhone 17 Pro simulator

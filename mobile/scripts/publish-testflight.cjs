@@ -6,9 +6,9 @@ const path = require('node:path');
 const config = require('../app.json').expo;
 const app = require('../eas.json').submit.production.ios.ascAppId;
 const notes = {
-  'pt-BR': 'Correção no reconhecimento de gravações curtas, como “oi”, no modo de chave pessoal Groq com dicionário ativo. Os termos, variações e pronúncias salvos são preservados. Teste um ditado curto no aplicativo e pelo teclado, com seu dicionário ativo.',
-  'en-US': 'Fixed recognition of short recordings such as “oi” when using a personal Groq key with an active dictionary. Saved terms, aliases and pronunciations are preserved. Test short speech in the app and through the keyboard with your dictionary enabled.',
-  'es-ES': 'Corregido el reconocimiento de grabaciones cortas, como “oi”, con una clave personal de Groq y el diccionario activo. Se conservan los términos, variantes y pronunciaciones guardados. Prueba un dictado corto en la app y desde el teclado con tu diccionario activo.',
+  'pt-BR': 'Diagnóstico do salto do teclado. Em Conta → Ajustes → Teste de abertura do teclado, selecione Clarify, Apple ou Wispr Flow, abra o campo e escolha o mesmo teclado pelo globo. Execute dez aberturas, compartilhe o arquivo e repita com os outros teclados. O arquivo contém apenas medidas e tempos, sem áudio nem texto digitado. Esta versão ainda não corrige o salto.',
+  'en-US': 'Keyboard opening jump diagnostic. In Account → Settings → Keyboard opening test, select Clarify, Apple or Wispr Flow, open the field and choose the same keyboard with the globe. Run ten openings, share the file and repeat with the other keyboards. The file contains measurements and timings only, without audio or typed text. This version does not yet fix the jump.',
+  'es-ES': 'Diagnóstico del salto del teclado. En Cuenta → Ajustes → Prueba de apertura del teclado, selecciona Clarify, Apple o Wispr Flow, abre el campo y elige el mismo teclado con el globo. Ejecuta diez aperturas, comparte el archivo y repite con los otros teclados. El archivo solo contiene medidas y tiempos, sin audio ni texto escrito. Esta versión aún no corrige el salto.',
 };
 function token() {
   const now = Math.floor(Date.now() / 1000);

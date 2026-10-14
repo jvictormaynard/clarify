@@ -5,7 +5,7 @@ import UIKit
 final class KeyboardOpeningDiagnosticTests: XCTestCase {
   private func report() -> KeyboardOpeningReport {
     KeyboardOpeningReport(ios: "26.6.2", appVersion: "test", appBuild: "0",
-      keyboardLabel: "Clarify", screenWidth: 402, screenHeight: 874)
+      keyboardLabel: "Clarify", screenWidth: 402, screenHeight: 874, requestedFPS: 120)
   }
   func testExportRetainsAOneFrameOvershootEvenWhenFinalHeightIsCorrect() throws {
     var report = report()
@@ -42,5 +42,35 @@ final class KeyboardOpeningDiagnosticTests: XCTestCase {
       XCTAssertNil(screen.report, "Measurement requires an explicit user action")
       XCTAssertFalse(field.isFirstResponder, "Opening the screen must not select a keyboard")
     }
+  }
+  @MainActor
+  func testDiagnosticCompletesTenRealPresentationsAndKeepsEachOpeningTrace() async throws {
+    let window = UIWindow(frame: UIScreen.main.bounds)
+    let screen = KeyboardOpeningDiagnostic()
+    window.rootViewController = screen; window.makeKeyAndVisible()
+    defer { screen.view.endEditing(true); window.isHidden = true }
+    func descendants(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(descendants) }
+    let field = try XCTUnwrap(descendants(screen.view).compactMap { $0 as? UITextField }.first)
+    let shown = expectation(forNotification: UIResponder.keyboardDidShowNotification, object: nil)
+    XCTAssertTrue(field.becomeFirstResponder())
+    await fulfillment(of: [shown], timeout: 5)
+    screen.view.layoutIfNeeded()
+    let run = try XCTUnwrap(descendants(screen.view).compactMap { $0 as? UIButton }.first {
+      $0.title(for: .normal) == L("Testar dez aberturas")
+    })
+    run.sendActions(for: .touchUpInside)
+    XCTAssertNotNil(screen.report)
+    let done = expectation(for: NSPredicate { _, _ in screen.report?.outcome != "running" }, evaluatedWith: nil)
+    await fulfillment(of: [done], timeout: 35)
+    let report = try XCTUnwrap(screen.report)
+    XCTAssertEqual(report.outcome, "completed")
+    XCTAssertEqual(report.openings.map(\.index), Array(1...10))
+    XCTAssertTrue(report.frames.contains { $0.phase == "closing" })
+    for opening in 1...10 {
+      XCTAssertGreaterThan(report.frames.filter { $0.opening == opening && $0.phase == "opening" }.count, 12)
+    }
+    XCTAssertTrue(report.frames.allSatisfy { $0.displayElapsed != nil && $0.targetElapsed != nil })
+    screen.viewWillDisappear(false)
+    XCTAssertEqual(screen.report?.outcome, "completed", "Leaving the screen must preserve the completed report")
   }
 }
