@@ -65,6 +65,7 @@ final class KeyboardHostController: UIViewController {
     stableFrames = aligned && unchanged ? min(stableFrames + 1, 12) : 0
     // Publish the stable endpoint once, rather than rewriting AX state each frame.
     guard changed || (!wasStable && stableFrames == 12) else { return }
+    NSLog("ClarifyOpeningOrder time=%.9f event=frame height=%.3f visible=%.3f stable=%d", CACurrentMediaTime(), height, visible, stableFrames)
     if height > 0, sampledHeights.last != height { sampledHeights.append(height) }
     if visible > 0, visibleHeights.last != visible { visibleHeights.append(visible) }
     publishTrace()
