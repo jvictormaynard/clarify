@@ -81,10 +81,10 @@ with tempfile.TemporaryDirectory(prefix="clarify-runtime-inspect-") as folder:
     )
     pid = launched.rsplit(":", 1)[1].strip()
     methods = [
-        "-[_UIRemoteViewController _initWithServiceBundleIdentifier:service:]",
-        "+[_UIRemoteViewController requestViewControllerWithService:traitCollection:connectionHandler:]",
-        "-[UIInputViewController _compatibilityController]",
-        "-[_UIViewServiceViewControllerOperator systemLayoutFittingSizeDidChangeForChildViewController:]",
+        "_UIRemoteViewControllerSceneShimEnabledForBundleIdentifierAndExtensionPointIdentifier",
+        "__95-[_UIViewServiceViewControllerOperator systemLayoutFittingSizeDidChangeForChildViewController:]_block_invoke",
+        "-[_UIRemoteViewControllerLegacyImpl __viewServicePopoverDidChangeContentSize:animated:fence:withReplyHandler:]",
+        "-[_UIViewServiceViewControllerOperator __hostViewWillAppear:inInterfaceOrientation:traitCollection:statusBarHeight:underlapsStatusBar:completionHandler:]",
     ]
     commands = [
         "settings set target.process.stop-on-sharedlibrary-events false",
