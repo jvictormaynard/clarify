@@ -45,6 +45,7 @@ final class KeyboardOpeningDiagnosticTests: XCTestCase {
   }
   @MainActor
   func testDiagnosticCompletesTenRealPresentationsAndKeepsEachOpeningTrace() async throws {
+    continueAfterFailure = false
     let window = UIWindow(frame: UIScreen.main.bounds)
     let screen = KeyboardOpeningDiagnostic()
     window.rootViewController = screen; window.makeKeyAndVisible()
@@ -53,7 +54,9 @@ final class KeyboardOpeningDiagnosticTests: XCTestCase {
     let field = try XCTUnwrap(descendants(screen.view).compactMap { $0 as? UITextField }.first)
     let shown = expectation(forNotification: UIResponder.keyboardDidShowNotification, object: nil)
     XCTAssertTrue(field.becomeFirstResponder())
-    await fulfillment(of: [shown], timeout: 5)
+    // The first system-keyboard service launch took over twenty seconds on a
+    // cold CI simulator. Wait for its actual notification, without a fixed sleep.
+    await fulfillment(of: [shown], timeout: 30)
     screen.view.layoutIfNeeded()
     let run = try XCTUnwrap(descendants(screen.view).compactMap { $0 as? UIButton }.first {
       $0.title(for: .normal) == L("Testar dez aberturas")

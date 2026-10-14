@@ -7,17 +7,19 @@ public class ClarifyCoreModule: Module {
     Name("ClarifyCore")
     Constant("uiLanguage") { ClarifyLocale.language }
     Constant("keyboardDiagnosticAvailable") { Bundle.main.object(forInfoDictionaryKey: "ClarifyKeyboardDiagnostic") as? Bool == true }
-    AsyncFunction("openKeyboardDiagnostic") {
-      guard Bundle.main.object(forInfoDictionaryKey: "ClarifyKeyboardDiagnostic") as? Bool == true,
-            UIApplication.shared.applicationState == .active,
-            !ClarifyAudioSession.shared.state.phase.busy,
-            let presenter = self.appContext?.utilities?.currentViewController(),
-            presenter.presentedViewController == nil else {
-        throw ClarifyError(L("Não foi possível abrir o teste do teclado. Tente novamente."))
+    AsyncFunction("openKeyboardDiagnostic") { (promise: Promise) in
+      Task { @MainActor in
+        guard Bundle.main.object(forInfoDictionaryKey: "ClarifyKeyboardDiagnostic") as? Bool == true,
+              UIApplication.shared.applicationState == .active,
+              !ClarifyAudioSession.shared.state.phase.busy,
+              let presenter = self.appContext?.utilities?.currentViewController(),
+              presenter.presentedViewController == nil else {
+          promise.reject("KEYBOARD_TEST", L("Não foi possível abrir o teste do teclado. Tente novamente.")); return
+        }
+        let navigation = UINavigationController(rootViewController: KeyboardOpeningDiagnostic())
+        navigation.modalPresentationStyle = .fullScreen
+        presenter.present(navigation, animated: true) { promise.resolve(nil) }
       }
-      let navigation = UINavigationController(rootViewController: KeyboardOpeningDiagnostic())
-      navigation.modalPresentationStyle = .fullScreen
-      presenter.present(navigation, animated: true)
     }.runOnQueue(.main)
     AsyncFunction("onboardingRequired") { () -> Bool in
       let account = CloudAccount.shared.snapshot()

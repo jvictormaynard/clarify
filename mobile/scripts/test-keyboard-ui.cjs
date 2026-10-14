@@ -32,12 +32,16 @@ let package = Package(name: "KeyboardUI", platforms: [.iOS(.v16)],
   products: [.library(name: "KeyboardUI", targets: ["KeyboardUI"])],
   targets: [.target(name: "KeyboardHostSupport"), .target(name: "KeyboardUI", dependencies: ["KeyboardHostSupport"], linkerSettings: [.linkedLibrary("sqlite3")]), .testTarget(name: "KeyboardUITests", dependencies: ["KeyboardUI", "KeyboardHostSupport"])])
 `);
+const softwareKeyboard = spawnSync('defaults', ['write', 'com.apple.iphonesimulator', 'ConnectHardwareKeyboard', '-bool', 'NO'], { stdio: 'inherit' });
+if (softwareKeyboard.status !== 0) process.exit(softwareKeyboard.status ?? 1);
 const devices = spawnSync('xcrun', ['simctl', 'list', 'devices', 'available', '--json'], { encoding: 'utf8' });
 if (devices.status !== 0) { console.error(devices.stderr); process.exit(1); }
 const runtimes = Object.entries(JSON.parse(devices.stdout).devices).filter(([runtime]) => !process.env.CLARIFY_IOS_RUNTIME || runtime.startsWith(`com.apple.CoreSimulator.SimRuntime.${process.env.CLARIFY_IOS_RUNTIME}`));
 const device = runtimes.flatMap(([, items]) => items).find((item) => item.name.startsWith('iPhone'));
 if (!device) { console.error('No matching iPhone simulator is available.'); process.exit(1); }
 console.log(JSON.stringify({ runtime: runtimes.find(([, items]) => items.some(item => item.udid === device.udid))[0], device: device.name }));
+const boot = spawnSync('xcrun', ['simctl', 'bootstatus', device.udid, '-b'], { stdio: 'inherit' });
+if (boot.status !== 0) process.exit(boot.status ?? 1);
 const output = path.join(root, 'test-results'); fs.mkdirSync(output, { recursive: true });
 const resultPath = path.join(output, 'KeyboardUI.xcresult');
 const result = spawnSync('xcodebuild', ['test', '-scheme', 'KeyboardUI',
