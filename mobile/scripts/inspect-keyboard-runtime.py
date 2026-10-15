@@ -81,12 +81,10 @@ with tempfile.TemporaryDirectory(prefix="clarify-runtime-inspect-") as folder:
     )
     pid = launched.rsplit(":", 1)[1].strip()
     methods = [
-        "-[UIInputLayoutHostingItem createBackdropViewIfNeeded]",
-        "-[UIInputLayoutHostingItem updateInputBackdropViewVisibility]",
-        "-[UIInputViewController _usesCustomBackground]",
-        "-[UICompatibilityInputViewController _usesCustomBackground]",
-        "-[_UIRemoteInputViewController _usesCustomBackground]",
-        "-[_UIRemoteViewController _usesCustomBackground]",
+        "-[UIInputViewSet isInputViewPlaceholder]",
+        "-[UIInputViewController _isPlaceholder]",
+        "-[UICompatibilityInputViewController loadView]",
+        "-[UICompatibilityInputViewController setInputController:]",
     ]
     commands = [
         "settings set target.process.stop-on-sharedlibrary-events false",
@@ -95,35 +93,35 @@ with tempfile.TemporaryDirectory(prefix="clarify-runtime-inspect-") as folder:
     # An unavailable private symbol is diagnostic data. Keep reading the other
     # contracts instead of letting LLDB abort the command-source file.
     debugger_commands = [
-        'image lookup -rn "_usesCustomBackground"',
+        'image lookup -rn "_isPlaceholder"',
         *[f'disassemble --name "{method}"' for method in methods],
         "expression -l objc++ -- @import Foundation;",
         "expression -l objc++ -- @import ObjectiveC;",
         r"""expression -l objc++ -O -- ({
-            NSMutableString *out = [NSMutableString string];
-            const char *names[] = { "UIInputViewController", "UICompatibilityInputViewController",
+            NSMutableString *clarifyBgOutput = [NSMutableString string];
+            const char *clarifyBgClassNames[] = { "UIInputViewController", "UICompatibilityInputViewController",
                 "_UIRemoteInputViewController", "_UIRemoteViewController" };
-            SEL selector = sel_registerName("_usesCustomBackground");
-            for (unsigned int n = 0; n < 4; n++) {
-                Class type = objc_getClass(names[n]);
-                Method effective = type ? class_getInstanceMethod(type, selector) : NULL;
-                Class declaring = Nil;
-                for (Class current = type; current && !declaring; current = class_getSuperclass(current)) {
-                    unsigned int count = 0;
-                    Method *methods = class_copyMethodList(current, &count);
-                    for (unsigned int i = 0; i < count; i++) {
-                        if (method_getName(methods[i]) == selector) { declaring = current; break; }
+            SEL clarifyBgSelector = sel_registerName("_isPlaceholder");
+            for (unsigned int clarifyBgClassIndex = 0; clarifyBgClassIndex < 4; clarifyBgClassIndex++) {
+                Class clarifyBgClass = objc_getClass(clarifyBgClassNames[clarifyBgClassIndex]);
+                Method clarifyBgEffective = clarifyBgClass ? class_getInstanceMethod(clarifyBgClass, clarifyBgSelector) : NULL;
+                Class clarifyBgDeclaring = Nil;
+                for (Class clarifyBgCursor = clarifyBgClass; clarifyBgCursor && !clarifyBgDeclaring; clarifyBgCursor = class_getSuperclass(clarifyBgCursor)) {
+                    unsigned int clarifyBgCount = 0;
+                    Method *clarifyBgMethods = class_copyMethodList(clarifyBgCursor, &clarifyBgCount);
+                    for (unsigned int clarifyBgMethodIndex = 0; clarifyBgMethodIndex < clarifyBgCount; clarifyBgMethodIndex++) {
+                        if (method_getName(clarifyBgMethods[clarifyBgMethodIndex]) == clarifyBgSelector) { clarifyBgDeclaring = clarifyBgCursor; break; }
                     }
-                    free(methods);
+                    free(clarifyBgMethods);
                 }
-                Class superclass = type ? class_getSuperclass(type) : Nil;
-                [out appendFormat:@"class=%s super=%s declaringOwner=%s localOverride=%d types=%s IMP=%p\n",
-                    names[n], superclass ? class_getName(superclass) : "missing",
-                    declaring ? class_getName(declaring) : "missing", declaring != Nil && declaring == type,
-                    effective ? method_getTypeEncoding(effective) : "missing",
-                    effective ? (void *)method_getImplementation(effective) : NULL];
+                Class clarifyBgSuperclass = clarifyBgClass ? class_getSuperclass(clarifyBgClass) : Nil;
+                [clarifyBgOutput appendFormat:@"class=%s super=%s declaringOwner=%s localOverride=%d types=%s IMP=%p\n",
+                    clarifyBgClassNames[clarifyBgClassIndex], clarifyBgSuperclass ? class_getName(clarifyBgSuperclass) : "missing",
+                    clarifyBgDeclaring ? class_getName(clarifyBgDeclaring) : "missing", clarifyBgDeclaring != Nil && clarifyBgDeclaring == clarifyBgClass,
+                    clarifyBgEffective ? method_getTypeEncoding(clarifyBgEffective) : "missing",
+                    clarifyBgEffective ? (void *)method_getImplementation(clarifyBgEffective) : NULL];
             }
-            out;
+            clarifyBgOutput;
         })""",
     ]
     inspect = "import lldb\ninterpreter = lldb.debugger.GetCommandInterpreter()\n"
