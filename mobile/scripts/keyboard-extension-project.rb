@@ -21,7 +21,7 @@ container.source_build_phase.add_file_reference(project.main_group.new_file(File
 container_bridge = File.join(fixture, 'Container-Bridging-Header.h')
 File.write(container_bridge, "#import #{File.join(root, 'modules/clarify-core/ios/ClarifyReturnBridge.h').inspect}\nNSDictionary *ClarifyReturnDiagnostics(void);\n")
 tests.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionTests.swift')))
-%w[KeyboardViewController.swift DictationEdit.swift KeyGridView.swift KeyPreview.swift TypingAssistant.swift HostActivation.swift KBHostArbiterHook.m].each do |name|
+%w[KeyboardViewController.swift DictationEdit.swift KeyGridView.swift KeyPreview.swift TypingAssistant.swift HostActivation.swift KBHostArbiterHook.m KeyboardHeightSync.m].each do |name|
   source = File.join(root, 'native/keyboard', name)
   if name == 'KeyboardViewController.swift'
     original = File.read(source)
@@ -107,6 +107,7 @@ keyboard.build_configurations.each do |config|
     'APPLICATION_EXTENSION_API_ONLY' => 'YES', 'SKIP_INSTALL' => 'YES', 'GENERATE_INFOPLIST_FILE' => 'NO',
     'INFOPLIST_FILE' => File.join(fixture, 'Keyboard.plist'),
     'HEADER_SEARCH_PATHS' => File.join(root, 'native/keyboard'),
+    'GCC_PREPROCESSOR_DEFINITIONS' => ['$(inherited)', 'CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS=1'],
     'SWIFT_OBJC_BRIDGING_HEADER' => bridge })
 end
 test_info = { 'CFBundleName' => 'ExtensionTests', 'CFBundleIdentifier' => '$(PRODUCT_BUNDLE_IDENTIFIER)',

@@ -190,6 +190,30 @@ iPhone acceptance. Simulator checks do not prove the real system transition.
 General [CI run 38088125314](https://github.com/jvictormaynard/clarify/actions/runs/38088125314)
 also passed the Linux/Windows tests and Windows packaging job for that source.
 
+## Experimental opening synchronization — 0.7.5 (28)
+
+This TestFlight candidate synchronizes a measured keyboard height with UIKit's
+remote rendering fence. It uses private Apple APIs, separately from the existing
+experimental source-app return bridge. Runtime signatures and object types are
+checked. Each fresh connection can publish once, after host readiness and during
+a provisional keyboard layout; full-screen layouts and already settled layouts
+are excluded. Reentrant layout, a replaced owner or a closing controller cancels
+publication. The drawing fence is invalidated after the proxy call.
+
+The isolated `872373c` experiment executed seven publications. Both retained
+recordings showed four reopenings without the previous rendered key/composer
+retreat or excess material. Capture gaps leave initial switching inconclusive;
+these observations do not prove every physical display refresh was clean.
+The strict guide-height diagnostic still fails. Do not describe this candidate
+as a confirmed iPhone fix or as App Store compatible. Physical iOS 26.6.2
+acceptance remains required. Disabling `allowsSelfSizing` alone also failed in
+the captured pixels, so the existing self-sizing policy is retained.
+
+`KeyboardHeightSync` owns this boundary independently of host-app resolution.
+Fixture-only diagnostics are compiled with
+`CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS=1`; distribution builds omit those logs.
+The installed-extension fixture compiles the product implementation directly.
+
 ## Direct TestFlight delivery
 
 `.github/workflows/ios-testflight.yml` runs on application changes to the mobile

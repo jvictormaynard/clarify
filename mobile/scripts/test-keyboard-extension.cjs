@@ -68,6 +68,13 @@ try {
   if (fs.existsSync(receipt)) fs.copyFileSync(receipt, path.join(results, 'activation-return.json'));
   const preflight = path.join(fixture, 'Shared/container-preflight.json');
   if (fs.existsSync(preflight)) fs.copyFileSync(preflight, path.join(results, 'container-preflight.json'));
+  for (const name of ['KeyboardViewController.swift', 'App.plist', 'Keyboard.plist', 'Container.plist', 'Tests.plist']) {
+    const source = path.join(fixture, name);
+    if (fs.existsSync(source)) fs.copyFileSync(source, path.join(results, 'generated-' + name));
+  }
+  for (const name of ['KeyboardHeightSync.m', 'KeyboardHeightSync.h']) {
+    fs.copyFileSync(path.join(root, 'native/keyboard', name), path.join(results, 'production-' + name));
+  }
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
   fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, exitCode }, null, 2));

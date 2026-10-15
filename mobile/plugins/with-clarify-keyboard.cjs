@@ -19,7 +19,7 @@ module.exports = function withClarifyKeyboard(config) {
     const out = path.join(mod.modRequest.platformProjectRoot, targetName);
     fs.mkdirSync(out, { recursive: true });
     fs.copyFileSync(path.join(root, 'third-party/KeyboardHostBundleID/LICENSE'), path.join(out, 'KeyboardHostBundleID.LICENSE'));
-    for (const name of ['KeyboardViewController.swift', 'DictationEdit.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift', 'KBHostArbiterHook.m', 'KBHostArbiterHook.h', 'ClarifyKeyboard-Bridging-Header.h']) {
+    for (const name of ['KeyboardViewController.swift', 'DictationEdit.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift', 'KBHostArbiterHook.m', 'KBHostArbiterHook.h', 'KeyboardHeightSync.m', 'KeyboardHeightSync.h', 'ClarifyKeyboard-Bridging-Header.h']) {
       fs.copyFileSync(path.join(root, 'native/keyboard', name), path.join(out, name));
     }
     for (const name of ['SharedState.swift', 'KeyboardVocabulary.swift', 'KeyboardState.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'Localization.swift']) {
@@ -43,7 +43,7 @@ module.exports = function withClarifyKeyboard(config) {
     const project = mod.modResults;
     if (project.pbxTargetByName(targetName)) return mod;
     const target = project.addTarget(targetName, 'app_extension', targetName, `${bundle}.keyboard`);
-    const files = ['KeyboardViewController.swift', 'DictationEdit.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift', 'KBHostArbiterHook.m', 'SharedState.swift', 'KeyboardVocabulary.swift', 'KeyboardState.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'Localization.swift'];
+    const files = ['KeyboardViewController.swift', 'DictationEdit.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift', 'KBHostArbiterHook.m', 'KeyboardHeightSync.m', 'SharedState.swift', 'KeyboardVocabulary.swift', 'KeyboardState.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'Localization.swift'];
     const pbxGroup = project.addPbxGroup(files, targetName, targetName);
     project.addToPbxGroup(pbxGroup.uuid, project.getFirstProject().firstProject.mainGroup);
     project.addBuildPhase(files.map((name) => `${targetName}/${name}`), 'PBXSourcesBuildPhase', 'Sources', target.uuid);

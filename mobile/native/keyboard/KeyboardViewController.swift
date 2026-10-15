@@ -1,5 +1,8 @@
 import UIKit
 import SwiftUI
+#if SWIFT_PACKAGE
+import KeyboardHostSupport
+#endif
 
 final class KeyboardInputView: UIInputView {
   static let contentHeight: CGFloat = 278
@@ -270,9 +273,14 @@ class KeyboardViewController: UIInputViewController {
   }
   override func viewDidLayoutSubviews() {
     super.viewDidLayoutSubviews()
+    ClarifyKeyboardHeightDidLayout(self)
     if keys.needsGlobe != needsInputModeSwitchKey {
       UIView.performWithoutAnimation { keys.needsGlobe = needsInputModeSwitchKey; keys.rebuild(); keys.layoutIfNeeded() }
     }
+  }
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    ClarifyKeyboardHeightDidAppear(self)
   }
   override func textDidChange(_ textInput: UITextInput?) {
     super.textDidChange(textInput)
@@ -315,6 +323,7 @@ class KeyboardViewController: UIInputViewController {
     typing.reset()
     suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
     if !mic.locked { send("cancel") }
+    ClarifyKeyboardHeightDidDisappear(self)
   }
   deinit { timer?.invalidate() }
   private func send(_ action: String) {

@@ -26,6 +26,8 @@ const support = path.join(fixture, 'Sources/KeyboardHostSupport');
 fs.mkdirSync(path.join(support, 'include'), { recursive: true });
 fs.copyFileSync(path.join(root, 'native/keyboard/KBHostArbiterHook.m'), path.join(support, 'KBHostArbiterHook.m'));
 fs.copyFileSync(path.join(root, 'native/keyboard/KBHostArbiterHook.h'), path.join(support, 'include/KBHostArbiterHook.h'));
+fs.copyFileSync(path.join(root, 'native/keyboard/KeyboardHeightSync.m'), path.join(support, 'KeyboardHeightSync.m'));
+fs.copyFileSync(path.join(root, 'native/keyboard/KeyboardHeightSync.h'), path.join(support, 'include/KeyboardHeightSync.h'));
 fs.writeFileSync(path.join(fixture, 'Package.swift'), `// swift-tools-version: 5.9
 import PackageDescription
 let package = Package(name: "KeyboardUI", platforms: [.iOS(.v16)],
