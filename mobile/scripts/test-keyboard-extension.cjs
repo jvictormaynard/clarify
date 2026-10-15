@@ -5,7 +5,9 @@ const { spawn, spawnSync } = require('node:child_process');
 const strictOpeningHeight = process.argv.includes('--check-opening-height');
 const bottomAlignmentProbe = process.argv.includes('--bottom-alignment-probe');
 const notificationComposerProbe = process.argv.includes('--notification-composer-probe');
-if (process.argv.slice(2).some(argument => !['--check-opening-height', '--bottom-alignment-probe', '--notification-composer-probe'].includes(argument))) throw new Error('Unknown installed keyboard test argument.');
+const warmFenceProbe = process.argv.includes('--warm-fence-probe');
+if (process.argv.slice(2).some(argument => !['--check-opening-height', '--bottom-alignment-probe', '--notification-composer-probe', '--warm-fence-probe'].includes(argument))) throw new Error('Unknown installed keyboard test argument.');
+if (warmFenceProbe && (bottomAlignmentProbe || notificationComposerProbe)) throw new Error('The warm-fence experiment requires the unmodified keyboard body and guide-driven composer.');
 if (process.platform !== 'darwin') throw new Error('The installed extension diagnostic requires macOS.');
 const root = process.cwd();
 function run(command, args, options = {}) {
@@ -31,7 +33,7 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-extension-'));
 let exitCode = 1;
 let recording;
 try {
-  run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture, String(strictOpeningHeight), String(bottomAlignmentProbe), String(notificationComposerProbe)]);
+  run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture, String(strictOpeningHeight), String(bottomAlignmentProbe), String(notificationComposerProbe), String(warmFenceProbe)]);
   const derived = path.join(fixture, 'DerivedData');
   run('xcodebuild', ['build', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'), '-scheme', 'ActivationContainer',
     '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO']);
@@ -80,6 +82,6 @@ try {
   }
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
-  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, bottomAlignmentProbe, notificationComposerProbe, exitCode }, null, 2));
+  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, bottomAlignmentProbe, notificationComposerProbe, warmFenceProbe, exitCode }, null, 2));
 }
 process.exitCode = exitCode;

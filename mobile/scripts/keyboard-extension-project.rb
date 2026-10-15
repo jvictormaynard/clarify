@@ -1,5 +1,5 @@
 require 'xcodeproj'
-root, fixture, strict_opening_height, bottom_alignment_probe, notification_composer_probe = ARGV
+root, fixture, strict_opening_height, bottom_alignment_probe, notification_composer_probe, warm_fence_probe = ARGV
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
@@ -7,6 +7,10 @@ tests = project.new_target(:ui_test_bundle, 'ExtensionTests', :ios, '16.4')
 container = project.new_target(:application, 'ActivationContainer', :ios, '16.4')
 container.add_dependency(keyboard); tests.add_dependency(app)
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionHost.swift')))
+if warm_fence_probe == 'true'
+  app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardWarmFenceHostProbe.m')))
+  keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardWarmFenceProbe.m')))
+end
 shared_root = File.join(fixture, 'Shared'); Dir.mkdir(shared_root)
 shared_source = File.join(fixture, 'SharedState.swift')
 File.write(shared_source, File.read(File.join(root, 'modules/clarify-core/ios/SharedState.swift')).sub(/  init\?\(\) \{.*?\n  \}/m, "  init?() { self.root = URL(fileURLWithPath: #{shared_root.inspect}) }"))
@@ -26,6 +30,16 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   if name == 'KeyboardViewController.swift'
     original = File.read(source)
     original = original.sub('        openURL(url)', '        openURL(url) { accepted in NSLog("ClarifyFixtureOpen accepted=%d", accepted) }')
+    if warm_fence_probe == 'true'
+      original = original.sub('    super.viewDidLayoutSubviews()', '    super.viewDidLayoutSubviews()' + "\n" + '    ClarifyWarmFenceLayout(self)')
+      original = original.sub('  override func textDidChange(_ textInput: UITextInput?) {', <<~'SWIFT')
+          override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated); ClarifyWarmFenceDidAppear(self)
+          }
+          override func textDidChange(_ textInput: UITextInput?) {
+      SWIFT
+      original = original.sub('    if !mic.locked { send("cancel") }', '    if !mic.locked { send("cancel") }' + "\n" + '    ClarifyWarmFenceDidDisappear(self)')
+    end
     # Isolated layout experiment. Never changes the product source or an IPA.
     if bottom_alignment_probe == 'true'
       original = original.sub('  static let contentHeight: CGFloat = 278', <<~'SWIFT')
@@ -93,6 +107,16 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
 bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
+if warm_fence_probe == 'true'
+  bridge = File.join(fixture, 'WarmFence-Bridging-Header.h')
+  File.write(bridge, <<~'OBJC')
+    #import <UIKit/UIKit.h>
+    #import "KBHostArbiterHook.h"
+    void ClarifyWarmFenceDidAppear(UIInputViewController *child);
+    void ClarifyWarmFenceDidDisappear(UIInputViewController *child);
+    void ClarifyWarmFenceLayout(UIInputViewController *child);
+  OBJC
+end
 %w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   source = name == 'SharedState.swift' ? shared_source : File.join(root, 'modules/clarify-core/ios', name)
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))

@@ -1,4 +1,4 @@
-name: Keyboard opening body probe
+name: Keyboard warm opening fence probe
 on:
   workflow_dispatch:
 permissions:
@@ -26,27 +26,22 @@ jobs:
         run: |
           node --check scripts/test-keyboard-extension.cjs
           ruby -c scripts/keyboard-extension-project.rb
-      - name: Measure current top alignment
-        id: top
+      - name: Measure unmodified body with a fence on warm reopening
+        id: fence
         continue-on-error: true
-        run: node scripts/test-keyboard-extension.cjs --check-opening-height --notification-composer-probe
-      - name: Measure isolated bottom alignment
-        id: bottom
-        continue-on-error: true
-        run: node scripts/test-keyboard-extension.cjs --check-opening-height --notification-composer-probe --bottom-alignment-probe
-      - name: Preserve both results
+        run: node scripts/test-keyboard-extension.cjs --check-opening-height --warm-fence-probe
+      - name: Preserve the result
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: keyboard-opening-body-${{ github.sha }}
+          name: keyboard-warm-fence-${{ github.sha }}
           path: mobile/test-results/installed-keyboard-*
           if-no-files-found: error
           retention-days: 7
       - name: Keep the opening regression gate
         if: always()
         env:
-          TOP: ${{ steps.top.outcome }}
-          BOTTOM: ${{ steps.bottom.outcome }}
+          FENCE: ${{ steps.fence.outcome }}
         run: |
-          echo "Top alignment: $TOP; bottom alignment: $BOTTOM"
-          test "$TOP" = success && test "$BOTTOM" = success
+          echo "Warm fence: $FENCE"
+          test "$FENCE" = success
