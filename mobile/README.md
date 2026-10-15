@@ -210,8 +210,10 @@ acceptance remains required. Disabling `allowsSelfSizing` alone also failed in
 the captured pixels, so the existing self-sizing policy is retained.
 
 `KeyboardHeightSync` owns this boundary independently of host-app resolution.
-Fixture-only diagnostics are compiled with
-`CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS=1`; distribution builds omit those logs.
+The fixture defaults to the unmodified distribution keyboard sources, with
+diagnostic logs and layout instrumentation disabled.
+Set `CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS=1` explicitly to trace publications.
+The artifact retains the generated project and records this setting.
 The installed-extension fixture compiles the product implementation directly.
 
 ## Direct TestFlight delivery

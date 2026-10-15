@@ -1,5 +1,6 @@
 require 'xcodeproj'
 root, fixture, strict_opening_height = ARGV
+height_diagnostics = ENV['CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS'] == '1'
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
@@ -25,7 +26,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   source = File.join(root, 'native/keyboard', name)
   if name == 'KeyboardViewController.swift'
     original = File.read(source)
-    original = original.sub('        openURL(url)', '        openURL(url) { accepted in NSLog("ClarifyFixtureOpen accepted=%d", accepted) }')
+    original = original.sub('        openURL(url)', '        openURL(url) { accepted in NSLog("ClarifyFixtureOpen accepted=%d", accepted) }') if height_diagnostics
     source = File.join(fixture, name)
     instrumentation = <<~'SWIFT'
         var chain: [UIView] = []; var ancestor: UIView? = view
@@ -33,20 +34,20 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         let geometry = chain.map { "\(type(of: $0)):\($0.frame):\($0.bounds)" }.joined(separator: " > ")
         NSLog("ClarifyFixtureGeometry %@", geometry)
     SWIFT
-    File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + instrumentation))
+    File.write(source, height_diagnostics ? original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + instrumentation) : original)
   end
-  if name == 'KeyGridView.swift'
+  if name == 'KeyGridView.swift' && height_diagnostics
     original = File.read(source)
     source = File.join(fixture, name)
     File.write(source, original.sub('    for touch in touches.sorted', '    NSLog("ClarifyFixtureTouch phase=%ld count=%ld", phase.rawValue, touches.count)' + "\n" + '    for touch in touches.sorted'))
   end
-  if name == 'HostActivation.swift'
+  if name == 'HostActivation.swift' && height_diagnostics
     original = File.read(source)
     source = File.join(fixture, name)
     File.write(source, original.sub('        let generation = KBHostArbiterHook.captureGeneration()', '        NSLog("ClarifyFixtureHost cached=%@", KBHostArbiterHook.lastCapturedHostBundleId() ?? "unknown")' + "\n" + '        let generation = KBHostArbiterHook.captureGeneration()')
       .sub('    let request = ActivationRequest(sourceBundleID: source)', '    NSLog("ClarifyFixtureHost resolved=%@", source ?? "unknown")' + "\n" + '    let request = ActivationRequest(sourceBundleID: source)'))
   end
-  if name == 'KBHostArbiterHook.m'
+  if name == 'KBHostArbiterHook.m' && height_diagnostics
     original = File.read(source)
     source = File.join(fixture, name)
     File.write(source, original.sub("    os_unfair_lock_unlock(&sHookLock);\n}\n\n+ (void)activeArbiterCheck", <<~'OBJC'))
@@ -107,7 +108,7 @@ keyboard.build_configurations.each do |config|
     'APPLICATION_EXTENSION_API_ONLY' => 'YES', 'SKIP_INSTALL' => 'YES', 'GENERATE_INFOPLIST_FILE' => 'NO',
     'INFOPLIST_FILE' => File.join(fixture, 'Keyboard.plist'),
     'HEADER_SEARCH_PATHS' => File.join(root, 'native/keyboard'),
-    'GCC_PREPROCESSOR_DEFINITIONS' => ['$(inherited)', 'CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS=1'],
+    'GCC_PREPROCESSOR_DEFINITIONS' => ['$(inherited)', "CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS=#{height_diagnostics ? 1 : 0}"],
     'SWIFT_OBJC_BRIDGING_HEADER' => bridge })
 end
 test_info = { 'CFBundleName' => 'ExtensionTests', 'CFBundleIdentifier' => '$(PRODUCT_BUNDLE_IDENTIFIER)',
