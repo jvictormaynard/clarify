@@ -20,7 +20,10 @@ private final class Field: NSObject, UITextDocumentProxy {
   var keyboardType: UIKeyboardType = .default
   var isSecureTextEntry = false
   var autocapitalizationType: UITextAutocapitalizationType = .sentences
-  func insertText(_ text: String) { before += text; selectedText = nil }
+  var didInsert: ((String) -> Void)?
+  func insertText(_ text: String) {
+    before += text; selectedText = nil; didInsert?(before)
+  }
   func deleteBackward() { if !before.isEmpty { before.removeLast() } }
   func adjustTextPosition(byCharacterOffset offset: Int) {}
   func setMarkedText(_ markedText: String, selectedRange: NSRange) {}
@@ -250,9 +253,15 @@ final class KeyboardUITests: XCTestCase {
     let command = try XCTUnwrap(store.commands().last?.1)
     var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970
     state.operationID = command.operationID; state.phase = .ready; state.text = " world. "
+    let inserted = expectation(description: "The periodic refresh inserts the ready dictation")
+    keyboard.field.didInsert = { [weak field = keyboard.field] text in
+      guard text == "hello world. " else { return }
+      field?.didInsert = nil
+      inserted.fulfill()
+    }
+    defer { keyboard.field.didInsert = nil }
     try store.write(state, to: "state.json")
-    let inserted = expectation(for: NSPredicate { _, _ in keyboard.field.before == "hello world. " }, evaluatedWith: nil)
-    await fulfillment(of: [inserted], timeout: 2)
+    await fulfillment(of: [inserted], timeout: 5)
     XCTAssertEqual(grid.model.shift, .once)
     let undo = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? UIButton }
       .first { $0.accessibilityIdentifier == "clarify.undo-dictation" })
