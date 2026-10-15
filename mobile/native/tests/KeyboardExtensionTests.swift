@@ -78,7 +78,10 @@ final class KeyboardExtensionTests: XCTestCase {
     }, evaluatedWith: nil)
     wait(for: [inserted], timeout: 3)
   }
-  func testNativeSystemKeyboardDoesNotReserveAnOversizedFrame() throws {
+  // Run the measured native control before selecting the installed extension.
+  // This initializes the system keyboard without warming the Clarify process
+  // or discarding any measured Clarify opening.
+  func test00NativeSystemKeyboardDoesNotReserveAnOversizedFrame() throws {
     continueAfterFailure = false
     let app = XCUIApplication(); app.launchArguments = ["--system-keyboard"]; app.launch()
     app.secureTextFields["composer"].tap()
