@@ -1,0 +1,52 @@
+name: Keyboard opening body probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: macos-26
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: mobile
+        shell: bash
+    env:
+      CI: '1'
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      CLARIFY_IOS_RUNTIME: iOS-26-5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+      - name: Check fixture scripts
+        run: |
+          node --check scripts/test-keyboard-extension.cjs
+          ruby -c scripts/keyboard-extension-project.rb
+      - name: Measure current top alignment
+        id: top
+        continue-on-error: true
+        run: node scripts/test-keyboard-extension.cjs --check-opening-height
+      - name: Measure isolated bottom alignment
+        id: bottom
+        continue-on-error: true
+        run: node scripts/test-keyboard-extension.cjs --check-opening-height --bottom-alignment-probe
+      - name: Preserve both results
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: keyboard-opening-body-${{ github.sha }}
+          path: mobile/test-results/installed-keyboard-*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Keep the opening regression gate
+        if: always()
+        env:
+          TOP: ${{ steps.top.outcome }}
+          BOTTOM: ${{ steps.bottom.outcome }}
+        run: |
+          echo "Top alignment: $TOP; bottom alignment: $BOTTOM"
+          test "$TOP" = success && test "$BOTTOM" = success

@@ -20,6 +20,7 @@ final class KeyboardHostController: UIViewController {
   private var sampledHeights: [CGFloat] = []
   private var visibleHeights: [CGFloat] = []
   private var displayLink: CADisplayLink?
+  private var lastWindowHeight: CGFloat = -1
   override func viewDidLoad() {
     super.viewDidLoad(); view.backgroundColor = .systemBackground
     field.borderStyle = .roundedRect; field.placeholder = "Type here"; field.accessibilityIdentifier = "composer"
@@ -56,6 +57,23 @@ final class KeyboardHostController: UIViewController {
     guard field.isFirstResponder else { return }
     let height = view.keyboardLayoutGuide.layoutFrame.height
     let visible = view.bounds.maxY - (field.layer.presentation()?.frame.maxY ?? field.frame.maxY) - 8
+    if height != lastWindowHeight {
+      lastWindowHeight = height
+      // Fixture-only public view geometry. No text or private method is read.
+      NSLog("ClarifyFixtureHostWindow time=%.6f guide=%.3f composer=%.3f", CACurrentMediaTime(), height, visible)
+      let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+      for window in windows {
+        var count = 0
+        func geometry(_ node: UIView, depth: Int) {
+          guard depth < 9, count < 160 else { return }; count += 1
+          NSLog("ClarifyFixtureHostNode depth=%d type=%@ model=%@ presentation=%@", depth,
+            String(describing: type(of: node)), NSStringFromCGRect(node.convert(node.bounds, to: window)),
+            node.layer.presentation().flatMap { layer in window.layer.presentation().map { NSStringFromCGRect(layer.convert(layer.bounds, to: $0)) } } ?? "unavailable")
+          for child in node.subviews { geometry(child, depth: depth + 1) }
+        }
+        geometry(window, depth: 0)
+      }
+    }
     let changed = (height > 0 && sampledHeights.last != height) || (visible > 0 && visibleHeights.last != visible)
     guard changed else { return }
     if height > 0, sampledHeights.last != height { sampledHeights.append(height) }

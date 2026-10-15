@@ -1,5 +1,5 @@
 require 'xcodeproj'
-root, fixture, strict_opening_height = ARGV
+root, fixture, strict_opening_height, bottom_alignment_probe = ARGV
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
@@ -26,12 +26,39 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   if name == 'KeyboardViewController.swift'
     original = File.read(source)
     original = original.sub('        openURL(url)', '        openURL(url) { accepted in NSLog("ClarifyFixtureOpen accepted=%d", accepted) }')
+    # Isolated layout experiment. Never changes the product source or an IPA.
+    if bottom_alignment_probe == 'true'
+      original = original.sub('  private let mic = RecordControl()', '  private let body = UIView()' + "\n" + '  private let mic = RecordControl()')
+      start = original.index('  override func viewDidLoad() {', original.index('class KeyboardViewController'))
+      finish = original.index('  override func viewDidLayoutSubviews()', start)
+      body = original[start...finish].gsub(/(?<!\.)\bview\.(addSubview|topAnchor|bottomAnchor|leadingAnchor|trailingAnchor)/, 'body.\1')
+      body = body.sub('    super.viewDidLoad()', <<~'SWIFT')
+          super.viewDidLoad()
+          body.translatesAutoresizingMaskIntoConstraints = false
+          view.addSubview(body)
+          NSLayoutConstraint.activate([
+            body.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            body.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            body.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            body.heightAnchor.constraint(equalToConstant: KeyboardInputView.contentHeight)
+          ])
+      SWIFT
+      body = body.sub('keys.previewContainer = view', 'keys.previewContainer = body')
+      original = original[0...start] + body + original[finish..]
+    end
     source = File.join(fixture, name)
     instrumentation = <<~'SWIFT'
         var chain: [UIView] = []; var ancestor: UIView? = view
         while let item = ancestor, chain.count < 8 { chain.append(item); ancestor = item.superview }
         let geometry = chain.map { "\(type(of: $0)):\($0.frame):\($0.bounds)" }.joined(separator: " > ")
         NSLog("ClarifyFixtureGeometry %@", geometry)
+        let grid = keys.convert(keys.bounds, to: view)
+        if let window = view.window {
+          let screen = keys.convert(keys.bounds, to: window.screen.coordinateSpace)
+          let presented = keys.layer.presentation().flatMap { layer in window.layer.presentation().map { layer.convert(layer.bounds, to: $0) } }
+          NSLog("ClarifyFixtureBodyWindow time=%.6f windowHeight=%.3f modelY=%.3f screenY=%.3f presentationY=%.3f", CACurrentMediaTime(), window.bounds.height, keys.convert(keys.bounds, to: window).minY, screen.minY, presented?.minY ?? -1)
+        }
+        NSLog("ClarifyFixtureBody time=%.6f root=%.3f gridTop=%.3f gridBottom=%.3f bottomGap=%.3f", CACurrentMediaTime(), view.bounds.height, grid.minY, grid.maxY, view.bounds.maxY - grid.maxY)
     SWIFT
     File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + instrumentation))
   end

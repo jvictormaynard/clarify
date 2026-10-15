@@ -46,7 +46,7 @@ final class KeyboardExtensionTests: XCTestCase {
     }
     XCTFail("Settings item unavailable: \(title). \(app.debugDescription)")
   }
-  private func checkTrace(in app: XCUIApplication, opening: String, strict: Bool = true) throws {
+  private func checkTrace(in app: XCUIApplication, opening: String, strict: Bool = true, monotonic: Bool = false) throws {
     let raw = try XCTUnwrap(app.staticTexts["keyboard-frames"].value as? String)
     let values = try JSONDecoder().decode([String: [Double]].self, from: Data(raw.utf8))
     let heights = values.values.flatMap { $0 }
@@ -57,6 +57,15 @@ final class KeyboardExtensionTests: XCTestCase {
     defer { continueAfterFailure = false }
     if strict {
       XCTAssertTrue(heights.allSatisfy { $0 < 400 }, "\(opening): \(values)")
+      if monotonic {
+        let visible = values["visibleFrames"] ?? []
+        XCTAssertFalse(visible.isEmpty, "Opening must include presentation samples")
+        var peak = -Double.infinity, retreat = 0.0
+        for height in visible {
+          peak = max(peak, height); retreat = max(retreat, peak - height)
+        }
+        XCTAssertLessThanOrEqual(retreat, 3, "The opening must not reverse during its animation: \(values)")
+      }
     }
     // Publication may defer the known transient overshoot, but must still
     // reject a keyboard that stays oversized or covers the bottom row.
@@ -79,7 +88,7 @@ final class KeyboardExtensionTests: XCTestCase {
       app.buttons["Dismiss"].tap(); app.buttons["Reset trace"].tap()
       app.secureTextFields["composer"].tap()
       XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
-      try checkTrace(in: app, opening: "Native keyboard opening \(index)")
+      try checkTrace(in: app, opening: "Native keyboard opening \(index)", monotonic: true)
     }
   }
   func testInstalledKeyboardTypingAndActivation() throws {
@@ -158,7 +167,7 @@ final class KeyboardExtensionTests: XCTestCase {
       app.textFields["composer"].tap()
       XCTAssertTrue(keyboard.waitForExistence(timeout: 5), app.debugDescription)
       // Querying after presentation keeps every earlier WillChangeFrame notification.
-      try checkTrace(in: app, opening: "Opening \(index)", strict: strictHeight)
+      try checkTrace(in: app, opening: "Opening \(index)", strict: strictHeight, monotonic: true)
       let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "extension-opening-\(index)"
       capture.lifetime = .keepAlways; add(capture)
     }

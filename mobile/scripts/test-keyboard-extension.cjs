@@ -3,7 +3,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const strictOpeningHeight = process.argv.includes('--check-opening-height');
-if (process.argv.slice(2).some(argument => argument !== '--check-opening-height')) throw new Error('Unknown installed keyboard test argument.');
+const bottomAlignmentProbe = process.argv.includes('--bottom-alignment-probe');
+if (process.argv.slice(2).some(argument => !['--check-opening-height', '--bottom-alignment-probe'].includes(argument))) throw new Error('Unknown installed keyboard test argument.');
 if (process.platform !== 'darwin') throw new Error('The installed extension diagnostic requires macOS.');
 const root = process.cwd();
 function run(command, args, options = {}) {
@@ -19,13 +20,17 @@ if (!device) throw new Error('No matching iPhone simulator.');
 const runtime = runtimes.find(([, items]) => items.some(item => item.udid === device.udid))[0];
 console.log(JSON.stringify({ runtime, device: device.name }));
 run('xcrun', ['simctl', 'bootstatus', device.udid, '-b']);
+// A second isolated experiment must not reuse the previous fixture process.
+for (const bundle of ['com.clarify.fixture.host', 'com.clarify.fixture.container']) {
+  spawnSync('xcrun', ['simctl', 'terminate', device.udid, bundle], { stdio: 'ignore' });
+}
 const output = path.join(root, 'test-results'); fs.mkdirSync(output, { recursive: true });
 const results = fs.mkdtempSync(path.join(output, 'installed-keyboard-'));
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-extension-'));
 let exitCode = 1;
 let recording;
 try {
-  run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture, String(strictOpeningHeight)]);
+  run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture, String(strictOpeningHeight), String(bottomAlignmentProbe)]);
   const derived = path.join(fixture, 'DerivedData');
   run('xcodebuild', ['build', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'), '-scheme', 'ActivationContainer',
     '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO']);
@@ -70,6 +75,6 @@ try {
   if (fs.existsSync(preflight)) fs.copyFileSync(preflight, path.join(results, 'container-preflight.json'));
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
-  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, exitCode }, null, 2));
+  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, bottomAlignmentProbe, exitCode }, null, 2));
 }
 process.exitCode = exitCode;
