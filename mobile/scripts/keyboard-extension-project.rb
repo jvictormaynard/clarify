@@ -1,5 +1,5 @@
 require 'xcodeproj'
-root, fixture, strict_opening_height, bottom_alignment_probe, notification_composer_probe, warm_fence_probe = ARGV
+root, fixture, strict_opening_height, bottom_alignment_probe, notification_composer_probe, ready_layout_fence_probe = ARGV
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
@@ -7,7 +7,7 @@ tests = project.new_target(:ui_test_bundle, 'ExtensionTests', :ios, '16.4')
 container = project.new_target(:application, 'ActivationContainer', :ios, '16.4')
 container.add_dependency(keyboard); tests.add_dependency(app)
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionHost.swift')))
-if warm_fence_probe == 'true'
+if ready_layout_fence_probe == 'true'
   app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardWarmFenceHostProbe.m')))
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardWarmFenceProbe.m')))
 end
@@ -30,7 +30,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   if name == 'KeyboardViewController.swift'
     original = File.read(source)
     original = original.sub('        openURL(url)', '        openURL(url) { accepted in NSLog("ClarifyFixtureOpen accepted=%d", accepted) }')
-    if warm_fence_probe == 'true'
+    if ready_layout_fence_probe == 'true'
       original = original.sub('    super.viewDidLayoutSubviews()', '    super.viewDidLayoutSubviews()' + "\n" + '    ClarifyWarmFenceLayout(self)')
       original = original.sub('  override func textDidChange(_ textInput: UITextInput?) {', <<~'SWIFT')
           override func viewDidAppear(_ animated: Bool) {
@@ -107,7 +107,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
 bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
-if warm_fence_probe == 'true'
+if ready_layout_fence_probe == 'true'
   bridge = File.join(fixture, 'WarmFence-Bridging-Header.h')
   File.write(bridge, <<~'OBJC')
     #import <UIKit/UIKit.h>

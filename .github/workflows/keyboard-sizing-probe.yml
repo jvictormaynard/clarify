@@ -1,4 +1,4 @@
-name: Keyboard warm opening fence probe
+name: Keyboard ready layout fence probe
 on:
   workflow_dispatch:
 permissions:
@@ -26,10 +26,10 @@ jobs:
         run: |
           node --check scripts/test-keyboard-extension.cjs
           ruby -c scripts/keyboard-extension-project.rb
-      - name: Measure unmodified body with a fence on warm reopening
+      - name: Measure a connected provisional keyboard layout
         id: fence
         continue-on-error: true
-        run: node scripts/test-keyboard-extension.cjs --check-opening-height --warm-fence-probe
+        run: node scripts/test-keyboard-extension.cjs --check-opening-height --ready-layout-fence-probe
       - name: Preserve the result
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -43,5 +43,5 @@ jobs:
         env:
           FENCE: ${{ steps.fence.outcome }}
         run: |
-          echo "Warm fence: $FENCE"
+          echo "Ready layout fence: $FENCE"
           test "$FENCE" = success
