@@ -47,7 +47,9 @@ static void associateOwner(id object) {
     if (![child isKindOfClass:UIInputViewController.class]) return;
     ClarifyWarmFenceState *state = stateFor(child);
     if (state.owner != object) {
-        state.appeared = NO; state.armed = NO; state.reportedSkip = NO;
+        // UIKit reconnects a previously presented child on every reopening.
+        // Keep that child's pending reopen; a new child still starts unarmed.
+        state.reportedSkip = NO;
     }
     state.owner = object;
     NSLog(@"ClarifyWarmFence time=%.9f event=owner-associated child=%p", CACurrentMediaTime(), child);
@@ -79,6 +81,7 @@ void ClarifyWarmFenceDidAppear(UIInputViewController *child) {
 void ClarifyWarmFenceDidDisappear(UIInputViewController *child) {
     if (![NSThread isMainThread]) return;
     ClarifyWarmFenceState *state = stateFor(child);
+    state.owner = nil;
     state.armed = state.appeared; state.reportedSkip = NO;
     NSLog(@"ClarifyWarmFence time=%.9f event=armed child=%p value=%d", CACurrentMediaTime(), child, state.armed);
 }
@@ -114,8 +117,9 @@ void ClarifyWarmFenceLayout(UIInputViewController *child) {
         SEL invalidate = NSSelectorFromString(@"invalidate");
         NSMethodSignature *invalidateSignature = [fence methodSignatureForSelector:invalidate];
         if (!fence || invalidateSignature.numberOfArguments != 2 || strcmp(invalidateSignature.methodReturnType, "v")) { skipped(state, child, @"fence"); return; }
-        state.armed = NO;
         @try {
+            if (!state.armed || state.owner != owner || objectIvar(owner, "_localViewController") != child) { skipped(state, child, @"owner-changed"); return; }
+            state.armed = NO;
             NSLog(@"ClarifyWarmFence time=%.9f event=send child=%p root=%.3f size=%@ fence=%@", CACurrentMediaTime(), child, view.bounds.size.height, NSStringFromCGSize(size), NSStringFromClass([fence class]));
             ((void (*)(id, SEL, CGSize, id))objc_msgSend)(proxy, update, size, fence);
         } @finally {
