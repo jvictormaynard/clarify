@@ -67,8 +67,8 @@ final class KeyboardHostController: UIViewController {
         func geometry(_ node: UIView, depth: Int) {
           guard depth < 9, count < 160 else { return }; count += 1
           NSLog("ClarifyFixtureHostNode depth=%d type=%@ model=%@ presentation=%@", depth,
-            String(describing: type(of: node)), NSStringFromCGRect(node.convert(node.bounds, to: window)),
-            node.layer.presentation().flatMap { layer in window.layer.presentation().map { NSStringFromCGRect(layer.convert(layer.bounds, to: $0)) } } ?? "unavailable")
+            String(describing: type(of: node)), String(describing: node.convert(node.bounds, to: window)),
+            node.layer.presentation().flatMap { layer in window.layer.presentation().map { String(describing: layer.convert(layer.bounds, to: $0)) } } ?? "unavailable")
           for child in node.subviews { geometry(child, depth: depth + 1) }
         }
         geometry(window, depth: 0)
