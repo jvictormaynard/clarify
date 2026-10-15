@@ -1,5 +1,8 @@
 require 'xcodeproj'
-root, fixture, strict_opening_height, bottom_alignment_probe, notification_composer_probe = ARGV
+root, fixture, strict_opening_height, bottom_alignment_probe, notification_composer_probe, no_self_sizing_probe = ARGV
+if no_self_sizing_probe == 'true' && [bottom_alignment_probe, notification_composer_probe].include?('true')
+  raise 'The self-sizing experiment requires the original top-aligned body and guide-driven composer'
+end
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
@@ -25,6 +28,14 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   source = File.join(root, 'native/keyboard', name)
   if name == 'KeyboardViewController.swift'
     original = File.read(source)
+    sizing_assignment = 'allowsSelfSizing = true'
+    raise 'Self-sizing fixture must match exactly one production assignment' unless original.scan(sizing_assignment).length == 1
+    original = original.sub(sizing_assignment, 'allowsSelfSizing = false') if no_self_sizing_probe == 'true'
+    expected_sizing = no_self_sizing_probe == 'true' ? 'false' : 'true'
+    unless original.scan("allowsSelfSizing = #{expected_sizing}").length == 1 && original.scan("allowsSelfSizing = #{expected_sizing == 'true' ? 'false' : 'true'}").empty?
+      raise 'Self-sizing fixture did not preserve the requested treatment'
+    end
+    puts "ClarifyFixtureSelfSizing noSelfSizingProbe=#{no_self_sizing_probe == 'true'} generatedAllowsSelfSizing=#{expected_sizing} assignments=1"
     original = original.sub('        openURL(url)', '        openURL(url) { accepted in NSLog("ClarifyFixtureOpen accepted=%d", accepted) }')
     # Isolated layout experiment. Never changes the product source or an IPA.
     if bottom_alignment_probe == 'true'
@@ -57,6 +68,9 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         while let item = ancestor, chain.count < 8 { chain.append(item); ancestor = item.superview }
         let geometry = chain.map { "\(type(of: $0)):\($0.frame):\($0.bounds)" }.joined(separator: " > ")
         NSLog("ClarifyFixtureGeometry %@", geometry)
+        if let input = view as? UIInputView {
+          NSLog("ClarifyFixtureSelfSizing time=%.6f allowsSelfSizing=%d root=%.3f", CACurrentMediaTime(), input.allowsSelfSizing, view.bounds.height)
+        }
         let grid = keys.convert(keys.bounds, to: view)
         if let window = view.window {
           let screen = keys.convert(keys.bounds, to: window.screen.coordinateSpace)

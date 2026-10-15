@@ -1,12 +1,17 @@
-name: Keyboard opening body probe
+name: Keyboard public self-sizing comparison
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   compare:
+    name: Self-sizing (${{ matrix.variant }})
     runs-on: macos-26
-    timeout-minutes: 35
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [default, no-self-sizing]
     defaults:
       run:
         working-directory: mobile
@@ -26,27 +31,29 @@ jobs:
         run: |
           node --check scripts/test-keyboard-extension.cjs
           ruby -c scripts/keyboard-extension-project.rb
-      - name: Measure current top alignment
-        id: top
+      - name: Measure the public self-sizing policy
+        id: measure
         continue-on-error: true
-        run: node scripts/test-keyboard-extension.cjs --check-opening-height --notification-composer-probe
-      - name: Measure isolated bottom alignment
-        id: bottom
-        continue-on-error: true
-        run: node scripts/test-keyboard-extension.cjs --check-opening-height --notification-composer-probe --bottom-alignment-probe
-      - name: Preserve both results
+        env:
+          NO_SELF_SIZING_PROBE: ${{ matrix.variant == 'no-self-sizing' && 'true' || 'false' }}
+        run: |
+          args=(--check-opening-height)
+          if [[ "$NO_SELF_SIZING_PROBE" == 'true' ]]; then
+            args+=(--no-self-sizing-probe)
+          fi
+          node scripts/test-keyboard-extension.cjs "${args[@]}"
+      - name: Preserve this variant's result
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: keyboard-opening-body-${{ github.sha }}
+          name: keyboard-public-sizing-${{ matrix.variant }}-${{ github.sha }}
           path: mobile/test-results/installed-keyboard-*
           if-no-files-found: error
           retention-days: 7
       - name: Keep the opening regression gate
         if: always()
         env:
-          TOP: ${{ steps.top.outcome }}
-          BOTTOM: ${{ steps.bottom.outcome }}
+          MEASURE: ${{ steps.measure.outcome }}
         run: |
-          echo "Top alignment: $TOP; bottom alignment: $BOTTOM"
-          test "$TOP" = success && test "$BOTTOM" = success
+          echo "Self-sizing ${{ matrix.variant }}: $MEASURE"
+          test "$MEASURE" = success
