@@ -1,0 +1,27 @@
+name: Keyboard background contract read
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Check the isolated inspector
+        run: python3 -m py_compile mobile/scripts/inspect-keyboard-runtime.py
+      - name: Read keyboard material ownership
+        run: python3 mobile/scripts/inspect-keyboard-runtime.py
+      - name: Preserve the readout
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: keyboard-background-contract-${{ github.sha }}
+          path: mobile/test-results/runtime-inspect
+          if-no-files-found: error
+          retention-days: 7
