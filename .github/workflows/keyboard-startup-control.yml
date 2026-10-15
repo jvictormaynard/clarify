@@ -1,0 +1,67 @@
+name: Keyboard startup control (tests only)
+
+on:
+  push:
+    branches: [codex/ios-keyboard-mode0-control-20261015]
+    paths:
+      - .github/workflows/keyboard-startup-control.yml
+      - mobile/scripts/keyboard-extension-project.rb
+      - mobile/scripts/test-keyboard-extension.cjs
+  workflow_dispatch:
+    inputs:
+      tests_only:
+        description: Run the isolated startup A/B without signing or upload
+        type: boolean
+        default: true
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  startup-control:
+    name: Startup bootstrap ${{ matrix.bootstrap }} (diagnostics 0)
+    if: ${{ github.event_name == 'push' || inputs.tests_only }}
+    runs-on: macos-26
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        bootstrap: [enabled, disabled]
+    defaults:
+      run:
+        working-directory: mobile
+        shell: bash
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      CLARIFY_IOS_RUNTIME: iOS-26-5
+      CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS: '0'
+      CLARIFY_KEYBOARD_HEIGHT_BOOTSTRAP: ${{ matrix.bootstrap }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.21.1
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Verify Xcode and fixture syntax
+        run: |
+          xcodebuild -version
+          ruby -c scripts/keyboard-extension-project.rb
+          node --check scripts/test-keyboard-extension.cjs
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Test first startup and all installed keyboard assertions
+        run: node scripts/test-keyboard-extension.cjs --check-opening-height
+      - name: Preserve this arm's compiled source, plists, logs and captures
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: clarify-keyboard-startup-${{ matrix.bootstrap }}-${{ github.sha }}
+          path: mobile/test-results/installed-keyboard-*
+          if-no-files-found: warn
+          retention-days: 7

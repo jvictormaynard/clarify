@@ -1,6 +1,14 @@
 require 'xcodeproj'
+require 'json'
+require 'digest'
 root, fixture, strict_opening_height = ARGV
 height_diagnostics = ENV['CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS'] == '1'
+height_bootstrap_control = ENV.key?('CLARIFY_KEYBOARD_HEIGHT_BOOTSTRAP')
+height_bootstrap = ENV.fetch('CLARIFY_KEYBOARD_HEIGHT_BOOTSTRAP', 'enabled')
+raise 'Unknown keyboard height bootstrap arm.' unless %w[enabled disabled].include?(height_bootstrap)
+if height_bootstrap_control && (ENV['CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS'] != '0' || strict_opening_height != 'true')
+  raise 'The startup A/B requires diagnostics=0 and strict opening checks in both arms.'
+end
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
@@ -57,6 +65,20 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
 
     + (void)activeArbiterCheck
     OBJC
+  end
+  if name == 'KeyboardHeightSync.m'
+    original = File.binread(source)
+    anchor = "@implementation ClarifyKeyboardHeightSyncBootstrap\n+ (void)load {\n"
+    matches = original.scan(Regexp.new(Regexp.escape(anchor))).length
+    raise "Expected one height bootstrap anchor, found #{matches}." unless matches == 1
+    compiled = height_bootstrap == 'disabled' ? original.sub(anchor, anchor + "    return;\n") : original
+    source = File.join(fixture, name)
+    File.binwrite(source, compiled)
+    proof = { bootstrap: height_bootstrap, bootstrapControl: height_bootstrap_control,
+      diagnostics: height_diagnostics, anchorMatches: matches,
+      productionSHA256: Digest::SHA256.hexdigest(original), compiledSHA256: Digest::SHA256.hexdigest(compiled) }
+    File.write(File.join(fixture, 'KeyboardHeightSync-build.json'), JSON.pretty_generate(proof))
+    puts "Keyboard height fixture: #{JSON.generate(proof)}"
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
