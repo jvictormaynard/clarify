@@ -21,6 +21,7 @@ final class KeyboardHostController: UIViewController {
   private var visibleHeights: [CGFloat] = []
   private var displayLink: CADisplayLink?
   private var lastWindowHeight: CGFloat = -1
+  private var composerBottom: NSLayoutConstraint?
   override func viewDidLoad() {
     super.viewDidLoad(); view.backgroundColor = .systemBackground
     field.borderStyle = .roundedRect; field.placeholder = "Type here"; field.accessibilityIdentifier = "composer"
@@ -36,6 +37,11 @@ final class KeyboardHostController: UIViewController {
     let activate = UIButton(type: .system); activate.setTitle("Open activation fixture", for: .normal)
     activate.addAction(UIAction { _ in UIApplication.shared.open(URL(string: "clarify://fixture-preflight")!) }, for: .touchUpInside)
     for element in [field, trace, returnTrace, dismiss, reset, activate] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
+    let notificationComposer = Bundle.main.object(forInfoDictionaryKey: "ClarifyFixtureNotificationComposer") as? Bool == true
+    let bottom = notificationComposer
+      ? field.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8)
+      : field.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8)
+    if notificationComposer { composerBottom = bottom }
     NSLayoutConstraint.activate([
       trace.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
       trace.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20), trace.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
@@ -44,7 +50,7 @@ final class KeyboardHostController: UIViewController {
       returnTrace.topAnchor.constraint(equalTo: reset.bottomAnchor, constant: 16), returnTrace.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       activate.topAnchor.constraint(equalTo: returnTrace.bottomAnchor, constant: 16), activate.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       field.leadingAnchor.constraint(equalTo: trace.leadingAnchor), field.trailingAnchor.constraint(equalTo: trace.trailingAnchor),
-      field.heightAnchor.constraint(equalToConstant: 44), field.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8)
+      field.heightAnchor.constraint(equalToConstant: 44), bottom
     ])
     NotificationCenter.default.addObserver(self, selector: #selector(frameChanged), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
     displayLink = CADisplayLink(target: self, selector: #selector(sampleFrame)); displayLink?.add(to: .main, forMode: .common)
@@ -85,9 +91,19 @@ final class KeyboardHostController: UIViewController {
     if let data = try? JSONSerialization.data(withJSONObject: values) { trace.accessibilityValue = String(data: data, encoding: .utf8) }
   }
   @objc private func frameChanged(_ note: Notification) {
-    guard field.isFirstResponder, let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+    guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
     let height = view.bounds.intersection(view.convert(frame, from: nil)).height
-    if height > 0 { heights.append(height) }
+    if field.isFirstResponder, height > 0 { heights.append(height) }
+    if let bottom = composerBottom {
+      view.layoutIfNeeded()
+      bottom.constant = -8 - max(0, height - view.safeAreaInsets.bottom)
+      let duration = (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
+      let curve = (note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 0
+      UIView.animate(withDuration: duration, delay: 0,
+        options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState, .allowUserInteraction]) {
+        self.view.layoutIfNeeded()
+      }
+    }
     publishTrace()
   }
 }

@@ -1,5 +1,5 @@
 require 'xcodeproj'
-root, fixture, strict_opening_height, bottom_alignment_probe = ARGV
+root, fixture, strict_opening_height, bottom_alignment_probe, notification_composer_probe = ARGV
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
@@ -28,20 +28,25 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
     original = original.sub('        openURL(url)', '        openURL(url) { accepted in NSLog("ClarifyFixtureOpen accepted=%d", accepted) }')
     # Isolated layout experiment. Never changes the product source or an IPA.
     if bottom_alignment_probe == 'true'
+      original = original.sub('  static let contentHeight: CGFloat = 278', <<~'SWIFT')
+          static let contentHeight: CGFloat = 278
+          weak var alignedBody: UIView?
+          override func layoutSubviews() {
+            super.layoutSubviews()
+            alignedBody?.frame = CGRect(x: 0, y: bounds.height - Self.contentHeight,
+              width: bounds.width, height: Self.contentHeight)
+          }
+      SWIFT
       original = original.sub('  private let mic = RecordControl()', '  private let body = UIView()' + "\n" + '  private let mic = RecordControl()')
       start = original.index('  override func viewDidLoad() {', original.index('class KeyboardViewController'))
       finish = original.index('  override func viewDidLayoutSubviews()', start)
       body = original[start...finish].gsub(/(?<!\.)\bview\.(addSubview|topAnchor|bottomAnchor|leadingAnchor|trailingAnchor)/, 'body.\1')
       body = body.sub('    super.viewDidLoad()', <<~'SWIFT')
           super.viewDidLoad()
-          body.translatesAutoresizingMaskIntoConstraints = false
+          body.autoresizingMask = [.flexibleWidth, .flexibleTopMargin]
           view.addSubview(body)
-          NSLayoutConstraint.activate([
-            body.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            body.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            body.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            body.heightAnchor.constraint(equalToConstant: KeyboardInputView.contentHeight)
-          ])
+          (view as? KeyboardInputView)?.alignedBody = body
+          view.setNeedsLayout()
       SWIFT
       body = body.sub('keys.previewContainer = view', 'keys.previewContainer = body')
       original = original[0...start] + body + original[finish..]
@@ -60,6 +65,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
         }
         NSLog("ClarifyFixtureBody time=%.6f root=%.3f gridTop=%.3f gridBottom=%.3f bottomGap=%.3f", CACurrentMediaTime(), view.bounds.height, grid.minY, grid.maxY, view.bounds.maxY - grid.maxY)
     SWIFT
+    instrumentation = instrumentation.gsub('ClarifyFixtureBody time=', "ClarifyFixtureBody variant=#{bottom_alignment_probe == 'true' ? 'manual-bottom' : 'top'} time=")
     File.write(source, original.sub("    super.viewDidLayoutSubviews()", "    super.viewDidLayoutSubviews()\n" + instrumentation))
   end
   if name == 'KeyGridView.swift'
@@ -110,6 +116,7 @@ app_info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'KeyboardHost
     'UISceneConfigurations' => { 'UIWindowSceneSessionRoleApplication' => [
       { 'UISceneConfigurationName' => 'KeyboardHost', 'UISceneDelegateClassName' => '$(PRODUCT_MODULE_NAME).KeyboardHostScene' }
     ] } } }
+app_info['ClarifyFixtureNotificationComposer'] = notification_composer_probe == 'true'
 Xcodeproj::Plist.write_to_path(app_info, File.join(fixture, 'App.plist'))
 container_info = Marshal.load(Marshal.dump(app_info))
 container_info['CFBundleName'] = 'ActivationContainer'

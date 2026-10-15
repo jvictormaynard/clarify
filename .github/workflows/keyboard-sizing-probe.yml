@@ -29,11 +29,11 @@ jobs:
       - name: Measure current top alignment
         id: top
         continue-on-error: true
-        run: node scripts/test-keyboard-extension.cjs --check-opening-height
+        run: node scripts/test-keyboard-extension.cjs --check-opening-height --notification-composer-probe
       - name: Measure isolated bottom alignment
         id: bottom
         continue-on-error: true
-        run: node scripts/test-keyboard-extension.cjs --check-opening-height --bottom-alignment-probe
+        run: node scripts/test-keyboard-extension.cjs --check-opening-height --notification-composer-probe --bottom-alignment-probe
       - name: Preserve both results
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
