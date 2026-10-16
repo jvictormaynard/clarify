@@ -56,7 +56,7 @@ export function GeneralPage({ controller }: SettingsPageProps) {
           </Row>
         </Section>
       )}
-      <Section title={t("Privacidade")}>
+      {!state.accountState?.managed && !state.accountState?.signedIn && <Section title={t("Privacidade")}>
         <Toggle
           title={t("Salvar histórico")}
           hint={t("Mantenha suas transcrições neste computador.")}
@@ -74,7 +74,7 @@ export function GeneralPage({ controller }: SettingsPageProps) {
             onChange={(e) => setRetention(e.target.value)}
           />
         )}
-      </Section>
+      </Section>}
     </>
   );
 }

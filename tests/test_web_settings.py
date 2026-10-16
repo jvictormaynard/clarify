@@ -51,6 +51,134 @@ class WebSettingsTests(unittest.TestCase):
         self.assertNotIn("providerApiKey", serialized)
         self.assertEqual(response["id"], 7)
 
+    def test_existing_history_is_visible_with_disabled_recording_and_delete_stays_local(
+        self,
+    ):
+        from history_store import HistoryRecord, HistoryStore
+
+        store = HistoryStore(
+            self.settings._history.local.path, enabled=True, retention_days=None
+        )
+        record = HistoryRecord(raw_text="Isolated legacy record.")
+        store.append(record)
+        snapshot = self.request("snapshot")["result"]
+        self.assertFalse(snapshot["historyEnabled"])
+        context = snapshot["historyState"]["context"]
+        page = self.request("getHistoryPage", context, "")["result"]
+        self.assertEqual(page["entries"][0]["text"], "Isolated legacy record.")
+        self.assertIn(
+            "result",
+            self.request("deleteHistoryEntry", page["entries"][0]["id"], context),
+        )
+        self.assertEqual(
+            self.request("getHistoryPage", context, "")["result"]["entries"], []
+        )
+
+    def test_history_clear_removes_only_local_records_in_guest_mode(self):
+        from history_store import HistoryRecord, HistoryStore
+
+        store = HistoryStore(self.settings._history.local.path, enabled=True)
+        store.append(HistoryRecord(raw_text="Local only."))
+        with patch.object(self.settings._account, "request") as request:
+            context = self.settings.historyState["context"]
+            self.assertIn("result", self.request("clearHistory", context))
+            self.assertEqual(
+                self.request("getHistoryPage", context, "")["result"]["entries"], []
+            )
+            request.assert_not_called()
+
+    def test_large_history_keeps_snapshots_small_and_pages_complete_without_duplicates(
+        self,
+    ):
+        from history_store import HistoryRecord
+
+        records = [
+            HistoryRecord(raw_text=str(index) + "é" * 12000) for index in range(70)
+        ]
+        path = self.settings._history.local.path
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "records": [record.to_mapping() for record in records],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        self.assertGreater(path.stat().st_size, 1_048_576)
+        with patch.object(
+            self.settings._history,
+            "list_items",
+            side_effect=AssertionError("general snapshots must not load history"),
+        ):
+            snapshot = self.request("snapshot")
+            self.assertLess(len(json.dumps(snapshot).encode()), 65536)
+            self.assertNotIn("historyEntries", snapshot["result"])
+        context = snapshot["result"]["historyState"]["context"]
+        cursor, ids = "", []
+        while True:
+            reply = self.request("getHistoryPage", context, cursor)
+            self.assertLess(len(json.dumps(reply).encode()), 128 * 1024)
+            page = reply["result"]
+            ids.extend(entry["id"] for entry in page["entries"])
+            self.assertTrue(all(len(entry["text"]) <= 500 for entry in page["entries"]))
+            if not page["hasMore"]:
+                break
+            cursor = page["cursor"]
+        self.assertEqual(len(ids), 70)
+        self.assertEqual(len(set(ids)), 70)
+
+    def test_giant_legacy_text_is_preserved_and_available_in_bounded_parts(self):
+        from history_store import HistoryRecord, HistoryStore
+
+        original = "😀é" * 220000
+        store = HistoryStore(
+            self.settings._history.local.path, enabled=True, retention_days=None
+        )
+        store.append(HistoryRecord(raw_text=original))
+        context = self.settings.historyState["context"]
+        page = self.request("getHistoryPage", context, "")["result"]
+        self.assertTrue(page["entries"][0]["truncated"])
+        token, offset, parts = page["entries"][0]["id"], 0, []
+        while True:
+            reply = self.request("getHistoryTextPart", context, token, offset, "text")
+            self.assertLess(len(json.dumps(reply).encode()), 65536)
+            part = reply["result"]
+            parts.append(part["text"])
+            offset = part["nextOffset"]
+            if not part["hasMore"]:
+                break
+        self.assertEqual("".join(parts), original)
+        self.assertEqual(store.list_records()[0].raw_text, original)
+
+    def test_history_rpc_rejects_malformed_values_and_stale_account_actions(self):
+        from history_store import HistoryRecord, HistoryStore
+        import uuid
+
+        store = HistoryStore(self.settings._history.local.path, enabled=True)
+        store.append(HistoryRecord(raw_text="Preserve guest."))
+        context = self.settings.historyState["context"]
+        page = self.request("getHistoryPage", context, "")["result"]
+        token = page["entries"][0]["id"]
+        for args in (
+            (context,),
+            (context, 0),
+            (context, "../unsafe"),
+            ("secret-must-not-echo", ""),
+        ):
+            reply = self.request("getHistoryPage", *args)
+            self.assertIn("error", reply)
+            self.assertNotIn("secret-must-not-echo", json.dumps(reply))
+        self.assertIn(
+            "error", self.request("getHistoryTextPart", context, token, True, "text")
+        )
+        self.settings._account._state["user_id"] = str(uuid.uuid4())
+        self.settings._account._generation += 1
+        self.assertIn("error", self.request("deleteHistoryEntry", token, context))
+        self.assertIn("error", self.request("clearHistory", context))
+        self.assertEqual(store.list_records()[0].raw_text, "Preserve guest.")
+
     def test_automatic_update_flag_is_an_optional_saved_draft(self):
         self.assertFalse(self.request("snapshot")["result"]["automaticUpdates"])
         state = self.request("setAutomaticUpdates", True)["result"]

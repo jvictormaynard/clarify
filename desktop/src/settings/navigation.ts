@@ -7,10 +7,12 @@ import {
   Cpu,
   BookOpen,
   UserRound,
+  History,
 } from "lucide-react";
 
 export const getSettingsPages = () => [
   { id: "account", label: t("Conta Clarify"), icon: UserRound },
+  { id: "history", label: t("Histórico"), icon: History },
   { id: "general", label: t("Geral"), icon: Settings2 },
   { id: "dictation", label: t("Ditado"), icon: Mic },
   { id: "text", label: t("Texto"), icon: Sparkles },

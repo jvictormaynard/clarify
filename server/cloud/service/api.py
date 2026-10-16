@@ -4,6 +4,7 @@ import hashlib
 import json
 
 from allauth.account.models import EmailAddress
+from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.db import transaction
 from django.http import JsonResponse
@@ -13,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView, exception_handler as drf_handler
 
 from dictionary_snippets import DictionaryEntry, DictionarySnippets
-from . import audio, groq, ledger
+from . import audio, groq, history, ledger
 from .middleware import take_rate
 from .models import Dictionary, Operation
 
@@ -69,18 +70,38 @@ class AccountView(ServiceView):
             return Response({"code": "confirmation_required"}, status=400)
         with ledger.admission_lock():
             # Serializes deletion with admissions and settlements.
+            # History takes the same parent row lock before inserting children.
+            # Acquire it before Django's deletion collector visits those rows.
+            user = (
+                get_user_model()
+                .objects.select_for_update()
+                .filter(pk=request.user.pk)
+                .first()
+            )
+            if user is None:
+                return Response(status=204)
             if Operation.objects.filter(user=request.user, state="running").exists():
                 return Response({"code": "account_busy"}, status=409)
             Operation.objects.filter(user=request.user).update(
                 result={}, fingerprint=""
             )
-            request.user.delete()
+            user.delete()
         return Response(status=204)
 
 
 class UsageView(ServiceView):
     def get(self, request):
         return Response(ledger.usage(request.user))
+
+
+class HistorySyncView(ServiceView):
+    def post(self, request):
+        try:
+            return Response(history.synchronize(request.user, request.data))
+        except history.Conflict:
+            return Response({"code": "history_conflict"}, status=409)
+        except history.Capacity:
+            return Response({"code": "history_full"}, status=507)
 
 
 def validate_entries(entries):

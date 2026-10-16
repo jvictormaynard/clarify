@@ -60,7 +60,7 @@ export function AccountCard() {
     <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line }}>
       {actionRow(t("Sair da conta"), 'logout', () => command('logout'))}
       <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.line }} />
-      {actionRow(t("Excluir conta"), 'delete', () => Alert.alert(t("Excluir conta Clarify?"), t("Remove o dicionário compartilhado e o acesso ao serviço. Esta ação não pode ser desfeita. O histórico deste iPhone será mantido."), [{ text: t("Cancelar"), style: 'cancel' }, { text: t("Excluir conta"), style: 'destructive', onPress: () => command('delete') }]), true)}
+      {actionRow(t("Excluir conta"), 'delete', () => Alert.alert(t("Excluir conta Clarify?"), t("Excluir a conta remove o dicionário e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos."), [{ text: t("Cancelar"), style: 'cancel' }, { text: t("Excluir conta"), style: 'destructive', onPress: () => command('delete') }]), true)}
     </View>
   </View>;
 }

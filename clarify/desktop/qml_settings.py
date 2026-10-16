@@ -23,6 +23,9 @@ from typing import Any, cast
 
 from PySide6.QtCore import Property, QObject, Qt, Signal, Slot
 from clarify_account import AccountService
+from account_history import AccountHistory
+from history_store import HistoryStore
+from clarify.desktop.history_view import HistoryView
 from cloud_defaults import DEFAULT_CLOUD_URL
 from dictionary_snippets import (
     DictionaryEntry,
@@ -373,6 +376,16 @@ class QmlSettingsController(QObject):
             default_endpoint=os.environ.get("CLARIFY_CLOUD_URL", DEFAULT_CLOUD_URL),
         )
         self._account_can_change = account_can_change or (lambda: True)
+        self._history = getattr(self._account, "history", None)
+        if self._history is None and isinstance(self._account, AccountService):
+            self._history = AccountHistory(
+                self._account,
+                HistoryStore(Path(repositories.config.path).parent / "history.json"),
+            )
+            self._account.history = self._history
+        self._history_view = (
+            HistoryView(self._history) if self._history is not None else None
+        )
         self._account_busy = False
         self._account_error = ""
         self._account_shutdown = False
@@ -1955,6 +1968,64 @@ class QmlSettingsController(QObject):
             "busy": self._account_busy,
             "error": self._account_error,
         }
+
+    @Property("QVariantMap", notify=accountStateChanged)
+    def historyState(self):
+        return (
+            self._history_view.snapshot()
+            if self._history_view is not None
+            else {"context": "", "revision": ""}
+        )
+
+    def getHistoryPage(self, context, cursor):
+        if self._history_view is None and context == "" and cursor == "":
+            return {
+                "context": "",
+                "revision": "",
+                "entries": [],
+                "cursor": "",
+                "hasMore": False,
+            }
+        if self._history_view is None:
+            raise ValueError("Invalid history context")
+        return self._history_view.page(context, cursor)
+
+    def getHistoryTextPart(self, context, token, offset, field):
+        if self._history_view is None:
+            raise ValueError("Invalid history context")
+        return self._history_view.text_part(context, token, offset, field)
+
+    @Slot(str, str, result=bool)
+    def deleteHistoryEntry(self, token, context):
+        try:
+            if self._history is not None:
+                self._history_view.delete(context, token)
+                threading.Thread(
+                    target=lambda: self._history.sync_safely(force=True),
+                    name="ClarifyHistory",
+                    daemon=True,
+                ).start()
+            self.accountStateChanged.emit()
+            return True
+        except (OSError, ValueError) as error:
+            self._set_error(error)
+            return False
+
+    @Slot(str, result=bool)
+    def clearHistory(self, context):
+        try:
+            if self._history is not None:
+                self._history_view.clear(context)
+                threading.Thread(
+                    target=lambda: self._history.sync_safely(force=True),
+                    name="ClarifyHistory",
+                    daemon=True,
+                ).start()
+            self.accountStateChanged.emit()
+            return True
+        except (OSError, ValueError) as error:
+            self._set_error(error)
+            return False
 
     @Property(bool, notify=configChanged)
     def onboardingRequired(self):

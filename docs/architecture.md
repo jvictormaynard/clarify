@@ -9,8 +9,12 @@ All product source remains in this public MIT repository. Production credentials
 user data, backups and administrator access stay private in the hosting platform.
 There is no separate closed backend or local/cloud product fork.
 
-The first account increment shares vocabulary and hosted audio allowance. Each
-device keeps its history and snippets locally. `clarify_account.py` owns the
+Accounts share vocabulary, hosted audio allowance and new account transcriptions.
+Pre-upgrade records, guest history and snippets remain local. Account history
+uses an endpoint/user-scoped offline cache and durable pending changes; local
+records are never inferred to belong to the current account or uploaded.
+See the [history synchronization contract](history-sync.md) for cursor,
+idempotency, deletion and retry ownership. `clarify_account.py` owns the
 desktop account boundary; the iOS containing app owns `CloudAccount.swift`.
 Sessions stay in the desktop secret store or app-only iOS Keychain. The keyboard
 extension receives neither provider keys nor account sessions. Account-scoped

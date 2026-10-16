@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   const quota = testInfo.title.startsWith("quota:");
   const usageReady = new Promise<void>(resolve => { releaseUsage = resolve; });
   const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(quota ? ["--signed-in"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(quota ? ["--signed-in"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);
@@ -36,6 +36,48 @@ test.beforeEach(async ({ page }, testInfo) => {
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
 });
 test.afterEach(async () => { releaseUsage?.(); child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
+
+test("history: existing records stay visible and local delete and clear update the list", async ({ page }) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  await expect(page.getByText("Isolated mobile history.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Isolated desktop history.", { exact: true })).toBeVisible();
+  const items = page.getByRole("listitem");
+  await expect(items).toHaveCount(2);
+  await expect(items.first()).toContainText("Mobile");
+  await expect(items.last()).toContainText("Desktop");
+  await items.first().getByRole("button").click();
+  await page.getByRole("dialog").getByRole("button", { name: "Excluir", exact: true }).click();
+  await expect(items).toHaveCount(1);
+  await page.getByRole("button", { name: "Limpar histórico", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Excluir", exact: true }).click();
+  await expect(page.getByText("Nenhuma transcrição ainda.", { exact: true })).toBeVisible();
+});
+
+test("history: large history loads bounded pages and full legacy text without blocking Settings", async ({ page }) => {
+  test.setTimeout(60000);
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  await expect(page.getByRole("listitem")).toHaveCount(20);
+  await page.getByRole("listitem").first().getByRole("button", { name: "Mostrar texto completo", exact: true }).click();
+  await expect(page.getByRole("listitem").first()).toContainText("legacy end.", { timeout: 30000 });
+  await expect(page.getByRole("listitem").first().locator(".history-text")).toHaveText("Giant legacy " + "x".repeat(1100000) + " legacy end.");
+  await page.getByRole("button", { name: "Carregar mais", exact: true }).click();
+  await expect(page.getByRole("listitem")).toHaveCount(40);
+  await page.getByRole("button", { name: "Carregar mais", exact: true }).click();
+  await expect(page.getByRole("listitem")).toHaveCount(48);
+  await expect(page.getByRole("button", { name: "Carregar mais", exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await expect(page.getByText("Salvar histórico", { exact: true })).toBeVisible();
+});
+
+test("history: session context changes close a stale delete dialog", async ({ page }) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  await expect(page.getByRole("listitem")).toHaveCount(2);
+  await page.getByRole("button", { name: "Limpar histórico", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.evaluate(() => fetch("/__test_rpc", { method: "POST", body: JSON.stringify({ method: "testHistoryContextChange", args: [] }) }));
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(page.getByRole("listitem")).toHaveCount(2);
+});
 
 test("quota: a signed-in startup shows loading until the quota arrives", async ({ page }) => {
   await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();

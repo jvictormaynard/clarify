@@ -3,7 +3,23 @@
 Expo application plus a small Swift keyboard extension. Use a Clarify account or
 a personal Groq API key for speech recognition and rewriting. Native bottom tabs contain
 Home, Dicionário and Conta. Ajustes opens from the Account tab; signed-out users
-see a short invitation and one sign-in/create-account button. History and vocabulary are stored locally in SQLite.
+see a short invitation and one sign-in/create-account button. SQLite keeps
+vocabulary and an offline history copy. New signed-in transcriptions sync
+automatically with desktop through the account. Guest and pre-upgrade records
+remain local and are never uploaded. Account caches are isolated by endpoint and
+user; signing out restores local history. See [history synchronization](../docs/history-sync.md).
+
+Version **0.8.0 (29)** adds automatic account-history synchronization with Windows
+0.9.0. Sign in to the same account on both devices and create new transcriptions
+on each. Original and revised text, timestamps and source devices are retained.
+Pre-upgrade records and account-free history remain on their original devices
+and are never uploaded. Pending account changes survive network failures and
+app restarts. Deletions synchronize without restoring known deleted records.
+The keyboard correction from 0.7.5 (28), accepted on the user's iPhone, remains
+unchanged. The temporary opening-measurement screen is hidden after that acceptance.
+The source-app return and keyboard-height integration retain private Apple APIs
+for the authorized TestFlight experiment; this is not an App Store release.
+
 Version 0.5.0 (20) shows the email field directly before the bottom tabs.
 The same emailed code enters an existing account or creates a new one, without
 a password. Use **Continuar sem conta** to configure a personal Groq key.
@@ -12,6 +28,19 @@ explains keyboard installation; microphone permission is requested when needed.
 An unfinished setup resumes on the next launch. Existing accounts and keys
 skip first-run setup after an upgrade. A setup preference contains no credentials.
 Billing, translation and local models are outside this mobile release.
+
+Version **0.7.3 (26)** fixes short speech such as “oi” when a personal Groq key
+and dictionary are active. Whisper receives plain enabled spellings, bounded to
+896 characters without splitting a term. Saved aliases, pronunciations and
+enabled flags are unchanged; rewriting keeps its vocabulary context. Account
+processing uses the same correction already deployed to the Clarify service.
+Native tests, live synthetic-speech acceptance and signed TestFlight delivery
+are required before reporting this candidate as available. Live acceptance is
+explicitly enabled with the workflow's `short_dictation_acceptance` input and a
+temporary `CLARIFY_SHORT_DICTATION_ACCEPTANCE` secret. It runs the production
+Swift client with synthetic M4A clips, then checks dictionary and history
+persistence. Remove the temporary secret after the run. It does not prove
+physical microphone capture or insertion in another app on the user's iPhone.
 
 Version **0.7.2 (25)** improves touch coverage between keys, sliding to adjacent
 keys, fast overlapping taps and automatic capitalization after `.?!`. Local
@@ -55,6 +84,29 @@ acceptance. These fixtures do not prove that the device-reported jump is gone.
 Use the direct workflow's `tests_only` input to run native checks without signing
 or uploading an existing build number. Uploads retain the full check sequence.
 Mobile versions are independent of the Windows release tags.
+
+### Physical-device opening diagnostic — 0.7.4 (27)
+
+This TestFlight candidate adds **Account → Settings → Keyboard opening test**.
+It preserves the short-speech correction already shipped in 0.7.3 (26).
+It does not change keyboard sizing or claim to fix the opening jump.
+Select a label, open the ordinary text field, select that same keyboard with
+its globe, and run ten dismiss/reopen cycles. Repeat with Apple and Wispr Flow.
+The keyboard label is supplied by the tester, not discovered by the app.
+
+A display link records the host keyboard layout guide and the composer's
+presentation position. It requests the screen's maximum refresh rate and
+exports callback/display/target timestamps so gaps in sampling remain visible.
+iOS controls the actual cadence; no trace proves that every physical frame was
+captured. Each phase waits for settled geometry; opening also requires the
+system's did-show notification. Timeout, app interruption or dismissal stops
+the run. The report retains individual samples, peaks and final heights.
+
+The explicit share action exports temporary JSON with OS/app version, geometry,
+timing and the keyboard label. It collects no audio, typed text, credentials or
+library data and sends nothing automatically. Sharing completion removes the
+temporary export. The tool is enabled only by the temporary containing-app
+`ClarifyKeyboardDiagnostic` plist flag. Remove that flag after device acceptance.
 
 ### Installed keyboard opening diagnostic
 
@@ -153,6 +205,32 @@ The call/permission recovery, opening animation and automatic return still need
 iPhone acceptance. Simulator checks do not prove the real system transition.
 General [CI run 38088125314](https://github.com/jvictormaynard/clarify/actions/runs/38088125314)
 also passed the Linux/Windows tests and Windows packaging job for that source.
+
+## Experimental opening synchronization — 0.7.5 (28)
+
+This TestFlight candidate synchronizes a measured keyboard height with UIKit's
+remote rendering fence. It uses private Apple APIs, separately from the existing
+experimental source-app return bridge. Runtime signatures and object types are
+checked. Each fresh connection can publish once, after host readiness and during
+a provisional keyboard layout; full-screen layouts and already settled layouts
+are excluded. Reentrant layout, a replaced owner or a closing controller cancels
+publication. The drawing fence is invalidated after the proxy call.
+
+The isolated `872373c` experiment executed seven publications. Both retained
+recordings showed four reopenings without the previous rendered key/composer
+retreat or excess material. Capture gaps leave initial switching inconclusive;
+these observations do not prove every physical display refresh was clean.
+The strict guide-height diagnostic still fails. Do not describe this candidate
+as a confirmed iPhone fix or as App Store compatible. Physical iOS 26.6.2
+acceptance remains required. Disabling `allowsSelfSizing` alone also failed in
+the captured pixels, so the existing self-sizing policy is retained.
+
+`KeyboardHeightSync` owns this boundary independently of host-app resolution.
+The fixture defaults to the unmodified distribution keyboard sources, with
+diagnostic logs and layout instrumentation disabled.
+Set `CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS=1` explicitly to trace publications.
+The artifact retains the generated project and records this setting.
+The installed-extension fixture compiles the product implementation directly.
 
 ## Direct TestFlight delivery
 

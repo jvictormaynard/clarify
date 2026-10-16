@@ -3,6 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const strictOpeningHeight = process.argv.includes('--check-opening-height');
+const keyboardHeightDiagnostics = process.env.CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS === '1';
 if (process.argv.slice(2).some(argument => argument !== '--check-opening-height')) throw new Error('Unknown installed keyboard test argument.');
 if (process.platform !== 'darwin') throw new Error('The installed extension diagnostic requires macOS.');
 const root = process.cwd();
@@ -26,6 +27,11 @@ let exitCode = 1;
 let recording;
 try {
   run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture, String(strictOpeningHeight)]);
+  if (!keyboardHeightDiagnostics) {
+    const source = fs.readFileSync(path.join(root, 'native/keyboard/KeyboardViewController.swift'));
+    const generated = fs.readFileSync(path.join(fixture, 'KeyboardViewController.swift'));
+    if (!source.equals(generated)) throw new Error('The distribution fixture must use the unmodified keyboard controller.');
+  }
   const derived = path.join(fixture, 'DerivedData');
   run('xcodebuild', ['build', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'), '-scheme', 'ActivationContainer',
     '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO']);
@@ -68,8 +74,17 @@ try {
   if (fs.existsSync(receipt)) fs.copyFileSync(receipt, path.join(results, 'activation-return.json'));
   const preflight = path.join(fixture, 'Shared/container-preflight.json');
   if (fs.existsSync(preflight)) fs.copyFileSync(preflight, path.join(results, 'container-preflight.json'));
+  for (const name of ['KeyboardViewController.swift', 'App.plist', 'Keyboard.plist', 'Container.plist', 'Tests.plist']) {
+    const source = path.join(fixture, name);
+    if (fs.existsSync(source)) fs.copyFileSync(source, path.join(results, 'generated-' + name));
+  }
+  for (const name of ['KeyboardHeightSync.m', 'KeyboardHeightSync.h']) {
+    fs.copyFileSync(path.join(root, 'native/keyboard', name), path.join(results, 'production-' + name));
+  }
+  const projectFile = path.join(fixture, 'KeyboardExtension.xcodeproj/project.pbxproj');
+  if (fs.existsSync(projectFile)) fs.copyFileSync(projectFile, path.join(results, 'generated-project.pbxproj'));
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
-  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, exitCode }, null, 2));
+  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, exitCode }, null, 2));
 }
 process.exitCode = exitCode;

@@ -151,6 +151,14 @@ class Dispatcher(QObject):
         if request.get("method") == "quit":
             QCoreApplication.quit()
             return
+        if (
+            "--history" in sys.argv
+            and request.get("method") == "testHistoryContextChange"
+        ):
+            # Test-only session transition, outside the product RPC allowlist.
+            self.protocol.settings._account._generation += 1
+            print(json.dumps({"id": request.get("id"), "result": True}), flush=True)
+            return
         print(json.dumps(self.protocol.dispatch(request)), flush=True)
 
 
@@ -208,6 +216,54 @@ def main():
             microphone_backend=backend,
             local_product=Mock(state=LocalASRProductState("installed"), busy=False),
         )
+        if "--history" in sys.argv:
+            from history_store import HistoryRecord, HistoryStore
+            from datetime import datetime, timezone
+
+            store = HistoryStore(
+                settings._history.local.path, enabled=True, retention_days=None
+            )
+            store.append(
+                HistoryRecord(
+                    raw_text="Isolated desktop history.",
+                    timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
+                )
+            )
+            store.append(
+                HistoryRecord(
+                    raw_text="Isolated mobile history.",
+                    source_device="mobile",
+                    timestamp=datetime(2026, 10, 16, 13, tzinfo=timezone.utc),
+                )
+            )
+            if "--history-large" in sys.argv:
+                from datetime import timedelta
+
+                records = store.list_records()
+                base = datetime(2026, 10, 16, 14, tzinfo=timezone.utc)
+                records.extend(
+                    HistoryRecord(
+                        raw_text=f"Isolated large row {index}: " + "é" * 16000,
+                        timestamp=base + timedelta(minutes=index),
+                    )
+                    for index in range(45)
+                )
+                records.append(
+                    HistoryRecord(
+                        raw_text="Giant legacy " + "x" * 1100000 + " legacy end.",
+                        timestamp=base + timedelta(hours=2),
+                    )
+                )
+                store.path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "records": [record.to_mapping() for record in records],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
         native = "--native" in sys.argv
         host = None
         if native:

@@ -48,11 +48,12 @@ export default function Settings() {
       <Text style={[ui.body, { color: c.muted }]}>{t("Ajustes do iPhone → Geral → Teclado → Teclados → Adicionar Novo Teclado → Clarify. Depois, ative “Acesso Total”.")}</Text>
       <Text style={[ui.body, { color: c.muted }]}>{t("Use o globo para selecionar o Clarify. Ative o microfone pelo botão “Começar” do teclado.")}</Text>
       <Button onPress={() => void Linking.openSettings().catch(report)}>{t("Abrir Ajustes do iPhone")}</Button>
+      {Core.keyboardDiagnosticAvailable && <Button loading={action === 'keyboard-test'} disabled={busy} onPress={() => void perform('keyboard-test', () => Core.openKeyboardDiagnostic())}>{t("Teste de abertura do teclado")}</Button>}
     </Card>
     <Card>
       <Text style={[ui.section, { color: c.text }]}>{t("Dados neste iPhone")}</Text>
-      <Text style={[ui.small, { color: c.muted }]}>{t("O histórico guarda a transcrição original e o texto revisado neste iPhone. Ele não é sincronizado com a conta. Os áudios são removidos após o processamento. Sua chave de API fica no armazenamento seguro deste iPhone.")}</Text>
-      <Button loading={action === 'history'} disabled={busy} destructive onPress={() => Alert.alert(t("Apagar todo o histórico?"), t("Esta ação remove todos os textos salvos neste iPhone. Seu dicionário e sua chave serão mantidos."), [{ text: t("Cancelar"), style: 'cancel' }, { text: t("Apagar"), style: 'destructive', onPress: () => void perform('history', () => Core.clearHistory().then(refresh)) }])}>{t("Apagar histórico")}</Button>
+      <Text style={[ui.small, { color: c.muted }]}>{account?.historyAccount ? t("Novos ditados da conta são sincronizados entre seus dispositivos. Registros antigos e ditados sem conta permanecem neste iPhone. Os áudios são removidos após o processamento.") : t("O histórico guarda a transcrição original e o texto revisado somente neste iPhone. Os áudios são removidos após o processamento. Sua chave fica no armazenamento seguro deste iPhone.")}</Text>
+      <Button loading={action === 'history'} disabled={busy || !account} destructive onPress={() => Alert.alert(t("Apagar todo o histórico?"), account?.historyAccount ? t("Esta ação apaga o histórico da conta em todos os dispositivos e os registros locais deste iPhone. Seu dicionário será mantido.") : t("Esta ação remove todos os textos salvos neste iPhone. Seu dicionário e sua chave serão mantidos."), [{ text: t("Cancelar"), style: 'cancel' }, { text: t("Apagar"), style: 'destructive', onPress: () => void perform('history', () => Core.clearHistory(account?.historyContext ?? '').then(refresh)) }])}>{t("Apagar histórico")}</Button>
     </Card>
     {!(account?.managed || account?.signedIn) && <Card>
       <Button disabled={busy} onPress={() => { setServer(account?.endpoint || ''); setAdvanced(!advanced); }}>{t("Servidor próprio")}</Button>

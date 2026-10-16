@@ -23,15 +23,15 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Tradução de texto selecionado
 - Integração nativa com atalhos e bandeja do Windows
 - Interface em português, inglês e espanhol, independente do idioma do ditado
-- Configurações em React/Tauri: Conta Clarify, Geral, Ditado, Texto, Dicionário, Atalhos e
+- Configurações em React/Tauri: Conta Clarify, Geral, Ditado, Texto, Dicionário, Histórico, Atalhos e
   Modelos e serviços
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
 - Dicionário pessoal para nomes e termos técnicos
 - Estatísticas locais sem armazenar o conteúdo das transcrições
-- Conta opcional com entrada por código de e-mail, dicionário compartilhado e cota de ditado
+- Conta opcional com entrada por código de e-mail, dicionário, histórico novo e cota de ditado compartilhados
 - Modos locais e com chave própria disponíveis sem conta; sem telemetria
 
-A versão 0.8.0 usa o idioma do dispositivo: português, inglês ou espanhol,
+A versão 0.9.0 usa o idioma do dispositivo: português, inglês ou espanhol,
 incluindo o e-mail de autenticação. No primeiro acesso, informe seu e-mail e
 confirme o código dentro do aplicativo para entrar ou criar uma conta.
 **Continuar sem conta** abre a configuração do modelo local; a chave própria
@@ -43,7 +43,13 @@ a tela mostra o carregamento. Sair e excluir conta ficam em uma Zona de perigo
 fechada por padrão, com confirmações separadas.
 O dicionário sincroniza automaticamente e o consumo é atualizado após o uso.
 O cache local preserva alterações offline; conflitos mantêm ambas as cópias
-até a resolução. O histórico e os atalhos permanecem locais. As instalações
+até a resolução. As novas transcrições da conta sincronizam automaticamente entre
+Windows e iOS, com texto original, texto revisado, horário e dispositivo de origem.
+A aba Histórico permite consultar o texto completo, carregar mais registros e
+sincronizar exclusões. Os registros antigos e o histórico sem conta permanecem
+locais e nunca são enviados. Alterações pendentes são preservadas após falhas de
+conexão e reinícios. Os atalhos permanecem locais. Consulte o
+[contrato de sincronização](history-sync.md). As instalações
 existentes mantêm sua configuração. O [aplicativo iOS](../mobile/README.md)
 é distribuído pelo TestFlight. O [servidor de contas](../server/README.md) também
 pode ser hospedado por você. As chaves de produção e os dados dos usuários são privados.
@@ -110,9 +116,9 @@ uma vez.
 2. Baixe `Clarify.exe` e salve-o em uma pasta sob seu controle.
 3. Abra o executável.
 4. A página inicial abre automaticamente. Digite seu e-mail e clique em **Continuar**,
-   ou use **continuar 100% local**. Não é necessário criar uma senha.
-   - **Conta Clarify:** confirme o código dentro do aplicativo, leia o aviso
-     sobre os dados enviados e ative o processamento. Não exige chave própria.
+   ou use **Continuar sem conta**. Não é necessário criar uma senha.
+   - **Conta Clarify:** confirme o código dentro do aplicativo. O processamento
+     é ativado automaticamente. Não exige chave própria.
    - **Chave própria:** salve sua chave Groq. Outros provedores continuam
      disponíveis em **Configurações → Modelos e serviços**.
    - **Local Whisper:** continue para a configuração, revise os requisitos e instale o modelo escolhido. A
@@ -201,7 +207,9 @@ antigas em texto simples são migradas e só são removidas de `config.json` dep
 da confirmação da cópia protegida. Variáveis de ambiente são substituições
 temporárias e não são persistidas.
 
-O dicionário fica em `dictionary.json`. O histórico de transcrições é opcional.
+O dicionário local fica em `dictionary.json`. Sem conta, o histórico local é
+opcional. Com uma conta, as novas transcrições sincronizam automaticamente e
+mantêm uma cópia offline. Os registros anteriores à atualização permanecem locais.
 A gravação usa um WAV temporário, removido após o processamento normal.
 Falhas de limpeza ou encerramento forçado podem deixar arquivos no disco.
 Não há garantia de exclusão segura.

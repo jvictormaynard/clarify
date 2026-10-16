@@ -1,12 +1,12 @@
 """Optional account, hosted dictation and revision-safe vocabulary sync.
 
 No Qt, microphone, environment/profile lookup or network work at import time.
-Provider keys and local history never enter this boundary.
+Provider keys and guest history never enter this boundary.
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 import threading
@@ -36,6 +36,13 @@ class AccountError(RuntimeError):
 
 class DictionaryConflict(AccountError):
     pass
+
+
+@dataclass(frozen=True)
+class HistoryIdentity:
+    endpoint: str
+    user_id: str
+    generation: int
 
 
 def endpoint(value: str) -> str:
@@ -123,12 +130,14 @@ class AccountService:
         self.default_endpoint = endpoint(default_endpoint)
         self._lock = threading.RLock()
         self._generation = 0
+        self._ending_session = False
         self._busy = False
         self._state = self._read(self.path, {})
         self._usage: dict[str, Any] = {}
         self._usage_generation = 0
         self._dictionary_conflict = False
         self._sync_error = ""
+        self.history = None
         try:
             endpoint(self._state.get("endpoint", self.default_endpoint))
             if self._state.get("user_id"):
@@ -214,8 +223,36 @@ class AccountService:
             self._generation += 1
             self._save()
 
-    def _request(self, method, path, *, cancel=None, **kwargs):
+    def history_identity(self):
+        """Capture the account/session before starting a history operation."""
         with self._lock:
+            user_id = self.scope
+            if not user_id or self._ending_session:
+                return None
+            return HistoryIdentity(
+                endpoint(self._state.get("endpoint", self.default_endpoint)),
+                user_id,
+                self._generation,
+            )
+
+    def _request(
+        self,
+        method,
+        path,
+        *,
+        cancel=None,
+        expected_identity=None,
+        ending_session=False,
+        **kwargs,
+    ):
+        with self._lock:
+            if self._ending_session and not ending_session:
+                raise AccountError("A conta mudou. O resultado foi descartado.")
+            if (
+                expected_identity is not None
+                and expected_identity != self.history_identity()
+            ):
+                raise AccountError("A conta mudou. O resultado foi descartado.")
             base = self._state.get("endpoint", self.default_endpoint)
             generation = self._generation
             usage_generation = self._usage_generation
@@ -254,6 +291,7 @@ class AccountService:
                 self._state["sync"] = False
                 self._usage = {}
                 self._usage_generation += 1
+                self._generation += 1
                 self._save()
             new_token = result.get("meta", {}).get("session_token")
             if new_token:
@@ -301,11 +339,17 @@ class AccountService:
 
     def refresh(self):
         self._last_refresh_attempt = self._clock()
+        with self._lock:
+            generation = self._generation
         code, result = self._request("GET", "/v1/account")
         if code != 200:
             raise AccountError("A sessão expirou. Entre na conta novamente.")
         user_id = str(uuid.UUID(result["id"]))
         with self._lock:
+            if generation != self._generation:
+                raise AccountError("A conta mudou. O resultado foi descartado.")
+            if self._state.get("user_id") != user_id:
+                self._generation += 1
             self._state.update(
                 user_id=user_id, email=result["email"], pending="", mode="hosted"
             )
@@ -327,21 +371,34 @@ class AccountService:
             except AccountError as error:
                 with self._lock:
                     self._sync_error = str(error)
+        if self.history is not None:
+            self.history.sync_safely(force=force)
 
     def logout(self, *, delete=False):
-        scope = self._state.get("user_id")
+        with self._lock:
+            history_owner = self.history_identity()
+            scope = self._state.get("user_id")
+            self._generation += 1
+            self._ending_session = True
         try:
             if delete:
-                code, _ = self._request("DELETE", "/v1/account", json={"confirm": True})
+                code, _ = self._request(
+                    "DELETE", "/v1/account", json={"confirm": True}, ending_session=True
+                )
                 if code != 204:
                     raise AccountError(
                         "Não foi possível excluir a conta. Finalize o ditado e tente novamente."
                     )
             else:
-                self._request("DELETE", "/_allauth/app/v1/auth/session")
+                self._request(
+                    "DELETE", "/_allauth/app/v1/auth/session", ending_session=True
+                )
         except AccountError:
             if delete:
                 raise
+        finally:
+            with self._lock:
+                self._ending_session = False
         with self._lock:
             self.secrets.delete(SECRET_ID)
             self._state = {
@@ -353,6 +410,8 @@ class AccountService:
             self._generation += 1
             self._save()
         if delete and scope:
+            if self.history is not None:
+                self.history.remove_account(history_owner)
             target = self.directory / "account-data" / str(uuid.UUID(scope))
             # Remove only this account's cache, never the local profile.
             for name in ("dictionary.json", "sync.json"):

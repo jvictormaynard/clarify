@@ -1,16 +1,30 @@
-# Local transcription history boundary
+# Transcription history boundaries
 
-This document describes the local history boundary and its current desktop
-integration for issue #53. Production React Settings expose a reversible,
-disabled-by-default toggle and retention policy. `QtHistoryRecorder` subscribes
+This document describes the local history boundary and desktop integration.
+Production React Settings expose a History page, plus a reversible,
+disabled-by-default local toggle and retention policy. `QtHistoryRecorder` subscribes
 to terminal workflow states and queues successful results or safe error
-summaries for storage outside the UI thread. It respects the current opt-in
-before each write.
+summaries for storage outside the UI thread. Guest writes respect the local
+opt-in. New signed-in results use the separate `AccountHistory` boundary and do
+not change the guest preference. The operation captures its account identity
+before producing a result; a later account switch cannot reassign that result.
 
-The storage API supports reads, export, and delete-all. Production Settings do
-not yet expose a history browser or these actions. The history page in the old
-widget frontend is a legacy surface, not a production Settings capability.
+The local storage API supports reads, export, and deletion. Production Settings
+show local records and the active account's cached history chronologically,
+with the Mobile/Desktop origin. Explicit deletion of account records is queued
+durably and synchronized; local records are deleted only on this computer.
 Packaged Windows acceptance remains a separate manual gate.
+
+`AccountHistory` owns a separate endpoint/user-scoped atomic snapshot, native
+record metadata, pending upserts/deletes/clear operation and remote cursor. The
+account service owns transport and session generation. Login, foreground
+refresh, new results and deletions trigger coalesced synchronization. Temporary
+network failure preserves the local result and pending work. There is no manual
+sync step. See the [shared wire contract](history-sync.md).
+
+All pre-upgrade records remain in the local store and are never uploaded. Guest
+records remain local, including records created after this change. Signing out
+restores the local view; switching accounts never exposes another account cache.
 
 ## Privacy contract
 
@@ -24,7 +38,7 @@ Each `HistoryRecord` contains only:
 
 - raw transcript text (optional for partial/error records);
 - refined output (optional);
-- workflow, UTC timestamp, transcription provider/model, optional refinement
+- source device, workflow, UTC timestamp, transcription provider/model, optional refinement
   provider/model, status, and a concise error summary.
 
 The type has no audio path/bytes, API-key field, request headers, provider
@@ -36,8 +50,8 @@ still provide a short safe error summary rather than a provider response.
 ## Persistence and recovery
 
 The first version uses a small versioned JSON document (`schema_version: 1`)
-instead of adding SQLite. History has no search, sharing, synchronization, or
-high-volume queue requirement yet; a single document keeps migration,
+instead of adding SQLite. The guest history boundary has no synchronization or
+high-volume queue requirement; a single document keeps migration,
 delete-all, and export behavior auditable and avoids another runtime
 dependency. A future issue can move the boundary to SQLite without changing
 the typed record contract if indexing or volume justifies it.

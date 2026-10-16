@@ -358,6 +358,8 @@ class WorkflowService:
         statistics: StatisticsGateway,
         scheduler: Scheduler,
         clock: Clock | None = None,
+        *,
+        operation_started: Callable[[int], None] | None = None,
     ):
         self._provider = provider
         self._audio = audio
@@ -371,6 +373,7 @@ class WorkflowService:
         self._session: _Session | None = None
         self._state = WorkflowState()
         self._listeners: list[Callable[[WorkflowState], None]] = []
+        self._operation_started = operation_started
 
     @property
     def state(self) -> WorkflowState:
@@ -488,7 +491,18 @@ class WorkflowService:
             )
             self._next_operation_id += 1
             self._session = session
-            return session
+        # Capture ownership before workers or coalesced UI events. Do not call
+        # the account boundary while the workflow lock is held.
+        if self._operation_started is not None:
+            try:
+                self._operation_started(session.operation_id)
+            except Exception:
+                # History bookkeeping cannot fail a transcription operation.
+                pass
+        with self._lock:
+            if self._session is not session:
+                return None
+        return session
 
     def _is_current_locked(self, operation_id: int) -> bool:
         return self._session is not None and self._session.operation_id == operation_id

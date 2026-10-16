@@ -3,7 +3,7 @@
     "name": "Clarify",
     "slug": "clarify-ios",
     "owner": "victormaynard",
-    "version": "0.7.2",
+    "version": "0.8.0",
     "scheme": "clarify",
     "platforms": [
       "ios"
@@ -13,7 +13,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.jvictormaynard.clarify",
-      "buildNumber": "25",
+      "buildNumber": "29",
       "supportsTablet": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "O Clarify usa o microfone para transcrever e reescrever o que você ditar.",
@@ -28,7 +28,8 @@
           "pt",
           "en",
           "es"
-        ]
+        ],
+        "CADisableMinimumFrameDurationOnPhone": true
       },
       "entitlements": {
         "com.apple.security.application-groups": [

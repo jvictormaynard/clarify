@@ -25,19 +25,25 @@ export interface HistoryEntry {
   text: string;
   rewritten: boolean;
   sourceDevice: 'mobile' | 'desktop';
+  localOnly: boolean;
+  context: string;
 }
-export interface HistoryPage { entries: HistoryEntry[]; nextCursor?: number }
+export interface HistoryPage { entries: HistoryEntry[]; nextCursor?: string; context: string }
 export interface MicrophoneActivation { active: boolean; message?: string }
 export interface AccountSnapshot {
   hasGroqKey?: boolean;
   endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
   hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
   dictionaryConflict?: boolean;
+  historyAccount?: boolean;
+  historyContext: string;
   usage: { month?: string; limit_ms?: number; used_ms?: number; reserved_ms?: number; hosted_available?: boolean };
 }
 
 export default requireNativeModule<{
   readonly uiLanguage: string;
+  readonly keyboardDiagnosticAvailable: boolean;
+  openKeyboardDiagnostic(): Promise<void>;
   onboardingRequired(): Promise<boolean>;
   completeOnboarding(mode: 'account' | 'byok'): Promise<void>;
   getSnapshot(): Promise<Snapshot>;
@@ -50,9 +56,9 @@ export default requireNativeModule<{
   command(action: RecordingAction, operationID: string): Promise<void>;
   copyResult(): Promise<void>;
   copyText(text: string): Promise<void>;
-  getHistory(before: number): Promise<HistoryPage>;
-  deleteHistory(id: string): Promise<void>;
-  clearHistory(): Promise<void>;
+  getHistory(before: string): Promise<HistoryPage>;
+  deleteHistory(id: string, localOnly: boolean, context: string): Promise<void>;
+  clearHistory(context: string): Promise<void>;
   getDictionary(): Promise<VocabularyEntry[]>;
   saveDictionary(entries: VocabularyEntry[], base: VocabularyEntry[]): Promise<void>;
 }>('ClarifyCore');

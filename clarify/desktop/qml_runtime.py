@@ -20,9 +20,10 @@ from transcription_performance import safe_timings
 from pathlib import Path
 from typing import Any, Callable
 from clarify_account import AccountService, AccountDictionaryRepository
+from account_history import AccountHistory
 from cloud_defaults import DEFAULT_CLOUD_URL
 
-from PySide6.QtCore import QObject, Qt, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QObject, QTimer, Qt, Signal, Slot
 from workflow_provider import (
     WorkflowProviderService as WorkflowProviderService,
     FAITHFUL_REWRITE_INSTRUCTION as FAITHFUL_REWRITE_INSTRUCTION,
@@ -55,7 +56,7 @@ try:
         DictionarySnippetService,
         LocalDictionarySnippetsRepository,
     )
-    from history_store import HistoryStore, HistoryStoreError
+    from history_store import HistoryRecord, HistoryStore, HistoryStoreError
     from provider_registry import PROVIDER_REGISTRY
     from provider_http import CancellationToken
     from provider_types import (
@@ -98,7 +99,7 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
         DictionarySnippetService,
         LocalDictionarySnippetsRepository,
     )
-    from ...history_store import HistoryStore, HistoryStoreError  # type: ignore[no-redef]
+    from ...history_store import HistoryRecord, HistoryStore, HistoryStoreError  # type: ignore[no-redef]
     from ...provider_registry import PROVIDER_REGISTRY  # type: ignore[no-redef]
     from ...provider_http import CancellationToken  # type: ignore[no-redef]
     from ...local_asr import PROVIDER_ID as LOCAL_ASR_PROVIDER_ID  # type: ignore[no-redef]
@@ -1386,15 +1387,19 @@ def _history_path_for_repositories(repositories: ApplicationRepositories) -> Pat
 
 
 class QtHistoryRecorder:
-    """Persist opted-in terminal workflow states outside the Qt UI thread."""
+    """Persist terminal states with the owner captured when work starts."""
 
     def __init__(
         self,
         repositories: ApplicationRepositories,
         scheduler: QtWorkflowScheduler,
+        account=None,
     ) -> None:
         self.repositories = repositories
         self.scheduler = scheduler
+        self.account = account
+        self._owners = {}
+        self._recorded = set()
         current = repositories.config.load()
         self.store = HistoryStore(
             _history_path_for_repositories(repositories),
@@ -1403,11 +1408,42 @@ class QtHistoryRecorder:
         )
 
     def on_state(self, state: Any) -> None:
+        if state.operation_id and state.operation_id not in self._owners:
+            # A terminal event cannot infer ownership from the current login.
+            self._owners[state.operation_id] = (
+                self.account.history_identity()
+                if self.account is not None
+                and state.phase not in (WorkflowPhase.COMPLETED, WorkflowPhase.FAILED)
+                else None
+            )
         if state.phase not in (WorkflowPhase.COMPLETED, WorkflowPhase.FAILED):
             return
-        self.scheduler.run_in_background(lambda: self.record_state(state))
+        terminal_key = (state.operation_id, state.phase, state.result_text)
+        if state.operation_id and terminal_key in self._recorded:
+            return
+        if state.operation_id:
+            self._recorded.add(terminal_key)
+            # Workflow operation IDs are monotonic; keep recent retry owners.
+            self._owners = {
+                key: value
+                for key, value in self._owners.items()
+                if key >= state.operation_id - 32
+            }
+            self._recorded = {
+                key for key in self._recorded if key[0] >= state.operation_id - 32
+            }
+        owner = self._owners.get(state.operation_id)
+        managed = self.account is not None and self.account.managed
+        self.scheduler.run_in_background(
+            lambda: self.record_state(state, owner, managed)
+        )
 
-    def record_state(self, state: Any) -> None:
+    def capture_operation(self, operation_id: int) -> None:
+        self._owners[operation_id] = (
+            self.account.history_identity() if self.account is not None else None
+        )
+
+    def record_state(self, state: Any, owner=None, managed=False) -> None:
         try:
             current = self.repositories.config.load()
             self.store.enabled = bool(current.history_enabled)
@@ -1430,7 +1466,7 @@ class QtHistoryRecorder:
                 else:
                     raw_text = state.source_text
                     refined_text = state.result_text
-                self.store.add(
+                record = HistoryRecord(
                     raw_text=raw_text,
                     refined_text=refined_text,
                     workflow=kind,
@@ -1445,7 +1481,20 @@ class QtHistoryRecorder:
                     if state.status_key == "refinement_failed"
                     else None,
                 )
+                if self.account is not None and (managed or owner is not None):
+                    if owner is not None and self.account.history.append(
+                        record, owner, final_text=state.result_text
+                    ):
+                        self.account.history.sync_safely(force=True)
+                elif self.account is None or not self.account.managed:
+                    self.store.append(record)
             else:
+                if (
+                    managed
+                    or owner is not None
+                    or (self.account is not None and self.account.managed)
+                ):
+                    return
                 self.store.add(
                     workflow=kind,
                     provider=provider,
@@ -1455,7 +1504,7 @@ class QtHistoryRecorder:
                     status="error",
                     error=state.status_key or "error",
                 )
-        except (HistoryStoreError, ValueError):
+        except (HistoryStoreError, OSError, ValueError):
             # History is explicitly opt-in and must never change workflow UX.
             return
 
@@ -1488,6 +1537,26 @@ class QtWorkflowRuntime:
         self.dictionary_service = dictionary_service
         self.account = account
         self._shutdown = False
+        self._history_timer = None
+        if (
+            account is not None
+            and getattr(account, "history", None) is not None
+            and QCoreApplication.instance() is not None
+        ):
+            self._history_timer = QTimer()
+            self._history_timer.setInterval(60000)
+            self._history_timer.timeout.connect(self.request_history_sync)
+            self._history_timer.start()
+            self.request_history_sync()
+
+    def request_history_sync(self) -> None:
+        if (
+            not self._shutdown
+            and self.account is not None
+            and getattr(self.account, "signed_in", False) is True
+            and getattr(self.account, "history", None) is not None
+        ):
+            self.scheduler.run_in_background(self.account.history.sync_safely)
 
     def audio_file_selection(
         self,
@@ -1563,6 +1632,8 @@ class QtWorkflowRuntime:
         if self._shutdown:
             return
         self._shutdown = True
+        if self._history_timer is not None:
+            self._history_timer.stop()
         timeout_seconds = max(0.0, float(timeout_seconds))
         deadline = time.monotonic() + timeout_seconds
         self.scheduler.begin_shutdown()
@@ -1605,7 +1676,8 @@ def create_real_workflow_runtime(
         audio_batch_gateway,
         SoxAudioConverter(),
     )
-    history_recorder = QtHistoryRecorder(active, scheduler)
+    history_recorder = QtHistoryRecorder(active, scheduler, account=account)
+    account.history = AccountHistory(account, history_recorder.store)
     service = WorkflowService(
         provider,
         recording_audio,
@@ -1613,6 +1685,7 @@ def create_real_workflow_runtime(
         config,
         QtStatisticsGateway(active),
         scheduler,
+        operation_started=history_recorder.capture_operation,
     )
     service.subscribe(history_recorder.on_state)
     return QtWorkflowRuntime(

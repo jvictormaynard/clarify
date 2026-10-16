@@ -6,6 +6,21 @@ public class ClarifyCoreModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ClarifyCore")
     Constant("uiLanguage") { ClarifyLocale.language }
+    Constant("keyboardDiagnosticAvailable") { Bundle.main.object(forInfoDictionaryKey: "ClarifyKeyboardDiagnostic") as? Bool == true }
+    AsyncFunction("openKeyboardDiagnostic") { (promise: Promise) in
+      Task { @MainActor in
+        guard Bundle.main.object(forInfoDictionaryKey: "ClarifyKeyboardDiagnostic") as? Bool == true,
+              UIApplication.shared.applicationState == .active,
+              !ClarifyAudioSession.shared.state.phase.busy,
+              let presenter = self.appContext?.utilities?.currentViewController(),
+              presenter.presentedViewController == nil else {
+          promise.reject("KEYBOARD_TEST", L("Não foi possível abrir o teste do teclado. Tente novamente.")); return
+        }
+        let navigation = UINavigationController(rootViewController: KeyboardOpeningDiagnostic())
+        navigation.modalPresentationStyle = .fullScreen
+        presenter.present(navigation, animated: true) { promise.resolve(nil) }
+      }
+    }.runOnQueue(.main)
     AsyncFunction("onboardingRequired") { () -> Bool in
       let account = CloudAccount.shared.snapshot()
       return Onboarding().required(existingSetup: account["signedIn"] as? Bool == true || KeyStore.read() != nil)
@@ -40,6 +55,7 @@ public class ClarifyCoreModule: Module {
             if !CloudAccount.shared.configured { ClarifyAudioSession.shared.deactivate() }
             ClarifyAudioSession.shared.libraryChanged()
           }
+          ClarifyAudioSession.shared.syncHistory(force: action == "confirm")
           promise.resolve(CloudAccount.shared.snapshot())
         } catch {
           ClarifyAudioSession.shared.libraryChanged()
@@ -87,18 +103,32 @@ public class ClarifyCoreModule: Module {
       if let text = ClarifyAudioSession.shared.state.text { UIPasteboard.general.string = text }
     }.runOnQueue(.main)
     AsyncFunction("copyText") { (text: String) in UIPasteboard.general.string = text }.runOnQueue(.main)
-    AsyncFunction("getHistory") { (before: Int64) -> [String: Any] in
-      let page = try ClarifyAudioSession.shared.library().history(before: max(0, before))
-      return try JSONSerialization.jsonObject(with: JSONEncoder().encode(page)) as? [String: Any] ?? [:]
+    AsyncFunction("getHistory") { (before: String) -> [String: Any] in
+      let page = try ClarifyAudioSession.shared.library().history(before: before, scope: CloudAccount.shared.historyScope)
+      var result = try JSONSerialization.jsonObject(with: JSONEncoder().encode(page)) as? [String: Any] ?? [:]
+      result["context"] = CloudAccount.shared.historyContext
+      if var entries = result["entries"] as? [[String: Any]] {
+        for index in entries.indices {
+          entries[index]["localOnly"] = page.localEntries[index]
+          entries[index]["context"] = CloudAccount.shared.historyContext
+        }
+        result["entries"] = entries
+      }
+      result.removeValue(forKey: "localEntries")
+      return result
     }.runOnQueue(.main)
-    AsyncFunction("deleteHistory") { (id: String) in
-      try ClarifyAudioSession.shared.library().deleteHistory(id)
+    AsyncFunction("deleteHistory") { (id: String, localOnly: Bool, context: String) in
+      guard context == CloudAccount.shared.historyContext else { throw ClarifyError(L("A conta mudou. Abra o histórico novamente.")) }
+      try ClarifyAudioSession.shared.library().deleteHistory(id, scope: localOnly ? nil : CloudAccount.shared.historyScope)
       ClarifyAudioSession.shared.libraryChanged()
+      ClarifyAudioSession.shared.syncHistory(force: true)
     }.runOnQueue(.main)
-    AsyncFunction("clearHistory") {
+    AsyncFunction("clearHistory") { (context: String) in
+      guard context == CloudAccount.shared.historyContext else { throw ClarifyError(L("A conta mudou. Abra o histórico novamente.")) }
       guard !ClarifyAudioSession.shared.state.phase.busy else { throw ClarifyError(L("Finalize a gravação antes de apagar o histórico.")) }
-      try ClarifyAudioSession.shared.library().clearHistory()
+      try ClarifyAudioSession.shared.library().clearHistory(scope: CloudAccount.shared.historyScope)
       ClarifyAudioSession.shared.libraryChanged()
+      ClarifyAudioSession.shared.syncHistory(force: true)
     }.runOnQueue(.main)
     AsyncFunction("getDictionary") { () -> [[String: Any]] in
       try? ClarifyAudioSession.shared.importKeyboardVocabulary()

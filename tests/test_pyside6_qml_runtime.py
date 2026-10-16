@@ -1825,6 +1825,248 @@ class QtStatisticsGatewayTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional spike dependency")
 class QtHistoryRecorderTests(unittest.TestCase):
+    def test_fast_worker_preserves_owner_when_only_terminal_ui_event_is_delivered(self):
+        try:
+            from .test_workflows import (
+                FakeAudio,
+                FakeClipboard,
+                FakeConfig,
+                FakeProvider,
+                FakeStatistics,
+                FakeClock,
+            )
+        except ImportError:
+            from test_workflows import (
+                FakeAudio,
+                FakeClipboard,
+                FakeConfig,
+                FakeProvider,
+                FakeStatistics,
+                FakeClock,
+            )
+        from workflows import StartDictation, StopDictation, WorkflowService
+        import uuid
+
+        for switch in (False, True):
+            with self.subTest(switch=switch), TemporaryDirectory() as directory:
+                recorder, account, history_queue = self.history_runtime(directory)
+                ui_queue = []
+                scheduler = SimpleNamespace(
+                    call_soon=ui_queue.append,
+                    run_in_background=lambda callback: callback(),
+                    run_recording=lambda _recording, callback: callback(),
+                )
+                service = WorkflowService(
+                    FakeProvider(),
+                    FakeAudio(),
+                    FakeClipboard(),
+                    FakeConfig(),
+                    FakeStatistics(),
+                    scheduler,
+                    FakeClock(),
+                    operation_started=recorder.capture_operation,
+                )
+                delivered = []
+                service.subscribe(delivered.append)
+                service.subscribe(recorder.on_state)
+                self.assertTrue(service.dispatch(StartDictation(None, "prompt", "en")))
+                self.assertTrue(service.dispatch(StopDictation()))
+                self.assertEqual(service.state.phase, WorkflowPhase.COMPLETED)
+                self.assertEqual(delivered, [])
+                if switch:
+                    account._generation += 1
+                    account._state["user_id"] = str(uuid.uuid4())
+                while ui_queue:
+                    ui_queue.pop(0)()
+                self.assertEqual(
+                    [state.phase for state in delivered], [WorkflowPhase.COMPLETED]
+                )
+                self.assertEqual(len(history_queue), 1)
+                history_queue.pop()()
+                self.assertEqual(
+                    len(account.history.list_records()), 0 if switch else 1
+                )
+
+    def history_runtime(self, directory, *, enabled=False):
+        from account_history import AccountHistory
+        from clarify_account import AccountService
+        from secret_store import PlaintextFileSecretStore
+        import uuid
+
+        config_path = Path(directory) / "config.json"
+        repositories = SimpleNamespace(
+            config=SimpleNamespace(
+                path=config_path, load=lambda: AppConfig(history_enabled=enabled)
+            )
+        )
+        queue = []
+        scheduler = SimpleNamespace(run_in_background=queue.append)
+        account = AccountService(
+            directory,
+            secrets=PlaintextFileSecretStore(Path(directory) / "secrets.json"),
+            request=Mock(),
+            default_endpoint="https://clarify.example",
+        )
+        account._state["user_id"] = str(uuid.uuid4())
+        recorder = QtHistoryRecorder(repositories, scheduler, account=account)
+        account.history = AccountHistory(account, recorder.store)
+        account.history.sync_safely = Mock()
+        return recorder, account, queue
+
+    def test_new_account_result_is_saved_without_enabling_guest_history(self):
+        from workflows import WorkflowKind
+
+        with TemporaryDirectory() as directory:
+            recorder, account, queue = self.history_runtime(directory)
+            recorder.on_state(
+                WorkflowState(
+                    operation_id=1,
+                    kind=WorkflowKind.DICTATION,
+                    phase=WorkflowPhase.RECORDING,
+                )
+            )
+            terminal = WorkflowState(
+                operation_id=1,
+                kind=WorkflowKind.DICTATION,
+                phase=WorkflowPhase.COMPLETED,
+                source_text="Raw.",
+                result_text="Revised.",
+                refined_text="Revised.",
+                provider_id="clarify",
+                model="asr",
+                refinement_model="rewriter",
+            )
+            recorder.on_state(terminal)
+            recorder.on_state(terminal)
+            self.assertEqual(len(queue), 1)
+            queue.pop()()
+            records = account.history.list_records()
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0].raw_text, "Raw.")
+            self.assertEqual(records[0].refinement_model, "rewriter")
+            self.assertFalse(recorder.store.enabled)
+            self.assertFalse(recorder.store.path.exists())
+            account.history.sync_safely.assert_called_once_with(force=True)
+
+    def test_account_history_syncs_final_expansion_and_preserves_refinement_metadata(
+        self,
+    ):
+        from workflows import WorkflowKind
+
+        with TemporaryDirectory() as directory:
+            recorder, account, queue = self.history_runtime(directory)
+            recorder.on_state(
+                WorkflowState(
+                    operation_id=1,
+                    kind=WorkflowKind.DICTATION,
+                    phase=WorkflowPhase.RECORDING,
+                )
+            )
+            recorder.on_state(
+                WorkflowState(
+                    operation_id=1,
+                    kind=WorkflowKind.DICTATION,
+                    phase=WorkflowPhase.COMPLETED,
+                    source_text="sig",
+                    refined_text="sig",
+                    result_text="Expanded signature.",
+                )
+            )
+            queue.pop()()
+            owner = account.history_identity()
+            stored = account.history._read(owner)
+            self.assertEqual(
+                next(iter(stored["pending"].values()))["text"], "Expanded signature."
+            )
+            self.assertEqual(account.history.list_records()[0].refined_text, "sig")
+
+    def test_result_queued_before_logout_or_switch_never_enters_guest_or_new_account(
+        self,
+    ):
+        from workflows import WorkflowKind
+        import uuid
+
+        for switch in (False, True):
+            with self.subTest(switch=switch), TemporaryDirectory() as directory:
+                recorder, account, queue = self.history_runtime(directory, enabled=True)
+                recorder.on_state(
+                    WorkflowState(
+                        operation_id=1,
+                        kind=WorkflowKind.DICTATION,
+                        phase=WorkflowPhase.RECORDING,
+                    )
+                )
+                recorder.on_state(
+                    WorkflowState(
+                        operation_id=1,
+                        kind=WorkflowKind.DICTATION,
+                        phase=WorkflowPhase.COMPLETED,
+                        result_text="Late.",
+                        source_text="Late.",
+                    )
+                )
+                account._generation += 1
+                account._state.pop("user_id")
+                if switch:
+                    account._state["user_id"] = str(uuid.uuid4())
+                queue.pop()()
+                self.assertEqual(account.history.list_records(), [])
+                self.assertFalse(recorder.store.path.exists())
+
+    def test_guest_workflow_stays_local_and_account_retry_keeps_success(self):
+        from workflows import WorkflowKind
+
+        with TemporaryDirectory() as directory:
+            recorder, account, queue = self.history_runtime(directory, enabled=True)
+            account._state.pop("user_id")
+            recorder.on_state(
+                WorkflowState(
+                    operation_id=1,
+                    kind=WorkflowKind.DICTATION,
+                    phase=WorkflowPhase.RECORDING,
+                )
+            )
+            recorder.on_state(
+                WorkflowState(
+                    operation_id=1,
+                    kind=WorkflowKind.DICTATION,
+                    phase=WorkflowPhase.COMPLETED,
+                    result_text="Guest.",
+                    source_text="Guest.",
+                )
+            )
+            queue.pop()()
+            self.assertEqual(recorder.store.list_records()[0].raw_text, "Guest.")
+            account.history.sync_safely.assert_not_called()
+        with TemporaryDirectory() as directory:
+            recorder, account, queue = self.history_runtime(directory)
+            recorder.on_state(
+                WorkflowState(
+                    operation_id=1,
+                    kind=WorkflowKind.DICTATION,
+                    phase=WorkflowPhase.RECORDING,
+                )
+            )
+            recorder.on_state(
+                WorkflowState(
+                    operation_id=1,
+                    kind=WorkflowKind.DICTATION,
+                    phase=WorkflowPhase.FAILED,
+                )
+            )
+            queue.pop()()
+            recorder.on_state(
+                WorkflowState(
+                    operation_id=1,
+                    kind=WorkflowKind.DICTATION,
+                    phase=WorkflowPhase.COMPLETED,
+                    source_text="Retry.",
+                    result_text="Retry.",
+                )
+            )
+            queue.pop()()
+            self.assertEqual(account.history.list_records()[0].raw_text, "Retry.")
+
     def test_terminal_dictation_preserves_raw_and_refined_history(self):
         from workflows import WorkflowKind
 
