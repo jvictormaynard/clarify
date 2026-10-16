@@ -330,3 +330,10 @@ class AccountHistoryTests(unittest.TestCase):
         self.assertEqual(
             [record.id for record in self.history.list_records()], [after.id]
         )
+
+    def test_unchanged_remote_poll_does_not_rewrite_the_local_snapshot(self):
+        self.sign_in()
+        self.page(cursor=0)
+        with patch("account_history._atomic_write_text") as write:
+            self.history.sync(force=True)
+            write.assert_not_called()

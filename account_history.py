@@ -330,6 +330,14 @@ class AccountHistory:
                     if owner != self.account.history_identity():
                         raise AccountError("A conta mudou. O resultado foi descartado.")
                     state = self._read(owner)
+                    changed = bool(
+                        batch.get("clearID")
+                        or batch["upserts"]
+                        or batch["deletes"]
+                        or entries
+                        or deleted
+                        or cursor != state["cursor"]
+                    )
                     # An in-flight response acknowledges only the submitted work.
                     if batch.get("clearID") == state["clearID"]:
                         state["clearID"] = None
@@ -368,7 +376,8 @@ class AccountHistory:
                                 "wire": item,
                             }
                     state["cursor"] = cursor
-                    self._save(owner, state)
+                    if changed:
+                        self._save(owner, state)
                     if (
                         not result["hasMore"]
                         and not state["pending"]
