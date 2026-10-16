@@ -220,7 +220,9 @@ final class LibraryTests: XCTestCase {
     let response = HistorySyncResponse(cursor: 1, hasMore: false, entries: [remote], deleted: [])
     try library.applyHistory(response, batch: batch, scope: scope)
     let next = try library.historyBatch(scope: scope)
-    try library.applyHistory(response, batch: next, scope: scope)
+    // A later page can repeat a record, but every nonempty page must advance.
+    let replay = HistorySyncResponse(cursor: 2, hasMore: false, entries: [remote], deleted: [])
+    try library.applyHistory(replay, batch: next, scope: scope)
     XCTAssertEqual(try library.history(scope: scope).entries.filter { $0.id == "remote" }, [remote])
     XCTAssertThrowsError(try library.applyHistory(response, batch: batch, scope: scope))
   }
