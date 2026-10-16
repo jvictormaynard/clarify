@@ -35,6 +35,11 @@ Resend delivers the email codes. Enter the code in the app; the email does not
 require a browser link. Codes expire after 10 minutes. Sessions expire after
 14 days and can be revoked by signing out.
 
+To prevent abuse, the service stores hashes derived from IP addresses or account
+IDs, plus request counters and expiry times for rate-limit windows. These IP and
+account rate-limit records expire within two hours. Periodic cleanup removes
+expired records.
+
 The service uses HTTPS and a private PostgreSQL database hosted on Railway.
 Authorized service operators can access server data; dictionary and history sync are not
 end-to-end encrypted. Windows protects stored keys and account sessions with
