@@ -1,5 +1,5 @@
 import { t, uiLanguage } from "../../i18n";
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Alert, SectionList, Modal, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,7 +15,7 @@ const timestamp = (value: number) => new Date(value * 1000).toLocaleString(uiLan
 
 export default function Home() {
   const c = usePalette();
-  const { state, activate, refresh, setKeyboardEntry, setKeyboardToken } = useClarify();
+  const { state, account, activate, refresh, setKeyboardEntry, setKeyboardToken } = useClarify();
   const params = useLocalSearchParams<{ activate?: string; request?: string; token?: string }>();
   const handled = useRef('');
   useEffect(() => {
@@ -34,21 +34,27 @@ export default function Home() {
     }).catch(report);
   }, [params.activate, params.request, params.token, activate, refresh, setKeyboardEntry, setKeyboardToken]);
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const [cursor, setCursor] = useState<number | undefined>();
+  const [pageContext, setPageContext] = useState('');
+  const currentContext = useRef(account?.historyContext);
+  useLayoutEffect(() => { currentContext.current = account?.historyContext; }, [account?.historyContext]);
+  const [cursor, setCursor] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
-  const [selected, setSelected] = useState<HistoryEntry | null>(null);
+  const [selection, setSelected] = useState<HistoryEntry | null>(null);
+  const selected = selection?.context === account?.historyContext ? selection : null;
   const [original, setOriginal] = useState(false);
   const [action, setAction] = useState<'copy' | 'delete' | null>(null);
   const generation = useRef(0);
   const pending = useRef(false);
-  const load = useCallback(async (before = 0, append = false) => {
+  const load = useCallback(async (before = '', append = false) => {
     if (append && pending.current) return;
     const id = append ? generation.current : ++generation.current;
+    const context = currentContext.current;
     pending.current = true; setLoading(true); setError(false);
     try {
       const page = await Core.getHistory(before);
-      if (id !== generation.current) return;
+      if (id !== generation.current || context !== currentContext.current || page.context !== currentContext.current) return;
+      setPageContext(page.context);
       setEntries((previous) => append ? [...previous, ...page.entries] : page.entries);
       setCursor(page.nextCursor);
     } catch { if (id === generation.current) setError(true); }
@@ -59,14 +65,14 @@ export default function Home() {
     return () => { generation.current++; pending.current = false; };
   // The native library revision invalidates the focused page, including keyboard dictations.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load, state.libraryRevision]));
-  const remove = (entry: HistoryEntry) => Alert.alert(t("Excluir transcrição?"), t("Este texto será removido do histórico deste iPhone."), [
+  }, [load, state.libraryRevision, account?.historyContext]));
+  const remove = (entry: HistoryEntry) => Alert.alert(t("Excluir transcrição?"), entry.localOnly ? t("Este texto será removido do histórico deste iPhone.") : t("Este texto será removido do histórico da sua conta em todos os dispositivos."), [
     { text: t("Cancelar"), style: 'cancel' }, { text: t("Excluir"), style: 'destructive', onPress: () => {
       setAction('delete');
-      void Core.deleteHistory(entry.id).then(async () => { setSelected(null); await refresh(); await load(); }).catch(report).finally(() => setAction(null));
+      void Core.deleteHistory(entry.id, entry.localOnly, entry.context).then(async () => { setSelected(null); await refresh(); await load(); }).catch(report).finally(() => setAction(null));
     } },
   ]);
-  const sections = groupHistory(entries);
+  const sections = groupHistory(pageContext === account?.historyContext ? entries : []);
   const [today, setToday] = useState(() => new Date());
   useEffect(() => {
     const next = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
@@ -75,7 +81,7 @@ export default function Home() {
   }, [today]);
   return <>
     <SectionList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[ui.content, { gap: 0 }]} contentInsetAdjustmentBehavior="automatic"
-      sections={sections} stickySectionHeadersEnabled={false} keyExtractor={(entry) => entry.id}
+      sections={sections} stickySectionHeadersEnabled={false} keyExtractor={(entry) => `${entry.localOnly ? 'local' : 'account'}:${entry.id}`}
       onEndReached={() => { if (cursor) void load(cursor, true); }} onEndReachedThreshold={0.4}
       ListHeaderComponent={<View style={{ gap: 16 }}>
         <Title subtitle={t("Fale. O Clarify transcreve e revisa suas palavras.")}>{t("Boas-vindas ao Clarify")}</Title>
@@ -95,7 +101,7 @@ export default function Home() {
           </View>
         </View>
       </TableRow>}
-      ListEmptyComponent={!loading && !error ? <View style={{ gap: 12, paddingVertical: 24 }}><Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t("Hoje")}</Text><Text style={[ui.body, { color: c.muted }]}>{t("Seus próximos ditados aparecerão aqui. O histórico fica somente neste iPhone.")}</Text></View> : null}
+      ListEmptyComponent={!loading && !error ? <View style={{ gap: 12, paddingVertical: 24 }}><Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t("Hoje")}</Text><Text style={[ui.body, { color: c.muted }]}>{account?.historyAccount ? t("Seus próximos ditados aparecerão aqui e nos dispositivos conectados à sua conta.") : t("Seus próximos ditados aparecerão aqui. O histórico fica somente neste iPhone.")}</Text></View> : null}
       ListFooterComponent={loading ? <ActivityIndicator style={{ padding: 20 }} /> : error ? <Button onPress={() => void load()}>{t("Tentar carregar novamente")}</Button> : cursor ? <Button onPress={() => void load(cursor, true)}>{t("Carregar mais")}</Button> : null}
     />
     <Modal visible={selected !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSelected(null)}>

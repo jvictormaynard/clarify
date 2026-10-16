@@ -21,10 +21,17 @@ final class ClarifyAudioSession: NSObject {
   private var backgroundTask = UIBackgroundTaskIdentifier.invalid
   private lazy var libraryResult = Result { try LocalLibrary.openDefault() }
   private var clipVocabulary: [VocabularyEntry] = []
+  private var clipHistory = CloudAccount.shared.captureHistory()
   private(set) var state = DictationSnapshot()
 
   func library() throws -> LocalLibrary { try libraryResult.get() }
   func libraryChanged() { state.libraryRevision += 1; try? importKeyboardVocabulary(); publish() }
+  func syncHistory(force: Bool = false) {
+    Task { @MainActor [weak self] in
+      guard let self, let library = try? self.library() else { return }
+      if await CloudAccount.shared.syncHistory(library, force: force) { self.libraryChanged() }
+    }
+  }
   func importKeyboardVocabulary() throws {
     guard let store, !state.phase.busy, !CloudAccount.shared.isBusy else { return }
     let account = CloudAccount.shared
@@ -178,6 +185,7 @@ final class ClarifyAudioSession: NSObject {
   private func start(id: String, locked: Bool, haptics: Bool) throws {
     guard !CloudAccount.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
     try? importKeyboardVocabulary()
+    clipHistory = CloudAccount.shared.captureHistory()
     clipVocabulary = try library().dictionary(scope: CloudAccount.shared.scope)
     let format = engine.inputNode.outputFormat(forBus: 0)
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("clarify-\(UUID().uuidString).m4a")
@@ -211,6 +219,7 @@ final class ClarifyAudioSession: NSObject {
     let duration = startedAt.map { Date().timeIntervalSince($0) } ?? 0
     let recordedAt = startedAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
     let vocabulary = clipVocabulary
+    let historyOwner = clipHistory
     startedAt = nil
     guard let url = closeFile() else { fail(L("Não foi possível ler a gravação.")); return }
     playCue(starting: false)
@@ -218,6 +227,9 @@ final class ClarifyAudioSession: NSObject {
     guard duration >= 0.3 else {
       try? FileManager.default.removeItem(at: url)
       fail(L("Segure o botão e fale por mais tempo.")); return
+    }
+    guard CloudAccount.shared.acceptsHistory(historyOwner) else {
+      try? FileManager.default.removeItem(at: url); fail(L("Entre na conta novamente.")); return
     }
     let hosted = CloudAccount.shared.hosted
     let key = KeyStore.read()
@@ -240,7 +252,7 @@ final class ClarifyAudioSession: NSObject {
         let transcript: String
         if hosted {
           let outcome = try await CloudAccount.shared.dictate(url, operationID: id, library: self.library())
-          guard !Task.isCancelled, self.state.operationID == id else { return }
+          guard !Task.isCancelled, self.state.operationID == id, CloudAccount.shared.acceptsHistory(historyOwner) else { return }
           transcript = outcome.transcript
           self.state.text = outcome.text
           self.state.phase = outcome.rewritten ? .ready : .error
@@ -248,12 +260,12 @@ final class ClarifyAudioSession: NSObject {
         } else {
           let client = GroqClient(key: key!, vocabulary: vocabulary)
           transcript = try await client.transcribe(url)
-          guard !Task.isCancelled, self.state.operationID == id else { return }
+          guard !Task.isCancelled, self.state.operationID == id, CloudAccount.shared.acceptsHistory(historyOwner) else { return }
           self.state.text = transcript
           self.state.phase = .rewriting; self.publish()
           do {
             let text = try await client.rewrite(transcript)
-            guard !Task.isCancelled, self.state.operationID == id else { return }
+            guard !Task.isCancelled, self.state.operationID == id, CloudAccount.shared.acceptsHistory(historyOwner) else { return }
             self.state.text = text; self.state.phase = .ready
           } catch {
             guard !Task.isCancelled, self.state.operationID == id else { return }
@@ -263,11 +275,12 @@ final class ClarifyAudioSession: NSObject {
         }
         // Save only the terminal result of this still-current operation. The
         // original remains available when rewriting fails; audio is never kept.
-        guard !Task.isCancelled, self.state.operationID == id else { return }
+        guard !Task.isCancelled, self.state.operationID == id, CloudAccount.shared.acceptsHistory(historyOwner) else { return }
         do {
           try self.library().record(HistoryEntry(id: id, createdAt: recordedAt,
-            transcript: transcript, text: self.state.text ?? transcript, rewritten: self.state.phase == .ready))
+            transcript: transcript, text: self.state.text ?? transcript, rewritten: self.state.phase == .ready), scope: historyOwner.scope)
           self.state.libraryRevision += 1
+          self.syncHistory(force: true)
         } catch {
           self.state.message = L("O texto foi preservado, mas não foi possível salvar o histórico.")
         }

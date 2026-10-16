@@ -14,6 +14,12 @@ struct CloudAccountState: Codable {
   var pending = ""
   var hosted = false
   var sync = false
+  var historyUserID: String?
+}
+
+struct HistoryCapture: Equatable {
+  let scope: String?
+  let generation: UInt64
 }
 
 struct CloudDictation: Codable {
@@ -38,6 +44,15 @@ final class CloudAccount {
   private var automatic = false
   private var syncError = ""
   private var dictionaryConflict = false
+  private var generation: UInt64 = 0
+  private var historyBusy = false
+  private var historyQueued = false
+  private var lastHistoryAttempt = -Double.infinity
+  private var historyFailed = false
+  private let transport: ((URLRequest) async throws -> (Data, HTTPURLResponse))?
+  private let readCredential: () -> String?
+  private let saveCredential: (String?) throws -> Void
+  private let historyClock: () -> TimeInterval
   private let delegate = CloudTransport()
   private lazy var session: URLSession = {
     let configuration = URLSessionConfiguration.ephemeral
@@ -48,11 +63,18 @@ final class CloudAccount {
     return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
   }()
 
-  init(defaults: UserDefaults = .standard) {
+  init(defaults: UserDefaults = .standard,
+       transport: ((URLRequest) async throws -> (Data, HTTPURLResponse))? = nil,
+       readCredential: @escaping () -> String? = AccountCredential.read,
+       saveCredential: @escaping (String?) throws -> Void = AccountCredential.save,
+       historyClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
     self.defaults = defaults
+    self.transport = transport; self.readCredential = readCredential; self.saveCredential = saveCredential
+    self.historyClock = historyClock
     state = defaults.data(forKey: "clarify.account.metadata").flatMap { try? JSONDecoder().decode(CloudAccountState.self, from: $0) } ?? CloudAccountState()
     if state.endpoint.isEmpty { state.endpoint = Bundle.main.object(forInfoDictionaryKey: "ClarifyCloudURL") as? String ?? "" }
     if state.userID != nil { state.hosted = true }
+    if state.historyUserID == nil { state.historyUserID = state.userID }
   }
   private func locked<T>(_ body: () throws -> T) rethrows -> T {
     lock.lock(); defer { lock.unlock() }; return try body()
@@ -61,27 +83,40 @@ final class CloudAccount {
   var hosted: Bool { locked { state.userID != nil } }
   var managed: Bool { locked { state.userID != nil || state.hosted } }
   var scope: String? { locked { state.userID } }
+  var historyScope: String? {
+    locked {
+      guard let user = state.historyUserID ?? state.userID, UUID(uuidString: user) != nil,
+        let endpoint = try? Self.validateEndpoint(state.endpoint), !endpoint.isEmpty else { return nil }
+      return endpoint + "|" + user
+    }
+  }
+  func captureHistory() -> HistoryCapture { locked { HistoryCapture(scope: historyScope, generation: generation) } }
+  func acceptsHistory(_ capture: HistoryCapture) -> Bool { locked { capture == captureHistory() } }
+  var historyContext: String { locked { String(generation) } }
   func dictionaryChanged() {
     // A keyboard edit must reach the server before the next hosted clip, even
     // when the previous automatic synchronization happened less than a minute ago.
     locked { lastSyncAttempt = -.infinity; lastRefreshAttempt = -.infinity }
   }
   var isBusy: Bool { locked { busy } }
-  var configured: Bool { locked { managed ? hosted && AccountCredential.read() != nil : KeyStore.read() != nil } }
+  var configured: Bool { locked { managed ? hosted && readCredential() != nil : KeyStore.read() != nil } }
   func snapshot() -> [String: Any] {
     locked { ["endpoint": state.endpoint, "signedIn": state.userID != nil, "managed": managed, "email": state.email,
       "pending": state.pending, "hosted": hosted, "syncEnabled": state.sync,
-      "busy": busy, "error": syncError, "dictionaryConflict": dictionaryConflict, "usage": usage, "hasGroqKey": KeyStore.read() != nil] }
+      "busy": busy, "error": syncError, "dictionaryConflict": dictionaryConflict, "usage": usage, "historyAccount": historyScope != nil, "historyContext": historyContext, "hasGroqKey": KeyStore.read() != nil] }
   }
   static func validateEndpoint(_ value: String) throws -> String {
     let value = value.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     if value.isEmpty { return "" }
-    guard let url = URLComponents(string: value), let host = url.host, !host.isEmpty,
+    guard var url = URLComponents(string: value), let host = url.host, !host.isEmpty,
       url.user == nil, url.password == nil, url.query == nil, url.fragment == nil, url.path.isEmpty,
-      url.scheme == "https" || (url.scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(host)) else {
+      url.scheme?.lowercased() == "https" || (url.scheme?.lowercased() == "http" && ["localhost", "127.0.0.1", "::1"].contains(host.lowercased())) else {
       throw ClarifyError(L("Use um endereço HTTPS, sem caminho, usuário ou senha."))
     }
-    return value
+    url.scheme = url.scheme?.lowercased(); url.host = host.lowercased()
+    if (url.scheme == "https" && url.port == 443) || (url.scheme == "http" && url.port == 80) { url.port = nil }
+    guard let canonical = url.string else { throw ClarifyError(L("Use um endereço HTTPS, sem caminho, usuário ou senha.")) }
+    return canonical
   }
   private func begin() throws {
     try locked {
@@ -96,50 +131,58 @@ final class CloudAccount {
     }
     try Task.checkCancellation()
   }
-  private func perform(_ method: String, _ path: String, json: [String: Any]? = nil, body: Data? = nil,
+  @MainActor private func perform(_ method: String, _ path: String, json: [String: Any]? = nil, body: Data? = nil,
     contentType: String? = nil) async throws -> (Int, [String: Any]) {
     try Task.checkCancellation()
-    let base = try Self.validateEndpoint(locked { state.endpoint })
+    let identity = locked { (state.endpoint, generation, readCredential()) }
+    let base = try Self.validateEndpoint(identity.0)
     guard !base.isEmpty, let url = URL(string: base + path) else { throw ClarifyError(L("O serviço Clarify ainda não foi configurado nesta versão.")) }
     var request = URLRequest(url: url)
     request.timeoutInterval = path == "/v1/dictations" ? 100 : 15
     request.httpMethod = method
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.setValue(ClarifyLocale.language, forHTTPHeaderField: "Accept-Language")
-    if let token = AccountCredential.read() { request.setValue(token, forHTTPHeaderField: "X-Session-Token") }
+    if let token = identity.2 { request.setValue(token, forHTTPHeaderField: "X-Session-Token") }
     if let json {
       request.httpBody = try JSONSerialization.data(withJSONObject: json)
+      if path == "/v1/history/sync", (request.httpBody?.count ?? 0) > 400 * 1024 { throw ClarifyError(L("Resposta inválida do Clarify.")) }
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     } else if let body {
       request.httpBody = body
       request.setValue(contentType, forHTTPHeaderField: "Content-Type")
     }
-    let (data, response) = try await session.data(for: request)
+    let data: Data, response: URLResponse
+    if let transport { (data, response) = try await transport(request) }
+    else { (data, response) = try await session.data(for: request) }
     guard let response = response as? HTTPURLResponse, data.count <= 512 * 1024 else { throw ClarifyError(L("Resposta inválida do Clarify.")) }
     let result = data.isEmpty ? [:] : try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-    if [401, 403].contains(response.statusCode), path.hasPrefix("/v1/") {
-      try AccountCredential.save(nil)
-      try locked { state.userID = nil; state.sync = false; usage = [:]; try persist() }
+    try locked {
+      guard state.endpoint == identity.0, generation == identity.1, readCredential() == identity.2 else { throw CancellationError() }
+      if [401, 403].contains(response.statusCode), path.hasPrefix("/v1/") {
+        try saveCredential(nil)
+        state.historyUserID = state.historyUserID ?? state.userID
+        state.userID = nil; state.sync = false; usage = [:]; generation &+= 1; try persist()
+      }
+      if let meta = result["meta"] as? [String: Any], let token = meta["session_token"] as? String { try saveCredential(token) }
+      if let updatedUsage = result["usage"] as? [String: Any] { usage = updatedUsage }
     }
-    if let meta = result["meta"] as? [String: Any], let token = meta["session_token"] as? String {
-      try AccountCredential.save(token)
-    }
-    if let updatedUsage = result["usage"] as? [String: Any] { locked { usage = updatedUsage } }
     try Task.checkCancellation()
     return (response.statusCode, result)
   }
-  private func refresh() async throws {
+  @MainActor private func refresh() async throws {
     lastRefreshAttempt = ProcessInfo.processInfo.systemUptime
     let (code, result) = try await perform("GET", "/v1/account")
     guard code == 200, let userID = result["id"] as? String, UUID(uuidString: userID) != nil,
       let email = result["email"] as? String else { throw ClarifyError(L("A sessão expirou. Entre na conta novamente.")) }
     try locked {
+      if state.userID != userID { generation &+= 1; lastHistoryAttempt = -.infinity; historyFailed = false }
       state.userID = userID; state.email = email; state.pending = ""; state.hosted = true
+      state.historyUserID = userID
       usage = result["usage"] as? [String: Any] ?? [:]
       try persist()
     }
   }
-  func command(_ action: String, value: String, library: LocalLibrary) async throws -> Bool {
+  @MainActor func command(_ action: String, value: String, library: LocalLibrary) async throws -> Bool {
     if action == "auto", scope == nil || isBusy || ProcessInfo.processInfo.systemUptime - lastRefreshAttempt < 60 { return false }
     if action != "auto" { try await waitForAutomaticRefresh() }
     try begin(); defer { end() }
@@ -148,8 +191,8 @@ final class CloudAccount {
     case "configure":
       guard locked({ state.userID == nil }) else { throw ClarifyError(L("Saia da conta antes de alterar o servidor.")) }
       let endpoint = try Self.validateEndpoint(value)
-      try AccountCredential.save(nil)
-      try locked { state = CloudAccountState(); state.endpoint = endpoint; try persist() }
+      try saveCredential(nil)
+      try locked { generation &+= 1; state = CloudAccountState(); state.endpoint = endpoint; lastHistoryAttempt = -.infinity; historyFailed = false; try persist() }
     case "login", "signup":
       guard locked({ state.userID == nil }) else { throw ClarifyError(L("Saia da conta atual primeiro.")) }
       let path = action == "signup" ? "/auth/signup" : "/auth/continue"
@@ -174,17 +217,51 @@ final class CloudAccount {
       try await syncImpl(library, prefer: action == "sync-local" ? "local" : action == "sync-remote" ? "remote" : nil)
     case "logout", "delete":
       let userID = locked { state.userID }
+      let oldHistoryScope = historyScope
+      // Invalidate in-flight history before the first suspension. It must not
+      // restore a token, quota or cache after this explicit account transition.
+      locked { generation &+= 1 }
       if action == "delete" {
         let (code, _) = try await perform("DELETE", "/v1/account", json: ["confirm": true])
         guard code == 204 else { throw ClarifyError(L("Não foi possível excluir a conta. Finalize o ditado e tente novamente.")) }
       } else { _ = try? await perform("DELETE", "/_allauth/app/v1/auth/session") }
-      try AccountCredential.save(nil)
-      try locked { let endpoint = state.endpoint; state = CloudAccountState(); state.endpoint = endpoint; usage = [:]; dictionaryConflict = false; try persist() }
-      // End the local session even if purging its dictionary cache fails.
-      if action == "delete", let userID { try library.deleteCloudDictionary(userID) }
+      try saveCredential(nil)
+      try locked { generation &+= 1; let endpoint = state.endpoint; state = CloudAccountState(); state.endpoint = endpoint; usage = [:]; dictionaryConflict = false; lastHistoryAttempt = -.infinity; historyFailed = false; try persist() }
+      // End the local session even if the atomic cache purge fails.
+      if action == "delete" { try library.deleteCloudAccount(dictionaryScope: userID, historyScope: oldHistoryScope) }
     default: throw ClarifyError(L("Ação de conta inválida."))
     }
     return true
+  }
+  // Main-queue owner, separate from account/dictation busy state. Offline work
+  // is durable in SQLite; at most four bounded pages are sent in each burst.
+  @MainActor func syncHistory(_ library: LocalLibrary, force: Bool = false) async -> Bool {
+    guard hosted, !isBusy, let owner = historyScope else { return false }
+    if historyBusy { historyQueued = historyQueued || force; return false }
+    let now = historyClock()
+    guard now - lastHistoryAttempt >= 60 || (force && !historyFailed) else { return false }
+    historyBusy = true; historyQueued = false; lastHistoryAttempt = now
+    let capture = captureHistory()
+    defer { historyBusy = false }
+    var changed = false
+    do {
+      for _ in 0..<4 {
+        guard acceptsHistory(capture), hosted else { return changed }
+        let batch = try library.historyBatch(scope: owner)
+        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(batch)) as? [String: Any] ?? [:]
+        let (code, raw) = try await perform("POST", "/v1/history/sync", json: json)
+        guard acceptsHistory(capture), hosted else { return changed }
+        guard code == 200 else { throw ClarifyError(L("Não foi possível sincronizar o histórico.")) }
+        let response = try HistorySyncResponse.decode(raw)
+        try library.applyHistory(response, batch: batch, scope: owner)
+        changed = changed || !response.entries.isEmpty || !response.deleted.isEmpty
+        historyFailed = false
+        let pending = try library.historyBatch(scope: owner).hasWork
+        if !response.hasMore && !pending && !historyQueued { break }
+        historyQueued = false
+      }
+    } catch { if acceptsHistory(capture) { historyFailed = true } }
+    return changed
   }
   static func merge(base: [VocabularyEntry], local: [VocabularyEntry], remote: [VocabularyEntry], prefer: String? = nil) throws -> [VocabularyEntry] {
     func index(_ values: [VocabularyEntry]) throws -> [String: VocabularyEntry] {
@@ -205,7 +282,7 @@ final class CloudAccount {
     }
     return try VocabularyEntry.validate(result)
   }
-  private func syncImpl(_ library: LocalLibrary, prefer: String? = nil) async throws {
+  @MainActor private func syncImpl(_ library: LocalLibrary, prefer: String? = nil) async throws {
     lastSyncAttempt = ProcessInfo.processInfo.systemUptime
     guard let userID = locked({ state.userID }) else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
     let cached = try library.cloudDictionary(userID)
@@ -228,7 +305,7 @@ final class CloudAccount {
     try library.saveCloudDictionary(CloudDictionary(entries: merged, base: merged, revision: updated), scope: userID)
     try locked { state.sync = true; dictionaryConflict = false; syncError = ""; try persist() }
   }
-  func syncAfterSave(_ library: LocalLibrary) async {
+  @MainActor func syncAfterSave(_ library: LocalLibrary) async {
     do { _ = try await command("sync", value: "", library: library) }
     catch { locked { syncError = L("As palavras foram salvas neste iPhone. A sincronização será tentada novamente ao abrir o aplicativo.") } }
   }
@@ -248,12 +325,12 @@ final class CloudAccount {
       try library.saveCloudDictionary(CloudDictionary(entries: library.dictionary(), base: [], revision: -1), scope: userID)
     }
   }
-  private func syncQuietly(_ library: LocalLibrary) async {
+  @MainActor private func syncQuietly(_ library: LocalLibrary) async {
     guard !locked({ dictionaryConflict }) else { return }
     do { try await syncImpl(library) }
     catch { locked { syncError = L("Não foi possível sincronizar. As palavras salvas neste dispositivo foram preservadas.") } }
   }
-  func dictate(_ audio: URL, operationID: String, library: LocalLibrary) async throws -> CloudDictation {
+  @MainActor func dictate(_ audio: URL, operationID: String, library: LocalLibrary) async throws -> CloudDictation {
     guard hosted else { throw ClarifyError(L("Entre na conta novamente.")) }
     try await waitForAutomaticRefresh()
     try begin(); defer { end() }
