@@ -10,12 +10,14 @@ import json
 import plistlib
 import shutil
 import sqlite3
+import stat
 import struct
 import subprocess
 import sys
 import tempfile
+import zipfile
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 SOURCE = "542b8a742634183bf7fb857305674968e96f559b"
 BUNDLE = "com.jvictormaynard.clarify"
@@ -98,10 +100,51 @@ def png_dimensions(path):
     return struct.unpack(">II", data[16:24])
 
 
+def validate_simulator_archive(path):
+    if path.stat().st_size > 512 * 1024 * 1024:
+        raise RuntimeError("Simulator app archive exceeds the capture size limit")
+    with zipfile.ZipFile(path) as archive:
+        members = archive.infolist()
+        if (
+            len(members) > 10000
+            or sum(item.file_size for item in members) > 1024 * 1024 * 1024
+        ):
+            raise RuntimeError("Simulator app archive exceeds the extraction limits")
+        names = set()
+        for member in members:
+            parts = PurePosixPath(member.filename)
+            if (
+                parts.is_absolute()
+                or ".." in parts.parts
+                or not parts.parts
+                or parts.parts[0] not in {"Clarify.app", "__MACOSX"}
+                or "\\" in member.filename
+            ):
+                raise RuntimeError("Unsafe simulator app archive path")
+            normalized = str(parts)
+            if normalized in names:
+                raise RuntimeError("Duplicate simulator app archive path")
+            names.add(normalized)
+            kind = stat.S_IFMT(member.external_attr >> 16)
+            if kind not in (0, stat.S_IFREG, stat.S_IFDIR):
+                raise RuntimeError(
+                    "Simulator app archive contains a link or special file"
+                )
+            if (
+                member.flag_bits & 1
+                or member.file_size > 256 * 1024 * 1024
+                or member.file_size > max(1, member.compress_size) * 1000
+            ):
+                raise RuntimeError(
+                    "Unsafe simulator app archive entry size or encoding"
+                )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--existing-simulator", type=Path)
     args = parser.parse_args()
     if sys.platform != "darwin":
         raise RuntimeError("Real iOS simulator capture requires macOS")
@@ -159,7 +202,7 @@ def main():
         run(["xcrun", "simctl", "list", "devicetypes", "--json"], capture=True)
     )["devicetypes"]
     device_type = next(
-        (item for item in types if item["name"] == "iPhone 17 Pro Max"), None
+        (item for item in types if item["name"] == "iPhone 17 Pro"), None
     )
     runtimes = json.loads(
         run(["xcrun", "simctl", "list", "runtimes", "--json"], capture=True)
@@ -173,7 +216,7 @@ def main():
         None,
     )
     if not device_type or not runtime:
-        raise RuntimeError("Expected iPhone 17 Pro Max and iOS 26.5 simulator")
+        raise RuntimeError("Expected iPhone 17 Pro and iOS 26.5 simulator")
     manifest = {
         "appSourceSHA": SOURCE,
         "helperSourceSHA": run(
@@ -197,30 +240,55 @@ def main():
     try:
         with tempfile.TemporaryDirectory(prefix="clarify-store-capture-") as temporary:
             temporary = Path(temporary)
-            derived = temporary / "AppDerivedData"
-            print(
-                "Building the unchanged build29 container for iOS Simulator", flush=True
-            )
-            run(
-                [
-                    "xcodebuild",
-                    "build",
-                    "-workspace",
-                    str(root / "ios/Clarify.xcworkspace"),
-                    "-scheme",
-                    "Clarify",
-                    "-configuration",
-                    "Release",
-                    "-destination",
-                    "generic/platform=iOS Simulator",
-                    "-derivedDataPath",
-                    str(derived),
-                    "CODE_SIGNING_ALLOWED=NO",
-                    "CODE_SIGNING_REQUIRED=NO",
-                ],
-                cwd=root,
-            )
-            app = derived / "Build/Products/Release-iphonesimulator/Clarify.app"
+            if args.existing_simulator:
+                previous = args.existing_simulator.resolve()
+                evidence = json.loads((previous / "capture-manifest.json").read_text())
+                archive = previous / "simulator-app.zip"
+                if (
+                    evidence.get("appSourceSHA"),
+                    evidence.get("version"),
+                    evidence.get("build"),
+                ) != (SOURCE, "0.8.0", "29"):
+                    raise RuntimeError("Previous simulator app provenance differs")
+                validate_simulator_archive(archive)
+                if evidence.get("simulatorAppArchiveSHA256") != digest(archive):
+                    raise RuntimeError("Previous simulator app checksum differs")
+                unpacked = temporary / "ReusedApp"
+                unpacked.mkdir()
+                run(["ditto", "-x", "-k", str(archive), str(unpacked)])
+                app = unpacked / "Clarify.app"
+                shutil.copyfile(archive, output / "simulator-app.zip")
+                manifest["reusedSimulatorAppArchiveSHA256"] = digest(archive)
+                print(
+                    "Reusing the byte-identical build29 simulator app; no app compilation",
+                    flush=True,
+                )
+            else:
+                derived = temporary / "AppDerivedData"
+                print(
+                    "Building the unchanged build29 container for iOS Simulator",
+                    flush=True,
+                )
+                run(
+                    [
+                        "xcodebuild",
+                        "build",
+                        "-workspace",
+                        str(root / "ios/Clarify.xcworkspace"),
+                        "-scheme",
+                        "Clarify",
+                        "-configuration",
+                        "Release",
+                        "-destination",
+                        "generic/platform=iOS Simulator",
+                        "-derivedDataPath",
+                        str(derived),
+                        "CODE_SIGNING_ALLOWED=NO",
+                        "CODE_SIGNING_REQUIRED=NO",
+                    ],
+                    cwd=root,
+                )
+                app = derived / "Build/Products/Release-iphonesimulator/Clarify.app"
             info = plistlib.loads((app / "Info.plist").read_bytes())
             if (
                 info["CFBundleShortVersionString"],
@@ -232,17 +300,18 @@ def main():
                 raise RuntimeError(
                     "Release simulator app is missing its bundled JavaScript"
                 )
-            run(
-                [
-                    "ditto",
-                    "-c",
-                    "-k",
-                    "--sequesterRsrc",
-                    "--keepParent",
-                    str(app),
-                    str(output / "simulator-app.zip"),
-                ]
-            )
+            if not args.existing_simulator:
+                run(
+                    [
+                        "ditto",
+                        "-c",
+                        "-k",
+                        "--sequesterRsrc",
+                        "--keepParent",
+                        str(app),
+                        str(output / "simulator-app.zip"),
+                    ]
+                )
             manifest["simulatorAppArchiveSHA256"] = digest(output / "simulator-app.zip")
             fixture = temporary / "Runner"
             run(
@@ -385,9 +454,9 @@ def main():
                             raise RuntimeError("Unsafe attachment path")
                         source = attachments / filename
                         width, height = png_dimensions(source)
-                        if (width, height) != (1320, 2868):
+                        if (width, height) != (1206, 2622):
                             raise RuntimeError(
-                                f"Unexpected native 6.9-inch screenshot dimensions: {width}x{height}"
+                                f"Unexpected native medium Dynamic Island screenshot dimensions: {width}x{height}"
                             )
                         target = output / "screenshots" / language / (screen + ".png")
                         target.parent.mkdir(parents=True, exist_ok=True)

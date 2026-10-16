@@ -1,13 +1,16 @@
 # Store screenshots of build 0.8.0 (29)
 
-The isolated `iOS store screenshots` workflow builds the exact published source
-`542b8a742634183bf7fb857305674968e96f559b` for iOS Simulator. It does not rebuild
+The isolated `iOS store screenshots` workflow reuses the simulator app built from
+the exact published source `542b8a742634183bf7fb857305674968e96f559b` in the first
+capture run. It verifies the archive checksum and source/version manifest before
+use. The helper also supports a fresh simulator build when run without the reuse
+argument. It does not rebuild
 or upload an IPA, sign an app, change App Store Connect, or edit product code.
 
 It captures onboarding, Home, Dictionary and the guest Account screen in
-Portuguese, English and Spanish on fresh iPhone 17 Pro Max simulators. PNG files
-are native 1320 × 2868 screenshots, accepted for Apple's 6.9-inch screenshot
-slot. They have no added captions, overlays or resizing.
+Portuguese, English and Spanish on fresh iPhone 17 Pro simulators. PNG files are
+native 1206 × 2622 screenshots for the medium Dynamic Island iPhone slot required
+by App Store Connect. They have no added captions, overlays or resizing.
 
 After the first onboarding screenshot, the helper inserts synthetic examples
 into that simulator's real local SQLite history and vocabulary. It selects the
