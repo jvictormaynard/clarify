@@ -4378,5 +4378,20 @@
     "pt": "Excluir a conta remove o dicionário e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos.",
     "en": "Deleting your account removes the shared dictionary, shared history and service access. This cannot be undone. Local records will be kept.",
     "es": "Eliminar tu cuenta borra el diccionario y el historial compartidos y el acceso al servicio. Esta acción no se puede deshacer. Los registros locales se conservarán."
+  },
+  "Mostrar texto completo": {
+    "pt": "Mostrar texto completo",
+    "en": "Show full text",
+    "es": "Mostrar texto completo"
+  },
+  "O histórico mudou. Atualize e tente novamente.": {
+    "pt": "O histórico mudou. Atualize e tente novamente.",
+    "en": "History changed. Refresh and try again.",
+    "es": "El historial cambió. Actualiza e inténtalo de nuevo."
+  },
+  "Não foi possível carregar o histórico.": {
+    "pt": "Não foi possível carregar o histórico.",
+    "en": "History could not be loaded.",
+    "es": "No se pudo cargar el historial."
   }
 }

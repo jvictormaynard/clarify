@@ -44,6 +44,7 @@ class HistoryClientIntegrationTests(TestCase):
             self.directory / "history.json", enabled=True, retention_days=None
         )
         self.history = AccountHistory(self.account, self.local, clock=lambda: self.now)
+        self.account.history = self.history
 
     def transport(self, method, url, **kwargs):
         path = urlsplit(url).path
@@ -154,7 +155,13 @@ class HistoryClientIntegrationTests(TestCase):
         owner = self.sign_in()
         self.history.append(self.record("account-new"), owner)
         self.history.sync(force=True)
+        self.assertEqual(
+            len(list((self.directory / "account-history").glob("*/history.json"))), 1
+        )
         self.account.logout(delete=True)
+        self.assertEqual(
+            list((self.directory / "account-history").glob("*/history.json")), []
+        )
         self.assertEqual(
             [record.id for record in self.history.list_records()], [legacy.id]
         )
