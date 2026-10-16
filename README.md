@@ -46,7 +46,7 @@ translate selected text without opening a separate editor.
 
 ## Features
 
-Version 0.8.0 uses the device language for Portuguese, English and Spanish,
+Version 0.9.0 uses the device language for Portuguese, English and Spanish,
 including the passwordless authentication email. On first launch, enter your
 email and confirm the code inside the app to enter or create an account.
 **Continue without an account** opens local-model setup; a personal API key is
@@ -56,7 +56,12 @@ settings and the Text page appear only in account-free mode. Monthly consumption
 has a progress bar; an unknown quota shows a loading state. Sign-out and deletion
 are inside a collapsed Danger zone, with separate confirmations. Vocabulary sync runs automatically,
 and usage updates after processing. Local caches preserve offline edits and
-conflicts keep both copies until resolved. History and snippets stay local.
+conflicts keep both copies until resolved. New account transcriptions synchronize
+automatically between Windows and iOS, including original/revised text, time and
+source device. The History page supports complete text, pagination and synchronized
+deletion. Pre-upgrade records and account-free history remain local; they are never
+uploaded. Pending account changes survive connection failures and app restarts.
+Snippets stay local. See [history synchronization](docs/history-sync.md).
 Existing profiles retain their setup. The [iOS client](mobile/README.md) is
 delivered through TestFlight. The [account service](server/README.md) can also
 be self-hosted. Production keys and user data are never public.
@@ -68,13 +73,13 @@ be self-hosted. Production keys and user data are never public.
 - Gemini, OpenAI, Groq, Local Whisper, and compatible custom endpoints
 - Native Windows hotkeys and system tray integration
 - Portuguese, English and Spanish interfaces, independently of dictation language
-- React/Tauri Settings organized into Account, General, Dictation, Text, Dictionary,
+- React/Tauri Settings organized into Account, General, Dictation, Text, Dictionary, History,
   Shortcuts, and Models and services
 - Toggle or hold-to-record keyboard activation; the microphone button uses toggle
 - A personal dictionary for names and technical terms, with per-term enablement
 - Local-only usage statistics without storing transcripts
 - Bundled SoX runtime in the portable Windows build
-- Optional account with email-code login, shared vocabulary and hosted allowance
+- Optional account with email-code login, shared vocabulary, new transcription history and hosted allowance
 - Local and personal-key modes remain available without an account; no telemetry service
 
 ## Interface preview
@@ -133,7 +138,7 @@ do not need Python, Node.js, or SoX.
 2. Download `Clarify.exe` and place it in a folder you control.
 3. Double-click the executable.
 4. The first-run page opens automatically. Enter your email and press **Continuar**,
-   or follow **continuar 100% local**. No password is needed.
+   or follow **Continuar sem conta**. No password is needed.
    - **Clarify account:** confirm your email code inside the app. Account
      processing is active automatically. No provider key is needed.
    - **Personal key:** save your Groq key. Other providers remain available
@@ -287,8 +292,9 @@ randomized loopback sidecar. The app stores:
   removes it when no operation needs it, including cancellation recovery.
   Crashes, forced shutdown, or cleanup failures can leave files behind; do not
   treat this as a secure-erasure guarantee;
-- transcript history only when explicitly enabled. Usage counters do not
-  contain transcript text.
+- optional local transcript history without an account, and an offline copy of
+  automatically synchronized new account history when signed in. Pre-upgrade
+  history remains local. Usage counters do not contain transcript text.
 
 Existing plaintext keys are migrated on first load and removed from
 `config.json` only after the encrypted copy has been read back successfully.

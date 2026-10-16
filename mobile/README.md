@@ -8,6 +8,18 @@ vocabulary and an offline history copy. New signed-in transcriptions sync
 automatically with desktop through the account. Guest and pre-upgrade records
 remain local and are never uploaded. Account caches are isolated by endpoint and
 user; signing out restores local history. See [history synchronization](../docs/history-sync.md).
+
+Version **0.8.0 (29)** adds automatic account-history synchronization with Windows
+0.9.0. Sign in to the same account on both devices and create new transcriptions
+on each. Original and revised text, timestamps and source devices are retained.
+Pre-upgrade records and account-free history remain on their original devices
+and are never uploaded. Pending account changes survive network failures and
+app restarts. Deletions synchronize without restoring known deleted records.
+The keyboard correction from 0.7.5 (28), accepted on the user's iPhone, remains
+unchanged. The temporary opening-measurement screen is hidden after that acceptance.
+The source-app return and keyboard-height integration retain private Apple APIs
+for the authorized TestFlight experiment; this is not an App Store release.
+
 Version 0.5.0 (20) shows the email field directly before the bottom tabs.
 The same emailed code enters an existing account or creates a new one, without
 a password. Use **Continuar sem conta** to configure a personal Groq key.

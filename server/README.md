@@ -85,6 +85,7 @@ or browser link. Unsupported device languages use English.
 | `GET /v1/usage` | Shared allowance for this account |
 | `GET /v1/dictionary` | This account's vocabulary and revision |
 | `PUT /v1/dictionary` | Replace vocabulary using `revision` and `entries` |
+| `POST /v1/history/sync` | Synchronize bounded new account records and deletions with a durable cursor |
 | `POST /v1/dictations` | Multipart `audio`, UUID `operation_id`, optional `language`; returns updated allowance |
 | `POST /v1/text` | Fixed rewrite or translation: UUID `operation_id`, `action`, `text`, `language`; returns updated allowance |
 

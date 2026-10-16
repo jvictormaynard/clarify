@@ -5,13 +5,26 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-16
+
 ### Added
 
+- Automatically synchronize new account transcriptions between Windows and iOS, with the original and revised text, creation time and source device. Keep pre-upgrade records and account-free history on their original devices.
+- Add a Windows History page with bounded pages, complete text access and account-scoped delete and clear actions. Preserve large existing local records.
+- iOS 0.8.0 (29): share new account history with desktop, preserve offline copies and retry pending changes automatically. Hide the temporary keyboard-opening measurement screen after device acceptance of the existing correction.
 - iOS 0.7.1 (24): show a small device icon and Mobile or Desktop below each history timestamp. Preserve the source in each record and identify earlier iPhone records as Mobile. History remains local.
 
 ### Fixed
 
+- Preserve pending history changes after network failures and app restarts. Prevent deleted account records from returning through stale synchronization.
+- Reject late history responses and actions after sign-out, account changes or endpoint changes. Remove only the deleted account's local cache.
+- Keep Windows Settings responsive with large histories and capture account ownership before fast operations complete.
+- iOS: preserve the keyboard-opening correction accepted on the user's iPhone in 0.7.5 (28), short-speech transcription with vocabulary, improved key touch coverage, sentence capitalization and the experimental source-app return.
 - Center the iOS Home switch vertically between Off and On. Increase dark keyboard key separation from the system material on brighter backgrounds, while preserving the transparent keyboard surface.
+
+### Changed
+
+- Document synchronized account-history storage and deletion. Preserve personal provider keys, local-only modes and the existing hosted allowance.
 
 ## [0.8.0] - 2026-10-12
 
@@ -360,7 +373,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/jvictormaynard/clarify/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jvictormaynard/clarify/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jvictormaynard/clarify/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jvictormaynard/clarify/compare/v0.5.3...v0.6.0
