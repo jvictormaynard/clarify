@@ -1,0 +1,69 @@
+name: iOS store screenshots
+
+on:
+  push:
+    branches: [codex/ios-store-screenshots-20261016]
+    paths:
+      - .github/workflows/ios-store-screenshots.yml
+      - mobile/scripts/store-screenshots/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clarify-store-screenshots-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      CLARIFY_CAPTURE_SOURCE_SHA: 542b8a742634183bf7fb857305674968e96f559b
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ env.CLARIFY_CAPTURE_SOURCE_SHA }}
+          path: capture-source
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.21.1
+          cache: npm
+          cache-dependency-path: capture-source/mobile/package-lock.json
+      - name: Validate the capture helper
+        run: |
+          python3 -m py_compile mobile/scripts/store-screenshots/capture.py
+          ruby -c mobile/scripts/store-screenshots/project.rb
+      - name: Install locked app dependencies and check the exact source
+        working-directory: capture-source/mobile
+        run: |
+          test "$(git rev-parse HEAD)" = "$CLARIFY_CAPTURE_SOURCE_SHA"
+          npm ci
+          npm run check
+      - name: Generate the existing native app without signing
+        working-directory: capture-source/mobile
+        run: |
+          npx expo prebuild --clean --platform ios --no-install
+          pod install --project-directory=ios
+          git diff --exit-code -- . ../shared
+      - name: Capture the real app in Portuguese, English and Spanish
+        run: >-
+          python3 mobile/scripts/store-screenshots/capture.py
+          --app-root "$GITHUB_WORKSPACE/capture-source/mobile"
+          --output "$RUNNER_TEMP/clarify-store-screenshots"
+      - name: Preserve screenshots, simulator app and capture evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: clarify-store-screenshots-${{ env.CLARIFY_CAPTURE_SOURCE_SHA }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/clarify-store-screenshots
+          if-no-files-found: error
+          retention-days: 7
