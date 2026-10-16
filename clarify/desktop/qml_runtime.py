@@ -1438,6 +1438,11 @@ class QtHistoryRecorder:
             lambda: self.record_state(state, owner, managed)
         )
 
+    def capture_operation(self, operation_id: int) -> None:
+        self._owners[operation_id] = (
+            self.account.history_identity() if self.account is not None else None
+        )
+
     def record_state(self, state: Any, owner=None, managed=False) -> None:
         try:
             current = self.repositories.config.load()
@@ -1680,6 +1685,7 @@ def create_real_workflow_runtime(
         config,
         QtStatisticsGateway(active),
         scheduler,
+        operation_started=history_recorder.capture_operation,
     )
     service.subscribe(history_recorder.on_state)
     return QtWorkflowRuntime(

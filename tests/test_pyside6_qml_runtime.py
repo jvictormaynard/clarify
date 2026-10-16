@@ -1825,6 +1825,68 @@ class QtStatisticsGatewayTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional spike dependency")
 class QtHistoryRecorderTests(unittest.TestCase):
+    def test_fast_worker_preserves_owner_when_only_terminal_ui_event_is_delivered(self):
+        try:
+            from .test_workflows import (
+                FakeAudio,
+                FakeClipboard,
+                FakeConfig,
+                FakeProvider,
+                FakeStatistics,
+                FakeClock,
+            )
+        except ImportError:
+            from test_workflows import (
+                FakeAudio,
+                FakeClipboard,
+                FakeConfig,
+                FakeProvider,
+                FakeStatistics,
+                FakeClock,
+            )
+        from workflows import StartDictation, StopDictation, WorkflowService
+        import uuid
+
+        for switch in (False, True):
+            with self.subTest(switch=switch), TemporaryDirectory() as directory:
+                recorder, account, history_queue = self.history_runtime(directory)
+                ui_queue = []
+                scheduler = SimpleNamespace(
+                    call_soon=ui_queue.append,
+                    run_in_background=lambda callback: callback(),
+                    run_recording=lambda _recording, callback: callback(),
+                )
+                service = WorkflowService(
+                    FakeProvider(),
+                    FakeAudio(),
+                    FakeClipboard(),
+                    FakeConfig(),
+                    FakeStatistics(),
+                    scheduler,
+                    FakeClock(),
+                    operation_started=recorder.capture_operation,
+                )
+                delivered = []
+                service.subscribe(delivered.append)
+                service.subscribe(recorder.on_state)
+                self.assertTrue(service.dispatch(StartDictation(None, "prompt", "en")))
+                self.assertTrue(service.dispatch(StopDictation()))
+                self.assertEqual(service.state.phase, WorkflowPhase.COMPLETED)
+                self.assertEqual(delivered, [])
+                if switch:
+                    account._generation += 1
+                    account._state["user_id"] = str(uuid.uuid4())
+                while ui_queue:
+                    ui_queue.pop(0)()
+                self.assertEqual(
+                    [state.phase for state in delivered], [WorkflowPhase.COMPLETED]
+                )
+                self.assertEqual(len(history_queue), 1)
+                history_queue.pop()()
+                self.assertEqual(
+                    len(account.history.list_records()), 0 if switch else 1
+                )
+
     def history_runtime(self, directory, *, enabled=False):
         from account_history import AccountHistory
         from clarify_account import AccountService

@@ -8,8 +8,11 @@ export type DictionaryEntry = {
   aliases: string[];
   enabled: boolean;
 };
+export type HistoryEntry = { id: string; timestamp: number; text: string; truncated: boolean; sourceDevice: "desktop" | "mobile" };
+export type HistoryPageResult = { context: string; revision: string; entries: HistoryEntry[]; cursor: string; hasMore: boolean };
+export type HistoryTextPart = { context: string; id: string; text: string; nextOffset: number; hasMore: boolean };
 export interface Settings {
-  historyEntries?: { id: string; timestamp: number; text: string; transcript: string; sourceDevice: "desktop" | "mobile" }[];
+  historyState?: { context: string; revision: string };
   uiLanguage?: string;
   onboardingRequired: boolean;
   accountState?: {
@@ -88,8 +91,8 @@ export interface Settings {
 export type SettingsArguments = {
   completeOnboarding: [mode: "account" | "byok" | "local", key: string];
   accountCommand: [action: string, value: string];
-  deleteHistoryEntry: [id: string];
-  clearHistory: [];
+  deleteHistoryEntry: [id: string, context: string];
+  clearHistory: [context: string];
   snapshot: [];
   setLanguage: [value: string];
   setDictionaryEntries: [entries: DictionaryEntry[]];
@@ -139,6 +142,13 @@ export type SettingsArguments = {
 export type SettingsMethod = keyof SettingsArguments;
 
 let queue: Promise<unknown> = Promise.resolve();
+function historyCall<T>(method: string, args: unknown[]): Promise<T> {
+  const next = queue.then(() => invoke<T>("settings_call", { method, args }));
+  queue = next.catch(() => undefined);
+  return next;
+}
+export const getHistoryPage = (context: string, cursor = "") => historyCall<HistoryPageResult>("getHistoryPage", [context, cursor]);
+export const getHistoryTextPart = (context: string, id: string, offset: number) => historyCall<HistoryTextPart>("getHistoryTextPart", [context, id, offset, "text"]);
 export function call<M extends SettingsMethod>(
   method: M,
   ...args: SettingsArguments[M]

@@ -151,6 +151,14 @@ class Dispatcher(QObject):
         if request.get("method") == "quit":
             QCoreApplication.quit()
             return
+        if (
+            "--history" in sys.argv
+            and request.get("method") == "testHistoryContextChange"
+        ):
+            # Test-only session transition, outside the product RPC allowlist.
+            self.protocol.settings._account._generation += 1
+            print(json.dumps({"id": request.get("id"), "result": True}), flush=True)
+            return
         print(json.dumps(self.protocol.dispatch(request)), flush=True)
 
 
@@ -228,6 +236,34 @@ def main():
                     timestamp=datetime(2026, 10, 16, 13, tzinfo=timezone.utc),
                 )
             )
+            if "--history-large" in sys.argv:
+                from datetime import timedelta
+
+                records = store.list_records()
+                base = datetime(2026, 10, 16, 14, tzinfo=timezone.utc)
+                records.extend(
+                    HistoryRecord(
+                        raw_text=f"Isolated large row {index}: " + "é" * 16000,
+                        timestamp=base + timedelta(minutes=index),
+                    )
+                    for index in range(45)
+                )
+                records.append(
+                    HistoryRecord(
+                        raw_text="Giant legacy " + "x" * 1100000 + " legacy end.",
+                        timestamp=base + timedelta(hours=2),
+                    )
+                )
+                store.path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "records": [record.to_mapping() for record in records],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
         native = "--native" in sys.argv
         host = None
         if native:

@@ -253,7 +253,18 @@ class AccountHistory:
     def remove_account(self, owner):
         if owner is not None:
             with self._lock:
-                self._path(owner).unlink(missing_ok=True)
+                path = self._path(owner)
+                try:
+                    candidates = list(path.parent.iterdir())
+                except FileNotFoundError:
+                    candidates = []
+                for candidate in candidates:
+                    if candidate.name.startswith(
+                        "." + path.name + "."
+                    ) and candidate.name.endswith(".tmp"):
+                        candidate.unlink(missing_ok=True)
+                # Keep the committed document until all owned snapshots are gone.
+                path.unlink(missing_ok=True)
 
     @staticmethod
     def _batch(state):

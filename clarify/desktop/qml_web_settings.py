@@ -15,7 +15,7 @@ PROPERTIES = (
     "uiLanguage",
     "onboardingRequired",
     "accountState",
-    "historyEntries",
+    "historyState",
     "dirty",
     "dictionaryEntries",
     "lastError",
@@ -160,6 +160,18 @@ class SettingsProtocol:
         try:
             if method == "snapshot" and not args:
                 result = self.snapshot()
+            elif method == "getHistoryPage":
+                if len(args) != 2 or any(type(value) is not str for value in args):
+                    raise ValueError()
+                result = self.settings.getHistoryPage(*args)
+            elif method == "getHistoryTextPart":
+                if (
+                    len(args) != 4
+                    or any(type(args[index]) is not str for index in (0, 1, 3))
+                    or type(args[2]) is not int
+                ):
+                    raise ValueError()
+                result = self.settings.getHistoryTextPart(*args)
             elif method in METHODS:
                 if method == "save" and self.settings.providerDirty:
                     return {
@@ -180,10 +192,19 @@ class SettingsProtocol:
             else:
                 return {**reply, "error": "Unsupported settings method"}
             return {**reply, "result": result}
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as error:
             # Do not echo arguments: they can contain a pending API key.
+            if method in {"getHistoryPage", "getHistoryTextPart"}:
+                return {
+                    **reply,
+                    "error": "O histórico mudou. Atualize e tente novamente."
+                    if str(error) == "O histórico mudou. Atualize e tente novamente."
+                    else "Não foi possível carregar o histórico.",
+                }
             return {**reply, "error": "Invalid settings value"}
         except Exception:
+            if method in {"getHistoryPage", "getHistoryTextPart"}:
+                return {**reply, "error": "Não foi possível carregar o histórico."}
             return {**reply, "error": "Não foi possível ler as configurações."}
 
 

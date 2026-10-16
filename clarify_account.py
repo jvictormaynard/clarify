@@ -130,6 +130,7 @@ class AccountService:
         self.default_endpoint = endpoint(default_endpoint)
         self._lock = threading.RLock()
         self._generation = 0
+        self._ending_session = False
         self._busy = False
         self._state = self._read(self.path, {})
         self._usage: dict[str, Any] = {}
@@ -226,7 +227,7 @@ class AccountService:
         """Capture the account/session before starting a history operation."""
         with self._lock:
             user_id = self.scope
-            if not user_id:
+            if not user_id or self._ending_session:
                 return None
             return HistoryIdentity(
                 endpoint(self._state.get("endpoint", self.default_endpoint)),
@@ -234,8 +235,19 @@ class AccountService:
                 self._generation,
             )
 
-    def _request(self, method, path, *, cancel=None, expected_identity=None, **kwargs):
+    def _request(
+        self,
+        method,
+        path,
+        *,
+        cancel=None,
+        expected_identity=None,
+        ending_session=False,
+        **kwargs,
+    ):
         with self._lock:
+            if self._ending_session and not ending_session:
+                raise AccountError("A conta mudou. O resultado foi descartado.")
             if (
                 expected_identity is not None
                 and expected_identity != self.history_identity()
@@ -363,20 +375,30 @@ class AccountService:
             self.history.sync_safely(force=force)
 
     def logout(self, *, delete=False):
-        history_owner = self.history_identity()
-        scope = self._state.get("user_id")
+        with self._lock:
+            history_owner = self.history_identity()
+            scope = self._state.get("user_id")
+            self._generation += 1
+            self._ending_session = True
         try:
             if delete:
-                code, _ = self._request("DELETE", "/v1/account", json={"confirm": True})
+                code, _ = self._request(
+                    "DELETE", "/v1/account", json={"confirm": True}, ending_session=True
+                )
                 if code != 204:
                     raise AccountError(
                         "Não foi possível excluir a conta. Finalize o ditado e tente novamente."
                     )
             else:
-                self._request("DELETE", "/_allauth/app/v1/auth/session")
+                self._request(
+                    "DELETE", "/_allauth/app/v1/auth/session", ending_session=True
+                )
         except AccountError:
             if delete:
                 raise
+        finally:
+            with self._lock:
+                self._ending_session = False
         with self._lock:
             self.secrets.delete(SECRET_ID)
             self._state = {

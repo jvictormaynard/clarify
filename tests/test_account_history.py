@@ -13,6 +13,52 @@ from secret_store import PlaintextFileSecretStore
 
 
 class AccountHistoryTests(unittest.TestCase):
+    def test_late_history_401_cannot_invalidate_successful_account_delete(self):
+        import threading
+
+        owner = self.sign_in()
+        self.account.history = self.history
+        self.history.append(self.record(), owner)
+        self.local.append(self.record("Preserve guest."))
+        path = self.history._path(owner)
+        history_started, release_history, history_done = (
+            threading.Event(),
+            threading.Event(),
+            threading.Event(),
+        )
+        errors = []
+
+        def respond(method, url, **kwargs):
+            if url.endswith("/v1/history/sync"):
+                history_started.set()
+                self.assertTrue(release_history.wait(2))
+                return self.response({}, 401)
+            self.assertEqual(method, "DELETE")
+            self.assertIsNone(self.account.history_identity())
+            release_history.set()
+            self.assertTrue(history_done.wait(2))
+            return self.response({}, 204)
+
+        def sync():
+            try:
+                self.history.sync(force=True)
+            except AccountError as error:
+                errors.append(error)
+            finally:
+                history_done.set()
+
+        self.http.side_effect = respond
+        worker = threading.Thread(target=sync)
+        worker.start()
+        self.assertTrue(history_started.wait(2))
+        self.account.logout(delete=True)
+        worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(len(errors), 1)
+        self.assertFalse(path.exists())
+        self.assertFalse(self.account.signed_in)
+        self.assertEqual(self.local.list_records()[0].refined_text, "Preserve guest.")
+
     def setUp(self):
         from account_history import AccountHistory
 
@@ -304,11 +350,19 @@ class AccountHistoryTests(unittest.TestCase):
         self.account.logout()
         current = self.sign_in()
         self.history.append(self.record(), current)
+        self.local.append(self.record("Guest."))
+        owned_temp = self.history._path(current).with_name(".history.json.owned.tmp")
+        other_temp = old_path.with_name(".history.json.other.tmp")
+        owned_temp.write_text("Interrupted account data.")
+        other_temp.write_text("Other account data.")
         self.account.history = self.history
         self.http.return_value = self.response({}, 204)
         self.account.logout(delete=True)
         self.assertTrue(old_path.is_file())
         self.assertFalse(self.history._path(current).exists())
+        self.assertFalse(owned_temp.exists())
+        self.assertTrue(other_temp.is_file())
+        self.assertEqual(self.local.list_records()[0].refined_text, "Guest.")
 
     def test_clear_remote_page_keeps_new_local_records_and_no_stale_repopulation(self):
         owner = self.sign_in()
