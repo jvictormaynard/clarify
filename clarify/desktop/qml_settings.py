@@ -23,6 +23,8 @@ from typing import Any, cast
 
 from PySide6.QtCore import Property, QObject, Qt, Signal, Slot
 from clarify_account import AccountService
+from account_history import AccountHistory
+from history_store import HistoryStore
 from cloud_defaults import DEFAULT_CLOUD_URL
 from dictionary_snippets import (
     DictionaryEntry,
@@ -373,6 +375,13 @@ class QmlSettingsController(QObject):
             default_endpoint=os.environ.get("CLARIFY_CLOUD_URL", DEFAULT_CLOUD_URL),
         )
         self._account_can_change = account_can_change or (lambda: True)
+        self._history = getattr(self._account, "history", None)
+        if self._history is None and isinstance(self._account, AccountService):
+            self._history = AccountHistory(
+                self._account,
+                HistoryStore(Path(repositories.config.path).parent / "history.json"),
+            )
+            self._account.history = self._history
         self._account_busy = False
         self._account_error = ""
         self._account_shutdown = False
@@ -1955,6 +1964,58 @@ class QmlSettingsController(QObject):
             "busy": self._account_busy,
             "error": self._account_error,
         }
+
+    @Property("QVariantList", notify=accountStateChanged)
+    def historyEntries(self):
+        if self._history is None:
+            return []
+        try:
+            return [
+                {
+                    "id": prefix + record.id,
+                    "timestamp": record.timestamp.timestamp(),
+                    "text": record.refined_text
+                    if record.refined_text is not None
+                    else record.raw_text or "",
+                    "transcript": record.raw_text or "",
+                    "sourceDevice": record.source_device or "desktop",
+                }
+                for prefix, record in self._history.list_items(display=True)
+            ]
+        except (OSError, ValueError):
+            return []
+
+    @Slot(str, result=bool)
+    def deleteHistoryEntry(self, item_id):
+        try:
+            if self._history is not None:
+                self._history.delete(item_id)
+                threading.Thread(
+                    target=lambda: self._history.sync_safely(force=True),
+                    name="ClarifyHistory",
+                    daemon=True,
+                ).start()
+            self.accountStateChanged.emit()
+            return True
+        except (OSError, ValueError) as error:
+            self._set_error(error)
+            return False
+
+    @Slot(result=bool)
+    def clearHistory(self):
+        try:
+            if self._history is not None:
+                self._history.clear()
+                threading.Thread(
+                    target=lambda: self._history.sync_safely(force=True),
+                    name="ClarifyHistory",
+                    daemon=True,
+                ).start()
+            self.accountStateChanged.emit()
+            return True
+        except (OSError, ValueError) as error:
+            self._set_error(error)
+            return False
 
     @Property(bool, notify=configChanged)
     def onboardingRequired(self):

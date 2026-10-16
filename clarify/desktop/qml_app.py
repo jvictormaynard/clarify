@@ -15,7 +15,7 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPOSITORY_ROOT))
 
-from PySide6.QtCore import QTimer, QUrl  # noqa: E402
+from PySide6.QtCore import QTimer, QUrl, Qt  # noqa: E402
 from PySide6.QtGui import QIcon  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 from PySide6.QtQuickControls2 import QQuickStyle  # noqa: E402
@@ -542,6 +542,13 @@ def main(argv: list[str] | None = None) -> int:
             and not voice_translation.active
             and not audio_batch.running
         ),
+    )
+    app.applicationStateChanged.connect(
+        lambda state: (
+            runtime.request_history_sync()
+            if state == Qt.ApplicationState.ApplicationActive
+            else None
+        )
     )
 
     def can_restart_for_update() -> bool:

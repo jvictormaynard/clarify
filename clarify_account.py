@@ -1,12 +1,12 @@
 """Optional account, hosted dictation and revision-safe vocabulary sync.
 
 No Qt, microphone, environment/profile lookup or network work at import time.
-Provider keys and local history never enter this boundary.
+Provider keys and guest history never enter this boundary.
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 import threading
@@ -36,6 +36,13 @@ class AccountError(RuntimeError):
 
 class DictionaryConflict(AccountError):
     pass
+
+
+@dataclass(frozen=True)
+class HistoryIdentity:
+    endpoint: str
+    user_id: str
+    generation: int
 
 
 def endpoint(value: str) -> str:
@@ -129,6 +136,7 @@ class AccountService:
         self._usage_generation = 0
         self._dictionary_conflict = False
         self._sync_error = ""
+        self.history = None
         try:
             endpoint(self._state.get("endpoint", self.default_endpoint))
             if self._state.get("user_id"):
@@ -214,8 +222,25 @@ class AccountService:
             self._generation += 1
             self._save()
 
-    def _request(self, method, path, *, cancel=None, **kwargs):
+    def history_identity(self):
+        """Capture the account/session before starting a history operation."""
         with self._lock:
+            user_id = self.scope
+            if not user_id:
+                return None
+            return HistoryIdentity(
+                endpoint(self._state.get("endpoint", self.default_endpoint)),
+                user_id,
+                self._generation,
+            )
+
+    def _request(self, method, path, *, cancel=None, expected_identity=None, **kwargs):
+        with self._lock:
+            if (
+                expected_identity is not None
+                and expected_identity != self.history_identity()
+            ):
+                raise AccountError("A conta mudou. O resultado foi descartado.")
             base = self._state.get("endpoint", self.default_endpoint)
             generation = self._generation
             usage_generation = self._usage_generation
@@ -254,6 +279,7 @@ class AccountService:
                 self._state["sync"] = False
                 self._usage = {}
                 self._usage_generation += 1
+                self._generation += 1
                 self._save()
             new_token = result.get("meta", {}).get("session_token")
             if new_token:
@@ -301,11 +327,17 @@ class AccountService:
 
     def refresh(self):
         self._last_refresh_attempt = self._clock()
+        with self._lock:
+            generation = self._generation
         code, result = self._request("GET", "/v1/account")
         if code != 200:
             raise AccountError("A sessão expirou. Entre na conta novamente.")
         user_id = str(uuid.UUID(result["id"]))
         with self._lock:
+            if generation != self._generation:
+                raise AccountError("A conta mudou. O resultado foi descartado.")
+            if self._state.get("user_id") != user_id:
+                self._generation += 1
             self._state.update(
                 user_id=user_id, email=result["email"], pending="", mode="hosted"
             )
@@ -327,8 +359,11 @@ class AccountService:
             except AccountError as error:
                 with self._lock:
                     self._sync_error = str(error)
+        if self.history is not None:
+            self.history.sync_safely(force=force)
 
     def logout(self, *, delete=False):
+        history_owner = self.history_identity()
         scope = self._state.get("user_id")
         try:
             if delete:
@@ -353,6 +388,8 @@ class AccountService:
             self._generation += 1
             self._save()
         if delete and scope:
+            if self.history is not None:
+                self.history.remove_account(history_owner)
             target = self.directory / "account-data" / str(uuid.UUID(scope))
             # Remove only this account's cache, never the local profile.
             for name in ("dictionary.json", "sync.json"):

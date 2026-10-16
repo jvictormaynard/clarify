@@ -9,6 +9,7 @@ export type DictionaryEntry = {
   enabled: boolean;
 };
 export interface Settings {
+  historyEntries?: { id: string; timestamp: number; text: string; transcript: string; sourceDevice: "desktop" | "mobile" }[];
   uiLanguage?: string;
   onboardingRequired: boolean;
   accountState?: {
@@ -87,6 +88,8 @@ export interface Settings {
 export type SettingsArguments = {
   completeOnboarding: [mode: "account" | "byok" | "local", key: string];
   accountCommand: [action: string, value: string];
+  deleteHistoryEntry: [id: string];
+  clearHistory: [];
   snapshot: [];
   setLanguage: [value: string];
   setDictionaryEntries: [entries: DictionaryEntry[]];

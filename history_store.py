@@ -34,12 +34,14 @@ from typing import Any, Callable, Literal, Mapping
 HISTORY_SCHEMA_VERSION = 1
 DEFAULT_RETENTION_DAYS = 30
 HistoryStatus = Literal["success", "partial", "error", "cancelled"]
-HISTORY_STATUSES: frozenset[str] = frozenset({
-    "success",
-    "partial",
-    "error",
-    "cancelled",
-})
+HISTORY_STATUSES: frozenset[str] = frozenset(
+    {
+        "success",
+        "partial",
+        "error",
+        "cancelled",
+    }
+)
 
 
 class HistoryStoreError(OSError):
@@ -88,17 +90,22 @@ def _coerce_timestamp(value: datetime | str) -> datetime:
 
 
 def _format_timestamp(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat(
-        timespec="microseconds").replace("+00:00", "Z")
+    return (
+        value.astimezone(timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
 
 
 _SENSITIVE_AUTH_PATTERN = re.compile(
     r"(?is)(['\"]?(?:authorization|bearer)['\"]?\s*[:=]\s*"
-    r"(?:[a-z0-9_-]+\s+)?)")
+    r"(?:[a-z0-9_-]+\s+)?)"
+)
 _SENSITIVE_FIELD_PATTERN = re.compile(
     r"(?is)(['\"]?(?:api[_ -]?key|access[_ -]?token|"
     r"client[_ -]?secret|credential|password|secret|token)['\"]?\s*[:=]\s*)"
-    r"(?:(['\"])((?:\\.|(?!\2).)*?)\2|([^,;&}\n]+))")
+    r"(?:(['\"])((?:\\.|(?!\2).)*?)\2|([^,;&}\n]+))"
+)
 # Some providers serialize an error body inside another string and escape the
 # mapping's quotes (for example, ``body="{\"password\":\"secret\"}"``).
 # The ordinary field matcher cannot see the key/value delimiters in that form.
@@ -114,7 +121,8 @@ _SENSITIVE_FIELD_NAME_PATTERN = re.compile(
 )
 _SENSITIVE_BEARER_PATTERN = re.compile(r"(?i)(bearer)\s+([^\s,;&]+)")
 _SENSITIVE_QUERY_PATTERN = re.compile(
-    r"(?i)([?&](?:api[_-]?key|access[_-]?token|token)=)[^&#\s]+")
+    r"(?i)([?&](?:api[_-]?key|access[_-]?token|token)=)[^&#\s]+"
+)
 
 
 def _redact_field_match(match: re.Match[str]) -> str:
@@ -157,7 +165,7 @@ def _redact_auth_headers(value: str) -> str:
             pieces.append(value[cursor:])
             return "".join(pieces)
         end = _auth_value_end(value, match.end())
-        pieces.append(value[cursor:match.start()])
+        pieces.append(value[cursor : match.start()])
         pieces.append(f"{match.group(1)}<redacted>")
         cursor = end
         search_at = end
@@ -207,13 +215,10 @@ def _escaped_field_opening(
     """Find an assignment's value after a bounded field-name match."""
 
     field_name = match.group(0).lower()
-    escaped_key = (
-        (match.start() > 0 and value[match.start() - 1] == "\\")
-        or (
-            match.start() > 1
-            and value[match.start() - 2] == "\\"
-            and value[match.start() - 1] in "'\""
-        )
+    escaped_key = (match.start() > 0 and value[match.start() - 1] == "\\") or (
+        match.start() > 1
+        and value[match.start() - 2] == "\\"
+        and value[match.start() - 1] in "'\""
     )
     if field_name in {"authorization", "bearer"} and not escaped_key:
         return None
@@ -263,9 +268,7 @@ def _escaped_unquoted_field_value_end(value: str, start: int) -> int:
             if delimiter_run is None:
                 delimiter_run = backslash_run
             modulus = 2 * (delimiter_run + 1)
-            is_delimiter = (
-                backslash_run - delimiter_run
-            ) % modulus == 0
+            is_delimiter = (backslash_run - delimiter_run) % modulus == 0
             if is_delimiter:
                 if quote is None:
                     quote = character
@@ -313,17 +316,17 @@ def _redact_escaped_fields(value: str) -> str:
         opening_start, opening_end = opening
         if opening_start == opening_end:
             end = _escaped_unquoted_field_value_end(value, opening_end)
-            prefix = value[match.start():opening_start]
-            pieces.append(value[cursor:match.start()])
+            prefix = value[match.start() : opening_start]
+            pieces.append(value[cursor : match.start()])
             pieces.append(f"{prefix}<redacted>")
             cursor = end
             search_at = end
             continue
         quote = value[opening_start:opening_end]
         end = _escaped_field_value_end(value, opening_end, quote)
-        prefix = value[match.start():opening_start]
+        prefix = value[match.start() : opening_start]
         replacement = f"{prefix}{quote}<redacted>"
-        pieces.append(value[cursor:match.start()])
+        pieces.append(value[cursor : match.start()])
         if end is None:
             # A truncated credential is still sensitive; redact through EOF
             # instead of preserving the untrusted tail or retrying a regex.
@@ -374,8 +377,11 @@ class HistoryRecord:
     status: HistoryStatus = "success"
     error: str | None = None
     record_id: str = field(default_factory=_new_record_id)
+    source_device: str | None = None
 
     def __post_init__(self) -> None:
+        if self.source_device not in (None, "desktop", "mobile"):
+            raise HistoryValidationError("source_device must be desktop or mobile")
         for field_name in ("raw_text", "refined_text"):
             value = getattr(self, field_name)
             if value is not None and not isinstance(value, str):
@@ -389,8 +395,7 @@ class HistoryRecord:
             value = getattr(self, field_name)
             if not isinstance(value, str):
                 raise HistoryValidationError(f"{field_name} must be text")
-            object.__setattr__(
-                self, field_name, value.strip() or "unknown")
+            object.__setattr__(self, field_name, value.strip() or "unknown")
 
         for field_name in ("refinement_provider", "refinement_model"):
             value = getattr(self, field_name)
@@ -412,7 +417,8 @@ class HistoryRecord:
         status = self.status.strip().lower()
         if status not in HISTORY_STATUSES:
             raise HistoryValidationError(
-                f"status must be one of {sorted(HISTORY_STATUSES)}")
+                f"status must be one of {sorted(HISTORY_STATUSES)}"
+            )
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "error", _safe_error(self.error))
 
@@ -442,6 +448,8 @@ class HistoryRecord:
             mapping["refinement_provider"] = self.refinement_provider
         if self.refinement_model is not None:
             mapping["refinement_model"] = self.refinement_model
+        if self.source_device is not None:
+            mapping["source_device"] = self.source_device
         return mapping
 
     @classmethod
@@ -452,8 +460,7 @@ class HistoryRecord:
             raise HistoryValidationError("history record must be an object")
 
         record_id = payload.get("id", payload.get("record_id", _new_record_id()))
-        raw_text = payload.get(
-            "raw_text", payload.get("raw", payload.get("text")))
+        raw_text = payload.get("raw_text", payload.get("raw", payload.get("text")))
         refined_text = payload.get("refined_text", payload.get("refined"))
         workflow = payload.get("workflow", payload.get("mode", "transcription"))
         timestamp = payload.get("timestamp", payload.get("time", _utc_now()))
@@ -483,6 +490,7 @@ class HistoryRecord:
             status=status,
             error=error,
             record_id=record_id,
+            source_device=payload.get("source_device"),
         )
 
 
@@ -502,8 +510,7 @@ _HISTORY_RECORD_FIELDS: tuple[str, ...] = (
 def _version(value: Any) -> int | None:
     """Parse an explicit schema marker, rejecting unknown marker types."""
 
-    if (isinstance(value, bool) or not isinstance(value, int)
-            or value < 0):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return None
     return value
 
@@ -533,14 +540,14 @@ def _has_canonical_v1_fields(payload: Mapping[str, Any]) -> bool:
 
     if not all(field in payload for field in _HISTORY_RECORD_FIELDS):
         return False
-    for field in ("id", "workflow", "provider", "model", "status"):
-        value = payload[field]
+    for field_name in ("id", "workflow", "provider", "model", "status"):
+        value = payload[field_name]
         if not isinstance(value, str) or not value.strip():
             return False
     if not isinstance(payload["timestamp"], str):
         return False
-    for field in ("raw_text", "refined_text", "error"):
-        value = payload[field]
+    for field_name in ("raw_text", "refined_text", "error"):
+        value = payload[field_name]
         if value is not None and not isinstance(value, str):
             return False
     if payload["status"].strip().lower() not in HISTORY_STATUSES:
@@ -549,9 +556,7 @@ def _has_canonical_v1_fields(payload: Mapping[str, Any]) -> bool:
 
 
 def _legacy_container_keys(payload: Mapping[str, Any]) -> tuple[str, ...]:
-    return tuple(
-        key for key in ("records", "entries", "history") if key in payload
-    )
+    return tuple(key for key in ("records", "entries", "history") if key in payload)
 
 
 def _is_recoverable_snapshot(payload: Mapping[str, Any]) -> bool:
@@ -564,16 +569,19 @@ def _is_recoverable_snapshot(payload: Mapping[str, Any]) -> bool:
         raw_records = payload.get("records")
     else:
         legacy_keys = _legacy_container_keys(payload)
-        if (not _legacy_containers_are_valid(payload)
-                or len(legacy_keys) != 1
-                or not _legacy_entries_are_safe(payload)):
+        if (
+            not _legacy_containers_are_valid(payload)
+            or len(legacy_keys) != 1
+            or not _legacy_entries_are_safe(payload)
+        ):
             return False
         # Reject malformed legacy entries too; promoting a snapshot that the
         # normal load path would partially drop can erase the committed file.
         for key in ("records", "entries", "history"):
             source = payload.get(key)
             if isinstance(source, list) and any(
-                    not isinstance(item, Mapping) for item in source):
+                not isinstance(item, Mapping) for item in source
+            ):
                 return False
         try:
             raw_records = _migrate_v0(payload).get("records")
@@ -584,8 +592,7 @@ def _is_recoverable_snapshot(payload: Mapping[str, Any]) -> bool:
     for item in raw_records:
         if not isinstance(item, Mapping):
             return False
-        if (version == HISTORY_SCHEMA_VERSION
-                and not _has_canonical_v1_fields(item)):
+        if version == HISTORY_SCHEMA_VERSION and not _has_canonical_v1_fields(item):
             return False
         try:
             HistoryRecord.from_mapping(item)
@@ -623,8 +630,8 @@ def _legacy_entries_are_safe(payload: Mapping[str, Any]) -> bool:
         for item in source:
             if not isinstance(item, Mapping):
                 return False
-            for field in ("provider", "model"):
-                if field in item and not isinstance(item[field], str):
+            for field_name in ("provider", "model"):
+                if field_name in item and not isinstance(item[field_name], str):
                     return False
     return True
 
@@ -634,7 +641,8 @@ def _migrate_v0(payload: Mapping[str, Any]) -> dict[str, Any]:
 
     if not _legacy_containers_are_valid(payload):
         raise HistoryStoreError(
-            "The legacy history file has an invalid records container")
+            "The legacy history file has an invalid records container"
+        )
 
     source = payload.get("records")
     if not isinstance(source, list):
@@ -650,15 +658,31 @@ def _migrate_v0(payload: Mapping[str, Any]) -> dict[str, Any]:
             continue
         # Keep only names understood by HistoryRecord.from_mapping.  This is
         # also the migration boundary that drops prototype audio/API fields.
-        records.append({
-            key: item[key]
-            for key in (
-                "id", "record_id", "raw_text", "raw", "text", "refined_text",
-                "refined", "workflow", "mode", "timestamp", "time", "provider",
-                "model", "refinement_provider", "refinement_model", "status", "error",
-            )
-            if key in item
-        })
+        records.append(
+            {
+                key: item[key]
+                for key in (
+                    "id",
+                    "record_id",
+                    "raw_text",
+                    "raw",
+                    "text",
+                    "refined_text",
+                    "refined",
+                    "workflow",
+                    "mode",
+                    "timestamp",
+                    "time",
+                    "provider",
+                    "model",
+                    "refinement_provider",
+                    "refinement_model",
+                    "status",
+                    "error",
+                )
+                if key in item
+            }
+        )
     return {"schema_version": HISTORY_SCHEMA_VERSION, "records": records}
 
 
@@ -709,7 +733,8 @@ def _atomic_write_text(path: Path, text: str) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
             stream.write(text)
@@ -746,20 +771,22 @@ def _read_json_mapping(
     if state == "io" and (strict or raise_on_io):
         message = (
             "The history file is unreadable or corrupt"
-            if strict else "The history snapshot could not be read"
+            if strict
+            else "The history snapshot could not be read"
         )
         raise HistoryStoreError(message) from error
     if state == "malformed" and strict:
-        raise HistoryStoreError(
-            "The history file is unreadable or corrupt") from error
+        raise HistoryStoreError("The history file is unreadable or corrupt") from error
     return None
 
 
 def _read_json_mapping_state(
     path: Path,
-) -> tuple[dict[str, Any] | None, Literal[
-    "missing", "io", "malformed", "non_mapping", "valid"
-], BaseException | None]:
+) -> tuple[
+    dict[str, Any] | None,
+    Literal["missing", "io", "malformed", "non_mapping", "valid"],
+    BaseException | None,
+]:
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -795,11 +822,13 @@ class HistoryStore:
         if not isinstance(enabled, bool):
             raise HistoryValidationError("enabled must be boolean")
         if retention_days is not None and (
-                isinstance(retention_days, bool)
-                or not isinstance(retention_days, int)
-                or retention_days < 0):
+            isinstance(retention_days, bool)
+            or not isinstance(retention_days, int)
+            or retention_days < 0
+        ):
             raise HistoryValidationError(
-                "retention_days must be a non-negative integer or None")
+                "retention_days must be a non-negative integer or None"
+            )
         self.path = Path(path)
         self.enabled = enabled
         self.retention_days = retention_days
@@ -816,7 +845,8 @@ class HistoryStore:
             return False
         except OSError as error:
             raise HistoryStoreError(
-                "The history file could not be inspected") from error
+                "The history file could not be inspected"
+            ) from error
         return True
 
     def _temporary_paths(self) -> list[Path]:
@@ -838,7 +868,8 @@ class HistoryStore:
                 ]
         except OSError as error:
             raise HistoryStoreError(
-                "The history snapshots could not be enumerated") from error
+                "The history snapshots could not be enumerated"
+            ) from error
 
     @staticmethod
     def _remove_best_effort(path: Path) -> None:
@@ -863,11 +894,8 @@ class HistoryStore:
                     "The history file could not be read consistently"
                 ) from primary_error
             _read_json_mapping(self.path, strict=True)
-            raise HistoryStoreError(
-                "The history file could not be read consistently")
-        temporary_payloads: list[
-            tuple[float | None, str, Path, dict[str, Any]]
-        ] = []
+            raise HistoryStoreError("The history file could not be read consistently")
+        temporary_payloads: list[tuple[float | None, str, Path, dict[str, Any]]] = []
         for candidate in self._temporary_paths():
             payload = _read_json_mapping(candidate, raise_on_io=True)
             if payload is None:
@@ -894,16 +922,13 @@ class HistoryStore:
         # when no such source exists they may be the only bytes left for
         # diagnosis/recovery. Future-schema snapshots remain untouched.
         supported_candidates = [
-            item for item in temporary_payloads
-            if _is_supported_schema(item[3])
+            item for item in temporary_payloads if _is_supported_schema(item[3])
         ]
         supported_temporary = [
-            item for item in supported_candidates
-            if _is_recoverable_snapshot(item[3])
+            item for item in supported_candidates if _is_recoverable_snapshot(item[3])
         ]
         rejected_temporary = [
-            item for item in supported_candidates
-            if item not in supported_temporary
+            item for item in supported_candidates if item not in supported_temporary
         ]
 
         if (
@@ -917,9 +942,7 @@ class HistoryStore:
                 raise HistoryStoreError(
                     "The primary history mtime could not be read"
                 ) from error
-            newest_supported_mtime = max(
-                item[0] for item in supported_temporary
-            )
+            newest_supported_mtime = max(item[0] for item in supported_temporary)
             if newest_supported_mtime <= primary_mtime:
                 raise HistoryStoreError(
                     "The interrupted history snapshot is not newer than "
@@ -960,13 +983,10 @@ class HistoryStore:
                 # Without a primary mtime, recency cannot be compared. Block
                 # reads and writes so add/retention cannot mutate the primary
                 # while a newer completed snapshot remains unresolved.
-                raise HistoryStoreError(
-                    "The primary history mtime could not be read"
-                )
+                raise HistoryStoreError("The primary history mtime could not be read")
             newest_ordering = max(item[0] for item in supported_temporary)
             newest_candidates = [
-                item for item in supported_temporary
-                if item[0] == newest_ordering
+                item for item in supported_temporary if item[0] == newest_ordering
             ]
             if newest_ordering <= current_mtime and not container_valid:
                 # A structurally corrupt primary may only be replaced by a
@@ -993,7 +1013,8 @@ class HistoryStore:
                     item for item in supported_temporary if item[2] != selected
                 ]
             for _, _, candidate, _ in [
-                *rejected_temporary, *supported_temporary,
+                *rejected_temporary,
+                *supported_temporary,
             ]:
                 if candidate != selected:
                     self._remove_best_effort(candidate)
@@ -1004,8 +1025,7 @@ class HistoryStore:
                 # Re-read in strict mode to preserve a typed cause for both
                 # malformed JSON and an unreadable file.
                 _read_json_mapping(self.path, strict=True)
-                raise HistoryStoreError(
-                    "The history file is unreadable or corrupt")
+                raise HistoryStoreError("The history file is unreadable or corrupt")
             return None
         # Prefer a snapshot this executable understands. Unknown/future
         # snapshots remain untouched so a newer executable can recover them.
@@ -1018,24 +1038,21 @@ class HistoryStore:
                 # executable understands. Preserve its original bytes when
                 # the only intact candidates use a future schema.
                 _read_json_mapping(self.path, strict=True)
-                raise HistoryStoreError(
-                    "The history file is unreadable or corrupt")
+                raise HistoryStoreError("The history file is unreadable or corrupt")
             future_temporary = [
-                item for item in temporary_payloads
-                if _is_future_schema(item[3])
+                item for item in temporary_payloads if _is_future_schema(item[3])
             ]
             if not future_temporary:
                 # A supported-schema temp exists, but its structure is
                 # damaged. Preserve it and fail closed rather than moving it
                 # over the missing primary and later rewriting it as empty.
                 raise HistoryStoreError(
-                    "The interrupted history snapshot is structurally corrupt")
+                    "The interrupted history snapshot is structurally corrupt"
+                )
             candidates = future_temporary
             selected_supported = False
         newest_ordering = max(item[0] for item in candidates)
-        newest_candidates = [
-            item for item in candidates if item[0] == newest_ordering
-        ]
+        newest_candidates = [item for item in candidates if item[0] == newest_ordering]
         if len(newest_candidates) > 1:
             # With no committed primary, equal mtimes provide no safe way to
             # choose one snapshot over another. Preserve all candidates.
@@ -1047,49 +1064,56 @@ class HistoryStore:
             os.replace(selected, self.path)
         except OSError as error:
             raise HistoryStoreError(
-                "The interrupted history write could not be recovered") from error
+                "The interrupted history write could not be recovered"
+            ) from error
         if selected_supported:
             for _, _, candidate, _ in [
-                *rejected_temporary, *supported_temporary,
+                *rejected_temporary,
+                *supported_temporary,
             ]:
                 if candidate != selected:
                     self._remove_best_effort(candidate)
         return payload
 
-    def _load_records_locked(self) -> list[HistoryRecord]:
+    def _load_records_locked(
+        self, *, apply_retention: bool = True
+    ) -> list[HistoryRecord]:
         payload = self._recover_interrupted_write_locked()
         if payload is None:
             return []
         version = _payload_version(payload)
         if version is None:
-            raise HistoryStoreError(
-                "The history file has an invalid schema version")
+            raise HistoryStoreError("The history file has an invalid schema version")
         if version > HISTORY_SCHEMA_VERSION:
             raise UnsupportedHistorySchemaVersionError(
                 f"History schema version {version} is newer than supported "
-                f"version {HISTORY_SCHEMA_VERSION}")
+                f"version {HISTORY_SCHEMA_VERSION}"
+            )
 
         migrated = migrate_history_payload(payload)
         if version == HISTORY_SCHEMA_VERSION and not isinstance(
-                payload.get("records"), list):
+            payload.get("records"), list
+        ):
             # A current-schema document with a missing or non-list record
             # container is structural corruption, not an empty history.  Do
             # not canonicalize it to ``records: []``: doing so would erase
             # data that may still be recoverable from the original bytes.
-            raise HistoryStoreError(
-                "The history file has an invalid records container")
+            raise HistoryStoreError("The history file has an invalid records container")
         if version < HISTORY_SCHEMA_VERSION and not _snapshot_container_is_valid(
-                payload):
+            payload
+        ):
             raise HistoryStoreError(
-                "The legacy history file has an ambiguous records container")
+                "The legacy history file has an ambiguous records container"
+            )
         raw_records = migrated.get("records", [])
         records: list[HistoryRecord] = []
         if isinstance(raw_records, list):
             for item in raw_records:
                 if not isinstance(item, Mapping):
                     continue
-                if (version == HISTORY_SCHEMA_VERSION
-                        and not _has_canonical_v1_fields(item)):
+                if version == HISTORY_SCHEMA_VERSION and not _has_canonical_v1_fields(
+                    item
+                ):
                     continue
                 try:
                     records.append(HistoryRecord.from_mapping(item))
@@ -1100,7 +1124,8 @@ class HistoryStore:
                     continue
 
         now = self._now()
-        records = self._retained(records, now)
+        if apply_retention:
+            records = self._retained(records, now)
         canonical = _canonical_payload(records)
         if canonical != payload:
             self._write_payload_locked(canonical)
@@ -1108,13 +1133,17 @@ class HistoryStore:
 
     def _write_payload_locked(self, payload: Mapping[str, Any]) -> None:
         try:
-            serialized = json.dumps(
-                payload, indent=2, ensure_ascii=False, sort_keys=False) + "\n"
+            serialized = (
+                json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=False)
+                + "\n"
+            )
             _atomic_write_text(self.path, serialized)
         except (OSError, TypeError, ValueError) as error:
             raise HistoryStoreError("The history file could not be written") from error
 
-    def _retained(self, records: list[HistoryRecord], now: datetime) -> list[HistoryRecord]:
+    def _retained(
+        self, records: list[HistoryRecord], now: datetime
+    ) -> list[HistoryRecord]:
         if self.retention_days is None:
             return records
         cutoff = now - timedelta(days=self.retention_days)
@@ -1131,6 +1160,11 @@ class HistoryStore:
     # A short alias makes the repository boundary convenient for UI adapters.
     load = list_records
 
+    def list_preserved_records(self) -> list[HistoryRecord]:
+        """Show existing local records without enabling recording or pruning."""
+        with self._lock:
+            return list(self._load_records_locked(apply_retention=False))
+
     def append(self, record: HistoryRecord) -> HistoryRecord | None:
         """Append one typed record, or no-op when history is disabled."""
 
@@ -1142,7 +1176,8 @@ class HistoryStore:
             records = self._load_records_locked()
             if any(existing.record_id == record.record_id for existing in records):
                 raise HistoryValidationError(
-                    f"history record id already exists: {record.record_id}")
+                    f"history record id already exists: {record.record_id}"
+                )
             records = self._retained(records + [record], self._now())
             self._write_payload_locked(_canonical_payload(records))
         return record
@@ -1194,7 +1229,16 @@ class HistoryStore:
                     continue
                 except OSError as error:
                     raise HistoryStoreError(
-                        "The history file could not be deleted") from error
+                        "The history file could not be deleted"
+                    ) from error
+
+    def delete(self, record_id: str) -> None:
+        """Delete one local record without creating a remote tombstone."""
+        with self._lock:
+            records = self._load_records_locked(apply_retention=False)
+            kept = [record for record in records if record.id != record_id]
+            if len(kept) != len(records):
+                self._write_payload_locked(_canonical_payload(kept))
 
     def _records_for_export(self) -> list[HistoryRecord]:
         if not self.enabled:
@@ -1212,25 +1256,33 @@ class HistoryStore:
     def _as_text(cls, records: list[HistoryRecord]) -> str:
         chunks: list[str] = []
         for record in records:
-            chunks.extend([
-                f"Record: {record.record_id}",
-                f"Timestamp: {_format_timestamp(record.timestamp)}",
-                f"Workflow: {record.workflow}",
-                f"Provider: {record.provider}",
-                f"Model: {record.model}",
-                f"Status: {record.status}",
-            ])
+            chunks.extend(
+                [
+                    f"Record: {record.record_id}",
+                    f"Timestamp: {_format_timestamp(record.timestamp)}",
+                    f"Workflow: {record.workflow}",
+                    f"Provider: {record.provider}",
+                    f"Model: {record.model}",
+                    f"Status: {record.status}",
+                ]
+            )
             if record.refinement_provider or record.refinement_model:
-                chunks.extend([
-                    f"Refinement provider: {record.refinement_provider or '<unknown>'}",
-                    f"Refinement model: {record.refinement_model or '<unknown>'}",
-                ])
+                chunks.extend(
+                    [
+                        f"Refinement provider: {record.refinement_provider or '<unknown>'}",
+                        f"Refinement model: {record.refinement_model or '<unknown>'}",
+                    ]
+                )
             chunks.append("Raw transcript:")
-            chunks.append(record.raw_text if record.raw_text is not None else "<not available>")
+            chunks.append(
+                record.raw_text if record.raw_text is not None else "<not available>"
+            )
             chunks.append("Refined output:")
             chunks.append(
                 record.refined_text
-                if record.refined_text is not None else "<not available>")
+                if record.refined_text is not None
+                else "<not available>"
+            )
             if record.error is not None:
                 chunks.extend(["Error:", record.error])
             chunks.append("")
@@ -1242,21 +1294,25 @@ class HistoryStore:
     def _as_markdown(cls, records: list[HistoryRecord]) -> str:
         chunks = ["# Clarify transcription history", ""]
         for index, record in enumerate(records, 1):
-            chunks.extend([
-                f"## {index}. {_format_timestamp(record.timestamp)} — {record.status}",
-                "",
-                f"- **Workflow:** `{record.workflow}`",
-                f"- **Provider:** `{record.provider}`",
-                f"- **Model:** `{record.model}`",
-                f"- **Record ID:** `{record.record_id}`",
-                "",
-            ])
-            if record.refinement_provider or record.refinement_model:
-                chunks.extend([
-                    f"- **Refinement provider:** `{record.refinement_provider or 'unknown'}`",
-                    f"- **Refinement model:** `{record.refinement_model or 'unknown'}`",
+            chunks.extend(
+                [
+                    f"## {index}. {_format_timestamp(record.timestamp)} — {record.status}",
                     "",
-                ])
+                    f"- **Workflow:** `{record.workflow}`",
+                    f"- **Provider:** `{record.provider}`",
+                    f"- **Model:** `{record.model}`",
+                    f"- **Record ID:** `{record.record_id}`",
+                    "",
+                ]
+            )
+            if record.refinement_provider or record.refinement_model:
+                chunks.extend(
+                    [
+                        f"- **Refinement provider:** `{record.refinement_provider or 'unknown'}`",
+                        f"- **Refinement model:** `{record.refinement_model or 'unknown'}`",
+                        "",
+                    ]
+                )
             for label, value in (
                 ("Raw transcript", record.raw_text),
                 ("Refined output", record.refined_text),
@@ -1284,8 +1340,7 @@ class HistoryStore:
         aliases = {"text": "txt", "md": "markdown"}
         value = aliases.get(value, value)
         if value not in {"txt", "markdown", "json"}:
-            raise HistoryValidationError(
-                "format must be txt, markdown, or json")
+            raise HistoryValidationError("format must be txt, markdown, or json")
         return value
 
     def export(
@@ -1301,15 +1356,18 @@ class HistoryStore:
         try:
             if target.resolve() == self.path.resolve():
                 raise HistoryValidationError(
-                    "history export destination must differ from the history file")
+                    "history export destination must differ from the history file"
+                )
         except OSError:
             # A not-yet-created destination still has a deterministic lexical
             # path; the atomic writer below performs the final filesystem check.
             pass
         selected = self._format_name(target, format)
         if selected == "json":
-            text = json.dumps(
-                _canonical_payload(records), indent=2, ensure_ascii=False) + "\n"
+            text = (
+                json.dumps(_canonical_payload(records), indent=2, ensure_ascii=False)
+                + "\n"
+            )
         elif selected == "markdown":
             text = self._as_markdown(records)
         else:
@@ -1317,5 +1375,7 @@ class HistoryStore:
         try:
             _atomic_write_text(target, text)
         except (OSError, TypeError, ValueError) as error:
-            raise HistoryStoreError("The history export could not be written") from error
+            raise HistoryStoreError(
+                "The history export could not be written"
+            ) from error
         return target

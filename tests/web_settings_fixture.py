@@ -208,6 +208,26 @@ def main():
             microphone_backend=backend,
             local_product=Mock(state=LocalASRProductState("installed"), busy=False),
         )
+        if "--history" in sys.argv:
+            from history_store import HistoryRecord, HistoryStore
+            from datetime import datetime, timezone
+
+            store = HistoryStore(
+                settings._history.local.path, enabled=True, retention_days=None
+            )
+            store.append(
+                HistoryRecord(
+                    raw_text="Isolated desktop history.",
+                    timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
+                )
+            )
+            store.append(
+                HistoryRecord(
+                    raw_text="Isolated mobile history.",
+                    source_device="mobile",
+                    timestamp=datetime(2026, 10, 16, 13, tzinfo=timezone.utc),
+                )
+            )
         native = "--native" in sys.argv
         host = None
         if native:

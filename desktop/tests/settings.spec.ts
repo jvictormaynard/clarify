@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   const quota = testInfo.title.startsWith("quota:");
   const usageReady = new Promise<void>(resolve => { releaseUsage = resolve; });
   const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(quota ? ["--signed-in"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(quota ? ["--signed-in"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);
@@ -36,6 +36,22 @@ test.beforeEach(async ({ page }, testInfo) => {
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
 });
 test.afterEach(async () => { releaseUsage?.(); child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
+
+test("history: existing records stay visible and local delete and clear update the list", async ({ page }) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  await expect(page.getByText("Isolated mobile history.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Isolated desktop history.", { exact: true })).toBeVisible();
+  const items = page.getByRole("listitem");
+  await expect(items).toHaveCount(2);
+  await expect(items.first()).toContainText("Mobile");
+  await expect(items.last()).toContainText("Desktop");
+  await items.first().getByRole("button").click();
+  await page.getByRole("dialog").getByRole("button", { name: "Excluir", exact: true }).click();
+  await expect(items).toHaveCount(1);
+  await page.getByRole("button", { name: "Limpar histórico", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Excluir", exact: true }).click();
+  await expect(page.getByText("Nenhuma transcrição ainda.", { exact: true })).toBeVisible();
+});
 
 test("quota: a signed-in startup shows loading until the quota arrives", async ({ page }) => {
   await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();

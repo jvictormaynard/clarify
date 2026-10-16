@@ -5,6 +5,7 @@ import { Titlebar } from "./components/titlebar";
 import { Button } from "./components/ui";
 import { GeneralPage } from "./pages/general-page";
 import { AccountPage } from "./pages/account-page";
+import { HistoryPage } from "./pages/history-page";
 import { OnboardingPage } from "./pages/onboarding-page";
 import { DictationPage } from "./pages/dictation-page";
 import { TextPage } from "./pages/text-page";
@@ -17,6 +18,7 @@ import { useSettings } from "./settings/use-settings";
 
 const pageComponents = {
   account: AccountPage,
+  history: HistoryPage,
   general: GeneralPage,
   dictation: DictationPage,
   text: TextPage,

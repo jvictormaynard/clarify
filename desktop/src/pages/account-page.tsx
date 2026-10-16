@@ -49,7 +49,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
           {account.usage.hosted_available === false && <p className="hint">{t("O processamento gratuito está indisponível no momento.")}</p>}
         </Section>
         <Section title={t("Dicionário compartilhado")}>
-          <p className="hint">{t("Suas palavras são sincronizadas automaticamente. Atalhos, chaves e histórico permanecem neste computador.")}</p>
+          <p className="hint">{t("Seu dicionário e as novas transcrições da conta são sincronizados automaticamente. Atalhos e chaves permanecem neste computador.")}</p>
           {account.dictionaryConflict && <>
             <p className="hint">{t("A escolha abaixo se aplica somente às palavras alteradas nos dois dispositivos. As outras alterações serão combinadas.")}</p>
             <Button onClick={() => command("sync-local")}>{t("Manter as versões deste computador")}</Button>
@@ -63,7 +63,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
             <Button onClick={() => setConfirmation("logout")}>{t("Sair da conta")}</Button>
           </Section>
           <Section title={t("Excluir conta")}>
-            <p className="hint">{t("Excluir a conta remove seu dicionário compartilhado e o acesso ao serviço. Esta ação não pode ser desfeita. O histórico local será mantido.")}</p>
+            <p className="hint">{t("Excluir a conta remove o dicionário e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos.")}</p>
             <Button className="destructive" onClick={() => setConfirmation("delete")}>{t("Excluir conta")}</Button>
           </Section>
         </details>
@@ -72,7 +72,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
     <Confirm open={!!confirmation} onOpenChange={open => { if (!open) setConfirmation(null); }}
       title={t(confirmation === "delete" ? "Excluir conta" : "Sair da conta")}
       description={t(confirmation === "delete"
-        ? "Excluir a conta remove seu dicionário compartilhado e o acesso ao serviço. Esta ação não pode ser desfeita. O histórico local será mantido."
+        ? "Excluir a conta remove o dicionário e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos."
         : "Ao sair, o Clarify volta ao dicionário e ao processamento locais. As palavras da conta ficam separadas por conta neste computador.")}>
       <Button autoFocus disabled={account.busy || busy} onClick={() => setConfirmation(null)}>{t("Cancelar")}</Button>
       <Button className={confirmation === "delete" ? "destructive" : ""} disabled={account.busy || busy}

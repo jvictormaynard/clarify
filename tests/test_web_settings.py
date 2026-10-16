@@ -51,6 +51,40 @@ class WebSettingsTests(unittest.TestCase):
         self.assertNotIn("providerApiKey", serialized)
         self.assertEqual(response["id"], 7)
 
+    def test_existing_history_is_visible_with_disabled_recording_and_delete_stays_local(
+        self,
+    ):
+        from history_store import HistoryRecord, HistoryStore
+
+        store = HistoryStore(
+            self.settings._history.local.path, enabled=True, retention_days=None
+        )
+        record = HistoryRecord(raw_text="Isolated legacy record.")
+        store.append(record)
+        snapshot = self.request("snapshot")["result"]
+        self.assertFalse(snapshot["historyEnabled"])
+        self.assertEqual(
+            snapshot["historyEntries"][0]["text"], "Isolated legacy record."
+        )
+        self.assertTrue(snapshot["historyEntries"][0]["id"].startswith("local:"))
+        self.assertEqual(
+            self.request("deleteHistoryEntry", "local:" + record.id)["result"][
+                "historyEntries"
+            ],
+            [],
+        )
+
+    def test_history_clear_removes_only_local_records_in_guest_mode(self):
+        from history_store import HistoryRecord, HistoryStore
+
+        store = HistoryStore(self.settings._history.local.path, enabled=True)
+        store.append(HistoryRecord(raw_text="Local only."))
+        with patch.object(self.settings._account, "request") as request:
+            self.assertEqual(
+                self.request("clearHistory")["result"]["historyEntries"], []
+            )
+            request.assert_not_called()
+
     def test_automatic_update_flag_is_an_optional_saved_draft(self):
         self.assertFalse(self.request("snapshot")["result"]["automaticUpdates"])
         state = self.request("setAutomaticUpdates", True)["result"]
