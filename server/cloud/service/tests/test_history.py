@@ -1,7 +1,7 @@
 import copy
 import uuid
-from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from threading import Barrier, Event
 from unittest import mock, skipUnless
 
 from allauth.account.models import EmailAddress
@@ -329,3 +329,62 @@ class HistoryConcurrencyTests(TransactionTestCase):
             user=self.user, record_id="mobile-1"
         )
         self.assertIsNone(row.payload)
+
+    def test_account_delete_locks_parent_before_collecting_history_children(self):
+        from django.db.models.query import QuerySet
+        from rest_framework.exceptions import PermissionDenied
+        from cloud.service import history
+        from cloud.service.models import HistoryEntry
+
+        children_removed, release_delete, sync_started = Event(), Event(), Event()
+        original = QuerySet._raw_delete
+
+        def pause_after_children(query, using):
+            result = original(query, using)
+            if query.model is HistoryEntry:
+                children_removed.set()
+                if not release_delete.wait(timeout=5):
+                    raise RuntimeError("Test deletion release timed out")
+            return result
+
+        def remove_account():
+            close_old_connections()
+            try:
+                client = APIClient()
+                client.force_authenticate(self.user)
+                return client.delete(
+                    "/v1/account", {"confirm": True}, format="json"
+                ).status_code
+            finally:
+                connections.close_all()
+
+        def sync_during_delete():
+            close_old_connections()
+            try:
+                sync_started.set()
+                try:
+                    history.synchronize(self.user, self.payload(upserts=[entry()]))
+                    return "inserted"
+                except PermissionDenied:
+                    return "account_deleted"
+            finally:
+                connections.close_all()
+
+        with (
+            mock.patch.object(QuerySet, "_raw_delete", pause_after_children),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
+            removal = pool.submit(remove_account)
+            try:
+                self.assertTrue(children_removed.wait(timeout=5))
+                syncing = pool.submit(sync_during_delete)
+                self.assertTrue(sync_started.wait(timeout=5))
+                # A previously verified request cannot insert children after
+                # Django's deletion collector has passed them.
+                with self.assertRaises(TimeoutError):
+                    syncing.result(timeout=0.25)
+            finally:
+                release_delete.set()
+            self.assertEqual(removal.result(timeout=5), 204)
+            self.assertEqual(syncing.result(timeout=5), "account_deleted")
+        self.assertFalse(HistoryEntry.objects.filter(user_id=self.user.pk).exists())

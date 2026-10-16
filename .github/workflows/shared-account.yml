@@ -59,7 +59,8 @@ jobs:
     env:
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
-      DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      CLARIFY_IOS_RUNTIME: iOS-26-5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
@@ -70,6 +71,10 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run test:native
+      - name: Test native keyboard and library integration
+        env:
+          CLARIFY_NATIVE_TESTS: '1'
+        run: node scripts/test-keyboard-ui.cjs
       - run: npx expo prebuild --clean --platform ios --no-install
       - run: pod install --project-directory=ios
       - name: Compile app and extensions without signing or upload

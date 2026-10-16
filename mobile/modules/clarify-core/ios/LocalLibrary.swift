@@ -119,6 +119,7 @@ struct HistorySyncResponse: Codable {
   func validate(after cursor: Int64) throws {
     guard self.cursor >= cursor, entries.count + deleted.count <= 20,
       !hasMore || self.cursor > cursor,
+      (entries.isEmpty && deleted.isEmpty) || self.cursor > cursor,
       Set(entries.map(\.id)).count == entries.count, Set(deleted).count == deleted.count,
       Set(entries.map(\.id)).isDisjoint(with: deleted),
       deleted.allSatisfy(HistoryEntry.validID) else { throw ClarifyError(L("Resposta inválida do Clarify.")) }

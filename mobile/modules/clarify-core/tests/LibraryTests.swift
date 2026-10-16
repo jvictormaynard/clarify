@@ -97,6 +97,23 @@ final class LibraryTests: XCTestCase {
     XCTAssertEqual(try library.history().entries, [legacy])
     XCTAssertEqual(try library.historyBatch(scope: "https://one.test|user-a").upserts, [owned])
   }
+  func testHistoryChangesWithoutCursorProgressCannotAcknowledgePendingWork() throws {
+    let root = try root(); defer { try? FileManager.default.removeItem(at: root) }
+    let library = try LocalLibrary(root: root)
+    let scope = "https://one.test|user-a"
+    let pending = HistoryEntry(id: "pending", createdAt: 2000, transcript: "original", text: "Local.", rewritten: true)
+    let remote = HistoryEntry(id: "remote", createdAt: 3000, transcript: "remote", text: "Remote.", rewritten: true)
+    try library.record(pending, scope: scope)
+    let batch = try library.historyBatch(scope: scope)
+    for response in [
+      HistorySyncResponse(cursor: 0, hasMore: false, entries: [remote], deleted: []),
+      HistorySyncResponse(cursor: 0, hasMore: false, entries: [], deleted: [pending.id])
+    ] {
+      XCTAssertThrowsError(try library.applyHistory(response, batch: batch, scope: scope))
+      XCTAssertEqual(try library.historyBatch(scope: scope), batch)
+      XCTAssertEqual(try library.history(scope: scope).entries, [pending])
+    }
+  }
   func testHistorySyncAcknowledgementAndCursorPersistTogetherAndDeletionWins() throws {
     let root = try root(); defer { try? FileManager.default.removeItem(at: root) }
     let scope = "https://one.test|user-a"
