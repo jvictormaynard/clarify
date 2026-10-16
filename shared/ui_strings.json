@@ -4298,5 +4298,85 @@
     "pt": "Não foi possível abrir o teste do teclado. Tente novamente.",
     "en": "Could not open the keyboard test. Try again.",
     "es": "No se pudo abrir la prueba del teclado. Inténtalo de nuevo."
+  },
+  "As novas transcrições da conta são sincronizadas automaticamente. Os registros antigos permanecem neste dispositivo.": {
+    "pt": "As novas transcrições da conta são sincronizadas automaticamente. Os registros antigos permanecem neste dispositivo.",
+    "en": "New account transcriptions sync automatically. Older records stay on this device.",
+    "es": "Las nuevas transcripciones de la cuenta se sincronizan automáticamente. Los registros anteriores permanecen en este dispositivo."
+  },
+  "Seu histórico permanece somente neste computador.": {
+    "pt": "Seu histórico permanece somente neste computador.",
+    "en": "Your history stays only on this computer.",
+    "es": "Tu historial permanece solo en este equipo."
+  },
+  "Limpar histórico": {
+    "pt": "Limpar histórico",
+    "en": "Clear history",
+    "es": "Borrar historial"
+  },
+  "Sem texto": {
+    "pt": "Sem texto",
+    "en": "No text",
+    "es": "Sin texto"
+  },
+  "Nenhuma transcrição ainda.": {
+    "pt": "Nenhuma transcrição ainda.",
+    "en": "No transcriptions yet.",
+    "es": "Todavía no hay transcripciones."
+  },
+  "A exclusão das transcrições da conta será sincronizada nos seus dispositivos. Os registros locais serão removidos apenas deste computador.": {
+    "pt": "A exclusão das transcrições da conta será sincronizada nos seus dispositivos. Os registros locais serão removidos apenas deste computador.",
+    "en": "Deleted account transcriptions will be removed from your devices. Local records will be removed only from this computer.",
+    "es": "Las transcripciones eliminadas de la cuenta se borrarán de tus dispositivos. Los registros locales solo se eliminarán de este equipo."
+  },
+  "Esta ação remove os registros deste computador.": {
+    "pt": "Esta ação remove os registros deste computador.",
+    "en": "This removes the records from this computer.",
+    "es": "Esta acción elimina los registros de este equipo."
+  },
+  "Seu dicionário e as novas transcrições da conta são sincronizados automaticamente. Atalhos e chaves permanecem neste computador.": {
+    "pt": "Seu dicionário e as novas transcrições da conta são sincronizados automaticamente. Atalhos e chaves permanecem neste computador.",
+    "en": "Your dictionary and new account transcriptions sync automatically. Snippets and keys stay on this computer.",
+    "es": "Tu diccionario y las nuevas transcripciones de la cuenta se sincronizan automáticamente. Los atajos y las claves permanecen en este equipo."
+  },
+  "Não foi possível sincronizar o histórico.": {
+    "pt": "Não foi possível sincronizar o histórico.",
+    "en": "Could not sync history.",
+    "es": "No se pudo sincronizar el historial."
+  },
+  "A conta mudou. Abra o histórico novamente.": {
+    "pt": "A conta mudou. Abra o histórico novamente.",
+    "en": "The account changed. Open history again.",
+    "es": "La cuenta cambió. Abre el historial de nuevo."
+  },
+  "Este texto será removido do histórico da sua conta em todos os dispositivos.": {
+    "pt": "Este texto será removido do histórico da sua conta em todos os dispositivos.",
+    "en": "This text will be removed from your account history on all devices.",
+    "es": "Este texto se eliminará del historial de tu cuenta en todos los dispositivos."
+  },
+  "Seus próximos ditados aparecerão aqui e nos dispositivos conectados à sua conta.": {
+    "pt": "Seus próximos ditados aparecerão aqui e nos dispositivos conectados à sua conta.",
+    "en": "Your next dictations will appear here and on devices signed in to your account.",
+    "es": "Tus próximos dictados aparecerán aquí y en los dispositivos conectados a tu cuenta."
+  },
+  "Novos ditados da conta são sincronizados entre seus dispositivos. Registros antigos e ditados sem conta permanecem neste iPhone. Os áudios são removidos após o processamento.": {
+    "pt": "Novos ditados da conta são sincronizados entre seus dispositivos. Registros antigos e ditados sem conta permanecem neste iPhone. Os áudios são removidos após o processamento.",
+    "en": "New account dictations sync across your devices. Older records and dictations made without an account stay on this iPhone. Audio is removed after processing.",
+    "es": "Los nuevos dictados de la cuenta se sincronizan entre tus dispositivos. Los registros anteriores y los dictados sin cuenta permanecen en este iPhone. El audio se elimina después del procesamiento."
+  },
+  "O histórico guarda a transcrição original e o texto revisado somente neste iPhone. Os áudios são removidos após o processamento. Sua chave fica no armazenamento seguro deste iPhone.": {
+    "pt": "O histórico guarda a transcrição original e o texto revisado somente neste iPhone. Os áudios são removidos após o processamento. Sua chave fica no armazenamento seguro deste iPhone.",
+    "en": "History keeps the original transcript and revised text only on this iPhone. Audio is removed after processing. Your key stays in secure storage on this iPhone.",
+    "es": "El historial guarda la transcripción original y el texto revisado solo en este iPhone. El audio se elimina después del procesamiento. Tu clave permanece en el almacenamiento seguro de este iPhone."
+  },
+  "Esta ação apaga o histórico da conta em todos os dispositivos e os registros locais deste iPhone. Seu dicionário será mantido.": {
+    "pt": "Esta ação apaga o histórico da conta em todos os dispositivos e os registros locais deste iPhone. Seu dicionário será mantido.",
+    "en": "This removes account history on all devices and local records on this iPhone. Your dictionary will be kept.",
+    "es": "Esta acción elimina el historial de la cuenta en todos los dispositivos y los registros locales de este iPhone. Tu diccionario se conservará."
+  },
+  "Excluir a conta remove o dicionário e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos.": {
+    "pt": "Excluir a conta remove o dicionário e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos.",
+    "en": "Deleting your account removes the shared dictionary, shared history and service access. This cannot be undone. Local records will be kept.",
+    "es": "Eliminar tu cuenta borra el diccionario y el historial compartidos y el acceso al servicio. Esta acción no se puede deshacer. Los registros locales se conservarán."
   }
 }

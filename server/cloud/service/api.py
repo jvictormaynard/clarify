@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView, exception_handler as drf_handler
 
 from dictionary_snippets import DictionaryEntry, DictionarySnippets
-from . import audio, groq, ledger
+from . import audio, groq, history, ledger
 from .middleware import take_rate
 from .models import Dictionary, Operation
 
@@ -81,6 +81,16 @@ class AccountView(ServiceView):
 class UsageView(ServiceView):
     def get(self, request):
         return Response(ledger.usage(request.user))
+
+
+class HistorySyncView(ServiceView):
+    def post(self, request):
+        try:
+            return Response(history.synchronize(request.user, request.data))
+        except history.Conflict:
+            return Response({"code": "history_conflict"}, status=409)
+        except history.Capacity:
+            return Response({"code": "history_full"}, status=507)
 
 
 def validate_entries(entries):

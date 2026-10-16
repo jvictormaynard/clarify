@@ -43,6 +43,45 @@ class Dictionary(models.Model):
     entries = models.JSONField(default=list)
 
 
+class HistoryState(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True
+    )
+    revision = models.PositiveBigIntegerField(default=0)
+
+
+class HistoryEntry(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    record_id = models.CharField(max_length=128)
+    revision = models.PositiveBigIntegerField()
+    # NULL is a permanent tombstone: erase text without allowing stale clients
+    # to restore it. History is independent of the short-lived billing result.
+    payload = models.JSONField(null=True)
+    byte_size = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "record_id"], name="one_account_history_entry"
+            )
+        ]
+        indexes = [
+            models.Index(fields=["user", "revision"], name="history_user_revision")
+        ]
+
+
+class HistoryClear(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    operation_id = models.UUIDField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "operation_id"], name="one_account_history_clear"
+            )
+        ]
+
+
 class Allowance(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     month = models.DateField()

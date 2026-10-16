@@ -5,8 +5,10 @@ Production keys, database contents, backups and administrator access are private
 See the [privacy notice and account deletion instructions](../PRIVACY.md).
 The server is optional: local inference and personal provider keys still work
 without an account. The iOS app currently supports personal Groq keys, not local
-inference. This increment shares vocabulary and hosted audio allowance. History,
-snippets and personal provider keys remain on each device.
+inference. Accounts share vocabulary, hosted audio allowance and new account
+transcriptions. Pre-upgrade records and guest history stay on their original
+device. Snippets and personal provider keys are not synchronized. Account
+history uses [bounded, idempotent synchronization](../docs/history-sync.md).
 
 ## Run and verify
 
@@ -126,10 +128,15 @@ caller-supplied prompt, model, URL or tool option.
 - Duplicate operation ID and identical content reuse a result for five minutes.
   Different content is rejected. Expired IDs cannot repeat paid work while the
   operation record exists. Clients must reuse their UUID when retrying.
-- Result text is cached for five minutes, then swept within roughly one minute.
-  No account history endpoint. Operation metadata is removed after 31 days;
+- Processing result text is cached for five minutes, then swept within roughly
+  one minute. This retry cache is independent of synchronized account history.
+  `/v1/history/sync` stores new account transcriptions until explicitly deleted.
+  Each account has bounded storage; permanent tombstones prevent stale uploads
+  from restoring deleted entries. History synchronization does not call a
+  provider or change audio allowance. Operation metadata is removed after 31 days;
   monthly aggregate cost records remain for budget accounting. Account deletion
-  removes the user and dictionary, removes cached text/content hashes and
+  removes the user, dictionary, account history and synchronization metadata,
+  removes cached processing text/content hashes and
   detaches accounting records. Backup retention must be configured by the host.
 - No transcripts, audio, credentials, HTTP headers or provider error bodies in
   application/access logs. The default proxy limiter uses the connection peer,
@@ -149,5 +156,5 @@ session revocation and account deletion need staging acceptance. No automatic
 TestFlight upload is part of this change. The existing private-API app-return
 experiment is limited to TestFlight; remove it before a public App Store release.
 Public launch also needs an accurate privacy policy, account deletion instructions
-and a tested backup/restore policy. Google/Apple login, history sync and billing
+and a tested backup/restore policy. Google/Apple login and billing
 are separate increments.

@@ -3,7 +3,11 @@
 Expo application plus a small Swift keyboard extension. Use a Clarify account or
 a personal Groq API key for speech recognition and rewriting. Native bottom tabs contain
 Home, Dicionário and Conta. Ajustes opens from the Account tab; signed-out users
-see a short invitation and one sign-in/create-account button. History and vocabulary are stored locally in SQLite.
+see a short invitation and one sign-in/create-account button. SQLite keeps
+vocabulary and an offline history copy. New signed-in transcriptions sync
+automatically with desktop through the account. Guest and pre-upgrade records
+remain local and are never uploaded. Account caches are isolated by endpoint and
+user; signing out restores local history. See [history synchronization](../docs/history-sync.md).
 Version 0.5.0 (20) shows the email field directly before the bottom tabs.
 The same emailed code enters an existing account or creates a new one, without
 a password. Use **Continuar sem conta** to configure a personal Groq key.

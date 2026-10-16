@@ -1,6 +1,6 @@
 # Clarify privacy notice
 
-Effective date: 12 October 2026.
+Effective date: 16 October 2026.
 
 Clarify is an open-source app maintained by João Victor Maynard Mota. This
 notice describes the optional hosted beta at `clarify-api.victormaynard.com`
@@ -19,21 +19,24 @@ operators and policies.
   then sends the transcript and vocabulary to Groq for rewriting. The result
   returns to the device.
 
-History and snippets remain on each device in this version. Signing in
-automatically synchronizes the account dictionary so it is available on another
-device. Choose Continue without an account to keep vocabulary on the device.
-Personal provider keys are not synchronized.
+Signing in automatically synchronizes the account dictionary and new account
+transcriptions, including their original and revised text, timestamp and source
+device. An offline copy remains on each signed-in device. Pre-upgrade history,
+transcriptions made without an account, snippets and personal provider keys
+remain on the original device and are not uploaded. Choose Continue without an
+account to keep vocabulary and history local. Earlier app versions do not
+synchronize history.
 
 ## Account information and security
 
 The service stores the email address, verified account status, sessions,
-account dictionary, and processing usage needed to enforce limits.
+account dictionary, synchronized history, and processing usage needed to enforce limits.
 Resend delivers the email codes. Enter the code in the app; the email does not
 require a browser link. Codes expire after 10 minutes. Sessions expire after
 14 days and can be revoked by signing out.
 
 The service uses HTTPS and a private PostgreSQL database hosted on Railway.
-Authorized service operators can access server data; dictionary sync is not
+Authorized service operators can access server data; dictionary and history sync are not
 end-to-end encrypted. Windows protects stored keys and account sessions with
 current-user DPAPI. iOS stores credentials in Keychain. Desktop source runs on
 Linux and macOS use owner-restricted credential files and are experimental.
@@ -44,14 +47,21 @@ Uploaded audio uses temporary files removed at the end of request processing.
 An interrupted process can leave temporary files until its container is removed.
 The server caches results for five minutes to avoid charging twice for a retry;
 periodic cleanup removes expired text. Operation metadata is kept for 31 days.
+Synchronized account history is stored separately until you delete entries,
+clear account history, or delete the account. Deletion removes stored transcript
+text and retains only a record identifier and synchronization revision so an
+offline device cannot restore a known deleted entry. Account deletion removes
+these synchronization records too. Local caches preserve pending changes when
+offline and synchronize automatically when the app can reach the service.
 Monthly aggregate budget counters are retained for accounting and abuse control.
 Application logs exclude audio, transcripts, credentials and request headers.
 Hosting and provider services can retain their own connection and usage metadata.
 
 Use the account controls in Settings / Ajustes to delete the account and confirm.
-This removes the account and its hosted dictionary, clears cached text and
-content hashes, and detaches processing accounting records. It does not erase
-local device history. Clear local history separately in the app. Daily database
+This removes the account, hosted dictionary, synchronized history and its local
+cache on the device performing deletion, clears processing text and content
+hashes, and detaches processing accounting records. It does not erase guest or
+pre-upgrade local history. Clear local history separately in the app. Daily database
 backups can retain deleted data for up to six days before rotation. Restoring
 a backup requires reapplying subsequent deletion requests.
 

@@ -5,6 +5,7 @@ from .service.api import (
     AccountView,
     DictionaryView,
     DictationView,
+    HistorySyncView,
     TextView,
     UsageView,
     health,
@@ -20,6 +21,7 @@ urlpatterns = [
     path("v1/account", AccountView.as_view()),
     path("v1/usage", UsageView.as_view()),
     path("v1/dictionary", DictionaryView.as_view()),
+    path("v1/history/sync", HistorySyncView.as_view()),
     path("v1/dictations", DictationView.as_view()),
     path("v1/text", TextView.as_view()),
 ]
