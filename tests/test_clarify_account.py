@@ -323,6 +323,40 @@ class AccountTests(unittest.TestCase):
                 self.assertTrue(self.account.managed)
                 self.assertIsNone(self.account.secrets.get("clarify_account"))
 
+    def test_expired_processing_response_cannot_restore_session_or_usage(self):
+        for action in ("dictation", "text"):
+            for status in (401, 403):
+                with self.subTest(action=action, status=status):
+                    error = self.processing_failure(
+                        action,
+                        status,
+                        {
+                            "meta": {"session_token": "rejected-response-token"},
+                            "usage": {"used_ms": 999},
+                        },
+                    )
+                    self.assertEqual(str(error), "Entre na conta novamente.")
+                    self.assertIsNone(self.account.secrets.get("clarify_account"))
+                    self.assertEqual(self.account.snapshot()["usage"], {})
+                    self.assertFalse(self.account.hosted)
+                    self.assertTrue(self.account.managed)
+
+    def test_malformed_processing_metadata_does_not_hide_error_or_usage(self):
+        for meta in (None, [], "private upstream body", 1):
+            with self.subTest(meta=meta):
+                error = self.processing_failure(
+                    "dictation",
+                    422,
+                    {"code": "no_speech", "meta": meta, "usage": {"used_ms": 1000}},
+                )
+                self.assertEqual(
+                    str(error), "Nenhuma fala foi reconhecida. Tente falar novamente."
+                )
+                self.assertEqual(
+                    self.account.secrets.get("clarify_account"), "test-session-only"
+                )
+                self.assertEqual(self.account.snapshot()["usage"], {"used_ms": 1000})
+
     def test_non_json_processing_errors_still_use_http_status_and_revoke_auth(self):
         for action, status, expected in [
             (

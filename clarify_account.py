@@ -378,14 +378,18 @@ class AccountService:
                 self._usage_generation += 1
                 self._generation += 1
                 self._save()
-            new_token = result.get("meta", {}).get("session_token")
-            if new_token:
-                self.secrets.set(SECRET_ID, new_token)
-            if isinstance(result.get("usage"), dict) and (
-                method == "POST" or usage_generation == self._usage_generation
-            ):
-                self._usage = result["usage"]
-                self._usage_generation += 1
+            else:
+                meta = result.get("meta")
+                new_token = (
+                    meta.get("session_token") if isinstance(meta, dict) else None
+                )
+                if isinstance(new_token, str) and new_token:
+                    self.secrets.set(SECRET_ID, new_token)
+                if isinstance(result.get("usage"), dict) and (
+                    method == "POST" or usage_generation == self._usage_generation
+                ):
+                    self._usage = result["usage"]
+                    self._usage_generation += 1
         if cancel:
             cancel.raise_if_cancelled()
         return response.status_code, result
