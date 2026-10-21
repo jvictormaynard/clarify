@@ -155,18 +155,23 @@ final class CloudAccount {
     if let transport { (data, response) = try await transport(request) }
     else { (data, response) = try await session.data(for: request) }
     guard let response = response as? HTTPURLResponse, data.count <= 512 * 1024 else { throw ClarifyError(L("Resposta inválida do Clarify.")) }
-    let result = data.isEmpty ? [:] : try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    // A proxy can return HTML or malformed JSON for an HTTP failure. Preserve
+    // the status recovery (especially session revocation) without exposing it.
+    let decoded: [String: Any]? = data.isEmpty ? [:] : (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    let result = decoded ?? [:]
     try locked {
       guard state.endpoint == identity.0, generation == identity.1, readCredential() == identity.2 else { throw CancellationError() }
-      if [401, 403].contains(response.statusCode), path.hasPrefix("/v1/") {
+      let expired = [401, 403].contains(response.statusCode) && path.hasPrefix("/v1/")
+      if expired {
         try saveCredential(nil)
         state.historyUserID = state.historyUserID ?? state.userID
         state.userID = nil; state.sync = false; usage = [:]; generation &+= 1; try persist()
       }
-      if let meta = result["meta"] as? [String: Any], let token = meta["session_token"] as? String { try saveCredential(token) }
-      if let updatedUsage = result["usage"] as? [String: Any] { usage = updatedUsage }
+      if !expired, let meta = result["meta"] as? [String: Any], let token = meta["session_token"] as? String { try saveCredential(token) }
+      if !expired, let updatedUsage = result["usage"] as? [String: Any] { usage = updatedUsage }
     }
     try Task.checkCancellation()
+    if response.statusCode == 200, decoded == nil { throw ClarifyError(L("Resposta inválida do Clarify.")) }
     return (response.statusCode, result)
   }
   @MainActor private func refresh() async throws {
@@ -330,6 +335,46 @@ final class CloudAccount {
     do { try await syncImpl(library) }
     catch { locked { syncError = L("Não foi possível sincronizar. As palavras salvas neste dispositivo foram preservadas.") } }
   }
+  static func processingFailure(_ status: Int, result: [String: Any], operationID: String) -> ClarifyError {
+    let messages = [
+      "authentication_required": "Entre na conta novamente.",
+      "no_speech": "Nenhuma fala foi reconhecida. Tente falar novamente.",
+      "transcription_failed": "Não foi possível transcrever o áudio. Tente novamente.",
+      "text_processing_failed": "Não foi possível processar o texto. Tente novamente.",
+      "processing_failed": "Não foi possível concluir o processamento. Tente novamente.",
+      "invalid_audio": "Grave um áudio válido de até 5 minutos.",
+      "invalid_duration": "Grave um áudio válido de até 5 minutos.",
+      "invalid_audio_request": "Grave um áudio válido de até 5 minutos.",
+      "invalid_text_request": "Selecione um texto válido para processar.",
+      "allowance_exhausted": "Sua cota foi atingida.",
+      "rate_limited": "Muitas solicitações. Aguarde um momento.",
+      "account_busy": "Já existe um processamento em andamento.",
+      "operation_pending": "Já existe um processamento em andamento.",
+      "service_busy": "O Clarify está ocupado. Aguarde um momento.",
+      "hosted_unavailable": "O processamento do Clarify está indisponível no momento.",
+      "service_budget_exhausted": "O processamento do Clarify está indisponível no momento.",
+      "operation_conflict": "Esta solicitação não pode ser repetida. Inicie uma nova ação.",
+      "operation_expired": "Esta solicitação não pode ser repetida. Inicie uma nova ação."
+    ]
+    // HTTP authentication failures override a contradictory payload. The
+    // perform boundary has already invalidated the expired session.
+    let rawCode = [401, 403].contains(status) ? "authentication_required" : result["code"] as? String
+    let code = rawCode.flatMap { messages[$0] == nil ? nil : $0 }
+    let fallback: String
+    switch status {
+    case 401, 403: fallback = "Entre na conta novamente."
+    case 429: fallback = "Muitas solicitações. Aguarde um momento."
+    case 503: fallback = "O processamento do Clarify está indisponível no momento."
+    case 400: fallback = "Grave um áudio válido de até 5 minutos."
+    default: fallback = "Não foi possível concluir o processamento. Tente novamente."
+    }
+    let phase = (result["phase"] as? String).flatMap { ["validation", "admission", "transcription", "processing", "text"].contains($0) ? $0 : nil }
+    let receivedOperation = (result["operation_id"] as? String).flatMap(UUID.init(uuidString:))
+    let expectedOperation = UUID(uuidString: operationID)
+    let diagnosticOperation = receivedOperation != nil && receivedOperation == expectedOperation ? receivedOperation?.uuidString : nil
+    return ClarifyError(code.flatMap { messages[$0] } ?? fallback, code: code, phase: phase,
+      operationID: diagnosticOperation, status: status)
+  }
   @MainActor func dictate(_ audio: URL, operationID: String, library: LocalLibrary) async throws -> CloudDictation {
     guard hosted else { throw ClarifyError(L("Entre na conta novamente.")) }
     try await waitForAutomaticRefresh()
@@ -338,6 +383,7 @@ final class CloudAccount {
       do { try await syncImpl(library) }
       catch { try Task.checkCancellation(); locked { syncError = L("O ditado usou a última versão do dicionário da conta. Há palavras pendentes de sincronização.") } }
     }
+    guard hosted else { throw ClarifyError(L("Entre na conta novamente.")) }
     let bytes = try Data(contentsOf: audio)
     guard bytes.count <= 24 * 1024 * 1024, UUID(uuidString: operationID) != nil else { throw ClarifyError(L("Grave um trecho menor.")) }
     let boundary = "Clarify-\(UUID().uuidString)"
@@ -348,16 +394,10 @@ final class CloudAccount {
     body.append(bytes); append("\r\n--\(boundary)--\r\n")
     let (code, result) = try await perform("POST", "/v1/dictations", body: body, contentType: "multipart/form-data; boundary=\(boundary)")
     guard code == 200 else {
-      switch code {
-      case 401, 403: throw ClarifyError(L("Entre na conta novamente."))
-      case 429: throw ClarifyError(L("Sua cota ou o limite de solicitações foi atingido. Aguarde ou use sua própria chave."))
-      case 503: throw ClarifyError(L("O processamento do Clarify está indisponível. Tente mais tarde ou use sua própria chave."))
-      case 400: throw ClarifyError(L("Grave um áudio válido de até 5 minutos."))
-      default: throw ClarifyError(L("Não foi possível processar o áudio. A cota pode ter sido consumida."))
-      }
+      throw Self.processingFailure(code, result: result, operationID: operationID)
     }
-    let outcome = try JSONDecoder().decode(CloudDictation.self, from: JSONSerialization.data(withJSONObject: result))
-    guard !outcome.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+    guard let outcome = try? JSONDecoder().decode(CloudDictation.self, from: JSONSerialization.data(withJSONObject: result)),
+      !outcome.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
       !outcome.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ClarifyError(L("O Clarify retornou um resultado inválido.")) }
     return outcome
   }

@@ -155,6 +155,14 @@ final class ContractsTests: XCTestCase {
     XCTAssertEqual(state.phase, .locked)
     XCTAssertEqual(state.operationID, "existing")
     XCTAssertEqual(state.libraryRevision, 0)
+    XCTAssertNil(state.errorCode); XCTAssertNil(state.errorPhase); XCTAssertNil(state.errorStatus)
+  }
+  func testErrorDiagnosticsSurviveTheNonsecretKeyboardStateBridge() throws {
+    var state = DictationSnapshot(); state.phase = .error; state.operationID = UUID().uuidString
+    state.message = "Failure"; state.errorCode = "no_speech"; state.errorPhase = "transcription"; state.errorStatus = 422
+    let decoded = try JSONDecoder().decode(DictationSnapshot.self, from: JSONEncoder().encode(state))
+    XCTAssertEqual(decoded.message, state.message); XCTAssertEqual(decoded.operationID, state.operationID)
+    XCTAssertEqual(decoded.errorCode, "no_speech"); XCTAssertEqual(decoded.errorPhase, "transcription"); XCTAssertEqual(decoded.errorStatus, 422)
   }
   func testAtomicBridgeKeepsCommandsReceiptsAndStateSeparate() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
