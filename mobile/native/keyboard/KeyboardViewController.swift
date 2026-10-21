@@ -490,9 +490,19 @@ class KeyboardViewController: UIInputViewController {
     detail.numberOfLines = showingError ? 3 : 1
     detail.lineBreakMode = showingError ? .byWordWrapping : .byTruncatingTail
     detail.textColor = showingError ? .label : .secondaryLabel
-    detailTop?.isActive = !showingError; detailCenter?.isActive = showingError
+    // Remove an alternative before enabling its replacement. Activating both
+    // even briefly imposes incompatible required positions on the same label.
+    let vertical = showingError ? detailCenter : detailTop
+    if vertical?.isActive == false {
+      (showingError ? detailTop : detailCenter)?.isActive = false
+      vertical?.isActive = true
+    }
     let wideError = showingError && insert.isHidden
-    detailTrailing?.isActive = !wideError; errorTrailing?.isActive = wideError
+    let trailing = wideError ? errorTrailing : detailTrailing
+    if trailing?.isActive == false {
+      (wideError ? detailTrailing : errorTrailing)?.isActive = false
+      trailing?.isActive = true
+    }
   }
   private func toggleDictationEdit() {
     guard !state.phase.busy, !applyingDictationEdit, var edit = dictationEdit else { return }

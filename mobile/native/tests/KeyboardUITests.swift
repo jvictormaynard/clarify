@@ -74,6 +74,7 @@ final class KeyboardUITests: XCTestCase {
             try store.write(state, to: "state.json"); keyboard.viewWillAppear(false)
             keyboard.view.frame.size.width = width; keyboard.view.layoutIfNeeded()
             XCTAssertFalse(detail.isHidden); XCTAssertTrue(status.isHidden)
+            XCTAssertFalse(detail.hasAmbiguousLayout, "Wide errors and errors beside Insert need one stable layout")
             XCTAssertEqual(detail.text, state.message); XCTAssertEqual(detail.lineBreakMode, .byWordWrapping)
             let required = (detail.text! as NSString).boundingRect(with: CGSize(width: detail.bounds.width, height: .greatestFiniteMagnitude),
               options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: detail.font!], context: nil).height
@@ -87,6 +88,7 @@ final class KeyboardUITests: XCTestCase {
       var ready = store.snapshot(); ready.phase = .idle; ready.message = nil
       try store.write(ready, to: "state.json"); keyboard.viewWillAppear(false); keyboard.view.layoutIfNeeded()
       XCTAssertEqual(detail.numberOfLines, 1, "Restore the ordinary toolbar after the failure is cleared")
+      XCTAssertFalse(detail.hasAmbiguousLayout, "Error-to-idle must restore a single vertical position")
       var expired = store.snapshot(); expired.phase = .error; expired.configured = false; expired.message = L("Entre na conta novamente.")
       try store.write(expired, to: "state.json"); keyboard.viewWillAppear(false); keyboard.view.layoutIfNeeded()
       XCTAssertFalse(detail.isHidden); XCTAssertEqual(detail.text, expired.message, "An expired account must not suggest switching to a personal key")
