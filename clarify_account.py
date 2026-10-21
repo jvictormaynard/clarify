@@ -31,7 +31,82 @@ SECRET_ID = "clarify_account"
 
 
 class AccountError(RuntimeError):
-    pass
+    def __init__(self, message, *, code="", phase="", operation_id="", status=None):
+        super().__init__(message)
+        self.code = code
+        self.phase = phase
+        self.operation_id = operation_id
+        self.status = status
+
+
+def _processing_error(status, result, *, text=False):
+    """Use bounded service codes, never provider bodies or arbitrary server copy."""
+    unavailable = "O processamento do Clarify está indisponível no momento."
+    invalid_audio = "Grave um áudio válido de até 5 minutos."
+    invalid_text = "Selecione um texto válido para processar."
+    busy = "Já existe um processamento em andamento."
+    replay = (
+        "Esta solicitação não pode ser repetida. Inicie uma nova ação."
+        if text
+        else "Esta solicitação já foi processada. Inicie uma nova gravação."
+    )
+    failure = (
+        "Não foi possível processar o texto. Tente novamente."
+        if text
+        else "Não foi possível transcrever o áudio. Tente novamente."
+    )
+    messages = {
+        "no_speech": "Nenhuma fala foi reconhecida. Tente falar novamente.",
+        "transcription_failed": "Não foi possível transcrever o áudio. Tente novamente.",
+        "text_processing_failed": "Não foi possível processar o texto. Tente novamente.",
+        "processing_failed": "Não foi possível concluir o processamento. Tente novamente.",
+        "authentication_required": "Entre na conta novamente.",
+        "allowance_exhausted": "Sua cota foi atingida.",
+        "rate_limited": "Muitas solicitações. Aguarde um momento.",
+        "account_busy": busy,
+        "service_busy": "O Clarify está ocupado. Aguarde um momento.",
+        "hosted_unavailable": unavailable,
+        "service_budget_exhausted": unavailable,
+        "invalid_audio": invalid_audio,
+        "invalid_duration": invalid_audio,
+        "invalid_audio_request": invalid_audio,
+        "invalid_text_request": invalid_text,
+        "invalid_request": invalid_text if text else invalid_audio,
+        "operation_conflict": replay,
+        "operation_expired": replay,
+        "operation_pending": busy,
+    }
+    code = result.get("code")
+    code = code if isinstance(code, str) and code in messages else ""
+    # Session invalidation in _request takes precedence over an inconsistent body.
+    if status in {401, 403}:
+        code = "authentication_required"
+    message = messages.get(code) or {
+        400: invalid_text if text else invalid_audio,
+        409: busy,
+        410: replay,
+        429: "Sua cota ou o limite de solicitações foi atingido. Aguarde ou use sua própria chave.",
+        503: unavailable,
+    }.get(status, failure)
+    phase = result.get("phase")
+    if not isinstance(phase, str) or phase not in {
+        "validation",
+        "admission",
+        "transcription",
+        "text",
+        "processing",
+    }:
+        phase = ""
+    operation_id = result.get("operation_id")
+    try:
+        if not isinstance(operation_id, str) or len(operation_id) != 36:
+            raise ValueError()
+        operation_id = str(uuid.UUID(operation_id))
+    except ValueError:
+        operation_id = ""
+    return AccountError(
+        message, code=code, phase=phase, operation_id=operation_id, status=status
+    )
 
 
 class DictionaryConflict(AccountError):
@@ -275,9 +350,19 @@ class AccountService:
                 allow_redirects=False,
                 **kwargs,
             )
-            result = response.json() if response.content else {}
+            processing_failure = (
+                path in {"/v1/dictations", "/v1/text"} and response.status_code != 200
+            )
+            try:
+                result = response.json() if response.content else {}
+            except ValueError:
+                if not processing_failure:
+                    raise
+                result = {}
             if not isinstance(result, dict):
-                raise ValueError()
+                if not processing_failure:
+                    raise ValueError()
+                result = {}
         except (requests.RequestException, ValueError):
             raise AccountError(
                 "Não foi possível acessar o Clarify. Verifique a conexão."
@@ -514,19 +599,7 @@ class AccountService:
         if code != 200:
             if code in {401, 403}:
                 dictionary_service.reload()
-            messages = {
-                429: "Sua cota ou o limite de solicitações foi atingido. Aguarde ou use sua própria chave.",
-                401: "Entre na conta novamente.",
-                403: "Entre na conta novamente.",
-                503: "O processamento do Clarify está indisponível. Tente mais tarde ou use sua própria chave.",
-                400: "Grave um áudio válido de até 5 minutos.",
-            }
-            raise AccountError(
-                messages.get(
-                    code,
-                    "Não foi possível processar o áudio. A cota pode ter sido consumida.",
-                )
-            )
+            raise _processing_error(code, result)
         raw, text = result.get("transcript"), result.get("text")
         if not isinstance(raw, str) or not isinstance(text, str) or not text.strip():
             raise AccountError("O Clarify retornou um resultado inválido.")
@@ -557,9 +630,7 @@ class AccountService:
             },
         )
         if code != 200:
-            raise AccountError(
-                "Não foi possível processar o texto pelo Clarify. Verifique sua cota e tente novamente."
-            )
+            raise _processing_error(code, result, text=True)
         value = result.get("text")
         if not isinstance(value, str) or not value.strip():
             raise AccountError("O Clarify retornou um resultado inválido.")
