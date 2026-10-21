@@ -122,7 +122,7 @@ final class ClarifyAudioSession: NSObject {
       hasTap = true
       engine.prepare(); try engine.start()
       state.sessionActive = true
-      if state.phase == .error { state.phase = .idle; state.message = nil }
+      if state.phase == .error { state.phase = .idle; state.message = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil }
       timer?.invalidate()
       timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.tick() }
       publish()
@@ -205,7 +205,7 @@ final class ClarifyAudioSession: NSObject {
     startedAt = captureStart
     state.operationID = id
     state.phase = locked ? .locked : .recording
-    state.text = nil; state.message = nil
+    state.text = nil; state.message = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
     publish()
   }
   private func closeFile() -> URL? {
@@ -287,7 +287,10 @@ final class ClarifyAudioSession: NSObject {
         self.publish()
       } catch {
         guard !Task.isCancelled, self.state.operationID == id else { return }
-        self.fail(error is ClarifyError ? error.localizedDescription : L("Falha de conexão. Verifique a internet e tente novamente."))
+        // The account boundary cancels stale responses without marking this
+        // Task cancelled. End only this still-current clip, not a new recording.
+        if error is CancellationError { self.cancel(); return }
+        self.fail(error is ClarifyError ? error.localizedDescription : L("Falha de conexão. Verifique a internet e tente novamente."), diagnostics: error as? ClarifyError)
       }
     }
   }
@@ -300,16 +303,20 @@ final class ClarifyAudioSession: NSObject {
     cuePlayer?.stop(); cuePlayer = nil
     task?.cancel(); task = nil; startedAt = nil
     if let url = closeFile() { try? FileManager.default.removeItem(at: url) }
-    if state.phase.busy { state.operationID = nil; state.phase = .idle; state.text = nil; state.message = nil }
+    if state.phase.busy {
+      state.operationID = nil; state.phase = .idle; state.text = nil; state.message = nil
+      state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
+    }
     endBackgroundTask()
     publish()
   }
-  private func fail(_ message: String) {
+  private func fail(_ message: String, diagnostics: ClarifyError? = nil) {
     cuePlayer?.stop(); cuePlayer = nil
     task?.cancel(); task = nil; startedAt = nil
     if let url = closeFile() { try? FileManager.default.removeItem(at: url) }
     endBackgroundTask()
     state.phase = .error; state.message = message
+    state.errorCode = diagnostics?.code; state.errorPhase = diagnostics?.phase; state.errorStatus = diagnostics?.status
     publish()
   }
   private func playCue(starting: Bool) {

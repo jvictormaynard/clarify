@@ -12,10 +12,13 @@ struct DictationSnapshot: Codable {
   var operationID: String?
   var text: String?
   var message: String?
+  var errorCode: String?
+  var errorPhase: String?
+  var errorStatus: Int?
   var configured = false
   var libraryRevision = 0
   var isLive: Bool { sessionActive && Date().timeIntervalSince1970 - heartbeat < 3 }
-  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, text, message, configured, libraryRevision }
+  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, text, message, errorCode, errorPhase, errorStatus, configured, libraryRevision }
   init() {}
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -25,6 +28,9 @@ struct DictationSnapshot: Codable {
     operationID = try values.decodeIfPresent(String.self, forKey: .operationID)
     text = try values.decodeIfPresent(String.self, forKey: .text)
     message = try values.decodeIfPresent(String.self, forKey: .message)
+    errorCode = try values.decodeIfPresent(String.self, forKey: .errorCode)
+    errorPhase = try values.decodeIfPresent(String.self, forKey: .errorPhase)
+    errorStatus = try values.decodeIfPresent(Int.self, forKey: .errorStatus)
     configured = try values.decode(Bool.self, forKey: .configured)
     libraryRevision = try values.decodeIfPresent(Int.self, forKey: .libraryRevision) ?? 0
   }

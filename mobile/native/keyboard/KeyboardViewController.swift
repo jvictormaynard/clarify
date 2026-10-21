@@ -125,6 +125,10 @@ class KeyboardViewController: UIInputViewController {
   private let glyph = RecordingGlyph()
   private let status = UILabel()
   private let detail = UILabel()
+  private var detailTop: NSLayoutConstraint?
+  private var detailCenter: NSLayoutConstraint?
+  private var detailTrailing: NSLayoutConstraint?
+  private var errorTrailing: NSLayoutConstraint?
   private let insert = UIButton(type: .system)
   private let cancel = UIButton(type: .system)
   private let keys = KeyGridView()
@@ -173,7 +177,9 @@ class KeyboardViewController: UIInputViewController {
     // Public API disables the OS dictation action. iOS owns its bottom-bar icon.
     hasDictationKey = true
     status.font = .systemFont(ofSize: 15, weight: .semibold)
+    status.accessibilityIdentifier = "clarify.keyboard.status"
     detail.font = .systemFont(ofSize: 11); detail.textColor = .secondaryLabel
+    detail.accessibilityIdentifier = "clarify.keyboard.detail"
     detail.numberOfLines = 1; detail.lineBreakMode = .byTruncatingTail
     mic.backgroundColor = .label; mic.layer.cornerRadius = 22
     mic.isAccessibilityElement = true; mic.accessibilityTraits = .button
@@ -182,6 +188,10 @@ class KeyboardViewController: UIInputViewController {
     mic.accessibilityHint = L("Segure para falar. Deslize para cima para travar.")
     mic.onAction = { [weak self] action in self?.send(action) }
     mic.addSubview(glyph); glyph.translatesAutoresizingMaskIntoConstraints = false
+    detailTop = detail.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 3)
+    detailCenter = detail.centerYAnchor.constraint(equalTo: mic.centerYAnchor)
+    detailTrailing = detail.trailingAnchor.constraint(equalTo: insert.leadingAnchor, constant: -4)
+    errorTrailing = detail.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -8)
     NSLayoutConstraint.activate([
       glyph.leadingAnchor.constraint(equalTo: mic.leadingAnchor), glyph.trailingAnchor.constraint(equalTo: mic.trailingAnchor),
       glyph.topAnchor.constraint(equalTo: mic.topAnchor), glyph.bottomAnchor.constraint(equalTo: mic.bottomAnchor)
@@ -232,8 +242,8 @@ class KeyboardViewController: UIInputViewController {
       mic.widthAnchor.constraint(equalToConstant: 44), mic.heightAnchor.constraint(equalToConstant: 44),
       status.topAnchor.constraint(equalTo: view.topAnchor, constant: 10), status.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
       status.trailingAnchor.constraint(lessThanOrEqualTo: insert.leadingAnchor, constant: -4),
-      detail.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 3), detail.leadingAnchor.constraint(equalTo: status.leadingAnchor),
-      detail.trailingAnchor.constraint(equalTo: insert.leadingAnchor, constant: -4),
+      detailTop!, detail.leadingAnchor.constraint(equalTo: status.leadingAnchor), detailTrailing!,
+      detail.heightAnchor.constraint(lessThanOrEqualToConstant: 44),
       insert.centerYAnchor.constraint(equalTo: mic.centerYAnchor), insert.trailingAnchor.constraint(equalTo: cancel.leadingAnchor),
       insert.widthAnchor.constraint(equalToConstant: 48),
       cancel.centerYAnchor.constraint(equalTo: mic.centerYAnchor), cancel.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -2),
@@ -362,6 +372,10 @@ class KeyboardViewController: UIInputViewController {
     cancel.isHidden = !state.isLive || !state.phase.busy
     if !hasFullAccess {
       status.text = L("Ative o Acesso Total"); detail.text = L("Ajustes > Geral > Teclado > Clarify")
+    } else if state.isLive, state.phase == .error {
+      // A revoked account changes configured to false. Keep its actual recovery
+      // message instead of incorrectly asking for a personal provider key.
+      status.text = L("Não foi possível concluir"); detail.text = state.message
     } else if !state.configured {
       status.text = L("Configure sua chave Groq"); detail.text = L("Abra o Clarify para configurar.")
     } else if !state.isLive {
@@ -467,8 +481,28 @@ class KeyboardViewController: UIInputViewController {
       dictionaryTrailing?.constant = state.isLive ? -8 : -82
     }
     let showSuggestions = !showDictionary && !showEdit && !suggestions.arrangedSubviews.isEmpty && available
-    suggestions.isHidden = !showSuggestions
-    status.isHidden = showDictionary || showSuggestions || showEdit; detail.isHidden = status.isHidden
+    let showingError = hasFullAccess && state.isLive && state.phase == .error
+    suggestions.isHidden = !showSuggestions || showingError
+    let covered = showDictionary || (!suggestions.isHidden) || showEdit
+    // Keep the toolbar and keyboard heights fixed. Errors replace the redundant
+    // generic title with the complete cause in the same 44-point row.
+    status.isHidden = covered || showingError; detail.isHidden = covered
+    detail.numberOfLines = showingError ? 3 : 1
+    detail.lineBreakMode = showingError ? .byWordWrapping : .byTruncatingTail
+    detail.textColor = showingError ? .label : .secondaryLabel
+    // Remove an alternative before enabling its replacement. Activating both
+    // even briefly imposes incompatible required positions on the same label.
+    let vertical = showingError ? detailCenter : detailTop
+    if vertical?.isActive == false {
+      (showingError ? detailTop : detailCenter)?.isActive = false
+      vertical?.isActive = true
+    }
+    let wideError = showingError && insert.isHidden
+    let trailing = wideError ? errorTrailing : detailTrailing
+    if trailing?.isActive == false {
+      (wideError ? detailTrailing : errorTrailing)?.isActive = false
+      trailing?.isActive = true
+    }
   }
   private func toggleDictationEdit() {
     guard !state.phase.busy, !applyingDictationEdit, var edit = dictationEdit else { return }

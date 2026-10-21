@@ -2,6 +2,7 @@ import tempfile
 import uuid
 import hashlib
 import json
+import logging
 
 from allauth.account.models import EmailAddress
 from django.contrib.auth import get_user_model
@@ -17,6 +18,30 @@ from dictionary_snippets import DictionaryEntry, DictionarySnippets
 from . import audio, groq, history, ledger
 from .middleware import take_rate
 from .models import Dictionary, Operation
+
+
+logger = logging.getLogger(__name__)
+
+
+def processing_failure(user, operation_id, code, phase, status, *, operation=None):
+    """Expose bounded diagnostics, never exception text or provider responses."""
+    if operation:
+        ledger.settle(operation)
+    logger.warning(
+        "processing_failure code=%s phase=%s operation_id=%s",
+        code,
+        phase,
+        operation_id,
+    )
+    return Response(
+        {
+            "code": code,
+            "phase": phase,
+            "operation_id": str(operation_id),
+            "usage": ledger.usage(user),
+        },
+        status=status,
+    )
 
 
 def exception_handler(error, context):
@@ -199,16 +224,41 @@ class DictationView(ServiceView):
                 )
                 return Response({**outcome.result, "usage": ledger.usage(request.user)})
         except ledger.Rejected as error:
-            return Response(
-                {"code": error.code, "usage": ledger.usage(request.user)},
-                status=error.status,
+            return processing_failure(
+                request.user,
+                operation_id,
+                error.code,
+                "validation"
+                if error.code in {"invalid_audio", "invalid_duration"}
+                else "admission",
+                error.status,
+            )
+        except groq.NoSpeech:
+            return processing_failure(
+                request.user,
+                operation_id,
+                "no_speech",
+                "transcription",
+                422,
+                operation=operation,
+            )
+        except groq.ProviderFailure:
+            return processing_failure(
+                request.user,
+                operation_id,
+                "transcription_failed",
+                "transcription",
+                502,
+                operation=operation,
             )
         except Exception:
-            if operation:
-                ledger.settle(operation)
-            return Response(
-                {"code": "processing_failed", "usage": ledger.usage(request.user)},
-                status=502,
+            return processing_failure(
+                request.user,
+                operation_id,
+                "processing_failed",
+                "processing",
+                502,
+                operation=operation,
             )
 
 
@@ -266,16 +316,30 @@ class TextView(ServiceView):
                 result = operation.result
             return Response({**result, "usage": ledger.usage(request.user)})
         except ledger.Rejected as error:
-            return Response(
-                {"code": error.code, "usage": ledger.usage(request.user)},
-                status=error.status,
+            return processing_failure(
+                request.user,
+                operation_id,
+                error.code,
+                "admission",
+                error.status,
+            )
+        except groq.ProviderFailure:
+            return processing_failure(
+                request.user,
+                operation_id,
+                "text_processing_failed",
+                "text",
+                502,
+                operation=operation,
             )
         except Exception:
-            if operation:
-                ledger.settle(operation)
-            return Response(
-                {"code": "processing_failed", "usage": ledger.usage(request.user)},
-                status=502,
+            return processing_failure(
+                request.user,
+                operation_id,
+                "processing_failed",
+                "processing",
+                502,
+                operation=operation,
             )
 
 

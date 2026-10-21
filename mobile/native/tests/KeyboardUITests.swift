@@ -53,6 +53,47 @@ private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
 }
 
 final class KeyboardUITests: XCTestCase {
+  func testErrorCauseFitsTheExistingToolbarWithoutChangingKeyboardHeight() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer {
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+        window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+      }
+      let detail = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UILabel }.first { $0.accessibilityIdentifier == "clarify.keyboard.detail" })
+      let status = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UILabel }.first { $0.accessibilityIdentifier == "clarify.keyboard.status" })
+      let messages = ["Nenhuma fala foi reconhecida. Tente falar novamente.", "Não foi possível transcrever o áudio. Tente novamente.",
+        "O processamento do Clarify está indisponível no momento.", "Esta solicitação não pode ser repetida. Inicie uma nova ação.",
+        "A reescrita falhou. Você pode inserir a transcrição original."]
+      for language in ["pt", "en", "es"] {
+        for message in messages {
+          for width in [CGFloat(320), 393, 852] {
+            var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970
+            state.phase = .error; state.operationID = UUID().uuidString; state.message = L(message, language: language)
+            state.text = message.hasPrefix("A reescrita") ? "Preserved original" : nil
+            try store.write(state, to: "state.json"); keyboard.viewWillAppear(false)
+            keyboard.view.frame.size.width = width; keyboard.view.layoutIfNeeded()
+            XCTAssertFalse(detail.isHidden); XCTAssertTrue(status.isHidden)
+            XCTAssertFalse(detail.hasAmbiguousLayout, "Wide errors and errors beside Insert need one stable layout")
+            XCTAssertEqual(detail.text, state.message); XCTAssertEqual(detail.lineBreakMode, .byWordWrapping)
+            let required = (detail.text! as NSString).boundingRect(with: CGSize(width: detail.bounds.width, height: .greatestFiniteMagnitude),
+              options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: detail.font!], context: nil).height
+            XCTAssertLessThanOrEqual(ceil(required), 44, "The complete cause must fit in the fixed toolbar: \(language), \(width)")
+            XCTAssertGreaterThanOrEqual(detail.frame.minY, 6); XCTAssertLessThanOrEqual(detail.frame.maxY, 52)
+            XCTAssertEqual(keyboard.view.bounds.height, KeyboardInputView.contentHeight)
+            XCTAssertEqual(keyboard.preferredContentSize.height, KeyboardInputView.contentHeight)
+          }
+        }
+      }
+      var ready = store.snapshot(); ready.phase = .idle; ready.message = nil
+      try store.write(ready, to: "state.json"); keyboard.viewWillAppear(false); keyboard.view.layoutIfNeeded()
+      XCTAssertEqual(detail.numberOfLines, 1, "Restore the ordinary toolbar after the failure is cleared")
+      XCTAssertFalse(detail.hasAmbiguousLayout, "Error-to-idle must restore a single vertical position")
+      var expired = store.snapshot(); expired.phase = .error; expired.configured = false; expired.message = L("Entre na conta novamente.")
+      try store.write(expired, to: "state.json"); keyboard.viewWillAppear(false); keyboard.view.layoutIfNeeded()
+      XCTAssertFalse(detail.isHidden); XCTAssertEqual(detail.text, expired.message, "An expired account must not suggest switching to a personal key")
+    }
+  }
   func testOwnTypingCapitalizesTheNextSentenceWithoutAHostNotification() async throws {
     try await MainActor.run {
       let keyboard = SelectionKeyboard(); keyboard.loadViewIfNeeded()

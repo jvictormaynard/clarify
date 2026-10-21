@@ -125,6 +125,290 @@ class AccountTests(unittest.TestCase):
             self.request.call_args.args[1], "https://clarify.example/v1/text"
         )
 
+    def processing_failure(self, action, status, payload):
+        from provider_http import CancellationToken
+        from workflows import RecordingSnapshot
+
+        self.signed_in()
+        self.account._last_sync_attempt = self.account._clock()
+        self.request.reset_mock()
+        self.request.return_value = self.response(payload, status)
+        with self.assertRaises(AccountError) as caught:
+            if action == "dictation":
+                self.account.transcribe(
+                    RecordingSnapshot(
+                        Path("unused.wav"), b"synthetic audio", CancellationToken()
+                    ),
+                    "pt",
+                    self.service,
+                )
+            else:
+                self.account.transform_text("Source text.", "rewrite")
+        self.request.assert_called_once()
+        return caught.exception
+
+    def test_processing_errors_use_the_cause_and_keep_safe_diagnostics(self):
+        cases = [
+            (
+                "dictation",
+                422,
+                "no_speech",
+                "transcription",
+                "Nenhuma fala foi reconhecida. Tente falar novamente.",
+            ),
+            (
+                "dictation",
+                502,
+                "transcription_failed",
+                "transcription",
+                "Não foi possível transcrever o áudio. Tente novamente.",
+            ),
+            (
+                "text",
+                502,
+                "text_processing_failed",
+                "text",
+                "Não foi possível processar o texto. Tente novamente.",
+            ),
+            (
+                "dictation",
+                502,
+                "processing_failed",
+                "processing",
+                "Não foi possível concluir o processamento. Tente novamente.",
+            ),
+            (
+                "dictation",
+                429,
+                "allowance_exhausted",
+                "admission",
+                "Sua cota foi atingida.",
+            ),
+            (
+                "text",
+                429,
+                "rate_limited",
+                "admission",
+                "Muitas solicitações. Aguarde um momento.",
+            ),
+            (
+                "dictation",
+                429,
+                "account_busy",
+                "admission",
+                "Já existe um processamento em andamento.",
+            ),
+            (
+                "text",
+                503,
+                "service_busy",
+                "admission",
+                "O Clarify está ocupado. Aguarde um momento.",
+            ),
+            (
+                "dictation",
+                503,
+                "service_budget_exhausted",
+                "admission",
+                "O processamento do Clarify está indisponível no momento.",
+            ),
+            (
+                "dictation",
+                400,
+                "invalid_audio",
+                "validation",
+                "Grave um áudio válido de até 5 minutos.",
+            ),
+            (
+                "text",
+                400,
+                "invalid_text_request",
+                "validation",
+                "Selecione um texto válido para processar.",
+            ),
+        ]
+        operation_id = str(uuid.uuid4())
+        for action, status, code, phase, message in cases:
+            with self.subTest(action=action, code=code):
+                error = self.processing_failure(
+                    action,
+                    status,
+                    {
+                        "code": code,
+                        "phase": phase,
+                        "operation_id": operation_id,
+                        "detail": "private upstream body",
+                        "usage": {"used_ms": 1000},
+                    },
+                )
+                self.assertEqual(str(error), message)
+                self.assertEqual(error.code, code)
+                self.assertEqual(error.phase, phase)
+                self.assertEqual(error.operation_id, operation_id)
+                self.assertEqual(error.status, status)
+                self.assertEqual(self.account.snapshot()["usage"]["used_ms"], 1000)
+                self.assertNotIn("private upstream body", repr(vars(error)))
+
+    def test_expired_or_pending_operations_do_not_automatically_retry(self):
+        for action in ("dictation", "text"):
+            for code in (
+                "operation_conflict",
+                "operation_expired",
+                "operation_pending",
+            ):
+                with self.subTest(action=action, code=code):
+                    error = self.processing_failure(action, 409, {"code": code})
+                    expected = (
+                        "Já existe um processamento em andamento."
+                        if code == "operation_pending"
+                        else "Esta solicitação já foi processada. Inicie uma nova gravação."
+                        if action == "dictation"
+                        else "Esta solicitação não pode ser repetida. Inicie uma nova ação."
+                    )
+                    self.assertEqual(str(error), expected)
+
+    def test_processing_error_copy_uses_shared_ui_languages(self):
+        from shared.localization import translate
+
+        error = self.processing_failure("dictation", 422, {"code": "no_speech"})
+        for locale, expected in [
+            ("pt", "Nenhuma fala foi reconhecida. Tente falar novamente."),
+            ("en", "No speech was recognized. Try speaking again."),
+            ("es", "No se reconoció ninguna voz. Intenta hablar de nuevo."),
+        ]:
+            self.assertEqual(translate(str(error), locale), expected)
+
+    def test_processing_errors_from_older_servers_use_safe_status_fallbacks(self):
+        for action, status, expected in [
+            (
+                "dictation",
+                502,
+                "Não foi possível transcrever o áudio. Tente novamente.",
+            ),
+            ("text", 502, "Não foi possível processar o texto. Tente novamente."),
+            (
+                "dictation",
+                503,
+                "O processamento do Clarify está indisponível no momento.",
+            ),
+            ("text", 400, "Selecione um texto válido para processar."),
+        ]:
+            with self.subTest(action=action, status=status):
+                error = self.processing_failure(action, status, {})
+                self.assertEqual(str(error), expected)
+                self.assertEqual(error.code, "")
+
+    def test_processing_error_fields_cannot_inject_server_content(self):
+        for bad in ([], {}, 1, None, "private upstream body", "x" * 10000):
+            with self.subTest(value=type(bad).__name__):
+                error = self.processing_failure(
+                    "dictation",
+                    502,
+                    {"code": bad, "phase": bad, "operation_id": bad},
+                )
+                self.assertEqual(
+                    str(error), "Não foi possível transcrever o áudio. Tente novamente."
+                )
+                self.assertEqual(
+                    (error.code, error.phase, error.operation_id), ("", "", "")
+                )
+
+    def test_auth_status_overrides_payload_and_managed_mode_does_not_fall_back(self):
+        for action in ("dictation", "text"):
+            with self.subTest(action=action):
+                error = self.processing_failure(action, 401, {"code": "no_speech"})
+                self.assertEqual(str(error), "Entre na conta novamente.")
+                self.assertEqual(error.code, "authentication_required")
+                self.assertFalse(self.account.hosted)
+                self.assertTrue(self.account.managed)
+                self.assertIsNone(self.account.secrets.get("clarify_account"))
+
+    def test_expired_processing_response_cannot_restore_session_or_usage(self):
+        for action in ("dictation", "text"):
+            for status in (401, 403):
+                with self.subTest(action=action, status=status):
+                    error = self.processing_failure(
+                        action,
+                        status,
+                        {
+                            "meta": {"session_token": "rejected-response-token"},
+                            "usage": {"used_ms": 999},
+                        },
+                    )
+                    self.assertEqual(str(error), "Entre na conta novamente.")
+                    self.assertIsNone(self.account.secrets.get("clarify_account"))
+                    self.assertEqual(self.account.snapshot()["usage"], {})
+                    self.assertFalse(self.account.hosted)
+                    self.assertTrue(self.account.managed)
+
+    def test_malformed_processing_metadata_does_not_hide_error_or_usage(self):
+        for meta in (None, [], "private upstream body", 1):
+            with self.subTest(meta=meta):
+                error = self.processing_failure(
+                    "dictation",
+                    422,
+                    {"code": "no_speech", "meta": meta, "usage": {"used_ms": 1000}},
+                )
+                self.assertEqual(
+                    str(error), "Nenhuma fala foi reconhecida. Tente falar novamente."
+                )
+                self.assertEqual(
+                    self.account.secrets.get("clarify_account"), "test-session-only"
+                )
+                self.assertEqual(self.account.snapshot()["usage"], {"used_ms": 1000})
+
+    def test_non_json_processing_errors_still_use_http_status_and_revoke_auth(self):
+        for action, status, expected in [
+            (
+                "dictation",
+                502,
+                "Não foi possível transcrever o áudio. Tente novamente.",
+            ),
+            ("text", 503, "O processamento do Clarify está indisponível no momento."),
+            ("text", 401, "Entre na conta novamente."),
+        ]:
+            with self.subTest(action=action, status=status):
+                response = self.response({}, status)
+                response.json.side_effect = ValueError("private upstream body")
+                self.signed_in()
+                self.account._last_sync_attempt = self.account._clock()
+                self.request.reset_mock()
+                self.request.return_value = response
+                with self.assertRaises(AccountError) as caught:
+                    if action == "dictation":
+                        from provider_http import CancellationToken
+                        from workflows import RecordingSnapshot
+
+                        self.account.transcribe(
+                            RecordingSnapshot(
+                                Path("unused.wav"), b"synthetic", CancellationToken()
+                            ),
+                            "pt",
+                            self.service,
+                        )
+                    else:
+                        self.account.transform_text("Source", "rewrite")
+                self.assertEqual(str(caught.exception), expected)
+                self.request.assert_called_once()
+                if status == 401:
+                    self.assertFalse(self.account.hosted)
+                    self.assertTrue(self.account.managed)
+
+    def test_account_changed_during_failed_processing_discards_reply_and_usage(self):
+        self.signed_in()
+        previous = self.account.snapshot()["usage"]
+
+        def respond(*args, **kwargs):
+            self.account._generation += 1
+            return self.response(
+                {"code": "text_processing_failed", "usage": {"used_ms": 999}}, 502
+            )
+
+        self.request.side_effect = respond
+        with self.assertRaisesRegex(AccountError, "A conta mudou"):
+            self.account.transform_text("Source text.", "rewrite")
+        self.assertEqual(self.account.snapshot()["usage"], previous)
+
     def test_existing_signed_in_profiles_process_without_activation_and_fail_closed(
         self,
     ):

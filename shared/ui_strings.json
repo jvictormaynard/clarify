@@ -4393,5 +4393,65 @@
     "pt": "Não foi possível carregar o histórico.",
     "en": "History could not be loaded.",
     "es": "No se pudo cargar el historial."
+  },
+  "Nenhuma fala foi reconhecida. Tente falar novamente.": {
+    "pt": "Nenhuma fala foi reconhecida. Tente falar novamente.",
+    "en": "No speech was recognized. Try speaking again.",
+    "es": "No se reconoció ninguna voz. Intenta hablar de nuevo."
+  },
+  "Não foi possível transcrever o áudio. Tente novamente.": {
+    "pt": "Não foi possível transcrever o áudio. Tente novamente.",
+    "en": "Could not transcribe the audio. Try again.",
+    "es": "No se pudo transcribir el audio. Inténtalo de nuevo."
+  },
+  "Não foi possível processar o texto. Tente novamente.": {
+    "pt": "Não foi possível processar o texto. Tente novamente.",
+    "en": "Could not process the text. Try again.",
+    "es": "No se pudo procesar el texto. Inténtalo de nuevo."
+  },
+  "Não foi possível concluir o processamento. Tente novamente.": {
+    "pt": "Não foi possível concluir o processamento. Tente novamente.",
+    "en": "Could not complete processing. Try again.",
+    "es": "No se pudo completar el procesamiento. Inténtalo de nuevo."
+  },
+  "Sua cota foi atingida.": {
+    "pt": "Sua cota foi atingida.",
+    "en": "You have reached your allowance.",
+    "es": "Has alcanzado tu cuota."
+  },
+  "Muitas solicitações. Aguarde um momento.": {
+    "pt": "Muitas solicitações. Aguarde um momento.",
+    "en": "Too many requests. Please wait a moment.",
+    "es": "Demasiadas solicitudes. Espera un momento."
+  },
+  "Já existe um processamento em andamento.": {
+    "pt": "Já existe um processamento em andamento.",
+    "en": "Processing is already in progress.",
+    "es": "Ya hay un procesamiento en curso."
+  },
+  "O Clarify está ocupado. Aguarde um momento.": {
+    "pt": "O Clarify está ocupado. Aguarde um momento.",
+    "en": "Clarify is busy. Please wait a moment.",
+    "es": "Clarify está ocupado. Espera un momento."
+  },
+  "O processamento do Clarify está indisponível no momento.": {
+    "pt": "O processamento do Clarify está indisponível no momento.",
+    "en": "Clarify processing is currently unavailable.",
+    "es": "El procesamiento de Clarify no está disponible en este momento."
+  },
+  "Esta solicitação já foi processada. Inicie uma nova gravação.": {
+    "pt": "Esta solicitação já foi processada. Inicie uma nova gravação.",
+    "en": "This request was already processed. Start a new recording.",
+    "es": "Esta solicitud ya se procesó. Inicia una nueva grabación."
+  },
+  "Selecione um texto válido para processar.": {
+    "pt": "Selecione um texto válido para processar.",
+    "en": "Select valid text to process.",
+    "es": "Selecciona un texto válido para procesar."
+  },
+  "Esta solicitação não pode ser repetida. Inicie uma nova ação.": {
+    "pt": "Esta solicitação não pode ser repetida. Inicie uma nova ação.",
+    "en": "This request cannot be repeated. Start a new action.",
+    "es": "Esta solicitud no se puede repetir. Inicia una nueva acción."
   }
 }

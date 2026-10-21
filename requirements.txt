@@ -2,7 +2,7 @@ requests>=2.34.2,<3
 cryptography>=50.0.2,<51
 sounddevice>=0.5.5,<1
 PySide6-Essentials>=6.8,<7
-Pillow>=12.3.0,<13
+Pillow>=13.0.0,<14
 
 # Windows uses native RegisterHotKey calls. Other source platforms use this
 # optional fallback and remain experimental.
