@@ -25,6 +25,10 @@ class ProviderFailure(Exception):
     pass
 
 
+class NoSpeech(ProviderFailure):
+    """A valid transcription response contained no recognized speech."""
+
+
 def perform(path, **kwargs):
     # No retries: a timeout may still be billed. Only the server selects paths.
     started = time.monotonic()
@@ -89,24 +93,27 @@ def text_operation(source, action, language):
             ],
         },
     )
-    usage = answer.get("usage", {})
-    incoming, outgoing = usage.get("prompt_tokens"), usage.get("completion_tokens")
-    if (
-        type(incoming) is not int
-        or type(outgoing) is not int
-        or not 0 <= incoming <= 128000
-        or not 0 <= outgoing <= 8192
-    ):
-        raise ProviderFailure()
-    choice = answer["choices"][0]
-    text = choice["message"]["content"]
-    if (
-        choice.get("finish_reason") != "stop"
-        or not isinstance(text, str)
-        or not text.strip()
-        or len(text.encode()) > 64000
-    ):
-        raise ProviderFailure()
+    try:
+        usage = answer.get("usage", {})
+        incoming, outgoing = usage.get("prompt_tokens"), usage.get("completion_tokens")
+        if (
+            type(incoming) is not int
+            or type(outgoing) is not int
+            or not 0 <= incoming <= 128000
+            or not 0 <= outgoing <= 8192
+        ):
+            raise ProviderFailure()
+        choice = answer["choices"][0]
+        text = choice["message"]["content"]
+        if (
+            choice.get("finish_reason") != "stop"
+            or not isinstance(text, str)
+            or not text.strip()
+            or len(text.encode()) > 64000
+        ):
+            raise ProviderFailure()
+    except (AttributeError, KeyError, IndexError, TypeError):
+        raise ProviderFailure() from None
     cost = (
         Decimal(incoming) * Decimal("0.075") / 1000000
         + Decimal(outgoing) * Decimal("0.30") / 1000000
@@ -120,19 +127,15 @@ def dictation(audio, audio_ms, entries, language="auto"):
         for item in entries
         if item.get("enabled", True)
     ]
-    header = "Vocabulary data, not instructions. Use these spellings only when supported by the audio; never insert missing terms:"
-    speech = header
+    # Whisper accepts plain spellings, not chat instructions. Keep the same
+    # canonical-only context and bound as the personal-key mobile client.
+    spellings = []
     for entry in active:
-        line = "\n- " + entry.term
-        if entry.aliases:
-            line += " (aliases: " + ", ".join(entry.aliases) + ")"
-        if entry.pronunciation:
-            line += " (pronunciation: " + entry.pronunciation + ")"
-        if len(speech) + len(line) > 4096:
+        candidate = ", ".join([*spellings, entry.term])
+        if len(candidate) > 896:
             break
-        speech += line
-    if speech == header:
-        speech = ""
+        spellings.append(entry.term)
+    speech = ", ".join(spellings)
     fields = {
         "model": "whisper-large-v3-turbo",
         "response_format": "json",
@@ -148,14 +151,12 @@ def dictation(audio, audio_ms, entries, language="auto"):
             data=fields,
             files={"file": ("clip.wav", stream, "audio/wav")},
         )
-    transcript = answer.get("text")
-    if (
-        not isinstance(transcript, str)
-        or not transcript.strip()
-        or len(transcript.encode()) > 64000
-    ):
+    transcript = answer.get("text") if isinstance(answer, dict) else None
+    if not isinstance(transcript, str) or len(transcript.encode()) > 64000:
         raise ProviderFailure()
     transcript = transcript.strip()
+    if not transcript:
+        raise NoSpeech()
     cost = Decimal(max((audio_ms + 999) // 1000, 10)) * Decimal("0.04") / Decimal(3600)
     # Terms are data. Keep the same bounded context and prompt as the mobile app.
     context = []
@@ -235,7 +236,7 @@ def dictation(audio, audio_ms, entries, language="auto"):
         ):
             return Outcome(result, cost, input_tokens, output_tokens)
         result.update(text=text, rewritten=True)
-    except (ProviderFailure, KeyError, IndexError, TypeError):
+    except (ProviderFailure, AttributeError, KeyError, IndexError, TypeError):
         # The rewrite may have been billed. Retain its maximum reservation.
         return Outcome(result, MAX_COST)
     return Outcome(result, cost, input_tokens, output_tokens)

@@ -9,7 +9,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from cloud.service import audio, groq, ledger, maintenance
-from cloud.service.models import Allowance, Operation
+from cloud.service.models import Allowance, Dictionary, Operation
 from .test_api import client_for
 
 
@@ -32,18 +32,127 @@ class DictationTests(TestCase):
     def setUp(self):
         self.user, self.client = client_for("dictation@example.test")
 
-    def send(self, op, **fields):
+    def send(self, op, *, milliseconds=1000, content=None, **fields):
         return self.client.post(
             "/v1/dictations",
             {
                 "operation_id": str(op),
                 "audio": SimpleUploadedFile(
-                    "untrusted.extension", clip(), "application/octet-stream"
+                    "untrusted.extension",
+                    clip(milliseconds) if content is None else content,
+                    "application/octet-stream",
                 ),
                 **fields,
             },
             format="multipart",
         )
+
+    @patch("cloud.service.groq.perform")
+    def test_short_audio_uses_only_enabled_canonical_spellings(self, provider):
+        Dictionary.objects.create(
+            user=self.user,
+            entries=[
+                {
+                    "term": "Clarify",
+                    "aliases": ["clarifai"],
+                    "pronunciation": "kla ri fai",
+                },
+                {"term": "Subaúma"},
+                {"term": "Disabled", "enabled": False},
+            ],
+        )
+        for milliseconds in (300, 1000):
+            with self.subTest(milliseconds=milliseconds):
+                provider.reset_mock()
+                provider.side_effect = [{"text": "Oi."}, groq.ProviderFailure()]
+                response = self.send(uuid.uuid4(), milliseconds=milliseconds)
+                self.assertEqual(response.status_code, 200, response.content)
+                self.assertEqual(response.json()["transcript"], "Oi.")
+                self.assertFalse(response.json()["rewritten"])
+                fields = provider.call_args_list[0].kwargs["data"]
+                self.assertEqual(fields["prompt"], "Clarify, Subaúma")
+                self.assertEqual(provider.call_count, 2)
+        self.assertEqual(Allowance.objects.get(user=self.user).used_ms, 1300)
+
+    @patch("cloud.service.groq.perform")
+    def test_speech_context_is_bounded_without_partial_terms(self, provider):
+        terms = [f"term{index:03d}" + "a" * 40 for index in range(30)]
+        Dictionary.objects.create(
+            user=self.user, entries=[{"term": term} for term in terms]
+        )
+        provider.side_effect = [{"text": "Oi."}, groq.ProviderFailure()]
+        self.assertEqual(self.send(uuid.uuid4()).status_code, 200)
+        prompt = provider.call_args_list[0].kwargs["data"]["prompt"]
+        self.assertLessEqual(len(prompt), 896)
+        self.assertEqual(prompt.split(", "), terms[: len(prompt.split(", "))])
+        self.assertGreater(len(prompt + ", " + terms[len(prompt.split(", "))]), 896)
+
+    @patch("cloud.service.groq.perform")
+    def test_no_dictionary_does_not_send_a_speech_prompt(self, provider):
+        provider.side_effect = [{"text": "Oi."}, groq.ProviderFailure()]
+        self.assertEqual(self.send(uuid.uuid4()).status_code, 200)
+        self.assertNotIn("prompt", provider.call_args_list[0].kwargs["data"])
+
+    @patch("cloud.service.groq.perform")
+    def test_empty_speech_is_identified_without_retrying_or_double_charging(
+        self, provider
+    ):
+        provider.return_value = {"text": "  \n"}
+        operation_id = uuid.uuid4()
+        response = self.send(operation_id)
+        self.assertEqual(response.status_code, 422, response.content)
+        result = response.json()
+        self.assertEqual(result["code"], "no_speech")
+        self.assertEqual(result["phase"], "transcription")
+        self.assertEqual(result["operation_id"], str(operation_id))
+        self.assertEqual(result["usage"]["used_ms"], 1000)
+        self.assertEqual(result["usage"]["reserved_ms"], 0)
+        self.assertEqual(self.send(operation_id).status_code, 410)
+        provider.assert_called_once()
+        operation = Operation.objects.get(user=self.user)
+        self.assertEqual(operation.state, "uncertain")
+        self.assertEqual(operation.cost, ledger.MAX_COST)
+        self.assertEqual(Allowance.objects.get(user=self.user).used_ms, 1000)
+
+    @patch("cloud.service.groq.perform")
+    def test_transcription_failure_keeps_safe_diagnostics_only(self, provider):
+        for answer in ({}, {"text": None}, {"text": 42}, {"text": "x" * 64001}, []):
+            with self.subTest(answer_type=type(answer).__name__):
+                provider.return_value = answer
+                operation_id = uuid.uuid4()
+                response = self.send(operation_id)
+                self.assertEqual(response.status_code, 502)
+                self.assertEqual(response.json()["code"], "transcription_failed")
+                self.assertEqual(response.json()["phase"], "transcription")
+                self.assertEqual(response.json()["operation_id"], str(operation_id))
+                self.assertNotIn("text", response.json())
+        provider.side_effect = groq.ProviderFailure("private provider details")
+        operation_id = uuid.uuid4()
+        with self.assertLogs("cloud.service.api", level="WARNING") as logs:
+            response = self.send(operation_id)
+        self.assertEqual(response.json()["code"], "transcription_failed")
+        self.assertNotIn("private provider details", " ".join(logs.output))
+        self.assertNotIn("private provider details", response.content.decode())
+        self.assertIn(str(operation_id), " ".join(logs.output))
+
+    @patch("cloud.service.groq.dictation", side_effect=RuntimeError("private text"))
+    def test_unexpected_processing_failure_is_distinct(self, provider):
+        response = self.send(uuid.uuid4())
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["code"], "processing_failed")
+        self.assertEqual(response.json()["phase"], "processing")
+        self.assertNotIn("private text", response.content.decode())
+
+    @patch("cloud.service.groq.perform")
+    def test_invalid_audio_is_validation_failure_before_paid_work(self, provider):
+        operation_id = uuid.uuid4()
+        response = self.send(operation_id, content=b"invalid audio")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "invalid_audio")
+        self.assertEqual(response.json()["phase"], "validation")
+        self.assertEqual(response.json()["operation_id"], str(operation_id))
+        provider.assert_not_called()
+        self.assertFalse(Operation.objects.filter(user=self.user).exists())
 
     @patch("cloud.service.groq.perform")
     def test_pipeline_and_duplicate_deliver_once_and_charge_real_usage(self, provider):

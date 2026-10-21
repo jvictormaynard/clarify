@@ -96,6 +96,28 @@ completion or general provider proxy. Fixed processing is Whisper Large V3 Turbo
 followed by GPT OSS 20B. `shared/dictation_prompt.json` is generated from the
 canonical desktop prompt by `mobile/scripts/sync-prompts.py`.
 
+Speech recognition receives only enabled canonical dictionary spellings, joined
+with commas and bounded to 896 characters without splitting a term. Aliases and
+pronunciations remain stored but are not sent as recognition instructions.
+Rewriting retains its separate vocabulary context and canonical prompt. A
+rewrite failure still returns the recognized transcript successfully.
+
+Processing errors return a bounded `code`, `phase`, validated `operation_id`,
+and updated `usage`. Empty recognition is `422 no_speech` with phase
+`transcription`; it does not mean microphone authorization failed. Upstream
+recognition errors or malformed recognition results are `502
+transcription_failed`. Selected-text provider failures are `502
+text_processing_failed` with phase `text`. Unexpected internal processing
+failures retain `502 processing_failed` with phase `processing`. Audio
+validation and admission retain their existing codes. Authentication and
+pre-validation failures can omit the operation identifier. Clients must map
+known codes to local messages and must not display arbitrary provider text.
+
+Application diagnostics record only code, phase and operation identifier, never
+exception text, recordings, transcripts or provider responses. A failed paid
+operation retains conservative accounting and is never retried automatically;
+the error classification does not refund allowance or repeat inference.
+
 Signing in automatically connects vocabulary. Each account has a separate local
 cache; logout restores guest vocabulary. Sync combines independent edits and
 preserves deletions. A same-word conflict requires a choice; revision mismatches

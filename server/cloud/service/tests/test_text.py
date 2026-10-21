@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 
-from cloud.service import ledger
+from cloud.service import groq, ledger
 from cloud.service.models import Allowance, Operation
 from .test_api import client_for
 
@@ -29,6 +29,30 @@ class TextTests(TestCase):
             },
             format="json",
         )
+
+    @patch("cloud.service.groq.perform")
+    def test_provider_failure_has_safe_text_diagnostics(self, provider):
+        provider.side_effect = groq.ProviderFailure("private provider response")
+        operation_id = uuid.uuid4()
+        response = self.send(operation_id)
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["code"], "text_processing_failed")
+        self.assertEqual(response.json()["phase"], "text")
+        self.assertEqual(response.json()["operation_id"], str(operation_id))
+        self.assertNotIn("private provider response", response.content.decode())
+        self.assertEqual(Operation.objects.get(user=self.user).cost, ledger.MAX_COST)
+        self.assertEqual(self.send(operation_id).status_code, 410)
+        provider.assert_called_once()
+
+    @patch("cloud.service.groq.perform")
+    def test_malformed_provider_text_is_not_an_unexpected_server_failure(
+        self, provider
+    ):
+        provider.return_value = {"usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+        response = self.send(uuid.uuid4())
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["code"], "text_processing_failed")
+        self.assertEqual(response.json()["phase"], "text")
 
     @patch("cloud.service.groq.perform")
     def test_managed_text_is_fixed_idempotent_and_budgeted_without_audio_minutes(
