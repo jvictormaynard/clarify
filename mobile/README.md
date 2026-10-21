@@ -9,6 +9,12 @@ automatically with desktop through the account. Guest and pre-upgrade records
 remain local and are never uploaded. Account caches are isolated by endpoint and
 user; signing out restores local history. See [history synchronization](../docs/history-sync.md).
 
+Version **0.8.1 (30)** distinguishes unrecognized speech, transcription failures,
+allowance limits and service capacity. The keyboard shows the cause within its
+existing toolbar height. Managed short-speech processing uses plain vocabulary
+spellings on the server. Failed requests are not repeated automatically; the
+existing conservative usage accounting and rewrite fallback are preserved.
+
 Version **0.8.0 (29)** adds automatic account-history synchronization with Windows
 0.9.0. Sign in to the same account on both devices and create new transcriptions
 on each. Original and revised text, timestamps and source devices are retained.

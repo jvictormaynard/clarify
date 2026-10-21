@@ -5,6 +5,11 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Hosted dictation uses plain vocabulary spellings for short speech. Distinguish unrecognized speech from transcription, service-capacity and allowance errors. Preserve the transcript if rewriting fails, without repeating paid requests.
+- Desktop 0.9.1 and iOS 0.8.1 (30): show localized processing causes instead of a generic quota warning. Preserve safe operation diagnostics and updated usage. Keep the full keyboard error visible within its existing height.
+
 ## [0.9.0] - 2026-10-16
 
 ### Added
