@@ -1,17 +1,23 @@
 name: Shared account
 on:
   pull_request:
-    paths: ['server/**', 'shared/**', 'clarify_account.py', 'mobile/**', 'scripts/sync_locales.py', '.github/workflows/shared-account.yml']
+    paths: ['server/**', 'shared/**', 'clarify_account.py', 'mobile/**', 'scripts/sync_locales.py', 'scripts/server_image_context.py', 'tests/test_server_image_context.py', '.github/workflows/shared-account.yml']
   push:
     branches: ['codex/clarify-cloud']
   workflow_dispatch:
+    inputs:
+      publish_server_image:
+        description: Publish the pinned server recovery image after isolated checks
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
-  group: shared-account-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_server_image && 'shared-account-server-image' || format('shared-account-{0}', github.ref) }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.publish_server_image) }}
 jobs:
   server:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.publish_server_image }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -31,6 +37,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
+      - run: python -m unittest discover -s tests -p test_server_image_context.py -v
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: pip install --require-hashes -r server/requirements.txt
       - run: python server/manage.py makemigrations --check --dry-run
@@ -50,7 +57,118 @@ jobs:
           done
           docker logs clarify-account-smoke
           exit 1
+  server-image:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_server_image == true && github.repository == 'jvictormaynard/clarify' && github.repository_owner == 'jvictormaynard' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: clarify_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLARIFY_DEVELOPMENT: '1'
+      DATABASE_URL: postgresql://postgres:test-only@127.0.0.1:5432/clarify_test
+      PYTHONDONTWRITEBYTECODE: '1'
+      SERVER_IMAGE: ghcr.io/jvictormaynard/clarify-server:recovery-ced75d817decd55e7ed6f350e34e008b59f9cb26-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Set isolated build paths
+        run: |
+          printf 'SERVER_CONTEXT=%s/clarify-server-image-context\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          printf 'SERVER_MANIFEST=%s/clarify-server-source-manifest.json\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          printf 'SERVER_METADATA=%s/clarify-server-image-metadata.json\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          printf 'DOCKER_CONFIG=%s/clarify-server-ghcr-auth\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - run: python -m unittest discover -s tests -p test_server_image_context.py -v
+      - name: Export the fixed reviewed source
+        run: python scripts/server_image_context.py prepare --context "$SERVER_CONTEXT" --manifest "$SERVER_MANIFEST"
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: python -m pip install --require-hashes -r "$SERVER_CONTEXT/server/requirements.txt"
+      - name: Export pinned client fixtures outside the image context
+        shell: bash
+        run: |
+          set -euo pipefail
+          support="$RUNNER_TEMP/clarify-server-client-fixtures"
+          mkdir "$support"
+          git archive ced75d817decd55e7ed6f350e34e008b59f9cb26 \
+            account_history.py clarify_account.py history_store.py provider_types.py secret_store.py \
+            | tar -x -C "$support"
+      - name: Test the exact server source with isolated PostgreSQL
+        working-directory: ${{ runner.temp }}/clarify-server-image-context
+        env:
+          PYTHONPATH: ${{ runner.temp }}/clarify-server-client-fixtures
+        run: |
+          python server/manage.py makemigrations --check --dry-run
+          python server/manage.py test cloud.service.tests --noinput
+      - name: Build only the verified context
+        run: |
+          python scripts/server_image_context.py verify-context --context "$SERVER_CONTEXT" --manifest "$SERVER_MANIFEST"
+          docker build --platform linux/amd64 -f "$SERVER_CONTEXT/server/Dockerfile" -t "$SERVER_IMAGE" \
+            --label org.opencontainers.image.licenses=MIT \
+            --label org.opencontainers.image.source=https://github.com/jvictormaynard/clarify \
+            --label org.opencontainers.image.revision=ced75d817decd55e7ed6f350e34e008b59f9cb26 "$SERVER_CONTEXT"
+      - name: Check image startup and database health
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name clarify-server-image-smoke --network host \
+            -e CLARIFY_DEVELOPMENT=1 -e DATABASE_URL -e PORT=8080 "$SERVER_IMAGE"
+          trap 'docker rm -f clarify-server-image-smoke >/dev/null' EXIT
+          healthy=0
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent http://127.0.0.1:8080/health; then healthy=1; break; fi
+            sleep 1
+          done
+          if [ "$healthy" != 1 ]; then docker logs clarify-server-image-smoke; exit 1; fi
+          docker exec clarify-server-image-smoke python -c \
+            "import os,sys; sys.path[:0]=['/app','/app/server']; os.environ['DJANGO_SETTINGS_MODULE']='cloud.settings'; import django; django.setup(); from django.db import connection; cursor=connection.cursor(); cursor.execute('SELECT 1'); assert cursor.fetchone()==(1,); cursor.close(); connection.close()"
+      - name: Verify all copied image files against the source manifest
+        run: python scripts/server_image_context.py verify-image --manifest "$SERVER_MANIFEST" --image "$SERVER_IMAGE"
+      - name: Login with the temporary workflow token
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          install -d -m 700 "$DOCKER_CONFIG"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
+      - name: Push the verified unique image and record its digest
+        env:
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          docker push "$SERVER_IMAGE"
+          python scripts/server_image_context.py record --manifest "$SERVER_MANIFEST" \
+            --image "$SERVER_IMAGE" --workflow-sha "$WORKFLOW_SHA" --output "$SERVER_METADATA"
+      - name: Remove temporary registry credentials
+        if: always()
+        run: |
+          if [ -n "${DOCKER_CONFIG:-}" ]; then
+            docker logout ghcr.io >/dev/null 2>&1 || true
+            rm -f "$DOCKER_CONFIG/config.json"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: clarify-server-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/clarify-server-source-manifest.json
+            ${{ runner.temp }}/clarify-server-image-metadata.json
+          if-no-files-found: error
+          retention-days: 7
   ios-validation:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.publish_server_image }}
     runs-on: macos-26
     timeout-minutes: 60
     defaults:
