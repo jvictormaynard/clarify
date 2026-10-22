@@ -98,8 +98,19 @@ jobs:
         run: python scripts/server_image_context.py prepare --context "$SERVER_CONTEXT" --manifest "$SERVER_MANIFEST"
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: python -m pip install --require-hashes -r "$SERVER_CONTEXT/server/requirements.txt"
+      - name: Export pinned client fixtures outside the image context
+        shell: bash
+        run: |
+          set -euo pipefail
+          support="$RUNNER_TEMP/clarify-server-client-fixtures"
+          mkdir "$support"
+          git archive ced75d817decd55e7ed6f350e34e008b59f9cb26 \
+            account_history.py clarify_account.py history_store.py provider_types.py secret_store.py \
+            | tar -x -C "$support"
       - name: Test the exact server source with isolated PostgreSQL
         working-directory: ${{ runner.temp }}/clarify-server-image-context
+        env:
+          PYTHONPATH: ${{ runner.temp }}/clarify-server-client-fixtures
         run: |
           python server/manage.py makemigrations --check --dry-run
           python server/manage.py test cloud.service.tests --noinput
