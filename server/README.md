@@ -173,6 +173,24 @@ Self-hosters configure their own credentials, limits and database.
 
 ## Release gates
 
+The **Shared account** workflow has a manual `publish_server_image` option,
+off by default. Only an explicit dispatch in `jvictormaynard/clarify` can publish
+to `ghcr.io/jvictormaynard/clarify-server`. This recovery path pins commit
+`ced75d817decd55e7ed6f350e34e008b59f9cb26` and its reviewed Git archive hash.
+It exports only 49 allowlisted source files, runs isolated PostgreSQL tests,
+builds the existing Dockerfile, checks startup and database health, and verifies
+the image files before login or push. The image contains 47 source files:
+`.dockerignore` is not copied and `server/.env.example` is excluded by Docker.
+No runtime credentials, profiles or recordings enter the build context.
+
+The dispatch skips the ordinary server/iOS jobs and uses a separate image job.
+PR jobs retain read-only permissions. Registry login uses only the temporary
+workflow token through stdin; the image has a unique run/attempt tag. The artifact
+records its digest, source SHA and source manifest. No Railway credentials or
+service configuration are used. Publishing an image does not deploy it; whether
+this route avoids the current snapshot failure still needs controlled live
+verification. Changing this recovery source pin requires a new review.
+
 Server tests, desktop Python/Settings checks and iOS native compilation must pass.
 Live email, device activation/dictation, account isolation, quota exhaustion,
 session revocation and account deletion need staging acceptance. No automatic
