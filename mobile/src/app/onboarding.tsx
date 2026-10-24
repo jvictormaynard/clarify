@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AccountSignIn } from '../components/account-sign-in';
 import { ClarifyLogo } from '../components/clarify-logo';
 import { QuickStartGuide } from '../components/quick-start-guide';
-import { Button, StepContent, TextButton, Title, ui, usePalette } from '../components/ui';
+import { Button, KeyboardPage, StepContent, TextButton, Title, ui, usePalette } from '../components/ui';
 import { t } from '../i18n';
 import { isBusy, report, useClarify } from '../state/clarify';
 
@@ -23,8 +23,7 @@ export default function Onboarding() {
     finally { setSaving(false); }
   }
   return <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>
-    <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={[ui.content, { flexGrow: 1, justifyContent: 'center', paddingVertical: 32 }]}
-      keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+    <KeyboardPage contentContainerStyle={{ justifyContent: 'center', paddingVertical: 32 }}>
       <View onLayout={() => void markOnboardingPresented().catch(report)} style={{ width: '100%' }}>
         <StepContent step={step}>
           {step === 'welcome' ? <View testID="onboarding.welcome" collapsable={false} style={{ gap: 28 }}>
@@ -45,6 +44,6 @@ export default function Onboarding() {
           </>}
         </StepContent>
       </View>
-    </ScrollView>
+    </KeyboardPage>
   </SafeAreaView>;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Animated, Pressable, StyleSheet, Text, useColorScheme, View, type StyleProp, type ViewStyle } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, useColorScheme, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 
 export function usePalette() {
@@ -34,6 +34,15 @@ export function StepContent({ step, children }: { step: string; children: ReactN
     return () => animation.stop();
   }, [step, reduced, opacity]);
   return <Animated.View style={{ gap: 24, opacity }}>{children}</Animated.View>;
+}
+
+export function KeyboardPage({ children, contentContainerStyle }: { children: ReactNode; contentContainerStyle?: StyleProp<ViewStyle> }) {
+  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={[ui.content, { flexGrow: 1 }, contentContainerStyle]}
+      keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+      {children}
+    </ScrollView>
+  </KeyboardAvoidingView>;
 }
 
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {

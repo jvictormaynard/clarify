@@ -14,7 +14,7 @@ final class AppFlowUITests: XCTestCase {
     capture(name)
     print("APP_UI_DIAGNOSTIC \(name)\n\(app.debugDescription)")
   }
-  func press(_ identifier: String) {
+  func press(_ identifier: String, allowScroll: Bool = true) {
     let button = app.buttons[identifier].firstMatch
     guard button.waitForExistence(timeout: 15) else {
       diagnose("missing-\(identifier)"); XCTFail("Missing action: \(identifier)"); return
@@ -23,7 +23,7 @@ final class AppFlowUITests: XCTestCase {
     guard XCTWaiter.wait(for: [enabled], timeout: 15) == .completed else {
       diagnose("disabled-\(identifier)"); XCTFail("Disabled action: \(identifier)"); return
     }
-    if !button.isHittable { diagnose("before-scroll-\(identifier)"); app.swipeUp() }
+    if allowScroll && !button.isHittable { diagnose("before-scroll-\(identifier)"); app.swipeUp() }
     guard button.isHittable else {
       diagnose("unreachable-\(identifier)"); XCTFail("Unreachable action: \(identifier)"); return
     }
@@ -59,12 +59,14 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertFalse(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.exists)
     enter("clarify-e2e@example.test", in: app.textFields["account.email"], name: "email")
     XCTAssertEqual(app.textFields["account.email"].value as? String, "clarify-e2e@example.test")
-    press("account.requestCode")
+    capture("login-email-keyboard-visible")
+    press("account.requestCode", allowScroll: false)
     guard app.textFields["account.code"].waitForExistence(timeout: 15) else {
       diagnose("login-code-missing"); XCTFail("Login did not show the code field. Inspect the HTTP journal and app alert."); return
     }
     enter("123456", in: app.textFields["account.code"], name: "code")
-    press("account.verifyCode")
+    capture("login-code-keyboard-visible")
+    press("account.verifyCode", allowScroll: false)
     tab("Início"); capture("home-dark")
     tab("Dicionário"); capture("dictionary-dark")
     tab("Snippets"); capture("snippets-dark")
