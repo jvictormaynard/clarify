@@ -34,6 +34,20 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(button.waitForExistence(timeout: 20), "Missing tab: \(label)")
     button.tap()
   }
+  func enter(_ value: String, in field: XCUIElement, name: String) {
+    XCTAssertTrue(field.waitForExistence(timeout: 15))
+    field.tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+    var expected = ""
+    for character in value {
+      expected += String(character)
+      field.typeText(String(character))
+      let updated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", expected), object: field)
+      guard XCTWaiter.wait(for: [updated], timeout: 5) == .completed else {
+        diagnose("typing-\(name)"); XCTFail("Input did not retain the typed characters: \(name)"); return
+      }
+    }
+  }
   func testFirstPresentationAccountNavigationAndExplicitReplay() {
     app.launch()
     XCTAssertTrue(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.waitForExistence(timeout: 30))
@@ -43,14 +57,13 @@ final class AppFlowUITests: XCTestCase {
     app.terminate(); app.launch()
     XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 20))
     XCTAssertFalse(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.exists)
-    app.textFields["account.email"].tap()
-    app.textFields["account.email"].typeText("clarify-e2e@example.test")
+    enter("clarify-e2e@example.test", in: app.textFields["account.email"], name: "email")
     XCTAssertEqual(app.textFields["account.email"].value as? String, "clarify-e2e@example.test")
     press("account.requestCode")
     guard app.textFields["account.code"].waitForExistence(timeout: 15) else {
       diagnose("login-code-missing"); XCTFail("Login did not show the code field. Inspect the HTTP journal and app alert."); return
     }
-    app.textFields["account.code"].tap(); app.textFields["account.code"].typeText("123456")
+    enter("123456", in: app.textFields["account.code"], name: "code")
     press("account.verifyCode")
     tab("Início"); capture("home-dark")
     tab("Dicionário"); capture("dictionary-dark")
