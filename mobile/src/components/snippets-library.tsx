@@ -61,7 +61,7 @@ export function SnippetsLibrary() {
       </TableRow>}
       ListEmptyComponent={loading ? <ActivityIndicator /> : loaded ? <Text style={[ui.body, { color: c.muted }]}>{search ? t('Nenhum snippet encontrado.') : t('Adicione seu primeiro snippet.')}</Text>
         : <Button onPress={() => { setLoading(true); void Core.getSnippets().then(values => { setEntries(values); setLoaded(true); }).catch(report).finally(() => setLoading(false)); }}>{t('Carregar snippets')}</Button>}
-      ListFooterComponent={<Text style={[ui.small, { color: c.muted, marginTop: 12 }]}>{t('Dentro de uma mensagem, o texto do snippet é enviado à IA para reescrita. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.')}</Text>}
+      ListFooterComponent={<Text style={[ui.small, { color: c.muted, marginTop: 12 }]}>{t('Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.')}</Text>}
     />
     <Modal visible={editing !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { if (!saving) setEditing(null); }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>

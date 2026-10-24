@@ -4719,9 +4719,9 @@
     "en": "Say the phrase alone to insert its exact saved text. Within a message, text is inserted before rewriting and may be adjusted. Use Save to apply changes or Discard to cancel.",
     "es": "Di la frase sola para insertar el texto exacto. Dentro de un mensaje, el texto se inserta antes de la reescritura y puede ajustarse. Usa Guardar para aplicar los cambios o Descartar para cancelarlos."
   },
-  "Dentro de uma mensagem, o texto do snippet é enviado à IA para reescrita. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.": {
-    "pt": "Dentro de uma mensagem, o texto do snippet é enviado à IA para reescrita. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.",
-    "en": "Within a message, snippet text is sent to AI for rewriting. When you say only the trigger phrase, saved text is inserted without rewriting.",
-    "es": "Dentro de un mensaje, el texto del snippet se envía a la IA para reescribirlo. Cuando dices solo la frase de activación, el texto guardado se inserta sin reescritura."
+  "Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.": {
+    "pt": "Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.",
+    "en": "With rewriting enabled, snippet text is sent to AI as part of the message. When you say only the trigger phrase, saved text is inserted without rewriting.",
+    "es": "Con la reescritura activa, el texto del snippet se envía a la IA como parte del mensaje. Cuando dices solo la frase de activación, el texto guardado se inserta sin reescritura."
   }
 }

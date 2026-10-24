@@ -128,7 +128,7 @@ export function SnippetsPage({ controller }: SettingsPageProps) {
           {controller.state.accountState?.signedIn
             ? t("Os snippets desta conta são sincronizados e aplicados pelo servidor no desktop e no mobile.")
             : t("Os snippets deste dispositivo são aplicados localmente.")}
-          {" "}{t("Dentro de uma mensagem, o texto do snippet é enviado à IA para reescrita. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.")}
+          {" "}{t("Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.")}
         </p>
       </details>
     </section>

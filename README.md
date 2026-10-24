@@ -285,8 +285,8 @@ from the same page. Desktop changes use the existing Save/Discard bar.
 
 Account snippets synchronize between devices. Guest snippets stay on their device
 and are not uploaded at sign-in. Only trigger phrases can become recognition
-context. Applied saved text is sent to the rewrite model as part of the source
-message; its wording and formatting can change. Rewrite failure keeps the
+context. With rewriting enabled, applied saved text is sent to the rewrite model
+as part of the source message; its wording and formatting can change. Rewrite failure keeps the
 substituted source, and the original recognized transcript remains in history.
 See [matching, sync and limits](docs/dictionary-snippets.md).
 

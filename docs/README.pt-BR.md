@@ -200,8 +200,8 @@ barra Salvar/Descartar para aplicar ou cancelar os rascunhos.
 
 Os snippets da conta são sincronizados entre os dispositivos. Os snippets sem
 conta ficam no dispositivo e não são enviados ao entrar na conta. Somente as
-frases de ativação podem ser usadas como contexto de reconhecimento. O texto
-substituído é enviado ao modelo de reescrita como parte da mensagem e pode ter
+frases de ativação podem ser usadas como contexto de reconhecimento. Com a
+reescrita ativa, o texto substituído é enviado ao modelo de reescrita como parte da mensagem e pode ter
 a redação e a formatação ajustadas. Se a reescrita falhar, o texto substituído é
 mantido. A transcrição original permanece no histórico. Consulte as
 [regras de correspondência, sincronização e limites](dictionary-snippets.md).
