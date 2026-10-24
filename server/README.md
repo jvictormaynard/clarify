@@ -127,8 +127,9 @@ again; `snippet_expanded: true` marks an applied expansion even when
 `rewritten` is false. Idempotent retries return the saved result and do not
 expand it again.
 
-The complete compact-JSON UTF-8 dictation response, including original text,
-expanded text and usage, is limited to 393,216 bytes. An expansion above this
+The complete rendered JSON UTF-8 dictation response, including original text,
+expanded text and usage, is limited to 393,216 bytes. Measurement includes the
+renderer escaping for Unicode line and paragraph separators. An expansion above this
 limit returns `422 snippet_result_too_large` with phase `processing`; no partial
 text is returned or cached. The operation settles once at the conservative
 reservation and its bounded error is replayed without another provider call or

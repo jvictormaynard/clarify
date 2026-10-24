@@ -8,6 +8,7 @@ from unittest.mock import patch
 from allauth.account.models import EmailAddress
 from django.db import close_old_connections, connection, connections
 from django.test import TestCase, TransactionTestCase, override_settings
+from rest_framework.renderers import JSONRenderer
 from rest_framework.test import APIClient
 
 from cloud.service import api, groq, ledger
@@ -266,6 +267,79 @@ class HostedSnippetTests(TestCase):
         self.assertNotIn(long_entry["replacement"], str(provider.call_args_list))
         self.assertEqual(self.send(operation_id).status_code, 422)
         self.assertEqual(provider.call_count, 2)
+
+    @patch("cloud.service.groq.perform")
+    def test_wire_limit_rejects_escaped_line_and_paragraph_separators(self, provider):
+        replacement = "x" + "\u2028\u2029" * 2047 + "\u2028"
+        saved = {**ENTRY, "replacement": replacement}
+        self.assertEqual(
+            self.client.put(
+                "/v1/snippets", {"revision": 1, "entries": [saved]}, format="json"
+            ).status_code,
+            200,
+        )
+        transcript = ", ".join([ENTRY["trigger"]] * 31)
+        expanded = ", ".join([replacement] * 31)
+        expected = {
+            "transcript": transcript,
+            "text": expanded,
+            "rewritten": False,
+            "snippet_expanded": True,
+            "usage": {**ledger.usage(self.user), "used_ms": 1000},
+        }
+        compact_size = len(
+            json.dumps(expected, ensure_ascii=False, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        )
+        self.assertLess(compact_size, api.MAX_DICTATION_RESULT_BYTES)
+        self.assertGreater(len(JSONRenderer().render(expected)), 512 * 1024)
+        provider.side_effect = [{"text": transcript}, groq.ProviderFailure()]
+        operation_id = uuid.uuid4()
+        response = self.send(operation_id)
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["code"], "snippet_result_too_large")
+        self.assertNotIn("text", response.json())
+        self.assertEqual(self.send(operation_id).status_code, 422)
+        self.assertEqual(provider.call_count, 2)
+
+    @patch("cloud.service.groq.perform")
+    def test_exact_wire_boundary_counts_both_escaped_separator_types(self, provider):
+        for index, separator in enumerate(("\u2028", "\u2029"), start=1):
+            with self.subTest(separator=repr(separator)):
+                saved = {**ENTRY, "replacement": "literal" + separator * 10}
+                self.assertEqual(
+                    self.client.put(
+                        "/v1/snippets",
+                        {"revision": index, "entries": [saved]},
+                        format="json",
+                    ).status_code,
+                    200,
+                )
+                usage = ledger.usage(self.user)
+                expected = {
+                    "transcript": "Minha assinatura.",
+                    "text": saved["replacement"],
+                    "rewritten": False,
+                    "snippet_expanded": True,
+                    "usage": {**usage, "used_ms": usage["used_ms"] + 1000},
+                }
+                wire_size = len(JSONRenderer().render(expected))
+                provider.reset_mock()
+                provider.return_value = {"text": "Minha assinatura."}
+                with patch.object(api, "MAX_DICTATION_RESULT_BYTES", wire_size):
+                    accepted = self.send(uuid.uuid4())
+                self.assertEqual(accepted.status_code, 200)
+                self.assertEqual(len(accepted.content), wire_size)
+                operation_id = uuid.uuid4()
+                with patch.object(api, "MAX_DICTATION_RESULT_BYTES", wire_size - 1):
+                    rejected = self.send(operation_id)
+                self.assertEqual(rejected.status_code, 422)
+                self.assertEqual(rejected.json()["code"], "snippet_result_too_large")
+                replay = self.send(operation_id)
+                self.assertEqual(replay.status_code, 422)
+                self.assertEqual(replay.json(), rejected.json())
+                self.assertEqual(provider.call_count, 2)
 
 
 @skipUnless(connection.vendor == "postgresql", "Requires real PostgreSQL row locks")

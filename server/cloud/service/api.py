@@ -304,9 +304,11 @@ class DictationView(ServiceView):
                     result = {**outcome.result, "usage": usage}
                     if (
                         len(
-                            json.dumps(
-                                result, ensure_ascii=False, separators=(",", ":")
-                            ).encode("utf-8")
+                            request.accepted_renderer.render(
+                                result,
+                                request.accepted_media_type,
+                                self.get_renderer_context(),
+                            )
                         )
                         > MAX_DICTATION_RESULT_BYTES
                     ):
