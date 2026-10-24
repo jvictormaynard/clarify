@@ -197,13 +197,16 @@ foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File))
     Copy-Item $qmlModule.FullName $sourceQmlPython -Force
 }
 Copy-Item (Join-Path $repoQmlPython "qt_shell.py") $sourceQmlPython -Force
+Copy-Item (Join-Path $repoQmlPython "history_view.py") $sourceQmlPython -Force
 foreach ($backendModule in @(
+    "account_history.py",
     "audio_file_batch.py",
     "audio_file_batch_ui.py",
     "clarify_account.py",
     "cloud_defaults.py",
     "dictionary_settings.py",
     "dictionary_snippets.py",
+    "experimental_audio_history.py",
     "history_store.py",
     "hotkey_config.py",
     "local_asr.py",

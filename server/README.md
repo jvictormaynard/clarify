@@ -8,7 +8,9 @@ The server is optional: local inference and personal provider keys still work
 without an account. The iOS app currently supports personal Groq keys, not local
 inference. Accounts share vocabulary, hosted audio allowance and new account
 transcriptions. Pre-upgrade records and guest history stay on their original
-device. Snippets and personal provider keys are not synchronized. Account
+device. Account snippets have a separate synchronized library; guest snippets
+and personal provider keys stay on their original device. Signing in does not
+upload guest snippets. Account
 history uses [bounded, idempotent synchronization](../docs/history-sync.md).
 
 ## Run and verify
@@ -86,6 +88,8 @@ or browser link. Unsupported device languages use English.
 | `GET /v1/usage` | Shared allowance for this account |
 | `GET /v1/dictionary` | This account's vocabulary and revision |
 | `PUT /v1/dictionary` | Replace vocabulary using `revision` and `entries` |
+| `GET /v1/snippets` | This account's snippet library and revision |
+| `PUT /v1/snippets` | Replace snippets using `revision` and `entries` |
 | `POST /v1/history/sync` | Synchronize bounded new account records and deletions with a durable cursor |
 | `POST /v1/dictations` | Multipart `audio`, UUID `operation_id`, optional `language`; returns updated allowance |
 | `POST /v1/text` | Fixed rewrite or translation: UUID `operation_id`, `action`, `text`, `language`; returns updated allowance |
@@ -102,6 +106,38 @@ with commas and bounded to 896 characters without splitting a term. Aliases and
 pronunciations remain stored but are not sent as recognition instructions.
 Rewriting retains its separate vocabulary context and canonical prompt. A
 rewrite failure still returns the recognized transcript successfully.
+
+Snippets have a spoken `trigger`, literal `replacement`, `enabled` flag and
+`case_sensitive` flag. The account library allows up to 512 entries, 256
+characters per trigger and 4,096 characters per saved replacement. Its normalized
+entry array must fit 262,144 UTF-8 bytes when encoded as compact JSON with
+literal Unicode (no ASCII escaping). The server returns `snippets_too_large`
+without changing the revision when this aggregate limit is exceeded. Local
+guest libraries retain their existing per-entry limits.
+
+Snippet writes use optimistic revisions; a stale write returns
+`snippet_conflict`. The independent library prevents older dictionary clients
+from erasing snippets. Account deletion removes the library. Only enabled
+triggers join bounded recognition/refinement hints. Saved replacement text is
+never sent to the provider. A standalone spoken trigger inserts its saved text
+without a rewrite request. Other matches expand once after refinement, including
+when refinement fails. Saved casing, line breaks and literal placeholders stay
+unchanged. Hosted clients use the returned final `text` without expanding it
+again; `snippet_expanded: true` marks an applied expansion even when
+`rewritten` is false. Idempotent retries return the saved result and do not
+expand it again.
+
+The complete rendered JSON UTF-8 dictation response, including original text,
+expanded text and usage, is limited to 393,216 bytes. Measurement includes the
+renderer escaping for Unicode line and paragraph separators. An expansion above this
+limit returns `422 snippet_result_too_large` with phase `processing`; no partial
+text is returned or cached. The operation settles once at the conservative
+reservation and its bounded error is replayed without another provider call or
+audio charge. Clients show the error and do not publish text to the clipboard.
+For a snippet-expanded result, the original transcript and final text must each
+fit 32,768 UTF-8 bytes. This retains compatibility with the existing account
+history record. A larger field returns the same bounded error before success;
+the server does not truncate text or change the history schema.
 
 Processing errors return a bounded `code`, `phase`, validated `operation_id`,
 and updated `usage`. Empty recognition is `422 no_speech` with phase

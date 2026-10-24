@@ -39,7 +39,261 @@ class WebSettingsTests(unittest.TestCase):
         self.directory.cleanup()
 
     def request(self, method, *args):
+        if method == "setSnippets" and len(args) == 1:
+            args = (*args, self.settings.snippetContext)
         return self.protocol.dispatch({"id": 7, "method": method, "args": list(args)})
+
+    def test_snippet_draft_round_trip_and_invalid_edits_preserve_saved_text(self):
+        entry = {
+            "trigger": "minha assinatura",
+            "replacement": "Nome\n  Equipe\n",
+            "enabled": True,
+            "case_sensitive": False,
+        }
+        self.assertEqual(self.request("snapshot")["result"]["snippets"], [])
+        self.assertIn("result", self.request("setSnippets", [entry]))
+        self.assertTrue(self.settings.dirty)
+        self.assertEqual(self.settings._dictionary_service.state.snippets, ())
+        self.assertIn("result", self.request("save"))
+        self.assertEqual(
+            self.settings._dictionary_service.expand("Minha assinatura."),
+            entry["replacement"],
+        )
+        self.assertIn("error", self.request("setSnippets", [entry, entry]))
+        self.assertEqual(self.request("snapshot")["result"]["snippets"], [entry])
+        self.assertIn("result", self.request("setSnippets", []))
+        self.assertIn("result", self.request("load"))
+        self.assertEqual(self.request("snapshot")["result"]["snippets"], [entry])
+
+    def test_snippet_draft_from_another_account_cannot_be_saved_to_guest(self):
+        entry = {"trigger": "sig", "replacement": "Account only"}
+        self.assertIn(
+            "error", self.request("setSnippets", [entry], "stale-account-context")
+        )
+        self.assertEqual(self.settings._dictionary_service.state.snippets, ())
+        self.assertFalse(self.settings.dirty)
+
+    def test_native_pipe_accepts_full_guest_snippet_library_and_still_bounds_frames(
+        self,
+    ):
+        from types import SimpleNamespace
+        from clarify.desktop.qml_web_settings import WebSettingsProcess
+
+        entries = [
+            {"trigger": f"phrase {index}", "replacement": "é" * 4096}
+            for index in range(256)
+        ]
+        payload = (
+            json.dumps(
+                {"id": 8, "method": "setSnippets", "args": [entries, "local"]},
+                ensure_ascii=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+        self.assertGreater(len(payload), 1_048_576)
+        process = Mock()
+        process.readAllStandardOutput.return_value = payload
+        host = SimpleNamespace(
+            buffer=bytearray(),
+            process=process,
+            startup_timer=Mock(),
+            protocol=self.protocol,
+        )
+        WebSettingsProcess._read(host)
+        process.kill.assert_not_called()
+        reply = json.loads(process.write.call_args.args[0])
+        self.assertEqual(len(reply["result"]["snippets"]), 256)
+        self.assertEqual(reply["result"]["snippets"][255]["replacement"], "é" * 4096)
+        process.reset_mock()
+        process.readAllStandardOutput.return_value = b"x" * 1025
+        with patch("clarify.desktop.qml_web_settings.MAX_SETTINGS_MESSAGE_BYTES", 1024):
+            WebSettingsProcess._read(host)
+        process.kill.assert_called_once()
+        process.write.assert_not_called()
+
+    def account_library(self):
+        import uuid
+        from clarify_account import AccountDictionaryRepository
+        from dictionary_snippets import (
+            DictionarySnippetService,
+            DictionarySnippets,
+            Snippet,
+        )
+
+        guest = self.settings._dictionary_service.repository
+        guest.save(DictionarySnippets(snippets=(Snippet("guest", "Guest text"),)))
+        account = self.settings._account
+        with account._lock:
+            account._state.update(
+                user_id=str(uuid.uuid4()), endpoint="https://first.example"
+            )
+            account._generation += 1
+        service = DictionarySnippetService(AccountDictionaryRepository(account, guest))
+        self.settings._dictionary_service = service
+        self.settings._dictionary_draft = service.state
+        self.settings._snippet_draft_context = self.settings.snippetContext
+        return account, service, guest
+
+    def test_revocation_after_initial_context_check_cannot_save_account_draft_as_guest(
+        self,
+    ):
+        import threading
+
+        account, service, guest = self.account_library()
+        before_guest = guest.load()
+        account_cache = account.snippet_path()
+        before_config = self.settings.repositories.config.load()
+        saved = Mock()
+        self.settings.saved.connect(saved)
+        self.assertIn(
+            "result",
+            self.request(
+                "setSnippets", [{"trigger": "private", "replacement": "Account draft"}]
+            ),
+        )
+        changed_language = "en" if self.settings.language != "en" else "pt"
+        self.request("setLanguage", changed_language)
+        checked, revoked = threading.Event(), threading.Event()
+
+        def revoke():
+            if not checked.wait(3):
+                return
+            with account._lock:
+                account._state.pop("user_id", None)
+                account._generation += 1
+            revoked.set()
+
+        worker = threading.Thread(target=revoke)
+        worker.start()
+
+        def after_initial_check():
+            checked.set()
+            self.assertTrue(revoked.wait(3))
+            return True
+
+        try:
+            with patch.object(
+                self.settings, "cancelHotkeyCapture", side_effect=after_initial_check
+            ):
+                self.assertFalse(self.settings.save())
+        finally:
+            checked.set()
+            worker.join(3)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(guest.load(), before_guest)
+        self.assertFalse(account_cache.exists())
+        self.assertEqual(self.settings.repositories.config.load(), before_config)
+        saved.assert_not_called()
+
+    def test_revocation_waits_until_failed_library_save_and_config_rollback_finish(
+        self,
+    ):
+        import threading
+        from dictionary_snippets import LocalDictionarySnippetsRepository
+        import clarify.desktop.qml_settings as qml_settings
+
+        account, service, guest = self.account_library()
+        before_guest, before_library = guest.load(), service.state
+        account_words = service.repository.path
+        before_config = self.settings.repositories.config.load()
+        self.request(
+            "setSnippets", [{"trigger": "private", "replacement": "Account draft"}]
+        )
+        self.request("setDictionaryEntries", [{"term": "New word", "enabled": True}])
+        self.request("setLanguage", "en" if self.settings.language != "en" else "pt")
+        writing, revoke_attempted, revoked = (
+            threading.Event(),
+            threading.Event(),
+            threading.Event(),
+        )
+        rollback_had_account = []
+        original_save = LocalDictionarySnippetsRepository.save
+        original_apply = qml_settings._apply_config_with_autostart_transaction
+
+        def persist(repository, state):
+            if repository.path.name == "snippets.json":
+                writing.set()
+                self.assertTrue(revoke_attempted.wait(3))
+                raise OSError("isolated persistence failure")
+            return original_save(repository, state)
+
+        def apply(config, *args):
+            if config == before_config:
+                rollback_had_account.append(
+                    bool(account.scope) and not revoked.is_set()
+                )
+            return original_apply(config, *args)
+
+        def revoke():
+            if not writing.wait(3):
+                return
+            revoke_attempted.set()
+            with account._lock:
+                account._state.pop("user_id", None)
+                account._generation += 1
+            revoked.set()
+
+        worker = threading.Thread(target=revoke)
+        worker.start()
+        saved = Mock()
+        self.settings.saved.connect(saved)
+        try:
+            with (
+                patch.object(LocalDictionarySnippetsRepository, "save", persist),
+                patch.object(
+                    qml_settings,
+                    "_apply_config_with_autostart_transaction",
+                    side_effect=apply,
+                ),
+            ):
+                self.assertFalse(self.settings.save())
+        finally:
+            writing.set()
+            worker.join(3)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(rollback_had_account, [True])
+        self.assertEqual(guest.load(), before_guest)
+        self.assertEqual(self.settings.repositories.config.load(), before_config)
+        self.assertEqual(service.state, before_library)
+        self.assertEqual(
+            LocalDictionarySnippetsRepository(account_words).load().dictionary,
+            before_library.dictionary,
+        )
+        saved.assert_not_called()
+
+    def test_reentrant_revocation_during_config_write_is_rechecked_before_library_save(
+        self,
+    ):
+        import clarify.desktop.qml_settings as qml_settings
+
+        account, service, guest = self.account_library()
+        before_guest = guest.load()
+        account_cache = account.snippet_path()
+        before_config = self.settings.repositories.config.load()
+        self.request(
+            "setSnippets", [{"trigger": "private", "replacement": "Account draft"}]
+        )
+        self.request("setLanguage", "en" if self.settings.language != "en" else "pt")
+        original_apply = qml_settings._apply_config_with_autostart_transaction
+
+        def apply(config, *args):
+            result = original_apply(config, *args)
+            if config != before_config:
+                with account._lock:
+                    account._state.pop("user_id", None)
+                    account._generation += 1
+            return result
+
+        saved = Mock()
+        self.settings.saved.connect(saved)
+        with patch.object(
+            qml_settings, "_apply_config_with_autostart_transaction", side_effect=apply
+        ):
+            self.assertFalse(self.settings.save())
+        self.assertEqual(guest.load(), before_guest)
+        self.assertFalse(account_cache.exists())
+        self.assertEqual(self.settings.repositories.config.load(), before_config)
+        saved.assert_not_called()
 
     def test_snapshot_is_json_and_does_not_include_key(self):
         self.settings.selectProvider("openai")

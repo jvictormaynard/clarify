@@ -1,0 +1,85 @@
+import { t } from '../i18n';
+import { useEffect, useState } from 'react';
+import { useIsFocused } from 'expo-router';
+import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Core, { type Snippet } from '../../modules/clarify-core';
+import { Button, Card, ModalHeader, TableRow, Title, ui, usePalette } from './ui';
+import { isBusy, report, useClarify } from '../state/clarify';
+
+const empty = (): Snippet => ({ trigger: '', replacement: '', enabled: true, case_sensitive: false });
+export function SnippetsLibrary() {
+  const c = usePalette();
+  const focused = useIsFocused();
+  const { state, account, refresh, accountBusy } = useClarify();
+  const scope = account?.signedIn ? `${account.endpoint}/${account.email}` : 'guest';
+  const [entries, setEntries] = useState<Snippet[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [search, setSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<{ index: number; value: Snippet; base: Snippet[]; scope: string } | null>(null);
+  const busy = isBusy(state) || accountBusy || !!account?.busy || saving || !!(account?.managed && !account.signedIn);
+  useEffect(() => {
+    if (!focused) return;
+    let active = true;
+    void Core.getSnippets().then(values => { if (active) { setEntries(values); setLoaded(true); } }).catch(report).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [focused, scope, state.libraryRevision]);
+  const edit = (index = -1) => setEditing({ index, value: index < 0 ? empty() : { ...entries[index] }, base: entries, scope });
+  async function save(values: Snippet[]) {
+    if (!editing || editing.scope !== scope) return;
+    setSaving(true);
+    try { await Core.saveSnippets(values, editing.base, account?.historyContext ?? ""); setEntries(await Core.getSnippets()); setEditing(null); await refresh(); }
+    catch (error) { report(error); }
+    finally { setSaving(false); }
+  }
+  function commit() {
+    if (!editing) return;
+    const value = { ...editing.value, trigger: editing.value.trigger.trim() };
+    const values = [...editing.base];
+    if (editing.index < 0) values.push(value); else values[editing.index] = value;
+    void save(values);
+  }
+  const visible = entries.map((entry, index) => ({ entry, index })).filter(({ entry }) =>
+    `${entry.trigger} ${entry.replacement}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+  return <>
+    <FlatList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[ui.content, { gap: 0 }]} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
+      data={visible} keyExtractor={({ index }) => String(index)}
+      ListHeaderComponent={<View style={{ gap: 16, marginBottom: 16 }}>
+        <Title subtitle={t('Diga uma frase para inserir um texto salvo.')}>{t('Snippets')}</Title>
+        <Text style={[ui.small, { color: c.muted }]}>{account?.signedIn
+          ? t('Os snippets desta conta são sincronizados e aplicados pelo servidor no desktop e no mobile.')
+          : t('Os snippets deste dispositivo são aplicados localmente.')}</Text>
+        {account?.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.text }]}>{t(account.error)}</Text>}
+        <TextInput accessibilityLabel={t('Buscar snippets')} value={search} onChangeText={setSearch} placeholder={t('Buscar snippets')} placeholderTextColor={c.muted} style={[ui.input, { color: c.text, backgroundColor: c.card, borderColor: c.line }]} />
+        <Button disabled={busy || !loaded || entries.length >= 512} onPress={() => edit()}>{t('Adicionar snippet')}</Button>
+      </View>}
+      renderItem={({ item: { entry, index }, index: row }) => <TableRow first={row === 0} last={row === visible.length - 1} disabled={busy} onPress={() => edit(index)}>
+        <View style={ui.row}><Text style={[ui.body, { color: c.text, fontWeight: '600', flex: 1 }]}>{entry.trigger}</Text><Text style={[ui.small, { color: c.muted }]}>{entry.enabled ? t('Ativa') : t('Desativada')}</Text></View>
+        <Text numberOfLines={3} style={[ui.small, { color: c.muted }]}>{entry.replacement}</Text>
+      </TableRow>}
+      ListEmptyComponent={loading ? <ActivityIndicator /> : loaded ? <Text style={[ui.body, { color: c.muted }]}>{search ? t('Nenhum snippet encontrado.') : t('Adicione seu primeiro snippet.')}</Text>
+        : <Button onPress={() => { setLoading(true); void Core.getSnippets().then(values => { setEntries(values); setLoaded(true); }).catch(report).finally(() => setLoading(false)); }}>{t('Carregar snippets')}</Button>}
+      ListFooterComponent={<Text style={[ui.small, { color: c.muted, marginTop: 12 }]}>{t('As frases de ativação podem ajudar a IA. O conteúdo salvo é inserido por código, sem ser enviado como contexto à IA.')}</Text>}
+    />
+    <Modal visible={editing !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { if (!saving) setEditing(null); }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>
+        <ModalHeader title={editing?.index === -1 ? t('Adicionar snippet') : t('Editar snippet')} cancelLabel={t('Cancelar')} saveLabel={t('Salvar')}
+          onCancel={() => setEditing(null)} onSave={commit} busy={saving} loading={saving} disabled={busy || !editing?.value.trigger.trim() || !editing?.value.replacement.trim()} />
+        <ScrollView contentContainerStyle={[ui.content, { paddingTop: 12 }]} keyboardShouldPersistTaps="handled">
+          {editing && <Card>
+            <Text style={[ui.body, { color: c.text }]}>{t('Frase de ativação')}</Text>
+            <TextInput accessibilityLabel={t('Frase de ativação')} value={editing.value.trigger} onChangeText={trigger => setEditing({ ...editing, value: { ...editing.value, trigger } })} editable={!busy} autoCorrect={false} maxLength={256} style={[ui.input, { color: c.text, borderColor: c.line }]} />
+            <Text style={[ui.body, { color: c.text }]}>{t('Texto a inserir')}</Text>
+            <TextInput accessibilityLabel={t('Texto a inserir')} value={editing.value.replacement} onChangeText={replacement => setEditing({ ...editing, value: { ...editing.value, replacement } })} editable={!busy} multiline maxLength={4096} textAlignVertical="top" style={[ui.input, { color: c.text, borderColor: c.line, minHeight: 160 }]} />
+            <View style={ui.row}><Text style={[ui.body, { color: c.text, flex: 1 }]}>{t('Usar snippet')}</Text><Switch accessibilityLabel={t('Usar snippet')} value={editing.value.enabled} disabled={busy} onValueChange={enabled => setEditing({ ...editing, value: { ...editing.value, enabled } })} /></View>
+            <View style={ui.row}><Text style={[ui.body, { color: c.text, flex: 1 }]}>{t('Diferenciar maiúsculas e minúsculas')}</Text><Switch accessibilityLabel={t('Diferenciar maiúsculas e minúsculas')} value={editing.value.case_sensitive} disabled={busy} onValueChange={case_sensitive => setEditing({ ...editing, value: { ...editing.value, case_sensitive } })} /></View>
+          </Card>}
+          {editing && editing.index >= 0 && <Button disabled={busy} destructive onPress={() => Alert.alert(t('Excluir snippet?'), editing.value.trigger,
+            [{ text: t('Cancelar'), style: 'cancel' }, { text: t('Excluir'), style: 'destructive', onPress: () => void save(editing.base.filter((_, index) => index !== editing.index)) }])}>{t('Excluir snippet')}</Button>}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  </>;
+}

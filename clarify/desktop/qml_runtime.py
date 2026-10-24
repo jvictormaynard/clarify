@@ -22,6 +22,7 @@ from typing import Any, Callable
 from clarify_account import AccountService, AccountDictionaryRepository
 from account_history import AccountHistory
 from cloud_defaults import DEFAULT_CLOUD_URL
+from experimental_audio_history import archive_audio, prune_audio_history
 
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, Qt, Signal, Slot
 from workflow_provider import (
@@ -828,6 +829,7 @@ class QtRecordingSession(RecordingSessionGateway):
         self._lock = threading.RLock()
         self._started = False
         self._started_at: float | None = None
+        self._experimental_audio_saved = False
         self._terminal = False
         self._error: Exception | None = None
         self._boundary_callback: Callable[[Any], None] | None = None
@@ -994,6 +996,19 @@ class QtRecordingSession(RecordingSessionGateway):
         duration_seconds = (
             max(0.0, stopped_at - started_at) if started_at is not None else 0.0
         )
+        if finalize_stream and not self._experimental_audio_saved:
+            self._experimental_audio_saved = True
+            try:
+                if (
+                    self.config is not None
+                    and self.config.current().experimental_audio_history
+                    and not self.cancel_event.is_set()
+                    and not self.provider_cancel_token.cancelled
+                ):
+                    archive_audio(self.audio_path.parent, audio_bytes)
+            except Exception:
+                # Optional local benchmark fixtures cannot break dictation.
+                pass
         return RecordingSnapshot(
             self.audio_path,
             audio_bytes,
@@ -1655,6 +1670,8 @@ def create_real_workflow_runtime(
     """Create the production workflow and shutdown boundary for QML."""
 
     active = repositories or create_runtime_repositories()
+    # Prune already collected fixtures even after collection is turned off.
+    prune_audio_history(Path(active.config.path).parent)
     account = AccountService(
         Path(active.config.path).parent,
         default_endpoint=os.environ.get("CLARIFY_CLOUD_URL", DEFAULT_CLOUD_URL),

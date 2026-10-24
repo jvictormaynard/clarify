@@ -29,6 +29,10 @@ on:
         description: Validate synthetic short speech with the live Groq client
         type: boolean
         default: false
+      snippets_acceptance:
+        description: Validate snippets with the live native client and temporary test accounts
+        type: boolean
+        default: false
       availability_only:
         description: Complete internal TestFlight delivery of the already uploaded build
         type: boolean
@@ -109,6 +113,11 @@ jobs:
         env:
           CLARIFY_SHORT_DICTATION_ACCEPTANCE: ${{ secrets.CLARIFY_SHORT_DICTATION_ACCEPTANCE }}
         run: node scripts/test-short-dictation.cjs
+      - name: Validate snippets with the live mobile client
+        if: inputs.snippets_acceptance
+        env:
+          CLARIFY_SNIPPETS_ACCEPTANCE: ${{ secrets.CLARIFY_SNIPPETS_ACCEPTANCE }}
+        run: node scripts/test-snippets-acceptance.cjs
       - name: Test keyboard on iPhone simulator
         if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
         env:

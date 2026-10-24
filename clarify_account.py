@@ -7,7 +7,9 @@ Provider keys and guest history never enter this boundary.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from contextlib import contextmanager
 import json
+import hashlib
 from pathlib import Path
 import threading
 import time
@@ -20,8 +22,10 @@ import requests
 from dictionary_snippets import (
     DictionaryEntry,
     DictionarySnippets,
+    Snippet,
     LocalDictionarySnippetsRepository,
     _atomic_write_json,
+    account_snippet_entries,
 )
 from provider_types import TranscriptionResult
 from secret_store import SecretStore, create_secret_store
@@ -57,6 +61,7 @@ def _processing_error(status, result, *, text=False):
     )
     messages = {
         "no_speech": "Nenhuma fala foi reconhecida. Tente falar novamente.",
+        "snippet_result_too_large": "O texto dos snippets excede o limite. Use menos frases de ativação.",
         "transcription_failed": "Não foi possível transcrever o áudio. Tente novamente.",
         "text_processing_failed": "Não foi possível processar o texto. Tente novamente.",
         "processing_failed": "Não foi possível concluir o processamento. Tente novamente.",
@@ -120,6 +125,41 @@ class HistoryIdentity:
     generation: int
 
 
+def merge_snippets(base, local, remote, *, prefer=None):
+    def index(values):
+        document = DictionarySnippets(
+            snippets=tuple(Snippet.from_mapping(item) for item in values)
+        )
+        return {
+            item.trigger.casefold(): item.to_mapping() for item in document.snippets
+        }
+
+    before, ours, theirs = index(base), index(local), index(remote)
+    merged = []
+    for key in dict.fromkeys([*theirs, *ours, *before]):
+        b, a, c = before.get(key), ours.get(key), theirs.get(key)
+        if a == b:
+            chosen = c
+        elif c == b or a == c:
+            chosen = a
+        elif prefer == "local":
+            chosen = a
+        elif prefer == "remote":
+            chosen = c
+        else:
+            raise DictionaryConflict(
+                "O mesmo snippet mudou nos dois dispositivos. Escolha qual versão manter."
+            )
+        if chosen is not None:
+            merged.append(chosen)
+    return [
+        item.to_mapping()
+        for item in DictionarySnippets(
+            snippets=tuple(Snippet.from_mapping(item) for item in merged)
+        ).snippets
+    ]
+
+
 def endpoint(value: str) -> str:
     value = value.strip().rstrip("/")
     if not value:
@@ -179,6 +219,13 @@ def merge_dictionary(base, local, remote, *, prefer=None):
             tuple(DictionaryEntry.from_mapping(item) for item in merged)
         ).dictionary
     ]
+
+
+def _account_snippet_entries(snippets):
+    try:
+        return account_snippet_entries(snippets)
+    except ValueError as error:
+        raise AccountError(str(error)) from error
 
 
 class AccountService:
@@ -298,6 +345,29 @@ class AccountService:
             self._generation += 1
             self._save()
 
+    def snippet_context(self):
+        """Nonsecret owner token used to reject a draft after an account change."""
+        with self._lock:
+            scope = self.scope
+            if not scope:
+                return "local"
+            server = self._state.get("endpoint", self.default_endpoint)
+            return hashlib.sha256((server + "\n" + scope).encode("utf-8")).hexdigest()
+
+    def snippet_path(self, identity=None):
+        """New snippets never reuse a cache from another server or account."""
+        identity = identity or self.history_identity()
+        if identity is None:
+            raise AccountError("Entre na sua conta primeiro.")
+        server_key = hashlib.sha256(identity.endpoint.encode("utf-8")).hexdigest()
+        return (
+            self.directory
+            / "account-snippets"
+            / server_key
+            / identity.user_id
+            / "snippets.json"
+        )
+
     def history_identity(self):
         """Capture the account/session before starting a history operation."""
         with self._lock:
@@ -342,6 +412,8 @@ class AccountService:
         if token:
             headers["X-Session-Token"] = token
         try:
+            if method == "PUT" and path == "/v1/snippets":
+                headers["Content-Type"] = "application/json"
             response = self.request(
                 method,
                 endpoint(base) + path,
@@ -456,7 +528,7 @@ class AccountService:
             and (force or self._clock() - self._last_sync_attempt >= 60)
         ):
             try:
-                self.sync_dictionary(service)
+                self.sync_library(service)
             except AccountError as error:
                 with self._lock:
                     self._sync_error = str(error)
@@ -499,11 +571,15 @@ class AccountService:
             self._generation += 1
             self._save()
         if delete and scope:
+            if history_owner is not None:
+                snippet_path = self.snippet_path(history_owner)
+                snippet_path.unlink(missing_ok=True)
+                snippet_path.with_name("snippets-sync.json").unlink(missing_ok=True)
             if self.history is not None:
                 self.history.remove_account(history_owner)
             target = self.directory / "account-data" / str(uuid.UUID(scope))
             # Remove only this account's cache, never the local profile.
-            for name in ("dictionary.json", "sync.json"):
+            for name in ("dictionary.json", "sync.json", "snippets-sync.json"):
                 (target / name).unlink(missing_ok=True)
 
     def sync_dictionary(self, service, *, prefer=None):
@@ -515,7 +591,7 @@ class AccountService:
             target = self.directory / "account-data" / str(uuid.UUID(user_id))
             metadata = self._read(target / "sync.json", {})
             # Resume this account's cache. First connection imports local words;
-            # snippets remain on the device and guest data is never overwritten.
+            # guest snippets stay separate and are never imported automatically.
             cached = LocalDictionarySnippetsRepository(
                 target / "dictionary.json"
             ).load()
@@ -564,8 +640,13 @@ class AccountService:
                     "As palavras mudaram durante a sincronização. As alterações locais foram mantidas. Sincronize novamente."
                 )
             LocalDictionarySnippetsRepository(target / "dictionary.json").save(
-                DictionarySnippets(
-                    tuple(DictionaryEntry.from_mapping(e) for e in remote["entries"])
+                replace(
+                    LocalDictionarySnippetsRepository(
+                        target / "dictionary.json"
+                    ).load(),
+                    dictionary=tuple(
+                        DictionaryEntry.from_mapping(e) for e in remote["entries"]
+                    ),
                 )
             )
             _atomic_write_json(
@@ -578,6 +659,95 @@ class AccountService:
             self._save()
             service.reload()
 
+    def sync_library(self, service, *, prefer=None):
+        self.sync_dictionary(service, prefer=prefer)
+        self.sync_snippets(service, prefer=prefer)
+
+    def sync_snippets(self, service, *, prefer=None):
+        with self._lock:
+            user_id = self.scope
+            if not user_id:
+                raise AccountError("Entre na sua conta primeiro.")
+            repository = LocalDictionarySnippetsRepository(self.snippet_path())
+            metadata_path = repository.path.with_name("snippets-sync.json")
+            metadata = self._read(metadata_path, {})
+            local = repository.load().snippets
+            generation = self._generation
+        _account_snippet_entries(local)
+        code, remote = self._request("GET", "/v1/snippets")
+        if (
+            code != 200
+            or type(remote.get("revision")) is not int
+            or remote["revision"] < 0
+            or not isinstance(remote.get("entries"), list)
+        ):
+            raise AccountError("Não foi possível carregar os snippets da conta.")
+        try:
+            entries = merge_snippets(
+                metadata.get("base", []),
+                [item.to_mapping() for item in local],
+                remote["entries"],
+                prefer=prefer,
+            )
+        except DictionaryConflict:
+            with self._lock:
+                self._dictionary_conflict = True
+            raise
+        except (KeyError, TypeError, ValueError) as error:
+            raise AccountError(
+                "Não foi possível carregar os snippets da conta."
+            ) from error
+        _account_snippet_entries(tuple(Snippet.from_mapping(item) for item in entries))
+        if entries != remote["entries"]:
+            code, remote = self._request(
+                "PUT",
+                "/v1/snippets",
+                data=json.dumps(
+                    {"revision": remote["revision"], "entries": entries},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode("utf-8"),
+            )
+            if code != 200:
+                raise AccountError(
+                    "Os snippets mudaram em outro dispositivo. As cópias foram preservadas. Sincronize novamente."
+                )
+        try:
+            if (
+                type(remote.get("revision")) is not int
+                or remote["revision"] < 0
+                or not isinstance(remote.get("entries"), list)
+            ):
+                raise ValueError("Invalid snippet snapshot")
+            document = DictionarySnippets(
+                snippets=tuple(Snippet.from_mapping(item) for item in remote["entries"])
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise AccountError(
+                "Não foi possível carregar os snippets da conta."
+            ) from error
+        _account_snippet_entries(document.snippets)
+        with self._lock:
+            if generation != self._generation or self.scope != user_id:
+                raise AccountError("A conta mudou. Sincronize novamente.")
+            current = repository.load()
+            if current.snippets != local:
+                _atomic_write_json(
+                    metadata_path,
+                    {"base": remote["entries"], "revision": remote["revision"]},
+                )
+                raise AccountError(
+                    "Os snippets mudaram durante a sincronização. As alterações locais foram mantidas."
+                )
+            repository.save(replace(current, snippets=document.snippets))
+            _atomic_write_json(
+                metadata_path,
+                {"base": remote["entries"], "revision": remote["revision"]},
+            )
+            self._dictionary_conflict = False
+            self._sync_error = ""
+            service.reload()
+
     def transcribe(self, source, language, dictionary_service):
         if not self.hosted:
             raise AccountError("Entre na conta novamente.")
@@ -585,7 +755,7 @@ class AccountService:
             source.cancel_token.raise_if_cancelled()
         if self.scope and self._clock() - self._last_sync_attempt >= 60:
             try:
-                self.sync_dictionary(dictionary_service)
+                self.sync_library(dictionary_service)
             except AccountError as error:
                 with self._lock:
                     self._sync_error = str(error)
@@ -609,12 +779,15 @@ class AccountService:
             raise AccountError("O Clarify retornou um resultado inválido.")
         rewritten = result.get("rewritten") is True
         return TranscriptionResult(
-            dictionary_service.expand(text) if rewritten else raw,
+            text,
             "clarify",
             "whisper-large-v3-turbo",
             raw_text=raw,
-            refined_text=text if rewritten else None,
-            refinement_failed=not rewritten,
+            refined_text=text
+            if rewritten or result.get("snippet_expanded") is True
+            else None,
+            refinement_failed=not rewritten
+            and result.get("snippet_expanded") is not True,
             refinement_provider_id="clarify",
             refinement_model="openai/gpt-oss-20b",
         )
@@ -642,10 +815,24 @@ class AccountService:
 
 
 class AccountDictionaryRepository:
-    """Scope vocabulary per account; snippets always remain in the local profile."""
+    """Keep account vocabulary and snippet caches separate from the guest profile."""
 
     def __init__(self, account, local):
         self.account, self.local = account, local
+
+    @contextmanager
+    def transaction(self, *, expected_context=None):
+        # The service acquires this before its own lock. Sync finalization uses
+        # the same account -> dictionary order, including persistence rollback.
+        with self.account._lock:
+            if (
+                expected_context is not None
+                and expected_context != self.account.snippet_context()
+            ):
+                raise AccountError(
+                    "A conta mudou. Descarte as alterações dos snippets e tente novamente."
+                )
+            yield
 
     @property
     def path(self):
@@ -657,6 +844,10 @@ class AccountDictionaryRepository:
         )
 
     def load(self):
+        with self.transaction():
+            return self._load_owned()
+
+    def _load_owned(self):
         original = self.local.load()
         if not self.account.scope:
             return original
@@ -669,12 +860,32 @@ class AccountDictionaryRepository:
                 self.path.with_name("sync.json"), {"base": [], "revision": -1}
             )
         cached = LocalDictionarySnippetsRepository(self.path).load()
-        return replace(original, dictionary=cached.dictionary)
+        snippets = (
+            LocalDictionarySnippetsRepository(self.account.snippet_path())
+            .load()
+            .snippets
+        )
+        return replace(cached, snippets=snippets)
 
     def save(self, state):
+        with self.transaction():
+            return self._save_owned(state)
+
+    def _save_owned(self, state):
         if not self.account.scope:
             return self.local.save(state)
-        self.local.save(replace(self.local.load(), snippets=state.snippets))
-        return LocalDictionarySnippetsRepository(self.path).save(
-            replace(state, snippets=())
-        )
+        account_snippet_entries(state.snippets)
+        vocabulary = LocalDictionarySnippetsRepository(self.path)
+        snippets = LocalDictionarySnippetsRepository(self.account.snippet_path())
+        before_words, before_snippets = vocabulary.load(), snippets.load()
+        words_changed = before_words.dictionary != state.dictionary
+        snippets_changed = before_snippets.snippets != state.snippets
+        if words_changed:
+            vocabulary.save(replace(state, snippets=()))
+        try:
+            if snippets_changed:
+                snippets.save(DictionarySnippets(snippets=state.snippets))
+        except Exception:
+            if words_changed:
+                vocabulary.save(before_words)
+            raise

@@ -1,4 +1,4 @@
-# Local dictionary and snippets
+# Dictionary and voice snippets
 
 Clarify keeps user vocabulary and snippets in a non-secret profile file:
 
@@ -43,8 +43,9 @@ dictionary entries and 512 snippets.  Terms, aliases, pronunciation, and
 triggers are single-line Unicode strings with a 256-character limit;
 aliases are stored as separate strings and may contain commas.  The Settings
 editor shows one alias per line so punctuation round-trips without ambiguity;
-replacements may contain Unicode and newlines up to 4096 characters.  Empty
-replacements are allowed when a trigger should be removed.
+replacements may contain Unicode and newlines up to 4096 characters. Legacy local
+files can contain empty replacements. New snippet editors and account libraries
+require nonblank saved text.
 
 `LocalDictionarySnippetsRepository.import_json()` parses and validates the
 complete document before replacing the active file.  Invalid JSON, duplicate
@@ -53,8 +54,39 @@ versions therefore leave the previous profile unchanged.  `export_json()` and
 `export_to()` emit the canonical, human-readable document while preserving
 entry ordering.
 
+## Account snippets
+
+Desktop Settings has a separate **Snippets** page. On iOS, open **Dictionary →
+Snippets**. Add a distinctive spoken phrase and its saved text, then save. Both
+interfaces support search, editing, enable/disable and deletion. Desktop drafts
+use the existing Save/Discard bar. A draft is bound to the account where it began;
+a session or account change cannot save it into another account or the guest profile.
+
+Guest snippets remain on their device. Account snippets have an endpoint/account
+cache and synchronize through authenticated `GET/PUT /v1/snippets`, with separate
+optimistic revisions from vocabulary. Signing in does not upload guest snippets.
+Independent edits merge. A same-trigger conflict requires a choice; failed sync
+preserves local edits. Deleting an account removes its server library and that
+account's local cache, without deleting guest snippets.
+
+Account entries have the same per-entry limits plus a **256 KiB** aggregate bound
+for compact UTF-8 JSON. Oversized saves are rejected without truncation. The
+hosted original transcript and expanded text each have a **32 KiB UTF-8** limit,
+which matches the current synchronized-history protocol. The rendered response
+also has a **384 KiB** transport bound. Excessive expansion returns an explicit
+processing error and is not inserted, truncated or automatically retried.
+
+Hosted snippets are applied once on the server, including when rewriting fails.
+Clients use the returned final text and never expand it again. Personal desktop
+routes apply snippets locally. The saved replacement keeps its spelling, line
+breaks and literal placeholders. Replacement text is never executed or expanded
+recursively. Trigger phrases can be recognition hints; saved replacements are
+not sent as provider context. Expanded text can enter history when history is enabled.
+
 ## Matching behavior
 
+A standalone trigger tolerates recognizer punctuation and spacing and inserts the
+exact saved text before rewriting. Inside a longer phrase,
 `DictionarySnippetService.expand()` scans left-to-right and only considers
 enabled snippets.  Input and triggers use canonical Unicode NFC matching, so
 precomposed and decomposed forms (for example `café` and `cafe\u0301`) behave
@@ -72,10 +104,12 @@ produced without executing replacement text as code; expanded output is
 subject to the same configured character bound.
 
 Enabled dictionary entries produce an optional, provider-neutral transcription
-context.  It is bounded to 4096 characters and keeps the stored order.  Cloud
-transcription adapters forward that context through the typed
-`TranscriptionRequest`. The Groq adapter limits the added context to fit its
-896-character prompt budget, without cutting entries or changing the base prompt.
+context.  It is bounded to 4096 characters and keeps the stored order. Adapters
+receive context through the typed `TranscriptionRequest`. Groq ASR uses only
+enabled canonical spellings, up to 896 characters without partial terms. It
+omits an empty prompt and does not send transcription route prompts, chat
+instructions, aliases or pronunciation hints to Whisper. Rewrite and refinement
+prompts remain unchanged.
 Local Whisper receives canonical spellings (up to 896 characters) in the
 whisper.cpp `/inference` `prompt` field, with `max_context=224` and
 `carry_initial_prompt=true`. The pinned v1.9.1 server clears text history for

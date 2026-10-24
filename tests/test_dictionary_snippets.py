@@ -54,15 +54,19 @@ class DictionarySnippetTests(unittest.TestCase):
 
     def test_round_trip_preserves_unicode_punctuation_and_multiline_replacement(self):
         state = DictionarySnippets(
-            dictionary=(DictionaryEntry(
-                "João 🚀",
-                pronunciation="zh-ow",
-                aliases=("Joao", "ジョアン"),
-            ),),
-            snippets=(Snippet(
-                ";meeting",
-                "Agenda:\n1. Confirm scope\n2. Share notes",
-            ),),
+            dictionary=(
+                DictionaryEntry(
+                    "João 🚀",
+                    pronunciation="zh-ow",
+                    aliases=("Joao", "ジョアン"),
+                ),
+            ),
+            snippets=(
+                Snippet(
+                    ";meeting",
+                    "Agenda:\n1. Confirm scope\n2. Share notes",
+                ),
+            ),
         )
         self.repository.save(state)
 
@@ -73,10 +77,15 @@ class DictionarySnippetTests(unittest.TestCase):
         self.assertIn("Agenda:\\n1. Confirm scope", self.repository.export_json())
 
     def test_unversioned_document_migrates_to_v1(self):
-        self.path.write_text(json.dumps({
-            "dictionary": [{"term": "Clarify"}],
-            "snippets": [{"trigger": "addr", "replacement": "address"}],
-        }), encoding="utf-8")
+        self.path.write_text(
+            json.dumps(
+                {
+                    "dictionary": [{"term": "Clarify"}],
+                    "snippets": [{"trigger": "addr", "replacement": "address"}],
+                }
+            ),
+            encoding="utf-8",
+        )
 
         loaded = self.repository.load()
 
@@ -93,11 +102,13 @@ class DictionarySnippetTests(unittest.TestCase):
         service = DictionarySnippetService(self.repository)
 
         with self.assertRaises(DictionarySnippetsError):
-            service.import_json({
-                "schema_version": 1,
-                "dictionary": [{"term": "OpenWhispr"}, {"term": "OpenWhispr"}],
-                "snippets": [],
-            })
+            service.import_json(
+                {
+                    "schema_version": 1,
+                    "dictionary": [{"term": "OpenWhispr"}, {"term": "OpenWhispr"}],
+                    "snippets": [],
+                }
+            )
 
         self.assertEqual(service.state, original)
         self.assertEqual(self.repository.load(), original)
@@ -107,15 +118,19 @@ class DictionarySnippetTests(unittest.TestCase):
         self.repository.save(original)
         service = DictionarySnippetService(self.repository)
 
-        for document in ("{not-json", {
-            "schema_version": 99,
-            "dictionary": [],
-            "snippets": [],
-        }, {
-            "schema_version": "one",
-            "dictionary": [],
-            "snippets": [],
-        }):
+        for document in (
+            "{not-json",
+            {
+                "schema_version": 99,
+                "dictionary": [],
+                "snippets": [],
+            },
+            {
+                "schema_version": "one",
+                "dictionary": [],
+                "snippets": [],
+            },
+        ):
             with self.assertRaises(DictionarySnippetsError):
                 service.import_json(document)
 
@@ -124,18 +139,22 @@ class DictionarySnippetTests(unittest.TestCase):
 
     def test_snippets_are_longest_first_and_respect_unicode_word_boundaries(self):
         service = DictionarySnippetService(self.repository)
-        service.replace(DictionarySnippets(snippets=(
-            Snippet("meet", "short"),
-            Snippet("meet me", "long"),
-            Snippet("café", "coffee", case_sensitive=False),
-            Snippet("straße", "street", case_sensitive=False),
-            Snippet("cafe", "base-only", case_sensitive=False),
-        )))
+        service.replace(
+            DictionarySnippets(
+                snippets=(
+                    Snippet("meet", "short"),
+                    Snippet("meet me", "long"),
+                    Snippet("café", "coffee", case_sensitive=False),
+                    Snippet("straße", "street", case_sensitive=False),
+                    Snippet("cafe", "base-only", case_sensitive=False),
+                )
+            )
+        )
 
         self.assertEqual(
             service.expand(
-                "meet me, meet meeting café CAFÉ xmeet café-bar STRASSE "
-                "cafe\u0301"),
+                "meet me, meet meeting café CAFÉ xmeet café-bar STRASSE cafe\u0301"
+            ),
             "long, short meeting coffee coffee xmeet coffee-bar street coffee",
         )
 
@@ -149,10 +168,14 @@ class DictionarySnippetTests(unittest.TestCase):
 
         self.assertEqual(service.expand("ß"), "ß")
 
-        service.replace(DictionarySnippets(snippets=(
-            Snippet("s", "letter"),
-            Snippet("ß", "sharp-s"),
-        )))
+        service.replace(
+            DictionarySnippets(
+                snippets=(
+                    Snippet("s", "letter"),
+                    Snippet("ß", "sharp-s"),
+                )
+            )
+        )
 
         self.assertEqual(service.expand("ß"), "sharp-s")
 
@@ -164,8 +187,8 @@ class DictionarySnippetTests(unittest.TestCase):
         self.assertEqual(service.expand("각"), "각")
 
     def test_nfc_matching_covers_newer_starter_compositions_when_available(self):
-        starter = "\U00016D67"
-        composed = "\U00016D68"
+        starter = "\U00016d67"
+        composed = "\U00016d68"
         if unicodedata.name(starter, "") == "":
             self.skipTest("this Python Unicode database predates Kirat Rai")
         self.assertEqual(unicodedata.normalize("NFC", starter * 2), composed)
@@ -175,24 +198,31 @@ class DictionarySnippetTests(unittest.TestCase):
 
     def test_trie_prefix_index_avoids_boundary_checks_for_unmatched_prefixes(self):
         service = DictionarySnippetService(self.repository)
-        service.replace(DictionarySnippets(snippets=tuple(
-            Snippet(f"trigger-{index}", "replacement")
-            for index in range(512)
-        )))
+        service.replace(
+            DictionarySnippets(
+                snippets=tuple(
+                    Snippet(f"trigger-{index}", "replacement") for index in range(512)
+                )
+            )
+        )
 
         with patch(
-                "dictionary_snippets._has_word_boundaries",
-                wraps=lambda text, start, end: True,
+            "dictionary_snippets._has_word_boundaries",
+            wraps=lambda text, start, end: True,
         ) as boundary:
             self.assertEqual(service.expand("z" * 10_000), "z" * 10_000)
         self.assertEqual(boundary.call_count, 0)
 
     def test_case_sensitive_and_disabled_rules_are_explicit(self):
         service = DictionarySnippetService(self.repository)
-        service.replace(DictionarySnippets(snippets=(
-            Snippet("ID", "sensitive", case_sensitive=True),
-            Snippet("todo", "done", enabled=False),
-        )))
+        service.replace(
+            DictionarySnippets(
+                snippets=(
+                    Snippet("ID", "sensitive", case_sensitive=True),
+                    Snippet("todo", "done", enabled=False),
+                )
+            )
+        )
 
         self.assertEqual(service.expand("ID id todo"), "sensitive id todo")
 
@@ -202,15 +232,22 @@ class DictionarySnippetTests(unittest.TestCase):
 
         self.assertEqual(service.expand("keep noise."), "keep .")
 
-    def test_context_is_bounded_ordered_and_request_never_requires_provider_branch(self):
+    def test_context_is_bounded_ordered_and_request_never_requires_provider_branch(
+        self,
+    ):
         service = DictionarySnippetService(self.repository)
-        service.replace(DictionarySnippets(dictionary=(
-            DictionaryEntry("First"),
-            DictionaryEntry("Second", aliases=("2nd",)),
-        )))
+        service.replace(
+            DictionarySnippets(
+                dictionary=(
+                    DictionaryEntry("First"),
+                    DictionaryEntry("Second", aliases=("2nd",)),
+                )
+            )
+        )
 
         request = TranscriptionRequest(
-            Path("audio.wav"), "model", "en", "instruction", "prompt", 0.0)
+            Path("audio.wav"), "model", "en", "instruction", "prompt", 0.0
+        )
         contextual = service.apply_context(request, max_chars=250)
 
         self.assertIsNot(contextual, request)
@@ -221,7 +258,12 @@ class DictionarySnippetTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             TranscriptionRequest(
-                Path("audio.wav"), "model", "en", "instruction", "prompt", 0.0,
+                Path("audio.wav"),
+                "model",
+                "en",
+                "instruction",
+                "prompt",
+                0.0,
                 dictionary_context="x" * 4097,
             ).effective_prompt()
 
@@ -239,17 +281,33 @@ class DictionarySnippetTests(unittest.TestCase):
         audio_path.write_bytes(b"RIFFfake")
         context = "Use the preferred term: Clarify."
 
-        gemini_http = _FakeHttp(_FakeResponse({
-            "candidates": [{"content": {"parts": [{"text": "ok"}]}}],
-        }))
+        gemini_http = _FakeHttp(
+            _FakeResponse(
+                {
+                    "candidates": [{"content": {"parts": [{"text": "ok"}]}}],
+                }
+            )
+        )
         gemini_registry = build_provider_registry(gemini_http)
-        gemini_registry.transcribe("gemini", TranscriptionRequest(
-            audio_path, "gemini-2.5-flash", "en", "instruction", "prompt",
-            0.0, dictionary_context=context,
-        ), gemini_registry.connection_from_legacy("gemini", {
-            "gemini_api_key": "key",
-            "gemini_base_url": "https://proxy.example",
-        }))
+        gemini_registry.transcribe(
+            "gemini",
+            TranscriptionRequest(
+                audio_path,
+                "gemini-2.5-flash",
+                "en",
+                "instruction",
+                "prompt",
+                0.0,
+                dictionary_context=context,
+            ),
+            gemini_registry.connection_from_legacy(
+                "gemini",
+                {
+                    "gemini_api_key": "key",
+                    "gemini_base_url": "https://proxy.example",
+                },
+            ),
+        )
         self.assertIn(
             context,
             gemini_http.calls[0][2]["json"]["contents"][0]["parts"][1]["text"],
@@ -257,13 +315,25 @@ class DictionarySnippetTests(unittest.TestCase):
 
         compatible_http = _FakeHttp(_FakeResponse({"text": "ok"}))
         compatible_registry = build_provider_registry(compatible_http)
-        compatible_registry.transcribe("openai", TranscriptionRequest(
-            audio_path, "whisper-1", "en", "instruction", "prompt", 0.0,
-            dictionary_context=context,
-        ), compatible_registry.connection_from_legacy("openai", {
-            "openai_api_key": "key",
-            "openai_base_url": "https://proxy.example/v1",
-        }))
+        compatible_registry.transcribe(
+            "openai",
+            TranscriptionRequest(
+                audio_path,
+                "whisper-1",
+                "en",
+                "instruction",
+                "prompt",
+                0.0,
+                dictionary_context=context,
+            ),
+            compatible_registry.connection_from_legacy(
+                "openai",
+                {
+                    "openai_api_key": "key",
+                    "openai_base_url": "https://proxy.example/v1",
+                },
+            ),
+        )
         self.assertEqual(
             compatible_http.calls[0][2]["data"]["prompt"],
             f"prompt\n\n{context}",
@@ -274,32 +344,95 @@ class DictionarySnippetTests(unittest.TestCase):
         redacted = redact_sensitive({"dictionary_context": context})
         self.assertEqual(redacted["dictionary_context"], "[REDACTED]")
 
-    def test_recording_path_applies_context_and_expands_result_after_provider_work(self):
+    def test_groq_upload_uses_only_complete_enabled_canonical_terms(self):
+        terms = (
+            "First " + "a" * 244,
+            "Second " + "b" * 243,
+            "Third " + "c" * 244,
+        )
         service = DictionarySnippetService(self.repository)
-        service.replace(DictionarySnippets(
-            dictionary=(DictionaryEntry("Clarify"),),
-            snippets=(Snippet("brb", "be right back"),),
-        ))
+        original = DictionarySnippets(
+            dictionary=(
+                DictionaryEntry("Disabled", enabled=False),
+                *(
+                    DictionaryEntry(
+                        term, pronunciation="hint", aliases=(f"alias-{index}",)
+                    )
+                    for index, term in enumerate(terms)
+                ),
+                DictionaryEntry("Outside the speech prompt budget " + "d" * 150),
+            )
+        )
+        service.replace(original)
+        request = service.apply_context(
+            TranscriptionRequest(
+                Path("recording.wav"),
+                "whisper-large-v3-turbo",
+                "pt",
+                "Rewrite.",
+                "Preserve my custom editing prompt.",
+                0.1,
+                audio_bytes=b"RIFFfixture",
+            )
+        )
+        http = _FakeHttp(_FakeResponse({"text": "short transcript"}))
+        registry = build_provider_registry(http)
+
+        registry.transcribe(
+            "groq",
+            request,
+            registry.connection_from_legacy(
+                "groq",
+                {
+                    "groq_api_key": "fixture",
+                    "groq_base_url": "https://api.groq.com/openai/v1",
+                },
+            ),
+        )
+
+        self.assertEqual(http.calls[0][2]["data"]["prompt"], ", ".join(terms))
+        self.assertLessEqual(len(http.calls[0][2]["data"]["prompt"]), 896)
+        self.assertEqual(service.state, original)
+
+    def test_recording_path_applies_context_and_expands_result_after_provider_work(
+        self,
+    ):
+        service = DictionarySnippetService(self.repository)
+        service.replace(
+            DictionarySnippets(
+                dictionary=(DictionaryEntry("Clarify"),),
+                snippets=(Snippet("brb", "be right back"),),
+            )
+        )
         original_config = app.APP_CONFIG.copy()
         try:
-            app.APP_CONFIG.update({
-                "transcription_provider": "gemini",
-                "gemini_api_key": "test-key",
-                "gemini_base_url": "https://proxy.example",
-                "gemini_model": "gemini-2.5-flash",
-            })
+            app.APP_CONFIG.update(
+                {
+                    "transcription_provider": "gemini",
+                    "gemini_api_key": "test-key",
+                    "gemini_base_url": "https://proxy.example",
+                    "gemini_model": "gemini-2.5-flash",
+                }
+            )
             request_seen = []
 
             def transcribe(_provider, request, _connection, _cancel_token):
                 request_seen.append(request)
-                return type("Result", (), {
-                    "text": "brb",
-                })()
+                return type(
+                    "Result",
+                    (),
+                    {
+                        "text": "brb",
+                    },
+                )()
 
-            with patch.object(app, "DICTIONARY_SERVICE", service), \
-                    patch.object(app.PROVIDER_REGISTRY, "transcribe", transcribe):
+            with (
+                patch.object(app, "DICTIONARY_SERVICE", service),
+                patch.object(app.PROVIDER_REGISTRY, "transcribe", transcribe),
+            ):
                 result = app._call_provider_audio(
-                    "gemini", Path(self.directory.name) / "audio.wav", "transcription")
+                    "gemini", Path(self.directory.name) / "audio.wav", "transcription"
+                )
 
             self.assertEqual(result, "be right back")
             self.assertEqual(len(request_seen), 1)
@@ -313,24 +446,28 @@ class DictionarySnippetTests(unittest.TestCase):
         service.replace(DictionarySnippets(snippets=(Snippet("Error", "success"),)))
         original_config = app.APP_CONFIG.copy()
         try:
-            app.APP_CONFIG.update({
-                "transcription_provider": "openai",
-                "openai_api_key": "test-key",
-                "openai_base_url": "https://proxy.example/v1",
-                "openai_audio_model": "whisper-1",
-                "refinement_provider": "openai",
-                "refinement_model": "gpt-4o-mini",
-            })
-            with patch.object(app, "DICTIONARY_SERVICE", service), \
-                    patch.object(
-                        app.PROVIDER_REGISTRY,
-                        "transcribe",
-                        return_value=type("Result", (), {"text": "raw"})(),
-                    ), patch.object(
-                        app, "_refine_transcript", return_value="[Error: failed]"
-                    ):
+            app.APP_CONFIG.update(
+                {
+                    "transcription_provider": "openai",
+                    "openai_api_key": "test-key",
+                    "openai_base_url": "https://proxy.example/v1",
+                    "openai_audio_model": "whisper-1",
+                    "refinement_provider": "openai",
+                    "refinement_model": "gpt-4o-mini",
+                }
+            )
+            with (
+                patch.object(app, "DICTIONARY_SERVICE", service),
+                patch.object(
+                    app.PROVIDER_REGISTRY,
+                    "transcribe",
+                    return_value=type("Result", (), {"text": "raw"})(),
+                ),
+                patch.object(app, "_refine_transcript", return_value="[Error: failed]"),
+            ):
                 result = app._call_provider_audio(
-                    "openai", Path(self.directory.name) / "audio.wav", "prompt")
+                    "openai", Path(self.directory.name) / "audio.wav", "prompt"
+                )
 
             self.assertEqual(result, "[Error: failed]")
         finally:

@@ -120,6 +120,7 @@ def environment_defaults(
         # the typed repository means the UI can apply one atomic preference
         # change without teaching the history file about configuration.
         "history_enabled": False,
+        "experimental_audio_history": False,
         "automatic_updates": False,
         "history_retention_days": 30,
         "autostart": False,
@@ -189,6 +190,7 @@ class AppConfig:
     local_asr_device: str = "auto"
     local_asr_streaming: bool = False
     history_enabled: bool = False
+    experimental_audio_history: bool = False
     automatic_updates: bool = False
     onboarding_completed: bool = False
     history_retention_days: int | None = 30
@@ -542,6 +544,7 @@ class AppConfig:
             ),
             local_asr_streaming=source.get("local_asr_streaming") is True,
             history_enabled=history_enabled,
+            experimental_audio_history=source.get("experimental_audio_history") is True,
             automatic_updates=source.get("automatic_updates") is True,
             onboarding_completed=source.get("onboarding_completed", bool(values))
             is True,
@@ -580,6 +583,7 @@ class AppConfig:
             "ui_language": self.ui.language,
             "autostart": self.startup.autostart,
             "history_enabled": self.history_enabled,
+            "experimental_audio_history": self.experimental_audio_history,
             "automatic_updates": self.automatic_updates,
             "onboarding_completed": self.onboarding_completed,
             "history_retention_days": self.history_retention_days,

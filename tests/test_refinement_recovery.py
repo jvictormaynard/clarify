@@ -46,9 +46,10 @@ class RefinementRecoveryTests(unittest.TestCase):
         )
         self.repositories = SimpleNamespace(config=Mock(load=lambda: self.current))
         self.dictionary = Mock()
+        self.dictionary.expand_spoken_trigger.return_value = None
         self.dictionary.apply_context.side_effect = lambda request: request
         self.dictionary.refinement_context.return_value = ""
-        self.dictionary.expand.side_effect = lambda text: text + " expanded"
+        self.dictionary.expand.side_effect = lambda text: text
         self.gateway = QtProviderGateway(
             QtWorkflowConfig(self.repositories), self.dictionary
         )
@@ -78,7 +79,7 @@ class RefinementRecoveryTests(unittest.TestCase):
         self.assertNotIn("sensitive", repr(result))
         self.asr.assert_called_once()
         self.rewrite.assert_called_once()
-        self.dictionary.expand.assert_not_called()
+        self.dictionary.expand.assert_called_once_with(self.raw)
         self.assertIn("refinement_ms", result.timings_ms)
 
     def test_empty_or_invalid_refinement_preserves_original(self):
@@ -129,11 +130,11 @@ class RefinementRecoveryTests(unittest.TestCase):
         self.rewrite.return_value = RewriteResult("Reviewed", "openai", "editor")
         result = self.gateway.transcribe(self.audio, "prompt", "pt")
         self.assertFalse(result.refinement_failed)
-        self.assertEqual(result.refined_text, "Reviewed expanded")
+        self.assertEqual(result.refined_text, "Reviewed")
         self.rewrite.reset_mock()
         result = self.gateway.transcribe(self.audio, "transcription", "pt")
         self.assertFalse(result.refinement_failed)
-        self.assertEqual(result.refined_text, "Reviewed expanded")
+        self.assertEqual(result.refined_text, "Reviewed")
         self.rewrite.assert_called_once()
 
     def test_local_asr_refinement_still_requires_opt_in(self):

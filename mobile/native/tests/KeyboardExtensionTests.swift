@@ -78,6 +78,27 @@ final class KeyboardExtensionTests: XCTestCase {
     }, evaluatedWith: nil)
     wait(for: [inserted], timeout: 3)
   }
+  private func activateHost(_ app: XCUIApplication) {
+    app.activate()
+    // Settings can return before SpringBoard finishes scaling the host window.
+    // A tap computed from that transient frame misses the final composer frame.
+    // Observe two stable snapshots before calculating the first input event.
+    var previousWindow: CGRect?
+    var previousField: CGRect?
+    let settled = expectation(for: NSPredicate { _, _ in
+      let window = app.windows.firstMatch
+      let field = app.textFields["composer"]
+      guard app.state == .runningForeground, window.exists, field.exists, field.isHittable else {
+        previousWindow = nil; previousField = nil
+        return false
+      }
+      let windowFrame = window.frame, fieldFrame = field.frame
+      let stable = previousWindow == windowFrame && previousField == fieldFrame
+      previousWindow = windowFrame; previousField = fieldFrame
+      return stable && !windowFrame.isEmpty && windowFrame.contains(fieldFrame)
+    }, evaluatedWith: nil)
+    wait(for: [settled], timeout: 10)
+  }
   // Run the measured native control before selecting the installed extension.
   // This initializes the system keyboard without warming the Clarify process
   // or discarding any measured Clarify opening.
@@ -124,7 +145,7 @@ final class KeyboardExtensionTests: XCTestCase {
       // The Settings switch can keep a stale AX value after its alert closes.
       // Verify the permission in the extension below, where it affects Start.
     }
-    app.activate()
+    activateHost(app)
     app.textFields["composer"].tap()
     let keyboard = app.buttons["clarify.keyboard.record"]
     let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch

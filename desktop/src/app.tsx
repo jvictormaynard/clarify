@@ -9,6 +9,7 @@ import { HistoryPage } from "./pages/history-page";
 import { OnboardingPage } from "./pages/onboarding-page";
 import { DictationPage } from "./pages/dictation-page";
 import { TextPage } from "./pages/text-page";
+import { SnippetsPage } from "./pages/snippets-page";
 import { DictionaryPage } from "./pages/dictionary-page";
 import { ShortcutsPage } from "./pages/shortcuts-page";
 import { ModelsPage } from "./pages/models-page";
@@ -23,6 +24,7 @@ const pageComponents = {
   dictation: DictationPage,
   text: TextPage,
   dictionary: DictionaryPage,
+  snippets: SnippetsPage,
   shortcuts: ShortcutsPage,
   models: ModelsPage,
 };
@@ -81,7 +83,7 @@ export function App() {
                   <LoaderCircle className="spin" size={22} />{t("Conectando ao Clarify…")}</div>
               ) : (
                 <fieldset disabled={busy}>
-                  <Page controller={{ ...controller, state }} />
+                  <Page key={activePage === "snippets" ? state.snippetContext : activePage} controller={{ ...controller, state }} />
                 </fieldset>
               )}
             </div>

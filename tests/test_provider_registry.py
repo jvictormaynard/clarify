@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import app
-from provider_adapters import GeminiAdapter, OpenAICompatibleAdapter
+from provider_adapters import OpenAICompatibleAdapter
 from provider_http import InvalidResponseError
 from provider_registry import ProviderRegistry, build_provider_registry
 from provider_types import (
@@ -99,6 +99,89 @@ def compatible_metadata(provider_id="compatible", capabilities=None):
 
 
 class ProviderRegistryContractTests(unittest.TestCase):
+    def test_groq_transcription_uses_only_canonical_vocabulary(self):
+        for endpoint in (
+            "https://api.groq.com/openai/v1",
+            "https://groq-proxy.example/v1",
+        ):
+            with self.subTest(endpoint=endpoint):
+                http = FakeHttp(FakeResponse({"text": "complete transcript"}))
+                registry = build_provider_registry(http)
+                request = TranscriptionRequest(
+                    self.audio_path,
+                    "whisper-large-v3-turbo",
+                    "pt",
+                    "Rewrite as a clear message.",
+                    "Custom chat instructions must not guide Whisper decoding.",
+                    0.1,
+                    dictionary_context="Vocabulary instructions, aliases and pronunciation.",
+                    vocabulary_prompt="Clarify, Subaúma",
+                )
+
+                result = registry.transcribe(
+                    "groq", request, ProviderConnection("fixture", endpoint)
+                )
+
+                self.assertEqual(result.text, "complete transcript")
+                self.assertEqual(len(http.calls), 1)
+                self.assertEqual(
+                    http.calls[0][2]["data"],
+                    {
+                        "model": "whisper-large-v3-turbo",
+                        "response_format": "json",
+                        "prompt": "Clarify, Subaúma",
+                        "language": "pt",
+                    },
+                )
+                self.assertFalse(http.calls[0][2]["safe_to_retry"])
+
+    def test_groq_transcription_omits_empty_vocabulary_instead_of_using_chat_prompt(
+        self,
+    ):
+        for vocabulary in ("", "   "):
+            with self.subTest(vocabulary=vocabulary):
+                http = FakeHttp(FakeResponse({"text": "short transcript"}))
+                registry = build_provider_registry(http)
+
+                registry.transcribe(
+                    "groq",
+                    TranscriptionRequest(
+                        self.audio_path,
+                        "whisper-large-v3-turbo",
+                        "",
+                        "Rewrite this dictation.",
+                        "Custom instructions.",
+                        0.1,
+                        dictionary_context="Vocabulary instructions without canonical terms.",
+                        vocabulary_prompt=vocabulary,
+                    ),
+                    ProviderConnection("fixture", "https://api.groq.com/openai/v1"),
+                )
+
+                self.assertNotIn("prompt", http.calls[0][2]["data"])
+                self.assertNotIn("language", http.calls[0][2]["data"])
+
+    def test_groq_rejects_overlong_vocabulary_before_sending_audio(self):
+        http = FakeHttp()
+        registry = build_provider_registry(http)
+
+        with self.assertRaisesRegex(ValueError, "896-character limit"):
+            registry.transcribe(
+                "groq",
+                TranscriptionRequest(
+                    self.audio_path,
+                    "whisper-large-v3-turbo",
+                    "en",
+                    "instruction",
+                    "prompt",
+                    0.0,
+                    vocabulary_prompt="x" * 897,
+                ),
+                ProviderConnection("fixture", "https://api.groq.com/openai/v1"),
+            )
+
+        self.assertEqual(http.calls, [])
+
     def test_cleanup_reasoning_budget_is_sent_only_to_supported_groq_models(self):
         for provider, endpoint, model, expected in (
             ("groq", "https://api.groq.com/openai/v1", "openai/gpt-oss-20b", "low"),

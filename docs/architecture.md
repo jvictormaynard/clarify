@@ -11,8 +11,16 @@ All product source remains in this public MIT repository. Production credentials
 user data, backups and administrator access stay private in the hosting platform.
 There is no separate closed backend or local/cloud product fork.
 
-Accounts share vocabulary, hosted audio allowance and new account transcriptions.
-Pre-upgrade records, guest history and snippets remain local. Account history
+Accounts share vocabulary, snippets, hosted audio allowance and new account
+transcriptions. Pre-upgrade records, guest history and guest snippets remain local.
+Account snippet caches use endpoint and account identity; signing in does not
+upload guest snippets. Hosted expansion runs once after recognition or rewriting,
+including the transcript-preserving rewrite-failure path. Standalone triggers
+bypass rewriting. Provider context can contain enabled triggers, never saved
+expansion text. Account libraries have a 256 KiB compact UTF-8 JSON limit, and
+snippet-expanded dictation fields retain the existing 32 KiB UTF-8 history limit.
+Rendered hosted responses also have a 384 KiB bound. Excessive expansion returns
+an explicit error without truncation. Account history
 uses an endpoint/user-scoped offline cache and durable pending changes; local
 records are never inferred to belong to the current account or uploaded.
 See the [history synchronization contract](history-sync.md) for cursor,
@@ -76,7 +84,7 @@ can recover through the existing Apply transaction.
 Vocabulary sync runs after login and local edits, then at most once per minute
 while the app is active or before a hosted dictation. Failed attempts also use
 this interval. Conflicting edits require an explicit resolution. Each account
-has its own persistent cache; guest words, snippets, settings, keys and history
+has its own persistent cache; guest words, guest snippets, settings, keys and history
 remain on the device. Processing responses include the updated shared allowance,
 and a foreground refresh catches changes made on another device.
 
@@ -139,6 +147,13 @@ save/discard operations. Its shared operation boundary controls busy state,
 errors and success updates. `settings/use-settings-window.ts` owns native close
 requests. `settings/bridge.ts` defines typed command arguments for frontend
 callers without changing the Python allowlist or private pipe protocol.
+
+Snippet draft writes retain their captured account context through persistence
+and rollback. The account repository supplies an optional transaction guard;
+`DictionarySnippetService` acquires it before its own lock for load, replace and
+import. Settings uses the same owner guard for its complete save transaction.
+The lock order is account before dictionary service, including synchronization.
+A session transition cannot redirect an account draft into guest storage.
 
 Shared Settings visual values live in `desktop/src/styles/tokens.css`; base styles,
 controls, page layouts and responsive window rules have separate files. Common

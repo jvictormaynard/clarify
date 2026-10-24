@@ -30,6 +30,9 @@ from cloud_defaults import DEFAULT_CLOUD_URL
 from dictionary_snippets import (
     DictionaryEntry,
     DictionarySnippets,
+    Snippet,
+    MAX_SNIPPETS,
+    account_snippet_entries,
     DictionarySnippetService,
     LocalDictionarySnippetsRepository,
 )
@@ -399,6 +402,7 @@ class QmlSettingsController(QObject):
             )
         )
         self._dictionary_draft = self._dictionary_service.state
+        self._snippet_draft_context = self.snippetContext
         self._autostart_registry = registry
         self._local_product = local_product or _default_local_asr_product()
         self._local_state: LocalASRProductState = self._local_product.state
@@ -930,6 +934,62 @@ class QmlSettingsController(QObject):
             self._set_error(
                 ValueError(
                     "Verifique os termos: use até 256 caracteres, sem duplicatas ou quebras de linha."
+                )
+            )
+            return False
+        self._set_error(None)
+        self.dirtyChanged.emit()
+        return True
+
+    @Property(str, notify=accountStateChanged)
+    def snippetContext(self):
+        if isinstance(self._account, AccountService):
+            return self._account.snippet_context()
+        scope = getattr(self._account, "scope", None)
+        if not isinstance(scope, str) or not scope:
+            return "local"
+        import hashlib
+
+        identity = self._account.snapshot()
+        return hashlib.sha256(
+            (str(identity.get("endpoint", "")) + "\n" + scope).encode("utf-8")
+        ).hexdigest()
+
+    @Property("QVariantList", notify=dirtyChanged)
+    def snippets(self):
+        return [snippet.to_mapping() for snippet in self._dictionary_draft.snippets]
+
+    @Slot("QVariantList", str, result=bool)
+    def setSnippets(self, snippets, context) -> bool:
+        if not isinstance(context, str) or context != self.snippetContext:
+            self._set_error(
+                ValueError(
+                    "A conta mudou. Descarte as alterações dos snippets e tente novamente."
+                )
+            )
+            return False
+        try:
+            if not isinstance(snippets, list) or len(snippets) > MAX_SNIPPETS:
+                raise ValueError("Use até 512 snippets.")
+            draft = DictionarySnippets(
+                dictionary=self._dictionary_draft.dictionary,
+                snippets=tuple(Snippet.from_mapping(item) for item in snippets),
+            )
+            if any(not item.replacement.strip() for item in draft.snippets):
+                raise ValueError("Snippet text must not be empty")
+            if self._account.scope:
+                try:
+                    account_snippet_entries(draft.snippets)
+                except ValueError as error:
+                    self._set_error(error)
+                    return False
+            self._dictionary_draft = draft
+            self._snippet_draft_context = context
+        except (TypeError, ValueError):
+            self._set_error(
+                ValueError(
+                    "Verifique os snippets: frases únicas de até 256 caracteres, "
+                    "sem quebras de linha, e textos de até 4096 caracteres."
                 )
             )
             return False
@@ -1947,6 +2007,7 @@ class QmlSettingsController(QObject):
         try:
             loaded_config = self._config_repository.load()
             self._dictionary_draft = self._dictionary_service.state
+            self._snippet_draft_context = self.snippetContext
         except Exception as error:  # Repository errors belong in the QML state.
             self._set_error(error)
             return False
@@ -2156,7 +2217,7 @@ class QmlSettingsController(QObject):
                 elif action == "refresh":
                     self._account.refresh()
                 elif action in {"sync", "sync-local", "sync-remote"}:
-                    self._account.sync_dictionary(
+                    self._account.sync_library(
                         self._dictionary_service,
                         prefer=action.removeprefix("sync-")
                         if action != "sync"
@@ -2185,6 +2246,7 @@ class QmlSettingsController(QObject):
         self._account_error = error
         try:
             self._dictionary_draft = self._dictionary_service.reload()
+            self._snippet_draft_context = self.snippetContext
         finally:
             self._account.end_change()
         self.accountStateChanged.emit()
@@ -2192,8 +2254,29 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def save(self) -> bool:
+        if (
+            getattr(self, "_snippet_draft_context", self.snippetContext)
+            != self.snippetContext
+        ):
+            self._set_error(
+                ValueError(
+                    "A conta mudou. Descarte as alterações dos snippets e tente novamente."
+                )
+            )
+            return False
         if not self.cancelHotkeyCapture():
             return False
+        try:
+            with self._dictionary_service.transaction(
+                expected_context=self._snippet_draft_context
+            ):
+                return self._save_owned_library()
+        except Exception as error:
+            self._set_error(error)
+            return False
+
+    def _save_owned_library(self) -> bool:
+        """Persist settings and library, including rollback, under one owner guard."""
         persisted_before: AppConfig | None = None
         hotkeys_applied = False
         persisted_config = None
@@ -2211,7 +2294,9 @@ class QmlSettingsController(QObject):
                 self._autostart_registry,
             )
             if self._dictionary_draft != self._dictionary_service.state:
-                self._dictionary_service.replace(self._dictionary_draft)
+                self._dictionary_service.replace(
+                    self._dictionary_draft, expected_context=self._snippet_draft_context
+                )
         except Exception as error:  # Validation/storage errors are user-facing.
             if persisted_config is not None and persisted_before is not None:
                 try:

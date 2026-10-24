@@ -269,6 +269,12 @@ class WorkflowProviderService:
             )
         provider = route.provider_id
         metadata = self.registry.describe(provider)
+        # A multimodal model normally edits in its audio request. With active
+        # snippets, keep recognition separate so standalone saved text bypasses
+        # editing, and insert saved content only after any optional cleanup.
+        snippet_two_stage = metadata.supports(
+            ProviderCapability.MULTIMODAL_AUDIO
+        ) and any(item.enabled for item in self.dictionary_service.state.snippets)
         language = str(language or "auto").strip().lower()
         language_label = _language_display_name(language)
         provider_language = (
@@ -276,7 +282,9 @@ class WorkflowProviderService:
         )
         mode = "prompt"
         instruction = (
-            TRANSCRIPTION_INSTRUCTION if mode == "transcription" else PROMPT_INSTRUCTION
+            TRANSCRIPTION_INSTRUCTION
+            if mode == "transcription" or snippet_two_stage
+            else PROMPT_INSTRUCTION
         ).format(lang=language_label)
         request = TranscriptionRequest(
             audio_path=audio_source.audio_path,
@@ -284,7 +292,7 @@ class WorkflowProviderService:
             language=provider_language,
             instruction=instruction,
             prompt=route.prompt or instruction,
-            temperature=0.0 if mode == "transcription" else 0.1,
+            temperature=0.0 if mode == "transcription" or snippet_two_stage else 0.1,
             audio_bytes=audio_source.audio_bytes,
             execution_device=self.config.current().local_asr_device,
         )
@@ -319,7 +327,12 @@ class WorkflowProviderService:
             raise RuntimeError(
                 f"{provider} returned no transcript for {language_label}"
             )
-        transcript = raw_transcript
+        standalone_snippet = self.dictionary_service.expand_spoken_trigger(
+            raw_transcript
+        )
+        transcript = (
+            raw_transcript if standalone_snippet is None else standalone_snippet
+        )
         refinement_scope = (
             WorkflowScope.LOCAL_ASR_REFINEMENT
             if provider == "local_asr"
@@ -327,8 +340,12 @@ class WorkflowProviderService:
         )
         refinement_route = self.config.workflow(refinement_scope)
         refinement_requested = (
-            mode == "prompt"
-            and not metadata.supports(ProviderCapability.MULTIMODAL_AUDIO)
+            standalone_snippet is None
+            and mode == "prompt"
+            and (
+                not metadata.supports(ProviderCapability.MULTIMODAL_AUDIO)
+                or snippet_two_stage
+            )
             and refinement_route.enabled
             and (
                 provider != LOCAL_ASR_PROVIDER_ID
@@ -388,7 +405,7 @@ class WorkflowProviderService:
             else 0.0
         )
         cleanup_started = time.perf_counter()
-        if not refinement_failed:
+        if standalone_snippet is None:
             transcript = self.dictionary_service.expand(transcript)
         timings["text_cleanup_ms"] = (time.perf_counter() - cleanup_started) * 1000
         return TranscriptionResult(
@@ -396,8 +413,12 @@ class WorkflowProviderService:
             provider,
             route.model_id,
             timings_ms=safe_timings(timings),
-            raw_text=raw_transcript if refinement_requested else None,
-            refined_text=transcript if refinement_used else None,
+            raw_text=raw_transcript
+            if refinement_requested or transcript != raw_transcript
+            else None,
+            refined_text=transcript
+            if refinement_used or transcript != raw_transcript
+            else None,
             refinement_failed=refinement_failed,
             refinement_provider_id=(
                 refinement_route.provider_id if refinement_requested else None

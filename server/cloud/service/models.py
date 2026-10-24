@@ -43,6 +43,14 @@ class Dictionary(models.Model):
     entries = models.JSONField(default=list)
 
 
+class SnippetLibrary(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True
+    )
+    revision = models.PositiveBigIntegerField(default=0)
+    entries = models.JSONField(default=list)
+
+
 class HistoryState(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True

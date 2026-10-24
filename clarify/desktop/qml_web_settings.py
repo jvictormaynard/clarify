@@ -11,6 +11,11 @@ from PySide6.QtCore import QObject, QProcess, QTimer
 
 
 # Never expose QObject reflection, repository access, saved API keys, or paths.
+# Full guest vocabulary and snippets can contain 6.7M characters. JSON control
+# escapes use up to six bytes each, so both native pipe readers allow 64 MiB.
+# Account snippets retain the separate, smaller 256 KiB transport limit.
+MAX_SETTINGS_MESSAGE_BYTES = 64 * 1024 * 1024
+
 PROPERTIES = (
     "uiLanguage",
     "onboardingRequired",
@@ -18,6 +23,8 @@ PROPERTIES = (
     "historyState",
     "dirty",
     "dictionaryEntries",
+    "snippets",
+    "snippetContext",
     "lastError",
     "language",
     "languages",
@@ -89,6 +96,7 @@ METHODS = frozenset(
         "clearHistory",
         "setLanguage",
         "setDictionaryEntries",
+        "setSnippets",
         "setMode",
         "setAutostart",
         "setHistoryEnabled",
@@ -283,7 +291,7 @@ class WebSettingsProcess(QObject):
 
     def _read(self):
         self.buffer.extend(bytes(self.process.readAllStandardOutput()))
-        if len(self.buffer) > 1_048_576:
+        if len(self.buffer) > MAX_SETTINGS_MESSAGE_BYTES:
             self.process.kill()
             return
         while b"\n" in self.buffer:

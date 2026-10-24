@@ -455,6 +455,7 @@ class AccountTests(unittest.TestCase):
         self.signed_in()
         self.request.side_effect = [
             self.response({"revision": 0, "entries": [entry("Local")]}),
+            self.response({"revision": 0, "entries": []}),
         ]
         self.account.refresh_if_due(self.service)
         self.request.reset_mock()
@@ -540,7 +541,7 @@ class AccountTests(unittest.TestCase):
             {e.term for e in self.service.state.dictionary}, {"Remote", "Local"}
         )
         self.assertEqual([e.term for e in self.local.load().dictionary], ["Local"])
-        self.assertEqual(self.service.expand("sig"), "signature")
+        self.assertEqual(self.service.expand("sig"), "sig")
         self.request.side_effect = None
         self.request.return_value = self.response({}, 200)
         self.account.logout()

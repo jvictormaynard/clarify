@@ -5,6 +5,11 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+
+- Configure voice snippets in desktop Settings and the iOS Dictionary tab. Create, search, edit, enable or remove saved text with exact spelling and line breaks.
+- Synchronize account snippets between desktop and iOS with separate guest storage, offline caches and explicit conflict resolution. Apply hosted snippets once on the server without sending saved expansion text to the provider.
+
 ### Fixed
 
 - Hosted dictation uses plain vocabulary spellings for short speech. Distinguish unrecognized speech from transcription, service-capacity and allowance errors. Preserve the transcript if rewriting fails, without repeating paid requests.

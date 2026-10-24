@@ -49,6 +49,13 @@ try {
   await page.getByRole("spinbutton", { name: "Duração máxima", exact: true }).fill("120");
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByText("Alterações salvas", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Snippets", exact: true }).click();
+  await page.getByRole("textbox", { name: "Nova frase de ativação" }).fill("minha assinatura");
+  await page.getByRole("textbox", { name: "Novo texto do snippet" }).fill("Nome\n  Equipe\n");
+  await page.getByRole("button", { name: "Adicionar snippet", exact: true }).click();
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("textbox", { name: "Texto do snippet 1", exact: true })).toHaveValue("Nome\n  Equipe\n");
+  await page.screenshot({ path: `${process.env.CLARIFY_TEST_OUTPUT}/native-snippets.png` });
   await page.getByRole("button", { name: "Texto", exact: true }).click();
   await page.getByRole("textbox", { name: "Instruções" }).fill("Unsaved native test draft");
   await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("plugin:window|close", { label: "main" }));
@@ -60,7 +67,7 @@ try {
   const code = await Promise.race([exited, delay(10000).then(() => "timeout")]);
   if (code !== 0) throw new Error(`Close did not release the child: ${code}`);
   if (errors.length) throw new Error(`Native frontend errors: ${errors.join("; ")}`);
-  console.log("PASS: real Tauri IPC, model save, dirty close/cancel/discard, process exit");
+  console.log("PASS: real Tauri IPC, model and multiline snippet save, dirty close/cancel/discard, process exit");
 } finally {
   await browser?.close().catch(() => {});
   if (child.exitCode === null) child.kill();

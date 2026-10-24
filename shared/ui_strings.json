@@ -4404,11 +4404,6 @@
     "en": "Could not transcribe the audio. Try again.",
     "es": "No se pudo transcribir el audio. Inténtalo de nuevo."
   },
-  "Não foi possível processar o texto. Tente novamente.": {
-    "pt": "Não foi possível processar o texto. Tente novamente.",
-    "en": "Could not process the text. Try again.",
-    "es": "No se pudo procesar el texto. Inténtalo de nuevo."
-  },
   "Não foi possível concluir o processamento. Tente novamente.": {
     "pt": "Não foi possível concluir o processamento. Tente novamente.",
     "en": "Could not complete processing. Try again.",
@@ -4453,5 +4448,280 @@
     "pt": "Esta solicitação não pode ser repetida. Inicie uma nova ação.",
     "en": "This request cannot be repeated. Start a new action.",
     "es": "Esta solicitud no se puede repetir. Inicia una nueva acción."
+  },
+  "A conta mudou. Abra os snippets novamente.": {
+    "pt": "A conta mudou. Abra os snippets novamente.",
+    "en": "The account changed. Open snippets again.",
+    "es": "La cuenta cambió. Abre los snippets de nuevo."
+  },
+  "Adicionar snippet": {
+    "pt": "Adicionar snippet",
+    "en": "Add snippet",
+    "es": "Añadir snippet"
+  },
+  "Adicione seu primeiro snippet.": {
+    "pt": "Adicione seu primeiro snippet.",
+    "en": "Add your first snippet.",
+    "es": "Añade tu primer snippet."
+  },
+  "As alterações foram salvas neste iPhone. A sincronização será tentada novamente ao abrir o aplicativo.": {
+    "pt": "As alterações foram salvas neste iPhone. A sincronização será tentada novamente ao abrir o aplicativo.",
+    "en": "Changes were saved on this iPhone. Sync will try again when you open the app.",
+    "es": "Los cambios se guardaron en este iPhone. La sincronización se intentará de nuevo al abrir la aplicación."
+  },
+  "As frases de ativação podem ajudar a IA. O conteúdo salvo é inserido por código, sem ser enviado como contexto à IA.": {
+    "pt": "As frases de ativação podem ajudar a IA. O conteúdo salvo é inserido por código, sem ser enviado como contexto à IA.",
+    "en": "Trigger phrases can help AI recognition. Saved content is inserted by the app and is not sent as AI context.",
+    "es": "Las frases de activación pueden ayudar al reconocimiento de la IA. La aplicación inserta el contenido guardado y no lo envía como contexto a la IA."
+  },
+  "Buscar snippets": {
+    "pt": "Buscar snippets",
+    "en": "Search snippets",
+    "es": "Buscar snippets"
+  },
+  "Carregar snippets": {
+    "pt": "Carregar snippets",
+    "en": "Load snippets",
+    "es": "Cargar snippets"
+  },
+  "Diferenciar maiúsculas e minúsculas": {
+    "pt": "Diferenciar maiúsculas e minúsculas",
+    "en": "Match letter case",
+    "es": "Distinguir mayúsculas y minúsculas"
+  },
+  "Diga uma frase para inserir um texto salvo.": {
+    "pt": "Diga uma frase para inserir um texto salvo.",
+    "en": "Say a phrase to insert saved text.",
+    "es": "Di una frase para insertar un texto guardado."
+  },
+  "Editar snippet": {
+    "pt": "Editar snippet",
+    "en": "Edit snippet",
+    "es": "Editar snippet"
+  },
+  "Escolha somente para as palavras ou snippets alterados nos dois dispositivos. As outras alterações serão combinadas.": {
+    "pt": "Escolha somente para as palavras ou snippets alterados nos dois dispositivos. As outras alterações serão combinadas.",
+    "en": "Choose only for words or snippets changed on both devices. Other changes will be merged.",
+    "es": "Elige solo para las palabras o snippets que cambiaron en ambos dispositivos. Los demás cambios se combinarán."
+  },
+  "Esta frase de ativação já existe.": {
+    "pt": "Esta frase de ativação já existe.",
+    "en": "This trigger phrase already exists.",
+    "es": "Esta frase de activación ya existe."
+  },
+  "Excluir snippet": {
+    "pt": "Excluir snippet",
+    "en": "Delete snippet",
+    "es": "Eliminar snippet"
+  },
+  "Excluir snippet?": {
+    "pt": "Excluir snippet?",
+    "en": "Delete snippet?",
+    "es": "¿Eliminar snippet?"
+  },
+  "Frase de ativação": {
+    "pt": "Frase de ativação",
+    "en": "Trigger phrase",
+    "es": "Frase de activación"
+  },
+  "Nenhum snippet encontrado.": {
+    "pt": "Nenhum snippet encontrado.",
+    "en": "No snippets found.",
+    "es": "No se encontraron snippets."
+  },
+  "Não foi possível carregar os snippets da conta.": {
+    "pt": "Não foi possível carregar os snippets da conta.",
+    "en": "Could not load account snippets.",
+    "es": "No se pudieron cargar los snippets de la cuenta."
+  },
+  "Não foi possível sincronizar. As alterações salvas neste dispositivo foram preservadas.": {
+    "pt": "Não foi possível sincronizar. As alterações salvas neste dispositivo foram preservadas.",
+    "en": "Could not sync. Changes saved on this device were kept.",
+    "es": "No se pudo sincronizar. Se conservaron los cambios guardados en este dispositivo."
+  },
+  "O ditado usou a última versão salva no servidor. Há palavras ou snippets pendentes de sincronização.": {
+    "pt": "O ditado usou a última versão salva no servidor. Há palavras ou snippets pendentes de sincronização.",
+    "en": "Dictation used the latest version saved on the server. Some words or snippets still need to sync.",
+    "es": "El dictado usó la última versión guardada en el servidor. Hay palabras o snippets pendientes de sincronización."
+  },
+  "O limite é de 512 snippets.": {
+    "pt": "O limite é de 512 snippets.",
+    "en": "The limit is 512 snippets.",
+    "es": "El límite es de 512 snippets."
+  },
+  "O mesmo snippet mudou nos dois dispositivos. Escolha qual versão manter.": {
+    "pt": "O mesmo snippet mudou nos dois dispositivos. Escolha qual versão manter.",
+    "en": "The same snippet changed on both devices. Choose which version to keep.",
+    "es": "El mismo snippet cambió en ambos dispositivos. Elige qué versión conservar."
+  },
+  "O mesmo snippet mudou nos dois dispositivos. Feche o editor e tente novamente.": {
+    "pt": "O mesmo snippet mudou nos dois dispositivos. Feche o editor e tente novamente.",
+    "en": "The same snippet changed on both devices. Close the editor and try again.",
+    "es": "El mismo snippet cambió en ambos dispositivos. Cierra el editor e inténtalo de nuevo."
+  },
+  "O texto é muito longo.": {
+    "pt": "O texto é muito longo.",
+    "en": "The text is too long.",
+    "es": "El texto es demasiado largo."
+  },
+  "Os snippets da conta excedem o limite de 256 KiB. Reduza o texto salvo.": {
+    "pt": "Os snippets da conta excedem o limite de 256 KiB. Reduza o texto salvo.",
+    "en": "Account snippets exceed the 256 KiB limit. Reduce the saved text.",
+    "es": "Los snippets de la cuenta superan el límite de 256 KiB. Reduce el texto guardado."
+  },
+  "Os snippets desta conta são sincronizados e aplicados pelo servidor no desktop e no mobile.": {
+    "pt": "Os snippets desta conta são sincronizados e aplicados pelo servidor no desktop e no mobile.",
+    "en": "Snippets for this account sync and are applied by the server on desktop and mobile.",
+    "es": "Los snippets de esta cuenta se sincronizan y el servidor los aplica en el ordenador y el móvil."
+  },
+  "Os snippets deste dispositivo são aplicados localmente.": {
+    "pt": "Os snippets deste dispositivo são aplicados localmente.",
+    "en": "Snippets on this device are applied locally.",
+    "es": "Los snippets de este dispositivo se aplican de forma local."
+  },
+  "Os snippets mudaram durante a sincronização. As alterações locais foram mantidas.": {
+    "pt": "Os snippets mudaram durante a sincronização. As alterações locais foram mantidas.",
+    "en": "Snippets changed during sync. Local changes were kept.",
+    "es": "Los snippets cambiaron durante la sincronización. Se conservaron los cambios locales."
+  },
+  "Os snippets mudaram em outro dispositivo. As cópias foram preservadas. Sincronize novamente.": {
+    "pt": "Os snippets mudaram em outro dispositivo. As cópias foram preservadas. Sincronize novamente.",
+    "en": "Snippets changed on another device. Both copies were kept. Sync again.",
+    "es": "Los snippets cambiaron en otro dispositivo. Se conservaron las copias. Sincroniza de nuevo."
+  },
+  "Palavras": {
+    "pt": "Palavras",
+    "en": "Words",
+    "es": "Palabras"
+  },
+  "Snippets": {
+    "pt": "Snippets",
+    "en": "Snippets",
+    "es": "Snippets"
+  },
+  "Texto a inserir": {
+    "pt": "Texto a inserir",
+    "en": "Text to insert",
+    "es": "Texto que se insertará"
+  },
+  "Usar snippet": {
+    "pt": "Usar snippet",
+    "en": "Use snippet",
+    "es": "Usar snippet"
+  },
+  "Use uma frase de até 256 caracteres e um texto de até 4096 caracteres.": {
+    "pt": "Use uma frase de até 256 caracteres e um texto de até 4096 caracteres.",
+    "en": "Use a phrase of up to 256 characters and text of up to 4096 characters.",
+    "es": "Usa una frase de hasta 256 caracteres y un texto de hasta 4096 caracteres."
+  },
+  "O texto dos snippets excede o limite. Use menos frases de ativação.": {
+    "pt": "O texto dos snippets excede o limite. Use menos frases de ativação.",
+    "en": "Snippet text exceeds the limit. Use fewer trigger phrases.",
+    "es": "El texto de los snippets supera el límite. Usa menos frases de activación."
+  },
+  "Adicione seu primeiro snippet acima.": {
+    "pt": "Adicione seu primeiro snippet acima.",
+    "en": "Add your first snippet above.",
+    "es": "Añade tu primer snippet arriba."
+  },
+  "Diferenciar maiúsculas no snippet {v0}": {
+    "pt": "Diferenciar maiúsculas no snippet {v0}",
+    "en": "Match letter case in snippet {v0}",
+    "es": "Distinguir mayúsculas en el snippet {v0}"
+  },
+  "Diga a frase sozinha ou dentro de uma mensagem. O texto mantém a grafia e as quebras de linha. Use Salvar para aplicar ou Descartar para cancelar.": {
+    "pt": "Diga a frase sozinha ou dentro de uma mensagem. O texto mantém a grafia e as quebras de linha. Use Salvar para aplicar ou Descartar para cancelar.",
+    "en": "Say the phrase alone or within a message. Saved text keeps its spelling and line breaks. Use Save to apply changes or Discard to cancel.",
+    "es": "Di la frase sola o dentro de un mensaje. El texto conserva la escritura y los saltos de línea. Usa Guardar para aplicar los cambios o Descartar para cancelarlos."
+  },
+  "Diga uma frase para inserir um texto salvo. Use para assinaturas, endereços e respostas frequentes.": {
+    "pt": "Diga uma frase para inserir um texto salvo. Use para assinaturas, endereços e respostas frequentes.",
+    "en": "Say a phrase to insert saved text. Use it for signatures, addresses and frequent replies.",
+    "es": "Di una frase para insertar un texto guardado. Úsalo para firmas, direcciones y respuestas frecuentes."
+  },
+  "Frase do snippet {v0}": {
+    "pt": "Frase do snippet {v0}",
+    "en": "Snippet {v0} phrase",
+    "es": "Frase del snippet {v0}"
+  },
+  "Nova frase de ativação": {
+    "pt": "Nova frase de ativação",
+    "en": "New trigger phrase",
+    "es": "Nueva frase de activación"
+  },
+  "Novo texto do snippet": {
+    "pt": "Novo texto do snippet",
+    "en": "New snippet text",
+    "es": "Nuevo texto del snippet"
+  },
+  "Opções de correspondência": {
+    "pt": "Opções de correspondência",
+    "en": "Matching options",
+    "es": "Opciones de coincidencia"
+  },
+  "Os snippets da conta excedem o limite total de 256 KiB. Reduza os textos antes de salvar.": {
+    "pt": "Os snippets da conta excedem o limite total de 256 KiB. Reduza os textos antes de salvar.",
+    "en": "Account snippets exceed the total limit of 256 KiB. Reduce the text before saving.",
+    "es": "Los snippets de la cuenta superan el límite total de 256 KiB. Reduce el texto antes de guardar."
+  },
+  "Remover snippet {v0}": {
+    "pt": "Remover snippet {v0}",
+    "en": "Remove snippet {v0}",
+    "es": "Eliminar snippet {v0}"
+  },
+  "Seu nome\nEquipe de suporte": {
+    "pt": "Seu nome\nEquipe de suporte",
+    "en": "Your name\nSupport team",
+    "es": "Tu nombre\nEquipo de soporte"
+  },
+  "Texto do snippet {v0}": {
+    "pt": "Texto do snippet {v0}",
+    "en": "Snippet {v0} text",
+    "es": "Texto del snippet {v0}"
+  },
+  "Usar snippet {v0}": {
+    "pt": "Usar snippet {v0}",
+    "en": "Use snippet {v0}",
+    "es": "Usar snippet {v0}"
+  },
+  "minha assinatura": {
+    "pt": "minha assinatura",
+    "en": "my signature",
+    "es": "mi firma"
+  },
+  "A conta mudou. Descarte as alterações dos snippets e tente novamente.": {
+    "pt": "A conta mudou. Descarte as alterações dos snippets e tente novamente.",
+    "en": "The account changed. Discard the snippet changes and try again.",
+    "es": "La cuenta cambió. Descarta los cambios de snippets e inténtalo de nuevo."
+  },
+  "A escolha abaixo se aplica somente às palavras ou snippets alterados nos dois dispositivos. As outras alterações serão combinadas.": {
+    "pt": "A escolha abaixo se aplica somente às palavras ou snippets alterados nos dois dispositivos. As outras alterações serão combinadas.",
+    "en": "The choice below applies only to words or snippets changed on both devices. Other changes will be merged.",
+    "es": "La siguiente elección solo se aplica a las palabras o snippets que cambiaron en ambos dispositivos. Los demás cambios se combinarán."
+  },
+  "Dicionário e snippets": {
+    "pt": "Dicionário e snippets",
+    "en": "Dictionary and snippets",
+    "es": "Diccionario y snippets"
+  },
+  "Excluir a conta remove o dicionário, os snippets e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos.": {
+    "pt": "Excluir a conta remove o dicionário, os snippets e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos.",
+    "en": "Deleting the account removes its shared dictionary, snippets, history and service access. This cannot be undone. Local records are kept.",
+    "es": "Eliminar la cuenta borra el diccionario, los snippets y el historial compartidos y el acceso al servicio. Esta acción no se puede deshacer. Se conservarán los registros locales."
+  },
+  "Seu dicionário, snippets e novas transcrições da conta são sincronizados automaticamente. Atalhos e chaves permanecem neste computador.": {
+    "pt": "Seu dicionário, snippets e novas transcrições da conta são sincronizados automaticamente. Atalhos e chaves permanecem neste computador.",
+    "en": "Your account dictionary, snippets and new transcriptions sync automatically. Shortcuts and keys stay on this computer.",
+    "es": "El diccionario, los snippets y las nuevas transcripciones de tu cuenta se sincronizan de forma automática. Los atajos y las claves permanecen en este ordenador."
+  },
+  "Use até 512 snippets.": {
+    "pt": "Use até 512 snippets.",
+    "en": "Use up to 512 snippets.",
+    "es": "Usa hasta 512 snippets."
+  },
+  "Verifique os snippets: frases únicas de até 256 caracteres, sem quebras de linha, e textos de até 4096 caracteres.": {
+    "pt": "Verifique os snippets: frases únicas de até 256 caracteres, sem quebras de linha, e textos de até 4096 caracteres.",
+    "en": "Check the snippets: unique phrases of up to 256 characters without line breaks, and text of up to 4096 characters.",
+    "es": "Comprueba los snippets: frases únicas de hasta 256 caracteres sin saltos de línea y textos de hasta 4096 caracteres."
   }
 }

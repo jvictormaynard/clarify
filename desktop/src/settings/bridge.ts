@@ -11,7 +11,10 @@ export type DictionaryEntry = {
 export type HistoryEntry = { id: string; timestamp: number; text: string; truncated: boolean; sourceDevice: "desktop" | "mobile" };
 export type HistoryPageResult = { context: string; revision: string; entries: HistoryEntry[]; cursor: string; hasMore: boolean };
 export type HistoryTextPart = { context: string; id: string; text: string; nextOffset: number; hasMore: boolean };
+export type Snippet = { trigger: string; replacement: string; enabled: boolean; case_sensitive: boolean };
 export interface Settings {
+  snippets: Snippet[];
+  snippetContext: string;
   historyState?: { context: string; revision: string };
   uiLanguage?: string;
   onboardingRequired: boolean;
@@ -95,6 +98,7 @@ export type SettingsArguments = {
   clearHistory: [context: string];
   snapshot: [];
   setLanguage: [value: string];
+  setSnippets: [entries: Snippet[], context: string];
   setDictionaryEntries: [entries: DictionaryEntry[]];
   setMode: [value: string];
   setAutostart: [value: boolean];
