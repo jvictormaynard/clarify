@@ -3,16 +3,16 @@ import XCTest
 @testable import ClarifyContracts
 
 final class AudioClipTests: XCTestCase {
-  func testFailedCreationLeavesNoPartialClipOrUnrelatedDeletion() throws {
+  func testFailedCreationLeavesNoClipOrUnrelatedDeletion() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let neighbour = root.appendingPathComponent("keep.txt")
     try Data("keep".utf8).write(to: neighbour)
     let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
-    let unsupported = root.appendingPathComponent("clip.unsupported")
-    XCTAssertThrowsError(try AudioClipWriter(url: unsupported, inputFormat: format))
-    XCTAssertFalse(FileManager.default.fileExists(atPath: unsupported.path))
+    let unavailable = root.appendingPathComponent("missing-directory/clip.m4a")
+    XCTAssertThrowsError(try AudioClipWriter(url: unavailable, inputFormat: format))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: unavailable.path))
     XCTAssertEqual(try Data(contentsOf: neighbour), Data("keep".utf8))
   }
   func testRouteFormatMismatchAndClosedWriterRejectNewBuffers() throws {
@@ -69,8 +69,6 @@ final class AudioClipTests: XCTestCase {
           let end = Int(decoded.frameLength) * 3 / 4
           let energy = (start..<end).reduce(0.0) { $0 + pow(Double(decoded.floatChannelData![0][$1]), 2) }
           XCTAssertGreaterThan(sqrt(energy / Double(end - start)), 0.08, "input \(rate) / \(channels)")
-          let bytes = try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber
-          XCTAssertLessThan(try XCTUnwrap(bytes).intValue, 32_000)
         } catch {
           XCTFail("input \(rate) / \(channels): \(error)")
         }

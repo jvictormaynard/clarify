@@ -1,5 +1,22 @@
 # Clarify for iOS — MVP
 
+## Audio compatibility candidate — 0.10.2 (35)
+
+The containing app converts the native microphone PCM stream to 24 kHz mono
+before it creates the existing 64 kbps M4A/AAC payload. This prevents native
+input rates and channel counts from becoming unsupported AAC settings. A
+persistent converter preserves state across buffers and drains before upload.
+Cancellation still discards the session-owned temporary clip. Failed file
+creation removes its partial file. The keyboard never receives raw Apple
+recording errors; existing account and provider errors keep their instructions.
+
+Native regression tests use generated audio, not a microphone or user profile.
+They create, write, close and decode clips from 8–192 kHz mono/stereo inputs and
+check duration and speech energy. The previous encoder reproduces Apple error
+560226676 at 8 kHz and 16 kHz mono. The tests do not establish the actual route
+used by the reporting iPhone. Physical microphone and Bluetooth acceptance remain
+separate from the native fixtures.
+
 ## Interface candidate — 0.10.1 (34)
 
 The bottom tabs contain Home, Dictionary and Snippets. The profile placeholder

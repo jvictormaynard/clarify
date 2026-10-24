@@ -1,6 +1,6 @@
 {
   "name": "clarify-mobile",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "main": "expo-router/entry",
   "dependencies": {
     "expo": "~57.0.31",
