@@ -14,19 +14,28 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView, exception_handler as drf_handler
 
-from dictionary_snippets import DictionaryEntry, DictionarySnippets
+from dictionary_snippets import (
+    MAX_ACCOUNT_SNIPPET_BYTES,
+    DictionaryEntry,
+    DictionarySnippets,
+    Snippet,
+)
 from . import audio, groq, history, ledger
 from .middleware import take_rate
-from .models import Dictionary, Operation
+from .models import Dictionary, Operation, SnippetLibrary
 
 
 logger = logging.getLogger(__name__)
+MAX_DICTATION_RESULT_BYTES = 384 * 1024
 
 
-def processing_failure(user, operation_id, code, phase, status, *, operation=None):
+def processing_failure(
+    user, operation_id, code, phase, status, *, operation=None, replayable=False
+):
     """Expose bounded diagnostics, never exception text or provider responses."""
+    result = {"code": code, "phase": phase, "operation_id": str(operation_id)}
     if operation:
-        ledger.settle(operation)
+        ledger.settle(operation, result=result if replayable else None)
     logger.warning(
         "processing_failure code=%s phase=%s operation_id=%s",
         code,
@@ -35,9 +44,7 @@ def processing_failure(user, operation_id, code, phase, status, *, operation=Non
     )
     return Response(
         {
-            "code": code,
-            "phase": phase,
-            "operation_id": str(operation_id),
+            **result,
             "usage": ledger.usage(user),
         },
         status=status,
@@ -170,6 +177,69 @@ class DictionaryView(ServiceView):
         return Response({"revision": item.revision, "entries": item.entries})
 
 
+class SnippetView(ServiceView):
+    def get(self, request):
+        item = SnippetLibrary.objects.filter(user=request.user).first()
+        return Response(
+            {"revision": item.revision, "entries": item.entries}
+            if item
+            else {"revision": 0, "entries": []}
+        )
+
+    def put(self, request):
+        try:
+            if (
+                set(request.data) != {"revision", "entries"}
+                or type(request.data["revision"]) is not int
+                or request.data["revision"] < 0
+            ):
+                raise ValueError()
+            entries = request.data["entries"]
+            if not isinstance(entries, list) or len(entries) > 512:
+                raise ValueError()
+            if any(
+                not isinstance(item, dict)
+                or set(item) - {"trigger", "replacement", "enabled", "case_sensitive"}
+                for item in entries
+            ):
+                raise ValueError()
+            document = DictionarySnippets(
+                snippets=tuple(Snippet.from_mapping(item) for item in entries)
+            )
+            if any(not item.replacement.strip() for item in document.snippets):
+                raise ValueError()
+            entries = [item.to_mapping() for item in document.snippets]
+            if (
+                len(
+                    json.dumps(
+                        entries, ensure_ascii=False, separators=(",", ":")
+                    ).encode("utf-8")
+                )
+                > MAX_ACCOUNT_SNIPPET_BYTES
+            ):
+                return Response({"code": "snippets_too_large"}, status=400)
+        except (KeyError, TypeError, ValueError):
+            return Response({"code": "invalid_snippets"}, status=400)
+        with transaction.atomic():
+            # Account deletion takes this parent lock before collecting children.
+            # A request verified earlier must not insert after the collector ran.
+            owner = (
+                get_user_model()
+                .objects.select_for_update()
+                .filter(pk=request.user.pk)
+                .first()
+            )
+            if owner is None:
+                raise exceptions.PermissionDenied()
+            SnippetLibrary.objects.get_or_create(user=request.user)
+            item = SnippetLibrary.objects.select_for_update().get(user=request.user)
+            if request.data["revision"] != item.revision:
+                return Response({"code": "snippet_conflict"}, status=409)
+            item.entries, item.revision = entries, item.revision + 1
+            item.save()
+        return Response({"revision": item.revision, "entries": item.entries})
+
+
 class DictationView(ServiceView):
     parser_classes = [MultiPartParser]
 
@@ -206,23 +276,49 @@ class DictationView(ServiceView):
                 )
                 if not fresh:
                     return Response(
-                        {**operation.result, "usage": ledger.usage(request.user)}
+                        {**operation.result, "usage": ledger.usage(request.user)},
+                        status=422
+                        if operation.result.get("code") == "snippet_result_too_large"
+                        else 200,
                     )
                 vocabulary = Dictionary.objects.filter(user=request.user).first()
+                snippets = SnippetLibrary.objects.filter(user=request.user).first()
                 outcome = groq.dictation(
                     path,
                     duration_ms,
                     vocabulary.entries if vocabulary else [],
                     language,
+                    snippets=snippets.entries if snippets else [],
                 )
-                ledger.settle(
-                    operation,
-                    result=outcome.result,
-                    cost=outcome.cost,
-                    input_tokens=outcome.input_tokens,
-                    output_tokens=outcome.output_tokens,
-                )
-                return Response({**outcome.result, "usage": ledger.usage(request.user)})
+                with ledger.admission_lock():
+                    # Return one complete usage snapshot. Account admissions and
+                    # settlements use this same lock, so project this operation's
+                    # settlement before validating the exact response envelope.
+                    usage = ledger.usage(request.user)
+                    current = Operation.objects.get(pk=operation.pk)
+                    if current.state == "running" and usage["month"] == str(
+                        operation.month
+                    ):
+                        usage["reserved_ms"] -= operation.audio_ms
+                        usage["used_ms"] += operation.audio_ms
+                    result = {**outcome.result, "usage": usage}
+                    if (
+                        len(
+                            json.dumps(
+                                result, ensure_ascii=False, separators=(",", ":")
+                            ).encode("utf-8")
+                        )
+                        > MAX_DICTATION_RESULT_BYTES
+                    ):
+                        raise groq.SnippetResultTooLarge()
+                    ledger.settle(
+                        operation,
+                        result=outcome.result,
+                        cost=outcome.cost,
+                        input_tokens=outcome.input_tokens,
+                        output_tokens=outcome.output_tokens,
+                    )
+                return Response(result)
         except ledger.Rejected as error:
             return processing_failure(
                 request.user,
@@ -241,6 +337,16 @@ class DictationView(ServiceView):
                 "transcription",
                 422,
                 operation=operation,
+            )
+        except groq.SnippetResultTooLarge:
+            return processing_failure(
+                request.user,
+                operation_id,
+                "snippet_result_too_large",
+                "processing",
+                422,
+                operation=operation,
+                replayable=True,
             )
         except groq.ProviderFailure:
             return processing_failure(
