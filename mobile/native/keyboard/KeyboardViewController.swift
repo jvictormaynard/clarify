@@ -377,7 +377,7 @@ class KeyboardViewController: UIInputViewController {
       // message instead of incorrectly asking for a personal provider key.
       status.text = L("Não foi possível concluir"); detail.text = state.message
     } else if !state.configured {
-      status.text = L("Configure sua chave Groq"); detail.text = L("Abra o Clarify para configurar.")
+      status.text = L("Entre no Clarify"); detail.text = L("Abra o Clarify para configurar.")
     } else if !state.isLive {
       status.text = L("Ative o microfone"); detail.text = L("Toque em Começar.")
     } else {

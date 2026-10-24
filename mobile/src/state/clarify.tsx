@@ -16,24 +16,43 @@ function useClarifyState() {
   const [accountBusy, setAccountBusy] = useState(false);
   const [onboardingRequired, setOnboardingRequired] = useState<boolean | null>(null);
   const [setupError, setSetupError] = useState(false);
+  const mounted = useRef(true);
+  const accountRequest = useRef(0);
+  const setupRequest = useRef(0);
   const refreshOnboarding = useCallback(async () => {
-    try { setOnboardingRequired(await Core.onboardingRequired()); setSetupError(false); }
-    catch { setSetupError(true); }
+    const request = ++setupRequest.current;
+    try {
+      const required = await Core.onboardingRequired();
+      if (request === setupRequest.current) { setOnboardingRequired(required); setSetupError(false); }
+    } catch { if (request === setupRequest.current) setSetupError(true); }
   }, []);
-  const completeOnboarding = useCallback(async (mode: 'account' | 'byok') => {
-    await Core.completeOnboarding(mode);
-    setOnboardingRequired(false);
+  const completeOnboarding = useCallback(async () => {
+    const request = ++setupRequest.current;
+    await Core.completeOnboarding();
+    if (request === setupRequest.current) setOnboardingRequired(false);
   }, []);
   useEffect(() => {
     let active = true;
-    void Core.onboardingRequired().then(value => { if (active) setOnboardingRequired(value); })
-      .catch(() => { if (active) setSetupError(true); });
+    const request = ++setupRequest.current;
+    void Core.onboardingRequired().then(required => {
+      if (active && request === setupRequest.current) { setOnboardingRequired(required); setSetupError(false); }
+    }).catch(() => { if (active && request === setupRequest.current) setSetupError(true); });
+    // An earlier session/setup read cannot reopen routes after an account change.
     return () => { active = false; };
+  }, [account?.signedIn]);
+  const refreshAccount = useCallback(async () => {
+    const request = ++accountRequest.current;
+    const value = await Core.getAccount();
+    if (mounted.current && request === accountRequest.current) setAccount(value);
+    return value;
   }, []);
-  const refreshAccount = useCallback(async () => { const value = await Core.getAccount(); setAccount(value); return value; }, []);
   const accountCommand = useCallback(async (action: string, value = '') => {
+    const request = ++accountRequest.current;
     setAccountBusy(true);
-    try { setAccount(await Core.accountCommand(action, value)); }
+    try {
+      const next = await Core.accountCommand(action, value);
+      if (mounted.current && request === accountRequest.current) setAccount(next);
+    }
     finally { setAccountBusy(false); await refreshAccount(); }
   }, [refreshAccount]);
   // Native snapshots are local reads. Server refresh has its own one-minute gate.
@@ -43,7 +62,8 @@ function useClarifyState() {
     const sync = async () => {
       if (pending || AppState.currentState !== 'active') return;
       pending = true;
-      try { const next = await Core.accountCommand('auto', ''); if (live) setAccount(next); }
+      const request = ++accountRequest.current;
+      try { const next = await Core.accountCommand('auto', ''); if (live && request === accountRequest.current) setAccount(next); }
       catch { /* Keep cached data during temporary offline periods. */ }
       finally { pending = false; }
     };
@@ -56,7 +76,6 @@ function useClarifyState() {
   const [keyboardEntry, setKeyboardEntry] = useState(false);
   const [keyboardToken, setKeyboardToken] = useState<string | undefined>();
   const request = useRef<Promise<void> | null>(null);
-  const mounted = useRef(true);
   const refresh = useCallback(async () => {
     const next = await Core.getSnapshot();
     if (mounted.current) setState(next);
@@ -79,9 +98,10 @@ function useClarifyState() {
   }, [refresh]);
   useEffect(() => {
     let active = true;
-    void Core.getAccount().then(value => { if (active) setAccount(value); }).catch(report);
+    const request = ++accountRequest.current;
+    void Core.getAccount().then(value => { if (active && request === accountRequest.current) setAccount(value); }).catch(report);
     return () => { active = false; };
-  }, [state.libraryRevision]);
+  }, [state.libraryRevision, state.configured]);
   useEffect(() => {
     mounted.current = true;
     let pending = false;

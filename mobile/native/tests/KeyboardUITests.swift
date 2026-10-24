@@ -92,6 +92,9 @@ final class KeyboardUITests: XCTestCase {
       var expired = store.snapshot(); expired.phase = .error; expired.configured = false; expired.message = L("Entre na conta novamente.")
       try store.write(expired, to: "state.json"); keyboard.viewWillAppear(false); keyboard.view.layoutIfNeeded()
       XCTAssertFalse(detail.isHidden); XCTAssertEqual(detail.text, expired.message, "An expired account must not suggest switching to a personal key")
+      expired.phase = .idle; expired.message = nil
+      try store.write(expired, to: "state.json"); keyboard.viewWillAppear(false); keyboard.view.layoutIfNeeded()
+      XCTAssertEqual(status.text, L("Entre no Clarify"), "An unconfigured keyboard must lead to account sign-in")
     }
   }
   func testOwnTypingCapitalizesTheNextSentenceWithoutAHostNotification() async throws {
