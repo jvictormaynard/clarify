@@ -10,10 +10,23 @@ final class AppFlowUITests: XCTestCase {
     let attachment = XCTAttachment(screenshot: app.screenshot())
     attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
   }
+  func diagnose(_ name: String) {
+    capture(name)
+    print("APP_UI_DIAGNOSTIC \(name)\n\(app.debugDescription)")
+  }
   func press(_ identifier: String) {
     let button = app.buttons[identifier].firstMatch
-    XCTAssertTrue(button.waitForExistence(timeout: 15), "Missing action: \(identifier)")
-    if !button.isHittable { app.swipeUp() }
+    guard button.waitForExistence(timeout: 15) else {
+      diagnose("missing-\(identifier)"); XCTFail("Missing action: \(identifier)"); return
+    }
+    let enabled = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: button)
+    guard XCTWaiter.wait(for: [enabled], timeout: 15) == .completed else {
+      diagnose("disabled-\(identifier)"); XCTFail("Disabled action: \(identifier)"); return
+    }
+    if !button.isHittable { diagnose("before-scroll-\(identifier)"); app.swipeUp() }
+    guard button.isHittable else {
+      diagnose("unreachable-\(identifier)"); XCTFail("Unreachable action: \(identifier)"); return
+    }
     button.tap()
   }
   func tab(_ label: String) {
@@ -32,8 +45,11 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertFalse(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.exists)
     app.textFields["account.email"].tap()
     app.textFields["account.email"].typeText("clarify-e2e@example.test")
+    XCTAssertEqual(app.textFields["account.email"].value as? String, "clarify-e2e@example.test")
     press("account.requestCode")
-    XCTAssertTrue(app.textFields["account.code"].waitForExistence(timeout: 15))
+    guard app.textFields["account.code"].waitForExistence(timeout: 15) else {
+      diagnose("login-code-missing"); XCTFail("Login did not show the code field. Inspect the HTTP journal and app alert."); return
+    }
     app.textFields["account.code"].tap(); app.textFields["account.code"].typeText("123456")
     press("account.verifyCode")
     tab("Início"); capture("home-dark")

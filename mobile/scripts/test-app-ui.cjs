@@ -21,14 +21,21 @@ const preserved = ['Clarify/Info.plist', 'Clarify.xcodeproj/project.pbxproj'].ma
 const fixture = fs.mkdtempSync(path.join(root, '.app-ui-'));
 const requests = [];
 const unexpected = [];
+const journalPath = path.join(output, 'requests.jsonl');
+function record(event) {
+  const line = JSON.stringify({ at: new Date().toISOString(), ...event });
+  fs.appendFileSync(journalPath, `${line}\n`);
+  console.log(`APP_UI_HTTP ${line}`);
+}
 const user = { id: '00000000-0000-4000-8000-000000000033', email: 'clarify-e2e@example.test', usage: { used_ms: 450000, limit_ms: 18000000, reserved_ms: 0, hosted_available: true } };
 const server = http.createServer(async (request, response) => {
+  const route = request.url.split('?')[0];
+  const method = request.method;
+  record({ event: 'received', method, route });
   let body = '';
   for await (const chunk of request) { body += chunk; if (body.length > 1048576) { response.writeHead(413).end(); return; } }
   let value = {};
   try { if (body) value = JSON.parse(body); } catch { response.writeHead(400).end(); return; }
-  const route = request.url.split('?')[0];
-  const method = request.method;
   let result, status = 200;
   if (method === 'POST' && route === '/_allauth/app/v1/auth/continue') {
     status = 401; result = { meta: { session_token: 'isolated-e2e-session', is_authenticated: false } };
@@ -41,6 +48,7 @@ const server = http.createServer(async (request, response) => {
   else if (method === 'DELETE' && route === '/_allauth/app/v1/auth/session') { status = 204; result = null; }
   else { status = 404; result = {}; unexpected.push({ method, route }); }
   requests.push({ method, route, status });
+  record({ event: 'responded', method, route, status });
   response.writeHead(status, { 'Content-Type': 'application/json' });
   response.end(result === null ? '' : JSON.stringify(result));
 });
@@ -49,6 +57,7 @@ let exitCode = 1;
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const endpoint = `http://127.0.0.1:${server.address().port}`;
+  record({ event: 'listening', endpoint });
   fs.cpSync(original, fixture, { recursive: true, filter: file => !['Pods', 'build'].includes(path.relative(original, file).split(path.sep)[0]) });
   fs.symlinkSync(path.join(original, 'Pods'), path.join(fixture, 'Pods'), 'dir');
   run('python3', ['-c', 'import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,"rb")); d["ClarifyCloudURL"]=sys.argv[2]; d["NSAppTransportSecurity"]={"NSAllowsArbitraryLoads":True}; plistlib.dump(d,open(p,"wb"))', path.join(fixture, 'Clarify/Info.plist'), endpoint]);
@@ -63,7 +72,7 @@ let exitCode = 1;
   run('xcrun', ['simctl', 'ui', simulator, 'appearance', 'dark']);
   const result = path.join(output, 'AppFlow.xcresult');
   await new Promise((resolve, reject) => {
-    const child = spawn('xcodebuild', ['test', '-workspace', path.join(fixture, 'Clarify.xcworkspace'), '-scheme', 'ClarifyAppFlow', '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-derivedDataPath', path.join(os.tmpdir(), `clarify-app-ui-derived-${process.pid}`), '-resultBundlePath', result, 'CODE_SIGNING_ALLOWED=NO'], { stdio: 'inherit', env: { ...process.env, RCT_NO_LAUNCH_PACKAGER: '1', EXPO_NO_TELEMETRY: '1' } });
+    const child = spawn('xcodebuild', ['test', '-workspace', path.join(fixture, 'Clarify.xcworkspace'), '-scheme', 'ClarifyAppFlow', '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-derivedDataPath', path.join(os.tmpdir(), `clarify-app-ui-derived-${process.pid}`), '-resultBundlePath', result, 'CODE_SIGNING_ALLOWED=NO', 'ONLY_ACTIVE_ARCH=YES'], { stdio: 'inherit', env: { ...process.env, RCT_NO_LAUNCH_PACKAGER: '1', EXPO_NO_TELEMETRY: '1' } });
     child.once('error', reject);
     child.once('exit', code => code === 0 ? resolve() : reject(new Error(`App UI acceptance failed (${code}).`)));
   });
