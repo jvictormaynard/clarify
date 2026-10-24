@@ -2,9 +2,14 @@
 
 ## Snippets candidate
 
-Candidate **0.9.0 (31)** adds configurable account snippets in Dictionary → Snippets.
-Native checks, live acceptance, signed upload and Apple group availability must
-pass before this candidate is reported as delivered.
+Candidate **0.9.1 (32)** substitutes snippet triggers after recognition and before
+rewriting so the model can edit the complete message. Applied saved text is sent
+as rewrite source and can change wording and formatting. Standalone triggers
+retain direct exact insertion, original transcripts remain in history, and rewrite
+failure keeps substituted text. Native checks, live acceptance, signed upload and
+Apple group availability must pass before this candidate is reported as delivered.
+
+Version **0.9.0 (31)** added configurable account snippets in Dictionary → Snippets.
 
 Expo application plus a small Swift keyboard extension. A Clarify account is
 required for speech recognition and rewriting. Sign in with an emailed code;
@@ -272,8 +277,10 @@ establish TestFlight availability; verify `VALID` and `IN_BETA_TESTING` in Apple
 Open **Dictionary → Snippets** to add a spoken phrase and its saved text.
 The editor supports search, multiline text, case sensitivity, enabling,
 disabling and deletion. Saving preserves the entered spelling and line breaks.
-Enabled phrases can be recognition and rewrite hints; saved replacement text is
-never sent to the model as context. Expansion is bounded and runs once.
+Enabled phrases can be recognition hints. Within a message, saved replacement
+text is substituted before rewriting and sent as source to the rewrite model.
+The model can adjust wording and formatting; the saved library stays unchanged.
+Substitution is bounded and runs once.
 
 Signed-in snippets have a separate cache for each server and account. Saving
 synchronizes them with desktop; conflicting changes require an explicit choice
@@ -283,10 +290,11 @@ history deletion do not remove snippets. Account deletion removes its own cache.
 The limits are 512 entries, 256 characters per phrase, 4096 per saved text and
 256 KiB of compact UTF-8 entries for an account library.
 
-Hosted dictation uses the server's final expanded text without a second client
-expansion, including when a saved phrase succeeds without model rewriting.
-Personal-key processing expands locally after recognition and rewriting, or
-uses the recognized text if rewriting fails. A standalone phrase skips rewriting.
+Hosted dictation uses the server's final text without a second client substitution.
+The original recognized transcript stays in history. If rewriting fails, the
+server returns the substituted source. A standalone phrase inserts the exact
+saved text without rewriting. Mobile processing requires a Clarify account;
+stored legacy personal keys do not enable a separate processing route.
 
 The opt-in live check is `node scripts/test-snippets-acceptance.cjs` on macOS.
 It uses a temporary `CLARIFY_SNIPPETS_ACCEPTANCE` secret with dedicated accounts

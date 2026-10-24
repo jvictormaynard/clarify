@@ -279,13 +279,15 @@ used, this vocabulary is sent to that provider with the request. See
 
 Open **Settings → Snippets** on desktop or **Dictionary → Snippets** on iOS.
 Add a phrase such as `minha assinatura` and the text to insert, then save.
-Say the phrase alone or inside a sentence. Saved text keeps its spelling,
-line breaks and literal placeholders. Search, edit, disable or delete snippets
+Say the phrase alone to insert its exact saved text. Inside a sentence, the
+snippet is substituted before rewriting so the model can adjust the whole message. Search, edit, disable or delete snippets
 from the same page. Desktop changes use the existing Save/Discard bar.
 
 Account snippets synchronize between devices. Guest snippets stay on their device
 and are not uploaded at sign-in. Only trigger phrases can become recognition
-context; saved expansion text is inserted by code after recognition or rewriting.
+context. With rewriting enabled, applied saved text is sent to the rewrite model
+as part of the source message; its wording and formatting can change. Rewrite failure keeps the
+substituted source, and the original recognized transcript remains in history.
 See [matching, sync and limits](docs/dictionary-snippets.md).
 
 ## Privacy and local data

@@ -4469,11 +4469,6 @@
     "en": "Changes were saved on this iPhone. Sync will try again when you open the app.",
     "es": "Los cambios se guardaron en este iPhone. La sincronización se intentará de nuevo al abrir la aplicación."
   },
-  "As frases de ativação podem ajudar a IA. O conteúdo salvo é inserido por código, sem ser enviado como contexto à IA.": {
-    "pt": "As frases de ativação podem ajudar a IA. O conteúdo salvo é inserido por código, sem ser enviado como contexto à IA.",
-    "en": "Trigger phrases can help AI recognition. Saved content is inserted by the app and is not sent as AI context.",
-    "es": "Las frases de activación pueden ayudar al reconocimiento de la IA. La aplicación inserta el contenido guardado y no lo envía como contexto a la IA."
-  },
   "Buscar snippets": {
     "pt": "Buscar snippets",
     "en": "Search snippets",
@@ -4629,11 +4624,6 @@
     "en": "Match letter case in snippet {v0}",
     "es": "Distinguir mayúsculas en el snippet {v0}"
   },
-  "Diga a frase sozinha ou dentro de uma mensagem. O texto mantém a grafia e as quebras de linha. Use Salvar para aplicar ou Descartar para cancelar.": {
-    "pt": "Diga a frase sozinha ou dentro de uma mensagem. O texto mantém a grafia e as quebras de linha. Use Salvar para aplicar ou Descartar para cancelar.",
-    "en": "Say the phrase alone or within a message. Saved text keeps its spelling and line breaks. Use Save to apply changes or Discard to cancel.",
-    "es": "Di la frase sola o dentro de un mensaje. El texto conserva la escritura y los saltos de línea. Usa Guardar para aplicar los cambios o Descartar para cancelarlos."
-  },
   "Diga uma frase para inserir um texto salvo. Use para assinaturas, endereços e respostas frequentes.": {
     "pt": "Diga uma frase para inserir um texto salvo. Use para assinaturas, endereços e respostas frequentes.",
     "en": "Say a phrase to insert saved text. Use it for signatures, addresses and frequent replies.",
@@ -4723,5 +4713,15 @@
     "pt": "Verifique os snippets: frases únicas de até 256 caracteres, sem quebras de linha, e textos de até 4096 caracteres.",
     "en": "Check the snippets: unique phrases of up to 256 characters without line breaks, and text of up to 4096 characters.",
     "es": "Comprueba los snippets: frases únicas de hasta 256 caracteres sin saltos de línea y textos de hasta 4096 caracteres."
+  },
+  "Diga a frase sozinha para inserir o texto exato. Dentro de uma mensagem, o texto é inserido antes da reescrita e pode ser ajustado. Use Salvar para aplicar ou Descartar para cancelar.": {
+    "pt": "Diga a frase sozinha para inserir o texto exato. Dentro de uma mensagem, o texto é inserido antes da reescrita e pode ser ajustado. Use Salvar para aplicar ou Descartar para cancelar.",
+    "en": "Say the phrase alone to insert its exact saved text. Within a message, text is inserted before rewriting and may be adjusted. Use Save to apply changes or Discard to cancel.",
+    "es": "Di la frase sola para insertar el texto exacto. Dentro de un mensaje, el texto se inserta antes de la reescritura y puede ajustarse. Usa Guardar para aplicar los cambios o Descartar para cancelarlos."
+  },
+  "Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.": {
+    "pt": "Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.",
+    "en": "With rewriting enabled, snippet text is sent to AI as part of the message. When you say only the trigger phrase, saved text is inserted without rewriting.",
+    "es": "Con la reescritura activa, el texto del snippet se envía a la IA como parte del mensaje. Cuando dices solo la frase de activación, el texto guardado se inserta sin reescritura."
   }
 }

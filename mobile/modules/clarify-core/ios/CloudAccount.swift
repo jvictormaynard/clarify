@@ -491,6 +491,9 @@ final class CloudAccount {
     guard let outcome = try? JSONDecoder().decode(CloudDictation.self, from: JSONSerialization.data(withJSONObject: result)),
       !outcome.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
       !outcome.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ClarifyError(L("O Clarify retornou um resultado inválido.")) }
+    // Hosted processing substitutes snippets before rewriting. This is the
+    // terminal text, including the expanded fallback when rewriting fails;
+    // applying the local library again would recursively alter saved content.
     return outcome
   }
 }

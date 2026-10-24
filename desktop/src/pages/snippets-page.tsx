@@ -122,13 +122,13 @@ export function SnippetsPage({ controller }: SettingsPageProps) {
       <details className="dictionary-help">
         <summary>{t("Como funciona")}</summary>
         <p className="hint">
-          {t("Diga a frase sozinha ou dentro de uma mensagem. O texto mantém a grafia e as quebras de linha. Use Salvar para aplicar ou Descartar para cancelar.")}
+          {t("Diga a frase sozinha para inserir o texto exato. Dentro de uma mensagem, o texto é inserido antes da reescrita e pode ser ajustado. Use Salvar para aplicar ou Descartar para cancelar.")}
         </p>
         <p className="hint">
           {controller.state.accountState?.signedIn
             ? t("Os snippets desta conta são sincronizados e aplicados pelo servidor no desktop e no mobile.")
             : t("Os snippets deste dispositivo são aplicados localmente.")}
-          {" "}{t("As frases de ativação podem ajudar a IA. O conteúdo salvo é inserido por código, sem ser enviado como contexto à IA.")}
+          {" "}{t("Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.")}
         </p>
       </details>
     </section>

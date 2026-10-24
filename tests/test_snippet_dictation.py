@@ -69,8 +69,13 @@ class SnippetDictationTests(unittest.TestCase):
             )
         self.asr_request = asr.call_args.args[1]
         self.assertNotIn(self.saved_text, repr(asr.call_args))
-        self.assertNotIn(self.saved_text, repr(rewrite.call_args))
         return result, rewrite
+
+    def assert_rewrite_source(self, rewrite, expected):
+        request = rewrite.call_args.args[1]
+        self.assertEqual(request.text, expected)
+        self.assertIn(f"BEGIN_SOURCE_TRANSCRIPT\n{expected}\n", request.source_message)
+        self.assertNotIn(self.saved_text, request.instruction)
 
     def test_standalone_trigger_bypasses_refinement_and_does_not_expand_saved_text_again(
         self,
@@ -91,20 +96,63 @@ class SnippetDictationTests(unittest.TestCase):
         self.assertEqual(result.refined_text, self.saved_text)
         rewrite.assert_not_called()
 
-    def test_inline_trigger_expands_after_refinement_or_on_refinement_failure(self):
+    def test_inline_trigger_expands_before_refinement_and_keeps_edited_result(self):
         source = "Envie minha assinatura, por favor."
-        for edited in (
-            RewriteResult(source, "groq", "editor"),
-            RuntimeError("offline"),
-        ):
-            with self.subTest(edited=type(edited).__name__):
-                result, rewrite = self.transcribe(source, edited)
-                self.assertEqual(result.text, f"Envie {self.saved_text}, por favor.")
-                self.assertEqual(result.raw_text, source)
-                self.assertEqual(
-                    result.refinement_failed, isinstance(edited, RuntimeError)
+        result, rewrite = self.transcribe(
+            source,
+            RewriteResult("Por favor, envie a assinatura revisada.", "groq", "editor"),
+        )
+        self.assertEqual(result.text, "Por favor, envie a assinatura revisada.")
+        self.assertEqual(result.raw_text, source)
+        self.assertEqual(result.refined_text, result.text)
+        self.assertFalse(result.refinement_failed)
+        self.assertEqual(rewrite.call_count, 1)
+        self.assert_rewrite_source(rewrite, f"Envie {self.saved_text}, por favor.")
+
+    def test_inline_refinement_failure_keeps_expanded_source_and_raw_provenance(self):
+        source = "Envie minha assinatura, por favor."
+        result, rewrite = self.transcribe(source, RuntimeError("offline"))
+        self.assertEqual(result.text, f"Envie {self.saved_text}, por favor.")
+        self.assertEqual(result.raw_text, source)
+        self.assertTrue(result.refinement_failed)
+        self.assert_rewrite_source(rewrite, result.text)
+
+    def test_replacements_are_not_recursive_and_model_triggers_are_not_expanded(self):
+        self.service.replace(
+            DictionarySnippets(
+                snippets=(
+                    Snippet("minha assinatura", "segunda frase"),
+                    Snippet("segunda frase", "must not expand"),
                 )
-                self.assertEqual(rewrite.call_count, 1)
+            )
+        )
+        with patch.object(self.service, "expand", wraps=self.service.expand) as expand:
+            result, rewrite = self.transcribe(
+                "Use minha assinatura.",
+                RewriteResult(
+                    "Agora use minha assinatura e segunda frase.", "groq", "editor"
+                ),
+            )
+        self.assertEqual(result.text, "Agora use minha assinatura e segunda frase.")
+        self.assert_rewrite_source(rewrite, "Use segunda frase.")
+        expand.assert_called_once_with("Use minha assinatura.")
+
+    def test_refinement_loss_guard_uses_expanded_source_and_preserves_it_on_failure(
+        self,
+    ):
+        saved = "Preserve every independent requirement, name and quantity. " * 10
+        self.service.replace(
+            DictionarySnippets(snippets=(Snippet("minha assinatura", saved),))
+        )
+        source = "Use minha assinatura e confirme."
+        result, rewrite = self.transcribe(
+            source, RewriteResult("A short title.", "groq", "editor")
+        )
+        expected = "Use " + saved + " e confirme."
+        self.assertEqual(result.text, expected)
+        self.assertEqual(result.raw_text, source)
+        self.assertTrue(result.refinement_failed)
+        self.assert_rewrite_source(rewrite, expected)
 
     def gemini(self, *, refinement=True):
         config = AppConfig.from_mapping(
@@ -141,18 +189,19 @@ class SnippetDictationTests(unittest.TestCase):
         self.assertIn("Transcribe the audio directly", self.asr_request.instruction)
         self.assertEqual(self.asr_request.prompt, "Custom recognition preference")
 
-    def test_multimodal_inline_uses_two_stages_without_sending_saved_text(self):
+    def test_multimodal_inline_rewrites_the_expanded_source_in_a_separate_stage(self):
         self.gemini()
         source = "Use minha assinatura."
         result, rewrite = self.transcribe(
-            source, RewriteResult(source, "gemini", "editor")
+            source,
+            RewriteResult("Assinatura revisada pelo modelo.", "gemini", "editor"),
         )
-        self.assertEqual(result.text, "Use " + self.saved_text + ".")
+        self.assertEqual(result.text, "Assinatura revisada pelo modelo.")
         self.assertEqual(rewrite.call_count, 1)
         self.assertIn(
             "Custom editing preference", rewrite.call_args.args[1].instruction
         )
-        self.assertNotIn(self.saved_text, repr(rewrite.call_args))
+        self.assert_rewrite_source(rewrite, "Use " + self.saved_text + ".")
 
     def test_multimodal_disabled_refinement_stays_disabled_with_snippets(self):
         self.gemini(refinement=False)

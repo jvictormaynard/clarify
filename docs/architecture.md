@@ -14,10 +14,12 @@ There is no separate closed backend or local/cloud product fork.
 Accounts share vocabulary, snippets, hosted audio allowance and new account
 transcriptions. Pre-upgrade records, guest history and guest snippets remain local.
 Account snippet caches use endpoint and account identity; signing in does not
-upload guest snippets. Hosted expansion runs once after recognition or rewriting,
-including the transcript-preserving rewrite-failure path. Standalone triggers
-bypass rewriting. Provider context can contain enabled triggers, never saved
-expansion text. Account libraries have a 256 KiB compact UTF-8 JSON limit, and
+upload guest snippets. Hosted substitution runs once after recognition and before optional rewriting.
+The rewrite model receives the substituted source and can adjust it with the
+rest of the message. Rewrite failure returns the substituted source. The
+original recognized transcript remains unchanged in history. Standalone triggers
+insert the exact saved text without rewriting. Recognition hints contain only
+enabled triggers; saved replacements are sent only when applied to rewrite source. Account libraries have a 256 KiB compact UTF-8 JSON limit, and
 snippet-expanded dictation fields retain the existing 32 KiB UTF-8 history limit.
 Rendered hosted responses also have a 384 KiB bound. Excessive expansion returns
 an explicit error without truncation. Account history

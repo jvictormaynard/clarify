@@ -271,7 +271,7 @@ class WorkflowProviderService:
         metadata = self.registry.describe(provider)
         # A multimodal model normally edits in its audio request. With active
         # snippets, keep recognition separate so standalone saved text bypasses
-        # editing, and insert saved content only after any optional cleanup.
+        # editing, and inline saved content is present before optional cleanup.
         snippet_two_stage = metadata.supports(
             ProviderCapability.MULTIMODAL_AUDIO
         ) and any(item.enabled for item in self.dictionary_service.state.snippets)
@@ -327,12 +327,19 @@ class WorkflowProviderService:
             raise RuntimeError(
                 f"{provider} returned no transcript for {language_label}"
             )
+        if audio_source.cancel_token is not None:
+            audio_source.cancel_token.raise_if_cancelled()
+        cleanup_started = time.perf_counter()
         standalone_snippet = self.dictionary_service.expand_spoken_trigger(
             raw_transcript
         )
         transcript = (
-            raw_transcript if standalone_snippet is None else standalone_snippet
+            self.dictionary_service.expand(raw_transcript)
+            if standalone_snippet is None
+            else standalone_snippet
         )
+        timings["text_cleanup_ms"] = (time.perf_counter() - cleanup_started) * 1000
+        refinement_source = transcript
         refinement_scope = (
             WorkflowScope.LOCAL_ASR_REFINEMENT
             if provider == "local_asr"
@@ -358,7 +365,7 @@ class WorkflowProviderService:
         if refinement_requested:
             try:
                 refined = self._refine_transcript(
-                    raw_transcript,
+                    refinement_source,
                     language,
                     language_label,
                     refinement_scope,
@@ -388,14 +395,14 @@ class WorkflowProviderService:
                     "event": "dictation_refinement_outcome",
                     "provider": refinement_route.provider_id,
                     "outcome": (
-                        "changed" if transcript != raw_transcript else "unchanged"
+                        "changed" if transcript != refinement_source else "unchanged"
                     )
                     if refinement_used
                     else "fallback",
                     "exception_type": refinement_error_type,
-                    "source_wrapped_in_quotes": len(raw_transcript.strip()) >= 2
-                    and raw_transcript.strip()[0] in ('"', "\u201c")
-                    and raw_transcript.strip()[-1] in ('"', "\u201d"),
+                    "source_wrapped_in_quotes": len(refinement_source.strip()) >= 2
+                    and refinement_source.strip()[0] in ('"', "\u201c")
+                    and refinement_source.strip()[-1] in ('"', "\u201d"),
                 }
             )
 
@@ -404,10 +411,6 @@ class WorkflowProviderService:
             if refinement_requested
             else 0.0
         )
-        cleanup_started = time.perf_counter()
-        if standalone_snippet is None:
-            transcript = self.dictionary_service.expand(transcript)
-        timings["text_cleanup_ms"] = (time.perf_counter() - cleanup_started) * 1000
         return TranscriptionResult(
             transcript,
             provider,
