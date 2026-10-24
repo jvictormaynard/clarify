@@ -2,6 +2,47 @@ import XCTest
 @testable import ClarifyContracts
 
 final class CloudAccountTests: XCTestCase {
+  @MainActor func testSnippetRewriteAndExpandedFallbackStayTerminalAndKeepRawHistory() async throws {
+    let raw = "Quero avisar que minha disponibilidade."
+    let expanded = "Quero avisar que posso atender de segunda a sexta."
+    let rewritten = "Posso atender de segunda a sexta. Segunda frase."
+    let snippets = [Snippet(trigger: "minha disponibilidade", replacement: "posso atender de segunda a sexta"),
+      Snippet(trigger: "segunda frase", replacement: "RECURSION SHOULD NOT RUN")]
+    for (text, didRewrite) in [(rewritten, true), (expanded, false)] {
+      let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      let defaults = UserDefaults(suiteName: suite)!
+      defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+      var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
+      defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+      let library = try LocalLibrary(root: root), audio = root.appendingPathComponent("synthetic.m4a")
+      let guest = Snippet(trigger: "guest", replacement: "Guest only")
+      try library.saveSnippets([guest]); try Data("synthetic audio".utf8).write(to: audio)
+      var dictations = 0
+      let account = CloudAccount(defaults: defaults, transport: { request in
+        switch request.url!.path {
+        case "/v1/dictionary": return try self.response(request, ["revision": 0, "entries": []])
+        case "/v1/snippets":
+          XCTAssertEqual(request.httpMethod, "GET")
+          return try self.response(request, ["revision": 1, "entries": snippets.map { ["trigger": $0.trigger, "replacement": $0.replacement, "enabled": $0.enabled, "case_sensitive": $0.caseSensitive] as [String: Any] }])
+        default:
+          XCTAssertEqual(request.url!.path, "/v1/dictations", "The mobile app must not call a rewrite provider or apply another snippet pass")
+          dictations += 1
+          return try self.response(request, ["transcript": raw, "text": text, "rewritten": didRewrite, "snippet_expanded": true])
+        }
+      }, readCredential: { "fixture" }, saveCredential: { _ in })
+      let operationID = UUID().uuidString
+      let outcome = try await account.dictate(audio, operationID: operationID, library: library)
+      XCTAssertTrue(outcome.successful); XCTAssertEqual(outcome.rewritten, didRewrite)
+      XCTAssertEqual(outcome.transcript, raw); XCTAssertEqual(outcome.text, text)
+      XCTAssertFalse(outcome.text.contains("RECURSION SHOULD NOT RUN")); XCTAssertEqual(dictations, 1)
+      let entry = HistoryEntry(id: operationID, createdAt: 1000, transcript: outcome.transcript, text: outcome.text, rewritten: outcome.successful)
+      try library.record(entry, scope: account.historyScope)
+      let reopened = try LocalLibrary(root: root)
+      XCTAssertEqual(try reopened.history(scope: account.historyScope).entries, [entry])
+      XCTAssertEqual(try reopened.snippets(scope: account.snippetScope), snippets)
+      XCTAssertEqual(try reopened.snippets(), [guest])
+    }
+  }
   @MainActor func testDictationRevocationNotifiesResourceOwnerAfterInvalidatingSession() async throws {
     for status in [401, 403] {
       let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
