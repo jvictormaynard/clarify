@@ -12,9 +12,11 @@ tests.add_dependency(app)
 tests.build_configurations.each do |configuration|
   configuration.build_settings.merge!({
     'PRODUCT_BUNDLE_IDENTIFIER' => 'com.jvictormaynard.clarify.appflowtests',
+    'PRODUCT_NAME' => '$(TARGET_NAME)',
+    'PRODUCT_MODULE_NAME' => 'ClarifyAppFlowTests',
     'GENERATE_INFOPLIST_FILE' => 'YES', 'SWIFT_VERSION' => '5.0',
     'TEST_TARGET_NAME' => 'Clarify', 'TARGETED_DEVICE_FAMILY' => '1',
-    'CODE_SIGNING_ALLOWED' => 'NO'
+    'CODE_SIGNING_ALLOWED' => 'NO', 'ONLY_ACTIVE_ARCH' => 'YES'
   })
 end
 file = File.join(fixture, 'ClarifyAppFlowTests.swift')
