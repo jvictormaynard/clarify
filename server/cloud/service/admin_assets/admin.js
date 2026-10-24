@@ -350,6 +350,7 @@
     const params = new URLSearchParams({ days: state.days, search: $('user-search').value.trim(), segment: $('user-segment').value, page: state.userPage });
     const data = await api(`/admin/api/users?${params}`);
     if (version !== state.userLoad || !state.signedIn) return;
+    state.userPage = Number.isInteger(data.page) && data.page > 0 ? data.page : 1;
     state.users = data; renderUsersTable($('users-table'), data.results || []);
     $('users-count').textContent = `${count(data.count)} ${num(data.count) === 1 ? 'usuário' : 'usuários'}`;
     $('pagination-info').textContent = `Página ${count(data.page)} de ${count(Math.max(1, num(data.pages)))}`;

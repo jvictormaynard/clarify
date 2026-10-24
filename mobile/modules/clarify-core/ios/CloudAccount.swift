@@ -53,6 +53,7 @@ final class CloudAccount {
   private let readCredential: () -> String?
   private let saveCredential: (String?) throws -> Void
   private let historyClock: () -> TimeInterval
+  private var sessionInvalidated: (() -> Void)?
   private let delegate = CloudTransport()
   private lazy var session: URLSession = {
     let configuration = URLSessionConfiguration.ephemeral
@@ -67,10 +68,12 @@ final class CloudAccount {
        transport: ((URLRequest) async throws -> (Data, HTTPURLResponse))? = nil,
        readCredential: @escaping () -> String? = AccountCredential.read,
        saveCredential: @escaping (String?) throws -> Void = AccountCredential.save,
-       historyClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+       historyClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+       sessionInvalidated: (() -> Void)? = nil) {
     self.defaults = defaults
     self.transport = transport; self.readCredential = readCredential; self.saveCredential = saveCredential
     self.historyClock = historyClock
+    self.sessionInvalidated = sessionInvalidated
     state = defaults.data(forKey: "clarify.account.metadata").flatMap { try? JSONDecoder().decode(CloudAccountState.self, from: $0) } ?? CloudAccountState()
     if state.endpoint.isEmpty { state.endpoint = Bundle.main.object(forInfoDictionaryKey: "ClarifyCloudURL") as? String ?? "" }
     if state.userID != nil { state.hosted = true }
@@ -80,6 +83,7 @@ final class CloudAccount {
     lock.lock(); defer { lock.unlock() }; return try body()
   }
   private func persist() throws { defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata") }
+  func setSessionInvalidationHandler(_ handler: @escaping () -> Void) { locked { sessionInvalidated = handler } }
   var hosted: Bool { locked { state.userID != nil } }
   var managed: Bool { locked { state.userID != nil || state.hosted } }
   var scope: String? { locked { state.userID } }
@@ -99,11 +103,11 @@ final class CloudAccount {
     locked { lastSyncAttempt = -.infinity; lastRefreshAttempt = -.infinity }
   }
   var isBusy: Bool { locked { busy } }
-  var configured: Bool { locked { managed ? hosted && readCredential() != nil : KeyStore.read() != nil } }
+  var configured: Bool { locked { hosted && readCredential() != nil } }
   func snapshot() -> [String: Any] {
-    locked { ["endpoint": state.endpoint, "signedIn": state.userID != nil, "managed": managed, "email": state.email,
+    locked { ["endpoint": state.endpoint, "signedIn": configured, "managed": managed, "email": state.email,
       "pending": state.pending, "hosted": hosted, "syncEnabled": state.sync,
-      "busy": busy, "error": syncError, "dictionaryConflict": dictionaryConflict, "usage": usage, "historyAccount": historyScope != nil, "historyContext": historyContext, "hasGroqKey": KeyStore.read() != nil] }
+      "busy": busy, "error": syncError, "dictionaryConflict": dictionaryConflict, "usage": usage, "historyAccount": historyScope != nil, "historyContext": historyContext] }
   }
   static func validateEndpoint(_ value: String) throws -> String {
     let value = value.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -159,7 +163,7 @@ final class CloudAccount {
     // the status recovery (especially session revocation) without exposing it.
     let decoded: [String: Any]? = data.isEmpty ? [:] : (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     let result = decoded ?? [:]
-    try locked {
+    let invalidation = try locked { () -> (() -> Void)? in
       guard state.endpoint == identity.0, generation == identity.1, readCredential() == identity.2 else { throw CancellationError() }
       let expired = [401, 403].contains(response.statusCode) && path.hasPrefix("/v1/")
       if expired {
@@ -169,7 +173,11 @@ final class CloudAccount {
       }
       if !expired, let meta = result["meta"] as? [String: Any], let token = meta["session_token"] as? String { try saveCredential(token) }
       if !expired, let updatedUsage = result["usage"] as? [String: Any] { usage = updatedUsage }
+      return expired ? sessionInvalidated : nil
     }
+    // perform runs on the main actor. Resource owners observe the revoked
+    // identity after persistence and outside the account lock.
+    invalidation?()
     try Task.checkCancellation()
     if response.statusCode == 200, decoded == nil { throw ClarifyError(L("Resposta inválida do Clarify.")) }
     return (response.statusCode, result)
@@ -199,7 +207,15 @@ final class CloudAccount {
       try saveCredential(nil)
       try locked { generation &+= 1; state = CloudAccountState(); state.endpoint = endpoint; lastHistoryAttempt = -.infinity; historyFailed = false; try persist() }
     case "login", "signup":
-      guard locked({ state.userID == nil }) else { throw ClarifyError(L("Saia da conta atual primeiro.")) }
+      guard !configured else { throw ClarifyError(L("Saia da conta atual primeiro.")) }
+      // Old metadata must not turn an unauthenticated login-code session into
+      // an active account. Keep its cache scope for a later confirmed sign-in.
+      try locked {
+        if state.userID != nil {
+          state.historyUserID = state.historyUserID ?? state.userID
+          state.userID = nil; state.sync = false; usage = [:]; generation &+= 1; try persist()
+        }
+      }
       let path = action == "signup" ? "/auth/signup" : "/auth/continue"
       let (code, _) = try await perform("POST", "/_allauth/app/v1" + path, json: ["email": value.trimmingCharacters(in: .whitespacesAndNewlines)])
       guard code == 200 || code == 401 else { throw ClarifyError(L("Não foi possível enviar o código. Confira o e-mail ou aguarde antes de tentar novamente.")) }
@@ -376,14 +392,14 @@ final class CloudAccount {
       operationID: diagnosticOperation, status: status)
   }
   @MainActor func dictate(_ audio: URL, operationID: String, library: LocalLibrary) async throws -> CloudDictation {
-    guard hosted else { throw ClarifyError(L("Entre na conta novamente.")) }
+    guard configured else { throw ClarifyError(L("Entre na conta novamente.")) }
     try await waitForAutomaticRefresh()
     try begin(); defer { end() }
     if scope != nil && ProcessInfo.processInfo.systemUptime - lastSyncAttempt >= 60 {
       do { try await syncImpl(library) }
       catch { try Task.checkCancellation(); locked { syncError = L("O ditado usou a última versão do dicionário da conta. Há palavras pendentes de sincronização.") } }
     }
-    guard hosted else { throw ClarifyError(L("Entre na conta novamente.")) }
+    guard configured else { throw ClarifyError(L("Entre na conta novamente.")) }
     let bytes = try Data(contentsOf: audio)
     guard bytes.count <= 24 * 1024 * 1024, UUID(uuidString: operationID) != nil else { throw ClarifyError(L("Grave um trecho menor.")) }
     let boundary = "Clarify-\(UUID().uuidString)"

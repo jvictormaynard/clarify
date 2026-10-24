@@ -24,10 +24,10 @@ runs:
       shell: pwsh
       working-directory: desktop
       run: npm ci --no-fund
-    - name: Audit production frontend dependencies
+    - name: Audit frontend and build dependencies
       shell: pwsh
       working-directory: desktop
-      run: npm audit --omit=dev --audit-level=high
+      run: npm audit --include=dev --audit-level=high
     - name: Type-check and build frontend
       shell: pwsh
       working-directory: desktop

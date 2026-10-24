@@ -22,21 +22,16 @@ public class ClarifyCoreModule: Module {
       }
     }.runOnQueue(.main)
     AsyncFunction("onboardingRequired") { () -> Bool in
-      let account = CloudAccount.shared.snapshot()
-      return Onboarding().required(existingSetup: account["signedIn"] as? Bool == true || KeyStore.read() != nil)
+      return Onboarding().required(signedIn: CloudAccount.shared.configured)
     }.runOnQueue(.main)
-    AsyncFunction("completeOnboarding") { (mode: String) in
-      let account = CloudAccount.shared.snapshot()
-      let ready = mode == "account" ? CloudAccount.shared.hosted && CloudAccount.shared.configured
-        : mode == "byok" && KeyStore.read() != nil && (account["signedIn"] as? Bool != true)
-      try Onboarding().complete(configured: ready)
+    AsyncFunction("completeOnboarding") {
+      try Onboarding().complete(configured: CloudAccount.shared.configured)
     }.runOnQueue(.main)
     AsyncFunction("getSnapshot") { () -> [String: Any] in
       let state = ClarifyAudioSession.shared.state
       let data = try JSONEncoder().encode(state)
       return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }.runOnQueue(.main)
-    AsyncFunction("setKey") { (key: String) in try ClarifyAudioSession.shared.saveKey(key) }.runOnQueue(.main)
     AsyncFunction("getAccount") { () -> [String: Any] in CloudAccount.shared.snapshot() }.runOnQueue(.main)
     AsyncFunction("accountCommand") { (action: String, value: String, promise: Promise) in
       Task { @MainActor in
@@ -58,6 +53,9 @@ public class ClarifyCoreModule: Module {
           ClarifyAudioSession.shared.syncHistory(force: action == "confirm")
           promise.resolve(CloudAccount.shared.snapshot())
         } catch {
+          if !CloudAccount.shared.configured, ClarifyAudioSession.shared.state.sessionActive {
+            ClarifyAudioSession.shared.accountSessionInvalidated()
+          }
           ClarifyAudioSession.shared.libraryChanged()
           promise.reject("ACCOUNT_ERROR", error is ClarifyError ? error.localizedDescription : L("Não foi possível acessar o Clarify. Verifique a conexão."))
         }

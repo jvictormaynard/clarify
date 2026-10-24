@@ -31,7 +31,6 @@ export interface HistoryEntry {
 export interface HistoryPage { entries: HistoryEntry[]; nextCursor?: string; context: string }
 export interface MicrophoneActivation { active: boolean; message?: string }
 export interface AccountSnapshot {
-  hasGroqKey?: boolean;
   endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
   hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
   dictionaryConflict?: boolean;
@@ -45,11 +44,10 @@ export default requireNativeModule<{
   readonly keyboardDiagnosticAvailable: boolean;
   openKeyboardDiagnostic(): Promise<void>;
   onboardingRequired(): Promise<boolean>;
-  completeOnboarding(mode: 'account' | 'byok'): Promise<void>;
+  completeOnboarding(): Promise<void>;
   getSnapshot(): Promise<Snapshot>;
   getAccount(): Promise<AccountSnapshot>;
   accountCommand(action: string, value: string): Promise<AccountSnapshot>;
-  setKey(key: string): Promise<void>;
   activate(): Promise<MicrophoneActivation>;
   deactivate(): Promise<void>;
   returnToSource(token: string): Promise<boolean>;
