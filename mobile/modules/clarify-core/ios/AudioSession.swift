@@ -54,6 +54,7 @@ final class ClarifyAudioSession: NSObject {
 
   private override init() {
     super.init()
+    CloudAccount.shared.setSessionInvalidationHandler { [weak self] in self?.accountSessionInvalidated() }
     // Remove only this app's clips left by an interrupted or terminated process.
     let temporary = FileManager.default.temporaryDirectory
     for url in (try? FileManager.default.contentsOfDirectory(at: temporary, includingPropertiesForKeys: nil)) ?? [] {
@@ -140,6 +141,11 @@ final class ClarifyAudioSession: NSObject {
     cancel()
     stopAudio()
     publish()
+  }
+  func accountSessionInvalidated() {
+    stopAudio()
+    fail(L("Entre na conta novamente."), diagnostics: ClarifyError(L("Entre na conta novamente."), code: "authentication_required"))
+    try? store?.publishKeyboardDictionary(nil)
   }
   private func stopAudio() {
     engine.stop()
@@ -289,6 +295,7 @@ final class ClarifyAudioSession: NSObject {
     publish()
   }
   private func fail(_ message: String, diagnostics: ClarifyError? = nil) {
+    if !CloudAccount.shared.configured, state.sessionActive { stopAudio() }
     cuePlayer?.stop(); cuePlayer = nil
     task?.cancel(); task = nil; startedAt = nil
     if let url = closeFile() { try? FileManager.default.removeItem(at: url) }

@@ -124,11 +124,17 @@ jobs:
             node scripts/test-keyboard-extension.cjs
           fi
       - name: Generate native project
-        if: ${{ !inputs.tests_only }}
         run: npx expo prebuild --clean --platform ios --no-install
       - name: Install CocoaPods dependencies
-        if: ${{ !inputs.tests_only }}
         run: pod install --project-directory=ios
+      - name: Build the containing app without signing
+        if: ${{ inputs.tests_only }}
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/ClarifyValidation" \
+            CODE_SIGNING_ALLOWED=NO build | xcbeautify
       - name: Install existing Apple signing credentials
         if: ${{ !inputs.tests_only }}
         env:

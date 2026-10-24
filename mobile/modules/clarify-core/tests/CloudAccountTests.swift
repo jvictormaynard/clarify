@@ -2,6 +2,55 @@ import XCTest
 @testable import ClarifyContracts
 
 final class CloudAccountTests: XCTestCase {
+  @MainActor func testDictationRevocationNotifiesResourceOwnerAfterInvalidatingSession() async throws {
+    for status in [401, 403] {
+      let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      let defaults = UserDefaults(suiteName: suite)!
+      defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+      var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
+      defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+      let library = try LocalLibrary(root: root), audio = root.appendingPathComponent("synthetic.m4a")
+      try Data("synthetic audio".utf8).write(to: audio)
+      var token: String? = "fixture", invalidations = 0
+      var account: CloudAccount! = nil
+      account = CloudAccount(defaults: defaults, transport: { request in
+        if request.url!.path == "/v1/dictionary" { return try self.response(request, ["revision": 0, "entries": []]) }
+        XCTAssertEqual(request.url!.path, "/v1/dictations")
+        return try self.response(request, ["code": "authentication_required"], status: status)
+      }, readCredential: { token }, saveCredential: { token = $0 }, sessionInvalidated: {
+        XCTAssertTrue(Thread.isMainThread); XCTAssertNil(token); XCTAssertFalse(account.configured)
+        XCTAssertNil(account.scope); invalidations += 1
+      })
+      do {
+        _ = try await account.dictate(audio, operationID: UUID().uuidString, library: library)
+        XCTFail("An expired session cannot publish a dictation")
+      } catch let error as ClarifyError { XCTAssertEqual(error.code, "authentication_required") }
+      XCTAssertEqual(invalidations, 1)
+      XCTAssertTrue(try library.history(scope: account.historyScope).entries.isEmpty)
+      account.setSessionInvalidationHandler({})
+    }
+  }
+  @MainActor func testAccountCommandRevocationNotifiesTheSameResourceOwner() async throws {
+    for action in ["refresh", "sync"] {
+      let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      let defaults = UserDefaults(suiteName: suite)!
+      defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+      var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
+      defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+      var token: String? = "fixture", invalidations = 0
+      let account = CloudAccount(defaults: defaults, transport: { request in
+        try self.response(request, [:], status: 401)
+      }, readCredential: { token }, saveCredential: { token = $0 }, sessionInvalidated: {
+        XCTAssertTrue(Thread.isMainThread); XCTAssertNil(token); invalidations += 1
+      })
+      do {
+        _ = try await account.command(action, value: "", library: LocalLibrary(root: root))
+        XCTFail("A revoked session must require a new sign-in")
+      } catch is ClarifyError {}
+      XCTAssertEqual(invalidations, 1); XCTAssertFalse(account.configured)
+      XCTAssertEqual(account.snapshot()["signedIn"] as? Bool, false)
+    }
+  }
   @MainActor func testSignedOutProcessingRejectsBeforeReadingAudioOrSendingRequests() async throws {
     let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let defaults = UserDefaults(suiteName: suite)!
@@ -140,11 +189,12 @@ final class CloudAccountTests: XCTestCase {
     let library = try LocalLibrary(root: root), audio = root.appendingPathComponent("clip.m4a")
     try Data("synthetic audio".utf8).write(to: audio)
     var token: String? = "old", pending: CheckedContinuation<(Data, HTTPURLResponse), Error>?, dictationRequest: URLRequest?
+    var invalidations = 0
     let account = CloudAccount(defaults: defaults, transport: { request in
       if request.url!.path == "/v1/dictionary" { return try self.response(request, ["revision": 0, "entries": []]) }
       dictationRequest = request
       return try await withCheckedThrowingContinuation { pending = $0 }
-    }, readCredential: { token }, saveCredential: { token = $0 })
+    }, readCredential: { token }, saveCredential: { token = $0 }, sessionInvalidated: { invalidations += 1 })
     let task = Task { try await account.dictate(audio, operationID: UUID().uuidString, library: library) }
     while pending == nil { await Task.yield() }
     token = "new"
@@ -154,6 +204,7 @@ final class CloudAccountTests: XCTestCase {
     XCTAssertEqual(token, "new"); XCTAssertTrue(account.hosted)
     XCTAssertNil((account.snapshot()["usage"] as? [String: Any])?["used_ms"])
     XCTAssertFalse(account.isBusy)
+    XCTAssertEqual(invalidations, 0, "A response from the earlier session cannot stop the new session")
   }
   private func response(_ request: URLRequest, _ value: [String: Any], status: Int = 200) throws -> (Data, HTTPURLResponse) {
     (try JSONSerialization.data(withJSONObject: value), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)

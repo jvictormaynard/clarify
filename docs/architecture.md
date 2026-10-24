@@ -44,8 +44,9 @@ through the existing config transaction. Legacy profiles retain their choices.
 The iOS app uses an app-only onboarding preference and protected Router screens;
 existing desktop keys/accounts and signed-in iOS accounts preserve their setup.
 The iOS route guard also checks the current session, so a completed legacy
-personal-key setup cannot bypass sign-in. Its old history and dictionary remain
-on the device and are not deleted or assigned to an account by this transition.
+personal-key setup cannot bypass sign-in. Its old history remains on the device
+and is never assigned to an account. The existing first-login import of local
+dictionary words is preserved; the local dictionary is not deleted.
 Setup does not acquire the microphone or send an email without a user action.
 The initial page shows the email form directly. The server's `auth/continue`
 adapter creates an unverified account only when needed, then uses allauth's

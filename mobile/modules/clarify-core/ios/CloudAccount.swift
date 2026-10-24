@@ -53,6 +53,7 @@ final class CloudAccount {
   private let readCredential: () -> String?
   private let saveCredential: (String?) throws -> Void
   private let historyClock: () -> TimeInterval
+  private var sessionInvalidated: (() -> Void)?
   private let delegate = CloudTransport()
   private lazy var session: URLSession = {
     let configuration = URLSessionConfiguration.ephemeral
@@ -67,10 +68,12 @@ final class CloudAccount {
        transport: ((URLRequest) async throws -> (Data, HTTPURLResponse))? = nil,
        readCredential: @escaping () -> String? = AccountCredential.read,
        saveCredential: @escaping (String?) throws -> Void = AccountCredential.save,
-       historyClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+       historyClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+       sessionInvalidated: (() -> Void)? = nil) {
     self.defaults = defaults
     self.transport = transport; self.readCredential = readCredential; self.saveCredential = saveCredential
     self.historyClock = historyClock
+    self.sessionInvalidated = sessionInvalidated
     state = defaults.data(forKey: "clarify.account.metadata").flatMap { try? JSONDecoder().decode(CloudAccountState.self, from: $0) } ?? CloudAccountState()
     if state.endpoint.isEmpty { state.endpoint = Bundle.main.object(forInfoDictionaryKey: "ClarifyCloudURL") as? String ?? "" }
     if state.userID != nil { state.hosted = true }
@@ -80,6 +83,7 @@ final class CloudAccount {
     lock.lock(); defer { lock.unlock() }; return try body()
   }
   private func persist() throws { defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata") }
+  func setSessionInvalidationHandler(_ handler: @escaping () -> Void) { locked { sessionInvalidated = handler } }
   var hosted: Bool { locked { state.userID != nil } }
   var managed: Bool { locked { state.userID != nil || state.hosted } }
   var scope: String? { locked { state.userID } }
@@ -159,7 +163,7 @@ final class CloudAccount {
     // the status recovery (especially session revocation) without exposing it.
     let decoded: [String: Any]? = data.isEmpty ? [:] : (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     let result = decoded ?? [:]
-    try locked {
+    let invalidation = try locked { () -> (() -> Void)? in
       guard state.endpoint == identity.0, generation == identity.1, readCredential() == identity.2 else { throw CancellationError() }
       let expired = [401, 403].contains(response.statusCode) && path.hasPrefix("/v1/")
       if expired {
@@ -169,7 +173,11 @@ final class CloudAccount {
       }
       if !expired, let meta = result["meta"] as? [String: Any], let token = meta["session_token"] as? String { try saveCredential(token) }
       if !expired, let updatedUsage = result["usage"] as? [String: Any] { usage = updatedUsage }
+      return expired ? sessionInvalidated : nil
     }
+    // perform runs on the main actor. Resource owners observe the revoked
+    // identity after persistence and outside the account lock.
+    invalidation?()
     try Task.checkCancellation()
     if response.statusCode == 200, decoded == nil { throw ClarifyError(L("Resposta inválida do Clarify.")) }
     return (response.statusCode, result)

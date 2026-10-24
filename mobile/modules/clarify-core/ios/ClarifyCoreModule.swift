@@ -53,6 +53,9 @@ public class ClarifyCoreModule: Module {
           ClarifyAudioSession.shared.syncHistory(force: action == "confirm")
           promise.resolve(CloudAccount.shared.snapshot())
         } catch {
+          if !CloudAccount.shared.configured, ClarifyAudioSession.shared.state.sessionActive {
+            ClarifyAudioSession.shared.accountSessionInvalidated()
+          }
           ClarifyAudioSession.shared.libraryChanged()
           promise.reject("ACCOUNT_ERROR", error is ClarifyError ? error.localizedDescription : L("Não foi possível acessar o Clarify. Verifique a conexão."))
         }
