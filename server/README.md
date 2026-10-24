@@ -134,6 +134,10 @@ limit returns `422 snippet_result_too_large` with phase `processing`; no partial
 text is returned or cached. The operation settles once at the conservative
 reservation and its bounded error is replayed without another provider call or
 audio charge. Clients show the error and do not publish text to the clipboard.
+For a snippet-expanded result, the original transcript and final text must each
+fit 32,768 UTF-8 bytes. This retains compatibility with the existing account
+history record. A larger field returns the same bounded error before success;
+the server does not truncate text or change the history schema.
 
 Processing errors return a bounded `code`, `phase`, validated `operation_id`,
 and updated `usage`. Empty recognition is `422 no_speech` with phase

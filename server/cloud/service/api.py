@@ -290,6 +290,13 @@ class DictationView(ServiceView):
                     language,
                     snippets=snippets.entries if snippets else [],
                 )
+                if outcome.result.get("snippet_expanded") is True and any(
+                    len(outcome.result[name].encode("utf-8")) > history.MAX_TEXT_BYTES
+                    for name in ("transcript", "text")
+                ):
+                    # Both clients save the original and final text through the
+                    # existing history protocol before publishing a result.
+                    raise groq.SnippetResultTooLarge()
                 with ledger.admission_lock():
                     # Return one complete usage snapshot. Account admissions and
                     # settlements use this same lock, so project this operation's

@@ -270,7 +270,7 @@ class HostedSnippetTests(TestCase):
 
     @patch("cloud.service.groq.perform")
     def test_wire_limit_rejects_escaped_line_and_paragraph_separators(self, provider):
-        replacement = "x" + "\u2028\u2029" * 2047 + "\u2028"
+        replacement = "x" + "\u2028\u2029" * 64
         saved = {**ENTRY, "replacement": replacement}
         self.assertEqual(
             self.client.put(
@@ -293,10 +293,12 @@ class HostedSnippetTests(TestCase):
             )
         )
         self.assertLess(compact_size, api.MAX_DICTATION_RESULT_BYTES)
-        self.assertGreater(len(JSONRenderer().render(expected)), 512 * 1024)
+        self.assertLess(len(expanded.encode("utf-8")), 32768)
+        self.assertGreater(len(JSONRenderer().render(expected)), compact_size)
         provider.side_effect = [{"text": transcript}, groq.ProviderFailure()]
         operation_id = uuid.uuid4()
-        response = self.send(operation_id)
+        with patch.object(api, "MAX_DICTATION_RESULT_BYTES", compact_size):
+            response = self.send(operation_id)
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["code"], "snippet_result_too_large")
         self.assertNotIn("text", response.json())
@@ -340,6 +342,100 @@ class HostedSnippetTests(TestCase):
                 self.assertEqual(replay.status_code, 422)
                 self.assertEqual(replay.json(), rejected.json())
                 self.assertEqual(provider.call_count, 2)
+
+    @patch("cloud.service.groq.perform")
+    def test_expanded_utf8_text_boundary_keeps_the_existing_history_record_shape(
+        self, provider
+    ):
+        saved = {**ENTRY, "replacement": "文" * 1024}
+        self.assertEqual(
+            self.client.put(
+                "/v1/snippets", {"revision": 1, "entries": [saved]}, format="json"
+            ).status_code,
+            200,
+        )
+        cursor = 0
+        for index, delta in enumerate((-1, 0, 1)):
+            with self.subTest(bytes=32768 + delta):
+                suffix = " " + "a" * (2029 + delta)
+                transcript = ", ".join([ENTRY["trigger"]] * 10) + suffix
+                expected = ", ".join([saved["replacement"]] * 10) + suffix
+                self.assertEqual(len(expected.encode("utf-8")), 32768 + delta)
+                provider.reset_mock()
+                provider.side_effect = [{"text": transcript}, groq.ProviderFailure()]
+                operation_id = uuid.uuid4()
+                response = self.send(operation_id)
+                if delta > 0:
+                    self.assertEqual(response.status_code, 422)
+                    self.assertEqual(
+                        response.json()["code"], "snippet_result_too_large"
+                    )
+                    self.assertNotIn("text", response.json())
+                    replay = self.send(operation_id)
+                    self.assertEqual(
+                        (replay.status_code, replay.json()), (422, response.json())
+                    )
+                    self.assertEqual(provider.call_count, 2)
+                    self.assertEqual(
+                        Operation.objects.get(operation_id=operation_id).cost,
+                        ledger.MAX_COST,
+                    )
+                    self.assertEqual(
+                        Allowance.objects.get(user=self.user).used_ms, 3000
+                    )
+                else:
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.json()["text"], expected)
+                    record = {
+                        "id": f"snippet-boundary-{index}",
+                        "createdAt": 1700000000 + index,
+                        "transcript": transcript,
+                        "text": expected,
+                        "rewritten": False,
+                        "sourceDevice": "desktop",
+                    }
+                    history = self.client.post(
+                        "/v1/history/sync",
+                        {"cursor": cursor, "upserts": [record], "deletes": []},
+                        format="json",
+                    )
+                    self.assertEqual(history.status_code, 200)
+                    self.assertEqual(history.json()["entries"], [record])
+                    cursor = history.json()["cursor"]
+
+    @patch("cloud.service.groq.perform")
+    def test_original_transcript_utf8_boundary_is_checked_when_snippets_shorten_text(
+        self, provider
+    ):
+        saved = {**ENTRY, "replacement": "x"}
+        self.assertEqual(
+            self.client.put(
+                "/v1/snippets", {"revision": 1, "entries": [saved]}, format="json"
+            ).status_code,
+            200,
+        )
+        suffix = " " + ENTRY["trigger"]
+        for delta in (-1, 0, 1):
+            with self.subTest(bytes=32768 + delta):
+                prefix = "a" * (32768 + delta - len(suffix.encode("utf-8")))
+                transcript = prefix + suffix
+                self.assertEqual(len(transcript.encode("utf-8")), 32768 + delta)
+                provider.reset_mock()
+                provider.side_effect = [{"text": transcript}, groq.ProviderFailure()]
+                operation_id = uuid.uuid4()
+                response = self.send(operation_id)
+                if delta > 0:
+                    self.assertEqual(response.status_code, 422)
+                    self.assertEqual(
+                        response.json()["code"], "snippet_result_too_large"
+                    )
+                    self.assertNotIn("text", response.json())
+                    self.assertEqual(self.send(operation_id).status_code, 422)
+                    self.assertEqual(provider.call_count, 2)
+                else:
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.json()["transcript"], transcript)
+                    self.assertEqual(response.json()["text"], prefix + " x")
 
 
 @skipUnless(connection.vendor == "postgresql", "Requires real PostgreSQL row locks")
