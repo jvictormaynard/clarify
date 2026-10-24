@@ -6,12 +6,13 @@ struct Onboarding {
   private let key = "clarify.onboarding.completed"
   init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
-  func required(existingSetup: Bool) -> Bool {
+  func required(signedIn: Bool) -> Bool {
     if defaults.object(forKey: key) == nil {
-      // Resolve migration once, before the new first-run flow can save a key.
-      defaults.set(existingSetup, forKey: key)
+      // Preserve an existing account's setup. Legacy personal keys do not
+      // grant access, even when the earlier setup preference was completed.
+      defaults.set(signedIn, forKey: key)
     }
-    return !defaults.bool(forKey: key)
+    return !signedIn || !defaults.bool(forKey: key)
   }
   func complete(configured: Bool) throws {
     guard configured else { throw ClarifyError(L("Configure o processamento antes de continuar.")) }

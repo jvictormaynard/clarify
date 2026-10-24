@@ -1,13 +1,17 @@
 # Clarify for iOS — MVP
 
-Expo application plus a small Swift keyboard extension. Use a Clarify account or
-a personal Groq API key for speech recognition and rewriting. Native bottom tabs contain
-Home, Dicionário and Conta. Ajustes opens from the Account tab; signed-out users
-see a short invitation and one sign-in/create-account button. SQLite keeps
+Expo application plus a small Swift keyboard extension. A Clarify account is
+required for speech recognition and rewriting. Sign in with an emailed code;
+no personal provider key is needed. Native bottom tabs contain Home, Dicionário
+and Conta. Ajustes opens from the Account tab. Signed-out users return to the
+account screen, including after an upgrade from the former personal-key mode.
+SQLite keeps
 vocabulary and an offline history copy. New signed-in transcriptions sync
 automatically with desktop through the account. Guest and pre-upgrade records
 remain local and are never uploaded. Account caches are isolated by endpoint and
-user; signing out restores local history. See [history synchronization](../docs/history-sync.md).
+user. Existing local history, vocabulary and stored personal keys are preserved;
+personal keys no longer enable mobile processing. Signing out stops microphone
+access and requires a new sign-in. See [history synchronization](../docs/history-sync.md).
 
 Version **0.8.1 (30)** distinguishes unrecognized speech, transcription failures,
 allowance limits and service capacity. The keyboard shows the cause within its
@@ -28,10 +32,10 @@ for the authorized TestFlight experiment; this is not an App Store release.
 
 Version 0.5.0 (20) shows the email field directly before the bottom tabs.
 The same emailed code enters an existing account or creates a new one, without
-a password. Use **Continuar sem conta** to configure a personal Groq key.
+a password. The personal-key alternative from that version is no longer available.
 Signing in activates account processing automatically. The final step
 explains keyboard installation; microphone permission is requested when needed.
-An unfinished setup resumes on the next launch. Existing accounts and keys
+An unfinished setup resumes on the next launch. Existing signed-in accounts
 skip first-run setup after an upgrade. A setup preference contains no credentials.
 Billing, translation and local models are outside this mobile release.
 
@@ -259,10 +263,10 @@ establish TestFlight availability; verify `VALID` and `IN_BETA_TESTING` in Apple
 
 ## Use
 
-1. Open Clarify, enter your email and press **Continuar**, or use **Continuar sem conta**.
-   Confirm the account code inside Clarify and enable its processing, or save
-   your personal Groq key in the device-only Keychain. Read the processing notice
-   before continuing. Account controls remain in Conta; provider controls are in Conta → Ajustes.
+1. Open Clarify, enter your email and press **Continuar**.
+   Confirm the account code inside Clarify. Account processing is enabled
+   automatically. Read the processing notice before continuing. Account controls
+   remain in Conta; keyboard, microphone and history controls are in Conta → Ajustes.
 2. Add Clarify under iPhone Settings → General → Keyboard → Keyboards, and enable
    Full Access for the keyboard's shared command/result files.
 3. Activate the microphone in Clarify, then return to the application you use.

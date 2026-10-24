@@ -2,6 +2,50 @@ import XCTest
 @testable import ClarifyContracts
 
 final class CloudAccountTests: XCTestCase {
+  @MainActor func testSignedOutProcessingRejectsBeforeReadingAudioOrSendingRequests() async throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+    let library = try LocalLibrary(root: root)
+    let local = HistoryEntry(id: "old", createdAt: 1000, transcript: "old", text: "Old.", rewritten: true)
+    try library.record(local)
+    try library.saveDictionary([VocabularyEntry(term: "Local")])
+    var requests = 0
+    let account = CloudAccount(defaults: defaults, transport: { request in
+      requests += 1; return try self.response(request, [:])
+    }, readCredential: { nil }, saveCredential: { _ in XCTFail("Local credentials must not be changed") })
+    XCTAssertFalse(account.configured)
+    XCTAssertEqual(account.snapshot()["signedIn"] as? Bool, false)
+    do {
+      _ = try await account.dictate(root.appendingPathComponent("missing-audio"), operationID: UUID().uuidString, library: library)
+      XCTFail("An account is required before processing")
+    } catch let error as ClarifyError { XCTAssertEqual(error.localizedDescription, L("Entre na conta novamente.")) }
+    XCTAssertEqual(requests, 0)
+    XCTAssertEqual(try library.history().entries, [local])
+    XCTAssertEqual(try library.dictionary().map(\.term), ["Local"])
+  }
+  @MainActor func testAccountMetadataWithoutCredentialRequiresSignInAndCanRequestANewCode() async throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+    var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
+    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    var requests = 0; var token: String? = nil
+    let account = CloudAccount(defaults: defaults, transport: { request in
+      requests += 1; XCTAssertEqual(request.url!.path, "/_allauth/app/v1/auth/continue")
+      return try self.response(request, ["meta": ["session_token": "pending-fixture"]], status: 401)
+    }, readCredential: { token }, saveCredential: { token = $0 })
+    XCTAssertFalse(account.configured)
+    XCTAssertEqual(account.snapshot()["signedIn"] as? Bool, false)
+    _ = try await account.command("login", value: "fixture@example.test", library: LocalLibrary(root: root))
+    XCTAssertEqual(requests, 1)
+    XCTAssertEqual(account.snapshot()["pending"] as? String, "login")
+    XCTAssertEqual(token, "pending-fixture")
+    XCTAssertFalse(account.configured, "A code-request session has not authenticated the old account")
+    XCTAssertEqual(account.snapshot()["signedIn"] as? Bool, false)
+    XCTAssertNil(account.scope)
+    XCTAssertNotNil(account.historyScope, "Keep the previous account cache isolated during reauthentication")
+  }
   func testProcessingFailuresUseKnownCodesAndKeepOnlySafeDiagnostics() throws {
     let operation = UUID().uuidString
     let examples: [(Int, String, String)] = [

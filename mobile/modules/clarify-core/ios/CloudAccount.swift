@@ -99,11 +99,11 @@ final class CloudAccount {
     locked { lastSyncAttempt = -.infinity; lastRefreshAttempt = -.infinity }
   }
   var isBusy: Bool { locked { busy } }
-  var configured: Bool { locked { managed ? hosted && readCredential() != nil : KeyStore.read() != nil } }
+  var configured: Bool { locked { hosted && readCredential() != nil } }
   func snapshot() -> [String: Any] {
-    locked { ["endpoint": state.endpoint, "signedIn": state.userID != nil, "managed": managed, "email": state.email,
+    locked { ["endpoint": state.endpoint, "signedIn": configured, "managed": managed, "email": state.email,
       "pending": state.pending, "hosted": hosted, "syncEnabled": state.sync,
-      "busy": busy, "error": syncError, "dictionaryConflict": dictionaryConflict, "usage": usage, "historyAccount": historyScope != nil, "historyContext": historyContext, "hasGroqKey": KeyStore.read() != nil] }
+      "busy": busy, "error": syncError, "dictionaryConflict": dictionaryConflict, "usage": usage, "historyAccount": historyScope != nil, "historyContext": historyContext] }
   }
   static func validateEndpoint(_ value: String) throws -> String {
     let value = value.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -199,7 +199,15 @@ final class CloudAccount {
       try saveCredential(nil)
       try locked { generation &+= 1; state = CloudAccountState(); state.endpoint = endpoint; lastHistoryAttempt = -.infinity; historyFailed = false; try persist() }
     case "login", "signup":
-      guard locked({ state.userID == nil }) else { throw ClarifyError(L("Saia da conta atual primeiro.")) }
+      guard !configured else { throw ClarifyError(L("Saia da conta atual primeiro.")) }
+      // Old metadata must not turn an unauthenticated login-code session into
+      // an active account. Keep its cache scope for a later confirmed sign-in.
+      try locked {
+        if state.userID != nil {
+          state.historyUserID = state.historyUserID ?? state.userID
+          state.userID = nil; state.sync = false; usage = [:]; generation &+= 1; try persist()
+        }
+      }
       let path = action == "signup" ? "/auth/signup" : "/auth/continue"
       let (code, _) = try await perform("POST", "/_allauth/app/v1" + path, json: ["email": value.trimmingCharacters(in: .whitespacesAndNewlines)])
       guard code == 200 || code == 401 else { throw ClarifyError(L("Não foi possível enviar o código. Confira o e-mail ou aguarde antes de tentar novamente.")) }
@@ -376,14 +384,14 @@ final class CloudAccount {
       operationID: diagnosticOperation, status: status)
   }
   @MainActor func dictate(_ audio: URL, operationID: String, library: LocalLibrary) async throws -> CloudDictation {
-    guard hosted else { throw ClarifyError(L("Entre na conta novamente.")) }
+    guard configured else { throw ClarifyError(L("Entre na conta novamente.")) }
     try await waitForAutomaticRefresh()
     try begin(); defer { end() }
     if scope != nil && ProcessInfo.processInfo.systemUptime - lastSyncAttempt >= 60 {
       do { try await syncImpl(library) }
       catch { try Task.checkCancellation(); locked { syncError = L("O ditado usou a última versão do dicionário da conta. Há palavras pendentes de sincronização.") } }
     }
-    guard hosted else { throw ClarifyError(L("Entre na conta novamente.")) }
+    guard configured else { throw ClarifyError(L("Entre na conta novamente.")) }
     let bytes = try Data(contentsOf: audio)
     guard bytes.count <= 24 * 1024 * 1024, UUID(uuidString: operationID) != nil else { throw ClarifyError(L("Grave um trecho menor.")) }
     let boundary = "Clarify-\(UUID().uuidString)"

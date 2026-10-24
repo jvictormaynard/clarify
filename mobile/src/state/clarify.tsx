@@ -16,20 +16,28 @@ function useClarifyState() {
   const [accountBusy, setAccountBusy] = useState(false);
   const [onboardingRequired, setOnboardingRequired] = useState<boolean | null>(null);
   const [setupError, setSetupError] = useState(false);
+  const setupRequest = useRef(0);
   const refreshOnboarding = useCallback(async () => {
-    try { setOnboardingRequired(await Core.onboardingRequired()); setSetupError(false); }
-    catch { setSetupError(true); }
+    const request = ++setupRequest.current;
+    try {
+      const required = await Core.onboardingRequired();
+      if (request === setupRequest.current) { setOnboardingRequired(required); setSetupError(false); }
+    } catch { if (request === setupRequest.current) setSetupError(true); }
   }, []);
-  const completeOnboarding = useCallback(async (mode: 'account' | 'byok') => {
-    await Core.completeOnboarding(mode);
-    setOnboardingRequired(false);
+  const completeOnboarding = useCallback(async () => {
+    const request = ++setupRequest.current;
+    await Core.completeOnboarding();
+    if (request === setupRequest.current) setOnboardingRequired(false);
   }, []);
   useEffect(() => {
     let active = true;
-    void Core.onboardingRequired().then(value => { if (active) setOnboardingRequired(value); })
-      .catch(() => { if (active) setSetupError(true); });
+    const request = ++setupRequest.current;
+    void Core.onboardingRequired().then(required => {
+      if (active && request === setupRequest.current) { setOnboardingRequired(required); setSetupError(false); }
+    }).catch(() => { if (active && request === setupRequest.current) setSetupError(true); });
+    // An earlier session/setup read cannot reopen routes after an account change.
     return () => { active = false; };
-  }, []);
+  }, [account?.signedIn]);
   const refreshAccount = useCallback(async () => { const value = await Core.getAccount(); setAccount(value); return value; }, []);
   const accountCommand = useCallback(async (action: string, value = '') => {
     setAccountBusy(true);
