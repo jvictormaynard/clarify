@@ -86,7 +86,8 @@ test.beforeEach(async ({ page }, testInfo) => {
     } };
   });
   await page.goto("/");
-  await expect(onboarding ? page.getByRole("heading", { name: locale === "en" ? "Welcome to Clarify" : locale === "es" ? "Te damos la bienvenida a Clarify" : "Boas-vindas ao Clarify" }) : page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 15000 });
+  // A cold Windows real-controller fixture took 20.28 s. Keep action deadlines unchanged.
+  await expect(onboarding ? page.getByRole("heading", { name: locale === "en" ? "Welcome to Clarify" : locale === "es" ? "Te damos la bienvenida a Clarify" : "Boas-vindas ao Clarify" }) : page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
 });
 test.afterEach(async () => { releaseUsage?.(); child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
