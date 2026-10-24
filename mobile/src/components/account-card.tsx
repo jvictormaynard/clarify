@@ -2,7 +2,7 @@ import { t, uiLanguage } from "../i18n";
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, TextButton, ui, usePalette } from './ui';
+import { Button, Card, ui, usePalette } from './ui';
 import { isBusy, report, useClarify } from '../state/clarify';
 import { usageProgress } from '../usage';
 
@@ -19,7 +19,6 @@ export function AccountCard() {
       <Text style={[ui.body, { color: c.muted }]}>{t("Entre para ditar sem chave de API e compartilhar seu dicionário com o computador.")}</Text>
       {error}
       <Button disabled={busy} onPress={() => router.push('/sign-in')}>{t("Entrar ou criar conta")}</Button>
-      {account.managed && !account.pending && <TextButton disabled={busy} onPress={() => command('logout')}>{t("Continuar sem conta")}</TextButton>}
     </Card>;
   const usage = usageProgress(account.usage.used_ms, account.usage.limit_ms);
   const minutes = new Intl.NumberFormat(uiLanguage, { maximumFractionDigits: 1 });

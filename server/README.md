@@ -2,6 +2,7 @@
 
 This service and the desktop/iOS clients are public under the root MIT license.
 Production keys, database contents, backups and administrator access are private.
+The private business dashboard is documented in [ADMIN.md](ADMIN.md).
 See the [privacy notice and account deletion instructions](../PRIVACY.md).
 The server is optional: local inference and personal provider keys still work
 without an account. The iOS app currently supports personal Groq keys, not local

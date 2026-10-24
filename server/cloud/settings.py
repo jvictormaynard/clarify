@@ -33,6 +33,7 @@ INSTALLED_APPS = [
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "cloud.service.admin_views.AdminBoundary",
     "cloud.service.middleware.RequestLimits",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.locale.LocaleMiddleware",
@@ -91,7 +92,16 @@ TEMPLATES = [
     }
 ]
 HEADLESS_ONLY = True
-HEADLESS_CLIENTS = ("app",)
+HEADLESS_CLIENTS = ("app", "browser")
+HEADLESS_TOKEN_STRATEGY = "cloud.service.admin_auth.ScopedSessionTokenStrategy"
+# Administration has its own host, host-only cookies and an explicit owner list.
+# Empty settings disable administration. They never grant a database staff role.
+CLARIFY_ADMIN_HOST = os.environ.get("CLARIFY_ADMIN_HOST", "").strip().lower()
+CLARIFY_ADMIN_EMAILS = frozenset(
+    email.strip().lower()
+    for email in os.environ.get("CLARIFY_ADMIN_EMAILS", "").split(",")
+    if email.strip()
+)
 # allauth prepares these targets even when the native email template has no link.
 HEADLESS_FRONTEND_URLS = {
     "account_signup": "clarify://settings",
