@@ -292,9 +292,15 @@ final class KeyboardUITests: XCTestCase {
     keyboard.field.before = "hello"; keyboard.textDidChange(nil)
     let grid = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
     XCTAssertEqual(grid.model.shift, .off)
+    // Cold simulator setup can outlast the three-second session heartbeat.
+    // This fixture has no containing app to refresh it during keyboard setup.
+    var live = store.snapshot(); live.heartbeat = Date().timeIntervalSince1970
+    try store.write(live, to: "state.json"); keyboard.viewWillAppear(false)
+    XCTAssertTrue(store.snapshot().isLive, "The isolated containing-app heartbeat must be current before recording")
     let mic = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
     XCTAssertTrue(mic.accessibilityActivate()); XCTAssertTrue(mic.accessibilityActivate())
     let command = try XCTUnwrap(store.commands().last?.1)
+    XCTAssertEqual(command.action, "finish")
     var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970
     state.operationID = command.operationID; state.phase = .ready; state.text = " world. "
     let inserted = expectation(description: "The periodic refresh inserts the ready dictation")
