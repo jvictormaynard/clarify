@@ -39,7 +39,7 @@ class BootstrapToolTests(unittest.TestCase):
         self.assertTrue(install_command[-4].endswith("requirements-lock-linux.txt"))
         self.assertEqual(
             install_command[-3:],
-            ["pip==26.2.1", "setuptools==83.0.0", "pip-tools==7.6.1"],
+            ["pip==26.2.1", "setuptools==84.2.1", "pip-tools==7.6.1"],
         )
         self.assertEqual(
             run.call_args_list[1].args[0][-4:],

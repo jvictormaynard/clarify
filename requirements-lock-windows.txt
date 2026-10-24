@@ -48,8 +48,10 @@ cyclonedx-python-lib==11.12.0
     #   pip-audit
 defusedxml==0.7.1
     # via py-serializable
-filelock==3.32.6
-    # via cachecontrol
+filelock==4.2.4
+    # via
+    #   -r requirements-dev.txt
+    #   cachecontrol
 fqdn==1.5.1
     # via jsonschema
 idna==3.18
@@ -195,7 +197,7 @@ pip==26.2.1
     #   -r requirements-dev.txt
     #   pip-api
     #   pip-tools
-setuptools==83.0.0
+setuptools==84.2.1
     # via
     #   -r requirements-dev.txt
     #   pip-tools
