@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Linking, Text, View } from 'react-native';
+import { Keyboard, Linking, Text, TextInput, View } from 'react-native';
 import { t } from '../i18n';
-import { guideCompletion, guideTransition, initialGuide, practiceResult, type GuideAction, type GuideExit } from '../quick-start';
+import { guideCompletion, guideTransition, initialGuide, type GuideAction, type GuideExit } from '../quick-start';
 import { isBusy, report, useClarify } from '../state/clarify';
 import { Button, StepContent, TextButton, Title, ui, usePalette } from './ui';
 
@@ -11,21 +11,25 @@ export function QuickStartGuide({ onFinish, busy = false, replay = false }: {
   const c = usePalette();
   const { state, activate, activating } = useClarify();
   const [progress, setProgress] = useState(initialGuide);
-  const [previousOperation, setPreviousOperation] = useState<string | undefined>();
+  const [practiceText, setPracticeText] = useState('');
   const [finishing, setFinishing] = useState(false);
   const blocked = busy || finishing || activating || isBusy(state);
   const step = progress.step === 'keyboard' ? 0 : progress.step === 'microphone' ? 1 : 2;
-  const result = step === 2 ? practiceResult(state, previousOperation) : null;
   function move(action: GuideAction) {
-    if (action === 'continue-microphone' && state.sessionActive) setPreviousOperation(state.operationID);
+    setPracticeText('');
+    Keyboard.dismiss();
     setProgress(current => guideTransition(current, action, state.sessionActive));
   }
   async function finish(exit: GuideExit) {
     if (blocked) return;
-    const confirmed = guideCompletion(progress, exit);
+    const confirmed = guideCompletion(progress, exit, practiceText);
     if (confirmed === null) return;
     setFinishing(true);
-    try { await onFinish(confirmed); }
+    try {
+      await onFinish(confirmed);
+      setPracticeText('');
+      Keyboard.dismiss();
+    }
     catch (error) { report(error); }
     finally { setFinishing(false); }
   }
@@ -51,14 +55,14 @@ export function QuickStartGuide({ onFinish, busy = false, replay = false }: {
         {!!state.message && !state.sessionActive && <TextButton disabled={blocked} onPress={() => void Linking.openSettings().catch(report)}>{t('Abrir Ajustes do iPhone')}</TextButton>}
       </> : <>
         <Title>{t('Experimente um ditado')}</Title>
-        <Text style={[ui.body, { color: c.text }]}>{t('Abra uma nota e escolha o teclado Clarify pelo globo.')}</Text>
-        <Text style={[ui.body, { color: c.text }]}>{t('Toque no microfone, fale e toque em concluir.')}</Text>
-        <Text style={[ui.section, { color: c.text, marginTop: 0, paddingVertical: 8 }]}>{t('Oi, tudo bem?')}</Text>
-        <Text style={[ui.small, { color: c.muted }]}>{t('Use uma nota ou mensagem de teste, sem enviar.')}</Text>
-        {result && <Text selectable style={[ui.body, { color: c.text }]}>{result}</Text>}
+        <Text style={[ui.body, { color: c.text }]}>{t('Toque no campo e escolha o teclado Clarify pelo globo.')}</Text>
+        <TextInput testID="onboarding.practiceInput" accessibilityLabel={t('Texto de teste')}
+          value={practiceText} onChangeText={setPracticeText} editable={!finishing} multiline
+          placeholder={t('Oi, tudo bem?')} placeholderTextColor={c.muted} selectionColor={c.text}
+          style={[ui.input, { color: c.text, borderColor: c.controlBorder, backgroundColor: c.card, minHeight: 112, maxHeight: 180, textAlignVertical: 'top' }]} />
         {state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.text }]}>{t(state.message)}</Text>}
-        <Button primary testID="onboarding.continue" loading={finishing} disabled={blocked} onPress={() => void finish('confirmed')}>{t('O texto apareceu')}</Button>
-        {!replay && <TextButton testID="onboarding.openHome" disabled={blocked} onPress={() => void finish('home')}>{t('Abrir Início para testar')}</TextButton>}
+        <Button primary testID="onboarding.continue" loading={finishing} disabled={blocked || guideCompletion(progress, 'confirmed', practiceText) !== true}
+          onPress={() => void finish('confirmed')}>{t('Continuar')}</Button>
       </>}
     </StepContent>
     <View style={[ui.row, { paddingTop: 8 }]}>

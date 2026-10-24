@@ -5363,5 +5363,15 @@
     "pt": "Toque para começar o ditado.",
     "en": "Tap to start dictation.",
     "es": "Toca para empezar a dictar."
+  },
+  "Toque no campo e escolha o teclado Clarify pelo globo.": {
+    "pt": "Toque no campo e escolha o teclado Clarify pelo globo.",
+    "en": "Tap the field and choose the Clarify keyboard with the globe key.",
+    "es": "Toca el campo y elige el teclado Clarify con la tecla del globo."
+  },
+  "Texto de teste": {
+    "pt": "Texto de teste",
+    "en": "Test text",
+    "es": "Texto de prueba"
   }
 }

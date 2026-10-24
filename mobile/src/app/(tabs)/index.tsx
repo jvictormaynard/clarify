@@ -1,11 +1,11 @@
 import { t, uiLanguage } from "../../i18n";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Alert, SectionList, Modal, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, SectionList, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
 import Core, { type HistoryEntry } from '../../../modules/clarify-core';
-import { Button, Card, EmptyState, ScreenHeader, TableRow, TextButton, ui, usePalette, useReducedMotion } from '../../components/ui';
+import { Button, Card, EmptyState, ScreenHeader, TableRow, ui, usePalette, useReducedMotion } from '../../components/ui';
 import { report, useClarify } from '../../state/clarify';
 import { MicrophoneSwitch } from '../../components/microphone-switch';
 
@@ -85,12 +85,16 @@ export default function Home() {
       sections={sections} stickySectionHeadersEnabled={false} keyExtractor={(entry) => `${entry.localOnly ? 'local' : 'account'}:${entry.id}`}
       onEndReached={() => { if (cursor) void load(cursor, true); }} onEndReachedThreshold={0.4}
       ListHeaderComponent={<View testID="app.home" collapsable={false} style={{ gap: 16 }}>
-        <ScreenHeader title={t('Início')}
-          action={<TextButton onPress={() => router.push('/settings')}>{t('Ajustes')}</TextButton>} />
+        <View style={{ gap: 8 }}>
+        <Pressable testID="home.account" accessibilityRole="button" accessibilityLabel={t('Conta')}
+          onPress={() => router.push('/account')} style={({ pressed }) => ({ alignSelf: 'flex-start', width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
+          <SymbolView name="person.crop.circle.fill" size={36} tintColor={c.muted} accessible={false} />
+        </Pressable>
+        <ScreenHeader title={t('Início')} />
+        </View>
         <MicrophoneSwitch />
         <Text style={[ui.small, { color: c.muted, marginTop: -8 }]}>{state.sessionActive ? t('O Clarify está ativo para receber ditados do teclado.') : t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>
         {state.phase === 'error' && state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(state.message)}</Text>}
-        {sections.length > 0 && <Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t('Histórico')}</Text>}
       </View>}
       renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { color: c.text, paddingTop: 16, paddingBottom: 12 }]}>{historyDayTitle(section.date, today, uiLanguage, t("Hoje"))}</Text>}
       renderItem={({ item, index, section }) => <TableRow first={index === 0} last={index === section.data.length - 1}

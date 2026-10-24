@@ -603,6 +603,52 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertTrue(buttons.allSatisfy { $0.bounds.height < 50 })
     }
   }
+  func testRecordingWaveformFollowsTheDesktopAttackReleaseAndIndependentBars() async {
+    await MainActor.run {
+      let waveform = RecordingWaveform(frame: CGRect(x: 0, y: 0, width: 144, height: 56))
+      waveform.update(level: 1, recording: true, reduceMotion: false)
+      waveform.advanceFrame(by: 0.016)
+      XCTAssertEqual(waveform.displayedLevel, 0.38, accuracy: 0.0001, "Speech attacks on the desktop's 16 ms clock")
+      let first = waveform.subviews.map { $0.frame.height }
+      waveform.update(level: 0, recording: true, reduceMotion: false)
+      waveform.advanceFrame(by: 0.016)
+      XCTAssertEqual(waveform.displayedLevel, 0.3344, accuracy: 0.0001, "Release must be slower than attack")
+      for _ in 0..<45 { waveform.advanceFrame(by: 0.016) }
+      let resting = waveform.subviews.map { $0.frame.height }
+      XCTAssertEqual(resting.count, 12)
+      XCTAssertTrue(zip(first, resting).contains { $0.0 > $0.1 + 4 }, "Measured speech must expand the bars")
+      XCTAssertTrue(resting.allSatisfy { $0 >= 6.4 && $0 <= 39.2 }, "The desktop envelope stays bounded at silence")
+      waveform.advanceFrame(by: 0.08)
+      XCTAssertNotEqual(resting, waveform.subviews.map { $0.frame.height }, "Neighbouring bars need independent motion, rather than one static pulse")
+      waveform.update(level: AudioLevel.measure([Float](repeating: 0.01, count: 2048)), recording: true, reduceMotion: true)
+      XCTAssertEqual(waveform.displayedLevel, 0.16, accuracy: 0.000001, "The same RMS input must have the desktop's gain, including quiet speech")
+      waveform.update(level: .nan, recording: true, reduceMotion: true)
+      XCTAssertEqual(waveform.displayedLevel, 0)
+      XCTAssertTrue(waveform.subviews.allSatisfy { $0.frame.height.isFinite })
+    }
+  }
+  func testWaveformClockStopsForHiddenDetachedProcessingAndReducedMotion() async {
+    await MainActor.run {
+      let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+      let host = UIViewController(); window.rootViewController = host; window.makeKeyAndVisible()
+      defer { window.isHidden = true }
+      let waveform = RecordingWaveform(frame: CGRect(x: 0, y: 0, width: 144, height: 56))
+      host.view.addSubview(waveform)
+      waveform.update(level: 1, recording: true, reduceMotion: false)
+      XCTAssertTrue(waveform.isAnimating)
+      waveform.isHidden = true; XCTAssertFalse(waveform.isAnimating)
+      waveform.isHidden = false; XCTAssertTrue(waveform.isAnimating)
+      waveform.update(level: 1, recording: true, reduceMotion: true)
+      XCTAssertFalse(waveform.isAnimating, "Reduced motion must not leave a background animation clock")
+      NotificationCenter.default.post(name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+      XCTAssertEqual(waveform.isAnimating, !UIAccessibility.isReduceMotionEnabled, "A runtime accessibility change must reconcile the active clock")
+      waveform.update(level: 1, recording: true, reduceMotion: false)
+      waveform.removeFromSuperview(); XCTAssertFalse(waveform.isAnimating)
+      host.view.addSubview(waveform); XCTAssertTrue(waveform.isAnimating)
+      waveform.update(level: 1, recording: false, reduceMotion: false)
+      XCTAssertFalse(waveform.isAnimating); XCTAssertEqual(waveform.displayedLevel, 0)
+    }
+  }
   func testTapRecordingPanelUsesAcknowledgedStateAndMeasuredEnergy() async throws {
     try await MainActor.run {
       let (keyboard, store, window) = try self.makeDictationFixture()
@@ -624,7 +670,7 @@ final class KeyboardUITests: XCTestCase {
       let finish = try XCTUnwrap(views.compactMap { $0 as? UIButton }.first { $0.accessibilityIdentifier == "clarify.keyboard.finish" })
       let waveform = try XCTUnwrap(views.compactMap { $0 as? RecordingWaveform }.first)
       XCTAssertFalse(panel.isHidden); XCTAssertEqual(label.text, L("Preparando…")); XCTAssertFalse(finish.isEnabled)
-      XCTAssertEqual(waveform.displayedLevel, 0)
+      XCTAssertEqual(waveform.displayedLevel, 0); XCTAssertFalse(waveform.isAnimating)
       let command = try XCTUnwrap(store.commands().last?.1)
       var state = store.snapshot(); state.phase = .recording; state.operationID = command.operationID
       state.heartbeat = Date().timeIntervalSince1970
@@ -641,7 +687,10 @@ final class KeyboardUITests: XCTestCase {
           try store.write(state, to: "state.json")
           try store.publishAudioMeter(AudioMeterReading(operationID: command.operationID, measuredAt: Date().timeIntervalSince1970, level: level))
           keyboard.refreshFromStore(); keyboard.view.layoutIfNeeded()
-          if level == 0 { XCTAssertEqual(waveform.displayedLevel, 0) } else { XCTAssertGreaterThan(waveform.displayedLevel, 0.3) }
+          // Advance the actual presentation boundary without a timing-sensitive
+          // sleep or a live microphone; the store still supplies measured RMS.
+          for _ in 0..<48 { waveform.advanceFrame(by: 0.016) }
+          if level == 0 { XCTAssertLessThan(waveform.displayedLevel, 0.01) } else { XCTAssertGreaterThan(waveform.displayedLevel, 0.9) }
           let image = UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) }
           let capture = XCTAttachment(image: image)
           capture.name = "recording-\(name)-\(appearance == .dark ? "dark" : "light")"; capture.lifetime = .keepAlways; self.add(capture)
@@ -650,10 +699,16 @@ final class KeyboardUITests: XCTestCase {
       state.heartbeat = Date().timeIntervalSince1970
       try store.write(state, to: "state.json")
       try store.publishAudioMeter(AudioMeterReading(operationID: "another", measuredAt: Date().timeIntervalSince1970, level: 1))
-      keyboard.refreshFromStore(); XCTAssertEqual(waveform.displayedLevel, 0)
+      keyboard.refreshFromStore()
+      for _ in 0..<48 { waveform.advanceFrame(by: 0.016) }
+      XCTAssertLessThan(waveform.displayedLevel, 0.01, "A different operation cannot sustain a speech level")
+      try store.publishAudioMeter(AudioMeterReading(operationID: command.operationID, measuredAt: Date().timeIntervalSince1970 - 1, level: 1))
+      keyboard.refreshFromStore()
+      for _ in 0..<48 { waveform.advanceFrame(by: 0.016) }
+      XCTAssertLessThan(waveform.displayedLevel, 0.01, "A stale meter cannot restore a speech level")
       finish.sendActions(for: .touchUpInside)
       XCTAssertEqual(store.commands().map { $0.1.action }, ["start", "finish"])
-      XCTAssertFalse(finish.isEnabled); XCTAssertEqual(waveform.displayedLevel, 0)
+      XCTAssertFalse(finish.isEnabled); XCTAssertEqual(waveform.displayedLevel, 0); XCTAssertFalse(waveform.isAnimating)
       state.phase = .transcribing; state.heartbeat = Date().timeIntervalSince1970
       try store.write(state, to: "state.json"); keyboard.refreshFromStore()
       XCTAssertFalse(panel.isHidden); XCTAssertEqual(label.text, L("Transcrevendo…"))
@@ -662,7 +717,7 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(store.commands().last?.1.action, "cancel")
       state.phase = .idle; state.operationID = nil; state.heartbeat = Date().timeIntervalSince1970
       try store.write(state, to: "state.json"); keyboard.refreshFromStore()
-      XCTAssertTrue(panel.isHidden); XCTAssertEqual(waveform.displayedLevel, 0)
+      XCTAssertTrue(panel.isHidden); XCTAssertEqual(waveform.displayedLevel, 0); XCTAssertFalse(waveform.isAnimating)
       XCTAssertFalse(try XCTUnwrap(views.compactMap { $0 as? KeyGridView }.first).isHidden)
     }
   }

@@ -1,11 +1,14 @@
 # Clarify for iOS — MVP
 
-## Interface candidate — 0.10.0 (33)
+## Interface candidate — 0.10.1 (34)
 
-This candidate uses four destinations: Home, Dictionary, Snippets and Account.
-Settings and the optional How to use guide open from Account. The interface uses
-neutral colors, reusable React Native controls, opaque surfaces and short motion
-that respects Reduce Motion. Existing account/library boundaries remain intact.
+The bottom tabs contain Home, Dictionary and Snippets. The profile placeholder
+above the Home title opens Account as a protected stack page. Settings and the
+optional How to use guide open from Account. Dictionary has no duplicate Snippets
+shortcut. The interface uses
+neutral surfaces, reusable React Native controls and short motion that respects
+Reduce Motion. Switches use their native iOS appearance and system green when on.
+The redundant History heading is removed. Existing account/library boundaries remain intact.
 
 General onboarding appears automatically once, on the first presentation after
 installation. The app stores a presentation marker when that screen appears.
@@ -15,20 +18,29 @@ Authentication remains required and has a separate route. How to use is an
 explicit replay; it does not reset the general presentation marker. Keyboard and
 Full Access setup use manual confirmation, microphone readiness uses the real
 native session, and text insertion is not inferred from opening iPhone Settings.
+The practice step has a local text field in the guide. Continue is enabled only
+when that field contains non-whitespace text; it does not use a global transcript
+or require another app or manual confirmation. Practice text is not persisted.
 
 Tap the keyboard microphone once to start continuous recording. There is no hold
 or upward lock gesture. A panel within the same keyboard height provides separate
 cancel and finish actions, with the globe still available. Its waveform uses the
 containing app's real input RMS through an operation-scoped, expiring meter; it
-returns to rest during silence and resets when recording ends or is interrupted.
+uses the desktop pill’s 12-bar envelope, attack/release and independent motion.
+The recording panel keeps the system keyboard material and has no opaque rectangle.
+Its normal toolbar has no brand heading. Animation stops when hidden, processing,
+or detached and respects Reduce Motion; ending recording resets its energy.
 The native document/receipt checks still prevent duplicate or misplaced insertion.
 
 The workflow validates native contracts, keyboard fixtures and installed typing/
 return. It also runs the actual containing app in an isolated Release simulator
 copy against a local fake account service. The app UI test checks first presentation,
-dismissal/relaunch, native login, four tabs, Settings, explicit guide replay and
+dismissal/relaunch, native login, three tabs, avatar/Account and back navigation,
+Settings, explicit guide replay and
 logout/relaunch. It uses no user account, microphone or real provider. The signed
-project is unchanged; the IPA check rejects a non-production endpoint.
+project is unchanged; the IPA check rejects a non-production endpoint. The practice
+field’s empty/filled input guard is tested by JavaScript contracts. The app E2E
+opens guide replay but does not activate a live microphone to finish that step.
 
 Publication is not complete until signing, upload, Apple processing and availability
 in the existing internal group are verified. Physical-iPhone microphone, soundwave,
@@ -36,8 +48,9 @@ source-app return and keyboard acceptance remain separate from these fixtures.
 
 Expo application plus a small Swift keyboard extension. A Clarify account is
 required for speech recognition and rewriting. Sign in with an emailed code;
-no personal provider key is needed. Native bottom tabs contain Início, Dicionário,
-Snippets and Conta. Ajustes opens from Home or Account. Signed-out users return to the
+no personal provider key is needed. Native bottom tabs contain Início, Dicionário
+and Snippets. Conta opens from the Home avatar; Ajustes opens from Conta.
+Signed-out users return to the
 account screen, including after an upgrade from the former personal-key mode.
 SQLite keeps
 vocabulary and an offline history copy. New signed-in transcriptions sync

@@ -1,10 +1,10 @@
 import { t } from "../../i18n";
 import { useEffect, useState } from 'react';
-import { router, useIsFocused } from 'expo-router';
+import { useIsFocused } from 'expo-router';
 import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Core, { type VocabularyEntry } from '../../../modules/clarify-core';
-import { Button, Card, EmptyState, ModalHeader, ScreenHeader, TableRow, TextButton, ui, usePalette, useReducedMotion } from '../../components/ui';
+import { Button, Card, EmptyState, ModalHeader, ScreenHeader, TableRow, ui, usePalette, useReducedMotion } from '../../components/ui';
 import { isBusy, report, useClarify } from '../../state/clarify';
 
 const empty = (): VocabularyEntry => ({ term: '', pronunciation: '', aliases: [], enabled: true });
@@ -60,8 +60,7 @@ function Words() {
       data={visibleEntries}
       keyExtractor={({ index }) => String(index)}
       ListHeaderComponent={<View style={{ gap: 16, marginBottom: 16 }}>
-        <ScreenHeader title={t('Dicionário')}
-          action={<TextButton onPress={() => router.navigate('/snippets')}>{t('Snippets')}</TextButton>} />
+        <ScreenHeader title={t('Dicionário')} />
         {account?.syncEnabled && <Text style={[ui.small, { color: c.muted }]}>{t("Dicionário da conta {v0}. As alterações são sincronizadas ao salvar.", { v0: account.email })}</Text>}
         {account?.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.text }]}>{t(account.error)}</Text>}
         <TextInput selectionColor={c.text} accessibilityLabel={t("Buscar no dicionário")} value={search} onChangeText={setSearch} placeholder={t("Buscar palavra")} placeholderTextColor={c.muted} style={[ui.input, { color: c.text, backgroundColor: c.card, borderColor: c.controlBorder }]} />
@@ -83,7 +82,7 @@ function Words() {
           {field(t("Palavra"), editing.value.term, (term) => setEditing({ ...editing, value: { ...editing.value, term } }), t("Nome ou termo"))}
           {field(t("Pronúncia"), editing.value.pronunciation, (pronunciation) => setEditing({ ...editing, value: { ...editing.value, pronunciation } }), t("Opcional"))}
           {field(t("Variações"), aliases, setAliases, t("Separe por vírgulas (opcional)"))}
-          <View style={ui.row}><Text style={[ui.body, { color: c.text }]}>{t("Usar esta palavra")}</Text><Switch trackColor={{ false: c.controlBorder, true: c.text }} thumbColor={c.card} ios_backgroundColor={c.controlBorder} accessibilityLabel={t("Usar esta palavra")} value={editing.value.enabled} disabled={busy} onValueChange={(enabled) => setEditing({ ...editing, value: { ...editing.value, enabled } })} /></View>
+          <View style={ui.row}><Text style={[ui.body, { color: c.text }]}>{t("Usar esta palavra")}</Text><Switch accessibilityLabel={t("Usar esta palavra")} value={editing.value.enabled} disabled={busy} onValueChange={(enabled) => setEditing({ ...editing, value: { ...editing.value, enabled } })} /></View>
         </Card>}
         {editing && editing.index >= 0 && <Button loading={deleting} disabled={busy} destructive onPress={() => Alert.alert(t("Excluir palavra?"), editing.value.term, [{ text: t("Cancelar"), style: 'cancel' }, { text: t("Excluir"), style: 'destructive', onPress: () => void save(editing.base.filter((_, index) => index !== editing.index), true) }])}>{t("Excluir palavra")}</Button>}
       </ScrollView></SafeAreaView>

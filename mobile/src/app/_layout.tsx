@@ -20,6 +20,7 @@ function Navigation() {
     <Stack.Protected guard={showSignIn}><Stack.Screen name="sign-in" options={{ animation: reducedMotion ? 'none' : 'fade' }} /></Stack.Protected>
     <Stack.Protected guard={!showOnboarding && account.signedIn}>
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="account" options={{ headerShown: true, title: t("Conta"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="settings" options={{ headerShown: true, title: t("Ajustes"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="guide" options={{ headerShown: true, title: t("Como usar"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
     </Stack.Protected>

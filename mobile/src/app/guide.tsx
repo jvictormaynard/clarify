@@ -7,7 +7,8 @@ import { useClarify } from '../state/clarify';
 export default function Guide() {
   const c = usePalette();
   const { account } = useClarify();
-  return <ScrollView style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={ui.content} contentInsetAdjustmentBehavior="automatic">
+  return <ScrollView style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={ui.content}
+    contentInsetAdjustmentBehavior="automatic" automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
     <QuickStartGuide key={`${account?.endpoint}/${account?.email}`} replay onFinish={() => router.back()} />
   </ScrollView>;
 }

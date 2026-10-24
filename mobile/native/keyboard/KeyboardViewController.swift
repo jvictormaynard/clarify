@@ -57,32 +57,84 @@ final class RecordControl: UIButton {
   }
 }
 
-// Shape is fixed; only measured microphone energy changes its height.
+// Match the desktop pill's envelope, energy response and independent bar motion.
+// Only this view owns its display clock; the app remains the audio owner.
 final class RecordingWaveform: UIView {
-  private let bars = (0..<11).map { _ in UIView() }
+  private let bars = (0..<12).map { _ in UIView() }
+  private var targetLevel = 0.0
+  private var motionPhase = 0.0
+  private var recording = false
+  private var reduceMotion = UIAccessibility.isReduceMotionEnabled
+  private var frameTimer: Timer?
+  private var lastFrameTime: CFTimeInterval?
+  private var motionObserver: NSObjectProtocol?
   private(set) var displayedLevel = 0.0
+  var isAnimating: Bool { frameTimer != nil }
+  override var isHidden: Bool { didSet { syncClock() } }
   override init(frame: CGRect) {
     super.init(frame: frame)
     isUserInteractionEnabled = false; isAccessibilityElement = false
     for bar in bars { bar.backgroundColor = .label; bar.layer.cornerRadius = 2; addSubview(bar) }
+    motionObserver = NotificationCenter.default.addObserver(forName: UIAccessibility.reduceMotionStatusDidChangeNotification,
+      object: nil, queue: .main) { [weak self] _ in
+        guard let self else { return }
+        self.reduceMotion = UIAccessibility.isReduceMotionEnabled
+        if self.reduceMotion { self.motionPhase = 0; self.displayedLevel = self.targetLevel; self.layoutBars() }
+        self.syncClock()
+      }
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+  deinit {
+    frameTimer?.invalidate()
+    if let motionObserver { NotificationCenter.default.removeObserver(motionObserver) }
+  }
   override func layoutSubviews() { super.layoutSubviews(); layoutBars() }
-  private func layoutBars() {
-    let envelope: [Double] = [0.2, 0.38, 0.62, 0.8, 0.94, 1, 0.94, 0.8, 0.62, 0.38, 0.2]
+  override func didMoveToWindow() { super.didMoveToWindow(); syncClock() }
+  private func layoutBars(blend: Double = 1) {
     let step = bounds.width / CGFloat(bars.count)
     for (index, bar) in bars.enumerated() {
-      let height = CGFloat(3 + displayedLevel * envelope[index] * 49)
+      let position = Double(index) / 11
+      let envelope = 0.58 + 0.42 * sin(position * .pi)
+      let motion = reduceMotion ? 0 : 0.12 * sin(motionPhase + Double(index) * 0.82)
+      let amplitude = max(0.22, min(0.98, (displayedLevel * 1.45 + 0.24 + motion) * envelope))
+      let target = max(6.4, Double(max(0, bounds.height - 16)) * amplitude)
+      let current = max(6.4, Double(bar.bounds.height))
+      let height = CGFloat(current + (target - current) * blend)
       bar.frame = CGRect(x: step * CGFloat(index) + (step - 4) / 2, y: (bounds.height - height) / 2, width: 4, height: height)
     }
   }
-  func update(level: Double, animated: Bool = true) {
-    let next = level.isFinite ? min(1, max(0, level)) : 0
-    // A stopped/stale meter returns fully to rest; speech changes interpolate.
-    displayedLevel = next == 0 ? 0 : next > displayedLevel ? 0.7 * next + 0.3 * displayedLevel : 0.4 * next + 0.6 * displayedLevel
-    if animated && !UIAccessibility.isReduceMotionEnabled {
-      UIView.animate(withDuration: 0.12, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseOut]) { self.layoutBars() }
-    } else { UIView.performWithoutAnimation { self.layoutBars() } }
+  func update(level: Double, recording: Bool, reduceMotion: Bool? = nil) {
+    let measured = level.isFinite ? min(1, max(0, level)) : 0
+    // The shared meter uses a -52...-9 dB scale. Convert only its presentation
+    // back to the RMS x16 input used by the desktop pill, without changing audio.
+    targetLevel = measured > 0 ? min(1, pow(10, (measured * 43 - 52) / 20) * 16) : 0
+    self.recording = recording; self.reduceMotion = reduceMotion ?? UIAccessibility.isReduceMotionEnabled
+    if !recording { targetLevel = 0; displayedLevel = 0; motionPhase = 0; layoutBars() }
+    else if self.reduceMotion { displayedLevel = targetLevel; motionPhase = 0; layoutBars() }
+    syncClock()
+  }
+  // An elapsed-time boundary keeps smoothing stable if UIKit misses a frame.
+  func advanceFrame(by elapsed: TimeInterval) {
+    guard recording, !reduceMotion, elapsed.isFinite, elapsed > 0 else { return }
+    let interval = min(0.064, elapsed)
+    let blend = targetLevel > displayedLevel ? 0.38 : 0.12
+    displayedLevel += (targetLevel - displayedLevel) * (1 - pow(1 - blend, interval / 0.016))
+    motionPhase = (motionPhase + 0.085 * interval / 0.016).truncatingRemainder(dividingBy: 2 * .pi)
+    // Desktop bars retarget a 45 ms OutCubic interpolation on each 16 ms tick.
+    layoutBars(blend: 1 - pow(1 - min(1, interval / 0.045), 3))
+  }
+  private func syncClock() {
+    guard recording, !reduceMotion, !isHidden, window != nil else {
+      frameTimer?.invalidate(); frameTimer = nil; lastFrameTime = nil; return
+    }
+    guard frameTimer == nil else { return }
+    lastFrameTime = CACurrentMediaTime()
+    let timer = Timer(timeInterval: 0.016, repeats: true) { [weak self] _ in
+      guard let self else { return }
+      let now = CACurrentMediaTime()
+      self.advanceFrame(by: now - (self.lastFrameTime ?? now)); self.lastFrameTime = now
+    }
+    frameTimer = timer; RunLoop.main.add(timer, forMode: .common)
   }
 }
 
@@ -331,6 +383,7 @@ class KeyboardViewController: UIInputViewController {
   }
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated); attached = false; timer?.invalidate(); timer = nil
+    waveform.update(level: 0, recording: false)
     dictationEdit = nil; undoDictation.isHidden = true
     invalidateActivationSource()
     typing.reset()
@@ -386,7 +439,7 @@ class KeyboardViewController: UIInputViewController {
     } else if !state.isLive {
       status.text = L("Ative o microfone"); detail.text = L("Toque em Começar.")
     } else {
-      status.text = "Clarify"; detail.text = recordingError
+      status.text = nil; detail.text = recordingError
     }
     updateToolbar()
     updateRecordingPanel()
@@ -395,7 +448,7 @@ class KeyboardViewController: UIInputViewController {
   }
   private func configureRecordingPanel() {
     recordingPanel.accessibilityIdentifier = "clarify.keyboard.recording-panel"
-    recordingPanel.backgroundColor = UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.13, alpha: 1) : UIColor(white: 0.97, alpha: 1) }
+    recordingPanel.backgroundColor = .clear; recordingPanel.isOpaque = false
     recordingPanel.isHidden = true
     recordingStatus.font = .preferredFont(forTextStyle: .subheadline)
     recordingStatus.textAlignment = .center; recordingStatus.textColor = .secondaryLabel
@@ -455,7 +508,7 @@ class KeyboardViewController: UIInputViewController {
     }
     recordingStatus.text = caption
     let level = visible && recording && !processing ? store?.audioMeter()?.level(for: state.operationID) ?? 0 : 0
-    waveform.update(level: level)
+    waveform.update(level: level, recording: attached && visible && recording && !processing)
     if visible != recordingPanelVisible {
       recordingPanelVisible = visible
       let change = { self.recordingPanel.isHidden = !visible; self.keys.isHidden = visible }
@@ -567,7 +620,7 @@ class KeyboardViewController: UIInputViewController {
     let covered = showDictionary || (!suggestions.isHidden) || showEdit
     // Keep the toolbar and keyboard heights fixed. Errors replace the redundant
     // generic title with the complete cause in the same 44-point row.
-    status.isHidden = covered || showingError; detail.isHidden = covered
+    status.isHidden = covered || showingError || status.text?.isEmpty != false; detail.isHidden = covered
     detail.numberOfLines = showingError ? 3 : 1
     detail.lineBreakMode = showingError ? .byWordWrapping : .byTruncatingTail
     detail.textColor = showingError ? .label : .secondaryLabel
