@@ -47,13 +47,13 @@ final class RecordControl: UIButton {
   var onAction: ((String) -> Void)?
   override init(frame: CGRect) {
     super.init(frame: frame)
-    addTarget(self, action: #selector(startRecording), for: .touchUpInside)
+    addAction(UIAction { [weak self] _ in self?.startRecording() }, for: .touchUpInside)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
   @objc private func startRecording() { if isEnabled && !isHidden { onAction?("start") } }
   override func accessibilityActivate() -> Bool {
     guard isEnabled, !isHidden else { return false }
-    sendActions(for: .touchUpInside); return true
+    startRecording(); return true
   }
 }
 
@@ -206,7 +206,7 @@ class KeyboardViewController: UIInputViewController {
     cancel.setImage(UIImage(systemName: "xmark"), for: .normal); cancel.accessibilityLabel = L("Cancelar gravação")
     cancel.tintColor = .label
     cancel.accessibilityIdentifier = "clarify.keyboard.cancel"
-    cancel.addTarget(self, action: #selector(cancelRecording), for: .touchUpInside)
+    cancel.addAction(UIAction { [weak self] _ in self?.cancelRecording() }, for: .touchUpInside)
     keys.previewContainer = view
     keys.onKeyPress = { [weak self] in self?.feedback.type() }
     keys.onInsert = { [weak self] text in
@@ -326,8 +326,8 @@ class KeyboardViewController: UIInputViewController {
     updateSuggestions()
   }
   override func viewWillAppear(_ animated: Bool) {
-    super.viewWillAppear(animated); attached = true; feedback.prepare(); refresh(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
-    timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.refresh() }
+    super.viewWillAppear(animated); attached = true; feedback.prepare(); refreshFromStore(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
+    timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.refreshFromStore() }
   }
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated); attached = false; timer?.invalidate(); timer = nil
@@ -359,9 +359,11 @@ class KeyboardViewController: UIInputViewController {
     }
     do { try store.send(action, operationID: id); feedback.record(action) }
     catch { recordingRequest.reset(); recordingError = L("Abra o Clarify para configurar o teclado.") }
-    refresh()
+    refreshFromStore()
   }
-  private func refresh() {
+  // The lifecycle and timer share this state refresh. It does not simulate a
+  // UIKit appearance transition when a snapshot or microphone meter changes.
+  func refreshFromStore() {
     state = store?.snapshot() ?? DictationSnapshot()
     let requestTimedOut = recordingRequest.observe(state, now: Date().timeIntervalSince1970)
     if requestTimedOut { recordingError = L("O ditado não iniciou. Tente novamente.") }
@@ -405,7 +407,7 @@ class KeyboardViewController: UIInputViewController {
     finishRecordingButton.layer.cornerRadius = 22
     finishRecordingButton.accessibilityIdentifier = "clarify.keyboard.finish"
     finishRecordingButton.accessibilityLabel = L("Finalizar gravação")
-    finishRecordingButton.addTarget(self, action: #selector(finishRecording), for: .touchUpInside)
+    finishRecordingButton.addAction(UIAction { [weak self] _ in self?.finishRecording() }, for: .touchUpInside)
     cancel.isHidden = false
     cancel.backgroundColor = .tertiarySystemFill; cancel.layer.cornerRadius = 22
     globe.setImage(UIImage(systemName: "globe"), for: .normal); globe.tintColor = .label
