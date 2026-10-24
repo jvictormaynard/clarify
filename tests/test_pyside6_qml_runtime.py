@@ -1118,6 +1118,7 @@ class QtProviderGatewayTests(unittest.TestCase):
         gateway = QtProviderGateway(
             SimpleNamespace(current=lambda: config, workflow=config.workflow),
             SimpleNamespace(
+                expand_spoken_trigger=lambda text: None,
                 apply_context=lambda request: request,
                 expand=expand,
                 refinement_context=lambda: "",
@@ -1175,6 +1176,9 @@ class QtProviderGatewayTests(unittest.TestCase):
                 patch("provider_registry.PROVIDER_HTTP.logger.write"),
             ):
                 expand.reset_mock()
+                expand.side_effect = lambda text: (
+                    text if rejected else text + " expanded"
+                )
                 result = gateway.transcribe(
                     RecordingSnapshot(
                         Path("unused.wav"), b"fixture", duration_seconds=150
@@ -1187,7 +1191,7 @@ class QtProviderGatewayTests(unittest.TestCase):
                 if rejected:
                     self.assertEqual(result.text, source)
                     self.assertIsNone(result.refined_text)
-                    expand.assert_not_called()
+                    expand.assert_called_once_with(source)
                 else:
                     self.assertEqual(result.text, edited + " expanded")
 
@@ -1225,8 +1229,9 @@ class QtProviderGatewayTests(unittest.TestCase):
             gateway = QtProviderGateway(
                 SimpleNamespace(current=lambda: config, workflow=config.workflow),
                 SimpleNamespace(
+                    expand_spoken_trigger=lambda text: None,
                     apply_context=lambda request: request,
-                    expand=lambda text: text + " expanded",
+                    expand=lambda text: text,
                     refinement_context=lambda: "",
                 ),
             )
@@ -1289,7 +1294,9 @@ class QtProviderGatewayTests(unittest.TestCase):
         gateway = QtProviderGateway(
             SimpleNamespace(current=lambda: config, workflow=config.workflow),
             SimpleNamespace(
-                apply_context=lambda request: request, expand=lambda text: text
+                expand_spoken_trigger=lambda text: None,
+                apply_context=lambda request: request,
+                expand=lambda text: text,
             ),
         )
         snapshot = RecordingSnapshot(Path("removed.wav"), b"audio")
@@ -1324,6 +1331,9 @@ class QtProviderGatewayTests(unittest.TestCase):
             def __init__(self):
                 self.applied = None
                 self.expanded = []
+
+            def expand_spoken_trigger(self, text):
+                return None
 
             def apply_context(self, request):
                 self.applied = request

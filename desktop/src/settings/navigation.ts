@@ -6,6 +6,7 @@ import {
   Keyboard,
   Cpu,
   BookOpen,
+  TextQuote,
   UserRound,
   History,
 } from "lucide-react";
@@ -16,6 +17,7 @@ export const getSettingsPages = () => [
   { id: "general", label: t("Geral"), icon: Settings2 },
   { id: "dictation", label: t("Ditado"), icon: Mic },
   { id: "text", label: t("Texto"), icon: Sparkles },
+  { id: "snippets", label: t("Snippets"), icon: TextQuote },
   { id: "dictionary", label: t("Dicionário"), icon: BookOpen },
   { id: "shortcuts", label: t("Atalhos"), icon: Keyboard },
   { id: "models", label: t("Modelos e serviços"), icon: Cpu },

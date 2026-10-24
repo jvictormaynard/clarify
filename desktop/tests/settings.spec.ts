@@ -6,13 +6,49 @@ let child: ChildProcessWithoutNullStreams;
 let id = 0;
 const pending = new Map<number, (value: unknown) => void>();
 let releaseUsage: () => void;
+test("snippets: add edit disable discard and remove a multiline snippet", async ({ page }) => {
+  await page.getByRole("button", { name: "Snippets", exact: true }).click();
+  await page.getByRole("textbox", { name: "Nova frase de ativação" }).fill("minha assinatura");
+  await page.getByRole("textbox", { name: "Novo texto do snippet" }).fill("Nome\n  Equipe\n");
+  await page.getByRole("button", { name: "Adicionar snippet", exact: true }).click();
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("textbox", { name: "Texto do snippet 1", exact: true })).toHaveValue("Nome\n  Equipe\n");
+  await page.getByRole("textbox", { name: "Texto do snippet 1", exact: true }).fill("Editado");
+  await page.getByRole("switch", { name: "Usar snippet 1", exact: true }).click();
+  await page.getByRole("button", { name: "Descartar", exact: true }).click();
+  await page.getByRole("dialog", { name: "Alterações não salvas" }).getByRole("button", { name: "Descartar", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Texto do snippet 1", exact: true })).toHaveValue("Nome\n  Equipe\n");
+  await expect(page.getByRole("switch", { name: "Usar snippet 1", exact: true })).toBeChecked();
+  await page.getByRole("textbox", { name: "Buscar snippets" }).fill("ausente");
+  await expect(page.getByText("Nenhum snippet encontrado.")).toBeVisible();
+  await page.getByRole("textbox", { name: "Buscar snippets" }).clear();
+  await page.getByRole("button", { name: "Remover snippet 1", exact: true }).click();
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByText("Adicione seu primeiro snippet acima.")).toBeVisible();
+});
+test("snippets account: account draft cannot be saved after the session changes", async ({ page }) => {
+  await page.getByRole("button", { name: "Snippets", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Nova frase de ativação" }).fill("minha assinatura");
+  await page.getByRole("textbox", { name: "Novo texto do snippet" }).fill("Account draft");
+  await page.getByRole("button", { name: "Adicionar snippet", exact: true }).click();
+  await page.evaluate(async () => {
+    await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["logout", ""] });
+  });
+  await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("alert")).toContainText("A conta mudou.");
+  await expect(page.getByRole("textbox", { name: "Texto do snippet 1", exact: true })).toHaveValue("Account draft");
+});
+
 test.beforeEach(async ({ page }, testInfo) => {
   if (!process.env.CLARIFY_TEST_PYTHON || !process.env.CLARIFY_TEST_FIXTURE) throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
   const onboarding = testInfo.title.startsWith("onboarding:");
   const quota = testInfo.title.startsWith("quota:");
+  const signedIn = quota || testInfo.title.startsWith("snippets account:");
   const usageReady = new Promise<void>(resolve => { releaseUsage = resolve; });
   const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(quota ? ["--signed-in"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);

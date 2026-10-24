@@ -10,6 +10,7 @@ import {
 import {
   call,
   type DictionaryEntry,
+  type Snippet,
   type Settings,
   type SettingsArguments,
   type SettingsMethod,
@@ -21,6 +22,12 @@ import { useSettingsWindow } from "./use-settings-window";
 export function useSettings() {
   const [state, setState] = useState<Settings>();
   const [dictionary, setDictionary] = useState<DictionaryEntry[] | null>(null);
+  const [snippets, setSnippetEntries] = useState<Snippet[] | null>(null);
+  const snippetDraftContext = useRef<string | null>(null);
+  const setSnippets = (entries: Snippet[]) => {
+    if (snippetDraftContext.current === null) snippetDraftContext.current = current.current?.snippetContext ?? "";
+    setSnippetEntries(entries);
+  };
   const [page, setPage] = useState<PageId>("dictation");
   const [error, setError] = useState("");
   const [callBusy, setBusy] = useState(false);
@@ -57,6 +64,7 @@ export function useSettings() {
     !!state?.dirty ||
     !!state?.providerDirty ||
     localDirty ||
+    (snippets !== null && JSON.stringify(snippets) !== JSON.stringify(state?.snippets)) ||
     (dictionary !== null &&
       JSON.stringify(dictionary) !== JSON.stringify(state?.dictionaryEntries));
   const { closing, setClosing, closeWindow } = useSettingsWindow(
@@ -167,6 +175,8 @@ export function useSettings() {
   }, [state?.providerBaseUrl, state?.selectedProviderId]);
   const clearDrafts = (snapshot: Settings) => {
     setDictionary(null);
+    setSnippetEntries(null);
+    snippetDraftContext.current = null;
     setPrompt(snapshot.routePrompt);
     setEndpoint(snapshot.providerBaseUrl);
     setRetention(String(snapshot.historyRetentionDays ?? ""));
@@ -200,11 +210,19 @@ export function useSettings() {
       setError(t("A retenção deve ser um número inteiro entre 0 e 3650 dias."));
       return false;
     }
+    if (state.accountState?.signedIn && snippets !== null &&
+      new TextEncoder().encode(JSON.stringify(snippets.map(entry => ({ ...entry,
+        trigger: entry.trigger.trim().normalize("NFC"), replacement: entry.replacement.normalize("NFC"),
+      })))).length > 262144) {
+      setError(t("Os snippets da conta excedem o limite total de 256 KiB. Reduza os textos antes de salvar."));
+      return false;
+    }
     if (apiKey || endpoint !== state.providerBaseUrl || state.providerDirty) {
       setError(t("Valide ou descarte as alterações do serviço antes de salvar."));
       return false;
     }
     const next = await execute(async () => {
+      if (snippets !== null) await call("setSnippets", snippets.map(entry => ({ ...entry, trigger: entry.trigger.trim() })), snippetDraftContext.current ?? state.snippetContext);
       if (dictionary !== null)
         await call(
           "setDictionaryEntries",
@@ -366,6 +384,8 @@ export function useSettings() {
     dirty: dirtyRef.current,
     dictionary,
     setDictionary,
+    snippets,
+    setSnippets,
     prompt,
     setPrompt,
     retention,

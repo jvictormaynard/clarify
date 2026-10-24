@@ -39,7 +39,77 @@ class WebSettingsTests(unittest.TestCase):
         self.directory.cleanup()
 
     def request(self, method, *args):
+        if method == "setSnippets" and len(args) == 1:
+            args = (*args, self.settings.snippetContext)
         return self.protocol.dispatch({"id": 7, "method": method, "args": list(args)})
+
+    def test_snippet_draft_round_trip_and_invalid_edits_preserve_saved_text(self):
+        entry = {
+            "trigger": "minha assinatura",
+            "replacement": "Nome\n  Equipe\n",
+            "enabled": True,
+            "case_sensitive": False,
+        }
+        self.assertEqual(self.request("snapshot")["result"]["snippets"], [])
+        self.assertIn("result", self.request("setSnippets", [entry]))
+        self.assertTrue(self.settings.dirty)
+        self.assertEqual(self.settings._dictionary_service.state.snippets, ())
+        self.assertIn("result", self.request("save"))
+        self.assertEqual(
+            self.settings._dictionary_service.expand("Minha assinatura."),
+            entry["replacement"],
+        )
+        self.assertIn("error", self.request("setSnippets", [entry, entry]))
+        self.assertEqual(self.request("snapshot")["result"]["snippets"], [entry])
+        self.assertIn("result", self.request("setSnippets", []))
+        self.assertIn("result", self.request("load"))
+        self.assertEqual(self.request("snapshot")["result"]["snippets"], [entry])
+
+    def test_snippet_draft_from_another_account_cannot_be_saved_to_guest(self):
+        entry = {"trigger": "sig", "replacement": "Account only"}
+        self.assertIn(
+            "error", self.request("setSnippets", [entry], "stale-account-context")
+        )
+        self.assertEqual(self.settings._dictionary_service.state.snippets, ())
+        self.assertFalse(self.settings.dirty)
+
+    def test_native_pipe_accepts_full_guest_snippet_library_and_still_bounds_frames(
+        self,
+    ):
+        from types import SimpleNamespace
+        from clarify.desktop.qml_web_settings import WebSettingsProcess
+
+        entries = [
+            {"trigger": f"phrase {index}", "replacement": "é" * 4096}
+            for index in range(256)
+        ]
+        payload = (
+            json.dumps(
+                {"id": 8, "method": "setSnippets", "args": [entries, "local"]},
+                ensure_ascii=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+        self.assertGreater(len(payload), 1_048_576)
+        process = Mock()
+        process.readAllStandardOutput.return_value = payload
+        host = SimpleNamespace(
+            buffer=bytearray(),
+            process=process,
+            startup_timer=Mock(),
+            protocol=self.protocol,
+        )
+        WebSettingsProcess._read(host)
+        process.kill.assert_not_called()
+        reply = json.loads(process.write.call_args.args[0])
+        self.assertEqual(len(reply["result"]["snippets"]), 256)
+        self.assertEqual(reply["result"]["snippets"][255]["replacement"], "é" * 4096)
+        process.reset_mock()
+        process.readAllStandardOutput.return_value = b"x" * 1025
+        with patch("clarify.desktop.qml_web_settings.MAX_SETTINGS_MESSAGE_BYTES", 1024):
+            WebSettingsProcess._read(host)
+        process.kill.assert_called_once()
+        process.write.assert_not_called()
 
     def test_snapshot_is_json_and_does_not_include_key(self):
         self.settings.selectProvider("openai")

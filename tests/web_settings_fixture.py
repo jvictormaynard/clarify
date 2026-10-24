@@ -22,7 +22,12 @@ from clarify.desktop.qml_web_settings import SettingsProtocol, WebSettingsProces
 class OnboardingAccount:
     """Offline account double for first-run UI acceptance. Never sends e-mail."""
 
-    scope = None
+    @property
+    def scope(self):
+        return "00000000-0000-4000-8000-000000000001" if self.signed_in else None
+
+    def sync_library(self, service, *, prefer=None):
+        pass
 
     @property
     def signed_in(self):

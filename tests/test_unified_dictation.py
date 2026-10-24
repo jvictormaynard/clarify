@@ -46,7 +46,9 @@ class UnifiedDictationTests(unittest.TestCase):
         config = AppConfig.from_mapping({"transcription_provider": "openai"})
         source = SimpleNamespace(current=lambda: config, workflow=config.workflow)
         dictionary = SimpleNamespace(
-            apply_context=lambda value: value, expand=lambda value: value
+            expand_spoken_trigger=lambda text: None,
+            apply_context=lambda value: value,
+            expand=lambda value: value,
         )
         provider = QtProviderGateway(source, dictionary)
         selection = FileTranscriptionSelection(

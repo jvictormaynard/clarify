@@ -84,6 +84,7 @@ class WorkflowProviderTests(unittest.TestCase):
             workflow=lambda scope: self.current.workflow(scope),
         )
         self.dictionary = Mock()
+        self.dictionary.expand_spoken_trigger.return_value = None
         self.dictionary.apply_context.side_effect = lambda request: request
         self.dictionary.refinement_context.return_value = ""
         self.dictionary.expand.side_effect = lambda text: text + " expanded"
@@ -131,14 +132,14 @@ class WorkflowProviderTests(unittest.TestCase):
         )
         self.assertNotIn(self.raw, str(self.logger.write.call_args))
 
-    def test_refinement_failure_keeps_exact_raw_and_skips_expansion(self):
+    def test_refinement_failure_keeps_raw_provenance_and_applies_local_snippets(self):
         self.registry.rewrite.side_effect = RuntimeError("private provider payload")
         result = self.service.transcribe(self.audio, "prompt", "pt")
-        self.assertEqual(result.text, self.raw)
+        self.assertEqual(result.text, self.raw + " expanded")
         self.assertEqual(result.raw_text, self.raw)
-        self.assertIsNone(result.refined_text)
+        self.assertEqual(result.refined_text, result.text)
         self.assertTrue(result.refinement_failed)
-        self.dictionary.expand.assert_not_called()
+        self.dictionary.expand.assert_called_once_with(self.raw)
         self.registry.transcribe.assert_called_once()
         self.assertNotIn("private provider payload", str(self.logger.write.call_args))
 
@@ -166,6 +167,7 @@ class WorkflowProviderTests(unittest.TestCase):
         self.registry.rewrite.assert_not_called()
 
     def test_refinement_rejects_loss_of_unique_content(self):
+        self.dictionary.expand.side_effect = lambda value: value
         self.raw = "Preserve every independent requirement, name and quantity. " * 10
         self.registry.transcribe.return_value = TranscriptionResult(
             self.raw, "openai", "whisper-1"
