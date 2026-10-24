@@ -148,6 +148,13 @@ errors and success updates. `settings/use-settings-window.ts` owns native close
 requests. `settings/bridge.ts` defines typed command arguments for frontend
 callers without changing the Python allowlist or private pipe protocol.
 
+Snippet draft writes retain their captured account context through persistence
+and rollback. The account repository supplies an optional transaction guard;
+`DictionarySnippetService` acquires it before its own lock for load, replace and
+import. Settings uses the same owner guard for its complete save transaction.
+The lock order is account before dictionary service, including synchronization.
+A session transition cannot redirect an account draft into guest storage.
+
 Shared Settings visual values live in `desktop/src/styles/tokens.css`; base styles,
 controls, page layouts and responsive window rules have separate files. Common
 fields own their accessible labels and help-text associations. The compact QML
