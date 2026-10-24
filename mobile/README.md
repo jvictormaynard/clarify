@@ -17,12 +17,13 @@ check duration and speech energy. The previous encoder reproduces Apple error
 used by the reporting iPhone. Physical microphone and Bluetooth acceptance remain
 separate from the native fixtures.
 
-## Interface candidate — 0.10.1 (34)
+## Interface candidate — 0.10.3 (36)
 
-The bottom tabs contain Home, Dictionary and Snippets. The profile placeholder
-above the Home title opens Account as a protected stack page. Settings and the
-optional How to use guide open from Account. Dictionary has no duplicate Snippets
-shortcut. The interface uses
+The bottom tabs contain Home, Dictionary, Snippets and Account. Account is again
+a native bottom tab, with the same page title pattern as the other tabs. Home has
+no profile avatar. Settings and the optional How to use guide open from Account.
+The signed-in guard still protects every tab. Dictionary has no duplicate
+Snippets shortcut. The interface uses
 neutral surfaces, reusable React Native controls and short motion that respects
 Reduce Motion. Switches use their native iOS appearance and system green when on.
 The redundant History heading is removed. Existing account/library boundaries remain intact.
@@ -52,7 +53,7 @@ The native document/receipt checks still prevent duplicate or misplaced insertio
 The workflow validates native contracts, keyboard fixtures and installed typing/
 return. It also runs the actual containing app in an isolated Release simulator
 copy against a local fake account service. The app UI test checks first presentation,
-dismissal/relaunch, native login, three tabs, avatar/Account and back navigation,
+dismissal/relaunch, native login, four tabs, Account and back navigation,
 Settings, explicit guide replay and
 logout/relaunch. It uses no user account, microphone or real provider. The signed
 project is unchanged; the IPA check rejects a non-production endpoint. The practice
@@ -65,8 +66,8 @@ source-app return and keyboard acceptance remain separate from these fixtures.
 
 Expo application plus a small Swift keyboard extension. A Clarify account is
 required for speech recognition and rewriting. Sign in with an emailed code;
-no personal provider key is needed. Native bottom tabs contain Início, Dicionário
-and Snippets. Conta opens from the Home avatar; Ajustes opens from Conta.
+no personal provider key is needed. Native bottom tabs contain Início, Dicionário,
+Snippets and Conta. Ajustes opens from Conta.
 Signed-out users return to the
 account screen, including after an upgrade from the former personal-key mode.
 SQLite keeps

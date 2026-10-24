@@ -63,9 +63,9 @@ adapter creates an unverified account only when needed, then uses allauth's
 same login-code verification and session machinery for both paths. New-account
 limits still apply; no usable password is saved. Legacy separate endpoints remain
 available. Authentication forms are shared with desktop Settings and the iOS
-sign-in screen. After sign-in, the Home avatar opens the Account stack page;
-its settings button opens Settings. The bottom tabs contain Home, Dictionary
-and Snippets. Account, Settings and guide routes share the session guard. On iOS,
+sign-in screen. After sign-in, the bottom tabs contain Home, Dictionary, Snippets
+and Account. Account opens Settings and the explicit guide replay. The tabs,
+Settings and guide routes share the session guard. On iOS,
 sign-out or session expiry returns to sign-in before the tabs can be used.
 
 An authenticated account uses Clarify-managed processing for dictation, imported

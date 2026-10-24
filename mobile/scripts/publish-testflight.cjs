@@ -6,9 +6,9 @@ const path = require('node:path');
 const config = require('../app.json').expo;
 const app = require('../eas.json').submit.production.ios.ascAppId;
 const notes = {
-  "pt-BR": "Corrige a falha de formato de áudio ao iniciar o ditado no teclado. A gravação agora converte a entrada do microfone para um formato AAC compatível. Mensagens de erro técnicas foram substituídas por instruções curtas. Mantém as melhorias de interface e onboarding da versão anterior. Teste o ditado no app e no teclado, com e sem fones Bluetooth.",
-  "en-US": "Fixes the audio format failure when starting keyboard dictation. Recording now converts microphone input to a compatible AAC format. Technical error messages are replaced with short recovery instructions. Keeps the previous interface and onboarding improvements. Test dictation in the app and keyboard, with and without Bluetooth headphones.",
-  "es-ES": "Corrige el fallo de formato de audio al iniciar el dictado en el teclado. La grabación convierte la entrada del micrófono a un formato AAC compatible. Los errores técnicos se sustituyen por instrucciones breves. Mantiene las mejoras anteriores de interfaz e inicio. Prueba el dictado en la app y el teclado, con y sin auriculares Bluetooth."
+  "pt-BR": "Conta voltou para a barra inferior, ao lado de Início, Dicionário e Snippets. O avatar foi removido do Início. Configurações e Como usar continuam dentro de Conta. Mantém a correção de gravação da versão anterior.",
+  "en-US": "Account is back in the bottom tab bar, alongside Home, Dictionary and Snippets. The Home avatar is removed. Settings and How to use remain inside Account. Keeps the previous recording fix.",
+  "es-ES": "Cuenta vuelve a la barra inferior, junto a Inicio, Diccionario y Snippets. Se elimina el avatar de Inicio. Ajustes y Cómo usar siguen dentro de Cuenta. Mantiene la corrección anterior de grabación."
 };
 function token() {
   const now = Math.floor(Date.now() / 1000);
