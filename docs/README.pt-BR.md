@@ -23,7 +23,7 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Tradução de texto selecionado
 - Integração nativa com atalhos e bandeja do Windows
 - Interface em português, inglês e espanhol, independente do idioma do ditado
-- Configurações em React/Tauri: Conta Clarify, Geral, Ditado, Texto, Dicionário, Histórico, Atalhos e
+- Configurações em React/Tauri: Conta Clarify, Geral, Ditado, Texto, Dicionário, Snippets, Histórico, Atalhos e
   Modelos e serviços
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
 - Dicionário pessoal para nomes e termos técnicos
@@ -187,6 +187,21 @@ workflow usa esse serviço: provedor, modelo, endpoint, ativação e prompt. Os
 providers são configurados em **Configurações → Modelos e serviços**; as rotas ficam em
 **Configurações → Ditado** e **Configurações → Texto**. O Local Whisper
 usa um sidecar local e não exige chave para transcrição.
+
+## Snippets por voz
+
+No desktop, abra **Configurações → Snippets**. No iPhone, abra **Dicionário →
+Snippets**. Adicione uma frase, como `minha assinatura`, e o texto que será
+inserido. Salve as alterações. Diga a frase sozinha ou dentro de uma mensagem.
+O texto salvo mantém a grafia, as quebras de linha e os marcadores literais.
+Você pode buscar, editar, desativar ou excluir os snippets. No desktop, use a
+barra Salvar/Descartar para aplicar ou cancelar os rascunhos.
+
+Os snippets da conta são sincronizados entre os dispositivos. Os snippets sem
+conta ficam no dispositivo e não são enviados ao entrar na conta. Somente as
+frases de ativação podem ser usadas como contexto de reconhecimento. O código
+insere o texto salvo depois do reconhecimento ou da reescrita. Consulte as
+[regras de correspondência, sincronização e limites](dictionary-snippets.md).
 
 ## Dicionário pessoal
 

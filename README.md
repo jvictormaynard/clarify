@@ -61,7 +61,8 @@ automatically between Windows and iOS, including original/revised text, time and
 source device. The History page supports complete text, pagination and synchronized
 deletion. Pre-upgrade records and account-free history remain local; they are never
 uploaded. Pending account changes survive connection failures and app restarts.
-Snippets stay local. See [history synchronization](docs/history-sync.md).
+Guest snippets stay local. Account snippets synchronize separately from vocabulary.
+See [history synchronization](docs/history-sync.md) and [voice snippets](docs/dictionary-snippets.md).
 Existing profiles retain their setup. The [iOS client](mobile/README.md) is
 delivered through TestFlight. The [account service](server/README.md) can also
 be self-hosted. Production keys and user data are never public.
@@ -73,7 +74,7 @@ be self-hosted. Production keys and user data are never public.
 - Gemini, OpenAI, Groq, Local Whisper, and compatible custom endpoints
 - Native Windows hotkeys and system tray integration
 - Portuguese, English and Spanish interfaces, independently of dictation language
-- React/Tauri Settings organized into Account, General, Dictation, Text, Dictionary, History,
+- React/Tauri Settings organized into Account, General, Dictation, Text, Dictionary, Snippets, History,
   Shortcuts, and Models and services
 - Toggle or hold-to-record keyboard activation; the microphone button uses toggle
 - A personal dictionary for names and technical terms, with per-term enablement
@@ -273,6 +274,19 @@ Enabled terms provide bounded vocabulary context to ASR and optional text
 refinement. They are hints, not guaranteed replacements. When a cloud route is
 used, this vocabulary is sent to that provider with the request. See
 [Dictionary behavior](docs/dictionary-snippets.md) for limits and processing stages.
+
+## Voice snippets
+
+Open **Settings → Snippets** on desktop or **Dictionary → Snippets** on iOS.
+Add a phrase such as `minha assinatura` and the text to insert, then save.
+Say the phrase alone or inside a sentence. Saved text keeps its spelling,
+line breaks and literal placeholders. Search, edit, disable or delete snippets
+from the same page. Desktop changes use the existing Save/Discard bar.
+
+Account snippets synchronize between devices. Guest snippets stay on their device
+and are not uploaded at sign-in. Only trigger phrases can become recognition
+context; saved expansion text is inserted by code after recognition or rewriting.
+See [matching, sync and limits](docs/dictionary-snippets.md).
 
 ## Privacy and local data
 
