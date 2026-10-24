@@ -1,5 +1,6 @@
 // Explicit live acceptance, separate from isolated unit tests. The temporary
 // secret supplies a Groq key and synthetic M4A clips; no key enters an artifact.
+const { Buffer } = require('node:buffer');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');

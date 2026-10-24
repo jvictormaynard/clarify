@@ -1,5 +1,6 @@
 // Explicit live acceptance with a dedicated temporary account and synthetic audio.
 // The parent workflow supplies a short-lived secret; no fixture enters an artifact.
+const { Buffer } = require('node:buffer');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
