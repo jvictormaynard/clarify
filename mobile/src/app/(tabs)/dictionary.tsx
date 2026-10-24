@@ -1,14 +1,31 @@
 import { t } from "../../i18n";
 import { useEffect, useState } from 'react';
 import { useIsFocused } from 'expo-router';
-import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Core, { type VocabularyEntry } from '../../../modules/clarify-core';
 import { Button, Card, ModalHeader, TableRow, Title, ui, usePalette } from '../../components/ui';
 import { isBusy, report, useClarify } from '../../state/clarify';
+import { SnippetsLibrary } from '../../components/snippets-library';
 
 const empty = (): VocabularyEntry => ({ term: '', pronunciation: '', aliases: [], enabled: true });
 export default function Dictionary() {
+  const c = usePalette();
+  const { account } = useClarify();
+  const scope = account?.signedIn ? `${account.endpoint}/${account.email}` : 'guest';
+  const [tab, setTab] = useState<'words' | 'snippets'>('words');
+  return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
+    <View style={{ flexDirection: 'row', marginHorizontal: 20, marginTop: 8, marginBottom: 8, padding: 3, borderRadius: 12, backgroundColor: c.line }}>
+      {(['words', 'snippets'] as const).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: tab === value }}
+        onPress={() => setTab(value)} style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: tab === value ? c.card : 'transparent' }}>
+        <Text style={[ui.body, { color: c.text, fontWeight: tab === value ? '600' : '400' }]}>{value === 'words' ? t('Palavras') : t('Snippets')}</Text>
+      </Pressable>)}
+    </View>
+    {tab === 'words' ? <Words key={scope} /> : <SnippetsLibrary key={scope} />}
+  </SafeAreaView>;
+}
+
+function Words() {
   const c = usePalette();
   const focused = useIsFocused();
   const { state, refresh, account, accountBusy } = useClarify();

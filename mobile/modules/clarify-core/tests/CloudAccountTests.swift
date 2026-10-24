@@ -153,7 +153,7 @@ final class CloudAccountTests: XCTestCase {
     clip.append(Data(repeating: 0, count: 32_000)); try clip.write(to: audio)
     var dictations = 0
     let account = CloudAccount(defaults: defaults, transport: { request in
-      if request.url!.path == "/v1/dictionary" { return try self.response(request, ["revision": 0, "entries": []]) }
+      if ["/v1/dictionary", "/v1/snippets"].contains(request.url!.path) { return try self.response(request, ["revision": 0, "entries": []]) }
       XCTAssertEqual(request.url!.path, "/v1/dictations"); dictations += 1
       return try self.response(request, ["code": "no_speech", "phase": "transcription", "operation_id": operation,
         "usage": ["used_ms": 1000, "limit_ms": 18_000_000]], status: 422)
@@ -191,7 +191,7 @@ final class CloudAccountTests: XCTestCase {
     var token: String? = "old", pending: CheckedContinuation<(Data, HTTPURLResponse), Error>?, dictationRequest: URLRequest?
     var invalidations = 0
     let account = CloudAccount(defaults: defaults, transport: { request in
-      if request.url!.path == "/v1/dictionary" { return try self.response(request, ["revision": 0, "entries": []]) }
+      if ["/v1/dictionary", "/v1/snippets"].contains(request.url!.path) { return try self.response(request, ["revision": 0, "entries": []]) }
       dictationRequest = request
       return try await withCheckedThrowingContinuation { pending = $0 }
     }, readCredential: { token }, saveCredential: { token = $0 }, sessionInvalidated: { invalidations += 1 })

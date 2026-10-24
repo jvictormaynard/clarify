@@ -256,8 +256,8 @@ final class ClarifyAudioSession: NSObject {
         guard !Task.isCancelled, self.state.operationID == id, CloudAccount.shared.acceptsHistory(historyOwner) else { return }
         let transcript = outcome.transcript
         self.state.text = outcome.text
-        self.state.phase = outcome.rewritten ? .ready : .error
-        if !outcome.rewritten { self.state.message = L("A reescrita falhou. Você pode inserir a transcrição original.") }
+        self.state.phase = outcome.successful ? .ready : .error
+        if !outcome.successful { self.state.message = L("A reescrita falhou. Você pode inserir a transcrição original.") }
         // Save only the terminal result of this still-current operation. The
         // original remains available when rewriting fails; audio is never kept.
         guard !Task.isCancelled, self.state.operationID == id, CloudAccount.shared.acceptsHistory(historyOwner) else { return }

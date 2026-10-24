@@ -52,7 +52,7 @@ export function AccountCard() {
     </View>
     <Text style={[ui.small, { color: c.muted }]}>{t("O Clarify processa áudio, texto e palavras ativas do dicionário.")}</Text>
     {account.dictionaryConflict && <Card>
-        <Text style={[ui.small, { color: c.muted }]}>{t("Escolha somente para as palavras alteradas nos dois dispositivos. As outras alterações serão combinadas.")}</Text>
+        <Text style={[ui.small, { color: c.muted }]}>{t("Escolha somente para as palavras ou snippets alterados nos dois dispositivos. As outras alterações serão combinadas.")}</Text>
         <Button loading={action === 'sync-local'} disabled={busy} onPress={() => command('sync-local')}>{t("Manter as versões deste iPhone")}</Button>
         <Button loading={action === 'sync-remote'} disabled={busy} onPress={() => command('sync-remote')}>{t("Usar as versões da conta")}</Button>
     </Card>}

@@ -25,7 +25,7 @@ try {
     return { filename, durationMs: clip.durationMs };
   });
   fs.writeFileSync(path.join(fixture, 'clips.json'), JSON.stringify(clips), { mode: 0o600 });
-  const sources = ['GroqClient.swift', 'LocalLibrary.swift', 'RewritePrompt.swift', 'KeyStore.swift', 'Localization.swift',
+  const sources = ['GroqClient.swift', 'LocalLibrary.swift', 'Snippets.swift', 'RewritePrompt.swift', 'KeyStore.swift', 'Localization.swift',
     'SharedState.swift', 'KeyboardVocabulary.swift']
     .map((name) => path.join(root, 'modules/clarify-core/ios', name));
   const executable = path.join(fixture, 'acceptance');

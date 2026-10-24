@@ -18,6 +18,7 @@ export interface VocabularyEntry {
   aliases: string[];
   enabled: boolean;
 }
+export interface Snippet { trigger: string; replacement: string; enabled: boolean; case_sensitive: boolean }
 export interface HistoryEntry {
   id: string;
   createdAt: number;
@@ -57,6 +58,8 @@ export default requireNativeModule<{
   getHistory(before: string): Promise<HistoryPage>;
   deleteHistory(id: string, localOnly: boolean, context: string): Promise<void>;
   clearHistory(context: string): Promise<void>;
+  getSnippets(): Promise<Snippet[]>;
+  saveSnippets(entries: Snippet[], base: Snippet[], context: string): Promise<void>;
   getDictionary(): Promise<VocabularyEntry[]>;
   saveDictionary(entries: VocabularyEntry[], base: VocabularyEntry[]): Promise<void>;
 }>('ClarifyCore');

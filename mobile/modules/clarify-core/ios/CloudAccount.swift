@@ -26,6 +26,9 @@ struct CloudDictation: Codable {
   let transcript: String
   let text: String
   let rewritten: Bool
+  let snippetExpanded: Bool?
+  enum CodingKeys: String, CodingKey { case transcript, text, rewritten; case snippetExpanded = "snippet_expanded" }
+  var successful: Bool { rewritten || snippetExpanded == true }
 }
 
 private struct VocabularyConflict: Error {}
@@ -87,6 +90,13 @@ final class CloudAccount {
   var hosted: Bool { locked { state.userID != nil } }
   var managed: Bool { locked { state.userID != nil || state.hosted } }
   var scope: String? { locked { state.userID } }
+  var snippetScope: String? {
+    locked {
+      guard let user = state.userID, UUID(uuidString: user) != nil,
+        let endpoint = try? Self.validateEndpoint(state.endpoint), !endpoint.isEmpty else { return nil }
+      return endpoint + "|" + user
+    }
+  }
   var historyScope: String? {
     locked {
       guard let user = state.historyUserID ?? state.userID, UUID(uuidString: user) != nil,
@@ -303,6 +313,56 @@ final class CloudAccount {
     }
     return try VocabularyEntry.validate(result)
   }
+  static func mergeSnippets(base: [Snippet], local: [Snippet], remote: [Snippet], prefer: String? = nil) throws -> [Snippet] {
+    func index(_ values: [Snippet]) throws -> [String: Snippet] {
+      Dictionary(uniqueKeysWithValues: try Snippet.validate(values).map { (Snippet.key($0.trigger), $0) })
+    }
+    let b = try index(base), a = try index(local), c = try index(remote)
+    var keys: [String] = [], seen = Set<String>(), result: [Snippet] = []
+    for item in remote + local + base { if seen.insert(Snippet.key(item.trigger)).inserted { keys.append(Snippet.key(item.trigger)) } }
+    for key in keys {
+      let chosen: Snippet?
+      if a[key] == b[key] { chosen = c[key] }
+      else if c[key] == b[key] || a[key] == c[key] { chosen = a[key] }
+      else if prefer == "local" { chosen = a[key] }
+      else if prefer == "remote" { chosen = c[key] }
+      else { throw VocabularyConflict() }
+      if let chosen { result.append(chosen) }
+    }
+    return try Snippet.validate(result)
+  }
+  @MainActor private func syncSnippets(_ library: LocalLibrary, prefer: String? = nil) async throws {
+    guard let owner = snippetScope else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
+    let cached = try library.cloudSnippets(owner)
+    var (code, remote) = try await perform("GET", "/v1/snippets")
+    guard code == 200 else { throw ClarifyError(L("Não foi possível carregar os snippets da conta.")) }
+    let received = try SnippetResponse.decode(remote)
+    let revision = received.revision, remoteEntries = received.entries
+    let merged: [Snippet]
+    do { merged = try Self.mergeSnippets(base: cached.base, local: cached.entries, remote: remoteEntries, prefer: prefer) }
+    catch is VocabularyConflict {
+      locked { dictionaryConflict = true }
+      throw ClarifyError(L("O mesmo snippet mudou nos dois dispositivos. Escolha qual versão manter."))
+    }
+    _ = try Snippet.validateAccount(merged)
+    if merged != remoteEntries {
+      let values = try JSONSerialization.jsonObject(with: JSONEncoder().encode(merged))
+      (code, remote) = try await perform("PUT", "/v1/snippets", json: ["revision": revision, "entries": values])
+      if code == 400, remote["code"] as? String == "snippets_too_large" {
+        throw ClarifyError(L("Os snippets da conta excedem o limite de 256 KiB. Reduza o texto salvo."))
+      }
+      guard code == 200 else { throw ClarifyError(L("Os snippets mudaram em outro dispositivo. As cópias foram preservadas. Sincronize novamente.")) }
+    }
+    let accepted = try SnippetResponse.decode(remote)
+    guard snippetScope == owner, accepted.entries == merged else { throw ClarifyError(L("Resposta inválida do Clarify.")) }
+    let updated = accepted.revision
+    let current = try library.cloudSnippets(owner)
+    if current.entries != cached.entries {
+      try library.saveCloudSnippets(CloudSnippets(entries: current.entries, base: merged, revision: updated), scope: owner)
+      throw ClarifyError(L("Os snippets mudaram durante a sincronização. As alterações locais foram mantidas."))
+    }
+    try library.saveCloudSnippets(CloudSnippets(entries: merged, base: merged, revision: updated), scope: owner)
+  }
   @MainActor private func syncImpl(_ library: LocalLibrary, prefer: String? = nil) async throws {
     lastSyncAttempt = ProcessInfo.processInfo.systemUptime
     guard let userID = locked({ state.userID }) else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
@@ -325,10 +385,11 @@ final class CloudAccount {
     guard let updated = remote["revision"] as? Int else { throw ClarifyError(L("Resposta inválida do Clarify.")) }
     try library.saveCloudDictionary(CloudDictionary(entries: merged, base: merged, revision: updated), scope: userID)
     try locked { state.sync = true; dictionaryConflict = false; syncError = ""; try persist() }
+    try await syncSnippets(library, prefer: prefer)
   }
   @MainActor func syncAfterSave(_ library: LocalLibrary) async {
     do { _ = try await command("sync", value: "", library: library) }
-    catch { locked { syncError = L("As palavras foram salvas neste iPhone. A sincronização será tentada novamente ao abrir o aplicativo.") } }
+    catch { locked { syncError = L("As alterações foram salvas neste iPhone. A sincronização será tentada novamente ao abrir o aplicativo.") } }
   }
   func saveDictionaryDraft(_ entries: [VocabularyEntry], base: [VocabularyEntry], library: LocalLibrary) throws {
     guard !managed || scope != nil else { throw ClarifyError(L("Entre na conta novamente.")) }
@@ -338,6 +399,16 @@ final class CloudAccount {
       throw ClarifyError(L("A mesma palavra mudou nos dois dispositivos. Escolha qual versão manter nas palavras em conflito."))
     }
     try library.saveDictionary(merged, scope: scope)
+  }
+  func saveSnippetDraft(_ entries: [Snippet], base: [Snippet], context: String, library: LocalLibrary) throws {
+    guard context == historyContext, !managed || snippetScope != nil else { throw ClarifyError(L("A conta mudou. Abra os snippets novamente.")) }
+    let owner = snippetScope
+    let merged: [Snippet]
+    do { merged = try Self.mergeSnippets(base: base, local: entries, remote: library.snippets(scope: owner)) }
+    catch is VocabularyConflict { throw ClarifyError(L("O mesmo snippet mudou nos dois dispositivos. Feche o editor e tente novamente.")) }
+    if owner != nil { _ = try Snippet.validateAccount(merged) }
+    try library.saveSnippets(merged, scope: owner)
+    dictionaryChanged()
   }
   func prepareLibrary(_ library: LocalLibrary) throws {
     guard let userID = scope else { return }
@@ -349,7 +420,7 @@ final class CloudAccount {
   @MainActor private func syncQuietly(_ library: LocalLibrary) async {
     guard !locked({ dictionaryConflict }) else { return }
     do { try await syncImpl(library) }
-    catch { locked { syncError = L("Não foi possível sincronizar. As palavras salvas neste dispositivo foram preservadas.") } }
+    catch { locked { syncError = L("Não foi possível sincronizar. As alterações salvas neste dispositivo foram preservadas.") } }
   }
   static func processingFailure(_ status: Int, result: [String: Any], operationID: String) -> ClarifyError {
     let messages = [
@@ -358,6 +429,7 @@ final class CloudAccount {
       "transcription_failed": "Não foi possível transcrever o áudio. Tente novamente.",
       "text_processing_failed": "Não foi possível processar o texto. Tente novamente.",
       "processing_failed": "Não foi possível concluir o processamento. Tente novamente.",
+      "snippet_result_too_large": "O texto dos snippets excede o limite. Use menos frases de ativação.",
       "invalid_audio": "Grave um áudio válido de até 5 minutos.",
       "invalid_duration": "Grave um áudio válido de até 5 minutos.",
       "invalid_audio_request": "Grave um áudio válido de até 5 minutos.",
@@ -397,7 +469,7 @@ final class CloudAccount {
     try begin(); defer { end() }
     if scope != nil && ProcessInfo.processInfo.systemUptime - lastSyncAttempt >= 60 {
       do { try await syncImpl(library) }
-      catch { try Task.checkCancellation(); locked { syncError = L("O ditado usou a última versão do dicionário da conta. Há palavras pendentes de sincronização.") } }
+      catch { try Task.checkCancellation(); locked { syncError = L("O ditado usou a última versão salva no servidor. Há palavras ou snippets pendentes de sincronização.") } }
     }
     guard configured else { throw ClarifyError(L("Entre na conta novamente.")) }
     let bytes = try Data(contentsOf: audio)

@@ -149,5 +149,24 @@ public class ClarifyCoreModule: Module {
         } catch { promise.reject("DICTIONARY_ERROR", error.localizedDescription) }
       }
     }.runOnQueue(.main)
+    AsyncFunction("getSnippets") { () -> [[String: Any]] in
+      guard !CloudAccount.shared.managed || CloudAccount.shared.snippetScope != nil else { throw ClarifyError(L("Entre na conta novamente.")) }
+      let entries = try ClarifyAudioSession.shared.library().snippets(scope: CloudAccount.shared.snippetScope)
+      return try JSONSerialization.jsonObject(with: JSONEncoder().encode(entries)) as? [[String: Any]] ?? []
+    }.runOnQueue(.main)
+    AsyncFunction("saveSnippets") { (values: [[String: Any]], base: [[String: Any]], context: String, promise: Promise) in
+      Task { @MainActor in
+        guard !ClarifyAudioSession.shared.state.phase.busy, !CloudAccount.shared.isBusy else { promise.reject("ACCOUNT_BUSY", L("Aguarde a operação da conta.")); return }
+        do {
+          let entries = try JSONDecoder().decode([Snippet].self, from: JSONSerialization.data(withJSONObject: values))
+          let original = try JSONDecoder().decode([Snippet].self, from: JSONSerialization.data(withJSONObject: base))
+          let library = try ClarifyAudioSession.shared.library()
+          try CloudAccount.shared.saveSnippetDraft(entries, base: original, context: context, library: library)
+          if CloudAccount.shared.scope != nil { await CloudAccount.shared.syncAfterSave(library) }
+          ClarifyAudioSession.shared.libraryChanged()
+          promise.resolve(nil)
+        } catch { promise.reject("SNIPPET_ERROR", error.localizedDescription) }
+      }
+    }.runOnQueue(.main)
   }
 }
