@@ -4688,5 +4688,40 @@
     "pt": "minha assinatura",
     "en": "my signature",
     "es": "mi firma"
+  },
+  "A conta mudou. Descarte as alterações dos snippets e tente novamente.": {
+    "pt": "A conta mudou. Descarte as alterações dos snippets e tente novamente.",
+    "en": "The account changed. Discard the snippet changes and try again.",
+    "es": "La cuenta cambió. Descarta los cambios de snippets e inténtalo de nuevo."
+  },
+  "A escolha abaixo se aplica somente às palavras ou snippets alterados nos dois dispositivos. As outras alterações serão combinadas.": {
+    "pt": "A escolha abaixo se aplica somente às palavras ou snippets alterados nos dois dispositivos. As outras alterações serão combinadas.",
+    "en": "The choice below applies only to words or snippets changed on both devices. Other changes will be merged.",
+    "es": "La siguiente elección solo se aplica a las palabras o snippets que cambiaron en ambos dispositivos. Los demás cambios se combinarán."
+  },
+  "Dicionário e snippets": {
+    "pt": "Dicionário e snippets",
+    "en": "Dictionary and snippets",
+    "es": "Diccionario y snippets"
+  },
+  "Excluir a conta remove o dicionário, os snippets e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos.": {
+    "pt": "Excluir a conta remove o dicionário, os snippets e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos.",
+    "en": "Deleting the account removes its shared dictionary, snippets, history and service access. This cannot be undone. Local records are kept.",
+    "es": "Eliminar la cuenta borra el diccionario, los snippets y el historial compartidos y el acceso al servicio. Esta acción no se puede deshacer. Se conservarán los registros locales."
+  },
+  "Seu dicionário, snippets e novas transcrições da conta são sincronizados automaticamente. Atalhos e chaves permanecem neste computador.": {
+    "pt": "Seu dicionário, snippets e novas transcrições da conta são sincronizados automaticamente. Atalhos e chaves permanecem neste computador.",
+    "en": "Your account dictionary, snippets and new transcriptions sync automatically. Shortcuts and keys stay on this computer.",
+    "es": "El diccionario, los snippets y las nuevas transcripciones de tu cuenta se sincronizan de forma automática. Los atajos y las claves permanecen en este ordenador."
+  },
+  "Use até 512 snippets.": {
+    "pt": "Use até 512 snippets.",
+    "en": "Use up to 512 snippets.",
+    "es": "Usa hasta 512 snippets."
+  },
+  "Verifique os snippets: frases únicas de até 256 caracteres, sem quebras de linha, e textos de até 4096 caracteres.": {
+    "pt": "Verifique os snippets: frases únicas de até 256 caracteres, sem quebras de linha, e textos de até 4096 caracteres.",
+    "en": "Check the snippets: unique phrases of up to 256 characters without line breaks, and text of up to 4096 characters.",
+    "es": "Comprueba los snippets: frases únicas de hasta 256 caracteres sin saltos de línea y textos de hasta 4096 caracteres."
   }
 }

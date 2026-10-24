@@ -1,5 +1,11 @@
 # Clarify for iOS — MVP
 
+## Snippets candidate
+
+Candidate **0.9.0 (31)** adds configurable account snippets in Dictionary → Snippets.
+Native checks, live acceptance, signed upload and Apple group availability must
+pass before this candidate is reported as delivered.
+
 Expo application plus a small Swift keyboard extension. A Clarify account is
 required for speech recognition and rewriting. Sign in with an emailed code;
 no personal provider key is needed. Native bottom tabs contain Home, Dicionário
