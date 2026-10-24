@@ -111,9 +111,7 @@ class WorkflowProviderTests(unittest.TestCase):
     def test_success_keeps_routes_provenance_dictionary_and_timing(self):
         result = self.service.transcribe(self.audio, "transcription", "pt-BR")
         self.assertEqual(result.raw_text, self.raw)
-        self.assertEqual(
-            result.text, "João, use 42 unidades. Não envie ainda. expanded"
-        )
+        self.assertEqual(result.text, "João, use 42 unidades. Não envie ainda.")
         self.assertEqual(result.refined_text, result.text)
         self.assertFalse(result.refinement_failed)
         self.assertEqual((result.provider_id, result.model), ("openai", "whisper-1"))
@@ -123,7 +121,8 @@ class WorkflowProviderTests(unittest.TestCase):
         self.assertEqual(request.audio_bytes, b"fake-audio")
         self.dictionary.apply_context.assert_called_once()
         refinement = self.registry.rewrite.call_args.args[1]
-        self.assertEqual(refinement.text, self.raw)
+        self.assertEqual(refinement.text, self.raw + " expanded")
+        self.dictionary.expand.assert_called_once_with(self.raw)
         self.assertIn("BEGIN_SOURCE_TRANSCRIPT", refinement.source_message)
         self.assertIn("Brazilian Portuguese", refinement.instruction)
         self.assertEqual(refinement.reasoning_effort, "low")
@@ -151,7 +150,18 @@ class WorkflowProviderTests(unittest.TestCase):
         self.registry.rewrite.side_effect = cancel_then_fail
         with self.assertRaises(ProviderCancelledError):
             self.service.transcribe(self.audio, "prompt", "pt")
+        self.dictionary.expand.assert_called_once_with(self.raw)
+
+    def test_cancellation_after_asr_stops_before_expansion_and_refinement(self):
+        def recognize_then_cancel(*args):
+            self.token.cancel()
+            return TranscriptionResult(self.raw, "openai", "whisper-1")
+
+        self.registry.transcribe.side_effect = recognize_then_cancel
+        with self.assertRaises(ProviderCancelledError):
+            self.service.transcribe(self.audio, "prompt", "pt")
         self.dictionary.expand.assert_not_called()
+        self.registry.rewrite.assert_not_called()
 
     def test_provider_cancellation_is_not_recovered_as_success(self):
         self.registry.rewrite.side_effect = ProviderCancelledError()
@@ -180,13 +190,14 @@ class WorkflowProviderTests(unittest.TestCase):
         self.assertTrue(result.refinement_failed)
 
     def test_exact_duplicate_removal_can_compress_large_input(self):
+        self.dictionary.expand.side_effect = lambda value: value
         sentence = "Preserve every independent requirement, name and quantity."
         self.registry.transcribe.return_value = TranscriptionResult(
             (sentence + " ") * 10, "openai", "whisper-1"
         )
         self.registry.rewrite.return_value = RewriteResult(sentence, "openai", "editor")
         result = self.service.transcribe(self.audio, "prompt", "en")
-        self.assertEqual(result.text, sentence + " expanded")
+        self.assertEqual(result.text, sentence)
         self.assertFalse(result.refinement_failed)
 
     def test_local_cached_transcript_does_not_start_second_inference_or_cloud(self):

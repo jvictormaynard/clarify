@@ -117,7 +117,7 @@ class RefinementRecoveryTests(unittest.TestCase):
         self.rewrite.side_effect = cancel_then_fail
         with self.assertRaises(ProviderCancelledError):
             self.gateway.transcribe(self.audio, "prompt", "pt")
-        self.dictionary.expand.assert_not_called()
+        self.dictionary.expand.assert_called_once_with(self.raw)
 
     def test_asr_failure_does_not_attempt_refinement(self):
         self.asr.side_effect = RuntimeError("ASR failed")

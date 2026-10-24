@@ -1114,7 +1114,7 @@ class QtProviderGatewayTests(unittest.TestCase):
                 },
             }
         )
-        expand = Mock(side_effect=lambda text: text + " expanded")
+        expand = Mock(side_effect=lambda text: text)
         gateway = QtProviderGateway(
             SimpleNamespace(current=lambda: config, workflow=config.workflow),
             SimpleNamespace(
@@ -1176,9 +1176,6 @@ class QtProviderGatewayTests(unittest.TestCase):
                 patch("provider_registry.PROVIDER_HTTP.logger.write"),
             ):
                 expand.reset_mock()
-                expand.side_effect = lambda text: (
-                    text if rejected else text + " expanded"
-                )
                 result = gateway.transcribe(
                     RecordingSnapshot(
                         Path("unused.wav"), b"fixture", duration_seconds=150
@@ -1193,7 +1190,8 @@ class QtProviderGatewayTests(unittest.TestCase):
                     self.assertIsNone(result.refined_text)
                     expand.assert_called_once_with(source)
                 else:
-                    self.assertEqual(result.text, edited + " expanded")
+                    self.assertEqual(result.text, edited)
+                    expand.assert_called_once_with(source)
 
     def test_cleanup_failure_preserves_transcript_but_cancellation_propagates(self):
         from provider_http import (
@@ -1410,9 +1408,9 @@ class QtProviderGatewayTests(unittest.TestCase):
             )
             result = gateway.transcribe(audio, "prompt", "pt")
 
-        self.assertEqual(result.text, "refined transcript expanded")
+        self.assertEqual(result.text, "refined transcript")
         self.assertEqual(result.raw_text, "raw transcript")
-        self.assertEqual(result.refined_text, "refined transcript expanded")
+        self.assertEqual(result.refined_text, "refined transcript")
         self.assertEqual(result.refinement_provider_id, "gemini")
         self.assertEqual(result.refinement_model, "editor")
         transcription_request = registry.transcription_requests[0][1]
@@ -1429,8 +1427,11 @@ class QtProviderGatewayTests(unittest.TestCase):
             transcription_request.dictionary_context,
             "Use QML terms",
         )
-        self.assertEqual(dictionary.expanded, ["refined transcript"])
+        self.assertEqual(dictionary.expanded, ["raw transcript"])
         self.assertEqual(registry.rewrite_requests[0][0], "gemini")
+        self.assertEqual(
+            registry.rewrite_requests[0][1].text, "raw transcript expanded"
+        )
         self.assertIn(
             "Preserve QML vocabulary", registry.rewrite_requests[0][1].instruction
         )
@@ -1461,9 +1462,7 @@ class QtProviderGatewayTests(unittest.TestCase):
         legacy_request = registry.transcription_requests[1][1]
         self.assertEqual(legacy_request.instruction, transcription_request.instruction)
         self.assertEqual(len(registry.rewrite_requests), 2)
-        self.assertEqual(
-            dictionary.expanded, ["refined transcript", "refined transcript"]
-        )
+        self.assertEqual(dictionary.expanded, ["raw transcript", "raw transcript"])
 
     def test_selected_text_rewrite_cannot_answer_the_source_question(self):
         class ConfigRepository:
