@@ -943,6 +943,8 @@ class QmlSettingsController(QObject):
 
     @Property(str, notify=accountStateChanged)
     def snippetContext(self):
+        if isinstance(self._account, AccountService):
+            return self._account.snippet_context()
         scope = getattr(self._account, "scope", None)
         if not isinstance(scope, str) or not scope:
             return "local"
@@ -2264,6 +2266,17 @@ class QmlSettingsController(QObject):
             return False
         if not self.cancelHotkeyCapture():
             return False
+        try:
+            with self._dictionary_service.transaction(
+                expected_context=self._snippet_draft_context
+            ):
+                return self._save_owned_library()
+        except Exception as error:
+            self._set_error(error)
+            return False
+
+    def _save_owned_library(self) -> bool:
+        """Persist settings and library, including rollback, under one owner guard."""
         persisted_before: AppConfig | None = None
         hotkeys_applied = False
         persisted_config = None
@@ -2281,7 +2294,9 @@ class QmlSettingsController(QObject):
                 self._autostart_registry,
             )
             if self._dictionary_draft != self._dictionary_service.state:
-                self._dictionary_service.replace(self._dictionary_draft)
+                self._dictionary_service.replace(
+                    self._dictionary_draft, expected_context=self._snippet_draft_context
+                )
         except Exception as error:  # Validation/storage errors are user-facing.
             if persisted_config is not None and persisted_before is not None:
                 try:

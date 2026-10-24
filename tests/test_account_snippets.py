@@ -256,3 +256,56 @@ class AccountSnippetTests(unittest.TestCase):
         with patch.object(LocalDictionarySnippetsRepository, "save", persist):
             self.service.replace(replace(before, snippets=(Snippet("sig", "saved"),)))
         self.assertEqual(writes, ["snippets.json"])
+
+    def test_library_operations_acquire_owner_guard_before_service_lock(self):
+        import threading
+
+        for operation in ("replace", "reload", "import"):
+            with self.subTest(operation=operation):
+                self.signed_in()
+                self.service.reload()
+                target = replace(
+                    self.service.state, snippets=(Snippet("new", "Account text"),)
+                )
+                attempted = threading.Event()
+                errors = []
+                original_transaction = self.service.repository.transaction
+
+                def guarded(**kwargs):
+                    if threading.current_thread() is worker:
+                        attempted.set()
+                    return original_transaction(**kwargs)
+
+                def change():
+                    try:
+                        if operation == "replace":
+                            self.service.replace(target)
+                        elif operation == "reload":
+                            self.service.reload()
+                        else:
+                            self.service.import_json(target.to_mapping())
+                    except Exception as error:
+                        errors.append(error)
+
+                worker = threading.Thread(target=change)
+                try:
+                    with patch.object(
+                        self.service.repository, "transaction", side_effect=guarded
+                    ):
+                        with self.account._lock:
+                            worker.start()
+                            self.assertTrue(attempted.wait(3))
+                            acquired = self.service._lock.acquire(timeout=0.5)
+                            try:
+                                self.assertTrue(
+                                    acquired,
+                                    "Owner wait must not hold the service lock",
+                                )
+                            finally:
+                                if acquired:
+                                    self.service._lock.release()
+                            self.service.reload()
+                finally:
+                    worker.join(3)
+                self.assertFalse(worker.is_alive())
+                self.assertEqual(errors, [])

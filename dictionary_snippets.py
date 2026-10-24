@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 from array import array
 from dataclasses import dataclass, field, replace
+from contextlib import nullcontext
 import io
 import json
 import os
@@ -596,7 +597,17 @@ class DictionarySnippetService:
         self.repository = repository
         self.max_expansion_chars = max_expansion_chars
         self._lock = threading.RLock()
-        self._state = repository.load()
+        with self.transaction():
+            self._state = repository.load()
+
+    def transaction(self, *, expected_context: str | None = None):
+        """Acquire an optional repository owner guard before the service lock."""
+        guard = getattr(self.repository, "transaction", None)
+        return (
+            guard(expected_context=expected_context)
+            if guard is not None
+            else nullcontext()
+        )
 
     @property
     def state(self) -> DictionarySnippets:
@@ -604,19 +615,22 @@ class DictionarySnippetService:
             return copy.deepcopy(self._state)
 
     def reload(self) -> DictionarySnippets:
-        with self._lock:
+        with self.transaction(), self._lock:
             self._state = self.repository.load()
             return self.state
 
     def replace(
-        self, state: DictionarySnippets | Mapping[str, Any]
+        self,
+        state: DictionarySnippets | Mapping[str, Any],
+        *,
+        expected_context: str | None = None,
     ) -> DictionarySnippets:
         validated = (
             state
             if isinstance(state, DictionarySnippets)
             else DictionarySnippets.from_mapping(state)
         )
-        with self._lock:
+        with self.transaction(expected_context=expected_context), self._lock:
             self.repository.save(validated)
             self._state = validated
             return self.state
@@ -636,11 +650,7 @@ class DictionarySnippetService:
                 raise DictionarySnippetsError("invalid dictionary JSON") from error
         else:
             payload = document
-        validated = DictionarySnippets.from_mapping(payload)
-        with self._lock:
-            self.repository.save(validated)
-            self._state = validated
-            return self.state
+        return self.replace(DictionarySnippets.from_mapping(payload))
 
     def export_json(self) -> str:
         with self._lock:

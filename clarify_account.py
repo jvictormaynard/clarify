@@ -7,6 +7,7 @@ Provider keys and guest history never enter this boundary.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from contextlib import contextmanager
 import json
 import hashlib
 from pathlib import Path
@@ -343,6 +344,15 @@ class AccountService:
             self._state = {"endpoint": endpoint(value)}
             self._generation += 1
             self._save()
+
+    def snippet_context(self):
+        """Nonsecret owner token used to reject a draft after an account change."""
+        with self._lock:
+            scope = self.scope
+            if not scope:
+                return "local"
+            server = self._state.get("endpoint", self.default_endpoint)
+            return hashlib.sha256((server + "\n" + scope).encode("utf-8")).hexdigest()
 
     def snippet_path(self, identity=None):
         """New snippets never reuse a cache from another server or account."""
@@ -810,6 +820,20 @@ class AccountDictionaryRepository:
     def __init__(self, account, local):
         self.account, self.local = account, local
 
+    @contextmanager
+    def transaction(self, *, expected_context=None):
+        # The service acquires this before its own lock. Sync finalization uses
+        # the same account -> dictionary order, including persistence rollback.
+        with self.account._lock:
+            if (
+                expected_context is not None
+                and expected_context != self.account.snippet_context()
+            ):
+                raise AccountError(
+                    "A conta mudou. Descarte as alterações dos snippets e tente novamente."
+                )
+            yield
+
     @property
     def path(self):
         scope = self.account.scope
@@ -820,6 +844,10 @@ class AccountDictionaryRepository:
         )
 
     def load(self):
+        with self.transaction():
+            return self._load_owned()
+
+    def _load_owned(self):
         original = self.local.load()
         if not self.account.scope:
             return original
@@ -840,6 +868,10 @@ class AccountDictionaryRepository:
         return replace(cached, snippets=snippets)
 
     def save(self, state):
+        with self.transaction():
+            return self._save_owned(state)
+
+    def _save_owned(self, state):
         if not self.account.scope:
             return self.local.save(state)
         account_snippet_entries(state.snippets)

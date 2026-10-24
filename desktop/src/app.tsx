@@ -83,7 +83,7 @@ export function App() {
                   <LoaderCircle className="spin" size={22} />{t("Conectando ao Clarify…")}</div>
               ) : (
                 <fieldset disabled={busy}>
-                  <Page controller={{ ...controller, state }} />
+                  <Page key={activePage === "snippets" ? state.snippetContext : activePage} controller={{ ...controller, state }} />
                 </fieldset>
               )}
             </div>

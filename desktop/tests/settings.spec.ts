@@ -41,6 +41,24 @@ test("snippets account: account draft cannot be saved after the session changes"
   await expect(page.getByRole("textbox", { name: "Texto do snippet 1", exact: true })).toHaveValue("Account draft");
 });
 
+test("snippets account: composer clears when the session changes before Add", async ({ page }) => {
+  await page.getByRole("button", { name: "Snippets", exact: true }).click();
+  await page.getByRole("textbox", { name: "Nova frase de ativação" }).fill("private phrase");
+  await page.getByRole("textbox", { name: "Novo texto do snippet" }).fill("Private account text");
+  await page.evaluate(async () => {
+    await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["logout", ""] });
+  });
+  await expect(page.getByRole("textbox", { name: "Nova frase de ativação" })).toHaveValue("");
+  await expect(page.getByRole("textbox", { name: "Novo texto do snippet" })).toHaveValue("");
+  await expect(page.getByRole("button", { name: "Adicionar snippet", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
+  await page.getByRole("textbox", { name: "Nova frase de ativação" }).fill("guest phrase");
+  await page.getByRole("textbox", { name: "Novo texto do snippet" }).fill("Guest text");
+  await page.getByRole("button", { name: "Adicionar snippet", exact: true }).click();
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("textbox", { name: "Texto do snippet 1", exact: true })).toHaveValue("Guest text");
+});
+
 test.beforeEach(async ({ page }, testInfo) => {
   if (!process.env.CLARIFY_TEST_PYTHON || !process.env.CLARIFY_TEST_FIXTURE) throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
   const onboarding = testInfo.title.startsWith("onboarding:");
