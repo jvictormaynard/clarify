@@ -53,7 +53,7 @@ see [Release readiness](release-readiness.md). Keeping these locks separate prev
 pip-audit, pip-tools, CycloneDX, and PyInstaller from being reported as shipped
 application components while retaining pinned, reproducible build inputs.
 Development locks are compiled with `--allow-unsafe`, so their exact
-`pip==26.2.1`, `setuptools==83.0.0`, and `pip-tools==7.6.1` versions are
+`pip==26.2.1`, `setuptools==84.2.1`, and `pip-tools==7.6.1` versions are
 committed and installed before the rest of the toolchain. This pip release is
 compatible with pip-tools and includes fixes for the audited pip advisories.
 The runtime-only lock intentionally excludes those bootstrap tools.
