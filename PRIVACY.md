@@ -43,9 +43,12 @@ account rate-limit records expire within two hours. Periodic cleanup removes
 expired records.
 
 The service uses HTTPS and a private PostgreSQL database hosted on Railway.
-Saved snippet expansions are inserted by code after recognition and rewriting.
-Only enabled trigger phrases can be sent as recognition or vocabulary context.
-Expanded text can appear in synchronized transcription history.
+Snippet triggers are replaced after recognition and before optional rewriting.
+Applied saved text is sent to the rewrite provider as part of the source message;
+the model can adjust its wording and formatting. Only enabled trigger phrases
+can be sent as recognition or vocabulary hints. A standalone trigger inserts its
+exact saved text without a rewrite request. Substituted text can appear in
+synchronized transcription history; the original recognized transcript is retained.
 
 Authorized service operators can access server data; dictionary, snippet and history sync are not
 end-to-end encrypted. Windows protects stored keys and account sessions with

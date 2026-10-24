@@ -76,17 +76,23 @@ which matches the current synchronized-history protocol. The rendered response
 also has a **384 KiB** transport bound. Excessive expansion returns an explicit
 processing error and is not inserted, truncated or automatically retried.
 
-Hosted snippets are applied once on the server, including when rewriting fails.
-Clients use the returned final text and never expand it again. Personal desktop
-routes apply snippets locally. The saved replacement keeps its spelling, line
-breaks and literal placeholders. Replacement text is never executed or expanded
-recursively. Trigger phrases can be recognition hints; saved replacements are
-not sent as provider context. Expanded text can enter history when history is enabled.
+Hosted snippets are substituted once on the server after recognition and before
+optional rewriting. Clients use the returned final text and never substitute it
+again. Personal desktop routes apply the same order locally. The rewrite model
+receives the substituted source and can adjust wording, punctuation and formatting
+to fit the message. The saved library is unchanged. If rewriting is disabled or
+fails, the substituted source is returned. The original recognized transcript
+remains unchanged in history. Replacement text is never executed or substituted
+recursively, and triggers introduced by rewriting are not substituted. Recognition
+hints contain only enabled trigger phrases, never saved replacements or the full
+library. Applied replacement text is sent as rewrite source when rewriting is used.
+Substituted text can enter history when history is enabled.
 
 ## Matching behavior
 
 A standalone trigger tolerates recognizer punctuation and spacing and inserts the
-exact saved text before rewriting. Inside a longer phrase,
+exact saved text without a rewrite request. Inside a longer phrase, substitution
+happens before rewriting, so the model receives the complete message. The matcher
 `DictionarySnippetService.expand()` scans left-to-right and only considers
 enabled snippets.  Input and triggers use canonical Unicode NFC matching, so
 precomposed and decomposed forms (for example `café` and `cafe\u0301`) behave

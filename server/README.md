@@ -118,11 +118,12 @@ guest libraries retain their existing per-entry limits.
 Snippet writes use optimistic revisions; a stale write returns
 `snippet_conflict`. The independent library prevents older dictionary clients
 from erasing snippets. Account deletion removes the library. Only enabled
-triggers join bounded recognition/refinement hints. Saved replacement text is
-never sent to the provider. A standalone spoken trigger inserts its saved text
-without a rewrite request. Other matches expand once after refinement, including
-when refinement fails. Saved casing, line breaks and literal placeholders stay
-unchanged. Hosted clients use the returned final `text` without expanding it
+triggers join bounded recognition/refinement hints. Saved replacements never enter recognition hints. A standalone spoken trigger
+inserts its exact saved text without a rewrite request. Other matches are
+substituted once before refinement. The provider receives the substituted source,
+not the full library, and may adjust wording and formatting. Refinement failure
+returns the substituted source. The original recognized transcript stays unchanged.
+Triggers produced by refinement are never substituted. Hosted clients use the returned final `text` without expanding it
 again; `snippet_expanded: true` marks an applied expansion even when
 `rewritten` is false. Idempotent retries return the saved result and do not
 expand it again.

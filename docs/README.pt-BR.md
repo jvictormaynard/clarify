@@ -192,15 +192,18 @@ usa um sidecar local e não exige chave para transcrição.
 
 No desktop, abra **Configurações → Snippets**. No iPhone, abra **Dicionário →
 Snippets**. Adicione uma frase, como `minha assinatura`, e o texto que será
-inserido. Salve as alterações. Diga a frase sozinha ou dentro de uma mensagem.
-O texto salvo mantém a grafia, as quebras de linha e os marcadores literais.
+inserido. Salve as alterações. Diga a frase sozinha para inserir o texto exato.
+Dentro de uma mensagem, o snippet é substituído antes da reescrita, para que o
+modelo possa ajustar a mensagem completa.
 Você pode buscar, editar, desativar ou excluir os snippets. No desktop, use a
 barra Salvar/Descartar para aplicar ou cancelar os rascunhos.
 
 Os snippets da conta são sincronizados entre os dispositivos. Os snippets sem
 conta ficam no dispositivo e não são enviados ao entrar na conta. Somente as
-frases de ativação podem ser usadas como contexto de reconhecimento. O código
-insere o texto salvo depois do reconhecimento ou da reescrita. Consulte as
+frases de ativação podem ser usadas como contexto de reconhecimento. O texto
+substituído é enviado ao modelo de reescrita como parte da mensagem e pode ter
+a redação e a formatação ajustadas. Se a reescrita falhar, o texto substituído é
+mantido. A transcrição original permanece no histórico. Consulte as
 [regras de correspondência, sincronização e limites](dictionary-snippets.md).
 
 ## Dicionário pessoal

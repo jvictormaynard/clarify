@@ -7,8 +7,12 @@ Notable user-facing changes are documented here. This project follows
 
 ### Added
 
-- Configure voice snippets in desktop Settings and the iOS Dictionary tab. Create, search, edit, enable or remove saved text with exact spelling and line breaks.
-- Synchronize account snippets between desktop and iOS with separate guest storage, offline caches and explicit conflict resolution. Apply hosted snippets once on the server without sending saved expansion text to the provider.
+- Configure voice snippets in desktop Settings and the iOS Dictionary tab. Create, search, edit, enable or remove saved text, including multiline content.
+- Synchronize account snippets between desktop and iOS with separate guest storage, offline caches and explicit conflict resolution. Apply hosted snippets once on the server.
+
+### Changed
+
+- Desktop 0.10.1 and iOS 0.9.1 (32): substitute spoken snippets after recognition and before optional rewriting so the model can edit the complete message. Preserve original transcripts, direct exact insertion for standalone triggers, and substituted text when rewriting fails. Do not substitute triggers produced by the model.
 
 ### Fixed
 
