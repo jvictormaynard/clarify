@@ -45,6 +45,7 @@ export default requireNativeModule<{
   readonly keyboardDiagnosticAvailable: boolean;
   openKeyboardDiagnostic(): Promise<void>;
   onboardingRequired(): Promise<boolean>;
+  markOnboardingPresented(): Promise<void>;
   completeOnboarding(): Promise<void>;
   getSnapshot(): Promise<Snapshot>;
   getAccount(): Promise<AccountSnapshot>;

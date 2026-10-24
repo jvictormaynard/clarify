@@ -29,66 +29,60 @@ final class KeyboardInputView: UIInputView {
 }
 
 final class RecordingGlyph: UIView {
-  private let icon = UIImageView()
-  private let tips = UIImageView(image: UIImage(systemName: "chevron.up.2"))
-  private var mode = ""
+  private let icon = UIImageView(image: UIImage(systemName: "mic.fill"))
   override init(frame: CGRect) {
     super.init(frame: frame)
     isUserInteractionEnabled = false; isAccessibilityElement = false
-    for image in [icon, tips] {
-      image.tintColor = .systemBackground; image.contentMode = .scaleAspectFit
-      image.translatesAutoresizingMaskIntoConstraints = false; addSubview(image)
-    }
-    tips.alpha = 0
+    icon.tintColor = .systemBackground; icon.contentMode = .scaleAspectFit
+    icon.translatesAutoresizingMaskIntoConstraints = false; addSubview(icon)
     NSLayoutConstraint.activate([
       icon.widthAnchor.constraint(equalToConstant: 22), icon.heightAnchor.constraint(equalToConstant: 22),
-      icon.centerXAnchor.constraint(equalTo: centerXAnchor), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-      tips.widthAnchor.constraint(equalToConstant: 11), tips.heightAnchor.constraint(equalToConstant: 10),
-      tips.centerXAnchor.constraint(equalTo: centerXAnchor), tips.topAnchor.constraint(equalTo: topAnchor, constant: 5)
+      icon.centerXAnchor.constraint(equalTo: centerXAnchor), icon.centerYAnchor.constraint(equalTo: centerYAnchor)
     ])
-    update(recording: false, locked: false, animated: false)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-  func update(recording: Bool, locked: Bool, animated: Bool = true) {
-    let next = locked ? "locked" : recording ? "recording" : "idle"
-    guard mode != next else { return }; mode = next
-    icon.image = UIImage(systemName: locked ? "paperplane.fill" : "mic.fill")
-    let change = {
-      self.tips.alpha = recording && !locked ? 0.8 : 0
-      self.icon.transform = recording && !locked ? CGAffineTransform(translationX: 0, y: 5).scaledBy(x: 0.75, y: 0.75) : .identity
-    }
-    if animated && !UIAccessibility.isReduceMotionEnabled {
-      UIView.animate(withDuration: 0.18, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseOut], animations: change)
-    } else { change() }
+}
+
+final class RecordControl: UIButton {
+  var onAction: ((String) -> Void)?
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    addTarget(self, action: #selector(startRecording), for: .touchUpInside)
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+  @objc private func startRecording() { if isEnabled && !isHidden { onAction?("start") } }
+  override func accessibilityActivate() -> Bool {
+    guard isEnabled, !isHidden else { return false }
+    sendActions(for: .touchUpInside); return true
   }
 }
 
-final class RecordControl: UIControl {
-  var onAction: ((String) -> Void)?
-  private var gesture = RecordGesture()
-  var locked: Bool { get { gesture.locked } set { gesture.locked = newValue } }
-  private var origin = CGPoint.zero
-  var holding: Bool { gesture.holding }
-  func reset() { gesture.reset() }
-  override func accessibilityActivate() -> Bool {
-    guard isEnabled else { return false }
-    if locked { reset(); onAction?("finish") }
-    else { onAction?(gesture.press()); locked = true; onAction?("lock") }
-    return true
+// Shape is fixed; only measured microphone energy changes its height.
+final class RecordingWaveform: UIView {
+  private let bars = (0..<11).map { _ in UIView() }
+  private(set) var displayedLevel = 0.0
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    isUserInteractionEnabled = false; isAccessibilityElement = false
+    for bar in bars { bar.backgroundColor = .label; bar.layer.cornerRadius = 2; addSubview(bar) }
   }
-  override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
-    origin = touch.location(in: self.superview)
-    let action = gesture.press(); onAction?(action); return action == "start"
+  required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+  override func layoutSubviews() { super.layoutSubviews(); layoutBars() }
+  private func layoutBars() {
+    let envelope: [Double] = [0.2, 0.38, 0.62, 0.8, 0.94, 1, 0.94, 0.8, 0.62, 0.38, 0.2]
+    let step = bounds.width / CGFloat(bars.count)
+    for (index, bar) in bars.enumerated() {
+      let height = CGFloat(3 + displayedLevel * envelope[index] * 49)
+      bar.frame = CGRect(x: step * CGFloat(index) + (step - 4) / 2, y: (bounds.height - height) / 2, width: 4, height: height)
+    }
   }
-  override func continueTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
-    if let action = gesture.move(vertical: Double(touch.location(in: self.superview).y - origin.y)) { onAction?(action) }
-    return true
-  }
-  override func endTracking(_ touch: UITouch?, with event: UIEvent?) {
-    if let action = gesture.release() { onAction?(action) }
-  }
-  override func cancelTracking(with event: UIEvent?) {
-    reset(); onAction?("cancel")
+  func update(level: Double, animated: Bool = true) {
+    let next = level.isFinite ? min(1, max(0, level)) : 0
+    // A stopped/stale meter returns fully to rest; speech changes interpolate.
+    displayedLevel = next == 0 ? 0 : next > displayedLevel ? 0.7 * next + 0.3 * displayedLevel : 0.4 * next + 0.6 * displayedLevel
+    if animated && !UIAccessibility.isReduceMotionEnabled {
+      UIView.animate(withDuration: 0.12, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseOut]) { self.layoutBars() }
+    } else { UIView.performWithoutAnimation { self.layoutBars() } }
   }
 }
 
@@ -131,6 +125,15 @@ class KeyboardViewController: UIInputViewController {
   private var errorTrailing: NSLayoutConstraint?
   private let insert = UIButton(type: .system)
   private let cancel = UIButton(type: .system)
+  private let finishRecordingButton = UIButton(type: .system)
+  private let recordingPanel = UIView()
+  private let waveform = RecordingWaveform()
+  private let recordingStatus = UILabel()
+  private let processingSpinner = UIActivityIndicatorView(style: .medium)
+  private let globe = UIButton(type: .system)
+  private var recordingRequest = RecordingRequest()
+  private var recordingPanelVisible = false
+  private var recordingError: String?
   private let keys = KeyGridView()
   private let typing = TypingAssistant()
   private var typingVocabularyRevision = -1
@@ -185,7 +188,7 @@ class KeyboardViewController: UIInputViewController {
     mic.isAccessibilityElement = true; mic.accessibilityTraits = .button
     mic.accessibilityIdentifier = "clarify.keyboard.record"
     mic.accessibilityLabel = L("Gravar")
-    mic.accessibilityHint = L("Segure para falar. Deslize para cima para travar.")
+    mic.accessibilityHint = L("Toque para começar o ditado.")
     mic.onAction = { [weak self] action in self?.send(action) }
     mic.addSubview(glyph); glyph.translatesAutoresizingMaskIntoConstraints = false
     detailTop = detail.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 3)
@@ -201,7 +204,8 @@ class KeyboardViewController: UIInputViewController {
     insert.titleLabel?.font = .systemFont(ofSize: 13, weight: .medium)
     insert.addTarget(self, action: #selector(insertResult), for: .touchUpInside)
     cancel.setImage(UIImage(systemName: "xmark"), for: .normal); cancel.accessibilityLabel = L("Cancelar gravação")
-    cancel.tintColor = .secondaryLabel
+    cancel.tintColor = .label
+    cancel.accessibilityIdentifier = "clarify.keyboard.cancel"
     cancel.addTarget(self, action: #selector(cancelRecording), for: .touchUpInside)
     keys.previewContainer = view
     keys.onKeyPress = { [weak self] in self?.feedback.type() }
@@ -234,7 +238,7 @@ class KeyboardViewController: UIInputViewController {
     undoDictation.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 22, weight: .medium), forImageIn: .normal)
     undoDictation.tintColor = .label; undoDictation.isHidden = true
     undoDictation.addAction(UIAction { [weak self] _ in self?.toggleDictationEdit() }, for: .touchUpInside)
-    for element in [status, detail, mic, insert, keys, cancel, suggestions, addToDictionary, undoDictation] {
+    for element in [status, detail, mic, insert, keys, suggestions, addToDictionary, undoDictation] {
       element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element)
     }
     NSLayoutConstraint.activate([
@@ -244,10 +248,8 @@ class KeyboardViewController: UIInputViewController {
       status.trailingAnchor.constraint(lessThanOrEqualTo: insert.leadingAnchor, constant: -4),
       detailTop!, detail.leadingAnchor.constraint(equalTo: status.leadingAnchor), detailTrailing!,
       detail.heightAnchor.constraint(lessThanOrEqualToConstant: 44),
-      insert.centerYAnchor.constraint(equalTo: mic.centerYAnchor), insert.trailingAnchor.constraint(equalTo: cancel.leadingAnchor),
+      insert.centerYAnchor.constraint(equalTo: mic.centerYAnchor), insert.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -4),
       insert.widthAnchor.constraint(equalToConstant: 48),
-      cancel.centerYAnchor.constraint(equalTo: mic.centerYAnchor), cancel.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -2),
-      cancel.widthAnchor.constraint(equalToConstant: 44), cancel.heightAnchor.constraint(equalToConstant: 44),
       keys.topAnchor.constraint(equalTo: view.topAnchor, constant: 58), keys.heightAnchor.constraint(equalToConstant: 220),
       keys.leadingAnchor.constraint(equalTo: view.leadingAnchor), keys.trailingAnchor.constraint(equalTo: view.trailingAnchor),
       suggestions.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
@@ -275,6 +277,7 @@ class KeyboardViewController: UIInputViewController {
       host.view.widthAnchor.constraint(equalToConstant: 118), host.view.heightAnchor.constraint(equalToConstant: 44)
     ])
     activation = host
+    configureRecordingPanel()
     requestSupplementaryLexicon { [weak self] lexicon in
       DispatchQueue.main.async { [weak self] in
         self?.typing.protect(lexicon); self?.updateSuggestions()
@@ -324,7 +327,7 @@ class KeyboardViewController: UIInputViewController {
   }
   override func viewWillAppear(_ animated: Bool) {
     super.viewWillAppear(animated); attached = true; feedback.prepare(); refresh(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
-    timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in self?.refresh() }
+    timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.refresh() }
   }
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated); attached = false; timer?.invalidate(); timer = nil
@@ -332,69 +335,145 @@ class KeyboardViewController: UIInputViewController {
     invalidateActivationSource()
     typing.reset()
     suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
-    if !mic.locked { send("cancel") }
+    // A tapped recording continues while switching apps/keyboards. Publication
+    // still requires the original attached document or an explicit Insert tap.
     ClarifyKeyboardHeightDidDisappear(self)
   }
   deinit { timer?.invalidate() }
   private func send(_ action: String) {
-    guard hasFullAccess, state.isLive, let store = store else { return }
+    guard hasFullAccess, state.isLive, let store else { return }
+    let id: String
     if action == "start" {
-      guard !state.phase.busy else { return }
-      dictationEdit = nil
-      operationID = UUID().uuidString; documentID = textDocumentProxy.documentIdentifier
+      guard !state.phase.busy, recordingRequest.action == nil else { return }
+      id = UUID().uuidString
+    } else {
+      guard let current = operationID else { return }; id = current
+      if action == "finish" {
+        guard state.operationID == id, [.recording, .locked].contains(state.phase) else { return }
+      }
     }
-    guard let id = operationID else { return }
-    do {
-      try store.send(action, operationID: id)
-      feedback.record(action)
-      glyph.update(recording: mic.holding, locked: mic.locked)
+    guard recordingRequest.submit(action, operationID: id, now: Date().timeIntervalSince1970) else { return }
+    if action == "start" {
+      dictationEdit = nil; recordingError = nil
+      operationID = id; documentID = textDocumentProxy.documentIdentifier
     }
-    catch { detail.text = L("Abra o Clarify para configurar o teclado.") }
+    do { try store.send(action, operationID: id); feedback.record(action) }
+    catch { recordingRequest.reset(); recordingError = L("Abra o Clarify para configurar o teclado.") }
+    refresh()
   }
   private func refresh() {
     state = store?.snapshot() ?? DictationSnapshot()
+    let requestTimedOut = recordingRequest.observe(state, now: Date().timeIntervalSince1970)
+    if requestTimedOut { recordingError = L("O ditado não iniciou. Tente novamente.") }
+    if state.phase.busy || !state.isLive { recordingError = nil }
     if state.isLive, state.phase.busy, operationID != state.operationID {
-      // Recover cancellation after iOS recreates the extension during processing.
-      operationID = state.operationID; documentID = nil
-    }
-    // Do not reset a held gesture while the host is accepting its start command.
-    if !state.isLive || (state.operationID == operationID && !state.phase.busy && !mic.holding) { mic.reset() }
-    if state.isLive, [.recording, .locked].contains(state.phase), !mic.holding {
-      // A new keyboard instance must be able to stop an existing locked clip.
-      if operationID != state.operationID { documentID = nil }
-      operationID = state.operationID
-      mic.locked = true
+      // A recreated extension can stop/cancel the clip but cannot claim its
+      // original document. The explicit Insert action remains available later.
+      operationID = state.operationID; documentID = nil; recordingRequest.reset()
     }
     let available = hasFullAccess && state.configured
     activation?.view.isHidden = !hasFullAccess || state.isLive
-    mic.isEnabled = available && state.isLive && ![.transcribing, .rewriting].contains(state.phase)
+    mic.isEnabled = available && state.isLive && !state.phase.busy && recordingRequest.action == nil
     insert.isHidden = !state.isLive || state.text?.isEmpty != false || state.phase.busy || state.operationID == store?.receipt()
-    cancel.isHidden = !state.isLive || !state.phase.busy
     if !hasFullAccess {
       status.text = L("Ative o Acesso Total"); detail.text = L("Ajustes > Geral > Teclado > Clarify")
     } else if state.isLive, state.phase == .error {
-      // A revoked account changes configured to false. Keep its actual recovery
-      // message instead of incorrectly asking for a personal provider key.
       status.text = L("Não foi possível concluir"); detail.text = state.message
     } else if !state.configured {
       status.text = L("Entre no Clarify"); detail.text = L("Abra o Clarify para configurar.")
     } else if !state.isLive {
       status.text = L("Ative o microfone"); detail.text = L("Toque em Começar.")
     } else {
-      switch state.phase {
-      case .recording: status.text = L("Ouvindo…"); detail.text = L("Deslize para cima para travar ↑")
-      case .locked: status.text = L("Gravação travada"); detail.text = L("Toque para finalizar e transcrever.")
-      case .transcribing: status.text = L("Transcrevendo…"); detail.text = nil
-      case .rewriting: status.text = L("Reescrevendo…"); detail.text = nil
-      case .error: status.text = L("Não foi possível concluir"); detail.text = state.message
-      default: status.text = "Clarify"; detail.text = L("Segure para falar · Trave para cima ↑")
-      }
+      status.text = "Clarify"; detail.text = recordingError
     }
-    glyph.update(recording: mic.holding, locked: mic.locked)
-    mic.accessibilityLabel = mic.locked ? L("Finalizar gravação") : L("Gravar")
     updateToolbar()
+    updateRecordingPanel()
     if attached, state.phase == .ready, let id = operationID, state.operationID == id,
        documentID == textDocumentProxy.documentIdentifier, store?.receipt() != id { insertResult() }
+  }
+  private func configureRecordingPanel() {
+    recordingPanel.accessibilityIdentifier = "clarify.keyboard.recording-panel"
+    recordingPanel.backgroundColor = UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.13, alpha: 1) : UIColor(white: 0.97, alpha: 1) }
+    recordingPanel.isHidden = true
+    recordingStatus.font = .preferredFont(forTextStyle: .subheadline)
+    recordingStatus.textAlignment = .center; recordingStatus.textColor = .secondaryLabel
+    recordingStatus.adjustsFontForContentSizeCategory = true
+    recordingStatus.adjustsFontSizeToFitWidth = true; recordingStatus.minimumScaleFactor = 0.75
+    recordingStatus.accessibilityIdentifier = "clarify.keyboard.recording-status"
+    recordingStatus.numberOfLines = 2
+    finishRecordingButton.backgroundColor = .label; finishRecordingButton.tintColor = .systemBackground
+    finishRecordingButton.layer.cornerRadius = 22
+    finishRecordingButton.accessibilityIdentifier = "clarify.keyboard.finish"
+    finishRecordingButton.accessibilityLabel = L("Finalizar gravação")
+    finishRecordingButton.addTarget(self, action: #selector(finishRecording), for: .touchUpInside)
+    cancel.isHidden = false
+    cancel.backgroundColor = .tertiarySystemFill; cancel.layer.cornerRadius = 22
+    globe.setImage(UIImage(systemName: "globe"), for: .normal); globe.tintColor = .label
+    globe.accessibilityIdentifier = "clarify.keyboard.recording-globe"
+    globe.accessibilityLabel = L("Próximo teclado")
+    globe.addTarget(self, action: #selector(nextRecordingKeyboard(_:event:)), for: .allTouchEvents)
+    processingSpinner.color = .systemBackground; processingSpinner.hidesWhenStopped = true
+    view.addSubview(recordingPanel); recordingPanel.translatesAutoresizingMaskIntoConstraints = false
+    for element in [cancel, finishRecordingButton, waveform, recordingStatus, globe] {
+      recordingPanel.addSubview(element); element.translatesAutoresizingMaskIntoConstraints = false
+    }
+    finishRecordingButton.addSubview(processingSpinner); processingSpinner.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+      recordingPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor), recordingPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      recordingPanel.topAnchor.constraint(equalTo: view.topAnchor), recordingPanel.bottomAnchor.constraint(equalTo: view.topAnchor, constant: KeyboardInputView.contentHeight),
+      cancel.leadingAnchor.constraint(equalTo: recordingPanel.leadingAnchor, constant: 10), cancel.topAnchor.constraint(equalTo: recordingPanel.topAnchor, constant: 7),
+      cancel.widthAnchor.constraint(equalToConstant: 44), cancel.heightAnchor.constraint(equalToConstant: 44),
+      finishRecordingButton.trailingAnchor.constraint(equalTo: recordingPanel.trailingAnchor, constant: -10), finishRecordingButton.topAnchor.constraint(equalTo: cancel.topAnchor),
+      finishRecordingButton.widthAnchor.constraint(equalToConstant: 44), finishRecordingButton.heightAnchor.constraint(equalToConstant: 44),
+      processingSpinner.centerXAnchor.constraint(equalTo: finishRecordingButton.centerXAnchor), processingSpinner.centerYAnchor.constraint(equalTo: finishRecordingButton.centerYAnchor),
+      waveform.centerXAnchor.constraint(equalTo: recordingPanel.centerXAnchor), waveform.centerYAnchor.constraint(equalTo: recordingPanel.centerYAnchor, constant: -16),
+      waveform.widthAnchor.constraint(equalToConstant: 144), waveform.heightAnchor.constraint(equalToConstant: 56),
+      recordingStatus.topAnchor.constraint(equalTo: waveform.bottomAnchor, constant: 12), recordingStatus.centerXAnchor.constraint(equalTo: recordingPanel.centerXAnchor),
+      recordingStatus.leadingAnchor.constraint(greaterThanOrEqualTo: recordingPanel.leadingAnchor, constant: 60), recordingStatus.trailingAnchor.constraint(lessThanOrEqualTo: recordingPanel.trailingAnchor, constant: -60),
+      globe.leadingAnchor.constraint(equalTo: cancel.leadingAnchor), globe.bottomAnchor.constraint(equalTo: recordingPanel.bottomAnchor, constant: -6),
+      globe.widthAnchor.constraint(equalToConstant: 44), globe.heightAnchor.constraint(equalToConstant: 44)
+    ])
+  }
+  private func updateRecordingPanel() {
+    let pending = recordingRequest.action
+    let visible = hasFullAccess && state.isLive && (state.phase.busy || pending != nil)
+    let recording = [.recording, .locked].contains(state.phase) && pending != "cancel"
+    let processing = [.transcribing, .rewriting].contains(state.phase) || pending == "finish"
+    finishRecordingButton.isEnabled = recording && pending == nil
+    finishRecordingButton.setImage(processing ? nil : UIImage(systemName: "checkmark"), for: .normal)
+    finishRecordingButton.alpha = (recording && pending == nil) || processing ? 1 : 0.4
+    if processing { processingSpinner.startAnimating() } else { processingSpinner.stopAnimating() }
+    cancel.isEnabled = pending != "cancel"
+    cancel.alpha = cancel.isEnabled ? 1 : 0.4
+    globe.isHidden = !needsInputModeSwitchKey
+    let caption = pending == "cancel" ? L("Cancelando…") : pending == "start" ? L("Preparando…") :
+      state.phase == .rewriting ? L("Reescrevendo…") : processing ? L("Transcrevendo…") : L("Ouvindo…")
+    if visible, recordingStatus.text != caption, UIAccessibility.isVoiceOverRunning {
+      UIAccessibility.post(notification: .announcement, argument: caption)
+    }
+    recordingStatus.text = caption
+    let level = visible && recording && !processing ? store?.audioMeter()?.level(for: state.operationID) ?? 0 : 0
+    waveform.update(level: level)
+    if visible != recordingPanelVisible {
+      recordingPanelVisible = visible
+      let change = { self.recordingPanel.isHidden = !visible; self.keys.isHidden = visible }
+      if UIAccessibility.isReduceMotionEnabled || !attached { UIView.performWithoutAnimation(change) }
+      else { UIView.transition(with: view, duration: 0.16, options: [.transitionCrossDissolve, .allowUserInteraction], animations: change) }
+      if UIAccessibility.isVoiceOverRunning {
+        let focus: UIView = visible ? recordingStatus : mic
+        UIAccessibility.post(notification: .layoutChanged, argument: focus)
+      }
+    }
+    if visible {
+      // These may also be updated by a host selection callback while recording.
+      for element in [status, detail, mic, insert, suggestions, addToDictionary, undoDictation] { element.isHidden = true }
+      activation?.view.isHidden = true
+      view.bringSubviewToFront(recordingPanel)
+    } else { mic.isHidden = false; updateToolbar() }
+  }
+  @objc private func finishRecording() { send("finish") }
+  @objc private func nextRecordingKeyboard(_ sender: UIButton, event: UIEvent?) {
+    if let event { handleInputModeList(from: sender, with: event) } else { advanceToNextInputMode() }
   }
   @objc private func insertResult() {
     guard attached, let store = store, let text = state.text, !text.isEmpty,
@@ -439,7 +518,7 @@ class KeyboardViewController: UIInputViewController {
     let selectionChanged = term != selectedTerm || selectedDocument != document
     if selectionChanged { dictionaryError = nil; dictionaryCheckedAt = .distantPast }
     selectedTerm = term; selectedDocument = document
-    let available = !state.phase.busy && !mic.holding && !mic.locked && insert.isHidden
+    let available = !state.phase.busy && recordingRequest.action == nil && insert.isHidden
     let showDictionary = term != nil && available
     if !applyingDictationEdit, let edit = dictationEdit, !edit.isCurrent(proxy) { dictationEdit = nil }
     let showEdit = dictationEdit != nil && available && !showDictionary
@@ -503,6 +582,9 @@ class KeyboardViewController: UIInputViewController {
       (wideError ? detailTrailing : errorTrailing)?.isActive = false
       trailing?.isActive = true
     }
+    if recordingPanelVisible {
+      for element in [status, detail, mic, insert, suggestions, addToDictionary, undoDictation] { element.isHidden = true }
+    }
   }
   private func toggleDictationEdit() {
     guard !state.phase.busy, !applyingDictationEdit, var edit = dictationEdit else { return }
@@ -524,5 +606,5 @@ class KeyboardViewController: UIInputViewController {
     catch { dictionaryError = error.localizedDescription; UIAccessibility.post(notification: .announcement, argument: dictionaryError) }
     updateToolbar(forceDictionaryRefresh: true)
   }
-  @objc private func cancelRecording() { mic.reset(); send("cancel") }
+  @objc private func cancelRecording() { send("cancel") }
 }

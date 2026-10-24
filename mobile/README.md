@@ -1,20 +1,43 @@
 # Clarify for iOS — MVP
 
-## Snippets candidate
+## Interface candidate — 0.10.0 (33)
 
-Candidate **0.9.1 (32)** substitutes snippet triggers after recognition and before
-rewriting so the model can edit the complete message. Applied saved text is sent
-as rewrite source and can change wording and formatting. Standalone triggers
-retain direct exact insertion, original transcripts remain in history, and rewrite
-failure keeps substituted text. Native checks, live acceptance, signed upload and
-Apple group availability must pass before this candidate is reported as delivered.
+This candidate uses four destinations: Home, Dictionary, Snippets and Account.
+Settings and the optional How to use guide open from Account. The interface uses
+neutral colors, reusable React Native controls, opaque surfaces and short motion
+that respects Reduce Motion. Existing account/library boundaries remain intact.
 
-Version **0.9.0 (31)** added configurable account snippets in Dictionary → Snippets.
+General onboarding appears automatically once, on the first presentation after
+installation. The app stores a presentation marker when that screen appears.
+Dismissal, logout, later launches and updates do not repeat it. Existing setup
+preferences and signed-in installations migrate without another presentation.
+Authentication remains required and has a separate route. How to use is an
+explicit replay; it does not reset the general presentation marker. Keyboard and
+Full Access setup use manual confirmation, microphone readiness uses the real
+native session, and text insertion is not inferred from opening iPhone Settings.
+
+Tap the keyboard microphone once to start continuous recording. There is no hold
+or upward lock gesture. A panel within the same keyboard height provides separate
+cancel and finish actions, with the globe still available. Its waveform uses the
+containing app's real input RMS through an operation-scoped, expiring meter; it
+returns to rest during silence and resets when recording ends or is interrupted.
+The native document/receipt checks still prevent duplicate or misplaced insertion.
+
+The workflow validates native contracts, keyboard fixtures and installed typing/
+return. It also runs the actual containing app in an isolated Release simulator
+copy against a local fake account service. The app UI test checks first presentation,
+dismissal/relaunch, native login, four tabs, Settings, explicit guide replay and
+logout/relaunch. It uses no user account, microphone or real provider. The signed
+project is unchanged; the IPA check rejects a non-production endpoint.
+
+Publication is not complete until signing, upload, Apple processing and availability
+in the existing internal group are verified. Physical-iPhone microphone, soundwave,
+source-app return and keyboard acceptance remain separate from these fixtures.
 
 Expo application plus a small Swift keyboard extension. A Clarify account is
 required for speech recognition and rewriting. Sign in with an emailed code;
-no personal provider key is needed. Native bottom tabs contain Home, Dicionário
-and Conta. Ajustes opens from the Account tab. Signed-out users return to the
+no personal provider key is needed. Native bottom tabs contain Início, Dicionário,
+Snippets and Conta. Ajustes opens from Home or Account. Signed-out users return to the
 account screen, including after an upgrade from the former personal-key mode.
 SQLite keeps
 vocabulary and an offline history copy. New signed-in transcriptions sync
@@ -438,11 +461,11 @@ EAS_NO_VCS=1 EAS_PROJECT_ROOT="$PWD" npx eas-cli@24.12.0 build --platform ios --
 EAS_NO_VCS=1 EAS_PROJECT_ROOT="$PWD" npx eas-cli@24.12.0 submit --platform ios --profile production --id BUILD_ID
 ```
 
-`src/app/` owns the three native-tab pages and system-link routing.
+`src/app/` owns the four native-tab pages and system-link routing.
 `src/components/` contains shared interface elements; `src/state/clarify.tsx`
 owns the app snapshot and activation request. Home's switch uses that activation
-flow and native deactivation. `src/press-to-talk.ts` retains the tested gesture
-contract; recording controls are in the keyboard.
+flow and native deactivation. Recording controls are in the native keyboard; `KeyboardState.swift` owns the
+tap-to-record contract.
 `modules/clarify-core/ios` owns microphone lifetime, Keychain, Groq
 requests, local history/vocabulary, cancellation and shared state. `native/keyboard` owns keyboard
 gestures, local spelling and safe insertion. `plugins/with-clarify-keyboard.cjs`
@@ -466,8 +489,8 @@ also be signed, submitted, processed by Apple, and available to a TestFlight
 group. Those states do not prove physical-device behavior.
 
 Before acceptance, test on an iPhone: keyboard setup; Full Access off/on;
-microphone denial; link activation; app switch and return; hold/release; upward
-swipe lock; square stop; cancellation during both network steps; airplane mode;
+microphone denial; link activation; app switch and return; tap start; separate
+finish and cancel; speech/silence waveform; cancellation during both network steps; airplane mode;
 invalid key; 429; audio interruptions; headphones; session expiration; switching
 fields during processing; repeated appearance without duplicate insertion;
 light/dark themes; VoiceOver and large text. App Store review is a separate step.

@@ -136,6 +136,9 @@ jobs:
         run: npx expo prebuild --clean --platform ios --no-install
       - name: Install CocoaPods dependencies
         run: pod install --project-directory=ios
+      - name: Test first launch and navigation in the containing app
+        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        run: node scripts/test-app-ui.cjs
       - name: Build the containing app without signing
         if: ${{ inputs.tests_only }}
         run: |
@@ -202,6 +205,7 @@ jobs:
           name: clarify-keyboard-tests-${{ github.sha }}
           path: |
             mobile/test-results/keyboard-ui.zip
+            mobile/test-results/app-ui/
             mobile/test-results/installed-keyboard-*
             mobile/test-results/short-dictation-acceptance.json
           if-no-files-found: ignore

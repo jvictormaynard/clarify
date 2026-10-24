@@ -4,12 +4,13 @@ import { useIsFocused } from 'expo-router';
 import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Core, { type Snippet } from '../../modules/clarify-core';
-import { Button, Card, ModalHeader, TableRow, Title, ui, usePalette } from './ui';
+import { Button, Card, EmptyState, ModalHeader, ScreenHeader, TableRow, ui, usePalette, useReducedMotion } from './ui';
 import { isBusy, report, useClarify } from '../state/clarify';
 
 const empty = (): Snippet => ({ trigger: '', replacement: '', enabled: true, case_sensitive: false });
 export function SnippetsLibrary() {
   const c = usePalette();
+  const reducedMotion = useReducedMotion();
   const focused = useIsFocused();
   const { state, account, refresh, accountBusy } = useClarify();
   const scope = account?.signedIn ? `${account.endpoint}/${account.email}` : 'guest';
@@ -47,34 +48,39 @@ export function SnippetsLibrary() {
     <FlatList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[ui.content, { gap: 0 }]} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
       data={visible} keyExtractor={({ index }) => String(index)}
       ListHeaderComponent={<View style={{ gap: 16, marginBottom: 16 }}>
-        <Title subtitle={t('Diga uma frase para inserir um texto salvo.')}>{t('Snippets')}</Title>
+        <ScreenHeader title={t('Snippets')} />
         <Text style={[ui.small, { color: c.muted }]}>{account?.signedIn
-          ? t('Os snippets desta conta são sincronizados e aplicados pelo servidor no desktop e no mobile.')
+          ? t('Seus snippets são sincronizados entre seus dispositivos.')
           : t('Os snippets deste dispositivo são aplicados localmente.')}</Text>
         {account?.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.text }]}>{t(account.error)}</Text>}
-        <TextInput accessibilityLabel={t('Buscar snippets')} value={search} onChangeText={setSearch} placeholder={t('Buscar snippets')} placeholderTextColor={c.muted} style={[ui.input, { color: c.text, backgroundColor: c.card, borderColor: c.line }]} />
-        <Button disabled={busy || !loaded || entries.length >= 512} onPress={() => edit()}>{t('Adicionar snippet')}</Button>
+        <TextInput selectionColor={c.text} accessibilityLabel={t('Buscar snippets')} value={search} onChangeText={setSearch} placeholder={t('Buscar snippets')} placeholderTextColor={c.muted} style={[ui.input, { color: c.text, backgroundColor: c.card, borderColor: c.controlBorder }]} />
+        <Button primary disabled={busy || !loaded || entries.length >= 512} onPress={() => edit()}>{t('Adicionar snippet')}</Button>
       </View>}
       renderItem={({ item: { entry, index }, index: row }) => <TableRow first={row === 0} last={row === visible.length - 1} disabled={busy} onPress={() => edit(index)}>
         <View style={ui.row}><Text style={[ui.body, { color: c.text, fontWeight: '600', flex: 1 }]}>{entry.trigger}</Text><Text style={[ui.small, { color: c.muted }]}>{entry.enabled ? t('Ativa') : t('Desativada')}</Text></View>
         <Text numberOfLines={3} style={[ui.small, { color: c.muted }]}>{entry.replacement}</Text>
       </TableRow>}
-      ListEmptyComponent={loading ? <ActivityIndicator /> : loaded ? <Text style={[ui.body, { color: c.muted }]}>{search ? t('Nenhum snippet encontrado.') : t('Adicione seu primeiro snippet.')}</Text>
+      ListEmptyComponent={loading ? <ActivityIndicator /> : loaded ? search ? <Text style={[ui.body, { color: c.muted }]}>{t('Nenhum snippet encontrado.')}</Text> : <EmptyState title={t('Adicione seu primeiro snippet.')} detail={t('Diga uma frase para inserir um texto salvo. Use para assinaturas, endereços e respostas frequentes.')}>
+        <View style={{ gap: 6, width: '100%', padding: 14, borderRadius: 12, backgroundColor: c.accentSoft }}>
+          <Text style={[ui.small, { color: c.muted }]}>{t('minha assinatura')} →</Text>
+          <Text style={[ui.body, { color: c.text }]}>{t('Seu nome\nEquipe de suporte')}</Text>
+        </View>
+      </EmptyState>
         : <Button onPress={() => { setLoading(true); void Core.getSnippets().then(values => { setEntries(values); setLoaded(true); }).catch(report).finally(() => setLoading(false)); }}>{t('Carregar snippets')}</Button>}
       ListFooterComponent={<Text style={[ui.small, { color: c.muted, marginTop: 12 }]}>{t('Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.')}</Text>}
     />
-    <Modal visible={editing !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { if (!saving) setEditing(null); }}>
+    <Modal visible={editing !== null} animationType={reducedMotion ? 'none' : 'slide'} presentationStyle="pageSheet" onRequestClose={() => { if (!saving) setEditing(null); }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>
         <ModalHeader title={editing?.index === -1 ? t('Adicionar snippet') : t('Editar snippet')} cancelLabel={t('Cancelar')} saveLabel={t('Salvar')}
           onCancel={() => setEditing(null)} onSave={commit} busy={saving} loading={saving} disabled={busy || !editing?.value.trigger.trim() || !editing?.value.replacement.trim()} />
-        <ScrollView contentContainerStyle={[ui.content, { paddingTop: 12 }]} keyboardShouldPersistTaps="handled">
+        <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={[ui.content, { paddingTop: 12 }]} keyboardShouldPersistTaps="handled">
           {editing && <Card>
             <Text style={[ui.body, { color: c.text }]}>{t('Frase de ativação')}</Text>
-            <TextInput accessibilityLabel={t('Frase de ativação')} value={editing.value.trigger} onChangeText={trigger => setEditing({ ...editing, value: { ...editing.value, trigger } })} editable={!busy} autoCorrect={false} maxLength={256} style={[ui.input, { color: c.text, borderColor: c.line }]} />
+            <TextInput selectionColor={c.text} accessibilityLabel={t('Frase de ativação')} value={editing.value.trigger} onChangeText={trigger => setEditing({ ...editing, value: { ...editing.value, trigger } })} editable={!busy} autoCorrect={false} maxLength={256} style={[ui.input, { color: c.text, borderColor: c.controlBorder }]} />
             <Text style={[ui.body, { color: c.text }]}>{t('Texto a inserir')}</Text>
-            <TextInput accessibilityLabel={t('Texto a inserir')} value={editing.value.replacement} onChangeText={replacement => setEditing({ ...editing, value: { ...editing.value, replacement } })} editable={!busy} multiline maxLength={4096} textAlignVertical="top" style={[ui.input, { color: c.text, borderColor: c.line, minHeight: 160 }]} />
-            <View style={ui.row}><Text style={[ui.body, { color: c.text, flex: 1 }]}>{t('Usar snippet')}</Text><Switch accessibilityLabel={t('Usar snippet')} value={editing.value.enabled} disabled={busy} onValueChange={enabled => setEditing({ ...editing, value: { ...editing.value, enabled } })} /></View>
-            <View style={ui.row}><Text style={[ui.body, { color: c.text, flex: 1 }]}>{t('Diferenciar maiúsculas e minúsculas')}</Text><Switch accessibilityLabel={t('Diferenciar maiúsculas e minúsculas')} value={editing.value.case_sensitive} disabled={busy} onValueChange={case_sensitive => setEditing({ ...editing, value: { ...editing.value, case_sensitive } })} /></View>
+            <TextInput selectionColor={c.text} accessibilityLabel={t('Texto a inserir')} value={editing.value.replacement} onChangeText={replacement => setEditing({ ...editing, value: { ...editing.value, replacement } })} editable={!busy} multiline maxLength={4096} textAlignVertical="top" style={[ui.input, { color: c.text, borderColor: c.controlBorder, minHeight: 160 }]} />
+            <View style={ui.row}><Text style={[ui.body, { color: c.text, flex: 1 }]}>{t('Usar snippet')}</Text><Switch trackColor={{ false: c.controlBorder, true: c.text }} thumbColor={c.card} ios_backgroundColor={c.controlBorder} accessibilityLabel={t('Usar snippet')} value={editing.value.enabled} disabled={busy} onValueChange={enabled => setEditing({ ...editing, value: { ...editing.value, enabled } })} /></View>
+            <View style={ui.row}><Text style={[ui.body, { color: c.text, flex: 1 }]}>{t('Diferenciar maiúsculas e minúsculas')}</Text><Switch trackColor={{ false: c.controlBorder, true: c.text }} thumbColor={c.card} ios_backgroundColor={c.controlBorder} accessibilityLabel={t('Diferenciar maiúsculas e minúsculas')} value={editing.value.case_sensitive} disabled={busy} onValueChange={case_sensitive => setEditing({ ...editing, value: { ...editing.value, case_sensitive } })} /></View>
           </Card>}
           {editing && editing.index >= 0 && <Button disabled={busy} destructive onPress={() => Alert.alert(t('Excluir snippet?'), editing.value.trigger,
             [{ text: t('Cancelar'), style: 'cancel' }, { text: t('Excluir'), style: 'destructive', onPress: () => void save(editing.base.filter((_, index) => index !== editing.index)) }])}>{t('Excluir snippet')}</Button>}

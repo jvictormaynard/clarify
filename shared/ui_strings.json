@@ -4723,5 +4723,645 @@
     "pt": "Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.",
     "en": "With rewriting enabled, snippet text is sent to AI as part of the message. When you say only the trigger phrase, saved text is inserted without rewriting.",
     "es": "Con la reescritura activa, el texto del snippet se envía a la IA como parte del mensaje. Cuando dices solo la frase de activación, el texto guardado se inserta sin reescritura."
+  },
+  "1. Abra Ajustes → Geral → Teclado → Teclados.": {
+    "pt": "1. Abra Ajustes → Geral → Teclado → Teclados.",
+    "en": "1. Open Settings → General → Keyboard → Keyboards.",
+    "es": "1. Abre Ajustes → General → Teclado → Teclados."
+  },
+  "1. Abra uma nota ou mensagem de teste e toque no campo de texto.": {
+    "pt": "1. Abra uma nota ou mensagem de teste e toque no campo de texto.",
+    "en": "1. Open a test note or message and tap the text field.",
+    "es": "1. Abre una nota o un mensaje de prueba y toca el campo de texto."
+  },
+  "2. Segure o globo e escolha o teclado Clarify.": {
+    "pt": "2. Segure o globo e escolha o teclado Clarify.",
+    "en": "2. Touch and hold the globe and select the Clarify keyboard.",
+    "es": "2. Mantén pulsado el globo y elige el teclado Clarify."
+  },
+  "2. Toque em Adicionar Novo Teclado e escolha Clarify.": {
+    "pt": "2. Toque em Adicionar Novo Teclado e escolha Clarify.",
+    "en": "2. Tap Add New Keyboard and select Clarify.",
+    "es": "2. Toca Añadir nuevo teclado y elige Clarify."
+  },
+  "3. Abra Clarify nessa lista e ative Acesso Total.": {
+    "pt": "3. Abra Clarify nessa lista e ative Acesso Total.",
+    "en": "3. Open Clarify in that list and enable Allow Full Access.",
+    "es": "3. Abre Clarify en esa lista y activa Permitir acceso total."
+  },
+  "3. Toque no microfone do teclado, fale e finalize o ditado.": {
+    "pt": "3. Toque no microfone do teclado, fale e finalize o ditado.",
+    "en": "3. Tap the keyboard microphone, speak and finish the dictation.",
+    "es": "3. Toca el micrófono del teclado, habla y finaliza el dictado."
+  },
+  "A orientação fica disponível quando você precisar.": {
+    "pt": "A orientação fica disponível quando você precisar.",
+    "en": "The guide is available whenever you need it.",
+    "es": "La guía está disponible cuando la necesites."
+  },
+  "Adicione nomes, produtos e termos da sua equipe. As palavras ajudam no reconhecimento; snippets inserem textos prontos.": {
+    "pt": "Adicione nomes, produtos e termos da sua equipe. As palavras ajudam no reconhecimento; snippets inserem textos prontos.",
+    "en": "Add names, products and team terms. Words help recognition; snippets insert saved text.",
+    "es": "Añade nombres, productos y términos de tu equipo. Las palabras ayudan al reconocimiento; los snippets insertan textos guardados."
+  },
+  "Adicione o teclado Clarify": {
+    "pt": "Adicione o teclado Clarify",
+    "en": "Add the Clarify keyboard",
+    "es": "Añade el teclado Clarify"
+  },
+  "Ative o Clarify abaixo. O iPhone pede acesso ao microfone quando necessário.": {
+    "pt": "Ative o Clarify abaixo. O iPhone pede acesso ao microfone quando necessário.",
+    "en": "Turn on Clarify below. Your iPhone requests microphone access when needed.",
+    "es": "Activa Clarify abajo. El iPhone solicita acceso al micrófono cuando es necesario."
+  },
+  "Ative o Clarify antes de usar o microfone do teclado.": {
+    "pt": "Ative o Clarify antes de usar o microfone do teclado.",
+    "en": "Turn on Clarify before using the keyboard microphone.",
+    "es": "Activa Clarify antes de usar el micrófono del teclado."
+  },
+  "Ative o microfone para ditar": {
+    "pt": "Ative o microfone para ditar",
+    "en": "Turn on the microphone to dictate",
+    "es": "Activa el micrófono para dictar"
+  },
+  "Como usar": {
+    "pt": "Como usar",
+    "en": "How to use",
+    "es": "Cómo usar"
+  },
+  "Oi, tudo bem?": {
+    "pt": "Oi, tudo bem?",
+    "en": "Hi, how are you?",
+    "es": "Hola, ¿qué tal?"
+  },
+  "Configure, experimente e confira o resultado.": {
+    "pt": "Configure, experimente e confira o resultado.",
+    "en": "Set up, try it and check the result.",
+    "es": "Configura, prueba y comprueba el resultado."
+  },
+  "Confirmação manual: confira os dois ajustes antes de continuar. Abrir Ajustes não confirma a configuração.": {
+    "pt": "Confirmação manual: confira os dois ajustes antes de continuar. Abrir Ajustes não confirma a configuração.",
+    "en": "Manual confirmation: check both settings before continuing. Opening Settings does not confirm setup.",
+    "es": "Confirmación manual: comprueba ambos ajustes antes de continuar. Abrir Ajustes no confirma la configuración."
+  },
+  "Confirmação manual: continue quando o texto aparecer no aplicativo de teste.": {
+    "pt": "Confirmação manual: continue quando o texto aparecer no aplicativo de teste.",
+    "en": "Manual confirmation: continue when the text appears in your test app.",
+    "es": "Confirmación manual: continúa cuando el texto aparezca en la aplicación de prueba."
+  },
+  "Ditado concluído durante este teste": {
+    "pt": "Ditado concluído durante este teste",
+    "en": "Dictation completed during this test",
+    "es": "Dictado completado durante esta prueba"
+  },
+  "Dite em qualquer aplicativo. Encontre seus textos aqui.": {
+    "pt": "Dite em qualquer aplicativo. Encontre seus textos aqui.",
+    "en": "Dictate in any app. Find your text here.",
+    "es": "Dicta en cualquier aplicación. Encuentra tus textos aquí."
+  },
+  "Ensine suas palavras ao Clarify": {
+    "pt": "Ensine suas palavras ao Clarify",
+    "en": "Teach Clarify your words",
+    "es": "Enseña tus palabras a Clarify"
+  },
+  "Estes controles se aplicam a este iPhone.": {
+    "pt": "Estes controles se aplicam a este iPhone.",
+    "en": "These controls apply to this iPhone.",
+    "es": "Estos controles se aplican a este iPhone."
+  },
+  "Experimente onde você escreve": {
+    "pt": "Experimente onde você escreve",
+    "en": "Try it where you write",
+    "es": "Pruébalo donde escribes"
+  },
+  "Experimente seu primeiro ditado": {
+    "pt": "Experimente seu primeiro ditado",
+    "en": "Try your first dictation",
+    "es": "Prueba tu primer dictado"
+  },
+  "Fazer depois": {
+    "pt": "Fazer depois",
+    "en": "Do this later",
+    "es": "Hacerlo después"
+  },
+  "Frase de teste": {
+    "pt": "Frase de teste",
+    "en": "Test phrase",
+    "es": "Frase de prueba"
+  },
+  "Histórico e privacidade": {
+    "pt": "Histórico e privacidade",
+    "en": "History and privacy",
+    "es": "Historial y privacidad"
+  },
+  "Início": {
+    "pt": "Início",
+    "en": "Home",
+    "es": "Inicio"
+  },
+  "Já configurei o teclado": {
+    "pt": "Já configurei o teclado",
+    "en": "I have set up the keyboard",
+    "es": "Ya configuré el teclado"
+  },
+  "Microfone ativo": {
+    "pt": "Microfone ativo",
+    "en": "Microphone on",
+    "es": "Micrófono activo"
+  },
+  "Microfone desativado": {
+    "pt": "Microfone desativado",
+    "en": "Microphone off",
+    "es": "Micrófono desactivado"
+  },
+  "Microfone, teclado e dados.": {
+    "pt": "Microfone, teclado e dados.",
+    "en": "Microphone, keyboard and data.",
+    "es": "Micrófono, teclado y datos."
+  },
+  "O Clarify está ativo para receber ditados do teclado.": {
+    "pt": "O Clarify está ativo para receber ditados do teclado.",
+    "en": "Clarify is on and ready to receive keyboard dictations.",
+    "es": "Clarify está activo para recibir dictados del teclado."
+  },
+  "O teclado leva o ditado aos aplicativos em que você escreve.": {
+    "pt": "O teclado leva o ditado aos aplicativos em que você escreve.",
+    "en": "The keyboard sends dictation to the apps where you write.",
+    "es": "El teclado lleva el dictado a las aplicaciones donde escribes."
+  },
+  "O texto apareceu": {
+    "pt": "O texto apareceu",
+    "en": "The text appeared",
+    "es": "El texto apareció"
+  },
+  "Preciso de ajuda com o microfone": {
+    "pt": "Preciso de ajuda com o microfone",
+    "en": "I need help with the microphone",
+    "es": "Necesito ayuda con el micrófono"
+  },
+  "Primeiro ditado": {
+    "pt": "Primeiro ditado",
+    "en": "First dictation",
+    "es": "Primer dictado"
+  },
+  "Reveja a configuração e teste um ditado.": {
+    "pt": "Reveja a configuração e teste um ditado.",
+    "en": "Review setup and try a dictation.",
+    "es": "Revisa la configuración y prueba un dictado."
+  },
+  "Seu primeiro ditado": {
+    "pt": "Seu primeiro ditado",
+    "en": "Your first dictation",
+    "es": "Tu primer dictado"
+  },
+  "Seu uso e seus dispositivos, em um só lugar.": {
+    "pt": "Seu uso e seus dispositivos, em um só lugar.",
+    "en": "Your usage and devices in one place.",
+    "es": "Tu uso y tus dispositivos en un solo lugar."
+  },
+  "Teclado, microfone e teste em outro aplicativo.": {
+    "pt": "Teclado, microfone e teste em outro aplicativo.",
+    "en": "Keyboard, microphone and a test in another app.",
+    "es": "Teclado, micrófono y una prueba en otra aplicación."
+  },
+  "Volte ao Clarify depois de conferir o texto no outro aplicativo. Este guia não envia mensagens.": {
+    "pt": "Volte ao Clarify depois de conferir o texto no outro aplicativo. Este guia não envia mensagens.",
+    "en": "Return to Clarify after checking the text in the other app. This guide does not send messages.",
+    "es": "Vuelve a Clarify después de comprobar el texto en la otra aplicación. Esta guía no envía mensajes."
+  },
+  "Abra um editor de texto e coloque o cursor no local de inserção.": {
+    "pt": "Abra um editor de texto e coloque o cursor no local de inserção.",
+    "en": "Open a text editor and place the cursor where you want to insert text.",
+    "es": "Abre un editor de texto y coloca el cursor donde quieras insertar el texto."
+  },
+  "Abrir atalhos": {
+    "pt": "Abrir atalhos",
+    "en": "Open shortcuts",
+    "es": "Abrir atajos"
+  },
+  "Abrir dicionário": {
+    "pt": "Abrir dicionário",
+    "en": "Open dictionary",
+    "es": "Abrir diccionario"
+  },
+  "Abrir histórico": {
+    "pt": "Abrir histórico",
+    "en": "Open history",
+    "es": "Abrir historial"
+  },
+  "Abrir snippets": {
+    "pt": "Abrir snippets",
+    "en": "Open snippets",
+    "es": "Abrir snippets"
+  },
+  "Ajuste a revisão, a reescrita e a tradução.": {
+    "pt": "Ajuste a revisão, a reescrita e a tradução.",
+    "en": "Adjust cleanup, rewriting and translation.",
+    "es": "Ajusta la revisión, la reescritura y la traducción."
+  },
+  "As configurações ficam ocultas durante o ditado. Este guia continua aqui quando você voltar.": {
+    "pt": "As configurações ficam ocultas durante o ditado. Este guia continua aqui quando você voltar.",
+    "en": "Settings are hidden during dictation. This guide stays here when you return.",
+    "es": "Los ajustes se ocultan durante el dictado. Esta guía sigue aquí cuando vuelvas."
+  },
+  "Atalho de ditado": {
+    "pt": "Atalho de ditado",
+    "en": "Dictation shortcut",
+    "es": "Atajo de dictado"
+  },
+  "Comece por aqui": {
+    "pt": "Comece por aqui",
+    "en": "Start here",
+    "es": "Empieza aquí"
+  },
+  "Concluir": {
+    "pt": "Concluir",
+    "en": "Finish",
+    "es": "Finalizar"
+  },
+  "Conferir": {
+    "pt": "Conferir",
+    "en": "Check",
+    "es": "Comprobar"
+  },
+  "Configurar microfone": {
+    "pt": "Configurar microfone",
+    "en": "Set up microphone",
+    "es": "Configurar micrófono"
+  },
+  "Configuração inicial": {
+    "pt": "Configuração inicial",
+    "en": "Initial setup",
+    "es": "Configuración inicial"
+  },
+  "Configure um atalho em Atalhos antes de começar.": {
+    "pt": "Configure um atalho em Atalhos antes de começar.",
+    "en": "Set a shortcut in Shortcuts before you start.",
+    "es": "Configura un atajo en Atajos antes de empezar."
+  },
+  "Confira o microfone, o atalho e a configuração de processamento. Tente novamente com o cursor em um campo de texto.": {
+    "pt": "Confira o microfone, o atalho e a configuração de processamento. Tente novamente com o cursor em um campo de texto.",
+    "en": "Check the microphone, shortcut and processing settings. Try again with the cursor in a text field.",
+    "es": "Comprueba el micrófono, el atajo y los ajustes de procesamiento. Inténtalo de nuevo con el cursor en un campo de texto."
+  },
+  "Confirmar prática": {
+    "pt": "Confirmar prática",
+    "en": "Confirm practice",
+    "es": "Confirmar práctica"
+  },
+  "Depois da configuração, o guia do primeiro ditado ajuda você a praticar em outro aplicativo.": {
+    "pt": "Depois da configuração, o guia do primeiro ditado ajuda você a praticar em outro aplicativo.",
+    "en": "After setup, the first-dictation guide helps you practice in another app.",
+    "es": "Después de la configuración, la guía del primer dictado te ayuda a practicar en otra aplicación."
+  },
+  "Diga a frase de exemplo e espere o texto aparecer.": {
+    "pt": "Diga a frase de exemplo e espere o texto aparecer.",
+    "en": "Say the sample phrase and wait for the text to appear.",
+    "es": "Di la frase de ejemplo y espera a que aparezca el texto."
+  },
+  "Diga uma vez. Insira o texto completo.": {
+    "pt": "Diga uma vez. Insira o texto completo.",
+    "en": "Say it once. Insert the full text.",
+    "es": "Dilo una vez. Inserta el texto completo."
+  },
+  "Ditar": {
+    "pt": "Ditar",
+    "en": "Dictate",
+    "es": "Dictar"
+  },
+  "Dite onde você escreve. O Clarify cuida do texto, e você continua o que estava fazendo.": {
+    "pt": "Dite onde você escreve. O Clarify cuida do texto, e você continua o que estava fazendo.",
+    "en": "Dictate where you write. Clarify handles the text while you continue your work.",
+    "es": "Dicta donde escribes. Clarify se encarga del texto mientras continúas tu trabajo."
+  },
+  "Dite, reescreva e traduza sem interromper seu trabalho.": {
+    "pt": "Dite, reescreva e traduza sem interromper seu trabalho.",
+    "en": "Dictate, rewrite and translate without interrupting your work.",
+    "es": "Dicta, reescribe y traduce sin interrumpir tu trabajo."
+  },
+  "Encontre e confira suas transcrições.": {
+    "pt": "Encontre e confira suas transcrições.",
+    "en": "Find and check your transcriptions.",
+    "es": "Encuentra y revisa tus transcripciones."
+  },
+  "Ensine ao Clarify as palavras que você usa.": {
+    "pt": "Ensine ao Clarify as palavras que você usa.",
+    "en": "Teach Clarify the words you use.",
+    "es": "Enseña a Clarify las palabras que usas."
+  },
+  "Escolha como o Clarify ouve e transcreve.": {
+    "pt": "Escolha como o Clarify ouve e transcreve.",
+    "en": "Choose how Clarify listens and transcribes.",
+    "es": "Elige cómo escucha y transcribe Clarify."
+  },
+  "Etapas da prática": {
+    "pt": "Etapas da prática",
+    "en": "Practice steps",
+    "es": "Pasos de la práctica"
+  },
+  "Exemplo: adicione o nome de uma pessoa ou o termo técnico com a grafia correta.": {
+    "pt": "Exemplo: adicione o nome de uma pessoa ou o termo técnico com a grafia correta.",
+    "en": "Example: add a person's name or a technical term with the correct spelling.",
+    "es": "Ejemplo: añade el nombre de una persona o un término técnico con la ortografía correcta."
+  },
+  "Faça o Clarify trabalhar do seu jeito": {
+    "pt": "Faça o Clarify trabalhar do seu jeito",
+    "en": "Make Clarify work your way",
+    "es": "Haz que Clarify trabaje a tu manera"
+  },
+  "Gerencie seus serviços e modelos locais.": {
+    "pt": "Gerencie seus serviços e modelos locais.",
+    "en": "Manage your services and local models.",
+    "es": "Gestiona tus servicios y modelos locales."
+  },
+  "Idioma, inicialização, atualizações e privacidade.": {
+    "pt": "Idioma, inicialização, atualizações e privacidade.",
+    "en": "Language, startup, updates and privacy.",
+    "es": "Idioma, inicio, actualizaciones y privacidad."
+  },
+  "Mantenha {shortcut} pressionado enquanto fala e solte para terminar.": {
+    "pt": "Mantenha {shortcut} pressionado enquanto fala e solte para terminar.",
+    "en": "Hold {shortcut} while speaking and release it to finish.",
+    "es": "Mantén pulsado {shortcut} mientras hablas y suéltalo para terminar."
+  },
+  "Nomes e termos reconhecidos do seu jeito.": {
+    "pt": "Nomes e termos reconhecidos do seu jeito.",
+    "en": "Names and terms recognized your way.",
+    "es": "Nombres y términos reconocidos a tu manera."
+  },
+  "Não configurado": {
+    "pt": "Não configurado",
+    "en": "Not configured",
+    "es": "Sin configurar"
+  },
+  "O dicionário ajuda com nomes. Snippets inserem textos frequentes. Este guia fica disponível em Como usar.": {
+    "pt": "O dicionário ajuda com nomes. Snippets inserem textos frequentes. Este guia fica disponível em Como usar.",
+    "en": "The dictionary helps with names. Snippets insert frequent text. This guide is available in How to use.",
+    "es": "El diccionario ayuda con los nombres. Los snippets insertan textos frecuentes. Esta guía está disponible en Cómo usar."
+  },
+  "O ditado começa quando você usa o atalho. Abrir este guia não liga o microfone.": {
+    "pt": "O ditado começa quando você usa o atalho. Abrir este guia não liga o microfone.",
+    "en": "Dictation starts when you use the shortcut. Opening this guide does not turn on the microphone.",
+    "es": "El dictado empieza al usar el atajo. Abrir esta guía no activa el micrófono."
+  },
+  "O texto apareceu no aplicativo de destino.": {
+    "pt": "O texto apareceu no aplicativo de destino.",
+    "en": "The text appeared in the destination app.",
+    "es": "El texto apareció en la aplicación de destino."
+  },
+  "O texto não apareceu": {
+    "pt": "O texto não apareceu",
+    "en": "The text did not appear",
+    "es": "El texto no apareció"
+  },
+  "Palavras que fazem parte do seu dia": {
+    "pt": "Palavras que fazem parte do seu dia",
+    "en": "Words you use every day",
+    "es": "Palabras que usas cada día"
+  },
+  "Praticar um ditado": {
+    "pt": "Praticar um ditado",
+    "en": "Practice a dictation",
+    "es": "Practicar un dictado"
+  },
+  "Pratique um ditado para conhecer o fluxo. O histórico segue suas preferências de privacidade.": {
+    "pt": "Pratique um ditado para conhecer o fluxo. O histórico segue suas preferências de privacidade.",
+    "en": "Practice a dictation to learn the flow. History follows your privacy settings.",
+    "es": "Practica un dictado para conocer el flujo. El historial sigue tus ajustes de privacidad."
+  },
+  "Preparar": {
+    "pt": "Preparar",
+    "en": "Prepare",
+    "es": "Preparar"
+  },
+  "Prepare seu microfone e atalho": {
+    "pt": "Prepare seu microfone e atalho",
+    "en": "Prepare your microphone and shortcut",
+    "es": "Prepara el micrófono y el atajo"
+  },
+  "Prática concluída": {
+    "pt": "Prática concluída",
+    "en": "Practice completed",
+    "es": "Práctica completada"
+  },
+  "Repetir": {
+    "pt": "Repetir",
+    "en": "Repeat",
+    "es": "Repetir"
+  },
+  "Sem conta": {
+    "pt": "Sem conta",
+    "en": "Without an account",
+    "es": "Sin cuenta"
+  },
+  "Seu espaço": {
+    "pt": "Seu espaço",
+    "en": "Your workspace",
+    "es": "Tu espacio"
+  },
+  "Sua configuração": {
+    "pt": "Sua configuração",
+    "en": "Your setup",
+    "es": "Tu configuración"
+  },
+  "Sua conta, uso e sincronização.": {
+    "pt": "Sua conta, uso e sincronização.",
+    "en": "Your account, usage and synchronization.",
+    "es": "Tu cuenta, uso y sincronización."
+  },
+  "Sua voz em texto": {
+    "pt": "Sua voz em texto",
+    "en": "Your voice as text",
+    "es": "Tu voz en texto"
+  },
+  "Sua voz, no seu ritmo.": {
+    "pt": "Sua voz, no seu ritmo.",
+    "en": "Your voice, at your pace.",
+    "es": "Tu voz, a tu ritmo."
+  },
+  "Textos frequentes, prontos com uma frase.": {
+    "pt": "Textos frequentes, prontos com uma frase.",
+    "en": "Frequent text, ready with one phrase.",
+    "es": "Textos frecuentes, listos con una frase."
+  },
+  "Três passos para usar sua voz em outro aplicativo.": {
+    "pt": "Três passos para usar sua voz em outro aplicativo.",
+    "en": "Three steps to use your voice in another app.",
+    "es": "Tres pasos para usar tu voz en otra aplicación."
+  },
+  "Tudo para começar a usar sua voz.": {
+    "pt": "Tudo para começar a usar sua voz.",
+    "en": "Everything you need to start using your voice.",
+    "es": "Todo para empezar a usar tu voz."
+  },
+  "Uma frase curta pode inserir um texto inteiro.": {
+    "pt": "Uma frase curta pode inserir um texto inteiro.",
+    "en": "A short phrase can insert a full text.",
+    "es": "Una frase corta puede insertar un texto completo."
+  },
+  "Use o Clarify sem sair do que está fazendo.": {
+    "pt": "Use o Clarify sem sair do que está fazendo.",
+    "en": "Use Clarify without leaving your work.",
+    "es": "Usa Clarify sin salir de lo que estás haciendo."
+  },
+  "Use {shortcut} para começar e terminar a gravação.": {
+    "pt": "Use {shortcut} para começar e terminar a gravação.",
+    "en": "Use {shortcut} to start and stop recording.",
+    "es": "Usa {shortcut} para iniciar y finalizar la grabación."
+  },
+  "Ver atalhos": {
+    "pt": "Ver atalhos",
+    "en": "View shortcuts",
+    "es": "Ver atajos"
+  },
+  "Ver configuração": {
+    "pt": "Ver configuração",
+    "en": "View setup",
+    "es": "Ver configuración"
+  },
+  "Verificar ditado": {
+    "pt": "Verificar ditado",
+    "en": "Check dictation",
+    "es": "Comprobar dictado"
+  },
+  "Você confirmou a inserção do texto. Use o mesmo atalho nos aplicativos em que escreve.": {
+    "pt": "Você confirmou a inserção do texto. Use o mesmo atalho nos aplicativos em que escreve.",
+    "en": "You confirmed text insertion. Use the same shortcut in the apps where you write.",
+    "es": "Confirmaste la inserción del texto. Usa el mismo atajo en las aplicaciones donde escribes."
+  },
+  "Volte ao Clarify pelo ícone na bandeja para confirmar o resultado.": {
+    "pt": "Volte ao Clarify pelo ícone na bandeja para confirmar o resultado.",
+    "en": "Return to Clarify through the tray icon to confirm the result.",
+    "es": "Vuelve a Clarify desde el icono de la bandeja para confirmar el resultado."
+  },
+  "Volte aos textos que você ditou.": {
+    "pt": "Volte aos textos que você ditou.",
+    "en": "Return to the text you dictated.",
+    "es": "Vuelve a los textos que dictaste."
+  },
+  "Verificar microfone": {
+    "pt": "Verificar microfone",
+    "en": "Check microphone",
+    "es": "Comprobar micrófono"
+  },
+  "Se o ditado não iniciar, abra o Início e retome este teste em Como usar.": {
+    "pt": "Se o ditado não iniciar, abra o Início e retome este teste em Como usar.",
+    "en": "If dictation does not start, open Home and resume this test in How to use.",
+    "es": "Si el dictado no empieza, abre Inicio y retoma esta prueba en Cómo usar."
+  },
+  "Abrir Início para testar": {
+    "pt": "Abrir Início para testar",
+    "en": "Open Home to test",
+    "es": "Abrir Inicio para probar"
+  },
+  "Novos ditados da conta são sincronizados entre seus dispositivos. Registros antigos e ditados sem conta permanecem neste computador.": {
+    "pt": "Novos ditados da conta são sincronizados entre seus dispositivos. Registros antigos e ditados sem conta permanecem neste computador.",
+    "en": "New account dictations sync across your devices. Older records and dictations made without an account stay on this computer.",
+    "es": "Los nuevos dictados de la cuenta se sincronizan entre tus dispositivos. Los registros antiguos y los dictados sin cuenta permanecen en este ordenador."
+  },
+  "A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.": {
+    "pt": "A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.",
+    "en": "The account includes up to 300 minutes per month, subject to beta availability.",
+    "es": "La cuenta incluye hasta 300 minutos al mes, sujetos a la disponibilidad de la beta."
+  },
+  "Este guia não lê o conteúdo do outro aplicativo. A confirmação é manual.": {
+    "pt": "Este guia não lê o conteúdo do outro aplicativo. A confirmação é manual.",
+    "en": "This guide does not read the other app's content. Confirmation is manual.",
+    "es": "Esta guía no lee el contenido de la otra aplicación. La confirmación es manual."
+  },
+  "Fale. O Clarify escreve.": {
+    "pt": "Fale. O Clarify escreve.",
+    "en": "Speak. Clarify writes.",
+    "es": "Habla. Clarify escribe."
+  },
+  "Use sua voz para escrever em outros aplicativos.": {
+    "pt": "Use sua voz para escrever em outros aplicativos.",
+    "en": "Use your voice to write in other apps.",
+    "es": "Usa tu voz para escribir en otras aplicaciones."
+  },
+  "Agora não": {
+    "pt": "Agora não",
+    "en": "Not now",
+    "es": "Ahora no"
+  },
+  "Fechar introdução": {
+    "pt": "Fechar introdução",
+    "en": "Close introduction",
+    "es": "Cerrar introducción"
+  },
+  "O microfone fica disponível entre os ditados do teclado.": {
+    "pt": "O microfone fica disponível entre os ditados do teclado.",
+    "en": "The microphone stays available between keyboard dictations.",
+    "es": "El micrófono sigue disponible entre dictados del teclado."
+  },
+  "Experimente um ditado": {
+    "pt": "Experimente um ditado",
+    "en": "Try a dictation",
+    "es": "Prueba un dictado"
+  },
+  "Abra uma nota e escolha o teclado Clarify pelo globo.": {
+    "pt": "Abra uma nota e escolha o teclado Clarify pelo globo.",
+    "en": "Open a note and select the Clarify keyboard with the globe key.",
+    "es": "Abre una nota y selecciona el teclado Clarify con la tecla del globo."
+  },
+  "Use uma nota ou mensagem de teste, sem enviar.": {
+    "pt": "Use uma nota ou mensagem de teste, sem enviar.",
+    "en": "Use a test note or message without sending it.",
+    "es": "Usa una nota o un mensaje de prueba, sin enviarlo."
+  },
+  "Seu histórico está vazio": {
+    "pt": "Seu histórico está vazio",
+    "en": "Your history is empty",
+    "es": "Tu historial está vacío"
+  },
+  "Configurar e testar o teclado": {
+    "pt": "Configurar e testar o teclado",
+    "en": "Set up and test the keyboard",
+    "es": "Configurar y probar el teclado"
+  },
+  "Seu dicionário está vazio": {
+    "pt": "Seu dicionário está vazio",
+    "en": "Your dictionary is empty",
+    "es": "Tu diccionario está vacío"
+  },
+  "Seus snippets são sincronizados entre seus dispositivos.": {
+    "pt": "Seus snippets são sincronizados entre seus dispositivos.",
+    "en": "Your snippets sync across your devices.",
+    "es": "Tus snippets se sincronizan entre tus dispositivos."
+  },
+  "Toque no microfone, fale e toque em concluir.": {
+    "pt": "Toque no microfone, fale e toque em concluir.",
+    "en": "Tap the microphone, speak, then tap Done.",
+    "es": "Toca el micrófono, habla y toca Finalizar."
+  },
+  "Cancelando…": {
+    "pt": "Cancelando…",
+    "en": "Cancelling…",
+    "es": "Cancelando…"
+  },
+  "Fale por mais tempo antes de concluir.": {
+    "pt": "Fale por mais tempo antes de concluir.",
+    "en": "Speak a little longer before finishing.",
+    "es": "Habla un poco más antes de terminar."
+  },
+  "O ditado não iniciou. Tente novamente.": {
+    "pt": "O ditado não iniciou. Tente novamente.",
+    "en": "Dictation did not start. Try again.",
+    "es": "El dictado no se inició. Inténtalo de nuevo."
+  },
+  "Preparando…": {
+    "pt": "Preparando…",
+    "en": "Getting ready…",
+    "es": "Preparando…"
+  },
+  "Tentar novamente": {
+    "pt": "Tentar novamente",
+    "en": "Try again",
+    "es": "Intentar de nuevo"
+  },
+  "Toque para começar o ditado.": {
+    "pt": "Toque para começar o ditado.",
+    "en": "Tap to start dictation.",
+    "es": "Toca para empezar a dictar."
   }
 }

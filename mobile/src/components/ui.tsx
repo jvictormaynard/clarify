@@ -1,10 +1,41 @@
-import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, useColorScheme, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Animated, Pressable, StyleSheet, Text, useColorScheme, View, type StyleProp, type ViewStyle } from 'react-native';
+import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 
 export function usePalette() {
   const dark = useColorScheme() === 'dark';
-  return { dark, background: dark ? '#111113' : '#f2f2f7', card: dark ? '#1c1c1e' : '#fff', text: dark ? '#f5f5f7' : '#171719', muted: dark ? '#a4a4ab' : '#6c6c74', line: dark ? '#343438' : '#dedee3', accent: '#007aff', danger: dark ? '#ff6961' : '#c42b29' };
+  return { dark, background: dark ? '#111111' : '#f5f5f5', card: dark ? '#1c1c1c' : '#ffffff',
+    text: dark ? '#f5f5f5' : '#181818', muted: dark ? '#a6a6a6' : '#666666', line: dark ? '#3d3d3d' : '#d5d5d5', controlBorder: dark ? '#777777' : '#888888',
+    accent: dark ? '#f5f5f5' : '#181818', accentSoft: dark ? '#292929' : '#ededed', danger: dark ? '#f5f5f5' : '#181818' };
 }
+
+export function useReducedMotion() {
+  const [reduced, setReduced] = useState(true);
+  useEffect(() => {
+    let active = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (active) setReduced(value); }).catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
+    return () => { active = false; subscription.remove(); };
+  }, []);
+  return reduced;
+}
+
+export function StepContent({ step, children }: { step: string; children: ReactNode }) {
+  const reduced = useReducedMotion();
+  const [opacity] = useState(() => new Animated.Value(1));
+  const previousStep = useRef(step);
+  useEffect(() => {
+    const changed = previousStep.current !== step;
+    previousStep.current = step;
+    if (reduced || !changed) { opacity.setValue(1); return; }
+    opacity.setValue(0);
+    const animation = Animated.timing(opacity, { toValue: 1, duration: 160, useNativeDriver: true });
+    animation.start();
+    return () => animation.stop();
+  }, [step, reduced, opacity]);
+  return <Animated.View style={{ gap: 24, opacity }}>{children}</Animated.View>;
+}
+
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const c = usePalette();
   return <View style={[ui.card, { backgroundColor: c.card }, style]}>{children}</View>;
@@ -13,30 +44,70 @@ export function Title({ children, subtitle }: { children: ReactNode; subtitle?: 
   const c = usePalette();
   return <View style={ui.heading}><Text accessibilityRole="header" style={[ui.title, { color: c.text }]}>{children}</Text>{subtitle && <Text style={[ui.body, { color: c.muted }]}>{subtitle}</Text>}</View>;
 }
-export function Button({ children, onPress, disabled = false, destructive = false, loading = false }: { children: string; onPress: () => void; disabled?: boolean; destructive?: boolean; loading?: boolean }) {
+export function Button({ children, onPress, disabled = false, destructive = false, loading = false, primary = false, testID }: {
+  children: string; onPress: () => void; disabled?: boolean; destructive?: boolean; loading?: boolean; primary?: boolean; testID?: string;
+}) {
   const c = usePalette();
-  return <Pressable accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} disabled={disabled || loading} onPress={onPress}
-    style={({ pressed }) => [ui.button, { backgroundColor: c.card, opacity: disabled ? 0.35 : pressed ? 0.65 : 1 }]}>
-    <Text style={[ui.buttonText, { color: destructive ? c.danger : c.accent }]}>{children}</Text>
-    {loading && <ActivityIndicator size="small" color={destructive ? c.danger : c.accent} style={{ position: 'absolute', right: 12 }} />}
+  const color = primary ? c.background : destructive ? c.danger : c.text;
+  return <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} disabled={disabled || loading} onPress={onPress}
+    style={({ pressed }) => [ui.button, { borderWidth: StyleSheet.hairlineWidth, borderColor: primary ? c.text : c.controlBorder,
+      backgroundColor: primary ? c.text : c.card, opacity: disabled ? 0.4 : pressed ? 0.65 : 1 }]}>
+    <Text style={[ui.buttonText, { color }]}>{children}</Text>
+    {loading && <ActivityIndicator size="small" color={color} style={{ position: 'absolute', right: 16 }} />}
   </Pressable>;
 }
-export function TextButton({ children, onPress, disabled = false }: { children: string; onPress: () => void; disabled?: boolean }) {
+export function TextButton({ children, onPress, disabled = false, testID }: { children: string; onPress: () => void; disabled?: boolean; testID?: string }) {
   const c = usePalette();
-  return <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => ({ minHeight: 44, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.35 : pressed ? 0.65 : 1 })}>
-    <Text style={[ui.small, { color: c.accent }]}>{children}</Text>
+  return <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
+    style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.4 : pressed ? 0.65 : 1 })}>
+    <Text style={[ui.body, { color: c.text, fontWeight: '500' }]}>{children}</Text>
   </Pressable>;
 }
 export const ui = StyleSheet.create({
-  content: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 36, gap: 16 },
+  content: { width: '100%', maxWidth: 640, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 36, gap: 24 },
   heading: { gap: 8, marginBottom: 8 }, title: { fontSize: 32, fontWeight: '700', letterSpacing: -0.8 },
   section: { fontSize: 20, fontWeight: '600', letterSpacing: -0.3, marginTop: 8 },
-  body: { fontSize: 15, lineHeight: 22 }, small: { fontSize: 13, lineHeight: 19 },
-  card: { borderRadius: 18, padding: 18, gap: 12 }, row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  body: { fontSize: 16, lineHeight: 23 }, small: { fontSize: 13, lineHeight: 19 },
+  card: { borderRadius: 14, padding: 18, gap: 12 }, row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   button: { minHeight: 48, paddingHorizontal: 16, paddingVertical: 13, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { fontSize: 16, fontWeight: '500' }, input: { minHeight: 48, borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
+  buttonText: { fontSize: 16, fontWeight: '600' }, input: { minHeight: 48, borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
 });
+
+export function ScreenHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
+  return <View style={{ gap: 8, marginBottom: 8 }}>
+    <View style={[ui.row, { alignItems: 'flex-start' }]}><View style={{ flex: 1 }}><Title subtitle={subtitle}>{title}</Title></View>{action}</View>
+  </View>;
+}
+
+export function Section({ title, detail, children }: { title: string; detail?: string; children: ReactNode }) {
+  const c = usePalette();
+  return <View style={{ gap: 10 }}>
+    <Text accessibilityRole="header" style={[ui.section, { color: c.text, marginTop: 4 }]}>{title}</Text>
+    {detail && <Text style={[ui.small, { color: c.muted }]}>{detail}</Text>}
+    <Card>{children}</Card>
+  </View>;
+}
+
+export function NavigationRow({ title, detail, icon, onPress, testID }: { title: string; detail?: string; icon: SymbolViewProps['name']; onPress: () => void; testID?: string }) {
+  const c = usePalette();
+  return <Pressable testID={testID} accessibilityRole="button" onPress={onPress}
+    style={({ pressed }) => ({ minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, opacity: pressed ? 0.65 : 1 })}>
+    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>
+      <SymbolView name={icon} size={19} tintColor={c.accent} accessible={false} />
+    </View>
+    <View style={{ flex: 1, gap: 3 }}><Text style={[ui.body, { color: c.text, fontWeight: '600' }]}>{title}</Text>{detail && <Text style={[ui.small, { color: c.muted }]}>{detail}</Text>}</View>
+    <SymbolView name="chevron.right" size={13} tintColor={c.muted} accessible={false} />
+  </Pressable>;
+}
+
+export function EmptyState({ title, detail, children }: { title: string; detail: string; children?: ReactNode }) {
+  const c = usePalette();
+  return <View style={{ alignItems: 'flex-start', gap: 12, paddingVertical: 16 }}>
+    <Text accessibilityRole="header" style={[ui.section, { color: c.text, marginTop: 0 }]}>{title}</Text>
+    <Text style={[ui.body, { color: c.muted }]}>{detail}</Text>
+    {children}
+  </View>;
+}
 
 export function TableRow({ children, first, last, onPress, disabled = false, accessibilityLabel }: {
   children: ReactNode; first: boolean; last: boolean; onPress: () => void; disabled?: boolean; accessibilityLabel?: string;
