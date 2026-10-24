@@ -3,11 +3,12 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { Alert, AppState } from 'react-native';
 import Core, { type Snapshot, type AccountSnapshot } from '../../modules/clarify-core';
 import { activateMicrophone } from './activation';
+import { errorMessage } from '../errors';
 
 const idle: Snapshot = { sessionActive: false, heartbeat: 0, phase: 'idle', configured: false };
 export const isBusy = (state: Snapshot) => ['recording', 'locked', 'transcribing', 'rewriting'].includes(state.phase);
 export function report(error: unknown) {
-  Alert.alert('Clarify', error instanceof Error ? t(error.message) : t("Não foi possível concluir. Tente novamente."));
+  Alert.alert('Clarify', t(errorMessage(error)));
 }
 
 function useClarifyState() {
