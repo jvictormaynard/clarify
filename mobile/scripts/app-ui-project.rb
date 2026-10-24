@@ -16,7 +16,8 @@ tests.build_configurations.each do |configuration|
     'PRODUCT_MODULE_NAME' => 'ClarifyAppFlowTests',
     'GENERATE_INFOPLIST_FILE' => 'YES', 'SWIFT_VERSION' => '5.0',
     'TEST_TARGET_NAME' => 'Clarify', 'TARGETED_DEVICE_FAMILY' => '1',
-    'CODE_SIGNING_ALLOWED' => 'NO', 'ONLY_ACTIVE_ARCH' => 'YES'
+    'CODE_SIGNING_ALLOWED' => 'YES', 'CODE_SIGN_IDENTITY' => '-',
+    'CODE_SIGN_INJECT_BASE_ENTITLEMENTS' => 'YES', 'ONLY_ACTIVE_ARCH' => 'YES'
   })
 end
 file = File.join(fixture, 'ClarifyAppFlowTests.swift')

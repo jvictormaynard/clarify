@@ -72,7 +72,9 @@ let exitCode = 1;
   run('xcrun', ['simctl', 'ui', simulator, 'appearance', 'dark']);
   const result = path.join(output, 'AppFlow.xcresult');
   await new Promise((resolve, reject) => {
-    const child = spawn('xcodebuild', ['test', '-workspace', path.join(fixture, 'Clarify.xcworkspace'), '-scheme', 'ClarifyAppFlow', '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-derivedDataPath', path.join(os.tmpdir(), `clarify-app-ui-derived-${process.pid}`), '-resultBundlePath', result, 'CODE_SIGNING_ALLOWED=NO', 'ONLY_ACTIVE_ARCH=YES'], { stdio: 'inherit', env: { ...process.env, RCT_NO_LAUNCH_PACKAGER: '1', EXPO_NO_TELEMETRY: '1' } });
+    // Installed simulator apps need base entitlements for the real Keychain.
+    // Ad-hoc signing applies to this copied project and needs no certificate.
+    const child = spawn('xcodebuild', ['test', '-workspace', path.join(fixture, 'Clarify.xcworkspace'), '-scheme', 'ClarifyAppFlow', '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-derivedDataPath', path.join(os.tmpdir(), `clarify-app-ui-derived-${process.pid}`), '-resultBundlePath', result, 'CODE_SIGNING_ALLOWED=YES', 'CODE_SIGN_IDENTITY=-', 'CODE_SIGN_INJECT_BASE_ENTITLEMENTS=YES', 'ONLY_ACTIVE_ARCH=YES'], { stdio: 'inherit', env: { ...process.env, RCT_NO_LAUNCH_PACKAGER: '1', EXPO_NO_TELEMETRY: '1' } });
     child.once('error', reject);
     child.once('exit', code => code === 0 ? resolve() : reject(new Error(`App UI acceptance failed (${code}).`)));
   });
