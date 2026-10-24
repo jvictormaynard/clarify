@@ -149,9 +149,7 @@ class HostedSnippetTests(TestCase):
         self.assertNotIn(ENTRY["replacement"], str(provider.call_args))
 
     @patch("cloud.service.groq.perform")
-    def test_inline_expands_when_rewrite_fails_without_sending_saved_content(
-        self, provider
-    ):
+    def test_inline_expands_before_rewrite_and_keeps_expanded_fallback(self, provider):
         provider.side_effect = [
             {"text": "Atenciosamente, minha assinatura."},
             groq.ProviderFailure(),
@@ -163,10 +161,18 @@ class HostedSnippetTests(TestCase):
         )
         self.assertFalse(response.json()["rewritten"])
         self.assertTrue(response.json()["snippet_expanded"])
-        self.assertNotIn(ENTRY["replacement"], str(provider.call_args_list))
+        self.assertEqual(
+            response.json()["transcript"], "Atenciosamente, minha assinatura."
+        )
+        self.assertNotIn(ENTRY["replacement"], str(provider.call_args_list[0]))
+        messages = provider.call_args_list[1].kwargs["json"]["messages"]
+        self.assertNotIn(ENTRY["replacement"], messages[0]["content"])
+        self.assertIn(
+            "Atenciosamente, " + ENTRY["replacement"] + ".", messages[1]["content"]
+        )
 
     @patch("cloud.service.groq.perform")
-    def test_refined_inline_text_expands_once_and_preserves_saved_content(
+    def test_refined_inline_text_uses_expanded_source_without_reexpanding_output(
         self, provider
     ):
         provider.side_effect = [
@@ -175,7 +181,9 @@ class HostedSnippetTests(TestCase):
                 "choices": [
                     {
                         "finish_reason": "stop",
-                        "message": {"content": "Atenciosamente, minha assinatura."},
+                        "message": {
+                            "content": "Atenciosamente, João Victor, da Engenharia. minha assinatura"
+                        },
                     }
                 ],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 10},
@@ -184,10 +192,142 @@ class HostedSnippetTests(TestCase):
         response = self.send(uuid.uuid4())
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(
-            response.json()["text"], "Atenciosamente, " + ENTRY["replacement"] + "."
+            response.json()["text"],
+            "Atenciosamente, João Victor, da Engenharia. minha assinatura",
         )
         self.assertTrue(response.json()["rewritten"])
-        self.assertNotIn(ENTRY["replacement"], str(provider.call_args_list))
+        self.assertTrue(response.json()["snippet_expanded"])
+        self.assertEqual(
+            response.json()["transcript"], "atenciosamente minha assinatura"
+        )
+        self.assertNotIn(ENTRY["replacement"], str(provider.call_args_list[0]))
+        self.assertIn(
+            "atenciosamente " + ENTRY["replacement"],
+            provider.call_args_list[1].kwargs["json"]["messages"][1]["content"],
+        )
+
+    @patch("cloud.service.groq.perform")
+    def test_inline_expansion_is_nonrecursive_and_replay_keeps_original_library(
+        self, provider
+    ):
+        entries = [
+            {**ENTRY, "replacement": "segunda frase"},
+            {
+                **ENTRY,
+                "trigger": "segunda frase",
+                "replacement": "Must not be inserted",
+            },
+        ]
+        self.client.put(
+            "/v1/snippets", {"revision": 1, "entries": entries}, format="json"
+        )
+        provider.side_effect = [
+            {"text": "Olá, minha assinatura."},
+            groq.ProviderFailure(),
+        ]
+        operation_id = uuid.uuid4()
+        response = self.send(operation_id)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["text"], "Olá, segunda frase.")
+        source = provider.call_args_list[1].kwargs["json"]["messages"][1]["content"]
+        self.assertIn("Olá, segunda frase.", source)
+        self.assertNotIn("Must not be inserted", source)
+        self.client.put("/v1/snippets", {"revision": 2, "entries": []}, format="json")
+        self.assertEqual(self.send(operation_id).json(), response.json())
+        self.assertEqual(provider.call_count, 2)
+
+    @patch("cloud.service.groq.perform")
+    def test_preservation_guard_uses_expanded_source(self, provider):
+        replacement = "Preserve this distinct requirement and its condition. " * 12
+        self.client.put(
+            "/v1/snippets",
+            {"revision": 1, "entries": [{**ENTRY, "replacement": replacement}]},
+            format="json",
+        )
+        transcript = "Aviso: minha assinatura."
+        expanded = "Aviso: " + replacement + "."
+        provider.side_effect = [
+            {"text": transcript},
+            {
+                "choices": [
+                    {"finish_reason": "stop", "message": {"content": "Aviso."}}
+                ],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 10},
+            },
+        ]
+        response = self.send(uuid.uuid4())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["text"], expanded)
+        self.assertFalse(response.json()["rewritten"])
+        self.assertTrue(response.json()["snippet_expanded"])
+
+    @patch("cloud.service.groq.perform")
+    def test_deduplication_guard_compares_expanded_sentences(self, provider):
+        replacement = "Keep this requirement and its condition."
+        self.client.put(
+            "/v1/snippets",
+            {"revision": 1, "entries": [{**ENTRY, "replacement": replacement}]},
+            format="json",
+        )
+        transcript = "Aviso. " + " ".join([ENTRY["trigger"]] * 20)
+        # The saved replacement supplies sentence boundaries before rewriting.
+        expected = "Aviso. " + replacement
+        provider.side_effect = [
+            {"text": transcript},
+            {
+                "choices": [
+                    {"finish_reason": "stop", "message": {"content": expected}}
+                ],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 10},
+            },
+        ]
+        response = self.send(uuid.uuid4())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["text"], expected)
+        self.assertTrue(response.json()["rewritten"])
+
+    @patch("cloud.service.groq.perform")
+    def test_model_generated_trigger_is_not_inserted_without_a_source_match(
+        self, provider
+    ):
+        provider.side_effect = [
+            {"text": "Olá."},
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": "minha assinatura"},
+                    }
+                ],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 10},
+            },
+        ]
+        response = self.send(uuid.uuid4())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["text"], ENTRY["trigger"])
+        self.assertFalse(response.json().get("snippet_expanded", False))
+
+    @patch("cloud.service.groq.perform")
+    def test_expanded_output_history_bound_still_applies_after_rewriting(
+        self, provider
+    ):
+        provider.side_effect = [
+            {"text": "Aviso: minha assinatura."},
+            {
+                "choices": [
+                    {"finish_reason": "stop", "message": {"content": "文" * 12000}}
+                ],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 10},
+            },
+        ]
+        operation_id = uuid.uuid4()
+        response = self.send(operation_id)
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["code"], "snippet_result_too_large")
+        self.assertNotIn("text", response.json())
+        replay = self.send(operation_id)
+        self.assertEqual((replay.status_code, replay.json()), (422, response.json()))
+        self.assertEqual(provider.call_count, 2)
 
     @patch("cloud.service.groq.perform")
     def test_disabled_snippets_and_other_accounts_do_not_expand(self, provider):
@@ -266,7 +406,7 @@ class HostedSnippetTests(TestCase):
         self.assertNotIn("text", response.json())
         self.assertNotIn(long_entry["replacement"], str(provider.call_args_list))
         self.assertEqual(self.send(operation_id).status_code, 422)
-        self.assertEqual(provider.call_count, 2)
+        self.assertEqual(provider.call_count, 1)
 
     @patch("cloud.service.groq.perform")
     def test_wire_limit_rejects_escaped_line_and_paragraph_separators(self, provider):
@@ -375,7 +515,7 @@ class HostedSnippetTests(TestCase):
                     self.assertEqual(
                         (replay.status_code, replay.json()), (422, response.json())
                     )
-                    self.assertEqual(provider.call_count, 2)
+                    self.assertEqual(provider.call_count, 1)
                     self.assertEqual(
                         Operation.objects.get(operation_id=operation_id).cost,
                         ledger.MAX_COST,
@@ -431,7 +571,7 @@ class HostedSnippetTests(TestCase):
                     )
                     self.assertNotIn("text", response.json())
                     self.assertEqual(self.send(operation_id).status_code, 422)
-                    self.assertEqual(provider.call_count, 2)
+                    self.assertEqual(provider.call_count, 1)
                 else:
                     self.assertEqual(response.status_code, 200)
                     self.assertEqual(response.json()["transcript"], transcript)
