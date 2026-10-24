@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Painel de administração do Clarify">
+  <title>Clarify · Administração</title>
+  <link rel="stylesheet" href="/admin/assets/admin.css">
+  <script src="/admin/assets/admin.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Ir para o conteúdo</a>
+  <div class="csrf-source" hidden>{% csrf_token %}</div>
+
+  <section id="auth-screen" class="auth-screen" hidden aria-labelledby="auth-title">
+    <div class="auth-brand">
+      <a class="brand" href="/admin/" aria-label="Clarify, administração"><span class="brand-mark" aria-hidden="true">c</span>Clarify<span class="brand-dot">.</span></a>
+      <div class="auth-intro"><span class="eyebrow">ADMINISTRAÇÃO</span><h1>Entenda o uso.<br>Decida com clareza.</h1><p>Usuários, atividade e custos do Clarify em uma única visão.</p><div class="auth-lines" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div>
+      <p class="auth-footer">Clarify · Área restrita</p>
+    </div>
+    <div class="auth-panel"><div class="auth-card">
+      <span class="lock-icon" aria-hidden="true">↗</span>
+      <h2 id="auth-title">Acesse seu painel</h2>
+      <p id="auth-description" class="muted">Use o e-mail autorizado. Você recebe um código de acesso, sem precisar de senha.</p>
+      <form id="email-form">
+        <label for="login-email">E-mail</label>
+        <input id="login-email" type="email" name="email" autocomplete="email" placeholder="voce@exemplo.com" maxlength="254" required>
+        <button class="button primary auth-submit" type="submit">Receber código <span aria-hidden="true">→</span></button>
+      </form>
+      <form id="code-form" hidden>
+        <label for="login-code">Código de 8 dígitos</label>
+        <input id="login-code" class="code-input" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" placeholder="00000000" required>
+        <button class="button primary auth-submit" type="submit">Entrar no painel <span aria-hidden="true">→</span></button>
+        <button id="change-email" class="button text-button" type="button">Usar outro e-mail</button>
+      </form>
+      <p id="auth-message" class="auth-message" role="status" aria-live="polite"></p>
+      <div id="access-denied" hidden><p>Esta conta não tem acesso administrativo. Entre com uma conta autorizada.</p><button id="auth-signout" class="button secondary" type="button">Trocar de conta</button></div>
+      <p class="auth-note">Acesso restrito. Os dados dos usuários ficam protegidos pela sua sessão.</p>
+    </div></div>
+  </section>
+
+  <div id="boot-screen" class="boot-screen" role="status"><span class="brand-mark" aria-hidden="true">c</span><span>Carregando o painel…</span></div>
+
+  <div id="app" class="app" hidden>
+    <aside class="sidebar" aria-label="Navegação principal">
+      <a class="brand" href="#overview" aria-label="Clarify, visão geral"><span class="brand-mark" aria-hidden="true">c</span>Clarify<span class="brand-dot">.</span></a>
+      <div class="workspace"><span class="workspace-avatar" aria-hidden="true">C</span><span><strong>Clarify</strong><small>Administração</small></span><span class="workspace-badge">BETA</span></div>
+      <span class="nav-label">ACOMPANHAR</span>
+      <nav>
+        <a class="nav-item" href="#overview" data-page="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Visão geral</a>
+        <a class="nav-item" href="#users" data-page="users"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 21v-3a6.5 6.5 0 0 1 13 0v3M16 4.5a3.5 3.5 0 0 1 0 7M18 15a5 5 0 0 1 3.5 4.8V21"/></svg>Usuários<span id="nav-user-count" class="nav-count">—</span></a>
+        <a class="nav-item" href="#usage" data-page="usage"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16l5-5 4 3 8-10M15 4h5v5M3 21h18"/></svg>Uso e custos</a>
+      </nav>
+      <div class="sidebar-bottom"><div class="source-note"><span class="live-dot" aria-hidden="true"></span><strong>Dados da conta Clarify</strong><p>Uso local e chaves próprias não entram nestas métricas.</p></div><div class="profile"><span class="profile-avatar" aria-hidden="true">A</span><div><strong>Administrador</strong><small id="session-email"></small></div><button id="logout" class="icon-button" title="Sair" aria-label="Sair do painel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v16h5M14 8l4 4-4 4M8 12h10"/></svg></button></div></div>
+    </aside>
+    <div class="main-area">
+      <header class="topbar"><div class="breadcrumb">Workspace <span aria-hidden="true">/</span> <strong id="breadcrumb-page">Visão geral</strong></div><div class="topbar-right"><span class="environment"><span class="live-dot" aria-hidden="true"></span>Produção</span><span class="topbar-avatar" aria-hidden="true">C</span><button id="logout-mobile" class="icon-button mobile-logout" title="Sair" aria-label="Sair do painel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v16h5M14 8l4 4-4 4M8 12h10"/></svg></button></div></header>
+      <main id="main" tabindex="-1">
+        <div class="page-heading"><div><div class="eyebrow">CLARIFY ANALYTICS</div><h1 id="page-title">Visão geral</h1><p id="page-subtitle">O que está acontecendo com seu produto.</p></div><div class="page-actions"><label class="period-control" for="period"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6M17 2v6M3 11h18"/></svg><select id="period" aria-label="Período das métricas"><option value="7">Últimos 7 dias</option><option value="14">Últimos 14 dias</option><option value="30" selected>Últimos 30 dias</option></select></label><button id="refresh" class="button secondary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9"/></svg><span>Atualizar</span></button></div></div>
+        <div id="global-error" class="error-banner" role="alert" hidden><span id="global-error-text"></span><button id="retry" class="button secondary">Tentar novamente</button></div>
+        <div id="loading" class="loading-status" role="status" hidden>Atualizando os dados…</div>
+
+        <section id="overview-page" aria-label="Visão geral">
+          <div id="overview-kpis" class="metric-grid" aria-live="polite"></div>
+          <div class="overview-middle"><section class="card trend-card"><div class="card-heading"><div><h2>Atividade ao longo do tempo</h2><p>Veja se o produto está criando hábito.</p></div><div class="chart-switch" role="group" aria-label="Métrica do gráfico"><button type="button" data-chart="active_users" aria-pressed="true">Usuários</button><button type="button" data-chart="audio_minutes" aria-pressed="false">Áudio</button><button type="button" data-chart="operations" aria-pressed="false">Operações</button></div></div><div class="chart-summary"><strong id="chart-total">—</strong><span id="chart-total-label">usuários ativos no período</span></div><div id="activity-chart" class="activity-chart"></div><p id="chart-caption" class="chart-caption">Atividade diária · UTC</p></section>
+          <section class="card funnel-card"><div class="card-heading"><div><h2>Do cadastro ao hábito</h2><p>Novos usuários neste período.</p></div><span class="small-tag">COORTE</span></div><div id="funnel"></div><p class="card-footnote">Retorno = uso em pelo menos 2 dias. Esta coorte ainda pode evoluir.</p><a class="card-link" href="#users">Explorar usuários <span aria-hidden="true">→</span></a></section></div>
+          <section class="insights-section" aria-labelledby="insights-heading"><div class="section-heading"><h2 id="insights-heading">Pontos de atenção</h2><span>Para orientar sua próxima decisão</span></div><div id="insights" class="insight-grid"></div></section>
+          <section class="card recent-card"><div class="card-heading"><div><h2>Usuários em foco</h2><p>Atividade e consumo por conta.</p></div><a class="card-link" href="#users">Ver todos <span aria-hidden="true">→</span></a></div><div id="overview-users" class="table-scroll"></div></section>
+        </section>
+
+        <section id="users-page" aria-label="Usuários" hidden>
+          <div class="users-intro"><span id="users-count" class="count-label">— usuários</span><span class="muted">Encontre uma conta e entenda seu uso.</span></div>
+          <section class="card users-card"><div class="users-toolbar"><div class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg><label class="sr-only" for="user-search">Buscar por e-mail</label><input id="user-search" type="search" placeholder="Buscar por e-mail…" maxlength="254" autocomplete="off"></div><label class="segment-control" for="user-segment"><span class="sr-only">Filtrar usuários</span><select id="user-segment"><option value="all">Todos os usuários</option><option value="active">Ativos no período</option><option value="inactive">Sem uso confirmado no período</option><option value="unverified">E-mail não verificado</option></select></label></div><div id="users-table" class="table-scroll" aria-live="polite"></div><div class="pagination"><span id="pagination-info"></span><div><button id="previous-page" class="button secondary" aria-label="Página anterior">← Anterior</button><button id="next-page" class="button secondary" aria-label="Próxima página">Próxima →</button></div></div></section>
+          <p class="table-help">“Ativo” indica uma operação com conclusão confirmada no período selecionado. O consumo da cota usa o mês atual.</p>
+        </section>
+
+        <section id="usage-page" aria-label="Uso e custos" hidden>
+          <div id="usage-kpis" class="metric-grid"></div>
+          <div class="usage-middle"><section class="card budget-card"><div class="card-heading"><div><h2>Orçamento do mês</h2><p id="budget-month">Mês atual · independente do filtro de período</p></div><span class="small-tag">USD</span></div><div class="budget-total"><strong id="budget-spent">—</strong><span id="budget-limit">de — disponíveis</span></div><meter id="budget-meter" class="budget-meter" min="0" max="100" value="0" aria-label="Orçamento mensal comprometido">0%</meter><div class="budget-legend"><span><i class="legend-dot spent"></i>Contabilizado <strong id="budget-accounted">—</strong></span><span><i class="legend-dot reserved"></i>Reservado <strong id="budget-reserved">—</strong></span></div><div class="budget-details"><div><span>Saldo após reservas</span><strong id="budget-remaining">—</strong></div><div><span>Projeção até o fim do mês</span><strong id="budget-projected">—</strong></div></div><p class="card-footnote">Projeção pelo ritmo médio do mês. O custo contabilizado pode incluir reservas conservadoras de operações sem confirmação.</p></section><section class="card quality-card"><div class="card-heading"><div><h2>Conclusão das operações</h2><p>No período selecionado.</p></div></div><div id="quality"></div><p class="card-footnote">Sem confirmação não significa falha comprovada. O servidor conserva a reserva quando não pode confirmar o resultado.</p></section></div>
+          <section class="card daily-card"><div class="card-heading"><div><h2>Uso por dia</h2><p>Volume e custo contabilizado, em UTC.</p></div></div><div id="daily-table" class="table-scroll"></div></section>
+        </section>
+
+        <footer class="page-footer"><span id="updated-at">Aguardando dados</span><button id="definitions-toggle" class="text-link" type="button" aria-expanded="false" aria-controls="definitions">Como ler estas métricas <span aria-hidden="true">↗</span></button></footer>
+        <section id="definitions" class="card definitions" hidden aria-label="Definições das métricas"><h2>Dados com contexto</h2><dl><div><dt>Alcance</dt><dd>Somente o uso processado pela conta Clarify. Uso local e chaves próprias não são medidos.</dd></div><div><dt>Histórico</dt><dd>Os detalhes das operações ficam disponíveis por 31 dias. Comparações que exigem dados anteriores a esse limite ficam indisponíveis.</dd></div><div><dt>Usuários ativos</dt><dd>Contas com pelo menos uma operação com conclusão confirmada no período. Retorno indica conclusões confirmadas em pelo menos 2 dias distintos. Áudio processado inclui apenas operações com conclusão confirmada.</dd></div><div><dt>Custo</dt><dd>Valores em USD do registro de consumo. Não são receita nem margem. Reservas ainda podem ser liquidadas.</dd></div></dl></section>
+      </main>
+    </div>
+  </div>
+  <dialog id="user-dialog" class="user-dialog" aria-labelledby="detail-title"><div class="drawer-header"><span class="eyebrow">DETALHE DO USUÁRIO</span><button id="close-detail" class="icon-button" aria-label="Fechar detalhe"><span aria-hidden="true">✕</span></button></div><div id="detail-content"></div></dialog>
+</body>
+</html>
