@@ -11,11 +11,13 @@ final class CloudAccountTests: XCTestCase {
       defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
       let library = try LocalLibrary(root: root), audio = root.appendingPathComponent("synthetic.m4a")
       try Data("synthetic audio".utf8).write(to: audio)
-      var token: String? = "fixture", invalidations = 0
+      var token: String? = "fixture", invalidations = 0, dictations = 0
       var account: CloudAccount! = nil
       account = CloudAccount(defaults: defaults, transport: { request in
-        if request.url!.path == "/v1/dictionary" { return try self.response(request, ["revision": 0, "entries": []]) }
-        XCTAssertEqual(request.url!.path, "/v1/dictations")
+        if ["/v1/dictionary", "/v1/snippets"].contains(request.url!.path) {
+          return try self.response(request, ["revision": 0, "entries": []])
+        }
+        XCTAssertEqual(request.url!.path, "/v1/dictations"); dictations += 1
         return try self.response(request, ["code": "authentication_required"], status: status)
       }, readCredential: { token }, saveCredential: { token = $0 }, sessionInvalidated: {
         XCTAssertTrue(Thread.isMainThread); XCTAssertNil(token); XCTAssertFalse(account.configured)
@@ -25,9 +27,47 @@ final class CloudAccountTests: XCTestCase {
         _ = try await account.dictate(audio, operationID: UUID().uuidString, library: library)
         XCTFail("An expired session cannot publish a dictation")
       } catch let error as ClarifyError { XCTAssertEqual(error.code, "authentication_required") }
-      XCTAssertEqual(invalidations, 1)
+      XCTAssertEqual(invalidations, 1); XCTAssertEqual(dictations, 1)
       XCTAssertTrue(try library.history(scope: account.historyScope).entries.isEmpty)
       account.setSessionInvalidationHandler({})
+    }
+  }
+  @MainActor func testPreflightRevocationKeepsLocalSnippetsAndNeverStartsPaidDictation() async throws {
+    for deniedPath in ["/v1/dictionary", "/v1/snippets"] {
+      for status in [401, 403] {
+        let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+        var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
+        defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+        var token: String? = "fixture", invalidations = 0, paths: [String] = []
+        var account: CloudAccount! = nil
+        account = CloudAccount(defaults: defaults, transport: { request in
+          let path = request.url!.path; paths.append(path)
+          XCTAssertTrue(["/v1/dictionary", "/v1/snippets"].contains(path), "An expired preflight must not start inference")
+          return try self.response(request, path == deniedPath ? ["code": "authentication_required"] : ["revision": 0, "entries": []],
+            status: path == deniedPath ? status : 200)
+        }, readCredential: { token }, saveCredential: { token = $0 }, sessionInvalidated: {
+          XCTAssertTrue(Thread.isMainThread); XCTAssertNil(token); XCTAssertFalse(account.configured)
+          XCTAssertNil(account.scope); invalidations += 1
+        })
+        let library = try LocalLibrary(root: root), owner = try XCTUnwrap(account.snippetScope)
+        let saved = Snippet(trigger: "signature", replacement: "Offline saved text")
+        try library.saveSnippets([saved], scope: owner)
+        do {
+          // The absent audio also proves that revocation stops before reading it.
+          _ = try await account.dictate(root.appendingPathComponent("must-not-be-read.m4a"), operationID: UUID().uuidString, library: library)
+          XCTFail("A revoked preflight cannot continue to dictation")
+        } catch let error as ClarifyError {
+          XCTAssertEqual(error.code, "authentication_required")
+          XCTAssertEqual(error.localizedDescription, L("Entre na conta novamente."))
+          XCTAssertNil(error.operationID, "No inference operation was submitted")
+        }
+        XCTAssertEqual(paths, deniedPath == "/v1/dictionary" ? ["/v1/dictionary"] : ["/v1/dictionary", "/v1/snippets"])
+        XCTAssertEqual(invalidations, 1); XCTAssertNil(token); XCTAssertFalse(account.configured); XCTAssertFalse(account.isBusy)
+        XCTAssertEqual(try library.snippets(scope: owner), [saved]); XCTAssertTrue(try library.snippets().isEmpty)
+        account.setSessionInvalidationHandler({})
+      }
     }
   }
   @MainActor func testAccountCommandRevocationNotifiesTheSameResourceOwner() async throws {

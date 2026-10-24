@@ -464,14 +464,18 @@ final class CloudAccount {
       operationID: diagnosticOperation, status: status)
   }
   @MainActor func dictate(_ audio: URL, operationID: String, library: LocalLibrary) async throws -> CloudDictation {
-    guard configured else { throw ClarifyError(L("Entre na conta novamente.")) }
+    guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
     try await waitForAutomaticRefresh()
     try begin(); defer { end() }
     if scope != nil && ProcessInfo.processInfo.systemUptime - lastSyncAttempt >= 60 {
       do { try await syncImpl(library) }
-      catch { try Task.checkCancellation(); locked { syncError = L("O ditado usou a última versão salva no servidor. Há palavras ou snippets pendentes de sincronização.") } }
+      catch {
+        try Task.checkCancellation()
+        guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
+        locked { syncError = L("O ditado usou a última versão salva no servidor. Há palavras ou snippets pendentes de sincronização.") }
+      }
     }
-    guard configured else { throw ClarifyError(L("Entre na conta novamente.")) }
+    guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
     let bytes = try Data(contentsOf: audio)
     guard bytes.count <= 24 * 1024 * 1024, UUID(uuidString: operationID) != nil else { throw ClarifyError(L("Grave um trecho menor.")) }
     let boundary = "Clarify-\(UUID().uuidString)"
