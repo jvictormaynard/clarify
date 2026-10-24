@@ -7,7 +7,7 @@ final class ClarifyAudioSession: NSObject {
   static let shared = ClarifyAudioSession()
   private var engine = AVAudioEngine()
   private let fileLock = NSLock()
-  private var file: AVAudioFile?
+  private var file: AudioClipWriter?
   private var captureAfter: TimeInterval = 0
   private var meteredOperationID: String?
   private var meteredAt: TimeInterval = 0
@@ -124,7 +124,7 @@ final class ClarifyAudioSession: NSObject {
             }
           }
           self.meteredAt = observedAt
-          do { try file.write(from: buffer) }
+          do { try file.write(buffer) }
           catch {
             let failedURL = self.audioURL
             DispatchQueue.main.async {
@@ -206,7 +206,10 @@ final class ClarifyAudioSession: NSObject {
         deactivate(); fail(L("Abra o Clarify e ative o microfone.")); return
       }
       do { try start(id: id, locked: action == "lock", haptics: haptics) }
-      catch { fail(error.localizedDescription) }
+      catch {
+        let failure = MicrophoneFailure.recordingError(for: error)
+        fail(failure.localizedDescription, diagnostics: failure)
+      }
     case "finish":
       if state.operationID == id { finish(haptics: haptics) }
     case "cancel":
@@ -222,12 +225,7 @@ final class ClarifyAudioSession: NSObject {
     clipHistory = CloudAccount.shared.captureHistory()
     let format = engine.inputNode.outputFormat(forBus: 0)
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("clarify-\(UUID().uuidString).m4a")
-    let newFile = try AVAudioFile(forWriting: url, settings: [
-      AVFormatIDKey: kAudioFormatMPEG4AAC,
-      AVSampleRateKey: format.sampleRate,
-      AVNumberOfChannelsKey: format.channelCount,
-      AVEncoderBitRateKey: 64_000
-    ], commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+    let newFile = try AudioClipWriter(url: url, inputFormat: format)
     playCue(starting: true)
     if haptics, UIApplication.shared.applicationState == .active {
       feedback.record("start")
@@ -244,13 +242,21 @@ final class ClarifyAudioSession: NSObject {
     state.text = nil; state.message = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
     publish()
   }
-  private func closeFile() -> URL? {
+  private func closeFile(finalize: Bool = false) -> URL? {
     fileLock.lock()
+    var failed = false
+    if finalize {
+      do { try file?.finish() } catch { failed = true }
+    } else { file?.cancel() }
     file = nil
     let url = audioURL; audioURL = nil
     meteredOperationID = nil; meteredAt = 0; meteredLevel = 0
     fileLock.unlock()
     try? store?.publishAudioMeter(.inactive())
+    if failed {
+      if let url { try? FileManager.default.removeItem(at: url) }
+      return nil
+    }
     return url
   }
   private func finish(haptics: Bool = true) {
@@ -259,7 +265,7 @@ final class ClarifyAudioSession: NSObject {
     let recordedAt = startedAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
     let historyOwner = clipHistory
     startedAt = nil
-    guard let url = closeFile() else { fail(L("Não foi possível ler a gravação.")); return }
+    guard let url = closeFile(finalize: true) else { fail(L("Não foi possível gravar o áudio.")); return }
     playCue(starting: false)
     if haptics, UIApplication.shared.applicationState == .active { feedback.record("finish") }
     guard duration >= 0.3 else {

@@ -5373,5 +5373,10 @@
     "pt": "Texto de teste",
     "en": "Test text",
     "es": "Texto de prueba"
+  },
+  "Não foi possível iniciar a gravação. Ative o microfone novamente no Clarify.": {
+    "pt": "Não foi possível iniciar a gravação. Ative o microfone novamente no Clarify.",
+    "en": "Could not start recording. Turn on the microphone again in Clarify.",
+    "es": "No se pudo iniciar la grabación. Activa el micrófono de nuevo en Clarify."
   }
 }

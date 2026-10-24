@@ -3,6 +3,35 @@ import XCTest
 @testable import ClarifyContracts
 
 final class AudioClipTests: XCTestCase {
+  func testFailedCreationLeavesNoPartialClipOrUnrelatedDeletion() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let neighbour = root.appendingPathComponent("keep.txt")
+    try Data("keep".utf8).write(to: neighbour)
+    let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+    let unsupported = root.appendingPathComponent("clip.unsupported")
+    XCTAssertThrowsError(try AudioClipWriter(url: unsupported, inputFormat: format))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: unsupported.path))
+    XCTAssertEqual(try Data(contentsOf: neighbour), Data("keep".utf8))
+  }
+  func testRouteFormatMismatchAndClosedWriterRejectNewBuffers() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).m4a")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+    let other = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+    let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: other, frameCapacity: 10))
+    buffer.frameLength = 10
+    let writer = try AudioClipWriter(url: url, inputFormat: format)
+    XCTAssertThrowsError(try writer.write(buffer)) { error in
+      guard case AudioClipWriter.Failure.formatChanged = error else { return XCTFail("Unexpected error: \(error)") }
+    }
+    writer.cancel()
+    XCTAssertNoThrow(try writer.finish())
+    XCTAssertThrowsError(try writer.write(buffer)) { error in
+      guard case AudioClipWriter.Failure.closed = error else { return XCTFail("Unexpected error: \(error)") }
+    }
+  }
   func testNativeFormatsProduceReadableMonoAACWithSpeechAndCompleteDuration() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
