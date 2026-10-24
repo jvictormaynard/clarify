@@ -18,7 +18,9 @@ upload guest snippets. Hosted expansion runs once after recognition or rewriting
 including the transcript-preserving rewrite-failure path. Standalone triggers
 bypass rewriting. Provider context can contain enabled triggers, never saved
 expansion text. Account libraries have a 256 KiB compact UTF-8 JSON limit, and
-hosted dictation results have a 384 KiB bound with an explicit error, no truncation. Account history
+snippet-expanded dictation fields retain the existing 32 KiB UTF-8 history limit.
+Rendered hosted responses also have a 384 KiB bound. Excessive expansion returns
+an explicit error without truncation. Account history
 uses an endpoint/user-scoped offline cache and durable pending changes; local
 records are never inferred to belong to the current account or uploaded.
 See the [history synchronization contract](history-sync.md) for cursor,

@@ -71,8 +71,10 @@ account's local cache, without deleting guest snippets.
 
 Account entries have the same per-entry limits plus a **256 KiB** aggregate bound
 for compact UTF-8 JSON. Oversized saves are rejected without truncation. The
-hosted final dictation response has a **384 KiB** bound. Excessive expansion returns
-an explicit processing error and is not inserted or automatically retried.
+hosted original transcript and expanded text each have a **32 KiB UTF-8** limit,
+which matches the current synchronized-history protocol. The rendered response
+also has a **384 KiB** transport bound. Excessive expansion returns an explicit
+processing error and is not inserted, truncated or automatically retried.
 
 Hosted snippets are applied once on the server, including when rewriting fails.
 Clients use the returned final text and never expand it again. Personal desktop
