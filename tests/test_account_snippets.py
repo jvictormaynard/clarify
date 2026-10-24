@@ -2,6 +2,7 @@ from dataclasses import replace
 from pathlib import Path
 import unittest
 import json
+from unittest.mock import patch
 
 from clarify_account import AccountError, merge_snippets
 from dictionary_snippets import Snippet
@@ -209,3 +210,49 @@ class AccountSnippetTests(unittest.TestCase):
             str(caught.exception),
             "O texto dos snippets excede o limite. Use menos frases de ativação.",
         )
+
+    def test_failed_snippet_write_rolls_back_simultaneous_dictionary_change(self):
+        from dictionary_snippets import (
+            DictionaryEntry,
+            LocalDictionarySnippetsRepository,
+        )
+
+        self.signed_in()
+        self.service.reload()
+        before = self.service.state
+        original_save = LocalDictionarySnippetsRepository.save
+
+        def persist(repository, state):
+            if repository.path.name == "snippets.json":
+                raise OSError("isolated storage failure")
+            return original_save(repository, state)
+
+        with patch.object(LocalDictionarySnippetsRepository, "save", persist):
+            with self.assertRaises(OSError):
+                self.service.replace(
+                    replace(
+                        before,
+                        dictionary=(DictionaryEntry("new"),),
+                        snippets=(Snippet("sig", "saved"),),
+                    )
+                )
+        self.assertEqual(self.service.state, before)
+        self.assertEqual(self.service.repository.load(), before)
+        self.assertEqual(self.local.load().snippets, (Snippet("sig", "signature"),))
+
+    def test_snippet_only_save_does_not_rewrite_account_dictionary(self):
+        from dictionary_snippets import LocalDictionarySnippetsRepository
+
+        self.signed_in()
+        self.service.reload()
+        before = self.service.state
+        writes = []
+        original_save = LocalDictionarySnippetsRepository.save
+
+        def persist(repository, state):
+            writes.append(repository.path.name)
+            return original_save(repository, state)
+
+        with patch.object(LocalDictionarySnippetsRepository, "save", persist):
+            self.service.replace(replace(before, snippets=(Snippet("sig", "saved"),)))
+        self.assertEqual(writes, ["snippets.json"])

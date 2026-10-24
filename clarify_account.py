@@ -843,9 +843,17 @@ class AccountDictionaryRepository:
         if not self.account.scope:
             return self.local.save(state)
         account_snippet_entries(state.snippets)
-        LocalDictionarySnippetsRepository(self.account.snippet_path()).save(
-            DictionarySnippets(snippets=state.snippets)
-        )
-        return LocalDictionarySnippetsRepository(self.path).save(
-            replace(state, snippets=())
-        )
+        vocabulary = LocalDictionarySnippetsRepository(self.path)
+        snippets = LocalDictionarySnippetsRepository(self.account.snippet_path())
+        before_words, before_snippets = vocabulary.load(), snippets.load()
+        words_changed = before_words.dictionary != state.dictionary
+        snippets_changed = before_snippets.snippets != state.snippets
+        if words_changed:
+            vocabulary.save(replace(state, snippets=()))
+        try:
+            if snippets_changed:
+                snippets.save(DictionarySnippets(snippets=state.snippets))
+        except Exception:
+            if words_changed:
+                vocabulary.save(before_words)
+            raise
