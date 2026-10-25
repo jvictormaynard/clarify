@@ -23,6 +23,7 @@ PROPERTIES = (
     "historyState",
     "dirty",
     "dictionaryEntries",
+    "dictionaryContext",
     "snippets",
     "snippetContext",
     "lastError",
@@ -43,6 +44,7 @@ PROPERTIES = (
     "updateProgress",
     "historyRetentionDays",
     "microphoneDevices",
+    "microphoneInventoryBusy",
     "selectedMicrophoneId",
     "microphoneStatus",
     "microphoneTestBusy",
@@ -109,6 +111,9 @@ METHODS = frozenset(
         "testMicrophone",
         "stopMicrophoneTest",
         "setRecordingControls",
+        "setRecordingVadEnabled",
+        "savePreference",
+        "saveLibraryPreference",
         "selectWorkflow",
         "setRouteProviderId",
         "setRouteModelId",
@@ -145,9 +150,15 @@ METHODS = frozenset(
 class SettingsProtocol:
     def __init__(self, settings):
         self.settings = settings
+        self._poll_state = None
+        self._poll_dirty = set()
 
     def snapshot(self):
-        state = {key: getattr(self.settings, key) for key in PROPERTIES}
+        library = self.settings.library_snapshot()
+        state = {
+            key: library[key] if key in library else getattr(self.settings, key)
+            for key in PROPERTIES
+        }
         state["providers"] = [
             {"id": key, "label": self.settings.providerName(key)}
             for key in self.settings.providerIds
@@ -156,6 +167,36 @@ class SettingsProtocol:
             {"id": key, "label": self.settings.providerName(key)}
             for key in self.settings.providersForScope(self.settings.selectedScope)
         ]
+        return state
+
+    def poll(self):
+        # Read the actual allowlisted values, including asynchronous changes.
+        # Keep one baseline only. Full command replies must not consume changes:
+        # background callers can intentionally ignore those replies.
+        state = self.snapshot()
+        previous = self._poll_state
+        delta = (
+            state
+            if previous is None
+            else {
+                key: value
+                for key, value in state.items()
+                if key in self._poll_dirty or value != previous[key]
+            }
+        )
+        self._poll_state = state
+        self._poll_dirty.clear()
+        return delta
+
+    def _client_snapshot(self):
+        state = self.snapshot()
+        if self._poll_state is not None:
+            # Full replies may expose transient state between polls. Remember
+            # its keys so a completion that returns to the poll baseline still
+            # reaches the client. Retain keys only, never another snapshot.
+            self._poll_dirty.update(
+                key for key, value in state.items() if value != self._poll_state[key]
+            )
         return state
 
     def dispatch(self, request):
@@ -167,7 +208,9 @@ class SettingsProtocol:
             return {**reply, "error": "Invalid settings request"}
         try:
             if method == "snapshot" and not args:
-                result = self.snapshot()
+                result = self._client_snapshot()
+            elif method == "poll" and not args:
+                result = self.poll()
             elif method == "getHistoryPage":
                 if len(args) != 2 or any(type(value) is not str for value in args):
                     raise ValueError()
@@ -181,6 +224,26 @@ class SettingsProtocol:
                     raise ValueError()
                 result = self.settings.getHistoryTextPart(*args)
             elif method in METHODS:
+                if method in {"setDictionaryEntries", "setSnippets"} and (
+                    len(args)
+                    not in ({1, 2, 3} if method == "setDictionaryEntries" else {2, 3})
+                    or type(args[0]) is not list
+                    or (len(args) >= 2 and type(args[1]) is not str)
+                    or (len(args) == 3 and type(args[2]) is not list)
+                ):
+                    raise ValueError()
+                if method == "save" and (
+                    len(args) > 1 or (args and type(args[0]) is not str)
+                ):
+                    raise ValueError()
+                if method == "savePreference" and (
+                    len(args) != 2
+                    or type(args[0]) is not str
+                    or type(args[1]) is not list
+                ):
+                    raise ValueError()
+                if method == "saveLibraryPreference" and len(args) != 5:
+                    raise ValueError()
                 if method == "save" and self.settings.providerDirty:
                     return {
                         **reply,
@@ -196,7 +259,7 @@ class SettingsProtocol:
                         "error": self.settings.lastError
                         or "Não foi possível aplicar a alteração.",
                     }
-                result = self.snapshot()
+                result = self._client_snapshot()
             else:
                 return {**reply, "error": "Unsupported settings method"}
             return {**reply, "result": result}

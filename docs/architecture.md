@@ -152,7 +152,7 @@ floating window remains responsive.
 
 ## Settings process boundary
 
-`desktop/src/` contains the React/TypeScript Settings pages, Radix-based controls,
+`desktop/src/` contains the React/TypeScript Settings pages, Base UI controls,
 and styles. `desktop/src-tauri/` hosts them in a Tauri v2 WebView2 window. This is
 not Electron and does not replace the Python audio engine or QML pill.
 
@@ -169,11 +169,52 @@ be described as complete localization of the React pages.
 
 The Settings frontend separates window composition (`desktop/src/app.tsx`),
 feature pages (`pages/`), reusable controls (`components/`), and application state
-(`settings/`). `settings/use-settings.ts` owns draft staging, navigation and
-save/discard operations. Its shared operation boundary controls busy state,
-errors and success updates. `settings/use-settings-window.ts` owns native close
+(`settings/`). `settings/use-settings.ts` owns local drafts, navigation and
+contextual save/discard operations. Its operation boundary controls action-local
+pending state, errors and success updates. Navigation stays available during
+microphone tests, refreshes and saves; it does not stage free-text drafts.
+`savePreference` persists one allowlisted choice without committing other drafts.
+`saveLibraryPreference` applies a library flag only under the matching persisted
+entry identity and account context. Explicit text saves reserve the connection
+for the full staging/persistence transaction, preserving later edits and drafts
+on other pages. Library drafts retain their original persisted baseline. Save
+merges local edits with a fresh library snapshot. Staging checks the expected
+persisted rows under the account/library guard and rejects a stale snapshot
+before changing the backend draft. This preserves remote additions received
+during editing or while Save waits in the queue. The close confirmation can
+explicitly save all pending drafts. `settings/use-settings-window.ts` owns native close
 requests. `settings/bridge.ts` defines typed command arguments for frontend
 callers without changing the Python allowlist or private pipe protocol.
+
+Periodic Settings reads use top-level deltas from one previous poll snapshot.
+Initial reads and command replies remain full snapshots. Only a poll advances
+the delta baseline, so an ignored background command reply cannot consume a
+later update. Full replies mark changed field names for the next poll, including
+transient values that return to the baseline before that poll. React merges fields with structural sharing, skips unchanged
+state, and compares library drafts only when their references change. A failed
+poll triggers a full read before polling continues. This remains one serialized
+frontend connection; Python still reads the allowlisted properties on each poll.
+Pending telemetry does not hold the user-operation busy state. Local navigation
+uses the latest state and does not publish an old snapshot over a newer delta.
+
+Microphone discovery runs on one worker per Settings controller. Repeated refresh
+requests share the pending query. The last completed inventory stays available
+while discovery runs. A queued Qt signal publishes the result, and generation
+and shutdown checks reject late results. Optional backend loading also occurs
+on this worker. Device discovery does not change a saved microphone preference
+or an unrelated draft error. See [desktop performance](desktop-performance.md)
+for shared components, measured cases, and validation limits.
+
+`QtRecorder` loads PortAudio lazily through one shared loader on audio workers.
+Each SoX capture has its own identity. Process launch and WAV readiness reads
+run outside locks used by Qt; the pill reads cached readiness. One optional
+meter worker owns stream open/start/stop/close across rapid restarts. Recording
+finalization does not wait for this presentation stream. Late processes and
+streams cannot attach to a newer capture, and cancelled late launches repeat
+their owned audio cleanup after process termination.
+Windows readiness handles share delete access, so cancellation can unlink the
+WAV during a pending read. Voice translation uses the same lazy audio loader
+from its recording worker; the production import path does not initialize it.
 
 Snippet draft writes retain their captured account context through persistence
 and rollback. The account repository supplies an optional transaction guard;

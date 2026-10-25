@@ -69,7 +69,21 @@ class OnboardingAccount:
         return "00000000-0000-4000-8000-000000000001" if self.signed_in else None
 
     def sync_library(self, service, *, prefer=None):
-        pass
+        if not self.import_on_sync:
+            return
+        self.import_on_sync = False
+        from dictionary_snippets import DictionaryEntry, DictionarySnippets, Snippet
+
+        state = service.state
+        service.replace(
+            DictionarySnippets(
+                dictionary=(*state.dictionary, DictionaryEntry(term="Remote term")),
+                snippets=(
+                    *state.snippets,
+                    Snippet(trigger="remote phrase", replacement="Remote replacement"),
+                ),
+            )
+        )
 
     @property
     def signed_in(self):
@@ -87,6 +101,7 @@ class OnboardingAccount:
         self.refresh_if_due(None)
 
     def __init__(self):
+        self.import_on_sync = False
         self.state = dict(
             endpoint="https://clarify.example",
             signedIn=False,
@@ -205,6 +220,14 @@ class Dispatcher(QObject):
             QCoreApplication.quit()
             return
         if (
+            "--library-sync" in sys.argv
+            and request.get("method") == "testArmLibrarySync"
+        ):
+            # Test-only remote import on the next real controller sync worker.
+            self.protocol.settings._account.import_on_sync = True
+            print(json.dumps({"id": request.get("id"), "result": True}), flush=True)
+            return
+        if (
             "--history" in sys.argv
             and request.get("method") == "testHistoryContextChange"
         ):
@@ -264,7 +287,7 @@ def main():
         settings = QmlSettingsController(
             repositories,
             account_service=OnboardingAccount()
-            if onboarding or "--signed-in" in sys.argv
+            if onboarding or "--signed-in" in sys.argv or "--social-wait" in sys.argv
             else None,
             microphone_backend=backend,
             local_product=Mock(state=LocalASRProductState("installed"), busy=False),

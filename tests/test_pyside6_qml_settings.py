@@ -128,6 +128,458 @@ class QmlSettingsControllerTests(unittest.TestCase):
     def setUpClass(cls):
         cls.qt_app = QApplication.instance() or QApplication([])
 
+    def _wait_for_inventory(self, controller):
+        deadline = time.monotonic() + 2
+        while controller.microphoneInventoryBusy and time.monotonic() < deadline:
+            self.qt_app.processEvents()
+            time.sleep(0.001)
+        self.assertFalse(controller.microphoneInventoryBusy)
+
+    def _preference_controller(self, directory, **kwargs):
+        from unittest.mock import Mock
+        from local_asr_product import LocalASRProductState
+
+        controller = QmlSettingsController(
+            _repositories(directory),
+            local_product=Mock(state=LocalASRProductState("installed"), busy=False),
+            microphone_backend=_MicrophoneBackend(
+                MicrophoneInventory.unavailable("test")
+            ),
+            **kwargs,
+        )
+        self.addCleanup(controller.shutdown)
+        return controller
+
+    def test_preference_hotkeys_persist_only_the_requested_binding_or_mode(self):
+        with TemporaryDirectory() as directory:
+            applied = []
+            controller = self._preference_controller(
+                directory, hotkey_applier=applied.append
+            )
+            repo = controller.repositories.config
+            original = repo.load().hotkeys
+            controller.setHotkey("rewrite_hotkey", "Ctrl+Shift+K")
+            self.assertTrue(
+                controller.savePreference(
+                    "setHotkey", ["recording_hotkey", "Ctrl+Shift+L"]
+                )
+            )
+            self.assertEqual(
+                repo.load().hotkeys.definition(HotkeyAction.RECORDING).display,
+                "Ctrl+Shift+L",
+            )
+            self.assertEqual(
+                repo.load().hotkeys.definition(HotkeyAction.REWRITE),
+                original.definition(HotkeyAction.REWRITE),
+            )
+            self.assertEqual(
+                controller.hotkeyDefinitions["rewrite_hotkey"]["display"],
+                "Ctrl+Shift+K",
+            )
+            self.assertTrue(controller.dirty)
+            self.assertEqual(applied[-1], repo.load().hotkeys)
+
+            with patch.object(
+                controller._hotkey_settings_controller, "push_to_talk_supported", True
+            ):
+                self.assertTrue(
+                    controller.savePreference(
+                        "setHotkeyActivationMode", ["push_to_talk"]
+                    )
+                )
+            self.assertEqual(repo.load().hotkeys.activation_mode.value, "push_to_talk")
+            self.assertEqual(
+                repo.load().hotkeys.definition(HotkeyAction.REWRITE),
+                original.definition(HotkeyAction.REWRITE),
+            )
+            self.assertTrue(
+                controller.savePreference("resetHotkey", ["recording_hotkey"])
+            )
+            self.assertEqual(
+                repo.load().hotkeys.definition(HotkeyAction.RECORDING),
+                original.definition(HotkeyAction.RECORDING),
+            )
+            self.assertTrue(controller.savePreference("resetAllHotkeys", []))
+            self.assertEqual(repo.load().hotkeys, HotkeySettings.defaults())
+            self.assertFalse(controller.dirty)
+            self.assertTrue(controller.load())
+            self.assertEqual(controller.hotkeyActivationMode, "toggle")
+
+    def test_library_context_slots_keep_legacy_save_order_and_accept_context(self):
+        with TemporaryDirectory() as directory:
+            controller = self._preference_controller(directory)
+            entries = [{"term": "Zebra"}, {"term": "Alpha"}]
+            self.assertTrue(controller.setDictionaryEntries(entries))
+            self.assertTrue(controller.save())
+            self.assertEqual(
+                [row["term"] for row in controller.dictionaryEntries],
+                ["Zebra", "Alpha"],
+            )
+            self.assertTrue(controller.setDictionaryEntries(entries, "local"))
+            self.assertTrue(controller.save("local"))
+            expected = controller.dictionaryEntries
+            self.assertTrue(controller.setDictionaryEntries(entries, "local", expected))
+            self.assertTrue(controller.setSnippets([], "local", []))
+            signatures = {
+                bytes(controller.metaObject().method(index).methodSignature()).decode()
+                for index in range(controller.metaObject().methodCount())
+            }
+            self.assertTrue(
+                {
+                    "save()",
+                    "save(QString)",
+                    "setDictionaryEntries(QVariantList)",
+                    "setDictionaryEntries(QVariantList,QString)",
+                    "setDictionaryEntries(QVariantList,QString,QVariantList)",
+                    "setSnippets(QVariantList,QString)",
+                    "setSnippets(QVariantList,QString,QVariantList)",
+                }.issubset(signatures)
+            )
+
+    def test_preference_hotkey_failure_rolls_back_partial_registration_and_retries(
+        self,
+    ):
+        with TemporaryDirectory() as directory:
+            applied = []
+            fail = [True]
+
+            def apply(settings):
+                applied.append(settings)
+                if fail[0]:
+                    fail[0] = False
+                    raise OSError("registration failed")
+
+            controller = self._preference_controller(directory, hotkey_applier=apply)
+            original = controller.repositories.config.load()
+            self.assertFalse(
+                controller.savePreference(
+                    "setHotkey", ["recording_hotkey", "Ctrl+Shift+L"]
+                )
+            )
+            self.assertEqual(controller.repositories.config.load(), original)
+            self.assertEqual(applied[-1], original.hotkeys)
+            self.assertEqual(
+                controller.hotkeyDefinitions["recording_hotkey"]["display"],
+                original.hotkeys.definition(HotkeyAction.RECORDING).display,
+            )
+            self.assertFalse(controller.dirty)
+            self.assertTrue(
+                controller.savePreference(
+                    "setHotkey", ["recording_hotkey", "Ctrl+Shift+L"]
+                )
+            )
+            self.assertEqual(applied[-1], controller.repositories.config.load().hotkeys)
+
+    def test_preference_hotkey_storage_failure_restores_runtime_and_draft(self):
+        with TemporaryDirectory() as directory:
+            applied = []
+            controller = self._preference_controller(
+                directory, hotkey_applier=applied.append
+            )
+            repo = controller.repositories.config
+            original = repo.load()
+            controller.setLanguage("pt")
+            with patch.object(repo, "apply", side_effect=OSError("disk full")):
+                self.assertFalse(
+                    controller.savePreference(
+                        "setHotkey", ["recording_hotkey", "Ctrl+Shift+L"]
+                    )
+                )
+            self.assertEqual(repo.load(), original)
+            self.assertEqual(applied[-1], original.hotkeys)
+            self.assertEqual(controller.language, "pt")
+            self.assertTrue(controller.dirty)
+            self.assertTrue(
+                controller.savePreference(
+                    "setHotkey", ["recording_hotkey", "Ctrl+Shift+L"]
+                )
+            )
+            self.assertNotEqual(repo.load().hotkeys, original.hotkeys)
+            self.assertEqual(repo.load().ui.language, original.ui.language)
+
+    def test_preference_hotkey_failed_rollback_can_reapply_the_saved_value(self):
+        from unittest.mock import Mock
+
+        with TemporaryDirectory() as directory:
+            apply = Mock(
+                side_effect=[
+                    OSError("register failed"),
+                    OSError("restore failed"),
+                    None,
+                ]
+            )
+            controller = self._preference_controller(directory, hotkey_applier=apply)
+            original = controller.repositories.config.load()
+            self.assertFalse(
+                controller.savePreference(
+                    "setHotkey", ["recording_hotkey", "Ctrl+Shift+L"]
+                )
+            )
+            self.assertEqual(controller.repositories.config.load(), original)
+            self.assertTrue(
+                controller.savePreference("resetHotkey", ["recording_hotkey"])
+            )
+            self.assertEqual(apply.call_count, 3)
+            self.assertEqual(apply.call_args.args[0], original.hotkeys)
+
+    def test_preference_capture_restore_failure_keeps_the_operation_retryable(self):
+        from unittest.mock import Mock
+
+        with TemporaryDirectory() as directory:
+            capture = Mock(side_effect=[None, OSError("restore failed"), None])
+            controller = self._preference_controller(
+                directory, hotkey_capture_changed=capture
+            )
+            original = controller.repositories.config.load()
+            self.assertTrue(controller.beginHotkeyCapture("recording_hotkey"))
+            self.assertFalse(
+                controller.savePreference(
+                    "setHotkey", ["recording_hotkey", "Ctrl+Shift+L"]
+                )
+            )
+            self.assertEqual(controller.repositories.config.load(), original)
+            self.assertEqual(controller.hotkeyCaptureAction, "recording_hotkey")
+            self.assertTrue(
+                controller.savePreference(
+                    "setHotkey", ["recording_hotkey", "Ctrl+Shift+L"]
+                )
+            )
+            self.assertEqual(controller.hotkeyCaptureAction, "")
+
+    def test_preference_autostart_registry_failure_does_not_write_config(self):
+        with TemporaryDirectory() as directory:
+            registry = _Registry()
+            controller = self._preference_controller(directory, registry=registry)
+            repo = controller.repositories.config
+            original = repo.load()
+            with patch.object(qml_settings, "_is_windows", return_value=True):
+                with patch.object(
+                    registry, "SetValueEx", side_effect=OSError("registry unavailable")
+                ):
+                    self.assertFalse(controller.savePreference("setAutostart", [True]))
+                self.assertEqual(repo.load(), original)
+                self.assertFalse(controller.autostart)
+                self.assertTrue(controller.savePreference("setAutostart", [True]))
+
+    def test_preference_autostart_storage_failure_restores_registry_and_retries(self):
+        with TemporaryDirectory() as directory:
+            registry = _Registry()
+            controller = self._preference_controller(directory, registry=registry)
+            repo = controller.repositories.config
+            original = repo.load()
+            controller.setLanguage("pt")
+            with patch.object(qml_settings, "_is_windows", return_value=True):
+                with patch.object(repo, "apply", side_effect=OSError("disk full")):
+                    self.assertFalse(controller.savePreference("setAutostart", [True]))
+                self.assertEqual(repo.load(), original)
+                self.assertEqual(registry.values, {})
+                self.assertFalse(controller.autostart)
+                self.assertEqual(controller.language, "pt")
+                self.assertTrue(controller.savePreference("setAutostart", [True]))
+                self.assertTrue(repo.load().startup.autostart)
+                self.assertIn(qml_settings.AUTOSTART_VALUE_NAME, registry.values)
+                self.assertEqual(repo.load().ui.language, original.ui.language)
+
+    def test_preference_use_local_asr_persists_route_without_text_drafts(self):
+        with TemporaryDirectory() as directory:
+            controller = self._preference_controller(directory)
+            repo = controller.repositories.config
+            original = repo.load()
+            controller.setRoutePrompt("Pending transcription prompt")
+            controller.selectWorkflow("rewrite")
+            controller.setRoutePrompt("Pending rewrite prompt")
+            controller._local_profile = "ggml-small"
+            controller._local_device = "cpu"
+            self.assertTrue(controller.savePreference("useLocalAsr", []))
+            saved = repo.load()
+            self.assertEqual(saved.workflow("transcription").provider_id, "local_asr")
+            self.assertEqual(saved.workflow("transcription").model_id, "ggml-small")
+            self.assertTrue(saved.workflow("transcription").enabled)
+            self.assertEqual(saved.local_asr_device, "cpu")
+            self.assertEqual(
+                saved.workflow("transcription").prompt,
+                original.workflow("transcription").prompt,
+            )
+            self.assertEqual(saved.workflow("rewrite"), original.workflow("rewrite"))
+            self.assertEqual(controller.selectedScope, "transcription")
+            self.assertEqual(controller.routePrompt, "Pending transcription prompt")
+            self.assertTrue(controller.dirty)
+
+    def test_microphone_inventory_does_not_block_construction_or_qt_heartbeat(self):
+        from PySide6.QtCore import QTimer
+        from unittest.mock import Mock
+
+        entered, release, completed = (
+            threading.Event(),
+            threading.Event(),
+            threading.Event(),
+        )
+        query_threads = []
+        inventory = self._microphone_inventory()
+        backend = _MicrophoneBackend(inventory)
+
+        def query():
+            query_threads.append(threading.current_thread())
+            entered.set()
+            release.wait(1)
+            completed.set()
+            return inventory
+
+        backend.microphone_inventory = query
+        with TemporaryDirectory() as directory:
+            controller = QmlSettingsController(
+                _repositories(directory),
+                microphone_backend=backend,
+                local_product=Mock(
+                    state=qml_settings.LocalASRProductState("missing"), busy=False
+                ),
+            )
+            try:
+                self.assertTrue(entered.wait(1))
+                self.assertFalse(
+                    completed.is_set(), "Construction waited for the device query"
+                )
+                self.assertNotEqual(query_threads, [threading.current_thread()])
+                heartbeat = []
+                QTimer.singleShot(0, lambda: heartbeat.append(True))
+                self.qt_app.processEvents()
+                self.assertEqual(heartbeat, [True])
+                self.assertFalse(completed.is_set())
+            finally:
+                release.set()
+                controller.shutdown()
+
+    def test_refresh_shares_pending_query_and_keeps_last_inventory_and_draft_error(
+        self,
+    ):
+        from PySide6.QtCore import QTimer
+
+        backend = _MicrophoneBackend(self._microphone_inventory())
+        with TemporaryDirectory() as directory:
+            controller = QmlSettingsController(
+                _repositories(directory), microphone_backend=backend
+            )
+            release, entered, completed = (
+                threading.Event(),
+                threading.Event(),
+                threading.Event(),
+            )
+            try:
+                self._wait_for_inventory(controller)
+                previous = controller.microphoneDevices
+                calls = []
+
+                def query():
+                    calls.append(True)
+                    entered.set()
+                    release.wait(1)
+                    completed.set()
+                    return MicrophoneInventory.unavailable("enumeration_failed")
+
+                backend.microphone_inventory = query
+                self.assertTrue(controller.refreshMicrophoneInventory())
+                self.assertTrue(entered.wait(1))
+                self.assertFalse(
+                    completed.is_set(), "Refresh waited for the device query"
+                )
+                self.assertTrue(controller.refreshMicrophoneInventory())
+                self.assertEqual(calls, [True])
+                self.assertEqual(controller.microphoneDevices, previous)
+                self.assertFalse(
+                    controller.setRecordingControls(
+                        {"max_duration_seconds": 2, "warning_seconds": 3}
+                    )
+                )
+                draft_error = controller.lastError
+                heartbeat = []
+                QTimer.singleShot(0, lambda: heartbeat.append(True))
+                self.qt_app.processEvents()
+                self.assertEqual(heartbeat, [True])
+                release.set()
+                self._wait_for_inventory(controller)
+                self.assertEqual(controller.lastError, draft_error)
+                self.assertEqual(controller.microphoneSelectionState, "unavailable")
+            finally:
+                release.set()
+                controller.shutdown()
+
+    def test_shutdown_rejects_pending_inventory_completion(self):
+        release, entered, completed = (
+            threading.Event(),
+            threading.Event(),
+            threading.Event(),
+        )
+        backend = _MicrophoneBackend(self._microphone_inventory())
+
+        def query():
+            entered.set()
+            release.wait(10)
+            completed.set()
+            return self._microphone_inventory()
+
+        backend.microphone_inventory = query
+        with TemporaryDirectory() as directory:
+            controller = QmlSettingsController(
+                _repositories(directory), microphone_backend=backend
+            )
+            try:
+                self.assertTrue(entered.wait(1))
+                self.assertFalse(completed.is_set())
+                controller.shutdown()
+                self.assertFalse(
+                    completed.is_set(), "Shutdown waited for the hardware query"
+                )
+                published = []
+                controller.microphoneChanged.connect(lambda: published.append(True))
+                release.set()
+                self.assertTrue(completed.wait(1))
+                self.qt_app.processEvents()
+                self.assertEqual(published, [])
+            finally:
+                release.set()
+                controller.shutdown()
+
+    def test_default_microphone_backend_is_loaded_only_on_discovery_worker(self):
+        from unittest.mock import Mock
+
+        release, entered = threading.Event(), threading.Event()
+        threads = []
+        inventory = self._microphone_inventory()
+
+        def load():
+            threads.append(threading.current_thread())
+            entered.set()
+            release.wait(1)
+            return Mock(snapshot=lambda: inventory)
+
+        with (
+            TemporaryDirectory() as directory,
+            patch.object(
+                qml_settings, "_default_microphone_inventory_source", side_effect=load
+            ),
+        ):
+            controller = QmlSettingsController(
+                _repositories(directory),
+                local_product=Mock(
+                    state=qml_settings.LocalASRProductState("missing"), busy=False
+                ),
+            )
+            try:
+                self.assertTrue(entered.wait(1))
+                self.assertNotEqual(threads, [threading.current_thread()])
+                self.assertTrue(controller.microphoneInventoryBusy)
+                published = []
+                controller.microphoneChanged.connect(
+                    lambda: published.append(threading.current_thread())
+                )
+                release.set()
+                self._wait_for_inventory(controller)
+                self.assertEqual(published, [threading.current_thread()])
+                self.assertEqual(controller.microphoneInventory, inventory.to_mapping())
+            finally:
+                release.set()
+                controller.shutdown()
+
     def test_rpc_capture_pauses_and_restores_inputs_on_save_or_cancel(self):
         from clarify.desktop.qml_web_settings import SettingsProtocol
 
@@ -207,6 +659,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 microphone_backend=backend,
             )
             try:
+                self._wait_for_inventory(controller)
                 self.assertEqual(controller.selectedMicrophoneId, "stale-microphone")
                 self.assertEqual(
                     controller.microphoneSelectionState,
@@ -288,6 +741,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 microphone_backend=backend,
             )
             try:
+                self._wait_for_inventory(controller)
                 self.assertTrue(controller.testMicrophone())
                 self.assertTrue(backend.test_started.wait(timeout=1))
                 for _ in range(100):
@@ -333,6 +787,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 self.fail("Microphone preview did not reach the expected state")
 
             try:
+                self._wait_for_inventory(controller)
                 original = controller._config
                 self.assertTrue(controller.testMicrophone())
                 until(lambda: controller.microphoneTestLevel == 0.6)
@@ -351,6 +806,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 self.assertEqual(controller.microphoneTestLevel, 0.6)
                 controller.refreshMicrophoneInventory()
                 until(lambda: not controller.microphoneTestBusy)
+                self._wait_for_inventory(controller)
                 self.assertEqual(controller.microphoneTestLevel, 0)
                 self.assertTrue(controller.testMicrophone())
                 until(lambda: controller.microphoneTestLevel == 0.6)
@@ -374,6 +830,7 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 microphone_backend=backend,
             )
             try:
+                self._wait_for_inventory(controller)
                 self.assertEqual(controller.microphoneDevices[0]["id"], "")
                 self.assertEqual(controller.microphoneSelectionState, "unavailable")
                 self.assertIn(
