@@ -740,9 +740,22 @@ test("cancelled shortcut capture rejects retained keyboard and mouse events", as
     }
     await route.fallback();
   });
-  await page.addStyleTag({ content: '[data-slot="dialog-popup"][data-ending-style] { transition-duration: 30s; }' });
+  const popup = page.locator('[data-slot="dialog-popup"]');
+  let finishTransition: (() => Promise<void>) | undefined;
   try {
     await recording.click();
+    await expect(popup).not.toHaveAttribute("data-starting-style", "");
+    const transition = await popup.evaluateHandle(async element => {
+      await Promise.all(element.getAnimations().map(animation => animation.finished));
+      // Keep exit completion under test control, even when CSS transitions finish early.
+      const held = element.animate([{ outlineOffset: "0px" }, { outlineOffset: "0px" }], { duration: 1 });
+      held.pause();
+      return held;
+    });
+    finishTransition = async () => {
+      await transition.evaluate(animation => animation.finish());
+      await transition.dispose();
+    };
     const field = page.getByRole("textbox", { name: "Novo atalho" });
     await field.press("Escape");
     await expect.poll(() => cancelStarted).toBe(true);
@@ -761,7 +774,9 @@ test("cancelled shortcut capture rejects retained keyboard and mouse events", as
     await expect(page.locator('[role="dialog"]:not([inert]):not([data-ending-style])')).toHaveCount(0);
   } finally {
     releaseCancel();
+    await finishTransition?.();
   }
+  await expect(popup).toHaveCount(0);
 });
 
 test("onboarding: local choice leads to model setup without a login", async ({ page }) => {
