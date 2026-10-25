@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from array import array
+import os
+import subprocess
+import sys
+import textwrap
 import threading
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from unittest.mock import patch
 
 try:
     from PySide6.QtWidgets import QApplication
@@ -269,6 +275,70 @@ class QmlVoiceTranslationProviderTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
 class QtVoiceTranslationRecordingTests(unittest.TestCase):
+    def test_production_import_defers_audio_backend_until_voice_worker(self):
+        with TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    textwrap.dedent("""
+                    import builtins
+                    import threading
+                    from types import SimpleNamespace
+                    original_import = builtins.__import__
+                    calls = []
+                    class Stream:
+                        def __init__(self, **options): pass
+                        def start(self): pass
+                        def stop(self): pass
+                        def close(self): pass
+                    backend = SimpleNamespace(RawInputStream=Stream)
+                    def importing(name, *args, **kwargs):
+                        if name != 'sounddevice':
+                            return original_import(name, *args, **kwargs)
+                        assert threading.current_thread() is not threading.main_thread(), 'startup loaded PortAudio'
+                        calls.append(threading.current_thread())
+                        return backend
+                    builtins.__import__ = importing
+                    from clarify.desktop import qml_app, qml_runtime
+                    from clarify.desktop.qml_voice_translation import QtVoiceTranslationRecording
+                    session = SimpleNamespace(
+                        start=lambda: None, cancel=lambda: None,
+                        cancel_event=threading.Event(),
+                        boundary_policy=SimpleNamespace(controls=SimpleNamespace(vad=SimpleNamespace(enabled=True))),
+                    )
+                    recording = QtVoiceTranslationRecording(session)
+                    recording.set_boundary_callback(lambda reason: None)
+                    assert not calls, 'construction loaded PortAudio'
+                    errors = []
+                    def start():
+                        try: recording.start()
+                        except Exception as error: errors.append(error)
+                    worker = threading.Thread(target=start)
+                    try:
+                        worker.start()
+                        worker.join(5)
+                        assert not worker.is_alive()
+                        assert not errors, errors
+                        assert len(calls) == 1, calls
+                        assert qml_runtime._load_sounddevice() is backend
+                        assert len(calls) == 1, 'voice did not share the audio loader'
+                    finally:
+                        recording.cancel()
+                """),
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                env=dict(
+                    os.environ,
+                    CLARIFY_DATA_DIR=directory,
+                    CLARIFY_IMPORT_SMOKE_TEST="0",
+                ),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_factory_wraps_qt_session_and_exposes_request_cancel(self):
         class Token:
             def __init__(self):
@@ -403,6 +473,105 @@ class QtVoiceTranslationRecordingTests(unittest.TestCase):
         self.assertTrue(decision.should_stop)
         self.assertEqual(reasons, [RecordingBoundaryReason.MAX_DURATION])
         recording.cancel()
+
+    def test_vad_startup_cannot_outlive_stop_or_cancel(self):
+        for action in ("stop", "cancel"):
+            for phase in ("load", "device", "open", "start"):
+                with self.subTest(action=action, phase=phase):
+                    entered = threading.Event()
+                    release = threading.Event()
+                    ended = threading.Event()
+                    streams = []
+                    errors = []
+                    reasons = []
+
+                    def gate(at):
+                        if phase == at:
+                            entered.set()
+                            if not release.wait(10):
+                                raise AssertionError("VAD test gate expired")
+
+                    class Stream:
+                        def __init__(self, **options):
+                            self.starts = self.stops = self.closes = 0
+                            streams.append(self)
+                            gate("open")
+
+                        def start(self):
+                            self.starts += 1
+                            gate("start")
+
+                        def stop(self):
+                            self.stops += 1
+
+                        def close(self):
+                            self.closes += 1
+
+                    backend = SimpleNamespace(RawInputStream=Stream)
+
+                    def load():
+                        gate("load")
+                        return backend
+
+                    session = self._BoundarySession(
+                        RecordingControls(vad=VADSettings(enabled=True))
+                    )
+                    session.recorder.microphone_inventory = lambda: gate("device")
+                    recording = QtVoiceTranslationRecording(session)
+                    recording.set_boundary_callback(reasons.append)
+
+                    def start():
+                        try:
+                            recording.start()
+                        except Exception as error:
+                            errors.append(error)
+
+                    def end():
+                        try:
+                            getattr(recording, action)()
+                        except Exception as error:
+                            errors.append(error)
+                        finally:
+                            ended.set()
+
+                    starter = threading.Thread(target=start, daemon=True)
+                    terminal = threading.Thread(target=end, daemon=True)
+                    with patch(
+                        "clarify.desktop.qml_voice_translation._load_sounddevice", load
+                    ):
+                        try:
+                            starter.start()
+                            self.assertTrue(entered.wait(2))
+                            terminal.start()
+                            self.assertTrue(
+                                ended.wait(2), "terminal action waited for VAD"
+                            )
+                            if phase == "start":
+                                self.assertEqual(
+                                    streams[0].closes, 0, "closed during native start"
+                                )
+                            release.set()
+                            starter.join(2)
+                            self.assertFalse(starter.is_alive())
+                            self.assertEqual(errors, [])
+                            if phase in ("load", "device"):
+                                self.assertEqual(
+                                    streams, [], "late startup opened the microphone"
+                                )
+                            else:
+                                self.assertEqual(len(streams), 1)
+                                self.assertEqual(
+                                    streams[0].starts, int(phase == "start")
+                                )
+                                self.assertEqual(streams[0].stops, 1)
+                                self.assertEqual(streams[0].closes, 1)
+                            self.assertEqual(reasons, [])
+                        finally:
+                            release.set()
+                            starter.join(2)
+                            if terminal.ident is not None:
+                                terminal.join(2)
+                            recording.cancel()
 
     def test_vad_feeds_real_input_levels_and_stops_after_silence(self):
         class Stream:

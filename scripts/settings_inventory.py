@@ -62,6 +62,20 @@ def license_texts(root: Path, explicit: str | None = None) -> list[tuple[str, st
     return result
 
 
+def vendored_notices(desktop: Path, entries: list[dict]) -> list[tuple[str, str]]:
+    result = []
+    for entry in entries:
+        path = desktop / "licenses" / entry["file"]
+        if not path.resolve().is_relative_to((desktop / "licenses").resolve()):
+            raise ValueError("Vendored notice escapes license directory")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
+            raise ValueError("Vendored notice checksum mismatch")
+        result.append((entry["source"], path.read_text(encoding="utf-8")))
+    if not result or any(not content.strip() for _, content in result):
+        raise ValueError("Empty vendored notice entry")
+    return result
+
+
 def dependency_notices(desktop: Path, ref: str, root: Path, explicit=None):
     try:
         return license_texts(root, explicit)
@@ -69,17 +83,7 @@ def dependency_notices(desktop: Path, ref: str, root: Path, explicit=None):
         manifest = json.loads((desktop / "licenses/manifest.json").read_text())
         if ref not in manifest:
             raise ValueError(f"Review missing license text: {ref}")
-        result = []
-        for entry in manifest[ref]:
-            path = desktop / "licenses" / entry["file"]
-            if not path.resolve().is_relative_to((desktop / "licenses").resolve()):
-                raise ValueError("Vendored notice escapes license directory")
-            if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
-                raise ValueError("Vendored notice checksum mismatch")
-            result.append((entry["source"], path.read_text(encoding="utf-8")))
-        if not result:
-            raise ValueError("Empty vendored notice entry")
-        return result
+        return vendored_notices(desktop, manifest[ref])
 
 
 def inventory(desktop: Path, npm: dict, cargo: dict) -> tuple[dict, str]:
@@ -176,6 +180,30 @@ def inventory(desktop: Path, npm: dict, cargo: dict) -> tuple[dict, str]:
             }
         )
 
+    source_manifest = desktop / "licenses/source-components.json"
+    if source_manifest.is_file():
+        for entry in json.loads(source_manifest.read_text(encoding="utf-8")):
+            ref = entry["purl"]
+            notices.append((ref, vendored_notices(desktop, [entry])))
+            components.append(
+                {
+                    "type": "library",
+                    "name": entry["name"],
+                    "version": entry["version"],
+                    "bom-ref": ref,
+                    "purl": ref,
+                    "scope": "required",
+                    "licenses": [{"expression": entry["license"]}],
+                    "externalReferences": [{"type": "license", "url": entry["source"]}],
+                }
+            )
+            dependencies.extend(
+                [
+                    {"ref": root_ref, "dependsOn": [ref]},
+                    {"ref": ref, "dependsOn": []},
+                ]
+            )
+
     merged = {}
     for edge in dependencies:
         merged.setdefault(edge["ref"], set()).update(edge["dependsOn"])
@@ -199,7 +227,7 @@ def inventory(desktop: Path, npm: dict, cargo: dict) -> tuple[dict, str]:
         ],
     }
     text = "Clarify Settings — third-party license texts\n\n"
-    text += "Generated from locked npm production dependencies and the resolved Windows Cargo graph.\n"
+    text += "Generated from locked npm production dependencies, vendored source notices, and the resolved Windows Cargo graph.\n"
     text += "Build-only crates are included for attribution; inclusion does not prove binary linkage.\n"
     for ref, files in sorted(notices):
         text += f"\n{'=' * 72}\n{ref}\n"

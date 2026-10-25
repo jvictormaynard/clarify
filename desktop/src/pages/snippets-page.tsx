@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Plus, Search, X } from "lucide-react";
 import { Button, Input, Switch, TextArea } from "../components/ui";
 import type { Snippet } from "../settings/bridge";
@@ -13,13 +13,6 @@ export function SnippetsPage({ controller }: SettingsPageProps) {
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<number | null>(null);
-  useEffect(() => {
-    if (controller.snippets === null) {
-      setTrigger("");
-      setReplacement("");
-      setError("");
-    }
-  }, [controller.snippets]);
   const add = () => {
     const phrase = trigger.trim().normalize("NFC");
     if (!phrase || !replacement.trim()) return;
@@ -76,7 +69,7 @@ export function SnippetsPage({ controller }: SettingsPageProps) {
       {entries.length > 0 && (
         <div className="dictionary-search">
           <Search size={16} aria-hidden="true" />
-          <input aria-label={t("Buscar snippets")} placeholder={t("Buscar snippets")} value={query}
+          <Input unstyled className="library-search-input" aria-label={t("Buscar snippets")} placeholder={t("Buscar snippets")} value={query}
             onChange={(event) => setQuery(event.target.value)} />
           <span className="hint">{entries.length}/512</span>
         </div>
@@ -91,7 +84,7 @@ export function SnippetsPage({ controller }: SettingsPageProps) {
             <div className="dictionary-line">
               <label htmlFor={`snippet-trigger-${index}`} className="snippet-label">{t("Frase de ativação")}</label>
               <Switch label={t("Usar snippet {v0}", { v0: index + 1 })} checked={entry.enabled}
-                onChange={(enabled) => update(index, { enabled })} />
+                onChange={(enabled) => void controller.setLibraryPreference("snippets", index, "enabled", enabled)} />
               <Button variant="ghost" aria-label={t("Remover snippet {v0}", { v0: index + 1 })}
                 onClick={() => controller.setSnippets(entries.filter((_, i) => i !== index))}>
                 <X size={16} />
@@ -110,7 +103,7 @@ export function SnippetsPage({ controller }: SettingsPageProps) {
                 <span className="hint">{t("Diferenciar maiúsculas e minúsculas")}</span>
                 <Switch label={t("Diferenciar maiúsculas no snippet {v0}", { v0: index + 1 })}
                   checked={entry.case_sensitive}
-                  onChange={(case_sensitive) => update(index, { case_sensitive })} />
+                  onChange={(case_sensitive) => void controller.setLibraryPreference("snippets", index, "case_sensitive", case_sensitive)} />
               </div>
             </details>
           </div>

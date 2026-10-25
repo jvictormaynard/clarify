@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef } from "react";
 import { AlertCircle, LoaderCircle } from "lucide-react";
 import { Titlebar } from "./components/titlebar";
 import { Button } from "./components/ui";
+import { SettingsNavigation } from "./components/settings-navigation";
 import { GeneralPage } from "./pages/general-page";
 import { AccountPage } from "./pages/account-page";
 import { HistoryPage } from "./pages/history-page";
@@ -31,7 +32,7 @@ const pageComponents = {
 
 export function App() {
   const controller = useSettings();
-  const { state, page, error, busy, callBusy, navigating, dirty, saved } = controller;
+  const { state, page, error, pageDirty, saved, routeLoading, saving, discardingDrafts } = controller;
   const scrollArea = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (scrollArea.current) scrollArea.current.scrollTop = 0;
@@ -40,38 +41,26 @@ export function App() {
   const settingsPages = getSettingsPages();
   const visiblePages = settingsPages.filter(item => !managed || (item.id !== "models" && item.id !== "text"));
   const activePage = managed && (page === "models" || page === "text") ? "account" : page;
+  const waitingForRoute = routeLoading && (activePage === "dictation" || activePage === "text");
   const Page = pageComponents[activePage];
   const info = settingsPages.find((item) => item.id === activePage)!;
-  // AccountPage keeps its other controls disabled during browser sign-in.
-  const canCancelSocial = activePage === "account" && state?.accountState?.socialPending && !callBusy;
 
   return (
     <div className="settings-window">
       <Titlebar
+        pageLabel={state?.onboardingRequired ? undefined : info.label}
         onClose={() => controller.setClosing(true)}
         onError={controller.setError}
       />
-      {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} /> : <div className="app" data-navigating={navigating || undefined}>
+      {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} /> : <div className="app">
         <aside>
-          <nav aria-label={t("Configurações")}>
-            {visiblePages.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                disabled={busy}
-                aria-label={label}
-                aria-current={id === activePage ? "page" : undefined}
-                onClick={() => void controller.navigate(id)}
-              >
-                <Icon size={18} strokeWidth={1.6} />
-                <span>{label}</span>
-              </button>
-            ))}
-          </nav>
+          <SettingsNavigation pages={visiblePages} activePage={activePage}
+            version={state?.applicationVersion} onNavigate={controller.navigate} />
         </aside>
         <main>
           <div className="scroll-area" ref={scrollArea}>
-            <header>
-              <h1>{info.label}</h1>
+            <header className="page-header">
+              <div className="page-heading"><span className="page-icon"><info.icon size={20} strokeWidth={1.5} /></span><h1>{info.label}</h1></div>
             </header>
             <div className="page">
               {error && (
@@ -83,31 +72,25 @@ export function App() {
               {!state ? (
                 <div className="connection" role="status">
                   <LoaderCircle className="spin" size={22} />{t("Conectando ao Clarify…")}</div>
+              ) : waitingForRoute ? (
+                <div className="connection" role="status"><LoaderCircle className="spin" size={22} />{t("Carregando…")}</div>
               ) : (
-                <fieldset disabled={busy && !canCancelSocial}>
-                  <Page key={activePage === "snippets" ? state.snippetContext : activePage} controller={{ ...controller, state }} />
-                </fieldset>
+                <div className="page-content">
+                  <Page key={activePage === "snippets" || activePage === "dictionary"
+                    ? `${activePage}:${state.snippetContext}` : activePage} controller={{ ...controller, state }} />
+                </div>
               )}
+              {pageDirty && !waitingForRoute && <div className="draft-actions" role="group" aria-label={t("Alterações pendentes")}>
+                <span>{t("Alterações pendentes")}</span>
+                <Button variant="ghost" disabled={saving || discardingDrafts}
+                  onClick={() => controller.setDiscarding(true)}>{t("Descartar")}</Button>
+                <Button variant="primary" aria-label={t("Salvar alterações")}
+                  disabled={saving || discardingDrafts || !state}
+                  onClick={() => void controller.save()}>
+                  {saving && <LoaderCircle size={15} className="spin" />}{t("Salvar")}
+                </Button>
+              </div>}
             </div>
-          </div>
-          <div
-            className="floating-save"
-            role="group"
-            aria-label={t("Alterações pendentes")}
-            aria-hidden={!dirty}
-            data-visible={dirty || undefined}
-          >
-            <Button
-              variant="ghost"
-              disabled={busy || !dirty}
-              onClick={() => controller.setDiscarding(true)}
-            >{t("Descartar")}</Button>
-            <Button
-              variant="primary"
-              aria-label={t("Salvar alterações")}
-              disabled={busy || !dirty || !state}
-              onClick={() => void controller.save()}
-            > {busy && !navigating && <LoaderCircle size={15} className="spin" />}{t("Salvar")}</Button>
           </div>
           <span className="sr-only" role="status">
             {saved ? t("Alterações salvas") : ""}

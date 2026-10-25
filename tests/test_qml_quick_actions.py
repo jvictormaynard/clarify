@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtTest import QSignalSpy
 from clarify.desktop.qml_bridge import QmlWorkflowBridge
 from clarify.desktop.qml_quick_paste import QuickPasteController
 from workflows import (
@@ -98,6 +99,10 @@ class QuickActionsTests(unittest.TestCase):
                 repositories, microphone_backend=_MicrophoneBackend(inventory)
             )
             try:
+                inventory_ready = QSignalSpy(controller.microphoneChanged)
+                if controller.microphoneInventoryBusy:
+                    self.assertTrue(inventory_ready.wait(5000))
+                self.assertFalse(controller.microphoneInventoryBusy)
                 persisted = repositories.config.load()
                 controller.setHistoryEnabled(not persisted.history_enabled)
                 self.assertTrue(controller.selectQuickMicrophone("usb"))
