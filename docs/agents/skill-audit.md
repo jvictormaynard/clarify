@@ -293,3 +293,24 @@ placeholder, an email with factual dates, website copy about sponsorship, and a
 technical document with commands. In each case, agents must apply Humanizer while
 preserving supported claims and executable text. These are instruction checks;
 they do not establish measured writing quality or runtime behavior.
+
+
+## CI/CD guidance maintenance, 2026-10-25
+
+`AGENTS.md` now routes CI/CD work through [main validation and delivery](../ci-delivery.md),
+then the server or client-release guide. The delivery skill and project workflow
+use native Railway GitHub autodeploy with `Wait for CI`. Client validation stays
+separate from a dedicated release-preparation PR and its publication.
+
+These routes preserve the user's delivery scope. Implementing a workflow does not
+authorize production activation, a version reservation, or publication. The
+existing desktop release skill continues to own signing, source identity,
+acceptance, and downloaded-asset verification. The mobile guide continues to
+own TestFlight processing and group availability; App Store publication stays
+separate.
+
+Instruction walkthroughs cover a server-only change, a shared prompt change,
+a documentation-only change, and a future desktop or mobile release-preparation
+PR. These are checks of the written routes. They do not prove a live deployment,
+public release, native acceptance, or measured agent performance. No new skill,
+upstream source, global configuration, or runtime dependency is introduced.

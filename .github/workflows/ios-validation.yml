@@ -1,0 +1,46 @@
+name: iOS validation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Native tests and unsigned build
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      CLARIFY_IOS_RUNTIME: iOS-26-5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:native
+      - name: Test native keyboard and library integration
+        env:
+          CLARIFY_NATIVE_TESTS: '1'
+        run: node scripts/test-keyboard-ui.cjs
+      - run: npx expo prebuild --clean --platform ios --no-install
+      - run: pod install --project-directory=ios
+      - name: Compile app and extensions without signing or upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/ClarifyAccount" CODE_SIGNING_ALLOWED=NO build | xcbeautify

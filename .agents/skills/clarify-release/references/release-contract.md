@@ -11,7 +11,23 @@
 - Public platform: Windows 10/11, x64 portable executable
 
 The tag, release, and executable must all originate from the same green
-`main` commit.
+`main` preparation merge commit. Publication requires a dedicated reviewed and
+merged metadata-only PR with strict `.github/release-intent.json`. A maintainer
+merge authorizes that release; a second-person approval is not required.
+
+The [automation guide](../../../../docs/release-automation.md) owns activation,
+preparation inputs, intent fields and dispatch recovery. Promotion is opt-in:
+`CLARIFY_RELEASE_PROMOTION_ENABLED` must be exactly `true`. It is a separate
+completed-CI workflow, not part of ordinary validation. Preparation needs a
+separate CI-capable token and fails before writes when that token is absent.
+No release intent or version is reserved by installing automation.
+
+Desktop intent must link Windows manual acceptance for its exact base SHA.
+Only release metadata can differ between that base and the release source.
+The gate requires the canonical repository, main push CI, exact workflow path,
+required successful jobs, freshness against main and the exact merged PR before
+creating an immutable tag. Publication repeats these checks and keeps the same
+source SHA in its executable, Ed25519 metadata and provenance.
 
 ## Required repository files
 
@@ -55,6 +71,11 @@ The tag, release, and executable must all originate from the same green
 - `.githooks/pre-commit`
 - `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
+- `.github/workflows/release-preparation.yml`
+- `.github/workflows/release-promotion.yml`
+- `scripts/release_delivery.py`
+- `tests/test_release_delivery.py`
+- `docs/release-automation.md`
 
 ## Required validation
 
@@ -74,9 +95,11 @@ For Windows-facing changes:
   or `CLARIFY_INSTALL_PATH`; invoke directly from PowerShell when npm cannot use
   a WSL UNC working directory
 - installed executable hash, process path, and responsiveness check
-- an explicit publication request is sufficient approval for visible behavior
-  and relevant hotkeys; do not require a second manual confirmation
-- disclose any manual interaction check that was not performed
+- an explicit publication request authorizes the release work; it does not
+  establish that manual checks were performed
+- record applicable Windows acceptance for the prepared base in the intent;
+  missing required acceptance blocks publication, without a repeated approval
+  request when valid evidence already exists
 
 On the PR and after merge:
 
@@ -89,8 +112,16 @@ On the PR and after merge:
   - includes frozen portable update replacement, startup receipt, rollback, and
     tamper rejection with generated fixture keys and isolated paths
 
-On the tag:
+On publication:
 
+- tag resolves to the exact green preparation merge; dispatch uses that tag and
+  exact source SHA, never mutable main;
+- `GITHUB_TOKEN`-created tags require explicit workflow dispatch because their
+  pushes do not trigger another workflow;
+- an existing mismatched tag fails; complete releases are left unchanged and
+  partial releases require operator inspection without replacing assets;
+- the signed `Release` workflow remains blocked and manual-only; the following
+  signed requirements remain gates for a separately repaired signed path;
 - successful `Release` workflow for signed releases, or successful
   `Community Release` workflow for the no-cost portable track
 - Azure OIDC login and Artifact Signing actions pinned to reviewed full commit

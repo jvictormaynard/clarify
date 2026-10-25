@@ -17,6 +17,11 @@ for authorization, risk, checks, and completion rules.
    structural work. Choose the smallest coherent change; use `codebase-design`
    for an interface or dependency decision and `diagnosing-bugs` when the cause
    is unclear.
+   For CI/CD, read [main validation and delivery](../../../docs/ci-delivery.md).
+   Use native Railway GitHub autodeploy for the server. Keep client validation
+   separate from a dedicated version-preparation PR and its publication.
+   Inspect activation settings without exposing secrets. Implementing automation
+   does not authorize enabling it in production or publishing a version.
 3. Classify the affected behavior using the workflow's validation table. Choose
    existing test boundaries autonomously. Use `tdd` for meaningful changed
    behavior and keep tests isolated from personal data and external effects.

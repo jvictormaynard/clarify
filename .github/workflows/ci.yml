@@ -16,10 +16,42 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Railway Wait for CI can ignore a cancelled run if another workflow passed.
+  # Give each main push its own group, including queued runs.
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 jobs:
+  components:
+    name: Select component validation
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.components.outputs.server }}
+      ios: ${{ steps.components.outputs.ios }}
+      desktop: ${{ steps.components.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - id: components
+        run: python scripts/delivery_policy.py
+
+  server:
+    name: Server validation
+    needs: components
+    if: needs.components.outputs.server == 'true'
+    uses: ./.github/workflows/server-validation.yml
+
+  ios:
+    name: iOS validation
+    needs: components
+    if: needs.components.outputs.ios == 'true'
+    uses: ./.github/workflows/ios-validation.yml
+
   test:
     name: Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -90,6 +122,7 @@ jobs:
           portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py
           scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py
           tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py
+          scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
 
       - name: Run Ruff format check
         if: matrix.os == 'ubuntu-latest'
@@ -107,6 +140,7 @@ jobs:
           portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py
           scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py
           tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py
+          scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
 
       - name: Run targeted type checks
         if: matrix.os == 'ubuntu-latest'
@@ -133,6 +167,7 @@ jobs:
           windows_hotkeys.py provider_types.py provider_adapters.py provider_http.py
           provider_registry.py workflow_provider.py scripts/format_staged.py scripts/create_release_manifest.py tests
           local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py
+          scripts/delivery_policy.py scripts/release_delivery.py
 
       - name: Validate QML assets
         run: >-

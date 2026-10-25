@@ -1,18 +1,12 @@
 name: iOS TestFlight
 
 on:
-  push:
-    branches: [codex/ios-testflight]
-    paths:
-      - mobile/**
-      - shared/**
-      - scripts/sync_locales.py
-      - '!mobile/**/*.md'
-      - '!mobile/LICENSE'
-      - '!mobile/.gitignore'
-      - '!mobile/.easignore'
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: Exact reviewed source SHA (required for signed upload on an ios/v tag)
+        type: string
+        default: ''
       tests_only:
         description: Run checks without signing or upload
         type: boolean
@@ -40,20 +34,50 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
 
 concurrency:
   group: clarify-ios-${{ inputs.tests_only && github.run_id || 'testflight' }}
+  queue: max
   cancel-in-progress: false
 
 jobs:
+  release_gate:
+    if: >-
+      github.repository == 'jvictormaynard/clarify' &&
+      !inputs.tests_only && !inputs.status_only && !inputs.availability_only
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.gate.outputs.result }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Verify reviewed mobile source before signing or upload
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE: ${{ inputs.source_sha }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
+
   availability:
     name: Verify the uploaded TestFlight build
-    if: ${{ inputs.availability_only && !inputs.status_only && !inputs.tests_only }}
+    needs: release_gate
+    if: >-
+      always() && !inputs.status_only && !inputs.tests_only &&
+      (inputs.availability_only || needs.release_gate.outputs.result == 'availability')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -74,7 +98,11 @@ jobs:
           retention-days: 7
   publish:
     name: Test, sign and upload iOS
-    if: ${{ !inputs.availability_only && !inputs.status_only }}
+    needs: release_gate
+    if: >-
+      always() && github.repository == 'jvictormaynard/clarify' &&
+      !inputs.availability_only && !inputs.status_only &&
+      (inputs.tests_only || needs.release_gate.outputs.result == 'publish')
     runs-on: macos-26
     timeout-minutes: 90
     defaults:
@@ -89,12 +117,22 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.21.1
           cache: npm
           cache-dependency-path: mobile/package-lock.json
+      - name: Recheck upload history before signing or retrying
+        id: resume
+        if: ${{ !inputs.tests_only }}
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE: ${{ inputs.source_sha }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
       - name: Verify Xcode
         run: xcodebuild -version
       - name: Install locked dependencies
@@ -145,17 +183,17 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/ClarifyValidation" \
             CODE_SIGNING_ALLOWED=NO build | xcbeautify
       - name: Install existing Apple signing credentials
-        if: ${{ !inputs.tests_only }}
+        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
         env:
           CLARIFY_IOS_CERTIFICATE_BASE64: ${{ secrets.CLARIFY_IOS_CERTIFICATE_BASE64 }}
           CLARIFY_IOS_CERTIFICATE_PASSWORD: ${{ secrets.CLARIFY_IOS_CERTIFICATE_PASSWORD }}
           CLARIFY_IOS_PROFILES_GZIP_BASE64: ${{ secrets.CLARIFY_IOS_PROFILES_GZIP_BASE64 }}
         run: python3 scripts/ios-signing.py install
       - name: Apply signing to generated app and extension targets
-        if: ${{ !inputs.tests_only }}
+        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
         run: ruby scripts/ios-signing.rb
       - name: Archive and export signed IPA
-        if: ${{ !inputs.tests_only }}
+        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
         run: |
           set -euo pipefail
           xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
@@ -166,10 +204,10 @@ jobs:
             -exportOptionsPlist "$RUNNER_TEMP/clarify-signing/ExportOptions.plist" \
             -exportPath "$RUNNER_TEMP/clarify-export" | xcbeautify
       - name: Verify signed app and both extensions
-        if: ${{ !inputs.tests_only }}
+        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
         run: python3 scripts/verify-ios-ipa.py "$RUNNER_TEMP/clarify-export/Clarify.ipa"
       - name: Upload directly to App Store Connect
-        if: ${{ !inputs.tests_only }}
+        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
         env:
           CLARIFY_ASC_KEY_P8: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
           CLARIFY_ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
@@ -185,7 +223,7 @@ jobs:
             --file "$RUNNER_TEMP/clarify-export/Clarify.ipa" \
             --apiKey "$CLARIFY_ASC_KEY_ID" --apiIssuer "$CLARIFY_ASC_ISSUER_ID"
       - name: Preserve verified IPA and checksum
-        if: success() && !inputs.tests_only
+        if: success() && !inputs.tests_only && steps.resume.outputs.result == 'publish'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: clarify-ios-${{ github.sha }}

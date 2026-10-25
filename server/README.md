@@ -50,6 +50,8 @@ application's HTTPS redirect, for private host probes.
 On Railway, also include `healthcheck.railway.app` in `ALLOWED_HOSTS`; Railway
 uses that host for its deployment probe. Keep the generated service domain
 and the verified custom domain in the same explicit list. Do not use `*`.
+See [server delivery on Railway](../docs/server-delivery.md) for native GitHub
+autodeploy from `main`, Wait for CI, watch paths, and deployment verification.
 
 The beta uses Resend Free for outbound codes. Verify `victormaynard.com` in
 Resend and add the requested DNS records in Cloudflare, preserving existing
@@ -225,6 +227,13 @@ verification, ownership checks, bounded inputs, atomic limits and server secrets
 Self-hosters configure their own credentials, limits and database.
 
 ## Release gates
+
+Native Railway delivery uses the connected repository and `main`, the existing
+Dockerfile, and `/health`. The [delivery guide](../docs/server-delivery.md)
+records the activation steps and the open usage v2 compatibility, first migration,
+and funding rollout gates. The 2026-10-25 read-only inspection found
+`config.source.checkSuites=false`, so Wait for CI still needs activation and
+verification. The source connection does not establish that autodeploy is enabled.
 
 The **Shared account** workflow has a manual `publish_server_image` option,
 off by default. Only an explicit dispatch in `jvictormaynard/clarify` can publish

@@ -1,0 +1,59 @@
+name: Release Preparation
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Client to prepare (no publication occurs in this workflow)
+        type: choice
+        options: [desktop, mobile]
+        required: true
+      version:
+        description: Future stable X.Y.Z version
+        type: string
+        required: true
+      build:
+        description: Mobile build selected after checking Apple builds and pending submissions
+        type: string
+        default: ''
+      evidence:
+        description: Acceptance or Apple reservation JSON (see docs/release-automation.md)
+        type: string
+        required: true
+      notes:
+        description: Release scope and validation limits for maintainer review
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-preparation
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'jvictormaynard/clarify' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Prepare a draft release PR with CI-capable credentials
+        env:
+          # A separate token avoids GITHUB_TOKEN PR-event suppression/approval.
+          GH_TOKEN: ${{ secrets.CLARIFY_RELEASE_PREPARATION_TOKEN }}
+          RELEASE_COMPONENT: ${{ inputs.component }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_BUILD: ${{ inputs.build }}
+          RELEASE_EVIDENCE: ${{ inputs.evidence }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+        run: >-
+          python scripts/release_delivery.py prepare
+          --component "$RELEASE_COMPONENT" --version "$RELEASE_VERSION" --build "$RELEASE_BUILD"
