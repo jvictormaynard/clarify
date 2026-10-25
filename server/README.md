@@ -75,6 +75,10 @@ send the device UI language as `Accept-Language` (`pt`, `en`, or `es`). Both new
 and existing accounts receive a localized code email without a subject prefix
 or browser link. Unsupported device languages use English.
 
+Google, Microsoft and GitHub signup/login use a PKCE-bound one-time browser
+handoff for desktop and iOS. See [social sign-in configuration and protocol](SOCIAL_AUTH.md)
+for provider registration, server secrets, native continuation and acceptance gates.
+
 | Request | Purpose |
 | --- | --- |
 | `POST /_allauth/app/v1/auth/continue` | Enter or create a passwordless account with `email`; confirm with `code/confirm` |
@@ -235,5 +239,4 @@ session revocation and account deletion need staging acceptance. No automatic
 TestFlight upload is part of this change. The existing private-API app-return
 experiment is limited to TestFlight; remove it before a public App Store release.
 Public launch also needs an accurate privacy policy, account deletion instructions
-and a tested backup/restore policy. Google/Apple login and billing
-are separate increments.
+and a tested backup/restore policy. Apple login and billing are separate increments.

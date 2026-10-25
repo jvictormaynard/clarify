@@ -52,6 +52,29 @@ class ContinueWithEmailView(RequestLoginCodeView):
 
 
 class AccountAdapter(DefaultAccountAdapter):
+    def post_login(self, request, user, *, signal_kwargs, **kwargs):
+        sociallogin = (signal_kwargs or {}).get("sociallogin")
+        if (
+            sociallogin
+            and not sociallogin.account.pk
+            and str(sociallogin.user.pk).replace("-", "")
+            == str(user.pk).replace("-", "")
+            and user.is_active
+            and EmailAddress.objects.filter(
+                user=user, primary=True, verified=True
+            ).exists()
+        ):
+            # Only this allauth social login stage carries the deferred identity.
+            # Ordinary email login cannot attach or activate it.
+            from allauth.socialaccount.models import SocialAccount
+
+            SocialAccount.objects.get_or_create(
+                provider=sociallogin.account.provider,
+                uid=sociallogin.account.uid,
+                defaults={"user": user, "extra_data": sociallogin.account.extra_data},
+            )
+        return super().post_login(request, user, signal_kwargs=signal_kwargs, **kwargs)
+
     def _admin_request(self):
         return bool(
             self.request

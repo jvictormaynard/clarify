@@ -10,6 +10,9 @@ from .models import Operation, RateBucket
 
 
 def maintain():
+    from .social import expire_attempts
+
+    expire_attempts()
     expire_leases()
     now = timezone.now()
     Operation.objects.filter(result_expires_at__lt=now).exclude(result={}).update(

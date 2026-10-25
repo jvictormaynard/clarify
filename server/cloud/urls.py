@@ -2,6 +2,7 @@ from django.urls import include, path
 from allauth.headless.constants import Client
 from .service.accounts import ContinueWithEmailView
 from .service import admin_views
+from .service import social
 from .service.api import (
     AccountView,
     DictionaryView,
@@ -34,6 +35,26 @@ urlpatterns = [
         "_allauth/app/v1/auth/continue",
         ContinueWithEmailView.as_api_view(client=Client.APP),
     ),
+    path("_allauth/app/v1/auth/social/start", social.start),
+    path("_allauth/app/v1/auth/social/poll", social.poll),
+    path("_allauth/app/v1/auth/social/cancel", social.cancel),
+    path(
+        "social/authorize/<uuid:attempt_id>/<slug:launch>/",
+        social.authorize,
+        name="social_authorize",
+    ),
+    path("social/complete/<str:client>/", social.finish, name="social_finish"),
+    # These are the allauth provider callback URLs. Only the managed handoff
+    # wrapper may enter them; no generic browser login/connect route is exposed.
+    *[
+        path(
+            f"accounts/{provider}/login/callback/",
+            social.callback,
+            {"provider": provider},
+            name=f"{provider}_callback",
+        )
+        for provider in ("google", "microsoft", "github")
+    ],
     path("_allauth/", include("allauth.headless.urls")),
     path("v1/account", AccountView.as_view()),
     path("v1/usage", UsageView.as_view()),

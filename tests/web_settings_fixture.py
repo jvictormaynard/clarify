@@ -90,6 +90,20 @@ class OnboardingAccount:
     def logout(self, **_):
         self.state.update(signedIn=False, pending="", hosted=False, managed=False)
 
+    def authenticate_social(self, provider, *, cancel):
+        if "--social-wait" in sys.argv:
+            from clarify_account import AccountError
+
+            cancel.wait(30)
+            raise AccountError("O login foi cancelado.")
+        self.state.update(
+            signedIn=True,
+            pending="",
+            hosted=True,
+            managed=True,
+            email=f"{provider}@example.test",
+        )
+
 
 def check_native_corners(process_id):
     """Inspect only the isolated fixture's HWND; never inspect user windows."""

@@ -98,6 +98,18 @@ generates the checked Swift copy for the app, keyboard and Live Activity. The
 desktop bridge supplies the same Windows UI language used by the account client.
 Authentication emails contain the code and localized instructions, without links.
 
+Google, Microsoft and GitHub use server-owned django-allauth OAuth adapters.
+The desktop system browser and the iOS authentication session share a bounded,
+one-time native handoff protected by a client-generated SHA-256 proof. The
+server owns provider secrets, OAuth state, provider code exchange and account
+creation. Browser callback URLs contain no Clarify credentials. Native clients
+receive the resulting allauth session only through the proof-protected endpoint,
+then use the existing account refresh and synchronization owners. Unverified
+provider emails continue through the existing email-code confirmation flow.
+Matching email addresses do not authorize automatic account linking. The desktop
+`social_login.py` boundary owns browser URL validation, bounded polling and
+cancellation; `clarify_account.py` owns credential storage and account state.
+
 ## Runtime flow
 
 ```text

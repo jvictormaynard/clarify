@@ -4723,5 +4723,170 @@
     "pt": "Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.",
     "en": "With rewriting enabled, snippet text is sent to AI as part of the message. When you say only the trigger phrase, saved text is inserted without rewriting.",
     "es": "Con la reescritura activa, el texto del snippet se envía a la IA como parte del mensaje. Cuando dices solo la frase de activación, el texto guardado se inserta sin reescritura."
+  },
+  "Continuar com {v0}": {
+    "pt": "Continuar com {v0}",
+    "en": "Continue with {v0}",
+    "es": "Continuar con {v0}"
+  },
+  "Entrar com outra conta": {
+    "pt": "Entrar com outra conta",
+    "en": "Sign in with another account",
+    "es": "Entrar con otra cuenta"
+  },
+  "Ou continue com seu e-mail": {
+    "pt": "Ou continue com seu e-mail",
+    "en": "Or continue with your email",
+    "es": "O continúa con tu correo electrónico"
+  },
+  "Cancelar login": {
+    "pt": "Cancelar login",
+    "en": "Cancel sign-in",
+    "es": "Cancelar inicio de sesión"
+  },
+  "O login foi cancelado.": {
+    "pt": "O login foi cancelado.",
+    "en": "Sign-in was cancelled.",
+    "es": "Se canceló el inicio de sesión."
+  },
+  "O tempo para entrar acabou. Tente novamente.": {
+    "pt": "O tempo para entrar acabou. Tente novamente.",
+    "en": "Sign-in timed out. Try again.",
+    "es": "Se agotó el tiempo para entrar. Inténtalo de nuevo."
+  },
+  "Não foi possível abrir o navegador. Tente novamente.": {
+    "pt": "Não foi possível abrir o navegador. Tente novamente.",
+    "en": "Could not open the browser. Try again.",
+    "es": "No se pudo abrir el navegador. Inténtalo de nuevo."
+  },
+  "Não foi possível entrar com este provedor. Tente novamente ou use seu e-mail.": {
+    "pt": "Não foi possível entrar com este provedor. Tente novamente ou use seu e-mail.",
+    "en": "Could not sign in with this provider. Try again or use your email.",
+    "es": "No se pudo entrar con este proveedor. Inténtalo de nuevo o usa tu correo electrónico."
+  },
+  "Este e-mail já tem uma conta. Entre com o código enviado por e-mail.": {
+    "pt": "Este e-mail já tem uma conta. Entre com o código enviado por e-mail.",
+    "en": "This email already has an account. Sign in with the code sent by email.",
+    "es": "Este correo electrónico ya tiene una cuenta. Entra con el código enviado por correo."
+  },
+  "A criação de contas está indisponível no momento.": {
+    "pt": "A criação de contas está indisponível no momento.",
+    "en": "Account creation is currently unavailable.",
+    "es": "La creación de cuentas no está disponible en este momento."
+  },
+  "Este provedor não informou um e-mail. Entre com seu e-mail.": {
+    "pt": "Este provedor não informou um e-mail. Entre com seu e-mail.",
+    "en": "This provider did not provide an email address. Sign in with your email.",
+    "es": "Este proveedor no proporcionó un correo electrónico. Entra con tu correo."
+  },
+  "Conclua o login no navegador e volte ao Clarify.": {
+    "pt": "Conclua o login no navegador e volte ao Clarify.",
+    "en": "Complete sign-in in your browser, then return to Clarify.",
+    "es": "Completa el inicio de sesión en el navegador y vuelve a Clarify."
+  },
+  "Não foi possível salvar a sessão. Tente novamente.": {
+    "pt": "Não foi possível salvar a sessão. Tente novamente.",
+    "en": "Could not save the session. Try again.",
+    "es": "No se pudo guardar la sesión. Inténtalo de nuevo."
+  },
+  "Continuar com Google": {
+    "pt": "Continuar com Google",
+    "en": "Continue with Google",
+    "es": "Continuar con Google"
+  },
+  "Continuar com Microsoft": {
+    "pt": "Continuar com Microsoft",
+    "en": "Continue with Microsoft",
+    "es": "Continuar con Microsoft"
+  },
+  "Continuar com GitHub": {
+    "pt": "Continuar com GitHub",
+    "en": "Continue with GitHub",
+    "es": "Continuar con GitHub"
+  },
+  "Conclua a entrada na página do provedor.": {
+    "pt": "Conclua a entrada na página do provedor.",
+    "en": "Complete sign-in on the provider page.",
+    "es": "Completa el inicio de sesión en la página del proveedor."
+  },
+  "Não foi possível iniciar a entrada com este provedor. Tente novamente.": {
+    "pt": "Não foi possível iniciar a entrada com este provedor. Tente novamente.",
+    "en": "Could not start sign-in with this provider. Try again.",
+    "es": "No se pudo iniciar el acceso con este proveedor. Inténtalo de nuevo."
+  },
+  "Não foi possível abrir a página de entrada. Tente novamente.": {
+    "pt": "Não foi possível abrir a página de entrada. Tente novamente.",
+    "en": "Could not open the sign-in page. Try again.",
+    "es": "No se pudo abrir la página de inicio de sesión. Inténtalo de nuevo."
+  },
+  "Não foi possível concluir a entrada com este provedor. Tente novamente.": {
+    "pt": "Não foi possível concluir a entrada com este provedor. Tente novamente.",
+    "en": "Could not complete sign-in with this provider. Try again.",
+    "es": "No se pudo completar el inicio de sesión con este proveedor. Inténtalo de nuevo."
+  },
+  "O endereço de entrada recebido não é seguro. Tente novamente.": {
+    "pt": "O endereço de entrada recebido não é seguro. Tente novamente.",
+    "en": "The sign-in address received is not secure. Try again.",
+    "es": "La dirección de inicio de sesión recibida no es segura. Inténtalo de nuevo."
+  },
+  "A entrada com este provedor expirou. Tente novamente.": {
+    "pt": "A entrada com este provedor expirou. Tente novamente.",
+    "en": "Sign-in with this provider expired. Try again.",
+    "es": "El inicio de sesión con este proveedor caducó. Inténtalo de nuevo."
+  },
+  "Já existe uma conta com este e-mail. Entre com o código enviado por e-mail.": {
+    "pt": "Já existe uma conta com este e-mail. Entre com o código enviado por e-mail.",
+    "en": "An account with this email already exists. Sign in with the code sent by email.",
+    "es": "Ya existe una cuenta con este correo electrónico. Inicia sesión con el código enviado por correo."
+  },
+  "Este provedor não informou um e-mail válido. Entre com seu e-mail.": {
+    "pt": "Este provedor não informou um e-mail válido. Entre com seu e-mail.",
+    "en": "This provider did not supply a valid email. Sign in with your email.",
+    "es": "Este proveedor no proporcionó un correo electrónico válido. Inicia sesión con tu correo electrónico."
+  },
+  "Entrar no Clarify": {
+    "pt": "Entrar no Clarify",
+    "en": "Sign in to Clarify",
+    "es": "Entrar en Clarify"
+  },
+  "Clarify para iOS": {
+    "pt": "Clarify para iOS",
+    "en": "Clarify for iOS",
+    "es": "Clarify para iOS"
+  },
+  "Clarify para computador": {
+    "pt": "Clarify para computador",
+    "en": "Clarify desktop",
+    "es": "Clarify para ordenador"
+  },
+  "Continue com {v0} somente se você iniciou a entrada no aplicativo Clarify neste dispositivo. Não continue por um link enviado por outra pessoa.": {
+    "pt": "Continue com {v0} somente se você iniciou a entrada no aplicativo Clarify neste dispositivo. Não continue por um link enviado por outra pessoa.",
+    "en": "Continue with {v0} only if you started sign-in in your Clarify app on this device. Do not continue from a link that someone sent you.",
+    "es": "Continúa con {v0} solo si iniciaste el acceso en la aplicación Clarify de este dispositivo. No continúes desde un enlace enviado por otra persona."
+  },
+  "Você pode fechar esta página para cancelar.": {
+    "pt": "Você pode fechar esta página para cancelar.",
+    "en": "You can close this page to cancel.",
+    "es": "Puedes cerrar esta página para cancelar."
+  },
+  "Abrindo o provedor de entrada.": {
+    "pt": "Abrindo o provedor de entrada.",
+    "en": "Opening the sign-in provider.",
+    "es": "Abriendo el proveedor de acceso."
+  },
+  "Continuar entrada": {
+    "pt": "Continuar entrada",
+    "en": "Continue sign-in",
+    "es": "Continuar acceso"
+  },
+  "Voltar ao Clarify": {
+    "pt": "Voltar ao Clarify",
+    "en": "Return to Clarify",
+    "es": "Volver a Clarify"
+  },
+  "Você pode fechar esta página. Seu aplicativo Clarify mostrará o resultado da entrada.": {
+    "pt": "Você pode fechar esta página. Seu aplicativo Clarify mostrará o resultado da entrada.",
+    "en": "You can close this page. Your Clarify app will show the sign-in result.",
+    "es": "Puedes cerrar esta página. Tu aplicación Clarify mostrará el resultado del acceso."
   }
 }

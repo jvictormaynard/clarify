@@ -39,7 +39,7 @@ class RequestLimits:
             response["Cache-Control"] = "no-store"
             return response
 
-        if request.path.startswith(("/v1/", "/_allauth/")):
+        if request.path.startswith(("/v1/", "/_allauth/", "/social/", "/accounts/")):
             audio = request.path == "/v1/dictations"
             maximum = settings.CLARIFY_MAX_UPLOAD_BYTES + 65536 if audio else 512 * 1024
             try:
@@ -49,10 +49,21 @@ class RequestLimits:
             if length > maximum or length < 0:
                 return reject("upload_too_large", 413)
             ip = request.META.get("REMOTE_ADDR", "unknown")
+            social_poll = request.path in {
+                "/_allauth/app/v1/auth/social/poll",
+                "/_allauth/app/v1/auth/social/cancel",
+            }
             auth = request.path.startswith("/_allauth/")
-            if auth and not take_rate("auth_global", "all", 200):
+            if social_poll:
+                if not take_rate("social_poll_global", "all", 2400) or not take_rate(
+                    "social_poll", ip, 120
+                ):
+                    return reject("rate_limited", 429)
+            elif auth and not take_rate("auth_global", "all", 200):
                 return reject("rate_limited", 429)
-            if not take_rate("auth" if auth else "api", ip, 20 if auth else 120):
+            if not social_poll and not take_rate(
+                "auth" if auth else "api", ip, 20 if auth else 120
+            ):
                 return reject("rate_limited", 429)
             if request.path.endswith("/auth/signup") and request.method == "POST":
                 if not take_rate("signup", ip, 3, 3600) or not take_rate(
@@ -62,7 +73,7 @@ class RequestLimits:
         response = self.get_response(request)
         if getattr(request, "clarify_email_limited", False):
             return reject("email_limit", 429)
-        if request.path.startswith(("/v1/", "/_allauth/")):
+        if request.path.startswith(("/v1/", "/_allauth/", "/social/", "/accounts/")):
             response["Cache-Control"] = "no-store"
         return response
 

@@ -66,7 +66,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   const signedIn = quota || testInfo.title.startsWith("snippets account:");
   const usageReady = new Promise<void>(resolve => { releaseUsage = resolve; });
   const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : []), ...(testInfo.title.includes("social cancellation") ? ["--social-wait"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);
@@ -222,6 +222,28 @@ test("onboarding: email confirmation activates account processing immediately", 
   await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Texto", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toBeVisible();
+});
+
+for (const provider of ["Google", "Microsoft", "GitHub"]) {
+  test(`onboarding: social ${provider} signs in without requiring the email form`, async ({ page }) => {
+    await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toHaveValue("");
+    await page.getByRole("button", { name: `Continuar com ${provider}`, exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Sua conta está pronta" })).toBeVisible();
+    await expect(page.getByText(`${provider.toLowerCase()}@example.test`, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Começar", exact: true }).click();
+    await expect(page.getByRole("navigation")).toBeVisible();
+  });
+}
+
+test("onboarding: social cancellation stays enabled while the browser login is pending", async ({ page }) => {
+  await page.getByRole("button", { name: "Continuar com Google", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Conclua o login no navegador");
+  const cancel = page.getByRole("button", { name: "Cancelar login", exact: true });
+  await expect(cancel).toBeEnabled();
+  await cancel.click();
+  await expect(page.getByRole("alert")).toContainText("O login foi cancelado.");
+  await expect(page.getByRole("button", { name: "Continuar com Google", exact: true })).toBeEnabled();
+  await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeVisible();
 });
 
 test("modifier and side mouse shortcuts can be captured and saved", async ({ page }) => {

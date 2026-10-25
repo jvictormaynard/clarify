@@ -69,6 +69,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
         </details>
       </>}
     </fieldset>
+    {account.socialPending && <Button variant="text" onClick={() => command("cancel-social")}>{t("Cancelar login")}</Button>}
     <Confirm open={!!confirmation} onOpenChange={open => { if (!open) setConfirmation(null); }}
       title={t(confirmation === "delete" ? "Excluir conta" : "Sair da conta")}
       description={t(confirmation === "delete"

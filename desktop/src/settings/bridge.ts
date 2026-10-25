@@ -19,6 +19,7 @@ export interface Settings {
   uiLanguage?: string;
   onboardingRequired: boolean;
   accountState?: {
+    socialPending?: boolean;
     endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
     hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
     dictionaryConflict?: boolean; syncError?: string;

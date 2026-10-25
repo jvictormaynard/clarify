@@ -15,6 +15,8 @@ class ScopedSessionTokenStrategy(SessionTokenStrategy):
         if session is not None and (
             "clarify_admin_pending" in session
             or "clarify_admin_authenticated_at" in session
+            or "clarify_social_handoff" in session
+            or "clarify_social_browser" in session
         ):
             return None
         return session
