@@ -34,6 +34,25 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(button.waitForExistence(timeout: 20), "Missing tab: \(label)")
     button.tap()
   }
+  func pressWithKeyboard(_ identifier: String, field: XCUIElement, value: String) {
+    let keyboard = app.keyboards.firstMatch
+    XCTAssertTrue(keyboard.exists && keyboard.isHittable, "Keep the keyboard open for \(identifier)")
+    let button = app.buttons[identifier].firstMatch
+    XCTAssertTrue(button.waitForExistence(timeout: 15))
+    if !button.isHittable {
+      diagnose("keyboard-before-scroll-\(identifier)")
+      let page = app.scrollViews.firstMatch
+      XCTAssertTrue(page.exists && page.isHittable)
+      page.swipeUp()
+    }
+    let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
+    XCTAssertEqual(XCTWaiter.wait(for: [reachable], timeout: 5), .completed, "Reach \(identifier) with the keyboard open")
+    XCTAssertTrue(keyboard.exists && keyboard.isHittable, "Scrolling must keep the keyboard open")
+    XCTAssertTrue(field.isHittable, "Keep the input visible beside its action")
+    XCTAssertEqual(field.value as? String, value, "Scrolling must retain the complete input")
+    capture("keyboard-action-ready-\(identifier)")
+    press(identifier, allowScroll: false)
+  }
   func enter(_ value: String, in field: XCUIElement, name: String) {
     XCTAssertTrue(field.waitForExistence(timeout: 15))
     field.tap()
@@ -63,13 +82,13 @@ final class AppFlowUITests: XCTestCase {
     enter("clarify-e2e@example.test", in: app.textFields["account.email"], name: "email")
     XCTAssertEqual(app.textFields["account.email"].value as? String, "clarify-e2e@example.test")
     capture("login-email-keyboard-visible")
-    press("account.requestCode", allowScroll: false)
+    pressWithKeyboard("account.requestCode", field: app.textFields["account.email"], value: "clarify-e2e@example.test")
     guard app.textFields["account.code"].waitForExistence(timeout: 15) else {
       diagnose("login-code-missing"); XCTFail("Login did not show the code field. Inspect the HTTP journal and app alert."); return
     }
     enter("123456", in: app.textFields["account.code"], name: "code")
     capture("login-code-keyboard-visible")
-    press("account.verifyCode", allowScroll: false)
+    pressWithKeyboard("account.verifyCode", field: app.textFields["account.code"], value: "123456")
     tab("Início")
     XCTAssertFalse(app.buttons["home.account"].exists, "Account opens from the bottom tabs")
     XCTAssertEqual(app.tabBars.buttons.count, 4)
