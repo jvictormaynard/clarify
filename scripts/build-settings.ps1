@@ -2,11 +2,13 @@
 param([string]$OutputPath, [string]$PythonExecutable = 'python')
 $ErrorActionPreference = 'Stop'
 $taskRepo = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'windows-build-paths.ps1')
+$taskBuildPaths = Get-ClarifyWindowsBuildPaths -RepositoryPath $taskRepo
 if (-not $OutputPath) { $OutputPath = Join-Path $taskRepo 'dist\clarify-settings.exe' }
 $OutputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)
-$taskStageRoot = Join-Path $env:TEMP 'clarify-settings-workspace'
+$taskStageRoot = $taskBuildPaths.SettingsStageRoot
 $taskStage = Join-Path $taskStageRoot 'desktop'
-$taskTarget = Join-Path $env:TEMP 'clarify-tauri-target'
+$taskTarget = $taskBuildPaths.SettingsTarget
 $taskVswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $taskVs = & $taskVswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if (-not $taskVs) { throw 'Install Visual Studio C++ Build Tools and the Windows SDK first.' }

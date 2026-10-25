@@ -18,8 +18,9 @@
 - Use the pinned requirements and npm/Cargo lockfiles. Runtime Qt needs
   `PySide6-Essentials`, not the full `PySide6`/Addons distribution.
 - Keep tests isolated from real profiles, microphones, provider keys and audio.
-- Run Python unit tests and the relevant Settings tests after changes. Packaging
-  changes also require the Windows build and embedded-payload checks.
+- Run checks for the affected contracts as defined in `docs/ci-delivery.md`.
+  Python behavior needs the Python suite; Settings changes need web and bridge
+  tests. Packaging changes also need the Windows build and embedded-payload checks.
 - Never include `.env`, local configuration, keys or recordings in commits.
 - A passing CI is not manual Windows acceptance. Follow the repository release
   procedure and document open gates before publishing.
@@ -68,5 +69,4 @@ Keep installation, configuration, and updates inside this repository.
 
 Load only the skills relevant to the task. Use `ask-matt` when workflow selection
 is unclear. `python scripts/check_agent_skills.py` checks local metadata,
-references, scope, attribution, and the upstream inventory; CI runs it on both
-platforms. This check does not prove an agent's judgment or native UI acceptance.
+references, scope, attribution, and the upstream inventory; CI runs it in the repository checks job. This check does not prove an agent's judgment or native UI acceptance.

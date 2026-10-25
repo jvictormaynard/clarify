@@ -101,16 +101,20 @@ For Windows-facing changes:
   missing required acceptance blocks publication, without a repeated approval
   request when valid evidence already exists
 
-On the PR and after merge:
+On the desktop preparation PR and after merge:
 
+- `CI required`
 - `Tests (ubuntu-latest)`
 - `Tests (windows-latest)`
 - `Package Windows executable`
-  - includes per-user MSI install, upgrade, repair, rollback, uninstall, and
-    signed-manifest contract smoke tests
-  - also includes the shared Settings build action and embedded-child hash check
+  - includes the native Settings build and embedded-child hash check
   - includes frozen portable update replacement, startup receipt, rollback, and
     tamper rejection with generated fixture keys and isolated paths
+
+- `Settings web and bridge` runs separately for the prepared source.
+- MSI lifecycle and signed-manifest checks run when installer inputs change or
+  during a full manual CI run. They are not a requirement for a Community
+  portable release. Keep the signed-channel acceptance requirements below.
 
 On publication:
 

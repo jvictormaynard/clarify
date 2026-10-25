@@ -3837,6 +3837,9 @@ class UsageStatisticsTests(unittest.TestCase):
     def test_local_asr_opted_out_refinement_is_not_accounted(self):
         original = app.APP_CONFIG.copy()
         try:
+            # This case exercises flat settings, without a typed route left by
+            # another test overriding the local-ASR selection.
+            app.APP_CONFIG.pop("workflows", None)
             app.APP_CONFIG.update(
                 {
                     "transcription_provider": "local_asr",

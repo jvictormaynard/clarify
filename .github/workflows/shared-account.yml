@@ -1,7 +1,5 @@
 name: Shared account
 on:
-  push:
-    branches: ['codex/clarify-cloud']
   workflow_dispatch:
     inputs:
       publish_server_image:

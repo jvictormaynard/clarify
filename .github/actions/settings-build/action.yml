@@ -1,9 +1,18 @@
 name: Validate and build Settings
-description: Build the locked React/Tauri child application and test its Python bridge on Windows.
+description: Validate Settings in a browser and optionally compile the native child application.
 inputs:
   python:
     description: Python interpreter with the repository development dependencies installed
     required: true
+  native:
+    description: Compile the native Settings executable and collect its inventory
+    default: 'true'
+  test:
+    description: Run the isolated browser and Python bridge tests
+    default: 'true'
+  audit:
+    description: Audit dependencies during a release build
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -13,6 +22,8 @@ runs:
         cache: npm
         cache-dependency-path: desktop/package-lock.json
     - name: Check native toolchain
+      id: toolchain
+      if: inputs.native == 'true'
       shell: pwsh
       working-directory: desktop
       run: |
@@ -20,11 +31,25 @@ runs:
         if ($LASTEXITCODE -ne 0) { throw 'The Windows runner must provide Rust MSVC.' }
         cargo --version
         if ($LASTEXITCODE -ne 0) { throw 'Cargo is required.' }
+        $rustVersion = (rustc --version) -replace '[^a-zA-Z0-9.-]', '-'
+        "rust=$rustVersion" >> $env:GITHUB_OUTPUT
+    - name: Restore native compilation cache
+      if: inputs.native == 'true'
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          desktop/src-tauri/target
+        key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.rust }}-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}-${{ hashFiles('desktop/src-tauri/src/**', 'desktop/src-tauri/build.rs', 'desktop/src-tauri/tauri.conf.json') }}
+        restore-keys: |
+          cargo-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.rust }}-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}-
     - name: Install locked frontend dependencies
       shell: pwsh
       working-directory: desktop
       run: npm ci --no-fund
     - name: Audit frontend and build dependencies
+      if: inputs.audit == 'true'
       shell: pwsh
       working-directory: desktop
       run: npm audit --include=dev --audit-level=high
@@ -33,10 +58,12 @@ runs:
       working-directory: desktop
       run: npm run build
     - name: Install test browser
+      if: inputs.test == 'true'
       shell: pwsh
       working-directory: desktop
-      run: npx --no-install playwright install chromium
+      run: npx --no-install playwright install --with-deps chromium
     - name: Test Settings with isolated Python controller
+      if: inputs.test == 'true'
       shell: pwsh
       working-directory: desktop
       env:
@@ -48,6 +75,7 @@ runs:
         npm test
         if ($LASTEXITCODE -ne 0) { throw 'Settings browser tests failed.' }
     - name: Compile native Settings
+      if: inputs.native == 'true'
       shell: pwsh
       working-directory: desktop
       run: |
@@ -56,6 +84,7 @@ runs:
         New-Item -ItemType Directory -Path ../dist -Force | Out-Null
         Copy-Item src-tauri/target/release/clarify-settings.exe ../dist/clarify-settings.exe
     - name: Collect locked dependency inventory and license texts
+      if: inputs.native == 'true'
       shell: pwsh
       env:
         INVENTORY_PYTHON: ${{ inputs.python }}
@@ -63,7 +92,7 @@ runs:
         & $env:INVENTORY_PYTHON scripts/settings_inventory.py --desktop desktop --output-dir dist
         if ($LASTEXITCODE -ne 0) { throw 'Settings dependency inventory failed.' }
     - name: Retain isolated Settings test evidence
-      if: always()
+      if: always() && inputs.test == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: Settings-tests-${{ github.job }}-${{ github.sha }}

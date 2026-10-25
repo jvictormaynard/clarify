@@ -8,9 +8,10 @@
 - An API key only for live cloud-provider checks
 - Git, if cloning instead of downloading a source archive
 
-Settings development requires Node.js 22, Rust MSVC, Visual Studio C++ Build
-Tools, and the Windows SDK. WebView2 is required to run the native Settings
-window. End users do not need Node.js, Rust, or Python.
+Settings browser development needs Node.js 22 and the locked Python environment.
+A native Settings build additionally needs Rust MSVC, Visual Studio C++ Build
+Tools and the Windows SDK. WebView2 is required for the native window. End users
+do not need these build tools.
 
 ## Windows setup
 
@@ -78,7 +79,7 @@ directories and never access the developer's credential store.
 
 ## Settings development
 
-See [CONTRIBUTING](../CONTRIBUTING.md#required-checks) for the exact npm,
+See [CONTRIBUTING](../CONTRIBUTING.md#checks-for-your-change) for the exact npm,
 Playwright, and Cargo checks. `npm run build` in `desktop/` runs TypeScript
 validation with TypeScript 7 before Vite 8. `npm ci` and `cargo build --locked` use the committed
 dependency locks. `npm run dev` starts Vite; controller access still requires
@@ -112,6 +113,12 @@ From Linux or WSL with the dependencies installed:
 python3 -m unittest discover -s tests -v
 python3 -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py workflows.py repositories.py workflow_config.py workflow_settings.py voice_translation.py voice_translation_runtime.py dictionary_snippets.py dictionary_settings.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests
 ```
+
+Choose local checks by the affected contract. A Settings-only design change
+needs its frontend build and isolated browser tests, without Rust or an EXE
+build. Documentation needs repository checks. Python behavior needs the Python
+suite. Native integration and release candidates still need Windows acceptance.
+See [CI selection](ci-delivery.md) and [Contributing](../CONTRIBUTING.md).
 
 Repository-specific tests live in `tests/test_repositories.py` and
 `tests/test_workflow_config.py`. They cover legacy file loading, the ordered
@@ -325,14 +332,18 @@ installs the hook on Windows. CI keeps the format check as the final guard.
 
 ## Automated quality and supply-chain checks
 
-The CI quality gate runs staged Ruff linting, a focused Ruff format check, mypy for the
-typed `desktop_state.py` and `windows_hotkeys.py` modules, the full dependency
-audit, the unit-test baseline, and Python compile checks on Ubuntu and Windows.
-The Windows packaging job is required before CI is green.
-It also runs the shared `.github/actions/settings-build` action: npm lock
-installation, production npm audit, TypeScript/Vite build, isolated Playwright
-tests, and a locked Rust build. Both release workflows use the same action.
-Browser success does not certify WebView2 or native window behavior.
+CI selects checks from the complete change range. `CI required` validates the
+selected jobs, including failures, cancellation and incorrect skips. See
+[CI selection and branch protection](ci-delivery.md) for the current policy.
+
+Python changes select Linux and Windows tests, lint, types and compile checks.
+Settings design changes select the frontend build and isolated browser tests,
+without Rust or a portable EXE. Native, dependency and packaging inputs select
+the corresponding build. MSI checks apply to installer inputs or a full manual
+run. The shared Settings action can run browser checks separately from its
+native build and inventory. Browser success does not establish WebView2 or
+native window acceptance. Desktop dependency audits run for their changed
+inputs, daily, and before Desktop publication.
 
 `scripts/dependency_audit.py` audits the locked set with `pip-audit`. The
 reviewed-exception policy lives in `dependency-audit.json`; it is intentionally
