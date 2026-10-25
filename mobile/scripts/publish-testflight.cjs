@@ -6,9 +6,9 @@ const path = require('node:path');
 const config = require('../app.json').expo;
 const app = require('../eas.json').submit.production.ios.ascAppId;
 const notes = {
-  "pt-BR": "Conta voltou para a barra inferior, ao lado de Início, Dicionário e Snippets. O avatar foi removido do Início. Configurações e Como usar continuam dentro de Conta. Mantém a correção de gravação da versão anterior.",
-  "en-US": "Account is back in the bottom tab bar, alongside Home, Dictionary and Snippets. The Home avatar is removed. Settings and How to use remain inside Account. Keeps the previous recording fix.",
-  "es-ES": "Cuenta vuelve a la barra inferior, junto a Inicio, Diccionario y Snippets. Se elimina el avatar de Inicio. Ajustes y Cómo usar siguen dentro de Cuenta. Mantiene la corrección anterior de grabación."
+  "pt-BR": "A logo do Clarify aparece no topo do Início, com cor adaptada ao tema. Conta continua na barra inferior.",
+  "en-US": "The Clarify logo appears at the top of Home and follows the selected theme. Account remains in the bottom tab bar.",
+  "es-ES": "El logo de Clarify aparece en la parte superior de Inicio y se adapta al tema. Cuenta sigue en la barra inferior."
 };
 function token() {
   const now = Math.floor(Date.now() / 1000);

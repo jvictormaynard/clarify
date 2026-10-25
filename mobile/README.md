@@ -17,11 +17,13 @@ check duration and speech energy. The previous encoder reproduces Apple error
 used by the reporting iPhone. Physical microphone and Bluetooth acceptance remain
 separate from the native fixtures.
 
-## Interface candidate — 0.10.3 (36)
+## Interface candidate — 0.10.4 (37)
 
 The bottom tabs contain Home, Dictionary, Snippets and Account. Account is again
-a native bottom tab, with the same page title pattern as the other tabs. Home has
-no profile avatar. Settings and the optional How to use guide open from Account.
+a native bottom tab, with the same page title pattern as the other tabs. Home
+shows the existing theme-aware Clarify mark above its title, without an icon
+background or a profile avatar. Settings and the optional How to use guide open
+from Account.
 The signed-in guard still protects every tab. Dictionary has no duplicate
 Snippets shortcut. The interface uses
 neutral surfaces, reusable React Native controls and short motion that respects

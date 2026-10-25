@@ -8,6 +8,7 @@ import Core, { type HistoryEntry } from '../../../modules/clarify-core';
 import { Button, Card, EmptyState, ScreenHeader, TableRow, ui, usePalette, useReducedMotion } from '../../components/ui';
 import { report, useClarify } from '../../state/clarify';
 import { MicrophoneSwitch } from '../../components/microphone-switch';
+import { ClarifyLogo } from '../../components/clarify-logo';
 
 import { groupHistory, historyDayTitle, historyTime } from '../../history';
 
@@ -85,6 +86,7 @@ export default function Home() {
       sections={sections} stickySectionHeadersEnabled={false} keyExtractor={(entry) => `${entry.localOnly ? 'local' : 'account'}:${entry.id}`}
       onEndReached={() => { if (cursor) void load(cursor, true); }} onEndReachedThreshold={0.4}
       ListHeaderComponent={<View testID="app.home" collapsable={false} style={{ gap: 16 }}>
+        <ClarifyLogo size={28} />
         <ScreenHeader title={t('Início')} />
         <MicrophoneSwitch />
         <Text style={[ui.small, { color: c.muted, marginTop: -8 }]}>{state.sessionActive ? t('O Clarify está ativo para receber ditados do teclado.') : t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>
