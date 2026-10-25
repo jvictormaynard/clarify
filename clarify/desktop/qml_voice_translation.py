@@ -18,11 +18,6 @@ from typing import Any
 
 from PySide6.QtCore import Property, QObject, Qt, Signal, Slot
 
-try:
-    import sounddevice as _sounddevice
-except (ImportError, OSError):
-    _sounddevice = None
-
 from provider_http import ProviderCancelledError
 from provider_registry import PROVIDER_REGISTRY
 from provider_types import (
@@ -54,9 +49,9 @@ from workflow_config import WorkflowScope, validate_workflow_route
 from workflows import RecordingSnapshot
 
 try:
-    from .qml_runtime import QtRecordingAudioGateway
+    from .qml_runtime import QtRecordingAudioGateway, _load_sounddevice
 except ImportError:  # PyInstaller analyzes the entrypoint as top-level source.
-    from qml_runtime import QtRecordingAudioGateway
+    from qml_runtime import QtRecordingAudioGateway, _load_sounddevice
 
 
 _LANGUAGE_NAMES = {
@@ -320,9 +315,7 @@ class QtVoiceTranslationRecording(VoiceTranslationRecording):
     ) -> None:
         self.session = session
         self._monotonic = monotonic or time.monotonic
-        self._sounddevice = (
-            _sounddevice if sounddevice_module is None else sounddevice_module
-        )
+        self._sounddevice = sounddevice_module
         self._boundary_lock = threading.RLock()
         self._boundary_callback: Callable[[Any], None] | None = None
         self._boundary_claimed = False
@@ -418,6 +411,8 @@ class QtVoiceTranslationRecording(VoiceTranslationRecording):
         vad = getattr(controls, "vad", None)
         with self._boundary_lock:
             callback_registered = self._boundary_callback is not None
+            if self._vad_stop.is_set():
+                return
         if (
             policy is None
             or not getattr(vad, "enabled", False)
@@ -425,13 +420,13 @@ class QtVoiceTranslationRecording(VoiceTranslationRecording):
         ):
             return
         sounddevice_module = self._sounddevice
+        if sounddevice_module is None:
+            sounddevice_module = _load_sounddevice()
+        if self._vad_stop.is_set():
+            return
         stream_type = getattr(sounddevice_module, "RawInputStream", None)
         if not callable(stream_type):
             raise RuntimeError("VAD requires the sounddevice input-level monitor")
-
-        self._vad_stop.clear()
-        self._vad_boundary.clear()
-        self._vad_reason = None
 
         def observe_input(indata: Any, *_args: Any) -> None:
             if self._vad_stop.is_set():
@@ -477,9 +472,10 @@ class QtVoiceTranslationRecording(VoiceTranslationRecording):
             name="ClarifyQmlVoiceTranslationVAD",
             daemon=True,
         )
-        with self._boundary_lock:
-            self._vad_worker = worker
-        worker.start()
+        # Startup owns the stream until native start returns. Stop/cancel only
+        # marks this recording terminal; it must not close a still-starting
+        # stream or let a late result attach after that terminal action.
+        stream = None
         try:
             kwargs: dict[str, Any] = {
                 "channels": 1,
@@ -489,20 +485,37 @@ class QtVoiceTranslationRecording(VoiceTranslationRecording):
                 "callback": observe_input,
             }
             device = self._selected_stream_device()
+            if self._vad_stop.is_set():
+                return
             if device is not None:
                 kwargs["device"] = device
             stream = stream_type(**kwargs)
-            with self._boundary_lock:
-                self._vad_stream = stream
+            if self._vad_stop.is_set():
+                return
             stream.start()
-        except Exception:
-            self._stop_vad_monitor()
-            raise
+            with self._boundary_lock:
+                if self._vad_stop.is_set():
+                    return
+                self._vad_worker = worker
+                try:
+                    worker.start()
+                except Exception:
+                    self._vad_worker = None
+                    raise
+                self._vad_stream = stream
+                stream = None
+        finally:
+            if stream is not None:
+                try:
+                    stream.stop()
+                finally:
+                    stream.close()
 
     def _stop_vad_monitor(self) -> None:
-        self._vad_stop.set()
-        self._vad_boundary.set()
         with self._boundary_lock:
+            # This event is monotonic for the recording's entire lifetime.
+            self._vad_stop.set()
+            self._vad_boundary.set()
             stream = self._vad_stream
             worker = self._vad_worker
             self._vad_stream = None

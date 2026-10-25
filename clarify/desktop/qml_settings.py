@@ -21,7 +21,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
-from PySide6.QtCore import Property, QObject, Qt, Signal, Slot
+from PySide6.QtCore import Property, QObject, Qt, QTimer, Signal, Slot
 from clarify_account import AccountService
 from account_history import AccountHistory
 from history_store import HistoryStore
@@ -80,6 +80,7 @@ from windows_hotkeys import supports_qt_push_to_talk as supports_push_to_talk
 
 AUTOSTART_REGISTRY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 AUTOSTART_VALUE_NAME = "Clarify"
+_EXPECTED_LIBRARY_ENTRIES_UNSET = object()
 
 _HOTKEY_ACTION_LABELS = {
     HotkeyAction.RECORDING: "Record / stop",
@@ -322,14 +323,79 @@ def _default_microphone_inventory_source() -> Any | None:
     return SoundDeviceMicrophoneInventory(sounddevice)
 
 
+def _read_microphone_inventory(backend, source):
+    """Read hardware on the discovery worker, without retaining its Qt owner."""
+
+    backend_snapshot = getattr(backend, "microphone_inventory", None)
+    if callable(backend_snapshot):
+        inventory = backend_snapshot()
+    else:
+        if source is None:
+            source = _default_microphone_inventory_source()
+        inventory = (
+            source.snapshot()
+            if source is not None
+            else MicrophoneInventory.unavailable("portaudio_unavailable")
+        )
+    if not isinstance(inventory, MicrophoneInventory):
+        raise TypeError("microphone inventory source returned an invalid snapshot")
+    return inventory, source
+
+
+def _merge_library_draft(before, draft, persisted, key):
+    """Keep pending row/field edits and adopt untouched synchronized values.
+
+    The domain validates uniqueness and the combined size. Unlike account sync's
+    whole-row conflict policy, a text draft must also adopt newer saved flags.
+    Keep draft order so an explicit Save can return its row identities in order.
+    """
+    if draft == before:
+        return persisted
+    if persisted == before:
+        return draft
+    baseline = {getattr(item, key).casefold(): item for item in before}
+    current = {getattr(item, key).casefold(): item for item in persisted}
+    edited = {getattr(item, key).casefold() for item in draft}
+    merged = []
+    for item in draft:
+        identity = getattr(item, key).casefold()
+        original, latest = baseline.get(identity), current.get(identity)
+        if item == original:
+            if latest is not None:
+                merged.append(latest)
+        elif original is not None and latest is not None:
+            previous = original.to_mapping()
+            merged.append(
+                type(item).from_mapping(
+                    {
+                        field: latest.to_mapping()[field]
+                        if value == previous[field]
+                        else value
+                        for field, value in item.to_mapping().items()
+                    }
+                )
+            )
+        else:
+            merged.append(item)
+    # An omitted baseline row is a pending deletion, not a remote addition.
+    merged.extend(
+        item
+        for identity, item in current.items()
+        if identity not in baseline and identity not in edited
+    )
+    return tuple(merged)
+
+
 class QmlSettingsController(QObject):
     accountStateChanged = Signal()
     _accountFinished = Signal(object)
+    _libraryPreferenceSynced = Signal(str, str)
     """Expose the typed application configuration to Qt Quick.
 
-    The object owns an editable draft only.  ``load`` replaces that draft
+    The object owns an editable draft.  ``load`` replaces that draft
     from the configured repository, while ``save`` delegates the complete
-    ``AppConfig`` to the repository's atomic ``apply`` operation.  No legacy
+    ``AppConfig`` to the repository's atomic ``apply`` operation. Discrete
+    ``savePreference`` commands persist only their explicit fields. No legacy
     window or frontend is involved; Windows startup is handled by the local
     Run-key transaction only when settings are saved.
     """
@@ -355,6 +421,7 @@ class QmlSettingsController(QObject):
     _localBenchmarkPublished = Signal(str)
     _microphoneTestFinished = Signal(int, bool, object)
     _microphoneLevelPublished = Signal(int, float)
+    _microphoneInventoryFinished = Signal(int, object)
 
     def __init__(
         self,
@@ -394,8 +461,17 @@ class QmlSettingsController(QObject):
         self._account_shutdown = False
         self._account_social = False
         self._account_cancel = threading.Event()
+        self._library_sync_pending = False
+        self._library_sync_context = None
+        self._library_sync_timer = QTimer(self)
+        self._library_sync_timer.setSingleShot(True)
+        self._library_sync_timer.setInterval(1000)
+        self._library_sync_timer.timeout.connect(self._sync_library_preferences)
         self._accountFinished.connect(
             self._finish_account, Qt.ConnectionType.QueuedConnection
+        )
+        self._libraryPreferenceSynced.connect(
+            self._finish_library_preference_sync, Qt.ConnectionType.QueuedConnection
         )
         self._config_repository: ConfigRepository = repositories.config
         self._dictionary_service = dictionary_service or DictionarySnippetService(
@@ -404,6 +480,7 @@ class QmlSettingsController(QObject):
             )
         )
         self._dictionary_draft = self._dictionary_service.state
+        self._dictionary_baseline = self._dictionary_draft
         self._snippet_draft_context = self.snippetContext
         self._autostart_registry = registry
         self._local_product = local_product or _default_local_asr_product()
@@ -419,14 +496,18 @@ class QmlSettingsController(QObject):
             {"id": "cpu", "label": "CPU"},
         ]
         self._hotkey_applier = hotkey_applier
+        self._hotkey_reapply_required = False
         self._hotkey_capture_changed = hotkey_capture_changed
         self._microphone_backend = microphone_backend
-        self._microphone_inventory_source = (
-            microphone_inventory_source
-            or getattr(microphone_backend, "microphone_inventory_source", None)
-            or _default_microphone_inventory_source()
+        self._microphone_inventory_source = microphone_inventory_source or getattr(
+            microphone_backend, "microphone_inventory_source", None
         )
         self._microphone_inventory = MicrophoneInventory.unavailable("not_refreshed")
+        self._microphone_inventory_busy = False
+        self._microphone_inventory_generation = 0
+        self._microphone_inventory_shutdown = False
+        self._microphone_inventory_error_before = ""
+        self._microphone_inventory_thread: threading.Thread | None = None
         self._microphone_test_generation = 0
         self._microphone_test_busy = False
         self._microphone_test_level = 0.0
@@ -479,6 +560,9 @@ class QmlSettingsController(QObject):
         )
         self._microphoneLevelPublished.connect(
             self._apply_microphone_level, Qt.ConnectionType.QueuedConnection
+        )
+        self._microphoneInventoryFinished.connect(
+            self._finish_microphone_inventory, Qt.ConnectionType.QueuedConnection
         )
         self._local_state_listener = self._local_state_callback(0)
         self._local_product.subscribe(self._local_state_listener)
@@ -834,6 +918,10 @@ class QmlSettingsController(QObject):
     def microphoneTestBusy(self) -> bool:
         return self._microphone_test_busy
 
+    @Property(bool, notify=microphoneChanged)
+    def microphoneInventoryBusy(self) -> bool:
+        return self._microphone_inventory_busy
+
     @Property(float, notify=microphoneLevelChanged)
     def microphoneTestLevel(self) -> float:
         return self._microphone_test_level
@@ -921,23 +1009,91 @@ class QmlSettingsController(QObject):
     def dictionaryEntries(self):
         return [entry.to_mapping() for entry in self._dictionary_draft.dictionary]
 
-    @Slot("QVariantList", result=bool)
-    def setDictionaryEntries(self, entries) -> bool:
+    def library_snapshot(self):
+        """Pair web rows with their owner even before queued account completion."""
+        with self._dictionary_service.transaction():
+            context = self.snippetContext
+            current = context == self._snippet_draft_context
+            return {
+                "dictionaryContext": context,
+                "snippetContext": context,
+                "dictionaryEntries": self.dictionaryEntries if current else [],
+                "snippets": self.snippets if current else [],
+            }
+
+    def _require_library_context(self, context):
+        """Call only under the service's account-before-library guard."""
+        if (
+            not isinstance(context, str)
+            or context != self.snippetContext
+            or context != self._snippet_draft_context
+            or (self._account_busy and self._library_sync_context is None)
+        ):
+            raise ValueError("A conta mudou. Descarte as alterações e tente novamente.")
+
+    def _reconcile_library_draft(self, persisted=None):
+        """Rebase actual pending edits on storage without writing either copy."""
+        persisted = (
+            persisted if persisted is not None else self._dictionary_service.state
+        )
+        before = self._dictionary_baseline
+        draft = self._dictionary_draft
+        reconciled = replace(
+            draft,
+            dictionary=_merge_library_draft(
+                before.dictionary, draft.dictionary, persisted.dictionary, "term"
+            ),
+            snippets=_merge_library_draft(
+                before.snippets, draft.snippets, persisted.snippets, "trigger"
+            ),
+        )
+        self._dictionary_draft = reconciled
+        self._dictionary_baseline = persisted
+
+    def _require_expected_library_entries(self, library, expected):
+        """Compare the captured persisted rows under the staging owner guard."""
+        if expected is _EXPECTED_LIBRARY_ENTRIES_UNSET:
+            return
         try:
-            if not isinstance(entries, list) or len(entries) > 512:
-                raise ValueError("Use até 512 termos no dicionário.")
-            self._dictionary_draft = DictionarySnippets(
-                dictionary=tuple(
-                    DictionaryEntry.from_mapping(entry) for entry in entries
-                ),
-                snippets=self._dictionary_draft.snippets,
-            )
-        except (TypeError, ValueError):
-            self._set_error(
-                ValueError(
-                    "Verifique os termos: use até 256 caracteres, sem duplicatas ou quebras de linha."
-                )
-            )
+            if type(expected) is not list or len(expected) > MAX_SNIPPETS:
+                raise ValueError()
+            entry_type = DictionaryEntry if library == "dictionary" else Snippet
+            entries = tuple(entry_type.from_mapping(item) for item in expected)
+            DictionarySnippets(**{library: entries})
+            if [item.to_mapping() for item in entries] != expected:
+                raise ValueError()
+        except (TypeError, ValueError) as error:
+            raise ValueError("Invalid settings value") from error
+        persisted = self._dictionary_service.reload()
+        if entries != getattr(persisted, library):
+            raise ValueError("A biblioteca mudou. Atualize e tente novamente.")
+
+    @Slot("QVariantList", result=bool)
+    @Slot("QVariantList", str, result=bool)
+    @Slot("QVariantList", str, "QVariantList", result=bool)
+    def setDictionaryEntries(
+        self, entries, context=None, expectedEntries=_EXPECTED_LIBRARY_ENTRIES_UNSET
+    ) -> bool:
+        context = self._snippet_draft_context if context is None else context
+        try:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                self._require_expected_library_entries("dictionary", expectedEntries)
+                try:
+                    if not isinstance(entries, list) or len(entries) > 512:
+                        raise ValueError("Use até 512 termos no dicionário.")
+                    self._dictionary_draft = DictionarySnippets(
+                        dictionary=tuple(
+                            DictionaryEntry.from_mapping(entry) for entry in entries
+                        ),
+                        snippets=self._dictionary_draft.snippets,
+                    )
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        "Verifique os termos: use até 256 caracteres, sem duplicatas ou quebras de linha."
+                    ) from error
+        except Exception as error:
+            self._set_error(error)
             return False
         self._set_error(None)
         self.dirtyChanged.emit()
@@ -957,47 +1113,194 @@ class QmlSettingsController(QObject):
             (str(identity.get("endpoint", "")) + "\n" + scope).encode("utf-8")
         ).hexdigest()
 
+    @Property(str, notify=accountStateChanged)
+    def dictionaryContext(self):
+        return self.snippetContext
+
     @Property("QVariantList", notify=dirtyChanged)
     def snippets(self):
         return [snippet.to_mapping() for snippet in self._dictionary_draft.snippets]
 
     @Slot("QVariantList", str, result=bool)
-    def setSnippets(self, snippets, context) -> bool:
-        if not isinstance(context, str) or context != self.snippetContext:
-            self._set_error(
-                ValueError(
-                    "A conta mudou. Descarte as alterações dos snippets e tente novamente."
-                )
-            )
-            return False
+    @Slot("QVariantList", str, "QVariantList", result=bool)
+    def setSnippets(
+        self, snippets, context, expectedEntries=_EXPECTED_LIBRARY_ENTRIES_UNSET
+    ) -> bool:
         try:
-            if not isinstance(snippets, list) or len(snippets) > MAX_SNIPPETS:
-                raise ValueError("Use até 512 snippets.")
-            draft = DictionarySnippets(
-                dictionary=self._dictionary_draft.dictionary,
-                snippets=tuple(Snippet.from_mapping(item) for item in snippets),
-            )
-            if any(not item.replacement.strip() for item in draft.snippets):
-                raise ValueError("Snippet text must not be empty")
-            if self._account.scope:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                self._require_expected_library_entries("snippets", expectedEntries)
                 try:
+                    if not isinstance(snippets, list) or len(snippets) > MAX_SNIPPETS:
+                        raise ValueError("Use até 512 snippets.")
+                    draft = DictionarySnippets(
+                        dictionary=self._dictionary_draft.dictionary,
+                        snippets=tuple(Snippet.from_mapping(item) for item in snippets),
+                    )
+                    if any(not item.replacement.strip() for item in draft.snippets):
+                        raise ValueError("Snippet text must not be empty")
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        "Verifique os snippets: frases únicas de até 256 caracteres, "
+                        "sem quebras de linha, e textos de até 4096 caracteres."
+                    ) from error
+                if self._account.scope:
                     account_snippet_entries(draft.snippets)
-                except ValueError as error:
-                    self._set_error(error)
-                    return False
-            self._dictionary_draft = draft
-            self._snippet_draft_context = context
-        except (TypeError, ValueError):
-            self._set_error(
-                ValueError(
-                    "Verifique os snippets: frases únicas de até 256 caracteres, "
-                    "sem quebras de linha, e textos de até 4096 caracteres."
-                )
-            )
+                self._dictionary_draft = draft
+        except Exception as error:
+            self._set_error(error)
             return False
         self._set_error(None)
         self.dirtyChanged.emit()
         return True
+
+    @Slot(str, "QVariantMap", str, bool, str, result=bool)
+    def saveLibraryPreference(self, library, identity, field, value, context) -> bool:
+        """Change one persisted flag under its owner guard; never save draft text."""
+        if (
+            type(library) is not str
+            or type(identity) is not dict
+            or type(field) is not str
+            or type(value) is not bool
+            or type(context) is not str
+            or library not in {"dictionary", "snippets"}
+            or field
+            not in (
+                {"enabled"}
+                if library == "dictionary"
+                else {"enabled", "case_sensitive"}
+            )
+        ):
+            self._set_error(ValueError("Invalid settings value"))
+            return False
+        try:
+            entry = (
+                DictionaryEntry.from_mapping(identity)
+                if library == "dictionary"
+                else Snippet.from_mapping(identity)
+            )
+            if entry.to_mapping() != identity:
+                raise ValueError()
+        except (TypeError, ValueError):
+            self._set_error(ValueError("Invalid settings value"))
+            return False
+        try:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                persisted = self._dictionary_service.reload()
+                entries = (
+                    persisted.dictionary
+                    if library == "dictionary"
+                    else persisted.snippets
+                )
+                matches = [
+                    index
+                    for index, item in enumerate(entries)
+                    if item.to_mapping() == identity
+                ]
+                if len(matches) != 1:
+                    raise ValueError("A entrada mudou. Atualize e tente novamente.")
+                index = matches[0]
+                updated = (
+                    *entries[:index],
+                    replace(entries[index], **{field: value}),
+                    *entries[index + 1 :],
+                )
+                candidate = replace(persisted, **{library: updated})
+                self._reconcile_library_draft(persisted)
+                self._dictionary_service.replace(candidate, expected_context=context)
+
+                # Persistence requires the full identity. The draft merge key
+                # only locates the row whose saved flag changed.
+                key = "term" if library == "dictionary" else "trigger"
+                draft_entries = tuple(
+                    replace(item, **{field: value})
+                    if getattr(item, key).casefold() == identity[key].casefold()
+                    else item
+                    for item in getattr(self._dictionary_draft, library)
+                )
+                self._dictionary_draft = replace(
+                    self._dictionary_draft, **{library: draft_entries}
+                )
+                self._dictionary_baseline = candidate
+        except Exception as error:
+            self._set_error(error)
+            return False
+
+        self._set_error(None)
+        self.dirtyChanged.emit()
+        self.saved.emit()
+        self._sync_library_preferences()
+        return True
+
+    def _sync_library_preferences(self):
+        """Use account sync without its draft-replacing sign-in completion path."""
+        if not self._account.scope or self._account_shutdown:
+            self._library_sync_pending = False
+            self._library_sync_timer.stop()
+            return
+        if (
+            self._account_busy
+            or not self._account_can_change()
+            or not self._account.begin_change()
+        ):
+            self._library_sync_pending = True
+            self._library_sync_timer.start()
+            return
+        self._library_sync_pending = False
+        self._library_sync_timer.stop()
+        context = self._snippet_draft_context
+        try:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                self._reconcile_library_draft()
+                self._library_sync_context = context
+        except Exception as error:
+            self._account.end_change()
+            self._set_error(error)
+            return
+        self._account_busy, self._account_error = True, ""
+        self.accountStateChanged.emit()
+
+        def perform():
+            error = ""
+            try:
+                self._account.sync_library(self._dictionary_service)
+            except Exception as problem:
+                from clarify_account import AccountError
+
+                error = (
+                    str(problem)
+                    if isinstance(problem, AccountError)
+                    else "Não foi possível sincronizar a biblioteca."
+                )
+            if not self._account_shutdown:
+                self._libraryPreferenceSynced.emit(context, error)
+
+        threading.Thread(
+            target=perform, name="ClarifyLibraryPreference", daemon=True
+        ).start()
+
+    @Slot(str, str)
+    def _finish_library_preference_sync(self, context, error):
+        if self._account_shutdown or context != self._library_sync_context:
+            return
+        try:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                # A failed sync can still have imported dictionary rows before
+                # its snippets request failed. Reconcile that durable result too.
+                self._reconcile_library_draft()
+        except Exception:
+            error = error or "A biblioteca mudou. Atualize e tente novamente."
+        finally:
+            self._library_sync_context = None
+            self._account_busy, self._account_error = False, error
+            self._account.end_change()
+        self.accountStateChanged.emit()
+        self.dirtyChanged.emit()
+        if self._library_sync_pending:
+            self._sync_library_preferences()
 
     @Property(str, notify=errorChanged)
     def lastError(self) -> str:
@@ -1252,24 +1555,80 @@ class QmlSettingsController(QObject):
             return False
         return self._update_config(replace(self._config, recording_controls=controls))
 
+    @Slot(bool, result=bool)
+    def setRecordingVadEnabled(self, value: bool) -> bool:
+        """Stage the switch without replacing numeric recording drafts."""
+        if type(value) is not bool:
+            self._set_error(ValueError("Invalid settings value"))
+            return False
+        controls = self._config.recording_controls
+        return self._update_config(
+            replace(
+                self._config,
+                recording_controls=replace(
+                    controls, vad=replace(controls.vad, enabled=value)
+                ),
+            )
+        )
+
     @Slot(result=bool)
     def refreshMicrophoneInventory(self) -> bool:
-        """Refresh one inventory snapshot without changing the saved draft."""
+        """Share one background query and keep the last completed inventory."""
 
+        if self._microphone_inventory_shutdown:
+            return False
+        if self._microphone_inventory_busy:
+            return True
         self.stopMicrophoneTest()
-        try:
-            inventory = self._snapshot_microphone_inventory()
-        except Exception as error:
-            inventory = MicrophoneInventory.unavailable("enumeration_failed")
-            self._set_error(error)
-        else:
-            # Hardware enumeration is diagnostic state, not an editable
-            # configuration error.  Leave an unrelated Settings draft error
-            # untouched only when the snapshot itself was successful.
-            self._set_error(None)
-        self._microphone_inventory = inventory
+        self._microphone_inventory_generation += 1
+        generation = self._microphone_inventory_generation
+        self._microphone_inventory_busy = True
+        self._microphone_inventory_error_before = self._last_error
         self.microphoneChanged.emit()
+        reference = weakref.ref(self)
+        backend = self._microphone_backend
+        source = self._microphone_inventory_source
+
+        def discover():
+            try:
+                inventory, discovered_source = _read_microphone_inventory(
+                    backend, source
+                )
+                error = None
+            except Exception as failure:
+                inventory = MicrophoneInventory.unavailable("enumeration_failed")
+                discovered_source = source
+                error = str(failure).strip() or type(failure).__name__
+            controller = reference()
+            if controller is not None:
+                try:
+                    controller._microphoneInventoryFinished.emit(
+                        generation, (inventory, discovered_source, error)
+                    )
+                except RuntimeError:
+                    pass  # The Qt owner can close while a device driver is pending.
+
+        self._microphone_inventory_thread = threading.Thread(
+            target=discover, name="ClarifyMicrophoneInventory", daemon=True
+        )
+        self._microphone_inventory_thread.start()
         return True
+
+    @Slot(int, object)
+    def _finish_microphone_inventory(self, generation, payload):
+        if (
+            self._microphone_inventory_shutdown
+            or generation != self._microphone_inventory_generation
+        ):
+            return
+        inventory, source, error = payload
+        self._microphone_inventory_busy = False
+        self._microphone_inventory_thread = None
+        self._microphone_inventory = inventory
+        self._microphone_inventory_source = source
+        if self._last_error == self._microphone_inventory_error_before:
+            self._set_error(ValueError(error) if error else None)
+        self.microphoneChanged.emit()
 
     @Slot(result=bool)
     def refreshMicrophones(self) -> bool:
@@ -1281,7 +1640,7 @@ class QmlSettingsController(QObject):
     def testMicrophone(self) -> bool:
         """Stream local input levels for up to 30 seconds off the GUI thread."""
 
-        if self._microphone_test_busy:
+        if self._microphone_test_busy or self._microphone_inventory_busy:
             return False
         selection = self._microphone_selection_for_test()
         if selection is None or not selection.can_record:
@@ -1968,8 +2327,12 @@ class QmlSettingsController(QObject):
 
     @Slot()
     def shutdown(self) -> None:
+        self._microphone_inventory_shutdown = True
+        self._microphone_inventory_generation += 1
+        self._microphone_inventory_busy = False
         self._account_shutdown = True
         self._account_cancel.set()
+        self._library_sync_timer.stop()
         self._unsubscribe_local_state()
         self._local_inventory_thread.join(timeout=3.5)
         if self._local_benchmark_token is not None:
@@ -2009,8 +2372,10 @@ class QmlSettingsController(QObject):
             return False
         try:
             loaded_config = self._config_repository.load()
-            self._dictionary_draft = self._dictionary_service.state
-            self._snippet_draft_context = self.snippetContext
+            with self._dictionary_service.transaction():
+                self._dictionary_draft = self._dictionary_service.reload()
+                self._dictionary_baseline = self._dictionary_draft
+                self._snippet_draft_context = self.snippetContext
         except Exception as error:  # Repository errors belong in the QML state.
             self._set_error(error)
             return False
@@ -2263,41 +2628,345 @@ class QmlSettingsController(QObject):
 
     @Slot(object)
     def _finish_account(self, error):
-        self._account_busy = False
         self._account_social = False
         self._account_error = error
         try:
-            self._dictionary_draft = self._dictionary_service.reload()
-            self._snippet_draft_context = self.snippetContext
+            with self._dictionary_service.transaction():
+                self._dictionary_draft = self._dictionary_service.reload()
+                self._dictionary_baseline = self._dictionary_draft
+                self._snippet_draft_context = self.snippetContext
         finally:
+            self._account_busy = False
             self._account.end_change()
         self.accountStateChanged.emit()
         self.loaded.emit()
 
     @Slot(result=bool)
-    def save(self) -> bool:
-        if (
-            getattr(self, "_snippet_draft_context", self.snippetContext)
-            != self.snippetContext
-        ):
-            self._set_error(
-                ValueError(
-                    "A conta mudou. Descarte as alterações dos snippets e tente novamente."
-                )
-            )
-            return False
+    @Slot(str, result=bool)
+    def save(self, context=None) -> bool:
+        context = self._snippet_draft_context if context is None else context
         if not self.cancelHotkeyCapture():
             return False
         try:
-            with self._dictionary_service.transaction(
-                expected_context=self._snippet_draft_context
-            ):
-                return self._save_owned_library()
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                self._reconcile_library_draft()
+                return self._save_owned_library(context)
         except Exception as error:
             self._set_error(error)
             return False
 
-    def _save_owned_library(self) -> bool:
+    @Slot(str, "QVariantList", result=bool)
+    def savePreference(self, method: str, args: list) -> bool:
+        """Persist one allowlisted control against current storage, never Save All."""
+        try:
+            with self._dictionary_service.transaction():
+                return self._save_preference(method, args)
+        except Exception as error:
+            self._set_error(error)
+            return False
+
+    def _save_preference(self, method: str, args: list) -> bool:
+        before = None
+        hotkeys_attempted = False
+        try:
+            before = self._config_repository.load()
+            try:
+                change = self._preference_change(method, args, before)
+                candidate = change(before)
+                draft = change(self._config)
+            except (TypeError, ValueError):
+                self._set_error(ValueError("Invalid settings value"))
+                return False
+            hotkey_method = method in {
+                "setHotkey",
+                "setHotkeyActivationMode",
+                "resetHotkey",
+                "resetAllHotkeys",
+            }
+            if hotkey_method:
+                capture = self._hotkey_capture_action
+                if not self.cancelHotkeyCapture():
+                    # A failed restore must remain retryable.
+                    self._hotkey_capture_action = capture
+                    self.hotkeyChanged.emit()
+                    return False
+            if (
+                self._hotkey_applier is not None
+                and hotkey_method
+                and (
+                    candidate.hotkeys != before.hotkeys or self._hotkey_reapply_required
+                )
+            ):
+                hotkeys_attempted = True
+                self._hotkey_applier(candidate.hotkeys)
+            if method == "setAutostart":
+                saved = _apply_config_with_autostart_transaction(
+                    candidate, self.repositories, self._autostart_registry
+                )
+            else:
+                saved = self._config_repository.apply(candidate)
+        except Exception as error:
+            if hotkeys_attempted and before is not None:
+                try:
+                    self._hotkey_applier(before.hotkeys)
+                    self._hotkey_reapply_required = False
+                except Exception:
+                    self._hotkey_reapply_required = True
+                    self._set_error(
+                        ValueError(
+                            "Não foi possível restaurar os atalhos. Tente novamente."
+                        )
+                    )
+                    return False
+            self._set_error(error)
+            return False
+        if hotkeys_attempted:
+            self._hotkey_reapply_required = False
+        self._update_config(draft)
+        dirty = self._config != saved
+        if self._dirty != dirty:
+            self._dirty = dirty
+            self.dirtyChanged.emit()
+        if method == "useLocalAsr":
+            self.selectWorkflow(WorkflowScope.TRANSCRIPTION.value)
+        self._set_error(None)
+        self.saved.emit()
+        return True
+
+    def _preference_change(
+        self, method: str, args: list, before: AppConfig
+    ) -> Callable[[AppConfig], AppConfig]:
+        """Small explicit write set; text, credentials and libraries are excluded."""
+        bool_fields = {
+            "setHistoryEnabled": "history_enabled",
+            "setAutomaticUpdates": "automatic_updates",
+            "setLocalStreaming": "local_asr_streaming",
+            "setLocalAsrCloudRefinement": "local_asr_cloud_refinement",
+        }
+        bool_methods = {
+            *bool_fields,
+            "setAutostart",
+            "setRouteEnabled",
+            "setRecordingVadEnabled",
+        }
+        text_methods = {
+            "setMode",
+            "setLanguage",
+            "setRouteProviderId",
+            "setRouteModelId",
+            "setHotkeyActivationMode",
+            "resetHotkey",
+        }
+        if not isinstance(method, str) or not isinstance(args, list):
+            raise ValueError("Invalid settings value")
+        if method in bool_methods:
+            valid = len(args) == 1 and type(args[0]) is bool
+        elif method in text_methods:
+            valid = len(args) == 1 and type(args[0]) is str
+        elif method == "selectMicrophone":
+            valid = len(args) == 1 and (args[0] is None or type(args[0]) is str)
+        elif method == "setHotkey":
+            valid = (
+                len(args) == 2
+                and type(args[0]) is str
+                and isinstance(args[1], (str, dict))
+            )
+        else:
+            valid = method in {"resetAllHotkeys", "useLocalAsr"} and not args
+        if not valid:
+            raise ValueError("Invalid settings value")
+        if (
+            method
+            in {
+                "setRouteProviderId",
+                "setRouteModelId",
+                "setRouteEnabled",
+                "useLocalAsr",
+                "setLocalStreaming",
+                "setLocalAsrCloudRefinement",
+            }
+            and getattr(self._account, "managed", False) is True
+        ):
+            raise ValueError("A conta Clarify gerencia as opções de processamento.")
+
+        if method in bool_fields:
+            if method == "setLocalAsrCloudRefinement":
+                return lambda config: replace(
+                    config,
+                    local_asr_cloud_refinement=args[0],
+                    workflows=config.workflows.with_route(
+                        "local_asr_refinement",
+                        replace(
+                            config.workflow("local_asr_refinement"),
+                            enabled=args[0],
+                        ),
+                    ),
+                )
+            return lambda config: replace(config, **{bool_fields[method]: args[0]})
+        if method == "setAutostart":
+            return lambda config: replace(
+                config, startup=replace(config.startup, autostart=args[0])
+            )
+        if method in {"setMode", "setLanguage"}:
+            if method == "setMode":
+                self._choice(args[0], (*SUPPORTED_UI_MODES, "transcription"), "mode")
+                field, value = "mode", "prompt"
+            else:
+                field, value = (
+                    "language",
+                    self._choice(args[0], SUPPORTED_LANGUAGES, "language"),
+                )
+            return lambda config: replace(
+                config, ui=replace(config.ui, **{field: value})
+            )
+        if method == "selectMicrophone":
+            selected = str(args[0] or "").strip() or None
+            if selected and not self._microphone_supports_explicit_selection():
+                raise ValueError(
+                    "Explicit microphone selection is unavailable with SoX PulseAudio"
+                )
+            microphone = MicrophoneSettings(selected)
+            return lambda config: replace(config, microphone=microphone)
+        if method == "setRecordingVadEnabled":
+            return lambda config: replace(
+                config,
+                recording_controls=replace(
+                    config.recording_controls,
+                    vad=replace(config.recording_controls.vad, enabled=args[0]),
+                ),
+            )
+        if method in {
+            "setHotkey",
+            "resetHotkey",
+            "resetAllHotkeys",
+            "setHotkeyActivationMode",
+        }:
+            if method in {"setHotkey", "resetHotkey"}:
+                try:
+                    action = _hotkey_action(args[0])
+                    definition = (
+                        HotkeyDefinition.from_mapping(args[1])
+                        if method == "setHotkey"
+                        else None
+                    )
+                except (TypeError, ValueError):
+                    raise ValueError("Invalid settings value") from None
+                if definition is None:
+                    return lambda config: replace(
+                        config, hotkeys=config.hotkeys.reset(action)
+                    )
+                return lambda config: replace(
+                    config, hotkeys=config.hotkeys.with_hotkey(action, definition)
+                )
+            if method == "resetAllHotkeys":
+                return lambda config: replace(config, hotkeys=HotkeySettings.defaults())
+            return lambda config: replace(
+                config,
+                hotkeys=config.hotkeys.with_activation_mode(
+                    args[0],
+                    push_to_talk_supported=self._hotkey_settings_controller.push_to_talk_supported,
+                ),
+            )
+
+        scope = self._selected_scope
+        if method == "useLocalAsr":
+            if self.localAsrStatus != "installed":
+                raise ValueError("Instale o modelo local antes de usar.")
+            scope = WorkflowScope.TRANSCRIPTION.value
+        old_route = before.workflow(scope)
+        fields: dict[str, Any] = {"independent": True}
+        if method == "setRouteProviderId":
+            provider = args[0].strip().lower()
+            if provider not in self.providersForScope(scope):
+                raise ValueError("This provider does not support this task")
+            fields["provider_id"] = provider
+            if provider != old_route.provider_id:
+                metadata = PROVIDER_REGISTRY.describe(provider)
+                fields["model_id"] = (
+                    metadata.default_audio_model
+                    if WORKFLOW_CAPABILITIES[scope]
+                    == ProviderCapability.AUDIO_TRANSCRIPTION
+                    else metadata.default_text_model
+                )
+                fields["custom_endpoint"] = ""
+        elif method == "setRouteModelId":
+            metadata = PROVIDER_REGISTRY.describe(old_route.provider_id)
+            audio = (
+                WORKFLOW_CAPABILITIES[scope] == ProviderCapability.AUDIO_TRANSCRIPTION
+            )
+            model = args[0].strip() or (
+                metadata.default_audio_model if audio else metadata.default_text_model
+            )
+            fields["model_id"] = (
+                PROVIDER_REGISTRY.canonical_audio_model(old_route.provider_id, model)
+                if audio
+                else model
+            )
+        elif method == "setRouteEnabled":
+            fields["enabled"] = args[0]
+        else:  # useLocalAsr
+            fields.update(
+                provider_id=LOCAL_ASR_PROVIDER_ID,
+                model_id=self._local_profile,
+                custom_endpoint="",
+                enabled=True,
+            )
+
+        def change_route(config: AppConfig) -> AppConfig:
+            route = config.workflow(scope)
+            changes = dict(fields)
+            # Provider changes reset saved connection defaults, while pending
+            # endpoint/model edits remain in the Settings draft.
+            if (
+                "custom_endpoint" in changes
+                and route.custom_endpoint != old_route.custom_endpoint
+            ):
+                changes.pop("custom_endpoint")
+            if (
+                method == "setRouteProviderId"
+                and "model_id" in changes
+                and route.model_id != old_route.model_id
+            ):
+                changes.pop("model_id")
+            config = replace(
+                config,
+                workflows=config.workflows.with_route(scope, replace(route, **changes)),
+            )
+            route = config.workflow(scope)
+            # Keep the persisted compatibility projection in the draft too.
+            # Otherwise a successful scoped write would still appear dirty.
+            if scope == "transcription":
+                provider_config = getattr(config, route.provider_id)
+                config = replace(
+                    config,
+                    selection=replace(
+                        config.selection, transcription_provider=route.provider_id
+                    ),
+                    **{
+                        route.provider_id: replace(
+                            provider_config, audio_model=route.model_id
+                        )
+                    },
+                )
+            elif scope == "refinement":
+                config = replace(
+                    config,
+                    selection=replace(
+                        config.selection,
+                        refinement_provider=route.provider_id,
+                        refinement_model=route.model_id,
+                    ),
+                )
+            elif scope == "local_asr_refinement":
+                config = replace(config, local_asr_cloud_refinement=route.enabled)
+            if method == "useLocalAsr":
+                config = replace(config, local_asr_device=self._local_device)
+            return config
+
+        return change_route
+
+    def _save_owned_library(self, context) -> bool:
         """Persist settings and library, including rollback, under one owner guard."""
         persisted_before: AppConfig | None = None
         hotkeys_applied = False
@@ -2315,9 +2984,10 @@ class QmlSettingsController(QObject):
                 self.repositories,
                 self._autostart_registry,
             )
+            self._require_library_context(context)
             if self._dictionary_draft != self._dictionary_service.state:
                 self._dictionary_service.replace(
-                    self._dictionary_draft, expected_context=self._snippet_draft_context
+                    self._dictionary_draft, expected_context=context
                 )
         except Exception as error:  # Validation/storage errors are user-facing.
             if persisted_config is not None and persisted_before is not None:
@@ -2340,6 +3010,7 @@ class QmlSettingsController(QObject):
                     pass
             self._set_error(error)
             return False
+        self._dictionary_baseline = self._dictionary_draft
         self._replace_loaded_config(persisted_config)
         self._set_error(None)
         self.saved.emit()
@@ -2585,20 +3256,6 @@ class QmlSettingsController(QObject):
             except Exception:
                 return False
         return platform.system() in {"Windows", "Darwin"}
-
-    def _snapshot_microphone_inventory(self) -> MicrophoneInventory:
-        backend_snapshot = getattr(
-            self._microphone_backend, "microphone_inventory", None
-        )
-        if callable(backend_snapshot):
-            inventory = backend_snapshot()
-        elif self._microphone_inventory_source is not None:
-            inventory = self._microphone_inventory_source.snapshot()
-        else:
-            inventory = MicrophoneInventory.unavailable("portaudio_unavailable")
-        if not isinstance(inventory, MicrophoneInventory):
-            raise TypeError("microphone inventory source returned an invalid snapshot")
-        return inventory
 
     def _microphone_selectable_devices(self) -> tuple[Any, ...]:
         if not self._microphone_supports_explicit_selection():

@@ -621,7 +621,7 @@ ApplicationWindow {
                                 options: settings.microphoneDevices
                                 value: options.length ? options[Math.max(0, settings.microphoneSelectionIndex)].id : ""
                                 refreshable: true
-                                busy: settings.microphoneTestBusy
+                                busy: settings.microphoneInventoryBusy || settings.microphoneTestBusy
                                 onRefreshRequested: settings.refreshMicrophoneInventory()
                                 onActivated: function(value) { settings.selectMicrophone(value) }
                             }
@@ -672,7 +672,7 @@ ApplicationWindow {
                                 objectName: "microphoneTestButton"
                                 text: settings.microphoneTestStopping ? qsTr("Stopping…") : settings.microphoneTestBusy ? qsTr("Stop") : qsTr("Test")
                                 theme: root.visualTheme
-                                enabled: !settings.microphoneTestStopping
+                                enabled: !settings.microphoneInventoryBusy && !settings.microphoneTestStopping
                                 Layout.preferredWidth: 78
                                 Layout.preferredHeight: 34
                                 Accessible.name: settings.microphoneTestBusy ? qsTr("Stop microphone test") : qsTr("Test microphone input")
