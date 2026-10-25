@@ -199,10 +199,13 @@ uses the latest state and does not publish an old snapshot over a newer delta.
 
 Microphone discovery runs on one worker per Settings controller. Repeated refresh
 requests share the pending query. The last completed inventory stays available
-while discovery runs. A queued Qt signal publishes the result, and generation
+while discovery runs. Workers publish data to a plain Python mailbox, drained
+by a controller-owned timer on the Qt thread. Inventory, local-product state,
+and local-device workers retain the mailbox instead of the Qt controller.
+Shutdown closes and clears the mailbox before stopping its timer; generation
 and shutdown checks reject late results. Optional backend loading also occurs
-on this worker. Device discovery does not change a saved microphone preference
-or an unrelated draft error. See [desktop performance](desktop-performance.md)
+on the inventory worker. Device discovery does not change a saved microphone
+preference or an unrelated draft error. See [desktop performance](desktop-performance.md)
 for shared components, measured cases, and validation limits.
 
 `QtRecorder` loads PortAudio lazily through one shared loader on audio workers.

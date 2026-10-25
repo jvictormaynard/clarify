@@ -15,7 +15,6 @@ import platform
 import subprocess
 import sys
 import threading
-import weakref
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -342,6 +341,33 @@ def _read_microphone_inventory(backend, source):
     return inventory, source
 
 
+class _SettingsMailbox:
+    """Coalesce worker data without giving a worker a Qt object reference."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._closed = False
+        self._pending: dict[str, tuple[int, Any]] = {}
+
+    def post(self, kind: str, generation: int, payload: Any) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            previous = self._pending.get(kind)
+            if previous is None or generation >= previous[0]:
+                self._pending[kind] = (generation, payload)
+
+    def take(self) -> dict[str, tuple[int, Any]]:
+        with self._lock:
+            pending, self._pending = self._pending, {}
+            return pending
+
+    def close(self) -> None:
+        with self._lock:
+            self._closed = True
+            self._pending.clear()
+
+
 def _merge_library_draft(before, draft, persisted, key):
     """Keep pending row/field edits and adopt untouched synchronized values.
 
@@ -416,12 +442,9 @@ class QmlSettingsController(QObject):
     microphoneLevelChanged = Signal()
     hotkeyChanged = Signal()
     _providerValidationFinished = Signal(str, int, bool, object)
-    _localStatePublished = Signal(object)
-    _localDevicesPublished = Signal(object)
     _localBenchmarkPublished = Signal(str)
     _microphoneTestFinished = Signal(int, bool, object)
     _microphoneLevelPublished = Signal(int, float)
-    _microphoneInventoryFinished = Signal(int, object)
 
     def __init__(
         self,
@@ -439,6 +462,10 @@ class QmlSettingsController(QObject):
         account_can_change=None,
     ) -> None:
         super().__init__(parent)
+        self._background_mailbox = _SettingsMailbox()
+        self._background_timer = QTimer(self)
+        self._background_timer.setInterval(25)
+        self._background_timer.timeout.connect(self._drain_background_publications)
         self._updates = None
         self.repositories = repositories
         self._account = account_service or AccountService(
@@ -550,10 +577,6 @@ class QmlSettingsController(QObject):
             self._finish_provider_validation,
             Qt.ConnectionType.QueuedConnection,
         )
-        self._localStatePublished.connect(
-            self._apply_local_state,
-            Qt.ConnectionType.QueuedConnection,
-        )
         self._microphoneTestFinished.connect(
             self._finish_microphone_test,
             Qt.ConnectionType.QueuedConnection,
@@ -561,26 +584,18 @@ class QmlSettingsController(QObject):
         self._microphoneLevelPublished.connect(
             self._apply_microphone_level, Qt.ConnectionType.QueuedConnection
         )
-        self._microphoneInventoryFinished.connect(
-            self._finish_microphone_inventory, Qt.ConnectionType.QueuedConnection
-        )
         self._local_state_listener = self._local_state_callback(0)
         self._local_product.subscribe(self._local_state_listener)
         self._localBenchmarkPublished.connect(
             self._finish_local_benchmark, Qt.ConnectionType.QueuedConnection
         )
-        self._localDevicesPublished.connect(
-            self._apply_local_devices, Qt.ConnectionType.QueuedConnection
-        )
+        mailbox = self._background_mailbox
 
         def inventory():
             from local_asr_catalog import devices
 
             values = devices()
-            try:
-                self._localDevicesPublished.emit(values)
-            except RuntimeError:
-                pass
+            mailbox.post("local_devices", 0, values)
 
         self._local_inventory_thread = threading.Thread(
             target=inventory, daemon=True, name="LocalASRDevices"
@@ -603,6 +618,19 @@ class QmlSettingsController(QObject):
         else:
             self._local_product.refresh_async()
         self.refreshMicrophoneInventory()
+        self._background_timer.start()
+
+    @Slot()
+    def _drain_background_publications(self):
+        for kind, (generation, payload) in self._background_mailbox.take().items():
+            if self._account_shutdown:
+                return
+            if kind == "microphone_inventory":
+                self._finish_microphone_inventory(generation, payload)
+            elif kind == "local_state":
+                self._apply_local_state((generation, payload))
+            elif kind == "local_devices":
+                self._apply_local_devices(payload)
 
     @Property("QStringList", constant=True)
     def workflowScopes(self) -> list[str]:
@@ -1585,7 +1613,7 @@ class QmlSettingsController(QObject):
         self._microphone_inventory_busy = True
         self._microphone_inventory_error_before = self._last_error
         self.microphoneChanged.emit()
-        reference = weakref.ref(self)
+        mailbox = self._background_mailbox
         backend = self._microphone_backend
         source = self._microphone_inventory_source
 
@@ -1599,14 +1627,11 @@ class QmlSettingsController(QObject):
                 inventory = MicrophoneInventory.unavailable("enumeration_failed")
                 discovered_source = source
                 error = str(failure).strip() or type(failure).__name__
-            controller = reference()
-            if controller is not None:
-                try:
-                    controller._microphoneInventoryFinished.emit(
-                        generation, (inventory, discovered_source, error)
-                    )
-                except RuntimeError:
-                    pass  # The Qt owner can close while a device driver is pending.
+            mailbox.post(
+                "microphone_inventory",
+                generation,
+                (inventory, discovered_source, error),
+            )
 
         self._microphone_inventory_thread = threading.Thread(
             target=discover, name="ClarifyMicrophoneInventory", daemon=True
@@ -2025,6 +2050,8 @@ class QmlSettingsController(QObject):
 
     @Slot(object)
     def _apply_local_devices(self, values):
+        if self._account_shutdown:
+            return
         self._local_devices = values
         self.providerStateChanged.emit()
 
@@ -2327,14 +2354,16 @@ class QmlSettingsController(QObject):
 
     @Slot()
     def shutdown(self) -> None:
+        self._account_shutdown = True
+        self._background_mailbox.close()
+        self._background_timer.stop()
         self._microphone_inventory_shutdown = True
         self._microphone_inventory_generation += 1
         self._microphone_inventory_busy = False
-        self._account_shutdown = True
         self._account_cancel.set()
         self._library_sync_timer.stop()
         self._unsubscribe_local_state()
-        self._local_inventory_thread.join(timeout=3.5)
+        self._local_generation += 1
         if self._local_benchmark_token is not None:
             self._local_benchmark_token.cancel()
         self._model_generation += 1
@@ -2356,12 +2385,10 @@ class QmlSettingsController(QObject):
             unsubscribe(self._local_state_listener)
 
     def _local_state_callback(self, generation):
-        reference = weakref.ref(self)
+        mailbox = self._background_mailbox
 
         def publish(state):
-            controller = reference()
-            if controller is not None:
-                controller._localStatePublished.emit((generation, state))
+            mailbox.post("local_state", generation, state)
 
         return publish
 
@@ -3230,11 +3257,10 @@ class QmlSettingsController(QObject):
         )
         return saved
 
-    def _publish_local_state(self, state: LocalASRProductState) -> None:
-        self._localStatePublished.emit(state)
-
     @Slot(object)
     def _apply_local_state(self, state: object) -> None:
+        if self._account_shutdown:
+            return
         if isinstance(state, tuple):
             generation, state = state
             if generation != self._local_generation:

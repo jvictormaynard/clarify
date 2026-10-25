@@ -47,11 +47,13 @@ those drafts. Event-gated and microtask regressions cover these overlapping path
 Microphone enumeration previously ran in the Settings constructor and in the
 refresh action on the Qt thread. The real call path reached PortAudio device and
 host API queries. A controlled slow query stopped the Qt heartbeat. Discovery
-now runs on a shared pending worker and publishes immutable results through a
-queued signal. Refresh keeps the previous inventory. Shutdown rejects late
-results without waiting for a device driver. The controller does not retain a
-closed window through the worker. A query that never returns remains bounded
-to that worker; the driver API has no cancellation operation.
+now runs on a shared pending worker and publishes results through a plain Python
+mailbox. A controller-owned timer drains it every 25 ms on the Qt thread.
+Inventory, local-product state, and local-device workers retain only the mailbox
+and their data, without resolving or retaining the controller. Refresh keeps the
+previous inventory. Shutdown closes and clears the mailbox, stops the timer,
+and rejects late results without waiting for a device driver. A query that never
+returns remains bounded to that worker; the driver API has no cancellation operation.
 
 The pill also sampled capture readiness under a lock held during process launch,
 and performed WAV reads from its Qt timer. Readiness now comes from one worker
@@ -84,6 +86,9 @@ These are isolated development measurements on 2026-10-25. They use fake audio,
 temporary repositories, and no real provider, profile, key, or recording. They
 do not measure the user's Windows device driver or establish that the reported
 Windows hang has been reproduced.
+
+These measurements precede the shutdown mailbox repair. They do not measure
+the latency of its 25 ms Qt-thread drain.
 
 For the browser case, the actual controller held 512 snippets with 4096 ASCII
 characters per replacement. Dictation stayed open and a fake backend published
