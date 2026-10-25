@@ -12,8 +12,8 @@ Apple group availability must pass before this candidate is reported as delivere
 Version **0.9.0 (31)** added configurable account snippets in Dictionary → Snippets.
 
 Expo application plus a small Swift keyboard extension. A Clarify account is
-required for speech recognition and rewriting. Sign in with an emailed code;
-no personal provider key is needed. Native bottom tabs contain Home, Dicionário
+required for speech recognition and rewriting. Sign in with an emailed code,
+Google, Microsoft or GitHub; no personal provider key is needed. Native bottom tabs contain Home, Dicionário
 and Conta. Ajustes opens from the Account tab. Signed-out users return to the
 account screen, including after an upgrade from the former personal-key mode.
 SQLite keeps
@@ -188,7 +188,7 @@ English or Spanish. Local dictionary caches preserve offline changes. History st
 `https://clarify-api.victormaynard.com`; hosted processing requires a dedicated
 Groq key and an enabled beta budget. The approved global beta budget is US$10
 per UTC calendar month, with up to 300 minutes per account. Both limits apply.
-Google/Apple login is deferred. Build 16 does not include these account controls.
+Social login was deferred in that version. Build 16 does not include these account controls.
 
 Version **0.2.2 (16)** handles blocked microphone activation with a Portuguese
 recovery message instead of an Expo/native error. Calls have priority over the
@@ -422,6 +422,25 @@ The mobile source and direct build workflow are in this repository on
 `codex/ios-testflight`, tracked by draft PR #138. No separate repository was created.
 
 ## Development
+
+Google, Microsoft and GitHub use the same account form during setup and later
+sign-in. The containing app retains an ephemeral `ASWebAuthenticationSession`
+and opens only the configured service's HTTPS origin. Its callback is exactly
+`clarify://auth/complete`, without credentials. `CloudAccount.swift` creates a
+random RFC 7636 verifier, sends its S256 challenge with `client: ios`, then polls
+the one-use server handoff after the browser completes. The verifier stays in
+memory. Sessions stay in the app-only Keychain. They never enter JavaScript,
+Router parameters, App Group files or the keyboard. New identities that require
+email verification use the existing signup code form. An existing-email collision
+requires email login and cannot link accounts automatically.
+
+Browser cancellation, the Cancel control, timeout, invalid responses and storage
+failures cancel the server attempt. A consumed session that cannot be adopted is
+also revoked. A network failure can prevent immediate revocation; server expiry
+must revoke abandoned results. Microphone activation waits until account work
+ends. Native fake-transport/browser/clock contracts cover this flow. macOS/Xcode
+compilation and real provider sign-in, cancellation, and email confirmation on an
+iPhone remain required before mobile acceptance.
 
 Use Node 22.21.1, the committed npm lockfile, and a native iOS build. Expo Go
 does not include the custom module or keyboard. No Android app is included.

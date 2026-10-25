@@ -56,6 +56,10 @@ final class CloudAccount {
   private let readCredential: () -> String?
   private let saveCredential: (String?) throws -> Void
   private let historyClock: () -> TimeInterval
+  private let socialBrowser: SocialBrowser
+  private let socialClock: @MainActor () -> TimeInterval
+  private let socialSleep: @MainActor (TimeInterval) async throws -> Void
+  private var socialTask: Task<Void, Error>?
   private var sessionInvalidated: (() -> Void)?
   private let delegate = CloudTransport()
   private lazy var session: URLSession = {
@@ -72,11 +76,18 @@ final class CloudAccount {
        readCredential: @escaping () -> String? = AccountCredential.read,
        saveCredential: @escaping (String?) throws -> Void = AccountCredential.save,
        historyClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-       sessionInvalidated: (() -> Void)? = nil) {
+       sessionInvalidated: (() -> Void)? = nil,
+       socialBrowser: SocialBrowser = .system,
+       socialClock: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+       socialSleep: @escaping @MainActor (TimeInterval) async throws -> Void = { seconds in
+         guard seconds > 0, seconds <= 300 else { throw ClarifyError(L("A entrada com este provedor expirou. Tente novamente.")) }
+         try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+       }) {
     self.defaults = defaults
     self.transport = transport; self.readCredential = readCredential; self.saveCredential = saveCredential
     self.historyClock = historyClock
     self.sessionInvalidated = sessionInvalidated
+    self.socialBrowser = socialBrowser; self.socialClock = socialClock; self.socialSleep = socialSleep
     state = defaults.data(forKey: "clarify.account.metadata").flatMap { try? JSONDecoder().decode(CloudAccountState.self, from: $0) } ?? CloudAccountState()
     if state.endpoint.isEmpty { state.endpoint = Bundle.main.object(forInfoDictionaryKey: "ClarifyCloudURL") as? String ?? "" }
     if state.userID != nil { state.hosted = true }
@@ -195,7 +206,11 @@ final class CloudAccount {
   @MainActor private func refresh() async throws {
     lastRefreshAttempt = ProcessInfo.processInfo.systemUptime
     let (code, result) = try await perform("GET", "/v1/account")
-    guard code == 200, let userID = result["id"] as? String, UUID(uuidString: userID) != nil,
+    guard code == 200 else { throw ClarifyError(L("A sessão expirou. Entre na conta novamente.")) }
+    try acceptAccount(result)
+  }
+  private func acceptAccount(_ result: [String: Any]) throws {
+    guard let userID = result["id"] as? String, UUID(uuidString: userID) != nil,
       let email = result["email"] as? String else { throw ClarifyError(L("A sessão expirou. Entre na conta novamente.")) }
     try locked {
       if state.userID != userID { generation &+= 1; lastHistoryAttempt = -.infinity; historyFailed = false }
@@ -205,7 +220,194 @@ final class CloudAccount {
       try persist()
     }
   }
+  // Social requests deliberately bypass perform(): only a validated one-use
+  // poll result can be adopted. Error payloads must never rotate the Keychain.
+  @MainActor private func socialRequest(_ base: String, _ path: String, json: [String: String]? = nil,
+    token: String? = nil, method: String = "POST") async throws -> (Int, [String: Any]) {
+    guard let url = URL(string: base + path) else { throw ClarifyError(L("Resposta inválida do Clarify.")) }
+    var request = URLRequest(url: url); request.httpMethod = method; request.timeoutInterval = 15
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    request.setValue(ClarifyLocale.language, forHTTPHeaderField: "Accept-Language")
+    if let token { request.setValue(token, forHTTPHeaderField: "X-Session-Token") }
+    if let json {
+      request.httpBody = try JSONSerialization.data(withJSONObject: json)
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    }
+    let data: Data, response: URLResponse
+    if let transport { (data, response) = try await transport(request) }
+    else { (data, response) = try await session.data(for: request) }
+    guard let response = response as? HTTPURLResponse, response.url == url, data.count <= 512 * 1024 else {
+      throw ClarifyError(L("Resposta inválida do Clarify."))
+    }
+    let result = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    return (response.statusCode, result)
+  }
+  static func socialAuthorizationURL(_ value: String, endpoint: String) throws -> URL {
+    guard let base = URLComponents(string: try validateEndpoint(endpoint)), base.scheme == "https",
+      let url = URLComponents(string: value), url.scheme?.lowercased() == "https",
+      url.host?.lowercased() == base.host?.lowercased(), (url.port ?? 443) == (base.port ?? 443),
+      url.user == nil, url.password == nil, url.fragment == nil, let result = url.url else {
+      throw ClarifyError(L("O endereço de entrada recebido não é seguro. Tente novamente."))
+    }
+    return result
+  }
+  private static func socialToken(_ meta: [String: Any]) throws -> String {
+    guard let token = meta["session_token"] as? String, !token.isEmpty, token.utf8.count <= 4096,
+      token.unicodeScalars.allSatisfy({ $0.value >= 33 && $0.value <= 126 }) else {
+      throw ClarifyError(L("Resposta inválida do Clarify."))
+    }
+    return token
+  }
+  private static func socialFailure(_ status: Int, _ result: [String: Any]) -> ClarifyError {
+    if status == 410 { return ClarifyError(L("A entrada com este provedor expirou. Tente novamente.")) }
+    if status == 429 { return ClarifyError(L("Muitas solicitações. Aguarde um momento.")) }
+    switch result["code"] as? String {
+    case "social_account_exists": return ClarifyError(L("Já existe uma conta com este e-mail. Entre com o código enviado por e-mail."))
+    case "social_signup_closed": return ClarifyError(L("A criação de contas está indisponível no momento."))
+    case "social_email_required": return ClarifyError(L("Este provedor não informou um e-mail válido. Entre com seu e-mail."))
+    default: return ClarifyError(L("Não foi possível concluir a entrada com este provedor. Tente novamente."))
+    }
+  }
+  @MainActor private func socialCallback(_ url: URL, deadline: TimeInterval) async throws -> URL {
+    let remaining = deadline - socialClock()
+    guard remaining > 0 else { throw Self.socialFailure(410, [:]) }
+    return try await withThrowingTaskGroup(of: URL.self) { group in
+      group.addTask { try await self.socialBrowser.open(url) }
+      group.addTask {
+        try await self.socialSleep(remaining)
+        try Task.checkCancellation()
+        throw Self.socialFailure(410, [:])
+      }
+      defer { group.cancelAll() }
+      guard let callback = try await group.next() else { throw CancellationError() }
+      return callback
+    }
+  }
+  @MainActor private func signInSocial(_ provider: String, library: LocalLibrary) async throws {
+    let base = try Self.validateEndpoint(locked { state.endpoint })
+    guard base.hasPrefix("https://") else { throw ClarifyError(L("O endereço de entrada recebido não é seguro. Tente novamente.")) }
+    let previous = locked { (generation, readCredential()) }
+    if let token = previous.1 { _ = try? await socialRequest(base, "/_allauth/app/v1/auth/session", token: token, method: "DELETE") }
+    try Task.checkCancellation()
+    try locked {
+      guard state.endpoint == base, generation == previous.0, readCredential() == previous.1 else { throw CancellationError() }
+      try saveCredential(nil)
+      state.historyUserID = state.historyUserID ?? state.userID
+      state.userID = nil; state.pending = ""; state.email = ""; state.hosted = false; state.sync = false
+      usage = [:]; generation &+= 1; try persist()
+    }
+    let identity = locked { generation }
+    func checkIdentity() throws {
+      try Task.checkCancellation()
+      try locked {
+        guard state.endpoint == base, generation == identity, readCredential() == nil else { throw CancellationError() }
+      }
+    }
+    let verifier = try SocialPKCE.verifier(), started = socialClock()
+    var attempt: String?, handedToken: String?, delivered = false
+    defer { socialBrowser.cancel() }
+    do {
+      let (status, start) = try await socialRequest(base, "/_allauth/app/v1/auth/social/start",
+        json: ["provider": provider, "client": "ios", "code_challenge": SocialPKCE.challenge(verifier)])
+      // Retain the attempt before checking cancellation so a late start result
+      // can still be revoked, even when the browser never opened.
+      if let id = start["attempt_id"] as? String, UUID(uuidString: id) != nil { attempt = id }
+      try checkIdentity()
+      guard status == 200 else { throw Self.socialFailure(status, start) }
+      guard let attempt, let authorization = start["authorization_url"] as? String,
+        let expires = start["expires_in"] as? Int, (1...300).contains(expires),
+        let interval = start["interval"] as? Int, (1...30).contains(interval) else { throw ClarifyError(L("Resposta inválida do Clarify.")) }
+      let url = try Self.socialAuthorizationURL(authorization, endpoint: base), deadline = started + Double(expires)
+      let callback = try await socialCallback(url, deadline: deadline)
+      try checkIdentity()
+      guard callback.absoluteString == "clarify://auth/complete" else { throw ClarifyError(L("Resposta inválida do Clarify.")) }
+      while true {
+        try checkIdentity()
+        guard socialClock() < deadline else { throw Self.socialFailure(410, [:]) }
+        let (code, result) = try await socialRequest(base, "/_allauth/app/v1/auth/social/poll",
+          json: ["attempt_id": attempt, "code_verifier": verifier])
+        // Capture a returned credential only for cleanup. It is not trusted for
+        // persistence until status, metadata and the active identity all match.
+        if [200, 401].contains(code), let meta = result["meta"] as? [String: Any] { handedToken = try? Self.socialToken(meta) }
+        try checkIdentity()
+        let remaining = deadline - socialClock()
+        guard remaining > 0 else { throw Self.socialFailure(410, [:]) }
+        if code == 202 {
+          try await socialSleep(min(Double(max(5, interval)), remaining))
+          continue
+        }
+        guard [200, 401].contains(code), let meta = result["meta"] as? [String: Any] else { throw Self.socialFailure(code, result) }
+        let token = try Self.socialToken(meta)
+        if code == 401 {
+          guard meta["is_authenticated"] as? Bool == false, let data = result["data"] as? [String: Any],
+            data["pending"] as? String == "signup", let email = data["email"] as? String,
+            !email.isEmpty, email.count <= 254, email.contains("@"), email.rangeOfCharacter(from: .controlCharacters) == nil else {
+            throw ClarifyError(L("Resposta inválida do Clarify."))
+          }
+          try locked {
+            try checkIdentity(); try saveCredential(token)
+            state.pending = "signup"; state.email = email; try persist()
+          }
+        } else {
+          guard meta["is_authenticated"] as? Bool == true else { throw ClarifyError(L("Resposta inválida do Clarify.")) }
+          // Verify the native account before storing the handoff in Keychain.
+          let (accountCode, account) = try await socialRequest(base, "/v1/account", token: token, method: "GET")
+          try checkIdentity()
+          guard accountCode == 200, let userID = account["id"] as? String, UUID(uuidString: userID) != nil,
+            account["email"] is String else { throw ClarifyError(L("A sessão expirou. Entre na conta novamente.")) }
+          let acceptedToken: String
+          if let updated = account["meta"] as? [String: Any], updated["session_token"] != nil {
+            acceptedToken = try Self.socialToken(updated); handedToken = acceptedToken
+          } else { acceptedToken = token }
+          // SQLite preparation can fail. Do it before committing credentials or
+          // publishing the account, using the verified account's explicit scope.
+          try prepareLibrary(library, for: userID)
+          try locked { try checkIdentity(); try saveCredential(acceptedToken); try acceptAccount(account) }
+        }
+        delivered = true
+        if code == 200 { await syncQuietly(library) }
+        return
+      }
+    } catch {
+      if !delivered {
+        // An unstructured cleanup task is not cancelled with its caller. Both
+        // requests use the captured origin, never a newly selected endpoint.
+        let abandonedAttempt = attempt, abandonedToken = handedToken
+        await Task { @MainActor in
+          if let abandonedAttempt {
+            _ = try? await self.socialRequest(base, "/_allauth/app/v1/auth/social/cancel", json: ["attempt_id": abandonedAttempt, "code_verifier": verifier])
+          }
+          if let abandonedToken {
+            _ = try? await self.socialRequest(base, "/_allauth/app/v1/auth/session", token: abandonedToken, method: "DELETE")
+          }
+        }.value
+      }
+      if Task.isCancelled { throw CancellationError() }
+      throw error
+    }
+  }
   @MainActor func command(_ action: String, value: String, library: LocalLibrary) async throws -> Bool {
+    // Cancellation must reach the retained browser while the original command
+    // still owns busy state and server/session cleanup.
+    if action == "cancel-social" { socialTask?.cancel(); socialBrowser.cancel(); return false }
+    if action == "social" {
+      guard ["google", "microsoft", "github"].contains(value) else { throw ClarifyError(L("Ação de conta inválida.")) }
+      guard socialTask == nil else { throw ClarifyError(L("Aguarde a operação da conta.")) }
+      // Register before the first suspension. Cancel also applies while a
+      // previous automatic refresh still owns the account's busy state.
+      let task = Task { @MainActor in
+        try await self.waitForAutomaticRefresh()
+        try self.begin(); defer { self.end() }
+        self.locked { self.automatic = false }
+        guard !self.configured else { throw ClarifyError(L("Saia da conta atual primeiro.")) }
+        try await self.signInSocial(value, library: library)
+      }
+      socialTask = task
+      defer { socialTask = nil }
+      do { try await withTaskCancellationHandler(operation: { try await task.value }, onCancel: { task.cancel() }) }
+      catch is CancellationError { return false }
+      return true
+    }
     if action == "auto", scope == nil || isBusy || ProcessInfo.processInfo.systemUptime - lastRefreshAttempt < 60 { return false }
     if action != "auto" { try await waitForAutomaticRefresh() }
     try begin(); defer { end() }
@@ -412,6 +614,9 @@ final class CloudAccount {
   }
   func prepareLibrary(_ library: LocalLibrary) throws {
     guard let userID = scope else { return }
+    try prepareLibrary(library, for: userID)
+  }
+  private func prepareLibrary(_ library: LocalLibrary, for userID: String) throws {
     let cached = try library.cloudDictionary(userID)
     if cached.revision == nil {
       try library.saveCloudDictionary(CloudDictionary(entries: library.dictionary(), base: [], revision: -1), scope: userID)

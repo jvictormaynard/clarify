@@ -49,6 +49,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
         </>)}
         {step !== "account" && <Button variant="text" onClick={() => { setStep(step === "byok" ? "local" : "account"); setKey(""); }}><ArrowLeft size={15} />{t("Voltar")}</Button>}
       </fieldset>
+      {account?.socialPending && <Button variant="text" onClick={() => command("cancel-social")}>{t("Cancelar login")}</Button>}
     </div>
   </main>;
 }

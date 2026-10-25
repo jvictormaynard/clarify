@@ -86,7 +86,7 @@ registration is deferred until a business account is available.
 - A personal dictionary for names and technical terms, with per-term enablement
 - Local-only usage statistics without storing transcripts
 - Bundled SoX runtime in the portable Windows build
-- Optional account with email-code login, shared vocabulary, new transcription history and hosted allowance
+- Optional account with email-code, Google, Microsoft or GitHub login, shared vocabulary, new transcription history and hosted allowance
 - Local and personal-key modes remain available without an account; no telemetry service
 
 ## Interface preview
@@ -144,9 +144,9 @@ do not need Python, Node.js, or SoX.
 1. Open the [latest release](https://github.com/jvictormaynard/clarify/releases/latest).
 2. Download `Clarify.exe` and place it in a folder you control.
 3. Double-click the executable.
-4. The first-run page opens automatically. Enter your email and press **Continuar**,
+4. The first-run page opens automatically. Use Google, Microsoft or GitHub, or enter your email and press **Continuar**,
    or follow **Continuar sem conta**. No password is needed.
-   - **Clarify account:** confirm your email code inside the app. Account
+   - **Clarify account:** complete provider sign-in or confirm your email code inside the app. Account
      processing is active automatically. No provider key is needed.
    - **Personal key:** save your Groq key. Other providers remain available
      under **Settings → Modelos e serviços** (Models and services).

@@ -38,6 +38,16 @@ Resend delivers the email codes. Enter the code in the app; the email does not
 require a browser link. Codes expire after 10 minutes. Sessions expire after
 14 days and can be revoked by signing out.
 
+You can also sign in or create an account with Google, Microsoft or GitHub.
+The selected provider receives the sign-in request in your system browser.
+Clarify receives the provider account identifier, email address and basic
+profile information needed to identify the account. Clarify does not receive
+your provider password and does not request access to repositories, files or
+contacts. Provider access tokens are not stored. The Clarify session stays in
+the client's credential store; it does not appear in browser callback URLs.
+An email address that the provider has not verified requires an email code.
+Accounts with the same email address are not linked automatically.
+
 To prevent abuse, the service stores hashes derived from IP addresses or account
 IDs, plus request counters and expiry times for rate-limit windows. These IP and
 account rate-limit records expire within two hours. Periodic cleanup removes
@@ -105,6 +115,10 @@ deleting a Clarify account deletes provider records. Read
 [Groq's data policy](https://console.groq.com/docs/your-data),
 [Railway's privacy policy](https://railway.com/legal/privacy), and
 [Resend's privacy policy](https://resend.com/legal/privacy-policy).
+Social sign-in also follows the selected provider's privacy policy:
+[Google](https://policies.google.com/privacy),
+[Microsoft](https://privacy.microsoft.com/privacystatement), or
+[GitHub](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 Personal-key providers and custom endpoints have their own terms.
 
 For privacy requests, contact the maintainer through the links on

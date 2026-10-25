@@ -392,6 +392,8 @@ details .row-label {
 
 /* Auth controls share one column and stable geometry at every step. */
 .account-sign-in { width: 100%; }
+.social-sign-in { display: grid; gap: 8px; }
+.social-sign-in .button { width: 100%; min-height: 44px; }
 .account-sign-in .row { display: flex; flex-direction: column; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 8px; }
 .account-sign-in .row-control, .account-sign-in .control { width: 100%; min-width: 0; max-width: none; }
 .account-sign-in .control, .account-sign-in .primary { width: 100%; min-height: 44px; box-sizing: border-box; }

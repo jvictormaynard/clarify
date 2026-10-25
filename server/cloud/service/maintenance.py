@@ -11,6 +11,9 @@ from .models import Operation, RateBucket
 
 
 def maintain():
+    from .social import expire_attempts
+
+    expire_attempts()
     expire_leases()
     distribute()
     now = timezone.now()
