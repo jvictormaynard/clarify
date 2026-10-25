@@ -13,10 +13,11 @@ the complete iOS source delivered in TestFlight 0.10.4 (37),
 `d356ac94352b5c292d7879c1a85152e3b33481df`, to preserve its interface and audio
 corrections. Desktop is 0.11.0; the iOS app and both extensions are 0.11.0 (38).
 
-The social-auth integration passed 1,384 Python tests with four skips, all 47
-Settings browser tests, server tests and migration checks. Its Linux, Windows
-and Windows-package PR checks passed. The combined release source requires
-its own checks, reviews, post-merge CI and publication evidence in the release PR.
+The combined source passed 1,384 Python tests with four skips, all 222 PostgreSQL
+server tests, 33 mobile JavaScript tests, mobile checks and the Settings build.
+All 47 Settings browser cases passed across the full run and one focused retry
+after a preparation timeout. Final native repairs require their own macOS
+checks, reviews, post-merge CI and publication evidence in the release PR.
 
 Windows uses the community portable track. Verify all eight assets, downloaded
 hashes, Ed25519 update metadata and GitHub provenance on the exact green source.
@@ -29,8 +30,18 @@ Production deployed PR #159 automatically and applied its migrations. The
 cutover audit found no operations during migration, no running operations or
 reservations, and equal historical and treasury processing costs. Health and
 both public finance routes return 200. A pre-migration daily backup and a
-separate post-migration verified backup exist. The new OAuth referrer-policy
-repair still requires deployment and a real browser confirmation check.
+separate post-migration verified backup exist. The reviewed OAuth referrer-policy
+repair was deployed at `9c2cbf4f9f543bd9cd02dbe730686837387bfbc0`, deployment
+`1317f2e5-037d-4bf6-bcde-907eea9b8943`. The final release must align production
+with its merged main source.
+
+Visible Windows Chrome, through MCP Playwright, completed real Google, Microsoft
+and GitHub callbacks without a browser override. Confirmation POSTs returned
+200 with the correct origin. All three tested identities returned the expected
+existing-email collision, without a native session or a duplicate account.
+Attempts were cancelled and their temporary tabs closed. The SMTP connection
+opened successfully. These checks do not establish new-user signup, email-code
+delivery or native client completion.
 
 The release candidate also repairs late keyboard cancellation and microphone
 activation during automatic account refresh. Their Swift and UIKit regression

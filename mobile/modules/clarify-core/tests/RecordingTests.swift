@@ -155,4 +155,61 @@ final class RecordingTests: XCTestCase {
     XCTAssertTrue(request.isCancelled("clip"))
     XCTAssertFalse(request.isCancelled("other"))
   }
+  func testCancelledReadyResultCannotClaimAReceiptAfterStoreRecreation() throws {
+    for delivery in ["pending", "acknowledged", "timeout", "expired"] {
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let store = SharedState(root: root)
+      let now = Date().timeIntervalSince1970
+      var state = DictationSnapshot(); state.sessionActive = true; state.configured = true
+      state.operationID = "cancelled"; state.phase = .ready; state.text = "Do not insert"
+      state.heartbeat = now - 0.1
+      try store.write(state, to: "state.json"); try store.acknowledge("previous")
+      var request = RecordingRequest()
+      XCTAssertTrue(request.submit("cancel", operationID: "cancelled", now: now))
+      try store.send("cancel", operationID: "cancelled")
+      if delivery == "acknowledged" { state.heartbeat = now + 0.1 }
+      if delivery == "expired" { state.heartbeat = now - 4 }
+      request.observe(state, now: delivery == "timeout" ? now + 6 : now + 0.2)
+      XCTAssertEqual(request.action, delivery == "pending" ? "cancel" : nil, delivery)
+      if delivery != "pending" {
+        for (url, _) in store.commands() { try FileManager.default.removeItem(at: url) }
+      }
+      // Recreated controllers must reject even an app's retained or late result.
+      state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json")
+      let recreated = SharedState(root: root)
+      XCTAssertThrowsError(try recreated.acknowledge("cancelled"), delivery)
+      XCTAssertEqual(recreated.receipt(), "previous", "Cancel is not an insertion receipt")
+      state.operationID = "next"; state.text = "Keep this result"
+      try recreated.write(state, to: "state.json"); try recreated.acknowledge("next")
+      XCTAssertEqual(recreated.receipt(), "next", delivery)
+      XCTAssertThrowsError(try SharedState(root: root).acknowledge("cancelled"), delivery)
+      XCTAssertEqual(recreated.receipt(), "next", "A late cancelled result cannot replace a newer receipt")
+    }
+  }
+  func testCancellationMarkersPreserveOtherCancellationsAndLegacySharedData() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let legacy = Data(#"{"sessionActive":true,"heartbeat":123,"phase":"ready","operationID":"legacy","text":"Preserved text","configured":true}"#.utf8)
+    try legacy.write(to: root.appendingPathComponent("state.json"), options: .atomic)
+    let first = SharedState(root: root), second = SharedState(root: root)
+    try first.acknowledge("previous")
+    try first.send("cancel", operationID: "../cancelled/ação")
+    try first.send("cancel", operationID: "aaa")
+    try second.send("cancel", operationID: "another")
+    for (url, _) in first.commands() { try FileManager.default.removeItem(at: url) }
+    let recreated = SharedState(root: root)
+    XCTAssertThrowsError(try recreated.acknowledge("../cancelled/ação"))
+    XCTAssertThrowsError(try recreated.acknowledge("another"))
+    XCTAssertEqual(recreated.receipt(), "previous")
+    XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("state.json")), legacy)
+    XCTAssertEqual(recreated.snapshot().text, "Preserved text")
+    try recreated.acknowledge("aaG")
+    XCTAssertEqual(recreated.receipt(), "aaG", "Legacy IDs stay distinct on case-insensitive storage")
+    try recreated.acknowledge("legacy")
+    XCTAssertEqual(recreated.receipt(), "legacy", "Completed legacy text remains explicitly insertable")
+  }
 }

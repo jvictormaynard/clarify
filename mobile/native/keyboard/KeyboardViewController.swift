@@ -414,6 +414,9 @@ class KeyboardViewController: UIInputViewController {
     catch { recordingRequest.reset(); recordingError = L("Abra o Clarify para configurar o teclado.") }
     refreshFromStore()
   }
+  private func isCancelled(_ id: String?) -> Bool {
+    recordingRequest.isCancelled(id) || store?.isCancelled(id) == true
+  }
   // The lifecycle and timer share this state refresh. It does not simulate a
   // UIKit appearance transition when a snapshot or microphone meter changes.
   func refreshFromStore() {
@@ -430,7 +433,7 @@ class KeyboardViewController: UIInputViewController {
     activation?.view.isHidden = !hasFullAccess || state.isLive
     mic.isEnabled = available && state.isLive && !state.phase.busy && recordingRequest.action == nil
     insert.isHidden = !state.isLive || state.text?.isEmpty != false || state.phase.busy ||
-      recordingRequest.isCancelled(state.operationID) || state.operationID == store?.receipt()
+      isCancelled(state.operationID) || state.operationID == store?.receipt()
     if !hasFullAccess {
       status.text = L("Ative o Acesso Total"); detail.text = L("Ajustes > Geral > Teclado > Clarify")
     } else if state.isLive, state.phase == .error {
@@ -445,7 +448,7 @@ class KeyboardViewController: UIInputViewController {
     updateToolbar()
     updateRecordingPanel()
     if attached, state.phase == .ready, let id = operationID, state.operationID == id,
-       !recordingRequest.isCancelled(id), documentID == textDocumentProxy.documentIdentifier,
+       !isCancelled(id), documentID == textDocumentProxy.documentIdentifier,
        store?.receipt() != id { insertResult() }
   }
   private func configureRecordingPanel() {
@@ -534,7 +537,7 @@ class KeyboardViewController: UIInputViewController {
   }
   @objc private func insertResult() {
     guard attached, let store = store, let text = state.text, !text.isEmpty,
-          let id = state.operationID, !recordingRequest.isCancelled(id), store.receipt() != id else { return }
+          let id = state.operationID, !isCancelled(id), store.receipt() != id else { return }
     // Claim publication before insertion, so repeated polling cannot insert twice.
     do { try store.acknowledge(id) } catch { return }
     let proxy = textDocumentProxy, replaced = textDocumentProxy.selectedText ?? ""

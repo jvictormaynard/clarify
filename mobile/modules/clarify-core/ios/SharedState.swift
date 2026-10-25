@@ -69,6 +69,12 @@ struct SharedState {
   func snapshot() -> DictationSnapshot { read("state.json", as: DictationSnapshot.self) ?? DictationSnapshot() }
   func send(_ action: String, operationID: String) throws {
     let command = DictationCommand(action, operationID: operationID)
+    // Persist intent before command delivery. App acknowledgement, command
+    // expiry and controller replacement must not restore a cancelled result.
+    if action == "cancel" {
+      try FileManager.default.createDirectory(at: root.appendingPathComponent("cancelled-operations"), withIntermediateDirectories: true)
+      try write(operationID, to: cancellationName(operationID))
+    }
     try write(command, to: "command-\(command.commandID).json")
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
       CFNotificationName("com.clarify.keyboard.command" as CFString), nil, nil, true)
@@ -79,8 +85,22 @@ struct SharedState {
       .compactMap { url in read(url.lastPathComponent, as: DictationCommand.self).map { (url, $0) } }
       .sorted { $0.1.createdAt < $1.1.createdAt }
   }
+  private func cancellationName(_ operationID: String) -> String {
+    // Encode legacy IDs too; an operation ID cannot become a directory path.
+    let encoded = operationID.utf8.map { String(format: "%02x", $0) }.joined()
+    return "cancelled-operations/\(encoded).json"
+  }
+  func isCancelled(_ operationID: String?) -> Bool {
+    guard let operationID else { return false }
+    // Each operation has its own atomic marker. Overlapping controllers cannot
+    // overwrite another cancellation through a shared read/modify/write list.
+    return FileManager.default.fileExists(atPath: root.appendingPathComponent(cancellationName(operationID)).path)
+  }
   func receipt() -> String? { read("receipt.json", as: String.self) }
-  func acknowledge(_ operationID: String) throws { try write(operationID, to: "receipt.json") }
+  func acknowledge(_ operationID: String) throws {
+    guard !isCancelled(operationID) else { throw CancellationError() }
+    try write(operationID, to: "receipt.json")
+  }
 }
 
 // A nonsecret, short-lived measurement. The app publishes it independently of
