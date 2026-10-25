@@ -13,7 +13,7 @@ from rest_framework.test import APIClient
 
 from cloud.service import api, groq, ledger
 from cloud.service.models import Allowance, Operation
-from .test_api import client_for
+from .test_api import client_for, fund_hosted
 from . import test_dictation
 
 
@@ -121,6 +121,7 @@ class SnippetLibraryTests(TestCase):
 class HostedSnippetTests(TestCase):
     def setUp(self):
         self.user, self.client = client_for("dictation@example.test")
+        fund_hosted(self.user)
         self.assertEqual(
             self.client.put(
                 "/v1/snippets", {"revision": 0, "entries": [ENTRY]}, format="json"
@@ -347,8 +348,11 @@ class HostedSnippetTests(TestCase):
 
     @patch("cloud.service.groq.perform")
     def test_exact_result_boundary_and_replayed_size_error_charge_once(self, provider):
+        self.enterContext(
+            patch("cloud.service.ledger.usage", return_value=ledger.usage(self.user))
+        )
         provider.return_value = {"text": "Minha assinatura."}
-        usage = {**ledger.usage(self.user), "used_ms": 1000}
+        usage = ledger.usage(self.user)
         expected = {
             "transcript": "Minha assinatura.",
             "text": ENTRY["replacement"],
@@ -381,7 +385,7 @@ class HostedSnippetTests(TestCase):
         self.assertEqual(replay.json(), rejected.json())
         self.assertEqual(provider.call_count, 2)
         saved = Operation.objects.get(operation_id=operation_id)
-        self.assertEqual(saved.cost, ledger.MAX_COST)
+        self.assertEqual(saved.cost, ledger.asr_cost(1000))
         self.assertNotIn("text", saved.result)
         allowance = Allowance.objects.get(user=self.user)
         self.assertEqual(
@@ -410,6 +414,9 @@ class HostedSnippetTests(TestCase):
 
     @patch("cloud.service.groq.perform")
     def test_wire_limit_rejects_escaped_line_and_paragraph_separators(self, provider):
+        self.enterContext(
+            patch("cloud.service.ledger.usage", return_value=ledger.usage(self.user))
+        )
         replacement = "x" + "\u2028\u2029" * 64
         saved = {**ENTRY, "replacement": replacement}
         self.assertEqual(
@@ -425,7 +432,7 @@ class HostedSnippetTests(TestCase):
             "text": expanded,
             "rewritten": False,
             "snippet_expanded": True,
-            "usage": {**ledger.usage(self.user), "used_ms": 1000},
+            "usage": ledger.usage(self.user),
         }
         compact_size = len(
             json.dumps(expected, ensure_ascii=False, separators=(",", ":")).encode(
@@ -447,6 +454,9 @@ class HostedSnippetTests(TestCase):
 
     @patch("cloud.service.groq.perform")
     def test_exact_wire_boundary_counts_both_escaped_separator_types(self, provider):
+        self.enterContext(
+            patch("cloud.service.ledger.usage", return_value=ledger.usage(self.user))
+        )
         for index, separator in enumerate(("\u2028", "\u2029"), start=1):
             with self.subTest(separator=repr(separator)):
                 saved = {**ENTRY, "replacement": "literal" + separator * 10}
@@ -464,7 +474,7 @@ class HostedSnippetTests(TestCase):
                     "text": saved["replacement"],
                     "rewritten": False,
                     "snippet_expanded": True,
-                    "usage": {**usage, "used_ms": usage["used_ms"] + 1000},
+                    "usage": usage,
                 }
                 wire_size = len(JSONRenderer().render(expected))
                 provider.reset_mock()
@@ -518,7 +528,7 @@ class HostedSnippetTests(TestCase):
                     self.assertEqual(provider.call_count, 1)
                     self.assertEqual(
                         Operation.objects.get(operation_id=operation_id).cost,
-                        ledger.MAX_COST,
+                        ledger.asr_cost(1000),
                     )
                     self.assertEqual(
                         Allowance.objects.get(user=self.user).used_ms, 3000

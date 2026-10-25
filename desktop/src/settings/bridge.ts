@@ -22,7 +22,8 @@ export interface Settings {
     endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
     hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
     dictionaryConflict?: boolean; syncError?: string;
-    usage: { month?: string; limit_ms?: number; used_ms?: number; reserved_ms?: number; hosted_available?: boolean };
+    // Validate at the display boundary: older servers can return a legacy shape.
+    usage: unknown;
   };
   dictionaryEntries: DictionaryEntry[];
   dirty: boolean;

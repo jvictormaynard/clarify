@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/blader/humanizer",
+  "commit": "8c307f367c91bd974002f10f2be2965d642c13df",
+  "version": "3.1.0",
+  "audited_on": "2026-10-25",
+  "license": "MIT",
+  "license_file": "../licenses/blader-humanizer-MIT.txt",
+  "source_files": {
+    "SKILL.md": "0612f1dfb1672b0ea9b97e139bf1f06cabe98d8b27424fe8ff01e1fb4cc99cad",
+    "agents/openai.yaml": "9d87ff83149a04f86a372948b8ee35fa249de20923867bbc2a49304290aad736",
+    "LICENSE": "4ac4810254ab36d45419141aeb8e69bf50652cfafe5b2dab947d06d44e5cbf96"
+  },
+  "adaptations": [
+    "Use a single-line description for project metadata validation and mandatory prose routing.",
+    "Add Clarify workflow, language, embedded-output, and localization constraints.",
+    "Enable implicit invocation explicitly in agents/openai.yaml.",
+    "Install only the skill entrypoint, invocation metadata, and MIT notice; omit upstream repository tooling and agent guides."
+  ]
+}

@@ -30,12 +30,30 @@ MAX_DICTATION_RESULT_BYTES = 384 * 1024
 
 
 def processing_failure(
-    user, operation_id, code, phase, status, *, operation=None, replayable=False
+    user,
+    operation_id,
+    code,
+    phase,
+    status,
+    *,
+    operation=None,
+    replayable=False,
+    cost=None,
+    input_tokens=0,
+    output_tokens=0,
+    cost_estimated=False,
 ):
     """Expose bounded diagnostics, never exception text or provider responses."""
     result = {"code": code, "phase": phase, "operation_id": str(operation_id)}
     if operation:
-        ledger.settle(operation, result=result if replayable else None)
+        ledger.settle(
+            operation,
+            result=result if replayable else None,
+            cost=cost,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_estimated=cost_estimated,
+        )
     logger.warning(
         "processing_failure code=%s phase=%s operation_id=%s",
         code,
@@ -267,6 +285,7 @@ class DictationView(ServiceView):
         except (KeyError, TypeError, ValueError, AttributeError):
             return Response({"code": "invalid_audio_request"}, status=400)
         operation = None
+        outcome = None
         try:
             digest = audio.fingerprint(upload, language)
             with tempfile.TemporaryDirectory(prefix="clarify-cloud-") as directory:
@@ -289,6 +308,8 @@ class DictationView(ServiceView):
                     vocabulary.entries if vocabulary else [],
                     language,
                     snippets=snippets.entries if snippets else [],
+                    cost_budget=operation.reserved_cost,
+                    authorize=lambda total: ledger.authorize(operation, total),
                 )
                 if outcome.result.get("snippet_expanded") is True and any(
                     len(outcome.result[name].encode("utf-8")) > history.MAX_TEXT_BYTES
@@ -298,17 +319,18 @@ class DictationView(ServiceView):
                     # existing history protocol before publishing a result.
                     raise groq.SnippetResultTooLarge()
                 with ledger.admission_lock():
-                    # Return one complete usage snapshot. Account admissions and
-                    # settlements use this same lock, so project this operation's
-                    # settlement before validating the exact response envelope.
-                    usage = ledger.usage(request.user)
                     current = Operation.objects.get(pk=operation.pk)
-                    if current.state == "running" and usage["month"] == str(
-                        operation.month
-                    ):
-                        usage["reserved_ms"] -= operation.audio_ms
-                        usage["used_ms"] += operation.audio_ms
-                    result = {**outcome.result, "usage": usage}
+                    if current.state != "running":
+                        raise ledger.Rejected("operation_expired", 410)
+                    ledger.settle(
+                        operation,
+                        result=outcome.result,
+                        cost=outcome.cost,
+                        input_tokens=outcome.input_tokens,
+                        output_tokens=outcome.output_tokens,
+                        cost_estimated=outcome.cost_estimated,
+                    )
+                    result = {**outcome.result, "usage": ledger.usage(request.user)}
                     if (
                         len(
                             request.accepted_renderer.render(
@@ -320,13 +342,6 @@ class DictationView(ServiceView):
                         > MAX_DICTATION_RESULT_BYTES
                     ):
                         raise groq.SnippetResultTooLarge()
-                    ledger.settle(
-                        operation,
-                        result=outcome.result,
-                        cost=outcome.cost,
-                        input_tokens=outcome.input_tokens,
-                        output_tokens=outcome.output_tokens,
-                    )
                 return Response(result)
         except ledger.Rejected as error:
             return processing_failure(
@@ -337,8 +352,9 @@ class DictationView(ServiceView):
                 if error.code in {"invalid_audio", "invalid_duration"}
                 else "admission",
                 error.status,
+                operation=operation,
             )
-        except groq.NoSpeech:
+        except groq.NoSpeech as error:
             return processing_failure(
                 request.user,
                 operation_id,
@@ -346,6 +362,7 @@ class DictationView(ServiceView):
                 "transcription",
                 422,
                 operation=operation,
+                cost=error.cost,
             )
         except groq.SnippetResultTooLarge:
             return processing_failure(
@@ -356,8 +373,12 @@ class DictationView(ServiceView):
                 422,
                 operation=operation,
                 replayable=True,
+                cost=outcome.cost if outcome else None,
+                input_tokens=outcome.input_tokens if outcome else 0,
+                output_tokens=outcome.output_tokens if outcome else 0,
+                cost_estimated=outcome.cost_estimated if outcome else False,
             )
-        except groq.ProviderFailure:
+        except groq.ProviderFailure as error:
             return processing_failure(
                 request.user,
                 operation_id,
@@ -365,6 +386,7 @@ class DictationView(ServiceView):
                 "transcription",
                 502,
                 operation=operation,
+                cost=error.cost,
             )
         except Exception:
             return processing_failure(
@@ -418,13 +440,20 @@ class TextView(ServiceView):
                 request.user, operation_id, fingerprint, 0, text_operation=True
             )
             if fresh:
-                outcome = groq.text_operation(source, action, language)
+                outcome = groq.text_operation(
+                    source,
+                    action,
+                    language,
+                    cost_budget=operation.reserved_cost,
+                    authorize=lambda total: ledger.authorize(operation, total),
+                )
                 ledger.settle(
                     operation,
                     result=outcome.result,
                     cost=outcome.cost,
                     input_tokens=outcome.input_tokens,
                     output_tokens=outcome.output_tokens,
+                    cost_estimated=outcome.cost_estimated,
                 )
                 result = outcome.result
             else:
@@ -437,8 +466,9 @@ class TextView(ServiceView):
                 error.code,
                 "admission",
                 error.status,
+                operation=operation,
             )
-        except groq.ProviderFailure:
+        except groq.ProviderFailure as error:
             return processing_failure(
                 request.user,
                 operation_id,
@@ -446,6 +476,9 @@ class TextView(ServiceView):
                 "text",
                 502,
                 operation=operation,
+                cost=error.cost,
+                input_tokens=error.input_tokens,
+                output_tokens=error.output_tokens,
             )
         except Exception:
             return processing_failure(

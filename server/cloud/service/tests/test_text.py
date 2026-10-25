@@ -5,7 +5,8 @@ from django.test import TestCase, override_settings
 
 from cloud.service import groq, ledger
 from cloud.service.models import Allowance, Operation
-from .test_api import client_for
+from .test_api import client_for, fund_hosted
+from cloud.service.models import FundingEntry
 
 
 @override_settings(
@@ -16,6 +17,7 @@ from .test_api import client_for
 class TextTests(TestCase):
     def setUp(self):
         self.user, self.client = client_for("text@example.test")
+        fund_hosted(self.user)
 
     def send(self, operation_id, **changes):
         return self.client.post(
@@ -40,7 +42,9 @@ class TextTests(TestCase):
         self.assertEqual(response.json()["phase"], "text")
         self.assertEqual(response.json()["operation_id"], str(operation_id))
         self.assertNotIn("private provider response", response.content.decode())
-        self.assertEqual(Operation.objects.get(user=self.user).cost, ledger.MAX_COST)
+        operation = Operation.objects.get(user=self.user)
+        self.assertEqual(operation.cost, operation.authorized_cost)
+        self.assertLess(operation.cost, operation.reserved_cost)
         self.assertEqual(self.send(operation_id).status_code, 410)
         provider.assert_called_once()
 
@@ -92,8 +96,8 @@ class TextTests(TestCase):
             self.assertEqual(self.send(uuid.uuid4(), **fields).status_code, 400)
         provider.assert_not_called()
 
-    @override_settings(CLARIFY_MONTHLY_BUDGET_USD="0")
     @patch("cloud.service.groq.perform")
-    def test_global_budget_blocks_text_before_provider_work(self, provider):
+    def test_missing_cash_blocks_text_before_provider_work(self, provider):
+        FundingEntry.objects.all().delete()
         self.assertEqual(self.send(uuid.uuid4()).status_code, 503)
         provider.assert_not_called()

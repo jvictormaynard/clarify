@@ -22,6 +22,12 @@ manual or create a second root glossary.
 | Pill | The production Qt/QML workflow surface, separate from React/Tauri Settings |
 | Community release | The unsigned portable track with its explicit assets and limits |
 | Signed release | The publisher-verified installer/update track gated by the distribution contract |
+| Sponsored quota | An individual hosted-processing allowance funded before grant, fixed until the common weekly expiry and presented as a percentage |
+| Eligible account | A verified account with use or an access request in the preceding 28 days |
+| Operating provision | Money retained for unpaid project operating costs before processing funds are distributed |
+| Entry reserve | The 20 percent of a funded weekly processing budget retained for accounts entering during the period |
+| Project treasury | Confirmed project resources less settled expenses and outstanding commitments; a spending cap is not a receipt |
+| Stripe source balance | Money reported as available or pending in Stripe, separated by currency; payouts can move funds outside Stripe without becoming project expenses |
 
 Use ordinary architecture terms that match the source: module, interface, service,
 gateway, adapter, repository, and boundary. A module's depth means useful behavior

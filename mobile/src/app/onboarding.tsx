@@ -44,7 +44,7 @@ function OnboardingFlow() {
             <Button loading={saving} disabled={accountBusy} onPress={() => void finish()}>{t("Começar a usar")}</Button>
           </> : account.signedIn ? <>
             <Text style={[ui.body, { color: c.text }]}>{account.email}</Text>
-            <Text style={[ui.small, { color: c.muted }]}>{t("Para transcrever e reescrever, áudio, texto e palavras ativas do dicionário serão processados pelo Clarify. O histórico fica neste iPhone. A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.")}</Text>
+            <Text style={[ui.small, { color: c.muted }]}>{t("Para transcrever e reescrever, o Clarify processa áudio, texto e palavras ativas do dicionário. O histórico da conta é sincronizado entre seus dispositivos. Patrocínios financiam uma cota semanal individual. Novas contas podem receber uma cota inicial proporcional ao tempo até a renovação. Sem saldo de patrocínio, a conta aguarda a próxima distribuição.")}</Text>
             <Button disabled={busy} onPress={() => setStep('keyboard')}>{t("Continuar")}</Button>
           </> : <>
             <Text style={[ui.small, { color: c.muted }]}>{t("Entre para ditar sem chave de API e compartilhar seu dicionário com o computador.")}</Text>

@@ -2,6 +2,12 @@
 
 - Use ASD-STE100 Simplified Technical English with João Victor. When he writes
   Portuguese, use simple controlled Portuguese with the same technical precision.
+- Read and apply `.agents/skills/humanizer/SKILL.md` whenever you write, edit,
+  translate, or review prose for this project. This is required for public and
+  user-facing text, including application copy, emails, websites, documentation,
+  release notes, support replies, and project communications. Apply it in every
+  language, including short text changes. Preserve facts, technical meaning, and
+  localization placeholders.
 
 - Production Qt code and QML assets: `clarify/desktop/`.
 - React/Tauri Settings: `desktop/`.

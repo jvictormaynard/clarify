@@ -10,9 +10,9 @@ references and executable helpers were inspected where they affected a decision.
 The deprecated bucket has no skill entrypoint at this commit.
 
 **27 skills were adapted, 11 were excluded, one Clarify delivery coordinator was
-added, and the existing release skill was revised.** The project has 29 skills.
-All are regular versioned files in `.agents/skills/`. No global skill or global
-agent configuration was installed or changed.
+added, and the existing release skill was revised.** At that audit, the project
+had 29 skills. All are regular versioned files in `.agents/skills/`. No global
+skill or global agent configuration was installed or changed.
 
 This is a curated adaptation, not a mirror. Each imported skill is now specific
 to Clarify. Unused upstream templates and references were removed from the new
@@ -233,6 +233,7 @@ Parallel work uses AGENTS.md, the existing workflow, and focused changes to
 delivery, review, and instruction-maintenance skills. A separate worktree skill
 would duplicate delivery coordination, so none is added. Native Git commands
 provide preparation and freshness checks; no worktree generator is added.
+
 The upstream commit, source hashes, and license remain unchanged. The existing
 local skill framework was reused without copying unfinished product changes.
 The current remote release contract was retained instead of the older local
@@ -258,3 +259,37 @@ existing `.gitattributes` notice policy now also keeps skill licenses as LF,
 preserving their exact hashes. A real-Git checkout regression failed before the
 rule and passed afterward. The focused checks passed 43 tests on Linux and all
 17 validator tests on Windows; the license hash check was not weakened.
+
+## Humanizer integration, 2026-10-25
+
+[Humanizer](../../.agents/skills/humanizer/SKILL.md) is installed from
+[blader/humanizer, commit 8c307f36](https://github.com/blader/humanizer/tree/8c307f367c91bd974002f10f2be2965d642c13df),
+version 3.1.0. Its
+[source record](../../.agents/skills/humanizer/UPSTREAM.json) pins the commit and
+SHA-256 hashes of the original entrypoint, invocation metadata, and license.
+The [MIT notice](../../.agents/skills/licenses/blader-humanizer-MIT.txt) preserves
+Siqi Chen's copyright.
+
+The local copy retains the upstream editing process and examples. Its description
+uses the project's single-line metadata format. A short integration note links
+the project workflow and language rules, selects embedded output, and preserves
+localization placeholders, technical terms, accessibility meaning, and product
+behavior. Invocation metadata explicitly permits implicit use.
+
+[AGENTS.md](../../AGENTS.md) requires Humanizer whenever an agent writes, edits,
+translates, or reviews project prose. This includes public and user-facing copy
+in the application, emails, websites, documentation, release notes, support
+replies, and project communications, in every language and for short changes.
+This instruction governs writing and review; sending or publishing text still
+requires the authorization defined in the project workflow.
+
+The Matt Pocock inventory remains pinned to its audited source. Humanizer is
+listed under `project_skills` because it has a separate source record. The
+installation contains the skill entrypoint, invocation metadata, source record,
+and license notice. All files are local to the repository.
+
+Instruction checks cover a short Portuguese interface label with a localization
+placeholder, an email with factual dates, website copy about sponsorship, and a
+technical document with commands. In each case, agents must apply Humanizer while
+preserving supported claims and executable text. These are instruction checks;
+they do not establish measured writing quality or runtime behavior.

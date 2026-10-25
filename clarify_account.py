@@ -67,6 +67,7 @@ def _processing_error(status, result, *, text=False):
         "processing_failed": "Não foi possível concluir o processamento. Tente novamente.",
         "authentication_required": "Entre na conta novamente.",
         "allowance_exhausted": "Sua cota foi atingida.",
+        "allocation_waiting": "Sua conta aguarda a próxima distribuição de cotas.",
         "rate_limited": "Muitas solicitações. Aguarde um momento.",
         "account_busy": busy,
         "service_busy": "O Clarify está ocupado. Aguarde um momento.",

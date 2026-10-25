@@ -41,7 +41,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
           <Button variant="text" onClick={() => setStep("byok")}>{t("Usar minha chave de API")}</Button>
         </> : account && (account.signedIn ? <>
           <p>{account.email}</p>
-          <p className="hint">{t("Para transcrever e reescrever, áudio, texto e palavras ativas do dicionário serão processados pelo Clarify. O histórico fica neste computador. A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.")}</p>
+          <p className="hint">{t("Para transcrever e reescrever, o Clarify processa áudio, texto e palavras ativas do dicionário. O histórico da conta é sincronizado entre seus dispositivos. Patrocínios financiam uma cota semanal individual. Novas contas podem receber uma cota inicial proporcional ao tempo até a renovação. Sem saldo de patrocínio, a conta aguarda a próxima distribuição.")}</p>
           <Button variant="primary" onClick={() => void complete("account")}>{t("Começar")}</Button>
         </> : <>
           <AccountSignIn account={account} command={command} busy={busy || account.busy} />

@@ -11,7 +11,7 @@ All product source remains in this public MIT repository. Production credentials
 user data, backups and administrator access stay private in the hosting platform.
 There is no separate closed backend or local/cloud product fork.
 
-Accounts share vocabulary, snippets, hosted audio allowance and new account
+Accounts share vocabulary, snippets, sponsored processing quota and new account
 transcriptions. Pre-upgrade records, guest history and guest snippets remain local.
 Account snippet caches use endpoint and account identity; signing in does not
 upload guest snippets. Hosted substitution runs once after recognition and before optional rewriting.
@@ -47,6 +47,19 @@ admission. Clients cannot send arbitrary model, prompt, endpoint or ownership
 settings. A PostgreSQL lock serializes quota reservations and cost settlement.
 `shared/dictation_prompt.json` is generated from the canonical desktop prompt.
 See [server operations and release gates](../server/README.md).
+
+Sponsored processing uses funded individual weekly quotas with a common Monday
+00:00 UTC expiry. Operating provisions and existing commitments precede the
+80/20 regular/entry allocation. The server measures provider costs and returns
+versioned percentages and reset dates; clients show the reset in local time.
+See the [accepted funding contract](agents/plans/weekly-sponsored-usage/spec.md).
+Public financial reporting separates project treasury entries from read-only
+Stripe balances and sanitized movements. API credentials and contributor identity
+stay private. A declared sponsorship or spending cap never becomes a receipt.
+New receipts require operating-cost confirmation before a new period can be
+distributed. Each receipt retains its net processing basis and monthly release
+schedule. Public finance reads use a read-only snapshot and shared request limits;
+they do not acquire the financial write mutex.
 
 First-run setup precedes desktop Settings and the iOS native tabs. Desktop startup
 opens Settings for an unfinished setup; `AppConfig.onboarding_completed` is saved

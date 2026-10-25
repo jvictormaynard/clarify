@@ -1,6 +1,6 @@
 # Clarify privacy notice
 
-Effective date: 16 October 2026.
+Effective date: 25 October 2026.
 
 Clarify is an open-source app maintained by João Victor Maynard Mota. This
 notice describes the optional hosted beta at `clarify-api.victormaynard.com`
@@ -32,7 +32,8 @@ synchronize history.
 
 The service stores the email address, verified account status, sessions,
 account dictionary, account snippets, synchronized history, and processing usage
-needed to enforce limits.
+needed to enforce limits. It also stores the date of requested hosted access and
+the most recent hosted activity to determine weekly allocation eligibility.
 Resend delivers the email codes. Enter the code in the app; the email does not
 require a browser link. Codes expire after 10 minutes. Sessions expire after
 14 days and can be revoked by signing out.
@@ -76,6 +77,8 @@ offline device cannot restore a known deleted entry. Account deletion removes
 these synchronization records too. Local caches preserve pending changes when
 offline and synchronize automatically when the app can reach the service.
 Monthly aggregate budget counters are retained for accounting and abuse control.
+Weekly accounting records remain for financial reconciliation. Account deletion
+detaches them from the account. Financial records do not contain transcript text.
 Application logs exclude audio, transcripts, credentials and request headers.
 Hosting and provider services can retain their own connection and usage metadata.
 
@@ -88,6 +91,13 @@ backups can retain deleted data for up to six days before rotation. Restoring
 a backup requires reapplying subsequent deletion requests.
 
 ## External services and contact
+
+The public financial page shows amounts, dates and neutral movement categories.
+It excludes account and donor names, email addresses, operator references,
+payment identifiers and bank details. Stripe is not connected. A future
+read-only Stripe connection can publish normalized balances and movements,
+separated by currency. It does not expose a private dashboard or API key. A
+verified payment link, if enabled later, opens Stripe's own payment page.
 
 Provider terms apply to data sent to them. Groq can retain request data for
 reliability and abuse investigations under its own policy; do not assume that

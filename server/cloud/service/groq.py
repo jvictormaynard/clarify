@@ -18,7 +18,8 @@ from dictionary_snippets import (
     InMemoryDictionarySnippetsRepository,
     Snippet,
 )
-from .ledger import MAX_COST
+from .ledger import Rejected, asr_cost
+from .funding import money
 from .history import MAX_TEXT_BYTES
 
 SYSTEM = json.loads(
@@ -30,7 +31,10 @@ TEXT_PROMPTS = json.loads(
 
 
 class ProviderFailure(Exception):
-    pass
+    def __init__(self, *args, cost=None, input_tokens=0, output_tokens=0):
+        super().__init__(*args)
+        self.cost = cost
+        self.input_tokens, self.output_tokens = input_tokens, output_tokens
 
 
 class NoSpeech(ProviderFailure):
@@ -75,9 +79,47 @@ class Outcome:
     cost: Decimal
     input_tokens: int = 0
     output_tokens: int = 0
+    cost_estimated: bool = False
 
 
-def text_operation(source, action, language):
+INPUT_RATE = Decimal("0.000000075")
+OUTPUT_RATE = Decimal("0.0000003")
+
+
+def chat_plan(system, source, budget):
+    # Each UTF-8 byte can become a token. Include framing and fixed model
+    # control tokens. Never assume a favorable words-to-tokens ratio.
+    incoming_bound = len(system.encode("utf-8")) + len(source.encode("utf-8")) + 256
+    available = budget - incoming_bound * INPUT_RATE
+    outgoing_bound = min(8192, int(available / OUTPUT_RATE))
+    if incoming_bound > 128000 or outgoing_bound < 1:
+        return None
+    ceiling = money(incoming_bound * INPUT_RATE + outgoing_bound * OUTPUT_RATE, up=True)
+    # Rounding a sub-nanodollar cost up must not exceed the cash reservation.
+    if ceiling > budget:
+        outgoing_bound -= 1
+        ceiling = money(
+            incoming_bound * INPUT_RATE + outgoing_bound * OUTPUT_RATE, up=True
+        )
+    if outgoing_bound < 1:
+        return None
+    return incoming_bound, outgoing_bound, ceiling
+
+
+def token_usage(answer, incoming_bound, outgoing_bound):
+    usage = answer.get("usage", {})
+    incoming, outgoing = usage.get("prompt_tokens"), usage.get("completion_tokens")
+    if (
+        type(incoming) is not int
+        or type(outgoing) is not int
+        or not 0 <= incoming <= incoming_bound
+        or not 0 <= outgoing <= outgoing_bound
+    ):
+        raise ProviderFailure()
+    return incoming, outgoing
+
+
+def text_operation(source, action, language, *, cost_budget, authorize):
     languages = {
         "pt": "Portuguese",
         "en": "English",
@@ -87,34 +129,33 @@ def text_operation(source, action, language):
         "auto": "the source language",
     }
     system = TEXT_PROMPTS[action].format(lang=languages[language])
+    source = "BEGIN_SELECTED_SOURCE\n" + source + "\nEND_SELECTED_SOURCE"
+    plan = chat_plan(system, source, cost_budget)
+    if plan is None:
+        raise Rejected("allowance_exhausted")
+    incoming_bound, outgoing_bound, ceiling = plan
+    authorize(ceiling)
     answer = perform(
         "chat/completions",
         json={
             "model": "openai/gpt-oss-20b",
             "temperature": 0.1,
-            "max_completion_tokens": 8192,
+            "max_completion_tokens": outgoing_bound,
             "reasoning_effort": "low",
             "messages": [
                 {"role": "system", "content": system},
                 {
                     "role": "user",
-                    "content": "BEGIN_SELECTED_SOURCE\n"
-                    + source
-                    + "\nEND_SELECTED_SOURCE",
+                    "content": source,
                 },
             ],
         },
     )
+    cost = None
+    incoming = outgoing = 0
     try:
-        usage = answer.get("usage", {})
-        incoming, outgoing = usage.get("prompt_tokens"), usage.get("completion_tokens")
-        if (
-            type(incoming) is not int
-            or type(outgoing) is not int
-            or not 0 <= incoming <= 128000
-            or not 0 <= outgoing <= 8192
-        ):
-            raise ProviderFailure()
+        incoming, outgoing = token_usage(answer, incoming_bound, outgoing_bound)
+        cost = money(incoming * INPUT_RATE + outgoing * OUTPUT_RATE, up=True)
         choice = answer["choices"][0]
         text = choice["message"]["content"]
         if (
@@ -123,17 +164,19 @@ def text_operation(source, action, language):
             or not text.strip()
             or len(text.encode()) > 64000
         ):
-            raise ProviderFailure()
+            raise ProviderFailure(
+                cost=cost, input_tokens=incoming, output_tokens=outgoing
+            )
     except (AttributeError, KeyError, IndexError, TypeError):
-        raise ProviderFailure() from None
-    cost = (
-        Decimal(incoming) * Decimal("0.075") / 1000000
-        + Decimal(outgoing) * Decimal("0.30") / 1000000
-    )
+        raise ProviderFailure(
+            cost=cost, input_tokens=incoming, output_tokens=outgoing
+        ) from None
     return Outcome({"text": text.strip()}, cost, incoming, outgoing)
 
 
-def dictation(audio, audio_ms, entries, language="auto", *, snippets=()):
+def dictation(
+    audio, audio_ms, entries, language="auto", *, snippets=(), cost_budget, authorize
+):
     document = DictionarySnippets(
         snippets=tuple(Snippet.from_mapping(item) for item in snippets)
     )
@@ -164,6 +207,10 @@ def dictation(audio, audio_ms, entries, language="auto", *, snippets=()):
         fields["prompt"] = speech
     if language != "auto":
         fields["language"] = language
+    cost = asr_cost(audio_ms)
+    if cost > cost_budget:
+        raise Rejected("allowance_exhausted")
+    authorize(cost)
     with Path(audio).open("rb") as stream:
         answer = perform(
             "audio/transcriptions",
@@ -175,8 +222,7 @@ def dictation(audio, audio_ms, entries, language="auto", *, snippets=()):
         raise ProviderFailure()
     transcript = transcript.strip()
     if not transcript:
-        raise NoSpeech()
-    cost = Decimal(max((audio_ms + 999) // 1000, 10)) * Decimal("0.04") / Decimal(3600)
+        raise NoSpeech(cost=cost)
     standalone = expander.expand_spoken_trigger(transcript)
     if standalone is not None:
         return Outcome(
@@ -226,14 +272,21 @@ def dictation(audio, audio_ms, entries, language="auto", *, snippets=()):
     result = {"transcript": transcript, "text": rewrite_source, "rewritten": False}
     if snippet_expanded:
         result["snippet_expanded"] = True
+    plan = chat_plan(system, source, cost_budget - cost)
+    if plan is None:
+        return Outcome(result, cost)
+    incoming_bound, outgoing_bound, chat_ceiling = plan
+    ceiling = cost + chat_ceiling
+    authorize(ceiling)
     input_tokens = output_tokens = 0
+    usage_known = False
     try:
         answer = perform(
             "chat/completions",
             json={
                 "model": "openai/gpt-oss-20b",
                 "temperature": 0.1,
-                "max_completion_tokens": 8192,
+                "max_completion_tokens": outgoing_bound,
                 "reasoning_effort": "low",
                 "messages": [
                     {"role": "system", "content": system},
@@ -241,23 +294,12 @@ def dictation(audio, audio_ms, entries, language="auto", *, snippets=()):
                 ],
             },
         )
-        usage = answer.get("usage", {})
-        input_tokens, output_tokens = (
-            usage.get("prompt_tokens"),
-            usage.get("completion_tokens"),
+        input_tokens, output_tokens = token_usage(
+            answer, incoming_bound, outgoing_bound
         )
-        if (
-            type(input_tokens) is not int
-            or type(output_tokens) is not int
-            or not 0 <= input_tokens <= 128000
-            or not 0 <= output_tokens <= 8192
-        ):
-            raise ProviderFailure()
         # Completion usage includes reasoning tokens. No speculative cache discount.
-        cost += (
-            Decimal(input_tokens) * Decimal("0.075") / 1000000
-            + Decimal(output_tokens) * Decimal("0.30") / 1000000
-        )
+        cost += money(input_tokens * INPUT_RATE + output_tokens * OUTPUT_RATE, up=True)
+        usage_known = True
         choice = answer["choices"][0]
         text = choice["message"]["content"]
         if (
@@ -287,5 +329,11 @@ def dictation(audio, audio_ms, entries, language="auto", *, snippets=()):
         result.update(text=text, rewritten=True)
     except (ProviderFailure, AttributeError, KeyError, IndexError, TypeError):
         # The rewrite may have been billed. Retain its maximum reservation.
-        return finish(result, MAX_COST)
+        return Outcome(
+            result,
+            cost if usage_known else ceiling,
+            input_tokens if usage_known else 0,
+            output_tokens if usage_known else 0,
+            cost_estimated=not usage_known,
+        )
     return finish(result, cost, input_tokens, output_tokens)

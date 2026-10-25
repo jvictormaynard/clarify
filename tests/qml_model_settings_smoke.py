@@ -932,20 +932,29 @@ def main():
                 )
                 return
             old_surface = bridge.surface
+
+            def finish_surface_transition(expected):
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline:
+                    if (
+                        window.property("displayedSurface") == expected
+                        and window.property("surfaceOpacity") == 1
+                    ):
+                        return
+                    QTest.qWait(10)
+                assert window.property("displayedSurface") == expected
+                assert window.property("surfaceOpacity") == 1
+
             bridge.openFiles()
             QTest.qWait(60)
             assert window.property("displayedSurface") == old_surface
             assert 0 < window.property("surfaceOpacity") < 1
-            QTest.qWait(400)
-            assert window.property("displayedSurface") == "files"
-            assert window.property("surfaceOpacity") == 1
+            finish_surface_transition("files")
             bridge.closeFiles()
             QTest.qWait(60)
             assert window.property("displayedSurface") == "files"
             assert 0 < window.property("surfaceOpacity") < 1
-            QTest.qWait(400)
-            assert window.property("displayedSurface") == old_surface
-            assert window.property("surfaceOpacity") == 1
+            finish_surface_transition(old_surface)
             click(visible_item("settingsButton"))
             menu_window = quick_settings.window()
             QTest.keyClick(menu_window, Qt.Key.Key_Down)
