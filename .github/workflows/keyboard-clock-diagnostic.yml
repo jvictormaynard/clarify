@@ -1,0 +1,44 @@
+name: Keyboard clock diagnostic only
+
+on:
+  push:
+    branches:
+      - codex/keyboard-ui-clock-diagnosis-20261025
+    paths:
+      - .diagnostics/**
+      - .github/workflows/keyboard-clock-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: macos-26
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [baseline, expire-before-toolbar]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      CLARIFY_IOS_RUNTIME: iOS-26-5
+      CLARIFY_NATIVE_TESTS: '1'
+      CLARIFY_CLOCK_DIAGNOSTIC: ${{ matrix.mode }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+      - name: Run the unchanged assertions with a controlled expiry barrier
+        working-directory: mobile
+        run: node ../.diagnostics/keyboard-clock.cjs
+      - name: Keep native diagnostic results
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: keyboard-clock-${{ matrix.mode }}
+          path: mobile/test-results/keyboard-ui.zip
+          if-no-files-found: warn
+          retention-days: 7
