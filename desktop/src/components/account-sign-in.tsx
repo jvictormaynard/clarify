@@ -19,7 +19,7 @@ export function AccountSignIn({ account, command, busy = false }: {
     }
   }}>{account.pending ? <>
     <p className="hint">{t("Digite o código enviado para {v0}. O código vale por 10 minutos.", { v0: account.email })}</p>
-    <Field title={t("Código recebido por e-mail")} value={code} inputMode="numeric" autoComplete="one-time-code" maxLength={16} required onChange={e => setCode(e.target.value)} />
+    <Field className="min-h-10.5" title={t("Código recebido por e-mail")} value={code} inputMode="numeric" autoComplete="one-time-code" maxLength={16} required onChange={e => setCode(e.target.value)} />
     <Button variant="primary" type="submit" loading={busy} disabled={!code.trim()}>{t("Confirmar código")}</Button>
     <Button variant="text" onClick={() => command("logout")}>{t("Voltar")}</Button>
   </> : <>
@@ -30,7 +30,7 @@ export function AccountSignIn({ account, command, busy = false }: {
       </Button>)}
     </div>
     <p className="hint">{t("Ou continue com seu e-mail")}</p>
-    <Field title={t("E-mail")} type="email" value={email} autoComplete="email" required maxLength={254} placeholder="email@example.com" onChange={e => setEmail(e.target.value)} />
+    <Field className="min-h-10.5" title={t("E-mail")} type="email" value={email} autoComplete="email" required maxLength={254} placeholder="email@example.com" onChange={e => setEmail(e.target.value)} />
     <p className="hint">{t("Enviaremos um código para entrar ou criar sua conta. Você não precisa de senha.")}</p>
     <Button variant="primary" type="submit" loading={busy} disabled={!email.trim() || !account.endpoint}>{t("Continuar")}</Button>
   </>}</form>;

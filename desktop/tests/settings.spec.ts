@@ -6,6 +6,248 @@ let child: ChildProcessWithoutNullStreams;
 let id = 0;
 const pending = new Map<number, (value: unknown) => void>();
 let releaseUsage: () => Promise<void>;
+
+for (const method of ["testMicrophone", "stopMicrophoneTest", "refreshMicrophones"] as const) {
+  test(`responsive operations: ${method} keeps navigation and unrelated controls stable`, async ({ page }) => {
+    if (method === "stopMicrophoneTest") {
+      await page.getByRole("button", { name: "Testar microfone", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Parar teste", exact: true })).toBeVisible();
+    }
+    let release!: () => void;
+    let started!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    await page.route("**/__test_rpc", async route => {
+      if (route.request().postDataJSON().method === method) { started(); await held; }
+      await route.fallback();
+    });
+    const navigation = page.getByRole("button", { name: "Dicionário", exact: true });
+    const before = await navigation.evaluate(element => getComputedStyle(element).opacity);
+    try {
+      if (method === "refreshMicrophones") {
+        await page.getByRole("combobox", { name: "Microfone", exact: true }).click();
+        await page.getByRole("button", { name: "Atualizar microfone", exact: true }).click();
+      } else {
+        await page.getByRole("button", { name: method === "testMicrophone" ? "Testar microfone" : "Parar teste", exact: true }).click();
+      }
+      await entered;
+      if (method === "refreshMicrophones") await page.keyboard.press("Escape");
+      await expect(navigation).toBeEnabled();
+      await expect(navigation).toHaveCSS("opacity", before);
+      await expect(page.getByRole("combobox", { name: "Serviço", exact: true })).toBeEnabled();
+      await navigation.click();
+      await expect(page.getByRole("heading", { name: "Dicionário", exact: true })).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "Novo termo", exact: true })).toBeEnabled();
+    } finally { release(); }
+  });
+}
+
+test("responsive operations: saving text allows navigation and preserves edits typed during the save", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
+  await prompt.fill("First text revision.");
+  let release!: () => void;
+  let started!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method === "save") { started(); await held; }
+    await route.fallback();
+  });
+  try {
+    await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await entered;
+    await expect(prompt).toBeEnabled();
+    await prompt.fill("Newer unsaved revision.");
+    await page.getByRole("button", { name: "Dicionário", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Novo termo", exact: true })).toBeVisible();
+  } finally { release(); }
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(prompt).toHaveValue("Newer unsaved revision.");
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeVisible();
+});
+
+test("contextual actions wait for the requested workflow before saving", async ({ page }) => {
+  await page.getByText("Instruções da transcrição", { exact: true }).click();
+  await page.getByRole("textbox", { name: "Instruções da transcrição", exact: true }).fill("Dictation draft");
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Text draft");
+  let release!: () => void, started!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    const request = route.request().postDataJSON();
+    if (request.method === "selectWorkflow" && request.args[0] === "transcription") { started(); await held; }
+    await route.fallback();
+  });
+  try {
+    await page.getByRole("button", { name: "Ditado", exact: true }).click();
+    await entered;
+    await expect(page.getByRole("heading", { name: "Ditado", exact: true })).toBeVisible();
+    await expect(page.getByRole("group", { name: "Alterações pendentes", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Dicionário", exact: true })).toBeEnabled();
+  } finally { release(); }
+  await page.getByText("Instruções da transcrição", { exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Instruções da transcrição", exact: true })).toHaveValue("Dictation draft");
+  await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Text draft");
+  const snapshot = await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  expect(snapshot.routePrompt).not.toBe("Text draft");
+});
+
+for (const library of ["dictionary", "snippets"] as const) {
+  test(`${library}: Save preserves a text reversion made after the click`, async ({ page }) => {
+    const dictionary = library === "dictionary";
+    await page.getByRole("button", { name: dictionary ? "Dicionário" : "Snippets", exact: true }).click();
+    if (dictionary) {
+      await page.getByRole("textbox", { name: "Novo termo", exact: true }).fill("Original term");
+      await page.getByRole("button", { name: "Adicionar termo", exact: true }).click();
+    } else {
+      await page.getByRole("textbox", { name: "Nova frase de ativação", exact: true }).fill("original");
+      await page.getByRole("textbox", { name: "Novo texto do snippet", exact: true }).fill("Original text");
+      await page.getByRole("button", { name: "Adicionar snippet", exact: true }).click();
+    }
+    const save = page.getByRole("button", { name: "Salvar alterações", exact: true });
+    await save.click();await expect(save).toBeHidden();
+    const editor = page.getByRole("textbox", { name: dictionary ? "Termo 1" : "Texto do snippet 1", exact: true });
+    await editor.fill("Submitted revision");
+    let release!: () => void, started!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    await page.route("**/__test_rpc", async route => {
+      if (route.request().postDataJSON().method === "save") { started(); await held; }
+      await route.fallback();
+    });
+    try {
+      await save.click();await entered;
+      await editor.fill(dictionary ? "Original term" : "Original text");
+    } finally { release(); }
+    await expect(save).toBeEnabled();
+    await expect(editor).toHaveValue(dictionary ? "Original term" : "Original text");
+    const read = () => page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+    let snapshot = await read();
+    expect(dictionary ? snapshot.dictionaryEntries[0].term : snapshot.snippets[0].replacement).toBe("Submitted revision");
+    await save.click();await expect(save).toBeHidden();snapshot = await read();
+    expect(dictionary ? snapshot.dictionaryEntries[0].term : snapshot.snippets[0].replacement).toBe(dictionary ? "Original term" : "Original text");
+  });
+}
+
+test("automatic preferences: switches persist without committing a pending prompt", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
+  const original = await prompt.inputValue();
+  await prompt.fill("Text draft must stay private until Save.");
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  const setting = page.getByRole("switch", { name: "Iniciar com o Windows", exact: true });
+  const checked = await setting.isChecked();
+  const response = page.waitForResponse(response => response.url().endsWith("/__test_rpc") && response.request().postDataJSON().method === "savePreference");
+  await setting.click();
+  await response;
+  const persisted = await page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "load", args: [] }));
+  expect(persisted.autostart).toBe(!checked);
+  expect(persisted.routePrompt).toBe(original);
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(prompt).toHaveValue("Text draft must stay private until Save.");
+});
+
+test("desktop navigation: Settings has no global search or floating save island", async ({ page }) => {
+  await expect(page.getByRole("button", { name: "Buscar configurações…", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Control+k");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".floating-save")).toHaveCount(0);
+});
+
+test("contextual confirmation: Save keeps drafts from other pages unsaved", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
+  const original = await prompt.inputValue();
+  await prompt.fill("Keep this text draft unsaved.");
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  const history = page.getByRole("switch", { name: "Salvar histórico", exact: true });
+  if (!await history.isChecked()) await history.click();
+  await expect(history).toBeChecked();
+  await page.getByRole("spinbutton", { name: "Retenção do histórico", exact: true }).fill("31");
+  await page.getByRole("group", { name: "Alterações pendentes" }).getByRole("button", { name: "Descartar", exact: true }).click();
+  const confirmation = page.getByRole("dialog", { name: "Alterações não salvas" });
+  await confirmation.getByRole("button", { name: "Salvar", exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(prompt).toHaveValue("Keep this text draft unsaved.");
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(prompt).toHaveValue(original);
+});
+
+test("responsive account: pending microphone work does not disable sign-in", async ({ page }) => {
+  let release!: () => void;
+  let started!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method === "testMicrophone") { started(); await held; }
+    await route.fallback();
+  });
+  try {
+    await page.getByRole("button", { name: "Testar microfone", exact: true }).click();
+    await entered;
+    await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+    await page.getByRole("textbox", { name: "E-mail", exact: true }).fill("test@example.test");
+    await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeEnabled();
+  } finally { release(); }
+});
+
+test("snippets account: background refresh keeps confirmation Cancel focused and dismissible", async ({ page }) => {
+  await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+  await page.getByText("Zona de perigo", { exact: true }).click();
+  await page.getByRole("button", { name: "Excluir conta", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const cancel = dialog.getByRole("button", { name: "Cancelar", exact: true });
+  await expect(cancel).toBeFocused();
+  const account = await page.evaluate(async () => {
+    const snapshot = await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] });
+    return snapshot.accountState;
+  });
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method === "poll") {
+      await route.fulfill({ json: { result: { accountState: { ...account, busy: true } } } });
+    } else await route.fallback();
+  });
+  await expect(dialog.getByRole("button", { name: "Confirmar exclusão da conta", exact: true })).toBeDisabled();
+  await expect(cancel).toBeEnabled();
+  await expect(cancel).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+});
+
+test("provider selection: pending selection cannot transfer a key typed for the visible provider", async ({ page }) => {
+  await page.getByRole("button", { name: "Modelos e serviços", exact: true }).click();
+  const provider = page.getByRole("combobox", { name: "Serviço na nuvem", exact: true });
+  const key = page.getByLabel("Chave de API", { exact: true });
+  await expect(key).toBeEnabled();
+  let release!: () => void;
+  let started!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method === "selectProvider") { started(); await held; }
+    await route.fallback();
+  });
+  try {
+    await provider.click();
+    await page.getByRole("option", { name: "OpenAI", exact: true }).click();
+    await entered;
+    await expect(page.getByRole("button", { name: "Dicionário", exact: true })).toBeEnabled();
+    // Either bind edits to the displayed provider or guard these inputs during selection.
+    if (await key.isEnabled()) await key.fill("sk_test_only_visible_provider");
+  } finally { release(); }
+  await expect(provider).toContainText("OpenAI");
+  await expect(key).toBeEnabled();
+  await expect(key).toHaveValue("");
+});
 test("snippets: add edit disable discard and remove a multiline snippet", async ({ page }) => {
   await page.getByRole("button", { name: "Snippets", exact: true }).click();
   await page.getByRole("textbox", { name: "Nova frase de ativação" }).fill("minha assinatura");
@@ -18,7 +260,7 @@ test("snippets: add edit disable discard and remove a multiline snippet", async 
   await page.getByRole("button", { name: "Descartar", exact: true }).click();
   await page.getByRole("dialog", { name: "Alterações não salvas" }).getByRole("button", { name: "Descartar", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Texto do snippet 1", exact: true })).toHaveValue("Nome\n  Equipe\n");
-  await expect(page.getByRole("switch", { name: "Usar snippet 1", exact: true })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Usar snippet 1", exact: true })).not.toBeChecked();
   await page.getByRole("textbox", { name: "Buscar snippets" }).fill("ausente");
   await expect(page.getByText("Nenhum snippet encontrado.")).toBeVisible();
   await page.getByRole("textbox", { name: "Buscar snippets" }).clear();
@@ -26,6 +268,38 @@ test("snippets: add edit disable discard and remove a multiline snippet", async 
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByText("Adicione seu primeiro snippet acima.")).toBeVisible();
 });
+test("snippets: composer preserves both fields typed while an earlier row Save waits", async ({ page }) => {
+  await page.getByRole("button", { name: "Snippets", exact: true }).click();
+  const trigger = page.getByRole("textbox", { name: "Nova frase de ativação", exact: true });
+  const replacement = page.getByRole("textbox", { name: "Novo texto do snippet", exact: true });
+  await trigger.fill("saved phrase");
+  await replacement.fill("Saved replacement");
+  await page.getByRole("button", { name: "Adicionar snippet", exact: true }).click();
+  await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
+  await page.getByRole("textbox", { name: "Texto do snippet 1", exact: true }).fill("Earlier row revision");
+  let release!: () => void;
+  let started!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method === "save") { started(); await held; }
+    await route.fallback();
+  });
+  try {
+    await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await entered;
+    await trigger.fill("new unsaved phrase");
+    await replacement.fill("New text typed during Save");
+  } finally { release(); }
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
+  await expect(trigger).toHaveValue("new unsaved phrase");
+  await expect(replacement).toHaveValue("New text typed during Save");
+  const saved = await page.evaluate(async () => (await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] })).snippets);
+  expect(saved).toHaveLength(1);
+  expect(saved[0].replacement).toBe("Earlier row revision");
+});
+
 test("snippets account: account draft cannot be saved after the session changes", async ({ page }) => {
   await page.getByRole("button", { name: "Snippets", exact: true }).click();
   await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toHaveCount(0);
@@ -59,6 +333,83 @@ test("snippets account: composer clears when the session changes before Add", as
   await expect(page.getByRole("textbox", { name: "Texto do snippet 1", exact: true })).toHaveValue("Guest text");
 });
 
+for (const direction of ["sign-in", "sign-out"] as const) {
+  test(`snippets account: dictionary composer resets during ${direction}`, async ({ page }) => {
+    const account = () => page.evaluate(async () => (await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] })).accountState);
+    await expect.poll(async () => (await account()).busy).toBe(false);
+    if (direction === "sign-in") {
+      await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["logout", ""] }));
+      await expect.poll(async () => (await account()).signedIn).toBe(false);
+      await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toBeVisible();
+      await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["login", "test@example.test"] }));
+      await expect.poll(async () => (await account()).pending).toBe("login");
+      await expect.poll(async () => (await account()).busy).toBe(false);
+    }
+    const action = direction === "sign-in" ? "confirm" : "logout";
+    let release!: () => void;
+    let started!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    await page.route("**/__test_rpc", async route => {
+      const request = route.request().postDataJSON();
+      if (request.method === "accountCommand" && request.args[0] === action) { started(); await held; }
+      await route.fallback();
+    });
+    const term = page.getByRole("textbox", { name: "Novo termo", exact: true });
+    try {
+      await page.evaluate((nextAction) => {
+        (window as any).__accountTransition = (window as any).__TAURI_INTERNALS__.invoke("settings_call", {
+          method: "accountCommand", args: [nextAction, nextAction === "confirm" ? "123456" : ""],
+        });
+      }, action);
+      await entered;
+      await page.getByRole("button", { name: "Dicionário", exact: true }).click();
+      await term.fill("Private previous-owner term");
+    } finally { release(); }
+    await page.evaluate(() => (window as any).__accountTransition);
+    await expect.poll(async () => (await account()).signedIn).toBe(direction === "sign-in");
+    await expect(term).toHaveValue("");
+    await term.press("Enter");
+    await expect(page.getByRole("button", { name: "Adicionar termo", exact: true })).toBeDisabled();
+    await expect(page.getByRole("textbox", { name: "Termo 1", exact: true })).toHaveCount(0);
+  });
+}
+
+for (const library of ["dictionary", "snippets"] as const) {
+  test(`snippets account: sync-import keeps local ${library} text and remote additions`, async ({ page }) => {
+    const dictionary = library === "dictionary";
+    await page.getByRole("button", { name: dictionary ? "Dicionário" : "Snippets", exact: true }).click();
+    if (dictionary) {
+      await page.getByRole("textbox", { name: "Novo termo", exact: true }).fill("Base term");
+      await page.getByRole("button", { name: "Adicionar termo", exact: true }).click();
+    } else {
+      await page.getByRole("textbox", { name: "Nova frase de ativação", exact: true }).fill("base phrase");
+      await page.getByRole("textbox", { name: "Novo texto do snippet", exact: true }).fill("Base replacement");
+      await page.getByRole("button", { name: "Adicionar snippet", exact: true }).click();
+    }
+    await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
+    const edited = page.getByRole("textbox", { name: dictionary ? "Termo 1" : "Texto do snippet 1", exact: true });
+    await edited.fill("Local unsaved revision");
+    await page.evaluate(() => fetch("/__test_rpc", { method: "POST", body: JSON.stringify({ method: "testArmLibrarySync", args: [] }) }));
+    await page.getByRole("switch", { name: dictionary ? "Usar termo 1" : "Usar snippet 1", exact: true }).click();
+    const remote = () => page.evaluate(async (key) => {
+      const snapshot = await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] });
+      return snapshot[key].length;
+    }, dictionary ? "dictionaryEntries" : "snippets");
+    await expect.poll(remote).toBe(2);
+    await expect(edited).toHaveValue("Local unsaved revision");
+    await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
+    await page.reload();
+    await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
+    await page.getByRole("button", { name: dictionary ? "Dicionário" : "Snippets", exact: true }).click();
+    await expect(edited).toHaveValue("Local unsaved revision");
+    await expect(page.getByRole("textbox", { name: dictionary ? "Termo 2" : "Texto do snippet 2", exact: true })).toHaveValue(dictionary ? "Remote term" : "Remote replacement");
+    await expect(page.getByRole("switch", { name: dictionary ? "Usar termo 1" : "Usar snippet 1", exact: true })).not.toBeChecked();
+  });
+}
+
 test.beforeEach(async ({ page }, testInfo) => {
   if (!process.env.CLARIFY_TEST_PYTHON || !process.env.CLARIFY_TEST_FIXTURE) throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
   const onboarding = testInfo.title.startsWith("onboarding:");
@@ -70,7 +421,7 @@ test.beforeEach(async ({ page }, testInfo) => {
     });
   };
   const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : []), ...(testInfo.title.includes("social cancellation") ? ["--social-wait"] : []), ...["legacy", "malformed", "waiting", "unfunded", "inactive", "paused", "exhausted"].filter(mode => testInfo.title.includes(`quota ${mode}`)).map(mode => `--usage-${mode}`)], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.includes("social cancellation") ? ["--social-wait"] : []), ...(testInfo.title.includes("sync-import") ? ["--library-sync"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : []), ...["legacy", "malformed", "waiting", "unfunded", "inactive", "paused", "exhausted"].filter(mode => testInfo.title.includes(`quota ${mode}`)).map(mode => `--usage-${mode}`)], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);
@@ -248,7 +599,7 @@ test("onboarding: first run shows email and a local link before Settings", async
   await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
   await expect(page.getByRole("navigation", { name: "Configurações" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
 });
 
@@ -289,10 +640,12 @@ test("onboarding: email confirmation activates account processing immediately", 
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("button", { name: "Cancelar", exact: true })).toBeFocused();
   await page.getByRole("dialog").getByRole("button", { name: "Cancelar", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(usage).toBeVisible();
   await page.getByRole("button", { name: "Sair da conta", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Cancelar", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(usage).toBeVisible();
   await page.getByRole("button", { name: "Sair da conta", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Sair da conta", exact: true }).click();
@@ -324,6 +677,21 @@ test("onboarding: social cancellation stays enabled while the browser login is p
   await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeVisible();
 });
 
+test("account social cancellation remains available while navigating with local drafts", async ({ page }) => {
+  await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar com Google", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Conclua o login no navegador" })).toBeVisible();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Keep my local draft");
+  await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+  const cancel = page.getByRole("button", { name: "Cancelar login", exact: true });
+  await expect(cancel).toBeEnabled();
+  await cancel.click();
+  await expect(page.getByRole("alert")).toContainText("O login foi cancelado.");
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep my local draft");
+});
+
 test("modifier and side mouse shortcuts can be captured and saved", async ({ page }) => {
   await page.getByRole("button", { name: "Atalhos", exact: true }).click();
   const recording = page.locator(".shortcut").first();
@@ -348,10 +716,67 @@ test("modifier and side mouse shortcuts can be captured and saved", async ({ pag
   await page.getByRole("textbox", { name: "Novo atalho" }).press("Escape");
   await expect(page.getByRole("dialog")).toBeHidden();
   await expect.poll(captureAction).toBe("");
-  await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
   await page.reload();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
   await page.getByRole("button", { name: "Atalhos", exact: true }).click();
   await expect(page.locator(".shortcut").first()).toHaveText("Mouse 4");
+});
+
+test("cancelled shortcut capture rejects retained keyboard and mouse events", async ({ page }) => {
+  await page.getByRole("button", { name: "Atalhos", exact: true }).click();
+  const recording = page.locator(".shortcut").first();
+  const original = await recording.textContent();
+  const changes: unknown[] = [];
+  let releaseCancel!: () => void;
+  let cancelStarted = false;
+  const cancelGate = new Promise<void>(resolve => { releaseCancel = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    const request = route.request().postDataJSON();
+    if (request.method === "setHotkey" || (request.method === "savePreference" && request.args?.[0] === "setHotkey")) changes.push(request.args);
+    if (request.method === "cancelHotkeyCapture") {
+      cancelStarted = true;
+      await cancelGate;
+    }
+    await route.fallback();
+  });
+  const popup = page.locator('[data-slot="dialog-popup"]');
+  let finishTransition: (() => Promise<void>) | undefined;
+  try {
+    await recording.click();
+    await expect(popup).not.toHaveAttribute("data-starting-style", "");
+    const transition = await popup.evaluateHandle(async element => {
+      await Promise.all(element.getAnimations().map(animation => animation.finished));
+      // Keep exit completion under test control, even when CSS transitions finish early.
+      const held = element.animate([{ outlineOffset: "0px" }, { outlineOffset: "0px" }], { duration: 1 });
+      held.pause();
+      return held;
+    });
+    finishTransition = async () => {
+      await transition.evaluate(animation => animation.finish());
+      await transition.dispose();
+    };
+    const field = page.getByRole("textbox", { name: "Novo atalho" });
+    await field.press("Escape");
+    await expect.poll(() => cancelStarted).toBe(true);
+    await field.dispatchEvent("keydown", { key: "k", ctrlKey: true });
+    releaseCancel();
+    const closed = page.locator('[data-slot="dialog-popup"][data-ending-style]');
+    await expect(closed).toHaveCount(1);
+    // A queued event must not use a handler retained for the closing animation.
+    await closed.locator("input").dispatchEvent("mouseup", { button: 3 });
+    await page.waitForResponse(response => response.request().postDataJSON()?.method === "poll");
+    expect(changes).toEqual([]);
+    await expect(recording).toHaveText(original!);
+    await expect(closed).toHaveAttribute("inert", "");
+    await expect(closed.locator("input")).not.toBeFocused();
+    await page.keyboard.press("Control+k");
+    await expect(page.locator('[role="dialog"]:not([inert]):not([data-ending-style])')).toHaveCount(0);
+  } finally {
+    releaseCancel();
+    await finishTransition?.();
+  }
+  await expect(popup).toHaveCount(0);
 });
 
 test("onboarding: local choice leads to model setup without a login", async ({ page }) => {
@@ -391,45 +816,54 @@ test("editable fields expose their guidance to assistive technology", async ({ p
 test("instruction placeholders meet normal-text contrast", async ({ page }) => {
   await page.getByRole("button", { name: "Texto", exact: true }).click();
   const contrast = await page.getByRole("textbox", { name: "Instruções", exact: true }).evaluate(element => {
-    const luminance = (color: string) => {
-      const values = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext("2d")!;
+    const rgba = (color: string) => {
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+      return [...context.getImageData(0, 0, 1, 1).data];
+    };
+    const blend = (front: number[], back: number[]) => {
+      const alpha = front[3] / 255;
+      return front.slice(0, 3).map((channel, index) => channel * alpha + back[index] * (1 - alpha)).concat(255);
+    };
+    const ancestors: Element[] = [];
+    for (let node: Element | null = element; node; node = node.parentElement) ancestors.unshift(node);
+    const background = ancestors.reduce((back, node) => blend(rgba(getComputedStyle(node).backgroundColor), back), [255, 255, 255, 255]);
+    const placeholder = getComputedStyle(element, "::placeholder");
+    const ink = rgba(placeholder.color);
+    ink[3] *= Number(placeholder.opacity);
+    const luminance = (color: number[]) => {
+      const values = color.slice(0, 3).map(value => {
         const channel = value / 255;
         return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
       });
       return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
     };
-    const foreground = luminance(getComputedStyle(element, "::placeholder").color);
-    const background = luminance(getComputedStyle(element).backgroundColor);
-    return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+    const foreground = luminance(blend(ink, background));
+    const backdrop = luminance(background);
+    return (Math.max(foreground, backdrop) + 0.05) / (Math.min(foreground, backdrop) + 0.05);
   });
   expect(contrast).toBeGreaterThanOrEqual(4.5);
 });
 
-test("automatic updates are optional and follow save and discard", async ({ page }) => {
-  const version = await page.evaluate(async () => {
-    const state = await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] });
-    return state.applicationVersion;
-  });
-  expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+test("automatic updates persist immediately without a save step", async ({ page }) => {
   await page.getByRole("button", { name: "Geral", exact: true }).click();
   const toggle = page.getByRole("switch", { name: "Atualização automática", exact: true });
   await expect(toggle).not.toBeChecked();
-  await toggle.click();
+  const saved = page.waitForResponse(response => response.url().endsWith("/__test_rpc") && response.request().postDataJSON()?.method === "savePreference");
+  await toggle.click(); await saved;
   await expect(toggle).toBeChecked();
-  await page.getByRole("button", { name: "Descartar", exact: true }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Descartar", exact: true }).click();
-  await expect(toggle).not.toBeChecked();
-  await toggle.click();
-  await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
-  await page.getByRole("button", { name: "Ditado", exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
   await page.getByRole("button", { name: "Geral", exact: true }).click();
   await expect(toggle).toBeChecked();
-  await expect(page.getByText(`Versão ${version}`, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Verificar atualizações" })).toBeDisabled();
   await page.setViewportSize({ width: 640, height: 520 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
-  await page.screenshot({ path: "test-results/settings-updates.png", animations: "disabled" });
 });
 
 test("dictionary supports custom phrases, search, save and discard", async ({ page }) => {
@@ -475,7 +909,10 @@ test("integrated titlebar stays compact and close preserves unsaved changes", as
   await expect(page.getByRole("button", { name: "Maximizar", exact: true })).toBeVisible();
   expect(await page.locator(".titlebar").evaluate(el => getComputedStyle(el).backgroundColor)).toBe(await page.locator(".settings-window").evaluate(el => getComputedStyle(el).backgroundColor));
   await page.getByRole("button", { name: "Geral", exact: true }).click();
-  await page.getByRole("switch").first().click();
+  const history = page.getByRole("switch", { name: "Salvar histórico", exact: true });
+  await history.click();
+  await expect(history).toBeChecked();
+  await page.getByRole("spinbutton", { name: "Retenção do histórico", exact: true }).fill("31");
   await page.getByRole("button", { name: "Fechar configurações", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Alterações não salvas" })).toBeVisible();
   await page.getByRole("button", { name: "Continuar editando" }).click();
@@ -530,59 +967,54 @@ test("scroll boundaries cannot move the window chrome or sidebar", async ({ page
   expect(await titlebar.boundingBox()).toEqual(before.titlebar);
 });
 
-test("save bar appears only for changes without resizing the scroll viewport", async ({ page }) => {
-  const bar = page.getByRole("group", { name: "Alterações pendentes" });
-  await expect(bar).toBeHidden();
-  await expect(page.locator("footer")).toHaveCount(0);
-  await page.getByRole("button", { name: "Geral", exact: true }).click();
+test("text actions stay with the form and choices need no save island", async ({ page }) => {
+  const actions = page.getByRole("group", { name: "Alterações pendentes" });
+  await expect(actions).toBeHidden();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
   const before = await page.locator(".scroll-area").boundingBox();
-  await page.getByRole("switch").first().click();
-  await expect(bar).toBeVisible();
-  await expect.poll(() => page.locator(".floating-save").evaluate(el => getComputedStyle(el).opacity)).toBe("1");
+  await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Contextual text draft.");
+  await expect(actions).toBeVisible();
+  expect(await actions.evaluate(element => !!element.closest(".page"))).toBe(true);
   expect(await page.locator(".scroll-area").boundingBox()).toEqual(before);
-  await page.screenshot({ path: "test-results/settings-floating-save.png" });
-  await bar.getByRole("button", { name: "Salvar alterações" }).click();
-  await expect(bar).toBeHidden();
-  await expect.poll(() => page.locator(".floating-save").evaluate(el => getComputedStyle(el).visibility)).toBe("hidden");
-  expect(await page.locator(".scroll-area").boundingBox()).toEqual(before);
+  await actions.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(actions).toBeHidden();
+  await expect(page.locator(".floating-save")).toHaveCount(0);
 });
 
-test("installed models: search inside popup, keyboard selection, save and discard", async ({ page }) => {
+test("installed models: keyboard selection persists without save and survives reload", async ({ page }) => {
   await page.getByRole("combobox", { name: "Serviço", exact: true }).click();
   await page.getByRole("option", { name: "Local Whisper" }).click();
   await page.getByRole("combobox", { name: "Modelo", exact: true }).click();
   await page.getByPlaceholder("Buscar modelo…").fill("Medium");
   await expect(page.getByRole("option")).toHaveCount(1);
-  await page.getByPlaceholder("Buscar modelo…").press("Enter");
+  const saved = page.waitForResponse(response => response.url().endsWith("/__test_rpc") && response.request().postDataJSON()?.method === "savePreference" && response.request().postDataJSON()?.args?.[0] === "setRouteModelId");
+  await page.getByPlaceholder("Buscar modelo…").press("Enter"); await saved;
   await expect(page.getByRole("combobox", { name: "Modelo", exact: true })).toContainText("Medium");
-  await page.getByRole("button", { name: "Salvar alterações" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Alterações salvas" })).toHaveText("Alterações salvas");
-  await page.getByRole("combobox", { name: "Modelo", exact: true }).click();
-  await page.getByRole("option", { name: /Whisper Base/ }).click();
-  await page.getByRole("button", { name: "Descartar", exact: true }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Descartar", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByRole("combobox", { name: "Modelo", exact: true })).toContainText("Medium");
 });
 
 test("picker resets search when reopened before its closing animation ends", async ({ page }) => {
   await page.getByRole("combobox", { name: "Serviço", exact: true }).click();
   await page.getByRole("option", { name: "Local Whisper" }).click();
-  await expect(page.locator(".popover")).toHaveCount(0);
+  await expect(page.locator('[data-slot="combobox-popup"]')).toHaveCount(0);
   // Keep the exiting popup mounted to reproduce rapid reopening deterministically.
-  await page.addStyleTag({ content: '.popover[data-state="closed"] { animation-duration: 30s; }' });
+  await page.addStyleTag({ content: '[data-slot="combobox-popup"][data-ending-style] { transition-duration: 30s; }' });
   const model = page.getByRole("combobox", { name: "Modelo", exact: true });
   const search = page.getByPlaceholder("Buscar modelo…");
   await model.click();
   await search.fill("Medium");
   await expect(page.getByRole("option")).toHaveCount(1);
   await search.press("Enter");
-  await expect(page.locator('.popover[data-state="closed"]')).toHaveCount(1);
+  await expect(page.locator('[data-slot="combobox-popup"][data-ending-style]')).toHaveCount(1);
   await model.click();
   await expect(search).toHaveValue("");
   await expect(page.getByRole("option", { name: /Whisper Base/ })).toBeVisible();
   await search.fill("Medium");
   await search.press("Escape");
-  await expect(page.locator('.popover[data-state="closed"]')).toHaveCount(1);
+  await expect(page.locator('[data-slot="combobox-popup"][data-ending-style]')).toHaveCount(1);
   await model.click();
   await expect(search).toHaveValue("");
   await page.getByRole("option", { name: /Whisper Base/ }).click();
@@ -597,7 +1029,7 @@ test("draft prompt survives navigation; invalid retention cannot save", async ({
   await page.getByRole("spinbutton", { name: "Retenção do histórico" }).fill("-1");
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("alert")).toContainText("3650");
-  await page.getByRole("spinbutton", { name: "Retenção do histórico" }).fill("30");
+  await page.getByRole("spinbutton", { name: "Retenção do histórico" }).fill("31");
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
   await page.getByRole("button", { name: "Texto", exact: true }).click();
@@ -612,10 +1044,10 @@ test("microphone preview stops on navigation and all pages fit", async ({ page }
   await expect(page.getByRole("button", { name: "Testar microfone" })).toBeVisible();
   for (const width of [640, 820, 1040]) {
     await page.setViewportSize({ width, height: 760 });
-    for (const name of ["Ditado", "Geral", "Texto", "Atalhos", "Modelos e serviços"]) {
+    for (const name of ["Ditado", "Geral", "Texto", "Atalhos", "Modelos e serviços", "Dicionário", "Snippets", "Histórico", "Conta Clarify"]) {
       await page.getByRole("button", { name, exact: true }).click();
       await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
-      await expect(page.locator("fieldset")).toBeEnabled();
+      await expect(page.locator(".page")).toBeEnabled();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`${width}-${name}.png`), animations: "disabled" });
     }
@@ -623,7 +1055,7 @@ test("microphone preview stops on navigation and all pages fit", async ({ page }
 });
 
 test("navigation preserves the page container, brightness and horizontal geometry", async ({ page }) => {
-  await expect(page.locator("fieldset")).toBeEnabled();
+  await expect(page.locator(".page")).toBeVisible();
   await page.evaluate(() => {
     (window as any).__originalPage = document.querySelector(".page");
     (window as any).__navFrames = [];
@@ -645,12 +1077,12 @@ test("navigation preserves the page container, brightness and horizontal geometr
   for (const name of ["Texto", "Geral", "Modelos e serviços", "Ditado", "Texto"]) {
     await page.getByRole("button", { name, exact: true }).click();
     await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
-    await expect(page.locator("fieldset")).toBeEnabled();
+    await expect(page.locator(".page")).toBeVisible();
   }
   for (const name of ["Reescrita", "Tradução", "Revisão"]) {
     await page.getByRole("button", { name, exact: true }).click();
     await expect(page.getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("fieldset")).toBeEnabled();
+    await expect(page.locator(".page")).toBeVisible();
   }
   const frames = await page.evaluate(() => {
     (window as any).__sampling = false;
@@ -659,6 +1091,15 @@ test("navigation preserves the page container, brightness and horizontal geometr
   expect(frames.length).toBeGreaterThan(5);
   expect(frames.filter(f => !f.same || f.opacity !== "1" || f.animation !== "none")).toEqual([]);
   expect(new Set(frames.map(f => f.width)).size).toBe(1);
+});
+
+test("sidebar width follows the desktop window breakpoints", async ({ page }) => {
+  for (const [width, expected] of [[1040, 220], [820, 208], [640, 60]]) {
+    await page.setViewportSize({ width, height: 740 });
+    await expect.poll(() => page.locator("aside").evaluate(element => element.getBoundingClientRect().width)).toBe(expected);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await expect(page.getByRole("button", { name: "Fechar configurações", exact: true })).toBeInViewport();
+  }
 });
 
 test("recording options stay in the new window and preserve drafts until save", async ({ page }) => {
@@ -720,20 +1161,132 @@ for (const labels of [
     const email = page.getByRole("textbox", { name: labels.email, exact: true });
     const next = page.getByRole("button", { name: labels.next, exact: true });
     await expect(page.getByRole("button", { name: labels.skip, exact: true })).toBeVisible();
-    const first = await email.boundingBox(), submit = await next.boundingBox();
+    await expect(email).toBeEnabled();
+    const first = await email.locator("xpath=..").boundingBox(), submit = await next.boundingBox();
     expect(first).not.toBeNull(); expect(submit).not.toBeNull();
     expect(Math.abs(first!.x - submit!.x)).toBeLessThan(1);
     expect(Math.abs(first!.width - submit!.width)).toBeLessThan(1);
+    await email.locator("xpath=..").click({ position: { x: first!.width / 2, y: first!.height - 3 } });
+    await expect(email).toBeFocused();
     await email.fill("test@example.test"); await next.click();
     const code = page.getByRole("textbox", { name: labels.code, exact: true });
     await expect(code).toBeVisible();
     await expect(page.getByRole("button", { name: labels.skip, exact: true })).toBeHidden();
-    const verify = await code.boundingBox();
+    await expect(code).toBeEnabled();
+    const verify = await code.locator("xpath=..").boundingBox();
     const confirm = await page.getByRole("button", { name: labels.confirm, exact: true }).boundingBox();
     expect(Math.abs(verify!.x - confirm!.x)).toBeLessThan(1);
     expect(Math.abs(verify!.width - confirm!.width)).toBeLessThan(1);
+    await code.locator("xpath=..").click({ position: { x: verify!.width / 2, y: verify!.height - 3 } });
+    await expect(code).toBeFocused();
     await page.getByRole("button", { name: labels.back, exact: true }).click();
     await expect(email).toBeVisible();
     await expect(page.getByRole("button", { name: labels.skip, exact: true })).toBeVisible();
   });
 }
+
+test("sidebar navigation retains text drafts without a global search", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Keep this draft through navigation.");
+  await page.getByRole("button", { name: "Ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep this draft through navigation.");
+  await page.keyboard.press("Control+k");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Instruções", exact: true }).focus();
+  await page.keyboard.press("Control+End"); await page.keyboard.press("/");
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep this draft through navigation./");
+});
+
+test("snippets account: sidebar excludes personal processing controls", async ({ page }) => {
+  await expect(page.getByRole("navigation").getByRole("button")).toHaveCount(7);
+  await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Texto", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Histórico", exact: true })).toBeVisible();
+});
+
+test("settings updates: pending telemetry does not leave local navigation busy", async ({ page }) => {
+  let releasePoll!: () => void;
+  let enteredPoll!: () => void;
+  const held = new Promise<void>(resolve => { releasePoll = resolve; });
+  const entered = new Promise<void>(resolve => { enteredPoll = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method === "poll") {
+      enteredPoll();
+      await held;
+    }
+    await route.fallback();
+  });
+  try {
+    await entered;
+    await page.getByRole("button", { name: "Dicionário", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Novo termo", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Ditado", exact: true })).toBeEnabled();
+  } finally {
+    releasePoll();
+  }
+});
+
+test("settings updates: microphone telemetry stays compact with a full snippet library", async ({ page }) => {
+  await page.evaluate(async () => {
+    const entries = Array.from({ length: 512 }, (_, index) => ({
+      trigger: `isolated phrase ${index}`,
+      replacement: "x".repeat(4096),
+      enabled: true,
+      case_sensitive: false,
+    }));
+    await (window as any).__TAURI_INTERNALS__.invoke("settings_call", {
+      method: "setSnippets", args: [entries, "local"],
+    });
+  });
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Keep this draft during live telemetry.");
+  await page.getByRole("button", { name: "Ditado", exact: true }).click();
+  const telemetry: { bytes: number; level: number | undefined }[] = [];
+  page.on("response", async response => {
+    if (!response.url().endsWith("/__test_rpc")) return;
+    const method = response.request().postDataJSON()?.method;
+    if (method !== "snapshot" && method !== "poll") return;
+    try {
+      const body = await response.text();
+      telemetry.push({ bytes: body.length, level: JSON.parse(body).result?.microphoneTestLevel });
+    } catch { /* A response may finish after the page closes. */ }
+  });
+  await page.getByRole("button", { name: "Testar microfone", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Parar teste", exact: true })).toBeVisible();
+  await expect.poll(() => telemetry.filter(sample => sample.bytes < 4096 && Number(sample.level) > 0).length).toBeGreaterThanOrEqual(3);
+  await page.getByRole("button", { name: "Parar teste", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Testar microfone", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep this draft during live telemetry.");
+});
+
+
+test("repeated menus and dialogs return focus without retaining a modal lock", async ({ page }) => {
+  const provider = page.getByRole("combobox", { name: "Serviço", exact: true });
+  for (let cycle = 0; cycle < 8; cycle++) {
+    await provider.click();
+    const search = page.getByPlaceholder("Buscar serviço…");
+    await search.fill("no such provider");
+    await expect(page.getByRole("option")).toHaveCount(0);
+    await search.press("Escape");
+    await expect(provider).toBeFocused();
+  }
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
+  const original = await prompt.inputValue();
+  await prompt.fill("Repeated dialog draft.");
+  const discard = page.getByRole("group", { name: "Alterações pendentes" }).getByRole("button", { name: "Descartar", exact: true });
+  for (let cycle = 0; cycle < 8; cycle++) {
+    await discard.click();
+    const dialog = page.getByRole("dialog", { name: "Alterações não salvas", exact: true });
+    await expect(dialog).toBeVisible(); await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0); await expect(discard).toBeFocused();
+  }
+  await discard.click();
+  await page.getByRole("dialog", { name: "Alterações não salvas", exact: true }).getByRole("button", { name: "Descartar", exact: true }).click();
+  await expect(prompt).toHaveValue(original);
+  await expect(page.getByRole("group", { name: "Alterações pendentes" })).toBeHidden();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});

@@ -1,6 +1,6 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
-import { Picker, Row, Section, TextArea, Toggle } from "../components/ui";
+import { Button, Picker, Row, Section, TextArea, Toggle } from "../components/ui";
 import { WorkflowRoute } from "../components/workflow-route";
 
 export function TextPage({ controller }: SettingsPageProps) {
@@ -15,7 +15,8 @@ export function TextPage({ controller }: SettingsPageProps) {
           { id: "rewrite", label: t("Reescrita") },
           { id: "translation", label: t("Tradução") },
         ].map((item) => (
-          <button
+          <Button
+            variant="ghost"
             type="button"
             key={item.id}
             aria-pressed={
@@ -26,7 +27,7 @@ export function TextPage({ controller }: SettingsPageProps) {
             onClick={() => void navigate("text", item.id)}
           >
             {item.label}
-          </button>
+          </Button>
         ))}
       </div>
       {(state.selectedScope === "refinement" ||
@@ -58,7 +59,8 @@ export function TextPage({ controller }: SettingsPageProps) {
       <Section title={t("Instruções")}>
         <p className="hint">{t("Defina o tom e as alterações que a IA deve aplicar.")}</p>
         <TextArea
-          className="prompt"
+          className="prompt min-h-35"
+          shellClassName="my-3"
           aria-label={t("Instruções")}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}

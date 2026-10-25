@@ -21,7 +21,9 @@ class SettingsInventoryTests(unittest.TestCase):
         root = ROOT / "desktop/licenses"
         manifest = json.loads((root / "manifest.json").read_text())
         self.assertTrue(manifest)
-        for ref, entries in manifest.items():
+        source_entries = json.loads((root / "source-components.json").read_text())
+        self.assertTrue(source_entries)
+        for ref, entries in [*manifest.items(), ("source", source_entries)]:
             self.assertTrue(entries, ref)
             for entry in entries:
                 path = (root / entry["file"]).resolve()
@@ -124,6 +126,23 @@ class SettingsInventoryTests(unittest.TestCase):
                 )
             ]
             cargo = {"packages": packages, "resolve": {"root": "root", "nodes": nodes}}
+            source_root = root / "licenses"
+            source_root.mkdir()
+            notice = source_root / "source-MIT.txt"
+            notice.write_text("source copyright and permission fixture")
+            source_ref = "pkg:github/example/controls@abc123"
+            source_entry = {
+                "name": "controls",
+                "version": "abc123",
+                "purl": source_ref,
+                "license": "MIT",
+                "file": notice.name,
+                "source": "https://example.test/controls/LICENSE",
+                "sha256": hashlib.sha256(notice.read_bytes()).hexdigest(),
+            }
+            (source_root / "source-components.json").write_text(
+                json.dumps([source_entry])
+            )
             bom, notices = inventory(root, npm, cargo)
             components = {c["name"]: c for c in bom["components"]}
             self.assertEqual(components["runtime"]["scope"], "required")
@@ -133,6 +152,21 @@ class SettingsInventoryTests(unittest.TestCase):
                 components["runtime"]["licenses"], [{"expression": "MIT OR Apache-2.0"}]
             )
             self.assertIn("npm license fixture", notices)
+            self.assertIn("source copyright and permission fixture", notices)
+            self.assertEqual(
+                components["controls"]["licenses"], [{"expression": "MIT"}]
+            )
+            self.assertIn(
+                source_ref,
+                next(
+                    edge["dependsOn"]
+                    for edge in bom["dependencies"]
+                    if edge["ref"] == "pkg:generic/clarify-settings"
+                ),
+            )
+            notice.write_text("modified notice")
+            with self.assertRaisesRegex(ValueError, "checksum"):
+                inventory(root, npm, cargo)
             self.assertIn(
                 "https://crates.io/api/v1/crates/runtime/1.0/download", notices
             )

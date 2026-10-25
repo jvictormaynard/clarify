@@ -1,58 +1,67 @@
-import { t } from "../i18n";
-import {
-  useId,
-  type ButtonHTMLAttributes,
-  type InputHTMLAttributes,
-  type ReactNode,
-  type TextareaHTMLAttributes,
-} from "react";
-import * as Dialog from "@radix-ui/react-dialog";
-import * as RadixSwitch from "@radix-ui/react-switch";
-import { X } from "lucide-react";
+import { useId, type ComponentProps, type ReactNode } from "react";
 
+import { cn } from "../lib/utils";
+import { Button as ButtonControl, InlineButton } from "./primitives/button";
+import { Input as InputControl } from "./primitives/input";
+import { Switch as SwitchControl } from "./primitives/switch";
+import { Textarea as TextareaControl } from "./primitives/textarea";
+
+export { Confirm } from "./confirm";
 export { Picker } from "./picker";
 
 const variants = {
-  default: "button",
-  primary: "button primary",
-  ghost: "button ghost",
-  text: "text-button",
-};
+  default: "outline",
+  primary: "default",
+  ghost: "ghost",
+} as const;
 
 export function Button({
   variant = "default",
-  className = "",
+  className,
   type = "button",
   loading = false,
   children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: keyof typeof variants;
+}: ComponentProps<"button"> & {
+  variant?: keyof typeof variants | "text";
   loading?: boolean;
 }) {
+  const buttonProps = {
+    ...props,
+    disabled: props.disabled || loading,
+    "aria-busy": loading,
+    type,
+  };
+  const content = <>{loading && <span className="button-spinner" aria-hidden="true" />}{children}</>;
+
+  if (variant === "text") {
+    return <InlineButton {...buttonProps} className={cn("text-button", className)}>{content}</InlineButton>;
+  }
+
   return (
-    <button
-      {...props}
-      disabled={props.disabled || loading}
-      aria-busy={loading}
-      type={type}
-      className={`${variants[variant]} ${className}`.trim()}
-    >{loading && <span className="button-spinner" aria-hidden="true" />}{children}</button>
+    <ButtonControl
+      {...buttonProps}
+      variant={variants[variant]}
+      className={cn("button", variant !== "default" && variant, className)}
+    >{content}</ButtonControl>
   );
 }
 
 export function Input({
-  className = "",
+  className,
+  shellClassName,
+  unstyled = false,
   ...props
-}: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`control ${className}`.trim()} />;
+}: ComponentProps<"input"> & { shellClassName?: string; unstyled?: boolean }) {
+  return <InputControl {...props} nativeInput unstyled={unstyled} className={cn("control", shellClassName)} inputClassName={className} />;
 }
 
 export function TextArea({
-  className = "",
+  className,
+  shellClassName,
   ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`control ${className}`.trim()} />;
+}: ComponentProps<"textarea"> & { shellClassName?: string }) {
+  return <TextareaControl {...props} className={cn("control", shellClassName)} textareaClassName={className} />;
 }
 
 type RowProps = {
@@ -84,7 +93,7 @@ export function Field({
   hint,
   id: suppliedId,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { title: string; hint?: string }) {
+}: ComponentProps<"input"> & { title: string; hint?: string }) {
   const generatedId = useId();
   const id = suppliedId ?? generatedId;
   const hintId = hint ? `${id}-hint` : undefined;
@@ -100,20 +109,21 @@ export function Field({
 export function Switch({
   label,
   onChange,
+  className,
   ...props
-}: Omit<RadixSwitch.SwitchProps, "onChange"> & {
+}: Omit<ComponentProps<typeof SwitchControl>, "onCheckedChange"> & {
   label: string;
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <RadixSwitch.Root
+    <SwitchControl
       {...props}
-      className="switch"
+      nativeButton
+      render={<button type="button" />}
+      className={cn("switch", className)}
       aria-label={label}
       onCheckedChange={onChange}
-    >
-      <RadixSwitch.Thumb className="switch-thumb" />
-    </RadixSwitch.Root>
+    />
   );
 }
 
@@ -157,42 +167,9 @@ export function Section({
   className?: string;
 }) {
   return (
-    <section className={className}>
+    <section className={`settings-section ${className ?? ""}`.trim()}>
       {title && <h2>{title}</h2>}
-      {children}
+      <div className="section-content">{children}</div>
     </section>
-  );
-}
-
-export function Confirm({
-  open,
-  title,
-  description,
-  children,
-  onOpenChange,
-}: {
-  open: boolean;
-  title: string;
-  description: string;
-  children: ReactNode;
-  onOpenChange: (open: boolean) => void;
-}) {
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="dialog-overlay" />
-        <Dialog.Content className="dialog">
-          <Dialog.Title>{title}</Dialog.Title>
-          <Dialog.Description>{description}</Dialog.Description>
-          <Dialog.Close
-            className="icon-button dialog-close"
-            aria-label={t("Fechar")}
-          >
-            <X size={18} />
-          </Dialog.Close>
-          <div className="dialog-actions">{children}</div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
   );
 }

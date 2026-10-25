@@ -36,6 +36,23 @@ try {
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Opções avançadas" })).toHaveCount(0);
   console.log(`Native ready after ${Math.round(performance.now() - started)} ms (includes isolated Python fixture startup)`);
+  await expect(page.getByRole("button", { name: "Buscar configurações…", exact: true })).toHaveCount(0);
+  await page.evaluate(() => {
+    window.__disabledNavigation = [];
+    window.__navigationObserver = new MutationObserver(() => {
+      if (document.querySelector("nav button:disabled")) window.__disabledNavigation.push(performance.now());
+    });
+    window.__navigationObserver.observe(document.querySelector("aside"), { subtree: true, attributes: true, attributeFilter: ["disabled"] });
+  });
+  await page.getByRole("button", { name: "Testar microfone", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Parar teste", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Dicionário", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Parar teste", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Testar microfone", exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "Microfone", exact: true }).click();
+  await page.getByRole("button", { name: "Atualizar microfone", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Dicionário", exact: true })).toHaveCSS("opacity", "1");
   await page.screenshot({ path: `${process.env.CLARIFY_TEST_OUTPUT}/native-dictation.png` });
   const measured = spawnSync("powershell.exe", ["-NoProfile", "-Command", `$taskProcesses=Get-CimInstance Win32_Process; $taskFamily=@(${child.pid}); do { $taskPrevious=$taskFamily.Count; $taskFamily+=@($taskProcesses | Where-Object { $_.ParentProcessId -in $taskFamily -and $_.ProcessId -notin $taskFamily } | Select-Object -ExpandProperty ProcessId) } while ($taskFamily.Count -gt $taskPrevious); $taskNative=@($taskFamily | Where-Object { $_ -ne ${child.pid} }); $taskMemory=($taskNative | ForEach-Object { (Get-Process -Id $_ -ErrorAction SilentlyContinue).WorkingSet64 } | Measure-Object -Sum).Sum; [pscustomobject]@{Processes=$taskNative.Count; SummedWorkingSetMB=[math]::Round($taskMemory/1MB,1)} | ConvertTo-Json -Compress`], { encoding: "utf8", windowsHide: true });
   console.log(`Native process memory (shared pages may be counted twice): ${measured.stdout.trim()}`);
@@ -43,7 +60,7 @@ try {
   await page.getByRole("option", { name: "Local Whisper" }).click();
   await page.getByRole("combobox", { name: "Modelo", exact: true }).click();
   await page.getByRole("option", { name: /Whisper Medium/ }).click();
-  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByRole("combobox", { name: "Modelo", exact: true })).toContainText("Medium");
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
   await page.getByText("Limites e parada automática", { exact: true }).click();
   await page.getByRole("spinbutton", { name: "Duração máxima", exact: true }).fill("120");
@@ -58,16 +75,18 @@ try {
   await page.screenshot({ path: `${process.env.CLARIFY_TEST_OUTPUT}/native-snippets.png` });
   await page.getByRole("button", { name: "Texto", exact: true }).click();
   await page.getByRole("textbox", { name: "Instruções" }).fill("Unsaved native test draft");
+  expect(await page.evaluate(() => window.__disabledNavigation)).toEqual([]);
+  await page.evaluate(() => window.__navigationObserver.disconnect());
   await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("plugin:window|close", { label: "main" }));
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "Continuar editando" }).click();
   await expect(page.getByRole("textbox", { name: "Instruções" })).toHaveValue("Unsaved native test draft");
   await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("plugin:window|close", { label: "main" }));
-  await page.getByRole("dialog").getByRole("button", { name: "Descartar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Descartar tudo", exact: true }).click();
   const code = await Promise.race([exited, delay(10000).then(() => "timeout")]);
   if (code !== 0) throw new Error(`Close did not release the child: ${code}`);
   if (errors.length) throw new Error(`Native frontend errors: ${errors.join("; ")}`);
-  console.log("PASS: real Tauri IPC, model and multiline snippet save, dirty close/cancel/discard, process exit");
+  console.log("PASS: real Tauri IPC, responsive microphone/refresh, automatic model save, contextual text/snippet save, dirty close/cancel/discard, process exit");
 } finally {
   await browser?.close().catch(() => {});
   if (child.exitCode === null) child.kill();

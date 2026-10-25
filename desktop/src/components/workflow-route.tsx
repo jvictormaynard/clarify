@@ -56,8 +56,8 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
             value={routeOverride?.model ?? state.routeModelId}
             onChange={(e) =>
               setRouteOverride({
+                ...routeOverride,
                 model: e.target.value,
-                endpoint: routeOverride?.endpoint ?? state.routeCustomEndpoint,
               })
             }
           />
@@ -67,8 +67,8 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
             value={routeOverride?.endpoint ?? state.routeCustomEndpoint}
             onChange={(e) =>
               setRouteOverride({
+                ...routeOverride,
                 endpoint: e.target.value,
-                model: routeOverride?.model ?? state.routeModelId,
               })
             }
           />
