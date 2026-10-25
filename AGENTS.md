@@ -62,6 +62,7 @@ Keep installation, configuration, and updates inside this repository.
 | Terminology or durable design decision | `.agents/skills/domain-modeling/SKILL.md` and `docs/agents/domain.md` |
 | Issue/spec/ticket work | `docs/agents/issue-tracker.md` and the matching local skill |
 | Desktop release, tag, or publication | `.agents/skills/clarify-release/SKILL.md` |
+| CI/CD, native Railway autodeploy, or release automation | `docs/ci-delivery.md`, then `docs/server-delivery.md` or `docs/release-automation.md` |
 | iOS build or TestFlight publication | `mobile/README.md` and `.github/workflows/ios-testflight.yml` |
 | Agent guidance or upstream skill update | `.agents/skills/writing-for-agents/SKILL.md` and `docs/agents/skill-audit.md` |
 

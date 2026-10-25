@@ -17,18 +17,21 @@ tasks. Read [references/release-contract.md](references/release-contract.md)
 completely before changing release state.
 
 Follow the project workflow for authorization. A release audit is read-only;
-publication requires a publication request. Resolve checkout and deployment
-paths from Git and the current installation instead of machine-specific defaults.
+publication requires a publication request or a maintainer review and merge of
+the dedicated release intent under [client release automation](../../../docs/release-automation.md).
+An ordinary code merge does not authorize a release. Resolve checkout and
+deployment paths from Git and the current installation instead of machine-specific defaults.
 
 The current operational path is `community`. Signed publication is blocked:
-the preflight expects a tag-triggered `Release`, but that workflow is manual-only,
-and every `v*` tag also starts `Community Release`. Do not dispatch a competing
-signed release. Repair track selection and preflight under a separate authorized
+the preflight expects a tag-triggered `Release`, but that workflow is manual-only.
+The gated `Community Release` workflow owns `v*` tags and explicit tag dispatch.
+Do not dispatch a competing signed release. Repair track selection and preflight under a separate authorized
 change before using the signed path; preserve its signing and acceptance gates.
 
-Use local `git` for branches, commits, tags, and pushes. Prefer the GitHub
-connector for PR creation and metadata; use `gh` for authentication, Actions,
-release inspection, downloads, and gaps in connector coverage.
+For manual Git operations, use native `git` for branches, commits, tags and
+pushes. The release automation uses its scoped GitHub API token for these
+operations. Prefer the GitHub connector for manual PR metadata; use `gh` for
+authentication, Actions, release inspection, downloads and connector gaps.
 
 ## Workflow
 
@@ -48,8 +51,12 @@ release inspection, downloads, and gaps in connector coverage.
 
 ### 2. Prepare release documentation
 
-Create or verify `codex/release-vX.Y.Z` in its own linked worktree using the
-project workflow. Repeat the current-base check before final review and delivery.
+For automated preparation, follow [client release automation](../../../docs/release-automation.md).
+Dispatch `Release Preparation` on `main` only when preparation is authorized.
+It creates a draft `release-preparation/vX.Y.Z` PR with strict declarative intent.
+It does not publish. For authorized local preparation, use a linked worktree
+under the project workflow and preserve the same intent and branch contract.
+Repeat the current-base check before final review and delivery.
 
 Update `CHANGELOG.md`:
 
@@ -99,52 +106,65 @@ the release contract. For local deployment, use `scripts/deploy.ps1` with the
 observed installation path or `CLARIFY_INSTALL_PATH`. From PowerShell on a WSL
 UNC checkout, invoke the script directly if npm cannot use that directory.
 Verify the resulting executable hash, process path, and responsiveness.
-When the user explicitly requests publication, treat that request as approval
-of visible and interaction changes. Do not require a second manual-acceptance
-confirmation. Report any manual interaction check that was not performed as an
-open validation limitation.
+An explicit publication request authorizes release work. It does not prove
+that Windows acceptance was performed. Record manual evidence for the exact
+prepared base; missing required acceptance is an open publication gate. Do not
+ask for another confirmation when valid acceptance evidence already exists.
 
 Never treat unit tests or a successful PyInstaller build as visual acceptance.
 
 ### 4. Publish the release-preparation PR
 
-1. Stage only release-preparation files.
-2. Commit tersely, for example `docs: prepare vX.Y.Z release`.
-3. Push the branch with upstream tracking.
-4. Open a draft PR against `main` explaining scope, version choice,
-   documentation changes, validation, and expected assets.
-5. Mark ready only after local gates pass.
-6. Require all PR checks:
-   - `Tests (ubuntu-latest)`;
-  - `Tests (windows-latest)`;
-  - `Package Windows executable` (including MSI lifecycle and manifest smoke
-    tests).
-7. Merge without rewriting existing contributor history.
-8. Wait for the post-merge `main` CI, including Windows packaging.
+1. Prepare the metadata-only PR through `Release Preparation`, or stage only
+   equivalent authorized preparation files. The intent records the accepted base
+   SHA, release scope and Windows manual acceptance evidence.
+2. Review version, changelog, notes and evidence. An automated preparation needs
+   `CLARIFY_RELEASE_PREPARATION_TOKEN`; do not fall back to a bot PR with CI
+   suppressed or pending workflow approval.
+3. Mark the draft ready only after local gates pass.
+4. Require `Tests (ubuntu-latest)`, `Tests (windows-latest)` and
+   `Package Windows executable`, including its embedded Settings and installer
+   smoke checks.
+5. The maintainer reviews and merges the dedicated preparation PR. The
+   single-maintainer repository does not require a second person's approval.
+6. Wait for successful post-merge push CI on the exact main commit. Main must
+   still point to that SHA when promotion starts. Code changes since the
+   accepted base require new acceptance and preparation.
 
-Do not tag an unmerged branch or a commit whose post-merge CI is failing.
+Do not tag an unmerged branch or a commit with failing post-merge CI.
 
 ### 5. Tag and publish
 
-Resolve the exact green `origin/main` SHA. Create an annotated tag:
+With `CLARIFY_RELEASE_PROMOTION_ENABLED=true`, the standalone `Release Promotion`
+workflow validates the exact CI workflow, SHA, required jobs and dedicated merged
+PR. It creates an annotated tag on that source, then explicitly dispatches
+`Community Release` on the tag. An unset or false variable leaves promotion
+inactive. Ordinary code pushes never request publication.
 
-```bash
-git tag -a vX.Y.Z <main-sha> -m "Clarify vX.Y.Z"
-git push origin vX.Y.Z
-```
+When automated promotion is disabled and publication is authorized, create the
+annotated `vX.Y.Z` tag on the exact green preparation merge with native Git.
+A human-pushed tag starts Community Release. Inspect its run before dispatching
+anything else. If the tag push used `GITHUB_TOKEN`, or no run started, explicitly
+dispatch Community Release with that tag and exact `source_sha`. The workflow
+still requires the reviewed intent and Windows acceptance evidence. Never move
+an existing tag.
 
-Watch the tag-triggered `Community Release` workflow. It publishes the unsigned portable
-EXE, checksum, runtime SBOM, ZIP, Qt and SoX source archives, and provenance
-attestations. From v0.5.0 it also publishes Ed25519-authenticated portable
-metadata and its signature, as specified in the release contract. Verify these
-against the bundled public key, executable hash, version, and source SHA.
-It must not publish an MSI or an Authenticode CAB update manifest.
+A `GITHUB_TOKEN` tag push does not trigger another workflow; explicit dispatch
+handles that event rule. Existing publication runs and complete releases are
+left in place. Inspect or rerun the existing failed run; do not create a second
+publication or replace assets. Follow the automation guide for recovery after a
+partial dispatch or upload.
+
+Community Release publishes the unsigned portable EXE, checksum, runtime SBOM,
+ZIP, Qt and SoX source archives, and provenance attestations. From v0.5.0 it also
+publishes Ed25519-authenticated portable metadata and its signature, as specified
+in the release contract. The build, tag, metadata and provenance keep the exact
+green source SHA. Verify metadata against the bundled key, executable hash and
+version. This path publishes no MSI or Authenticode CAB update manifest.
 
 The blocked signed path retains its protected Azure OIDC, timestamped EXE/MSI/CAB
-signatures, checksums, source archives, and provenance gates. It is not an
-alternative publication command until the trigger/preflight conflict is repaired.
-
-Do not create a second manual release while the workflow is running.
+signatures, checksums, source archives and provenance gates. Repair its
+trigger/preflight conflict in a separate authorized change before using it.
 
 ### 6. Verify the published release
 

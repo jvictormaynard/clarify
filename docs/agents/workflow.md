@@ -184,6 +184,20 @@ Repair in-scope failures; report unrelated failures with evidence.
 
 ## Publication after parallel implementation
 
+For CI/CD changes, start with [main validation and delivery](../ci-delivery.md).
+The server uses native Railway GitHub autodeploy with `Wait for CI` and source
+watch paths. Inspect the connected repository, branch, CI wait setting, and
+healthcheck before changing infrastructure. Follow the
+[server delivery guide](../server-delivery.md) for activation and migration limits.
+Implementing automation does not authorize a live deployment or its activation.
+
+Desktop and mobile code changes run validation without publishing each push.
+A dedicated release-preparation PR records the selected platform version and
+acceptance evidence. Its reviewed merge and exact green source are the release
+boundary. See [release automation](../release-automation.md) for preparation,
+promotion, opt-in settings, and retry behavior. App Store publication stays a
+separate action.
+
 Publication has one coordinator per platform. Workers implement and validate
 features; they do not independently reserve version numbers, create release
 tags, or submit builds. Integrate the accepted features first, then choose and
@@ -202,10 +216,12 @@ For iOS, follow [the mobile guide](../../mobile/README.md) and
 App Store Connect build numbers and pending submissions before reserving a new
 `expo.ios.buildNumber` in `mobile/app.json`. Keep the app and extensions aligned.
 Use `tests_only` for validation without signing/upload. For publication, run the
-workflow on the reviewed source ref; it also supports the existing mobile
-delivery branch. Avoid pushes to that branch during independent implementation
-because matching source changes trigger publication. Uploads share a serialized
-workflow group; this does not reserve build numbers or prove availability.
+workflow on the immutable reviewed `ios/vX.Y.Z-buildN` tag and pass its exact
+source SHA. The guarded workflow no longer uploads on delivery-branch pushes.
+An older remote `codex/ios-testflight` workflow can still upload until that branch
+receives the guarded workflow; avoid source pushes there before this update.
+Uploads, Apple processing, and group availability share a serialized workflow
+group; this does not reserve build numbers or prove availability.
 Verify the signed IPA and upload, then Apple processing and the intended
 TestFlight group separately. App Store distribution is a separate delivery scope.
 

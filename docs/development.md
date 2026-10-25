@@ -412,32 +412,42 @@ not install it. The build requires a .NET SDK because
 `build\tools`.
 
 1. Choose the next semantic version from the changes since the latest tag.
-2. Set `__version__` in `version.py` and the top-level `version` in
-   `package.json` to the same exact `X.Y.Z` value. Diagnostics and packaged
-   executables import the module, and preflight rejects metadata drift.
-3. Update `CHANGELOG.md` and any documentation whose behavior changed.
-4. Run the release preflight, replacing the example version:
+   Complete Windows manual acceptance for the exact current main base and record
+   its evidence.
+2. Follow [client release automation](release-automation.md) to create a dedicated
+   draft preparation PR. It sets `version.py` and root `package.json` to the same
+   value, updates `CHANGELOG.md` and records the release intent. Preparation needs
+   a separate CI-capable token.
+3. Check out the prepared source in a dedicated worktree. Review the changelog
+   and documentation whose behavior changed. Run local checks and preflight:
 
    ```bash
    python3 .agents/skills/clarify-release/scripts/release_preflight.py \
      --repo . --version X.Y.Z --track community
    ```
 
-5. Open and merge a focused release-preparation PR after local, Ubuntu,
-   Windows, and packaging checks pass.
-6. Create an annotated `vX.Y.Z` tag on the exact green `main` commit and push
-   only that tag.
-7. A community tag release builds the unsigned portable EXE, runtime-lock
-   CycloneDX SBOM, checksum, ZIP, SoX and Qt/PySide source archives, and provenance
-   attestations, plus portable update metadata and its detached Ed25519
-   signature. It publishes no MSI or Authenticode CAB manifest. The signing
-   secret must match the public key packaged in the source policy.
-8. Download the published assets, verify the checksum, Ed25519 metadata
-   signature/source SHA, and SBOM/ZIP contents,
-   inspect attestations, and confirm that `/releases/latest` resolves to the
-   new version.
-9. Use the signed workflow manually only after Azure signing and the manual
-   acceptance gates are sponsored and complete.
+4. Review the metadata, scope and Windows evidence. Merge the preparation PR only
+   after all PR checks pass. No second-person approval is required.
+5. With promotion enabled, successful post-merge CI creates an immutable tag on
+   that exact current main commit and explicitly dispatches Community Release.
+   Ordinary code pushes do not publish. Promotion is inactive when
+   `CLARIFY_RELEASE_PROMOTION_ENABLED` is false or unset.
+6. Community Release builds the unsigned portable EXE, runtime-lock CycloneDX
+   SBOM, checksum, ZIP, SoX and Qt/PySide source archives, and provenance
+   attestations, plus portable update metadata and its detached Ed25519 signature.
+   It publishes no MSI or Authenticode CAB manifest. The signing secret must
+   match the public key packaged in the source policy.
+7. Download the published assets, verify the checksum, Ed25519 metadata
+   signature/source SHA, and SBOM/ZIP contents, inspect attestations, and confirm
+   that `/releases/latest` resolves to the new version.
+
+The signed workflow remains blocked and manual-only. Repairing that path needs a
+separate authorized change; do not dispatch a competing publication workflow.
+When promotion is disabled, a maintainer can create the immutable tag on the green
+preparation merge. A human-pushed tag starts Community Release. Check for that
+run first. Explicit tag dispatch with the same SHA is needed for a
+`GITHUB_TOKEN` tag push or recovery when no run started.
+The publication workflow still requires the reviewed preparation intent.
 
 ## Interface localization
 

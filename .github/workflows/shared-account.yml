@@ -1,7 +1,5 @@
 name: Shared account
 on:
-  pull_request:
-    paths: ['server/**', 'shared/**', 'clarify_account.py', 'mobile/**', 'scripts/sync_locales.py', 'scripts/server_image_context.py', 'tests/test_server_image_context.py', '.github/workflows/shared-account.yml']
   push:
     branches: ['codex/clarify-cloud']
   workflow_dispatch:
@@ -18,45 +16,7 @@ concurrency:
 jobs:
   server:
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.publish_server_image }}
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: test-only
-          POSTGRES_DB: clarify_test
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready --health-interval 5s
-          --health-timeout 5s --health-retries 10
-    env:
-      CLARIFY_DEVELOPMENT: '1'
-      DATABASE_URL: postgresql://postgres:test-only@127.0.0.1:5432/clarify_test
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-        with:
-          python-version: '3.12'
-      - run: python -m unittest discover -s tests -p test_server_image_context.py -v
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-      - run: pip install --require-hashes -r server/requirements.txt
-      - run: python server/manage.py makemigrations --check --dry-run
-      - run: python server/manage.py test cloud.service.tests --noinput
-      - run: python mobile/scripts/sync-prompts.py --check
-      - run: docker build -f server/Dockerfile -t clarify-account-test .
-      - name: Check container startup and database health
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run -d --name clarify-account-smoke --network host \
-            -e CLARIFY_DEVELOPMENT=1 -e DATABASE_URL -e PORT=8080 clarify-account-test
-          trap 'docker rm -f clarify-account-smoke >/dev/null' EXIT
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:8080/health; then exit 0; fi
-            sleep 1
-          done
-          docker logs clarify-account-smoke
-          exit 1
+    uses: ./.github/workflows/server-validation.yml
   server-image:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_server_image == true && github.repository == 'jvictormaynard/clarify' && github.repository_owner == 'jvictormaynard' }}
     runs-on: ubuntu-latest
@@ -169,36 +129,4 @@ jobs:
           retention-days: 7
   ios-validation:
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.publish_server_image }}
-    runs-on: macos-26
-    timeout-minutes: 60
-    defaults:
-      run:
-        working-directory: mobile
-    env:
-      CI: '1'
-      EXPO_NO_TELEMETRY: '1'
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      CLARIFY_IOS_RUNTIME: iOS-26-5
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: 22.21.1
-          cache: npm
-          cache-dependency-path: mobile/package-lock.json
-      - run: npm ci
-      - run: npm run check
-      - run: npm run test:native
-      - name: Test native keyboard and library integration
-        env:
-          CLARIFY_NATIVE_TESTS: '1'
-        run: node scripts/test-keyboard-ui.cjs
-      - run: npx expo prebuild --clean --platform ios --no-install
-      - run: pod install --project-directory=ios
-      - name: Compile app and extensions without signing or upload
-        shell: bash
-        run: |
-          set -euo pipefail
-          xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
-            -configuration Debug -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/ClarifyAccount" CODE_SIGNING_ALLOWED=NO build | xcbeautify
+    uses: ./.github/workflows/ios-validation.yml

@@ -1,0 +1,42 @@
+name: Release Promotion
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: release-promotion-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: >-
+      vars.CLARIFY_RELEASE_PROMOTION_ENABLED == 'true' &&
+      github.repository == 'jvictormaynard/clarify' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == 'jvictormaynard/clarify' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out trusted workflow source (no CI artifacts)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Validate merged preparation and dispatch exact source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLARIFY_RELEASE_PROMOTION_ENABLED: ${{ vars.CLARIFY_RELEASE_PROMOTION_ENABLED }}
+        run: python scripts/release_delivery.py promote

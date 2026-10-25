@@ -1,0 +1,98 @@
+name: Server validation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: Server tests and container
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: clarify_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLARIFY_DEVELOPMENT: '1'
+      DATABASE_URL: postgresql://postgres:test-only@127.0.0.1:5432/clarify_test
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Check out the caller's source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Test recovery image context tooling
+        run: python -m unittest discover -s tests -p test_server_image_context.py -v
+
+      - name: Install audio test tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Install hashed server dependencies
+        run: python -m pip install --require-hashes -r server/requirements.txt
+
+      - name: Check for missing migrations
+        run: python server/manage.py makemigrations --check --dry-run
+
+      - name: Test with isolated PostgreSQL
+        run: python server/manage.py test cloud.service.tests --noinput
+
+      - name: Check shared prompt synchronization
+        run: python mobile/scripts/sync-prompts.py --check
+
+      - name: Build the checked-out server
+        run: >-
+          docker build -f server/Dockerfile -t clarify-account-test
+          --label "org.opencontainers.image.revision=$GITHUB_SHA" .
+
+      - name: Check container startup, migrations, and database health
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              docker logs clarify-account-smoke || true
+            fi
+            docker rm -f clarify-account-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run -d --name clarify-account-smoke --network host \
+            -e CLARIFY_DEVELOPMENT=1 -e DATABASE_URL -e PORT=8080 clarify-account-test
+          healthy=false
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:8080/health \
+                --output "$RUNNER_TEMP/server-health.json"; then
+              healthy=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$healthy" != true ]; then
+            echo 'The server did not become healthy.' >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          health = json.loads(Path(os.environ["RUNNER_TEMP"], "server-health.json").read_text())
+          if health.get("status") != "ok":
+              raise SystemExit("Unexpected server health response")
+          PY
+          docker exec clarify-account-smoke python server/manage.py migrate --check

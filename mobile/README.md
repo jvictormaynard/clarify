@@ -255,15 +255,28 @@ The installed-extension fixture compiles the product implementation directly.
 
 ## Direct TestFlight delivery
 
-`.github/workflows/ios-testflight.yml` runs on application changes to the mobile
-delivery branch `codex/ios-testflight`, and supports manual dispatch. Documentation
-and ignore-file changes do not trigger another upload of the same build. Increase
-`expo.ios.buildNumber` in `app.json` before each new upload. It remains the same
-in the container, keyboard and activity. The workflow checks the JavaScript,
-Swift and UIKit simulator contracts before creating an archive. Expo CNG generates
-the native project; Ruby configures distribution signing only in that output.
-Xcode exports the IPA, checks its signatures, bundle IDs, versions, app groups
-and bundled license, then `altool` uploads it to Apple. No Expo login is needed.
+Main and PR changes run the reusable iOS validation workflow without signing or
+upload. `.github/workflows/ios-testflight.yml` supports manual tests, diagnostics,
+status and availability work. Main pushes do not upload. The old remote
+`codex/ios-testflight` branch can still upload on a push until its workflow is
+updated to this guarded version. Update that workflow before pushing mobile
+source there. Select `tests_only` for manual validation without signing or upload.
+
+Use [client release automation](../docs/release-automation.md) for a future
+TestFlight build. Check all App Store Connect builds, pending submissions and
+reservations before choosing an unused build. Record that evidence in the
+preparation PR; do not increment blindly. Review and merge the dedicated PR,
+then green main CI can promote its exact source when promotion is enabled.
+Signed upload dispatches the immutable reviewed `ios/vX.Y.Z-buildN` tag with its
+exact SHA. App Store distribution remains a separate step.
+
+`expo.ios.buildNumber` stays aligned in the container, keyboard and activity.
+The upload workflow checks JavaScript, Swift and UIKit simulator contracts before
+creating an archive. Expo CNG generates the native project; Ruby configures
+signing in that output. Xcode exports the IPA and checks its signatures, bundle
+IDs, versions, app groups and bundled license. `altool` uploads it to Apple.
+No Expo login is needed. Apple processing and internal-group availability remain
+in the same serialized workflow after upload.
 
 The existing distribution certificate, three profiles and App Store Connect API
 key are stored in GitHub Actions secrets prefixed `CLARIFY_IOS_` and `CLARIFY_ASC_`.
@@ -418,8 +431,9 @@ copying, individual deletion and clearing history without deleting vocabulary.
 Keep mobile in this repository; Expo builds remain
 independent and upload only the mobile directory.
 
-The mobile source and direct build workflow are in this repository on
-`codex/ios-testflight`, tracked by draft PR #138. No separate repository was created.
+The mobile source and build workflows are in this repository. The existing
+`codex/ios-testflight` delivery branch remains available for manual checks.
+Release preparation and automatic validation use `main`.
 
 ## Development
 
