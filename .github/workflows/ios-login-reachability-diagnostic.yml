@@ -1,0 +1,62 @@
+name: iOS login reachability diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/ios-login-reachability-20261026]
+    paths: [.github/workflows/ios-login-reachability-diagnostic.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  containing_app:
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+        shell: bash
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      CLARIFY_IOS_RUNTIME: iOS-26-5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Record exact source
+        working-directory: .
+        run: |
+          mkdir -p mobile/test-results
+          git rev-parse HEAD > mobile/test-results/source-sha.txt
+          git ls-files -z mobile | xargs -0 shasum -a 256 > mobile/test-results/source-sha256.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > mobile/test-results/source-utc.txt
+          git status --short > mobile/test-results/source-status.txt
+      - name: Verify Xcode
+        run: xcodebuild -version
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Check mobile contracts
+        run: npm run check
+      - name: Generate native project
+        run: npx expo prebuild --clean --platform ios --no-install
+      - name: Install CocoaPods dependencies
+        run: pod install --project-directory=ios
+      - name: Test containing app with the local fake service
+        run: node scripts/test-app-ui.cjs
+      - name: Preserve simulator evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: ios-login-reachability-${{ github.sha }}
+          path: mobile/test-results/
+          if-no-files-found: error
+          retention-days: 7
