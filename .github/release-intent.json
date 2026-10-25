@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "component": "mobile",
+  "version": "0.11.0",
+  "base_sha": "3b15d71b3bbe06bef56b8c8f8e563fb32c027f1e",
+  "notes": "Prepare iOS 0.11.0 (38) for the existing Clarify Interno TestFlight group. Adds Google, Microsoft and GitHub sign-in, funded weekly quotas, synchronized snippets, and the microphone and cancellation repairs. Keep delivery limited to internal TestFlight. Real new-user signup, SMTP delivery and physical-iPhone acceptance remain separate validation limits.",
+  "evidence": {
+    "build": "38",
+    "highest_build": "37",
+    "pending_builds_checked": true,
+    "checked_at": "2026-10-25T20:29:03Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/pull/160#issuecomment-6402912413"
+  }
+}
