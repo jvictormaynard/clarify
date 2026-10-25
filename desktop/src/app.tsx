@@ -31,7 +31,7 @@ const pageComponents = {
 
 export function App() {
   const controller = useSettings();
-  const { state, page, error, busy, navigating, dirty, saved } = controller;
+  const { state, page, error, busy, callBusy, navigating, dirty, saved } = controller;
   const scrollArea = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (scrollArea.current) scrollArea.current.scrollTop = 0;
@@ -42,6 +42,8 @@ export function App() {
   const activePage = managed && (page === "models" || page === "text") ? "account" : page;
   const Page = pageComponents[activePage];
   const info = settingsPages.find((item) => item.id === activePage)!;
+  // AccountPage keeps its other controls disabled during browser sign-in.
+  const canCancelSocial = activePage === "account" && state?.accountState?.socialPending && !callBusy;
 
   return (
     <div className="settings-window">
@@ -82,7 +84,7 @@ export function App() {
                 <div className="connection" role="status">
                   <LoaderCircle className="spin" size={22} />{t("Conectando ao Clarify…")}</div>
               ) : (
-                <fieldset disabled={busy}>
+                <fieldset disabled={busy && !canCancelSocial}>
                   <Page key={activePage === "snippets" ? state.snippetContext : activePage} controller={{ ...controller, state }} />
                 </fieldset>
               )}
