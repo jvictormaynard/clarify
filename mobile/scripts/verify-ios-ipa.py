@@ -30,6 +30,13 @@ with tempfile.TemporaryDirectory(prefix="clarify-ipa-") as directory:
         identifier = info["CFBundleIdentifier"]
         if identifier not in expected:
             raise ValueError("Unexpected bundle identifier")
+        if identifier == BUNDLE:
+            endpoint = config["ios"]["infoPlist"]["ClarifyCloudURL"]
+            if (
+                not endpoint.startswith("https://")
+                or info.get("ClarifyCloudURL") != endpoint
+            ):
+                raise ValueError("Artifact must use the declared production endpoint")
         expected.remove(identifier)
         if (
             info["CFBundleShortVersionString"] != config["version"]

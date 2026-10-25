@@ -1,20 +1,96 @@
 # Clarify for iOS — MVP
 
-## Snippets candidate
+## Planned release — 0.11.0 (38)
 
-Candidate **0.9.1 (32)** substitutes snippet triggers after recognition and before
-rewriting so the model can edit the complete message. Applied saved text is sent
-as rewrite source and can change wording and formatting. Standalone triggers
-retain direct exact insertion, original transcripts remain in history, and rewrite
-failure keeps substituted text. Native checks, live acceptance, signed upload and
-Apple group availability must pass before this candidate is reported as delivered.
+This candidate combines Google, Microsoft and GitHub sign-in with the complete
+source delivered as TestFlight 0.10.4 (37). Email-code login remains available.
+Account shows funded weekly usage, pending reservations and the next reset in
+the device's time zone. Processing requires an available funded allocation.
 
-Version **0.9.0 (31)** added configurable account snippets in Dictionary → Snippets.
+The planned app, keyboard and activity extension version is 0.11.0 (38).
+The checked-in Expo identity remains 0.10.4 (37) until the separate mobile
+release-preparation PR selects the next build. Recheck Apple builds, pending
+submissions and other reservations before that PR. The last verified delivery
+is 0.10.4 (37), valid and available to the existing internal group. Delivery
+requires a verified signed IPA, upload, Apple processing and group availability.
+Distribution is limited to internal TestFlight; no App Store submission is
+part of this release.
+
+The sections below describe the preserved audio and interface behavior. Native
+and containing-app acceptance must run against this combined source. Physical
+iPhone, Bluetooth and live provider acceptance remain separate checks.
+
+## Audio compatibility from 0.10.2 (35)
+
+The containing app converts the native microphone PCM stream to 24 kHz mono
+before it creates the existing 64 kbps M4A/AAC payload. This prevents native
+input rates and channel counts from becoming unsupported AAC settings. A
+persistent converter preserves state across buffers and drains before upload.
+Cancellation still discards the session-owned temporary clip. Failed file
+creation removes its partial file. The keyboard never receives raw Apple
+recording errors; existing account and provider errors keep their instructions.
+
+Native regression tests use generated audio, not a microphone or user profile.
+They create, write, close and decode clips from 8–192 kHz mono/stereo inputs and
+check duration and speech energy. The previous encoder reproduces Apple error
+560226676 at 8 kHz and 16 kHz mono. The tests do not establish the actual route
+used by the reporting iPhone. Physical microphone and Bluetooth acceptance remain
+separate from the native fixtures.
+
+## Interface from 0.10.4 (37)
+
+The bottom tabs contain Home, Dictionary, Snippets and Account. Account is again
+a native bottom tab, with the same page title pattern as the other tabs. Home
+shows the existing theme-aware Clarify mark above its title, without an icon
+background or a profile avatar. Settings and the optional How to use guide open
+from Account.
+The signed-in guard still protects every tab. Dictionary has no duplicate
+Snippets shortcut. The interface uses
+neutral surfaces, reusable React Native controls and short motion that respects
+Reduce Motion. Switches use their native iOS appearance and system green when on.
+The redundant History heading is removed. Existing account/library boundaries remain intact.
+
+General onboarding appears automatically once, on the first presentation after
+installation. The app stores a presentation marker when that screen appears.
+Dismissal, logout, later launches and updates do not repeat it. Existing setup
+preferences and signed-in installations migrate without another presentation.
+Authentication remains required and has a separate route. How to use is an
+explicit replay; it does not reset the general presentation marker. Keyboard and
+Full Access setup use manual confirmation, microphone readiness uses the real
+native session, and text insertion is not inferred from opening iPhone Settings.
+The practice step has a local text field in the guide. Continue is enabled only
+when that field contains non-whitespace text; it does not use a global transcript
+or require another app or manual confirmation. Practice text is not persisted.
+
+Tap the keyboard microphone once to start continuous recording. There is no hold
+or upward lock gesture. A panel within the same keyboard height provides separate
+cancel and finish actions, with the globe still available. Its waveform uses the
+containing app's real input RMS through an operation-scoped, expiring meter; it
+uses the desktop pill’s 12-bar envelope, attack/release and independent motion.
+The recording panel keeps the system keyboard material and has no opaque rectangle.
+Its normal toolbar has no brand heading. Animation stops when hidden, processing,
+or detached and respects Reduce Motion; ending recording resets its energy.
+The native document/receipt checks still prevent duplicate or misplaced insertion.
+
+The workflow validates native contracts, keyboard fixtures and installed typing/
+return. It also runs the actual containing app in an isolated Release simulator
+copy against a local fake account service. The app UI test checks first presentation,
+dismissal/relaunch, native login, four tabs, weekly usage percentages and reset,
+Account and back navigation, Settings, explicit guide replay and logout/relaunch.
+Pending reservations remain separate from consumed quota. It uses no user account, microphone or real provider. The signed
+project is unchanged; the IPA check rejects a non-production endpoint. The practice
+field’s empty/filled input guard is tested by JavaScript contracts. The app E2E
+opens guide replay but does not activate a live microphone to finish that step.
+
+Publication is not complete until signing, upload, Apple processing and availability
+in the existing internal group are verified. Physical-iPhone microphone, soundwave,
+source-app return and keyboard acceptance remain separate from these fixtures.
 
 Expo application plus a small Swift keyboard extension. A Clarify account is
 required for speech recognition and rewriting. Sign in with an emailed code,
-Google, Microsoft or GitHub; no personal provider key is needed. Native bottom tabs contain Home, Dicionário
-and Conta. Ajustes opens from the Account tab. Signed-out users return to the
+Google, Microsoft or GitHub. No personal provider key is needed. Native bottom tabs contain Início, Dicionário,
+Snippets and Conta. Ajustes opens from Conta.
+Signed-out users return to the
 account screen, including after an upgrade from the former personal-key mode.
 SQLite keeps
 vocabulary and an offline history copy. New signed-in transcriptions sync
@@ -285,9 +361,9 @@ Secrets are never committed or included in artifacts. The verified IPA, SHA-256
 and simulator results are retained for seven days. An upload alone does not
 establish TestFlight availability; verify `VALID` and `IN_BETA_TESTING` in Apple.
 
-## Snippets candidate
+## Snippets
 
-Open **Dictionary → Snippets** to add a spoken phrase and its saved text.
+Open **Snippets** in the bottom tab bar to add a spoken phrase and its saved text.
 The editor supports search, multiline text, case sensitivity, enabling,
 disabling and deletion. Saving preserves the entered spelling and line breaks.
 Enabled phrases can be recognition hints. Within a message, saved replacement
@@ -471,11 +547,11 @@ EAS_NO_VCS=1 EAS_PROJECT_ROOT="$PWD" npx eas-cli@24.12.0 build --platform ios --
 EAS_NO_VCS=1 EAS_PROJECT_ROOT="$PWD" npx eas-cli@24.12.0 submit --platform ios --profile production --id BUILD_ID
 ```
 
-`src/app/` owns the three native-tab pages and system-link routing.
+`src/app/` owns the four native-tab pages and system-link routing.
 `src/components/` contains shared interface elements; `src/state/clarify.tsx`
 owns the app snapshot and activation request. Home's switch uses that activation
-flow and native deactivation. `src/press-to-talk.ts` retains the tested gesture
-contract; recording controls are in the keyboard.
+flow and native deactivation. Recording controls are in the native keyboard; `KeyboardState.swift` owns the
+tap-to-record contract.
 `modules/clarify-core/ios` owns microphone lifetime, Keychain, Groq
 requests, local history/vocabulary, cancellation and shared state. `native/keyboard` owns keyboard
 gestures, local spelling and safe insertion. `plugins/with-clarify-keyboard.cjs`
@@ -499,8 +575,8 @@ also be signed, submitted, processed by Apple, and available to a TestFlight
 group. Those states do not prove physical-device behavior.
 
 Before acceptance, test on an iPhone: keyboard setup; Full Access off/on;
-microphone denial; link activation; app switch and return; hold/release; upward
-swipe lock; square stop; cancellation during both network steps; airplane mode;
+microphone denial; link activation; app switch and return; tap start; separate
+finish and cancel; speech/silence waveform; cancellation during both network steps; airplane mode;
 invalid key; 429; audio interruptions; headphones; session expiration; switching
 fields during processing; repeated appearance without duplicate insertion;
 light/dark themes; VoiceOver and large text. App Store review is a separate step.

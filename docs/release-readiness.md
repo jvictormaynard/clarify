@@ -4,6 +4,63 @@ This is a release checklist, not a claim of acceptance. Local code, a passing
 test, a merged commit, and a published executable are different states. Record
 the commit SHA, Windows version, DPI, and evidence for each release candidate.
 
+## v0.11.0 preparation — 2026-10-25
+
+[PR #159](https://github.com/jvictormaynard/clarify/pull/159) merged social
+authentication and the current weekly-quota source at
+`37d702ffd75f3f8ce74e55e8c760ec1cf629935a`. The release preparation also merges
+the complete iOS source delivered in TestFlight 0.10.4 (37),
+`d356ac94352b5c292d7879c1a85152e3b33481df`, to preserve its interface and audio
+corrections. Planned versions are desktop 0.11.0 and iOS 0.11.0 (38).
+PR #161 requires separate metadata-only preparation PRs for desktop and mobile.
+This source integration keeps desktop metadata at 0.10.1 and the Expo identity
+at the delivered 0.10.4 (37); it creates no release intent or tag.
+
+The combined source passed 1,384 Python tests with four skips, all 222 PostgreSQL
+server tests, 33 mobile JavaScript tests, mobile checks and the Settings build.
+All 47 Settings browser cases passed across the full run and one focused retry
+after a preparation timeout. The repaired candidate `467d9f9f42dadb1d8a0389121c26ecd6cd498018` also passed
+macOS Swift contracts, UIKit integration and unsigned app/extension compilation.
+Integration with PR #161 requires fresh CI on the combined source. The containing
+app and installed-keyboard acceptance run in the TestFlight workflow.
+
+Windows uses the community portable track. Verify all eight assets, downloaded
+hashes, Ed25519 update metadata and GitHub provenance on the exact green source.
+The executable is unsigned; SmartScreen warnings remain possible. Native Windows
+provider completion/cancellation, physical iPhone and Bluetooth recording, and
+live provider/SMTP acceptance require separate evidence. Automated fixtures do
+not establish those interactions. iOS distribution is internal TestFlight only.
+
+Production deployed PR #159 automatically and applied its migrations. The
+cutover audit found no operations during migration, no running operations or
+reservations, and equal historical and treasury processing costs. Health and
+both public finance routes return 200. A pre-migration daily backup and a
+separate post-migration verified backup exist. The reviewed OAuth referrer-policy
+repair was deployed at `9c2cbf4f9f543bd9cd02dbe730686837387bfbc0`, deployment
+`1317f2e5-037d-4bf6-bcde-907eea9b8943`. The final release must align production
+with its merged main source.
+
+Visible Windows Chrome, through MCP Playwright, completed real Google, Microsoft
+and GitHub callbacks without a browser override. Confirmation POSTs returned
+200 with the correct origin. All three tested identities returned the expected
+existing-email collision, without a native session or a duplicate account.
+Attempts were cancelled and their temporary tabs closed. The SMTP connection
+opened successfully. These checks do not establish new-user signup, email-code
+delivery or native client completion.
+
+The release candidate also repairs late keyboard cancellation and microphone
+activation during automatic account refresh. Their Swift and UIKit regression
+tests passed on `467d9f9`; combined-source CI must confirm the integration. CSRF regression tests retain
+origin validation and reject a literal null origin.
+
+The owner confirmed the current USD 10 contribution. Production records that
+receipt, a USD 0.97 provision for observed Railway usage, and USD 1.003217337 of
+historical processing. Uncommitted cash is USD 8.026782663. The receipt releases
+over one calendar month; historical costs exceed this week's released slice, so
+no quota is available before the 2026-10-26 00:00 UTC reset. Distribution retains
+the 80 percent regular and 20 percent newcomer split. Future receipts are not
+booked in advance. A provision is not evidence of a paid invoice.
+
 ## Verified baseline for v0.4.0 — 2026-09-13
 
 Production changes were merged through [PR #96](https://github.com/jvictormaynard/clarify/pull/96)

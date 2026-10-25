@@ -49,20 +49,53 @@ struct KeyboardState {
   }
 }
 
-struct RecordGesture {
-  private(set) var holding = false
-  var locked = false
-  mutating func press() -> String {
-    if locked { reset(); return "finish" }
-    holding = true; return "start"
+// A tap starts one continuous clip. Release/movement do not issue commands.
+// Pending actions stay separate from the app's acknowledged recording state.
+struct RecordingRequest {
+  private(set) var action: String?
+  private(set) var operationID: String?
+  private var requestedAt: TimeInterval = 0
+  // Keep local publication intent for this keyboard's lifetime. A command can
+  // expire or be acknowledged while its cancelled result remains in the store.
+  private var cancelledOperations: Set<String> = []
+  func isCancelled(_ id: String?) -> Bool { id.map { cancelledOperations.contains($0) } ?? false }
+  mutating func submit(_ next: String, operationID id: String, now: TimeInterval) -> Bool {
+    guard ["start", "finish", "cancel"].contains(next) else { return false }
+    guard action == nil || (next == "cancel" && action != "cancel" && operationID == id) else { return false }
+    action = next; operationID = id; requestedAt = now
+    if next == "cancel" { cancelledOperations.insert(id) }
+    return true
   }
-  mutating func move(vertical: Double) -> String? {
-    guard holding, !locked, vertical <= -28 else { return nil }
-    locked = true; return "lock"
+  @discardableResult
+  mutating func observe(_ state: DictationSnapshot, now: TimeInterval) -> Bool {
+    guard let action else { return false }
+    if !state.isLive { reset(); return false }
+    let same = state.operationID == operationID
+    let acknowledged = same && (action == "start" ? state.phase != .idle :
+      action == "finish" ? ![.recording, .locked].contains(state.phase) :
+      !state.phase.busy && state.heartbeat >= requestedAt)
+    if acknowledged || (state.phase == .error && state.heartbeat >= requestedAt) ||
+      (action == "cancel" && !state.phase.busy && state.operationID == nil && state.heartbeat >= requestedAt) { reset(); return false }
+    // Commands older than five seconds are rejected by the app. Do not permit
+    // another start until that delivery window has closed.
+    if now - requestedAt >= 6 { reset(); return true }
+    return false
   }
-  mutating func release() -> String? {
-    defer { holding = false }
-    return holding && !locked ? "finish" : nil
+  // Reset delivery state only; acknowledgement does not undo a Cancel tap.
+  mutating func reset() { action = nil; operationID = nil; requestedAt = 0 }
+}
+
+// Cancel can arrive before start when atomic command files share a timestamp.
+// A bounded, short-lived tombstone prevents that cancelled clip from starting.
+struct RecordingCancellations {
+  private var operations: [String: TimeInterval] = [:]
+  mutating func cancel(_ id: String, now: TimeInterval) {
+    prune(now: now)
+    if operations.count >= 64, let oldest = operations.min(by: { $0.value < $1.value })?.key { operations.removeValue(forKey: oldest) }
+    operations[id] = now
   }
-  mutating func reset() { holding = false; locked = false }
+  mutating func acceptsStart(_ id: String, now: TimeInterval) -> Bool {
+    prune(now: now); return operations[id] == nil
+  }
+  private mutating func prune(now: TimeInterval) { operations = operations.filter { now - $0.value < 10 } }
 }

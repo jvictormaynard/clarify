@@ -61,23 +61,27 @@ distributed. Each receipt retains its net processing basis and monthly release
 schedule. Public finance reads use a read-only snapshot and shared request limits;
 they do not acquire the financial write mutex.
 
-First-run setup precedes desktop Settings and the iOS native tabs. Desktop startup
-opens Settings for an unfinished setup; `AppConfig.onboarding_completed` is saved
-through the existing config transaction. Legacy profiles retain their choices.
-The iOS app uses an app-only onboarding preference and protected Router screens;
-existing desktop keys/accounts and signed-in iOS accounts preserve their setup.
+Desktop startup opens Settings for an unfinished setup;
+`AppConfig.onboarding_completed` is saved through the existing config transaction.
+Legacy profiles retain their choices. The iOS app stores separate app-only
+presentation and setup preferences. General onboarding appears once when first
+shown and can be dismissed. Existing signed-in installations and legacy setup
+preferences migrate without another presentation. The guide can be replayed from
+Account without resetting that marker. Protected Router screens require a session
+before the iOS tabs can be used.
 The iOS route guard also checks the current session, so a completed legacy
 personal-key setup cannot bypass sign-in. Its old history remains on the device
 and is never assigned to an account. The existing first-login import of local
 dictionary words is preserved; the local dictionary is not deleted.
 Setup does not acquire the microphone or send an email without a user action.
-The initial page shows the email form directly. The server's `auth/continue`
-adapter creates an unverified account only when needed, then uses allauth's
+The sign-in form supports email codes, Google, Microsoft and GitHub. The server's
+`auth/continue` adapter creates an unverified account only when needed, then uses allauth's
 same login-code verification and session machinery for both paths. New-account
 limits still apply; no usable password is saved. Legacy separate endpoints remain
 available. Authentication forms are shared with desktop Settings and the iOS
-sign-in screen. The iOS Account tab is available after sign-in;
-its settings button opens a native stack page outside the bottom tabs. On iOS,
+sign-in screen. After sign-in, the bottom tabs contain Home, Dictionary, Snippets
+and Account. Account opens Settings and the explicit guide replay. The tabs,
+Settings and guide routes share the session guard. On iOS,
 sign-out or session expiry returns to sign-in before the tabs can be used.
 
 An authenticated account uses Clarify-managed processing for dictation, imported

@@ -7,17 +7,30 @@ Notable user-facing changes are documented here. This project follows
 
 ### Added
 
-- Configure voice snippets in desktop Settings and the iOS Dictionary tab. Create, search, edit, enable or remove saved text, including multiline content.
+- Sign in or create an account with Google, Microsoft or GitHub on Windows and iOS. Keep email-code login and local cancellation. Provider credentials stay on the server.
+- Configure voice snippets in desktop Settings and the iOS Snippets tab. Create, search, edit, enable or remove saved text, including multiline content.
 - Synchronize account snippets between desktop and iOS with separate guest storage, offline caches and explicit conflict resolution. Apply hosted snippets once on the server.
+- Show funded weekly account quotas as percentages with the next reset in local time. Keep pending reservations separate from consumed quota and explain unavailable funding.
+- Add a public financial ledger and private account administration to the self-hostable server. Contributions and operating provisions determine processing availability.
 
 ### Changed
 
-- Desktop 0.10.1 and iOS 0.9.1 (32): substitute spoken snippets after recognition and before optional rewriting so the model can edit the complete message. Preserve original transcripts, direct exact insertion for standalone triggers, and substituted text when rewriting fails. Do not substitute triggers produced by the model.
+- Substitute spoken snippets after recognition and before optional rewriting so the model can edit the complete message. Preserve original transcripts, direct exact insertion for standalone triggers, and substituted text when rewriting fails. Do not substitute triggers produced by the model.
+- Require a Clarify account for iOS processing. Preserve stored personal keys and local records during upgrade; account-free desktop routes remain available.
+- iOS includes the interface and recording changes already delivered in build 37: four bottom tabs, first-presentation onboarding, an optional guide, tap-to-record controls and an audio waveform.
 
 ### Fixed
 
 - Hosted dictation uses plain vocabulary spellings for short speech. Distinguish unrecognized speech from transcription, service-capacity and allowance errors. Preserve the transcript if rewriting fails, without repeating paid requests.
-- Desktop 0.9.1 and iOS 0.8.1 (30): show localized processing causes instead of a generic quota warning. Preserve safe operation diagnostics and updated usage. Keep the full keyboard error visible within its existing height.
+- Show localized processing causes instead of a generic quota warning. Preserve safe operation diagnostics and updated usage. Keep the full keyboard error visible within its existing height.
+- iOS converts native microphone input to 24 kHz mono AAC, including inputs whose rate or channel count cannot be encoded directly. Preserve clip cleanup and cancellation.
+- Keep a keyboard Cancel action effective when a result arrives late, after acknowledgement or timeout.
+- Wait for automatic account refresh before iOS microphone activation, then verify the account and foreground state again.
+- Preserve the browser origin during OAuth confirmation so Chrome accepts the protected form submission. Suppress cross-origin referrers.
+
+### Security
+
+- Update pinned desktop build and runtime dependencies. Keep account data isolated across sign-in, sign-out and endpoint changes.
 
 ## [0.9.0] - 2026-10-16
 

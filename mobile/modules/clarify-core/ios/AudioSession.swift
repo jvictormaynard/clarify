@@ -7,8 +7,12 @@ final class ClarifyAudioSession: NSObject {
   static let shared = ClarifyAudioSession()
   private var engine = AVAudioEngine()
   private let fileLock = NSLock()
-  private var file: AVAudioFile?
+  private var file: AudioClipWriter?
   private var captureAfter: TimeInterval = 0
+  private var meteredOperationID: String?
+  private var meteredAt: TimeInterval = 0
+  private var meteredLevel = 0.0
+  private var cancellations = RecordingCancellations()
   private var cuePlayer: AVAudioPlayer?
   private let feedback = HapticFeedback()
   private let liveActivity = ClarifyLiveActivity()
@@ -84,6 +88,7 @@ final class ClarifyAudioSession: NSObject {
     state.configured = CloudAccount.shared.configured
     try? store?.write(state, to: "state.json")
     liveActivity.update(state)
+    publishMeter()
   }
   func activate() throws {
     guard !CloudAccount.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
@@ -106,11 +111,21 @@ final class ClarifyAudioSession: NSObject {
       if hasTap { input.removeTap(onBus: 0) }
       input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
         guard let self = self else { return }
+        let observedAt = Date().timeIntervalSince1970
         self.fileLock.lock()
         defer { self.fileLock.unlock() }
         let bufferDuration = Double(buffer.frameLength) / buffer.format.sampleRate
-        if let file = self.file, Date().timeIntervalSince1970 - bufferDuration >= self.captureAfter {
-          do { try file.write(from: buffer) }
+        if let file = self.file, observedAt - bufferDuration >= self.captureAfter {
+          self.meteredLevel = 0
+          if let channels = buffer.floatChannelData {
+            let planes = buffer.format.isInterleaved ? 1 : Int(buffer.format.channelCount)
+            let count = Int(buffer.frameLength) * (buffer.format.isInterleaved ? Int(buffer.format.channelCount) : 1)
+            for channel in 0..<planes {
+              self.meteredLevel = max(self.meteredLevel, AudioLevel.measure(UnsafeBufferPointer(start: channels[channel], count: count)))
+            }
+          }
+          self.meteredAt = observedAt
+          do { try file.write(buffer) }
           catch {
             let failedURL = self.audioURL
             DispatchQueue.main.async {
@@ -155,6 +170,16 @@ final class ClarifyAudioSession: NSObject {
     timer?.invalidate(); timer = nil
     state.sessionActive = false
   }
+  private func publishMeter() {
+    let now = Date().timeIntervalSince1970
+    guard state.sessionActive, [.recording, .locked].contains(state.phase), let id = state.operationID else {
+      try? store?.publishAudioMeter(.inactive(now: now)); return
+    }
+    fileLock.lock()
+    let reading = AudioMeterReading(operationID: meteredOperationID, measuredAt: meteredAt, level: meteredLevel)
+    fileLock.unlock()
+    try? store?.publishAudioMeter(AudioMeterReading(operationID: id, measuredAt: now, level: reading.level(for: id, now: now)))
+  }
   private func tick() {
     for (url, command) in store?.commands() ?? [] {
       try? FileManager.default.removeItem(at: url)
@@ -166,6 +191,7 @@ final class ClarifyAudioSession: NSObject {
     if SessionDeadline.action(startedAt: startedAt, phase: state.phase, now: Date()) == .finishRecording {
       finish()
     }
+    if [.recording, .locked].contains(state.phase) { publishMeter() }
     // Refresh liveness once per second, without disk writes on every audio buffer.
     if Date().timeIntervalSince1970 - state.heartbeat >= 1 { try? importKeyboardVocabulary(); publish() }
   }
@@ -176,16 +202,20 @@ final class ClarifyAudioSession: NSObject {
         if haptics, UIApplication.shared.applicationState == .active { feedback.record("lock") }
         state.phase = .locked; publish(); return
       }
-      guard !state.phase.busy else { return }
+      guard !state.phase.busy, cancellations.acceptsStart(id, now: Date().timeIntervalSince1970) else { return }
       guard state.sessionActive, engine.isRunning else {
         deactivate(); fail(L("Abra o Clarify e ative o microfone.")); return
       }
       do { try start(id: id, locked: action == "lock", haptics: haptics) }
-      catch { fail(error.localizedDescription) }
+      catch {
+        let failure = MicrophoneFailure.recordingError(for: error)
+        fail(failure.localizedDescription, diagnostics: failure)
+      }
     case "finish":
       if state.operationID == id { finish(haptics: haptics) }
     case "cancel":
-      if state.operationID == id { cancel() }
+      cancellations.cancel(id, now: Date().timeIntervalSince1970)
+      if state.operationID == id { cancel() } else { publish() }
     default: break
     }
   }
@@ -196,29 +226,38 @@ final class ClarifyAudioSession: NSObject {
     clipHistory = CloudAccount.shared.captureHistory()
     let format = engine.inputNode.outputFormat(forBus: 0)
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("clarify-\(UUID().uuidString).m4a")
-    let newFile = try AVAudioFile(forWriting: url, settings: [
-      AVFormatIDKey: kAudioFormatMPEG4AAC,
-      AVSampleRateKey: format.sampleRate,
-      AVNumberOfChannelsKey: format.channelCount,
-      AVEncoderBitRateKey: 64_000
-    ], commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+    let newFile = try AudioClipWriter(url: url, inputFormat: format)
     playCue(starting: true)
     if haptics, UIApplication.shared.applicationState == .active {
       feedback.record("start")
     }
     // The engine discards the short start cue so it is not sent for transcription.
     let captureStart = Date().addingTimeInterval(0.12)
-    fileLock.lock(); file = newFile; audioURL = url; captureAfter = captureStart.timeIntervalSince1970; fileLock.unlock()
+    fileLock.lock()
+    file = newFile; audioURL = url; captureAfter = captureStart.timeIntervalSince1970
+    meteredOperationID = id; meteredAt = 0; meteredLevel = 0
+    fileLock.unlock()
     startedAt = captureStart
     state.operationID = id
     state.phase = locked ? .locked : .recording
     state.text = nil; state.message = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
     publish()
   }
-  private func closeFile() -> URL? {
-    fileLock.lock(); defer { fileLock.unlock() }
+  private func closeFile(finalize: Bool = false) -> URL? {
+    fileLock.lock()
+    var failed = false
+    if finalize {
+      do { try file?.finish() } catch { failed = true }
+    } else { file?.cancel() }
     file = nil
     let url = audioURL; audioURL = nil
+    meteredOperationID = nil; meteredAt = 0; meteredLevel = 0
+    fileLock.unlock()
+    try? store?.publishAudioMeter(.inactive())
+    if failed {
+      if let url { try? FileManager.default.removeItem(at: url) }
+      return nil
+    }
     return url
   }
   private func finish(haptics: Bool = true) {
@@ -227,12 +266,12 @@ final class ClarifyAudioSession: NSObject {
     let recordedAt = startedAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
     let historyOwner = clipHistory
     startedAt = nil
-    guard let url = closeFile() else { fail(L("Não foi possível ler a gravação.")); return }
+    guard let url = closeFile(finalize: true) else { fail(L("Não foi possível gravar o áudio.")); return }
     playCue(starting: false)
     if haptics, UIApplication.shared.applicationState == .active { feedback.record("finish") }
     guard duration >= 0.3 else {
       try? FileManager.default.removeItem(at: url)
-      fail(L("Segure o botão e fale por mais tempo.")); return
+      fail(L("Fale por mais tempo antes de concluir.")); return
     }
     guard CloudAccount.shared.acceptsHistory(historyOwner) else {
       try? FileManager.default.removeItem(at: url); fail(L("Entre na conta novamente.")); return
