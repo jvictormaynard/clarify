@@ -1,6 +1,19 @@
 import AVFoundation
+import AudioToolbox
 
 enum MicrophoneFailure {
+  static func recordingError(for error: Error) -> ClarifyError {
+    if let error = error as? ClarifyError { return error }
+    let native = error as NSError
+    let isFormatFailure = error is AudioClipWriter.Failure ||
+      ([NSOSStatusErrorDomain, "com.apple.coreaudio.avfaudio"].contains(native.domain) &&
+        [Int(kAudioCodecUnsupportedFormatError), Int(kAudioConverterErr_FormatNotSupported)].contains(native.code))
+    if isFormatFailure {
+      return ClarifyError(L("Não foi possível iniciar a gravação. Ative o microfone novamente no Clarify."),
+        code: "recording_format_unsupported", phase: "recording", status: native.code)
+    }
+    return ClarifyError(L("Não foi possível gravar o áudio."), code: "recording_failed", phase: "recording")
+  }
   static func message(for error: Error) -> String {
     // Preserve intentional app messages, such as a missing Groq key.
     if let error = error as? ClarifyError { return error.localizedDescription }

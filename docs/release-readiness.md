@@ -4,6 +4,33 @@ This is a release checklist, not a claim of acceptance. Local code, a passing
 test, a merged commit, and a published executable are different states. Record
 the commit SHA, Windows version, DPI, and evidence for each release candidate.
 
+## v0.11.0 preparation — 2026-10-25
+
+[PR #159](https://github.com/jvictormaynard/clarify/pull/159) merged social
+authentication and the current weekly-quota source at
+`37d702ffd75f3f8ce74e55e8c760ec1cf629935a`. The release preparation also merges
+the complete iOS source delivered in TestFlight 0.10.4 (37),
+`d356ac94352b5c292d7879c1a85152e3b33481df`, to preserve its interface and audio
+corrections. Desktop is 0.11.0; the iOS app and both extensions are 0.11.0 (38).
+
+The social-auth integration passed 1,384 Python tests with four skips, all 47
+Settings browser tests, server tests and migration checks. Its Linux, Windows
+and Windows-package PR checks passed. The combined release source requires
+its own checks, reviews, post-merge CI and publication evidence in the release PR.
+
+Windows uses the community portable track. Verify all eight assets, downloaded
+hashes, Ed25519 update metadata and GitHub provenance on the exact green source.
+The executable is unsigned; SmartScreen warnings remain possible. Native Windows
+provider completion/cancellation, physical iPhone and Bluetooth recording, and
+live provider/SMTP acceptance require separate evidence. Automated fixtures do
+not establish those interactions. iOS distribution is internal TestFlight only.
+
+Production was pinned to the pre-quota server at preparation time. Before
+migration, stop hosted admissions, drain old workers and verify a fresh database
+backup. Deploy the reviewed source and verify migrations, health and finance
+routes. The configured spending cap does not create a funding receipt; funded
+processing requires actual contributions and reviewed operating provisions.
+
 ## Verified baseline for v0.4.0 — 2026-09-13
 
 Production changes were merged through [PR #96](https://github.com/jvictormaynard/clarify/pull/96)

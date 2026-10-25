@@ -44,6 +44,7 @@ test-results/
 # generated native folders
 /ios
 /android
+.app-ui-*/
 
 # Local agent settings
 .claude/

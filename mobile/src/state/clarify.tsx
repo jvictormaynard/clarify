@@ -3,11 +3,12 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { Alert, AppState } from 'react-native';
 import Core, { type Snapshot, type AccountSnapshot } from '../../modules/clarify-core';
 import { activateMicrophone } from './activation';
+import { errorMessage } from '../errors';
 
 const idle: Snapshot = { sessionActive: false, heartbeat: 0, phase: 'idle', configured: false };
 export const isBusy = (state: Snapshot) => ['recording', 'locked', 'transcribing', 'rewriting'].includes(state.phase);
 export function report(error: unknown) {
-  Alert.alert('Clarify', error instanceof Error ? t(error.message) : t("Não foi possível concluir. Tente novamente."));
+  Alert.alert('Clarify', t(errorMessage(error)));
 }
 
 function useClarifyState() {
@@ -19,27 +20,42 @@ function useClarifyState() {
   const mounted = useRef(true);
   const accountRequest = useRef(0);
   const setupRequest = useRef(0);
+  const presentation = useRef<Promise<void> | null>(null);
+  const markOnboardingPresented = useCallback(() => {
+    if (!presentation.current) {
+      presentation.current = Core.markOnboardingPresented().catch(error => {
+        presentation.current = null;
+        throw error;
+      });
+    }
+    return presentation.current;
+  }, []);
   const refreshOnboarding = useCallback(async () => {
     const request = ++setupRequest.current;
     try {
       const required = await Core.onboardingRequired();
-      if (request === setupRequest.current) { setOnboardingRequired(required); setSetupError(false); }
-    } catch { if (request === setupRequest.current) setSetupError(true); }
+      if (mounted.current && request === setupRequest.current) { setOnboardingRequired(required); setSetupError(false); }
+    } catch { if (mounted.current && request === setupRequest.current) setSetupError(true); }
   }, []);
+  const dismissOnboarding = useCallback(async () => {
+    await markOnboardingPresented();
+    ++setupRequest.current;
+    if (mounted.current) setOnboardingRequired(false);
+  }, [markOnboardingPresented]);
   const completeOnboarding = useCallback(async () => {
     const request = ++setupRequest.current;
     await Core.completeOnboarding();
-    if (request === setupRequest.current) setOnboardingRequired(false);
+    if (mounted.current && request === setupRequest.current) setOnboardingRequired(false);
   }, []);
+  // Presentation is read once per app launch. Account changes do not restart it.
   useEffect(() => {
     let active = true;
     const request = ++setupRequest.current;
     void Core.onboardingRequired().then(required => {
       if (active && request === setupRequest.current) { setOnboardingRequired(required); setSetupError(false); }
     }).catch(() => { if (active && request === setupRequest.current) setSetupError(true); });
-    // An earlier session/setup read cannot reopen routes after an account change.
     return () => { active = false; };
-  }, [account?.signedIn]);
+  }, []);
   const refreshAccount = useCallback(async () => {
     const request = ++accountRequest.current;
     const value = await Core.getAccount();
@@ -125,7 +141,7 @@ function useClarifyState() {
   }, [refresh]);
   return { state, refresh, activate, activating, keyboardEntry, setKeyboardEntry, keyboardToken, setKeyboardToken,
     account, accountBusy, refreshAccount, accountCommand,
-    onboardingRequired, setupError, refreshOnboarding, completeOnboarding };
+    onboardingRequired, setupError, refreshOnboarding, markOnboardingPresented, dismissOnboarding, completeOnboarding };
 }
 const Context = createContext<ReturnType<typeof useClarifyState> | null>(null);
 export function ClarifyProvider({ children }: { children: ReactNode }) {

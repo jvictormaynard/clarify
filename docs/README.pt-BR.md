@@ -28,18 +28,21 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
 - Dicionário pessoal para nomes e termos técnicos
 - Estatísticas locais sem armazenar o conteúdo das transcrições
-- Conta opcional com entrada por código de e-mail, dicionário, histórico novo e cota de ditado compartilhados
+- Conta opcional com entrada por Google, Microsoft, GitHub ou código de e-mail, dicionário, histórico novo e cota de ditado compartilhados
 - Modos locais e com chave própria disponíveis sem conta; sem telemetria
 
-A versão 0.9.0 usa o idioma do dispositivo: português, inglês ou espanhol,
-incluindo o e-mail de autenticação. No primeiro acesso, informe seu e-mail e
-confirme o código dentro do aplicativo para entrar ou criar uma conta.
+A versão 0.11.0 usa o idioma do dispositivo: português, inglês ou espanhol,
+incluindo o e-mail de autenticação. No primeiro acesso, use Google, Microsoft
+ou GitHub, ou informe seu e-mail e confirme o código dentro do aplicativo
+para entrar ou criar uma conta.
 **Continuar sem conta** abre a configuração do modelo local; a chave própria
 continua disponível nessa etapa. Entrar na conta ativa o processamento do Clarify automaticamente.
 Contas autenticadas usam os modelos gerenciados pelo Clarify. As configurações
 de provedores, chaves e modelos locais e a aba Texto aparecem apenas no modo sem conta.
-O consumo mensal tem uma barra de progresso. Enquanto a cota não é conhecida,
-a tela mostra o carregamento. Sair e excluir conta ficam em uma Zona de perigo
+A cota semanal aparece como porcentagem, com a próxima renovação no horário local.
+As cotas renovam na segunda-feira, às 00:00 UTC. Enquanto a cota não é conhecida,
+a tela mostra o carregamento. Uma mensagem informa quando faltam fundos.
+Sair e excluir conta ficam em uma Zona de perigo
 fechada por padrão, com confirmações separadas.
 O dicionário sincroniza automaticamente e o consumo é atualizado após o uso.
 O cache local preserva alterações offline; conflitos mantêm ambas as cópias
@@ -48,16 +51,17 @@ Windows e iOS, com texto original, texto revisado, horário e dispositivo de ori
 A aba Histórico permite consultar o texto completo, carregar mais registros e
 sincronizar exclusões. Os registros antigos e o histórico sem conta permanecem
 locais e nunca são enviados. Alterações pendentes são preservadas após falhas de
-conexão e reinícios. Os atalhos permanecem locais. Consulte o
-[contrato de sincronização](history-sync.md). As instalações
+conexão e reinícios. Os snippets da conta sincronizam entre os clientes; os snippets
+sem conta permanecem locais. Consulte o [contrato de sincronização](history-sync.md)
+e os [snippets de voz](dictionary-snippets.md). As instalações
 existentes mantêm sua configuração. O [aplicativo iOS](../mobile/README.md)
 é distribuído pelo TestFlight. O [servidor de contas](../server/README.md) também
 pode ser hospedado por você. As chaves de produção e os dados dos usuários são privados.
 
 > [!IMPORTANT]
 > O acesso direto a provedores cloud exige sua própria chave de API. O ditado
-> pela conta Clarify usa o servidor do Clarify e a Groq, sujeito à cota da conta
-> e ao teto global do beta. O
+> pela conta Clarify usa o servidor do Clarify e a Groq, sujeito à cota semanal
+> e aos fundos disponíveis após a reserva dos custos operacionais. O
 > Local Whisper pode transcrever sem chave e baixa seus assets somente após uma
 > ação explícita. As chaves e estatísticas ficam no seu computador. O áudio e o
 > texto selecionado são enviados diretamente ao provedor configurado.

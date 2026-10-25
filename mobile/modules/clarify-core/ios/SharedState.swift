@@ -82,3 +82,40 @@ struct SharedState {
   func receipt() -> String? { read("receipt.json", as: String.self) }
   func acknowledge(_ operationID: String) throws { try write(operationID, to: "receipt.json") }
 }
+
+// A nonsecret, short-lived measurement. The app publishes it independently of
+// dictation state so audio feedback does not refresh ActivityKit or retain audio.
+struct AudioMeterReading: Codable {
+  let operationID: String?
+  let measuredAt: TimeInterval
+  let level: Double
+  static func inactive(now: TimeInterval = Date().timeIntervalSince1970) -> Self {
+    Self(operationID: nil, measuredAt: now, level: 0)
+  }
+  func level(for operation: String?, now: TimeInterval = Date().timeIntervalSince1970) -> Double {
+    guard let operation, operation == operationID, measuredAt.isFinite, now.isFinite,
+          now >= measuredAt, now - measuredAt <= 0.4, level.isFinite else { return 0 }
+    return min(1, max(0, level))
+  }
+}
+
+enum AudioLevel {
+  // Clamp bad/overloaded samples; silence and nonfinite buffers cannot move UI.
+  static func measure<S: Sequence>(_ samples: S) -> Double where S.Element == Float {
+    var energy = 0.0
+    var count = 0
+    for sample in samples {
+      guard sample.isFinite else { continue }
+      let value = min(1, max(-1, Double(sample)))
+      energy += value * value; count += 1
+    }
+    guard count > 0, energy > 0 else { return 0 }
+    let decibels = 20 * log10(sqrt(energy / Double(count)))
+    return min(1, max(0, (decibels + 52) / 43))
+  }
+}
+
+extension SharedState {
+  func audioMeter() -> AudioMeterReading? { read("audio-meter.json", as: AudioMeterReading.self) }
+  func publishAudioMeter(_ reading: AudioMeterReading) throws { try write(reading, to: "audio-meter.json") }
+}

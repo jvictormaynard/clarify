@@ -1,58 +1,49 @@
-import { t } from "../i18n";
 import { useState } from 'react';
-import { ActivityIndicator, Linking, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AccountSignIn } from '../components/account-sign-in';
 import { ClarifyLogo } from '../components/clarify-logo';
-import { Button, Card, TextButton, Title, ui, usePalette } from '../components/ui';
-import { report, useClarify } from '../state/clarify';
+import { QuickStartGuide } from '../components/quick-start-guide';
+import { Button, KeyboardPage, StepContent, TextButton, Title, ui, usePalette } from '../components/ui';
+import { t } from '../i18n';
+import { isBusy, report, useClarify } from '../state/clarify';
 
 export default function Onboarding() {
   const c = usePalette();
-  const { account, refreshAccount } = useClarify();
-  if (!account) return <SafeAreaView style={{ flex: 1, backgroundColor: c.background, justifyContent: 'center', padding: 24, gap: 16 }}>
-    <ActivityIndicator /><Button onPress={() => void refreshAccount().catch(report)}>{t("Tentar carregar novamente")}</Button>
-  </SafeAreaView>;
-  return <OnboardingFlow />;
-}
-
-function OnboardingFlow() {
-  const c = usePalette();
-  const { account, accountBusy, accountCommand, refresh, completeOnboarding } = useClarify();
-  const [step, setStep] = useState<'account' | 'keyboard'>('account');
+  const { account, refreshAccount, markOnboardingPresented, dismissOnboarding, completeOnboarding, accountBusy, accountCommand, state } = useClarify();
+  const [started, setStarted] = useState(false);
   const [saving, setSaving] = useState(false);
-  const showKeyboard = step === 'keyboard' && account?.signedIn;
-  const busy = saving || accountBusy || !!account?.busy;
-  async function finish() {
+  const busy = saving || accountBusy || !!account?.busy || isBusy(state);
+  const step = !started ? 'welcome' : account?.signedIn ? 'guide' : 'account';
+  async function finish(confirmed = false) {
+    if (busy) return;
     setSaving(true);
-    try { await completeOnboarding(); await refresh(); }
+    try { if (confirmed) await completeOnboarding(); else await dismissOnboarding(); }
     catch (error) { report(error); }
     finally { setSaving(false); }
   }
   return <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>
-    <ScrollView contentContainerStyle={[ui.content, { flexGrow: 1, justifyContent: 'center', paddingVertical: 32 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
-      <View style={{ gap: 20, width: '100%', maxWidth: 520, alignSelf: 'center' }}>
-        <ClarifyLogo />
-        <Title subtitle={t("Fale. O Clarify transforma sua voz em texto claro.")}>{showKeyboard ? t("Seu teclado, com Clarify") : account?.signedIn ? t("Sua conta está pronta") : t("Boas-vindas ao Clarify")}</Title>
-        {!account ? <ActivityIndicator /> : <Card>
-          {showKeyboard ? <>
-            <Text style={[ui.body, { color: c.text }]}>{t("Para ditar em outros aplicativos, adicione o teclado Clarify:")}</Text>
-            <Text style={[ui.body, { color: c.muted }]}>{t("Ajustes → Geral → Teclado → Teclados → Adicionar Novo Teclado → Clarify. Depois, ative “Acesso Total”.")}</Text>
-            <Text style={[ui.small, { color: c.muted }]}>{t("No teclado, toque em “Começar” para autorizar o microfone. Você também pode ditar diretamente no Clarify.")}</Text>
-            <Button disabled={busy} onPress={() => void Linking.openSettings().catch(report)}>{t("Abrir Ajustes do iPhone")}</Button>
-            <Button loading={saving} disabled={accountBusy} onPress={() => void finish()}>{t("Começar a usar")}</Button>
-          </> : account.signedIn ? <>
-            <Text style={[ui.body, { color: c.text }]}>{account.email}</Text>
-            <Text style={[ui.small, { color: c.muted }]}>{t("Para transcrever e reescrever, o Clarify processa áudio, texto e palavras ativas do dicionário. O histórico da conta é sincronizado entre seus dispositivos. Patrocínios financiam uma cota semanal individual. Novas contas podem receber uma cota inicial proporcional ao tempo até a renovação. Sem saldo de patrocínio, a conta aguarda a próxima distribuição.")}</Text>
-            <Button disabled={busy} onPress={() => setStep('keyboard')}>{t("Continuar")}</Button>
-          </> : <>
-            <Text style={[ui.small, { color: c.muted }]}>{t("Entre para ditar sem chave de API e compartilhar seu dicionário com o computador.")}</Text>
+    <KeyboardPage contentContainerStyle={{ justifyContent: 'center', paddingVertical: 32 }}>
+      <View onLayout={() => void markOnboardingPresented().catch(report)} style={{ width: '100%' }}>
+        <StepContent step={step}>
+          {step === 'welcome' ? <View testID="onboarding.welcome" collapsable={false} style={{ gap: 28 }}>
+            <ClarifyLogo size={48} />
+            <Title subtitle={t('Use sua voz para escrever em outros aplicativos.')}>{t('Fale. O Clarify escreve.')}</Title>
+            <Button primary testID="onboarding.continue" disabled={busy} onPress={() => setStarted(true)}>{t('Começar')}</Button>
+            <TextButton testID="onboarding.skip" disabled={busy} onPress={() => void finish()}>{t('Agora não')}</TextButton>
+          </View> : !account ? <>
+            <ActivityIndicator color={c.text} />
+            <Button onPress={() => void refreshAccount().catch(report)}>{t('Tentar carregar novamente')}</Button>
+            <TextButton testID="onboarding.skip" onPress={() => void finish()}>{t('Fechar')}</TextButton>
+          </> : step === 'guide' ? <QuickStartGuide key={`${account.endpoint}/${account.email}`} onFinish={finish} busy={busy} /> : <>
+            <Title>{t('Entre no Clarify')}</Title>
+            <Text style={[ui.body, { color: c.muted }]}>{t('Para transcrever e reescrever, o Clarify processa áudio, texto e palavras ativas do dicionário. O histórico da conta é sincronizado entre seus dispositivos. Patrocínios financiam uma cota semanal individual. Novas contas podem receber uma cota inicial proporcional ao tempo até a renovação. Sem saldo de patrocínio, a conta aguarda a próxima distribuição.')}</Text>
             <AccountSignIn account={account} busy={busy} command={accountCommand} />
+            {account.error && <Text accessibilityRole="alert" style={[ui.body, { color: c.text }]}>{t(account.error)}</Text>}
+            <TextButton testID="onboarding.skip" disabled={busy} onPress={() => void finish()}>{t('Fechar introdução')}</TextButton>
           </>}
-          {account.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.danger }]}>{t(account.error)}</Text>}
-          {showKeyboard && <TextButton disabled={busy} onPress={() => setStep('account')}>{t("Voltar")}</TextButton>}
-        </Card>}
+        </StepContent>
       </View>
-    </ScrollView>
+    </KeyboardPage>
   </SafeAreaView>;
 }

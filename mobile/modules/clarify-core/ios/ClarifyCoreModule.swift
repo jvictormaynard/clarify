@@ -24,6 +24,7 @@ public class ClarifyCoreModule: Module {
     AsyncFunction("onboardingRequired") { () -> Bool in
       return Onboarding().required(signedIn: CloudAccount.shared.configured)
     }.runOnQueue(.main)
+    AsyncFunction("markOnboardingPresented") { Onboarding().presented() }.runOnQueue(.main)
     AsyncFunction("completeOnboarding") {
       try Onboarding().complete(configured: CloudAccount.shared.configured)
     }.runOnQueue(.main)
