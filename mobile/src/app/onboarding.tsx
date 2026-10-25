@@ -23,7 +23,6 @@ function OnboardingFlow() {
   const [saving, setSaving] = useState(false);
   const showKeyboard = step === 'keyboard' && account?.signedIn;
   const busy = saving || accountBusy || !!account?.busy;
-  const command = (action: string, value = '') => void accountCommand(action, value).catch(report);
   async function finish() {
     setSaving(true);
     try { await completeOnboarding(); await refresh(); }
@@ -48,7 +47,7 @@ function OnboardingFlow() {
             <Button disabled={busy} onPress={() => setStep('keyboard')}>{t("Continuar")}</Button>
           </> : <>
             <Text style={[ui.small, { color: c.muted }]}>{t("Entre para ditar sem chave de API e compartilhar seu dicionário com o computador.")}</Text>
-            <AccountSignIn account={account} busy={busy} command={command} />
+            <AccountSignIn account={account} busy={busy} command={accountCommand} />
           </>}
           {account.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.danger }]}>{t(account.error)}</Text>}
           {showKeyboard && <TextButton disabled={busy} onPress={() => setStep('account')}>{t("Voltar")}</TextButton>}

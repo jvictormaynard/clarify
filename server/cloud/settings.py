@@ -28,6 +28,10 @@ INSTALLED_APPS = [
     "allauth",
     "allauth.account",
     "allauth.headless",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.google",
+    "allauth.socialaccount.providers.microsoft",
+    "allauth.socialaccount.providers.github",
     "rest_framework",
     "cloud.service",
 ]
@@ -127,6 +131,28 @@ ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS = 5
 ACCOUNT_SESSION_REMEMBER = True
 ACCOUNT_PREVENT_ENUMERATION = True
 ACCOUNT_ADAPTER = "cloud.service.accounts.AccountAdapter"
+SOCIALACCOUNT_ADAPTER = "cloud.service.social.SocialAccountAdapter"
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = False
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = False
+SOCIALACCOUNT_STORE_TOKENS = False
+SOCIALACCOUNT_EMAIL_VERIFICATION = "mandatory"
+SOCIALACCOUNT_REQUESTS_TIMEOUT = 10
+# Credentials exist only in the server secret store. An incomplete pair disables
+# that provider. Do not create duplicate SocialApp database entries.
+SOCIALACCOUNT_PROVIDERS = {}
+for _provider in ("google", "microsoft", "github"):
+    _prefix = "CLARIFY_" + _provider.upper()
+    _client_id = os.environ.get(_prefix + "_CLIENT_ID", "").strip()
+    _secret = os.environ.get(_prefix + "_CLIENT_SECRET", "").strip()
+    SOCIALACCOUNT_PROVIDERS[_provider] = {
+        "APPS": [{"client_id": _client_id, "secret": _secret}]
+        if _client_id and _secret
+        else [],
+        "OAUTH_PKCE_ENABLED": True,
+    }
+SOCIALACCOUNT_PROVIDERS["google"].update(SCOPE=["profile", "email"])
+SOCIALACCOUNT_PROVIDERS["microsoft"].update(TENANT="common", SCOPE=["User.Read"])
+SOCIALACCOUNT_PROVIDERS["github"].update(SCOPE=["user:email"])
 SESSION_ENGINE = "django.contrib.sessions.backends.db"
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 14
 SESSION_COOKIE_SECURE = not DEVELOPMENT

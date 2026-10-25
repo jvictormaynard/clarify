@@ -50,7 +50,7 @@ public class ClarifyCoreModule: Module {
             if !CloudAccount.shared.configured { ClarifyAudioSession.shared.deactivate() }
             ClarifyAudioSession.shared.libraryChanged()
           }
-          ClarifyAudioSession.shared.syncHistory(force: action == "confirm")
+          ClarifyAudioSession.shared.syncHistory(force: action == "confirm" || action == "social")
           promise.resolve(CloudAccount.shared.snapshot())
         } catch {
           if !CloudAccount.shared.configured, ClarifyAudioSession.shared.state.sessionActive {
@@ -62,6 +62,9 @@ public class ClarifyCoreModule: Module {
       }
     }.runOnQueue(.main)
     AsyncFunction("activate") { (promise: Promise) in
+      guard !CloudAccount.shared.isBusy else {
+        promise.resolve(["active": false, "message": L("Aguarde a operação da conta.")] as [String: Any]); return
+      }
       AVAudioSession.sharedInstance().requestRecordPermission { allowed in
         Task { @MainActor in
           guard allowed else { promise.resolve(["active": false, "message": L("Ative o microfone em Ajustes > Clarify.")] as [String: Any]); return }

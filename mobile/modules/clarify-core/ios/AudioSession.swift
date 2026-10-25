@@ -86,6 +86,7 @@ final class ClarifyAudioSession: NSObject {
     liveActivity.update(state)
   }
   func activate() throws {
+    guard !CloudAccount.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
     guard store != nil else { throw ClarifyError(L("Não foi possível acessar os dados do teclado.")) }
     guard CloudAccount.shared.configured else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
     if engine.isRunning { publish(); return }

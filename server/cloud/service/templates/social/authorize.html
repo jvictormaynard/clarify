@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="{{ language }}"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>{{ title }}</title>
+<main><h1>{{ title }}</h1><p>{{ client }}</p>
+<p>{{ warning }}</p>
+<form method="post">{% csrf_token %}<button type="submit">{{ continue_label }}</button></form>
+<p>{{ cancel_hint }}</p></main></html>

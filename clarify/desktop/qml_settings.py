@@ -392,6 +392,8 @@ class QmlSettingsController(QObject):
         self._account_busy = False
         self._account_error = ""
         self._account_shutdown = False
+        self._account_social = False
+        self._account_cancel = threading.Event()
         self._accountFinished.connect(
             self._finish_account, Qt.ConnectionType.QueuedConnection
         )
@@ -1967,6 +1969,7 @@ class QmlSettingsController(QObject):
     @Slot()
     def shutdown(self) -> None:
         self._account_shutdown = True
+        self._account_cancel.set()
         self._unsubscribe_local_state()
         self._local_inventory_thread.join(timeout=3.5)
         if self._local_benchmark_token is not None:
@@ -2027,6 +2030,7 @@ class QmlSettingsController(QObject):
         return {
             **self._account.snapshot(),
             "busy": self._account_busy,
+            "socialPending": self._account_busy and self._account_social,
             "error": self._account_error,
         }
 
@@ -2165,6 +2169,11 @@ class QmlSettingsController(QObject):
 
     @Slot(str, str, result=bool)
     def accountCommand(self, action, value=""):
+        if action == "cancel-social":
+            if self._account_busy and self._account_social:
+                self._account_cancel.set()
+                return True
+            return False
         if action == "auto" and (
             self._account_busy
             or not self._account_can_change()
@@ -2187,6 +2196,7 @@ class QmlSettingsController(QObject):
             "login",
             "signup",
             "confirm",
+            "social",
             "refresh",
             "sync",
             "sync-local",
@@ -2198,6 +2208,8 @@ class QmlSettingsController(QObject):
         if not self._account.begin_change():
             return False
         self._account_busy, self._account_error = True, ""
+        self._account_social = action == "social"
+        self._account_cancel.clear()
         self.accountStateChanged.emit()
 
         def perform():
@@ -2205,6 +2217,15 @@ class QmlSettingsController(QObject):
             try:
                 if action == "configure":
                     self._account.configure(value)
+                elif action == "social":
+                    self._account.authenticate_social(
+                        value, cancel=self._account_cancel
+                    )
+                    if self._account.signed_in:
+                        self._dictionary_service.reload()
+                        self._account.refresh_if_due(
+                            self._dictionary_service, force=True
+                        )
                 elif action in {"login", "signup", "confirm"}:
                     self._account.authenticate(action, value)
                     if action == "confirm":
@@ -2243,6 +2264,7 @@ class QmlSettingsController(QObject):
     @Slot(object)
     def _finish_account(self, error):
         self._account_busy = False
+        self._account_social = False
         self._account_error = error
         try:
             self._dictionary_draft = self._dictionary_service.reload()

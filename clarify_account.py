@@ -467,6 +467,96 @@ class AccountService:
             cancel.raise_if_cancelled()
         return response.status_code, result
 
+    def authenticate_social(self, provider, *, open_browser=None, cancel=None):
+        from social_login import SocialLoginError, sign_in
+        import webbrowser
+
+        with self._lock:
+            if self.signed_in:
+                raise AccountError("Saia da conta atual primeiro.")
+            generation = self._generation
+            base = self._state.get("endpoint", self.default_endpoint)
+            previous_state = dict(self._state)
+            previous_token = self.secrets.get(SECRET_ID)
+        if not base:
+            raise AccountError(
+                "O serviço Clarify ainda não foi configurado nesta versão."
+            )
+
+        def check_current():
+            with self._lock:
+                if generation != self._generation:
+                    raise AccountError("A conta mudou. O resultado foi descartado.")
+
+        def request(method, path, *, token=None, **kwargs):
+            # Handoff transport stays on its original server, including cleanup
+            # after an account transition. Replies cannot change local state.
+            headers = {
+                "Accept": "application/json",
+                "Accept-Language": self.ui_language,
+            }
+            if token:
+                headers["X-Session-Token"] = token
+            try:
+                response = self.request(
+                    method,
+                    endpoint(base) + path,
+                    headers=headers,
+                    timeout=(5, 15),
+                    allow_redirects=False,
+                    **kwargs,
+                )
+                result = response.json() if response.content else {}
+                if not isinstance(result, dict):
+                    raise ValueError()
+            except (requests.RequestException, ValueError):
+                raise AccountError(
+                    "Não foi possível acessar o Clarify. Verifique a conexão."
+                ) from None
+            return response.status_code, result
+
+        def accept(result):
+            try:
+                with self._lock:
+                    check_current()
+                    if cancel is not None and cancel.is_set():
+                        raise AccountError("O login foi cancelado.")
+                    self.secrets.set(SECRET_ID, result.token)
+                    if self.secrets.get(SECRET_ID) != result.token:
+                        raise AccountError(
+                            "Não foi possível salvar a sessão. Tente novamente."
+                        )
+                    if result.pending:
+                        self._state.update(pending=result.pending, email=result.email)
+                        self._save()
+                if not result.pending:
+                    self.refresh(cancel=cancel)
+            except Exception:
+                with self._lock:
+                    if (
+                        generation == self._generation
+                        and self.secrets.get(SECRET_ID) == result.token
+                    ):
+                        if previous_token:
+                            self.secrets.set(SECRET_ID, previous_token)
+                        else:
+                            self.secrets.delete(SECRET_ID)
+                        self._state = previous_state
+                raise
+
+        try:
+            sign_in(
+                provider,
+                endpoint=base,
+                request=request,
+                open_browser=open_browser or webbrowser.open,
+                check_current=check_current,
+                accept=accept,
+                cancel=cancel,
+            )
+        except SocialLoginError as error:
+            raise AccountError(str(error)) from None
+
     def authenticate(self, action, value):
         if action in {"login", "signup"}:
             if self.snapshot()["signedIn"]:
@@ -499,7 +589,7 @@ class AccountService:
         else:
             raise AccountError("Ação de conta inválida.")
 
-    def refresh(self):
+    def refresh(self, *, cancel=None):
         self._last_refresh_attempt = self._clock()
         with self._lock:
             generation = self._generation
@@ -510,12 +600,16 @@ class AccountService:
         with self._lock:
             if generation != self._generation:
                 raise AccountError("A conta mudou. O resultado foi descartado.")
-            if self._state.get("user_id") != user_id:
-                self._generation += 1
-            self._state.update(
+            if cancel is not None and cancel.is_set():
+                raise AccountError("O login foi cancelado.")
+            updated = dict(self._state)
+            updated.update(
                 user_id=user_id, email=result["email"], pending="", mode="hosted"
             )
-            self._save()
+            _atomic_write_json(self.path, updated)
+            if self._state.get("user_id") != user_id:
+                self._generation += 1
+            self._state = updated
 
     def refresh_if_due(self, service, *, force=False):
         """Foreground refresh, at most once a minute, including after failures."""

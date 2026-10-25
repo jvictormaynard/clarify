@@ -244,3 +244,25 @@ class WeeklyQuota(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["user", "period"], name="one_weekly_quota"),
         ]
+
+
+class SocialAttempt(models.Model):
+    """One-time transport of an allauth session, never an identity store."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.CharField(max_length=16)
+    client = models.CharField(max_length=8)
+    origin = models.CharField(max_length=255)
+    challenge = models.CharField(max_length=43)
+    launch_digest = models.CharField(max_length=64)
+    browser_digest = models.CharField(max_length=64, blank=True)
+    browser_session_key = models.CharField(max_length=40, blank=True)
+    state = models.CharField(max_length=16, default="created")
+    session_key = models.CharField(max_length=40, blank=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL
+    )
+    email = models.EmailField(blank=True)
+    error = models.CharField(max_length=32, blank=True)
+    expires_at = models.DateTimeField(db_index=True)
+    next_poll_at = models.DateTimeField(null=True)

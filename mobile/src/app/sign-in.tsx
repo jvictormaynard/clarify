@@ -21,7 +21,7 @@ export default function SignIn() {
     <View style={{ gap: 20, width: '100%', maxWidth: 520, alignSelf: 'center' }}>
       <ClarifyLogo /><Title>{t("Entre no Clarify")}</Title>
       <Card>{!account ? <><ActivityIndicator /><Button onPress={() => void refreshAccount().catch(report)}>{t("Tentar carregar novamente")}</Button></> : <>
-        <AccountSignIn account={account} busy={busy} command={(action, value = '') => void accountCommand(action, value).catch(report)} />
+        <AccountSignIn account={account} busy={busy} command={accountCommand} />
         {account.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.danger }]}>{t(account.error)}</Text>}
       </>}</Card>
     </View>

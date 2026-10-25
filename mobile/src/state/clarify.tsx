@@ -47,6 +47,8 @@ function useClarifyState() {
     return value;
   }, []);
   const accountCommand = useCallback(async (action: string, value = '') => {
+    // The original social command owns busy state until native cleanup ends.
+    if (action === 'cancel-social') { await Core.accountCommand(action, value); return; }
     const request = ++accountRequest.current;
     setAccountBusy(true);
     try {

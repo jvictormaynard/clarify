@@ -18,6 +18,13 @@ test('unrelated links cannot activate a microphone session', () => {
     assert.equal(activationSource(url), null);
   }
 });
+test('social completion never forwards credentials or activates the microphone', () => {
+  for (const url of ['clarify://auth/complete', 'clarify://auth/complete?session_token=secret', 'clarify://auth/complete#code_verifier=secret']) {
+    assert.equal(activationSource(url), null);
+    assert.equal(activationToken(url), null);
+    assert.equal(systemPath(url, '1'), '/');
+  }
+});
 test('external paths are bounded and restricted before reaching the router decoder', () => {
   assert.equal(systemPath('clarify://dictionary', '1'), '/dictionary');
   assert.equal(systemPath('clarify://settings', '1'), '/settings');
