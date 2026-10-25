@@ -86,7 +86,7 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
       {entries.length > 0 && (
         <div className="dictionary-search">
           <Search size={16} aria-hidden="true" />
-          <input
+          <Input unstyled className="library-search-input"
             aria-label={t("Buscar termos")}
             placeholder={t("Buscar termos")}
             value={query}
@@ -111,7 +111,7 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
               <Switch
                 label={t("Usar termo {number}", { number: index + 1 })}
                 checked={entry.enabled}
-                onChange={(enabled) => update(index, { enabled })}
+                onChange={(enabled) => void controller.setLibraryPreference("dictionary", index, "enabled", enabled)}
               />
               <Button
                 variant="ghost"

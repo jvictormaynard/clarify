@@ -5593,5 +5593,40 @@
     "pt": "Não foi possível iniciar a gravação. Ative o microfone novamente no Clarify.",
     "en": "Could not start recording. Turn on the microphone again in Clarify.",
     "es": "No se pudo iniciar la grabación. Activa el micrófono de nuevo en Clarify."
+  },
+  "Descartar tudo": {
+    "pt": "Descartar tudo",
+    "en": "Discard all",
+    "es": "Descartar todo"
+  },
+  "Os atalhos voltarão ao padrão e serão salvos agora.": {
+    "pt": "Os atalhos voltarão ao padrão e serão salvos agora.",
+    "en": "Shortcuts will return to their defaults and save now.",
+    "es": "Los atajos volverán a sus valores predeterminados y se guardarán ahora."
+  },
+  "Salvar tudo": {
+    "pt": "Salvar tudo",
+    "en": "Save all",
+    "es": "Guardar todo"
+  },
+  "Salve ou descarte as alterações de todas as páginas para fechar.": {
+    "pt": "Salve ou descarte as alterações de todas as páginas para fechar.",
+    "en": "Save or discard changes from all pages to close.",
+    "es": "Guarda o descarta los cambios de todas las páginas para cerrar."
+  },
+  "O modelo local mudou. Tente novamente.": {
+    "pt": "O modelo local mudou. Tente novamente.",
+    "en": "The local model changed. Try again.",
+    "es": "El modelo local cambió. Inténtalo de nuevo."
+  },
+  "A biblioteca mudou. Atualize e tente novamente.": {
+    "pt": "A biblioteca mudou. Atualize e tente novamente.",
+    "en": "The library changed. Refresh and try again.",
+    "es": "La biblioteca cambió. Actualiza e inténtalo de nuevo."
+  },
+  "Invalid settings value": {
+    "pt": "Valor de configuração inválido",
+    "en": "Invalid settings value",
+    "es": "Valor de configuración no válido"
   }
 }

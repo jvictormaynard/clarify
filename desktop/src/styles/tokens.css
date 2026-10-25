@@ -1,36 +1,83 @@
-/* Settings values. Qt/QML keeps its compact-surface scale in Theme.qml. */
 :root {
-  --font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-  --color-text: #eeeeec;
-  --color-background: #151515;
-  --color-text-muted: #9c9c99;
-  --color-border: #30302e;
-  --color-surface: #20201f;
-  --color-focus: #bfcfc1;
-  --color-navigation-text: #a5a5a1;
-  --color-text-bright: #eee;
-  --color-placeholder: #90908c;
-  --color-popover: #20201e;
-  --color-shadow: #0008;
+  color-scheme: dark;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  --background: #0a0a0a;
+  --foreground: #f5f5f5;
+  --card: #111111;
+  --card-foreground: var(--foreground);
+  --popover: #111111;
+  --popover-foreground: var(--foreground);
+  --muted: #111111;
+  --muted-foreground: #818181;
+  --secondary: #111111;
+  --secondary-foreground: #f5f5f5;
+  --accent: #141414;
+  --accent-foreground: #ffffff;
+  --primary: #f5f5f5;
+  --primary-foreground: #0a0a0a;
+  --border: #191919;
+  --input: #1e1e1e;
+  --placeholder: #818181;
+  --ring: #d4d4d4;
+  --destructive: #edb2a5;
+  --destructive-surface: #edb2a510;
+  --success: #b9ccac;
+  --sidebar: #000000;
+  --sidebar-foreground: #f1f3f7;
+  --sidebar-row-hover: #131313;
+  --sidebar-row-active: #1a1b1b;
+  --border-subtle: #141414;
+  --contrast-muted-foreground: var(--muted-foreground);
+  --glass-opacity: 80%;
+  --glass-blur: 16px;
+  --glass-saturation: 1.08;
+  --shadow-popover: 0 12px 36px #0006, 0 2px 6px #0003;
+  --radius: 10px;
+  --control-radius: 8px;
+  --sidebar-width: 220px;
+  --color-text: var(--foreground);
+  --color-background: var(--background);
+  --color-text-muted: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-surface: var(--card);
+  --color-focus: var(--ring);
+  --color-text-bright: var(--foreground);
+  --color-placeholder: var(--placeholder);
+  --color-popover: var(--popover);
   --color-text-subtle: #aaa;
-  --color-primary: #e0e7dc;
-  --color-primary-hover: #f2f5ef;
-  --color-error: #edb2a5;
-  --color-subtle-border: #ffffff0a;
-  --text-sm: 12px;
+  --color-primary: var(--primary);
+  --color-error: var(--destructive);
+  --font-size-caption: 11px;
+  --font-size-description: 12px;
   --text-label: 13px;
-  --text-base: 14px;
-  --radius-sm: 5px;
-  --radius-control: 8px;
-  --radius-segmented: 9px;
+  --font-size-body: 14px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+  --radius-control: var(--control-radius);
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
+  --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
-  --space-page: 44px;
+  --space-page: 32px;
   --motion-fast: 0.12s;
   --motion-control: 0.16s;
-  --motion-enter: 0.15s;
-  --motion-save-bar: 0.24s;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --sidebar-width: 208px;
+    --space-page: 24px;
+  }
+}
+
+@media (max-width: 700px) {
+  :root {
+    --sidebar-width: 60px;
+  }
 }

@@ -5,9 +5,11 @@ import type { RecordingDraft } from "../settings/recording";
 export function RecordingOptions({
   value,
   onChange,
+  onEnabledChange,
 }: {
   value: RecordingDraft;
   onChange: (value: RecordingDraft) => void;
+  onEnabledChange: (enabled: boolean) => void;
 }) {
   const input = (
     key: Exclude<keyof RecordingDraft, "enabled">,
@@ -42,7 +44,7 @@ export function RecordingOptions({
       <Toggle
         title={t("Parar após fala e silêncio")}
         checked={value.enabled}
-        onChange={(enabled) => onChange({ ...value, enabled })}
+        onChange={onEnabledChange}
       />
       {input(
         "threshold",

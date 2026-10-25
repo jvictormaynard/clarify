@@ -8,6 +8,7 @@ legacy frontend or any Tk/CustomTkinter module.
 from __future__ import annotations
 
 import math
+import io
 import os
 import platform
 import shutil
@@ -16,9 +17,10 @@ import sys
 import tempfile
 import threading
 import time
+from dataclasses import dataclass, field
 from transcription_performance import safe_timings
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, BinaryIO, Callable
 from clarify_account import AccountService, AccountDictionaryRepository
 from account_history import AccountHistory
 from cloud_defaults import DEFAULT_CLOUD_URL
@@ -42,10 +44,32 @@ from workflow_provider import (
 )
 
 
-try:
-    import sounddevice as _sounddevice
-except (ImportError, OSError):
-    _sounddevice = None
+_SOUNDDEVICE_UNLOADED = object()
+_sounddevice: Any = _SOUNDDEVICE_UNLOADED
+_sounddevice_lock = threading.Lock()
+
+
+def _load_sounddevice() -> Any:
+    """Initialize PortAudio once, on an inventory/test/meter worker.
+
+    Keep ``_sounddevice`` replaceable with an injected backend or ``None``.
+    Cache an unavailable backend as well, so concurrent callers do not retry
+    native initialization. Neither module import nor recorder construction
+    calls this boundary.
+    """
+
+    global _sounddevice
+    if _sounddevice is _SOUNDDEVICE_UNLOADED:
+        with _sounddevice_lock:
+            if _sounddevice is _SOUNDDEVICE_UNLOADED:
+                try:
+                    import sounddevice
+                except (ImportError, OSError):
+                    _sounddevice = None
+                else:
+                    _sounddevice = sounddevice
+    return _sounddevice
+
 
 try:
     from audio_file_batch import (
@@ -424,6 +448,76 @@ def _sox_microphone_name_is_unambiguous(
     return matching == 1
 
 
+def _open_readiness_file(path: Path) -> BinaryIO:
+    """Do not let an optional Windows reader prevent session-owned deletion.
+
+    Python's normal Windows read handle does not share delete access. A cancel
+    must be able to unlink this WAV while the worker finishes its bounded read.
+    Windows completes a pending deletion when the worker closes the handle.
+    """
+
+    if os.name != "nt":
+        return path.open("rb")
+
+    def opener(name: str, _flags: int) -> int:
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_file = kernel32.CreateFileW
+        create_file.argtypes = (
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.HANDLE,
+        )
+        create_file.restype = wintypes.HANDLE
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+        generic_read, share_read_write_delete = 0x80000000, 0x1 | 0x2 | 0x4
+        open_existing, normal_attributes = 3, 0x80
+        handle = create_file(
+            name,
+            generic_read,
+            share_read_write_delete,
+            None,
+            open_existing,
+            normal_attributes,
+            None,
+        )
+        if handle == wintypes.HANDLE(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            # The CRT descriptor owns the Win32 handle after this succeeds;
+            # io.open then owns the descriptor and closes it on context exit.
+            return msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+        except BaseException:
+            close_handle(handle)
+            raise
+
+    return io.open(path, "rb", opener=opener)
+
+
+@dataclass(eq=False)
+class _RecorderCapture:
+    """Identity and worker signals for one authoritative SoX capture."""
+
+    path: Path
+    cancel_event: threading.Event
+    stopped: threading.Event = field(default_factory=threading.Event)
+    ready: threading.Event = field(default_factory=threading.Event)
+    meter_ready: threading.Event = field(default_factory=threading.Event)
+    meter_finished: threading.Event = field(default_factory=threading.Event)
+    process: Any = None
+    meter_device: Any = None
+    started: bool = False
+
+
 class QtRecorder:
     """Minimal SoX owner for the Qt recording session."""
 
@@ -451,53 +545,69 @@ class QtRecorder:
         self.sox = str(bundled or shutil.which("sox") or "")
         self.config = config
         self.microphone_inventory_source = microphone_inventory_source
-        if self.microphone_inventory_source is None and _sounddevice is not None:
-            self.microphone_inventory_source = SoundDeviceMicrophoneInventory(
-                _sounddevice
-            )
         self.process: subprocess.Popen[bytes] | None = None
         self.mic_stream: Any | None = None
         self.mic_level = 0.0
-        self._capture_path: Path | None = None
-        self._capture_has_frames = False
-        self._level_stream_device: Any | None = None
+        self._capture: _RecorderCapture | None = None
+        self._readiness_worker: threading.Thread | None = None
+        self._meter_worker: threading.Thread | None = None
         self._lock = threading.RLock()
 
     @property
     def capture_active(self) -> bool:
-        """Confirm PCM bytes from SoX, not merely a launched input process."""
-        with self._lock:
-            process, path = self.process, self._capture_path
-            if process is None or process.poll() is not None or path is None:
-                return False
-            if self._capture_has_frames:
-                return True
-            try:
-                with path.open("rb") as source:
-                    header = source.read(4096)
-                if header[:4] != b"RIFF" or header[8:12] != b"WAVE":
-                    return False
-                offset = 12
-                while offset + 8 <= len(header):
-                    size = int.from_bytes(header[offset + 4 : offset + 8], "little")
-                    if header[offset : offset + 4] == b"data":
-                        self._capture_has_frames = len(header) >= offset + 10
-                        return self._capture_has_frames
-                    offset += 8 + size + (size % 2)
-            except OSError:
-                pass
-            return False
+        """Read cached PCM readiness without locks, process calls, or file I/O."""
+        capture = self._capture
+        return bool(
+            capture is not None
+            and capture.ready.is_set()
+            and not capture.stopped.is_set()
+            and not capture.cancel_event.is_set()
+        )
 
-    def _microphone_input_name(self, system: str) -> str:
-        self._level_stream_device = None
+    @staticmethod
+    def _has_pcm_frames(path: Path) -> bool:
+        try:
+            with _open_readiness_file(path) as source:
+                header = source.read(4096)
+            if header[:4] != b"RIFF" or header[8:12] != b"WAVE":
+                return False
+            offset = 12
+            while offset + 8 <= len(header):
+                size = int.from_bytes(header[offset + 4 : offset + 8], "little")
+                if header[offset : offset + 4] == b"data":
+                    return len(header) >= offset + 10
+                offset += 8 + size + (size % 2)
+        except OSError:
+            pass
+        return False
+
+    def _monitor_capture(self) -> None:
+        while True:
+            with self._lock:
+                capture = self._capture
+                if capture is None:
+                    self._readiness_worker = None
+                    return
+            process = capture.process
+            active = process is not None and process.poll() is None
+            ready = active and (
+                capture.ready.is_set() or self._has_pcm_frames(capture.path)
+            )
+            with self._lock:
+                if self._capture is capture and not capture.stopped.is_set():
+                    if ready:
+                        capture.ready.set()
+                    else:
+                        capture.ready.clear()
+            capture.stopped.wait(0.016)
+
+    def _microphone_input_name(self, system: str, capture: _RecorderCapture) -> str:
         selected_id = None
         if self.config is not None:
             selected_id = self.config.current().microphone.selected_id
         if not selected_id:
             return "default"
-        if self.microphone_inventory_source is None:
-            raise MicrophoneUnavailableError("The configured microphone is unavailable")
-        inventory = self.microphone_inventory_source.snapshot()
+        inventory = self.microphone_inventory()
         selection = inventory.resolve(selected_id)
         if not selection.can_record:
             raise MicrophoneUnavailableError("The configured microphone is unavailable")
@@ -517,7 +627,7 @@ class QtRecorder:
                     "Explicit microphone selection is unavailable with SoX PulseAudio"
                 )
             return "default"
-        self._level_stream_device = (
+        capture.meter_device = (
             device.backend_index if device.backend_index is not None else device.name
         )
         return device.name
@@ -535,10 +645,13 @@ class QtRecorder:
         except Exception:
             pass
 
-    def _start_level_meter(self, cancel_event: threading.Event | None = None) -> None:
-        """Open a best-effort monitor stream for the reactive QML waveform."""
+    def _start_level_meter(self, capture: _RecorderCapture) -> None:
+        """Own one optional stream from open through asynchronous close."""
 
-        if _sounddevice is None:
+        if capture.stopped.is_set() or capture.cancel_event.is_set():
+            return
+        backend = _load_sounddevice()
+        if backend is None or capture.stopped.is_set() or capture.cancel_event.is_set():
             return
 
         def callback(indata, _frames, _time_info, _status):
@@ -552,13 +665,19 @@ class QtRecorder:
             if not samples:
                 return
             mean_square = sum(sample * sample for sample in samples) / len(samples)
-            self.mic_level = min(
+            level = min(
                 1.0,
                 math.sqrt(mean_square) / 32768.0 * 16,
             )
+            with self._lock:
+                if (
+                    self._capture is capture
+                    and not capture.stopped.is_set()
+                    and not capture.cancel_event.is_set()
+                ):
+                    self.mic_level = level
 
         stream = None
-        published = False
         try:
             stream_options: dict[str, Any] = {
                 "channels": 1,
@@ -567,35 +686,55 @@ class QtRecorder:
                 "dtype": "int16",
                 "callback": callback,
             }
-            if self._level_stream_device is not None:
-                stream_options["device"] = self._level_stream_device
-            stream = _sounddevice.RawInputStream(**stream_options)
+            if capture.meter_device is not None:
+                stream_options["device"] = capture.meter_device
+            stream = backend.RawInputStream(**stream_options)
+            if capture.stopped.is_set() or capture.cancel_event.is_set():
+                return
             stream.start()
             with self._lock:
-                process = self.process
-                cancelled = cancel_event is not None and cancel_event.is_set()
                 if (
-                    process is not None
-                    and process.poll() is None
-                    and not cancelled
+                    self._capture is capture
+                    and not capture.stopped.is_set()
+                    and not capture.cancel_event.is_set()
                     and self.mic_stream is None
                 ):
                     self.mic_stream = stream
-                    published = True
-            if not published:
-                self._close_level_stream(stream)
+                    capture.meter_ready.set()
+            if capture.meter_ready.is_set():
+                while not capture.stopped.wait(0.05):
+                    if (
+                        capture.cancel_event.is_set()
+                        or capture.process.poll() is not None
+                    ):
+                        break
         except Exception:
             # The meter is presentation-only; SoX remains authoritative.
-            if not published:
-                self._close_level_stream(stream)
-            self.mic_level = 0.0
+            pass
+        finally:
+            with self._lock:
+                if self.mic_stream is stream:
+                    self.mic_stream = None
+                if self._capture is capture:
+                    self.mic_level = 0.0
+            self._close_level_stream(stream)
 
-    def _stop_level_meter(self) -> None:
-        with self._lock:
-            stream = self.mic_stream
-            self.mic_stream = None
-            self.mic_level = 0.0
-        self._close_level_stream(stream)
+    def _run_level_meter(self, capture: _RecorderCapture) -> None:
+        """Serialize native stream work, including across rapid restarts."""
+        while True:
+            try:
+                self._start_level_meter(capture)
+            except Exception:
+                # Optional backend initialization must not retain a dead owner.
+                pass
+            finally:
+                capture.meter_finished.set()
+            with self._lock:
+                following = self._capture
+                if following is None or following is capture or not following.started:
+                    self._meter_worker = None
+                    return
+                capture = following
 
     def microphone_inventory(self) -> Any:
         """Return the same safe inventory boundary used by recording.
@@ -606,9 +745,14 @@ class QtRecorder:
         observe the same backend snapshot contract.
         """
 
-        if self.microphone_inventory_source is None:
+        source = self.microphone_inventory_source
+        if source is None:
+            backend = _load_sounddevice()
+            if backend is not None:
+                source = SoundDeviceMicrophoneInventory(backend)
+        if source is None:
             return MicrophoneInventory.unavailable("portaudio_unavailable")
-        return self.microphone_inventory_source.snapshot()
+        return source.snapshot()
 
     @staticmethod
     def supports_explicit_microphone_selection(system: str | None = None) -> bool:
@@ -638,7 +782,8 @@ class QtRecorder:
     ) -> float:
         """Measure live input locally. Retain levels only, never audio buffers."""
 
-        if _sounddevice is None:
+        backend = _load_sounddevice()
+        if backend is None:
             raise QtRuntimeError("Input test unavailable without PortAudio")
         if selection is None or not selection.can_record:
             raise MicrophoneUnavailableError("No safe microphone to test")
@@ -704,7 +849,7 @@ class QtRecorder:
             }
             if stream_device is not None:
                 kwargs["device"] = stream_device
-            stream = _sounddevice.RawInputStream(**kwargs)
+            stream = backend.RawInputStream(**kwargs)
             if cancel_event is not None and cancel_event.is_set():
                 return peak
             stream.start()
@@ -730,15 +875,24 @@ class QtRecorder:
         return peak
 
     def start(self, path: Path, cancel_event: threading.Event) -> None:
+        capture = _RecorderCapture(path, cancel_event)
         with self._lock:
-            self._capture_path = None
-            self._capture_has_frames = False
+            if self._capture is not None:
+                raise QtRuntimeError("A recording is already active")
+            self._capture = capture
+        try:
+            self._start_capture(capture)
+        except Exception:
+            self._stop_capture(capture)
+            raise
+
+    def _start_capture(self, capture: _RecorderCapture) -> None:
         if not self.sox:
             raise QtRuntimeError("SoX was not found in the Clarify runtime")
-        if cancel_event.is_set():
+        if capture.cancel_event.is_set() or capture.stopped.is_set():
             raise RuntimeError("Recording cancelled before startup")
         system = platform.system()
-        microphone_input_name = self._microphone_input_name(system)
+        microphone_input_name = self._microphone_input_name(system, capture)
         if system == "Windows":
             source = ["-t", "waveaudio", microphone_input_name]
         elif system == "Darwin":
@@ -756,36 +910,78 @@ class QtRecorder:
             "16",
             "-e",
             "signed-integer",
-            str(path),
+            str(capture.path),
         ]
         kwargs: dict[str, Any] = {"stderr": subprocess.DEVNULL}
         if system == "Windows":
             kwargs["creationflags"] = 0x08000000
             kwargs["cwd"] = str(Path(self.sox).parent)
+        if capture.cancel_event.is_set() or capture.stopped.is_set():
+            raise RuntimeError("Recording cancelled before startup")
+        # Launch may wait on native Windows audio. Retain local ownership until
+        # publication, so stop/restart cannot inherit a late process.
+        process = subprocess.Popen(args, **kwargs)
         with self._lock:
-            self.process = subprocess.Popen(args, **kwargs)
-            self._capture_path = path
-        time.sleep(0.18)
-        if cancel_event.is_set():
-            self.cancel()
+            published = (
+                self._capture is capture
+                and not capture.stopped.is_set()
+                and not capture.cancel_event.is_set()
+            )
+            if published:
+                capture.process = process
+                self.process = process
+        if not published:
+            self._terminate_process(process)
             raise RuntimeError("Recording cancelled during startup")
-        with self._lock:
-            process = self.process
-        if process is None or process.poll() is not None:
-            with self._lock:
-                if self.process is process:
-                    self.process = None
+        if capture.stopped.wait(0.18) or capture.cancel_event.is_set():
+            raise RuntimeError("Recording cancelled during startup")
+        if process.poll() is not None:
             raise MicrophoneUnavailableError("No active microphone")
-        self._start_level_meter(cancel_event)
+        with self._lock:
+            if self._capture is not capture or capture.stopped.is_set():
+                raise RuntimeError("Recording cancelled during startup")
+            capture.started = True
+            # At most one readiness reader and one native meter owner per
+            # recorder. A slow old open/close cannot create unbounded workers.
+            if self._readiness_worker is None:
+                self._readiness_worker = threading.Thread(
+                    target=self._monitor_capture,
+                    name="ClarifyCaptureReadiness",
+                    daemon=True,
+                )
+                self._readiness_worker.start()
+            if self._meter_worker is None:
+                self._meter_worker = threading.Thread(
+                    target=self._run_level_meter,
+                    args=(capture,),
+                    name="ClarifyCaptureMeter",
+                    daemon=True,
+                )
+                self._meter_worker.start()
 
     def stop(self) -> None:
         with self._lock:
-            level_stream = self.mic_stream
+            capture = self._capture
+        if capture is not None:
+            self._stop_capture(capture)
+
+    def _stop_capture(self, capture: _RecorderCapture) -> None:
+        with self._lock:
+            capture.stopped.set()
+            capture.ready.clear()
+            if self._capture is not capture:
+                return
+            self._capture = None
+            # The meter worker retains sole close ownership. Do not wait for
+            # optional native open/start/stop/close during audio finalization.
             self.mic_stream = None
             self.mic_level = 0.0
-            process = self.process
+            process = capture.process
             self.process = None
-        self._close_level_stream(level_stream)
+        self._terminate_process(process)
+
+    @staticmethod
+    def _terminate_process(process: Any) -> None:
         if process is None:
             return
         if process.poll() is None:
@@ -953,6 +1149,10 @@ class QtRecordingSession(RecordingSessionGateway):
         except Exception as error:
             with self._lock:
                 self._error = error
+            if self.cancel_event.is_set():
+                # A cancelled native launch can return after cancel's first
+                # cleanup. The recorder has now terminated that late process.
+                self._cleanup()
             raise
         finally:
             self.start_finished.set()
