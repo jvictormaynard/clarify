@@ -324,6 +324,57 @@ test("onboarding: social cancellation stays enabled while the browser login is p
   await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeVisible();
 });
 
+test("onboarding: account social cancellation restores provider actions after local setup", async ({ page }) => {
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
+  await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+  await page.getByText("Servidor próprio", { exact: true }).click();
+  const server = page.getByRole("textbox", { name: "Endereço do servidor", exact: true });
+  const saveServer = page.getByRole("button", { name: "Salvar servidor", exact: true });
+  const navigation = page.getByRole("navigation", { name: "Configurações", exact: true });
+  const cancel = page.getByRole("button", { name: "Cancelar login", exact: true });
+  await expect(server).toBeEnabled();
+
+  let releaseCancel!: () => void;
+  const cancelGate = new Promise<void>(resolve => { releaseCancel = resolve; });
+  let cancelRequested!: () => void;
+  const cancelRequest = new Promise<void>(resolve => { cancelRequested = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    const request = route.request().postDataJSON();
+    if (request.method === "accountCommand" && request.args[0] === "cancel-social") {
+      cancelRequested();
+      await cancelGate;
+    }
+    await route.fallback();
+  });
+  try {
+    await page.getByRole("button", { name: "Continuar com Google", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Conclua o login no navegador" })).toBeVisible();
+    for (const button of await navigation.getByRole("button").all()) await expect(button).toBeDisabled();
+    await expect(server).toBeDisabled();
+    await expect(saveServer).toBeDisabled();
+    await expect(cancel).toBeEnabled();
+    await cancel.click();
+    await cancelRequest;
+    await expect(cancel).toBeDisabled();
+    await expect(server).toBeDisabled();
+    await expect(saveServer).toBeDisabled();
+    for (const button of await navigation.getByRole("button").all()) await expect(button).toBeDisabled();
+  } finally {
+    releaseCancel();
+  }
+
+  await expect(page.getByRole("alert")).toContainText("O login foi cancelado.");
+  await expect(cancel).toHaveCount(0);
+  for (const provider of ["Google", "Microsoft", "GitHub"]) {
+    await expect(page.getByRole("button", { name: `Continuar com ${provider}`, exact: true })).toBeEnabled();
+  }
+  await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeEnabled();
+  await expect(server).toBeEnabled();
+  await expect(saveServer).toBeEnabled();
+  for (const button of await navigation.getByRole("button").all()) await expect(button).toBeEnabled();
+});
+
 test("modifier and side mouse shortcuts can be captured and saved", async ({ page }) => {
   await page.getByRole("button", { name: "Atalhos", exact: true }).click();
   const recording = page.locator(".shortcut").first();
