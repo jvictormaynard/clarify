@@ -3,6 +3,25 @@ import XCTest
 @testable import KeyboardUI
 
 final class MicrophoneFailureTests: XCTestCase {
+  func testRecordingFormatFailureDoesNotExposeAppleDiagnostics() {
+    let native = NSError(domain: "com.apple.coreaudio.avfaudio", code: 560226676,
+      userInfo: [NSLocalizedDescriptionKey: "The operation couldn’t be completed. (com.apple.coreaudio.avfaudio error 560226676.)"])
+    let failure = MicrophoneFailure.recordingError(for: native)
+    XCTAssertEqual(failure.localizedDescription, L("Não foi possível iniciar a gravação. Ative o microfone novamente no Clarify."))
+    XCTAssertEqual(failure.code, "recording_format_unsupported")
+    XCTAssertEqual(failure.phase, "recording")
+    XCTAssertEqual(failure.status, 560226676)
+  }
+  func testRecordingErrorsKeepIntentionalMessagesAndHideUnknownNativeDetails() {
+    let intentional = ClarifyError("Entre na sua conta primeiro.", code: "authentication_required")
+    XCTAssertEqual(MicrophoneFailure.recordingError(for: intentional).code, "authentication_required")
+    XCTAssertEqual(MicrophoneFailure.recordingError(for: intentional).localizedDescription, intentional.localizedDescription)
+    let unknown = NSError(domain: "fixture", code: 560226676,
+      userInfo: [NSLocalizedDescriptionKey: "private path /private/recording.m4a"])
+    XCTAssertEqual(MicrophoneFailure.recordingError(for: unknown).localizedDescription,
+      L("Não foi possível gravar o áudio."))
+    XCTAssertEqual(MicrophoneFailure.recordingError(for: unknown).code, "recording_failed")
+  }
   func testCallPriorityAndSiriFailuresHaveSpecificRecoveryMessages() {
     let call = NSError(domain: NSOSStatusErrorDomain,
       code: AVAudioSession.ErrorCode.insufficientPriority.rawValue,

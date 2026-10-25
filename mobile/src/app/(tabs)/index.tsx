@@ -5,9 +5,10 @@ import { ActivityIndicator, Alert, SectionList, Modal, ScrollView, Text, View } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
 import Core, { type HistoryEntry } from '../../../modules/clarify-core';
-import { Button, Card, TableRow, Title, ui, usePalette } from '../../components/ui';
+import { Button, Card, EmptyState, ScreenHeader, TableRow, ui, usePalette, useReducedMotion } from '../../components/ui';
 import { report, useClarify } from '../../state/clarify';
 import { MicrophoneSwitch } from '../../components/microphone-switch';
+import { ClarifyLogo } from '../../components/clarify-logo';
 
 import { groupHistory, historyDayTitle, historyTime } from '../../history';
 
@@ -15,6 +16,7 @@ const timestamp = (value: number) => new Date(value * 1000).toLocaleString(uiLan
 
 export default function Home() {
   const c = usePalette();
+  const reducedMotion = useReducedMotion();
   const { state, account, activate, refresh, setKeyboardEntry, setKeyboardToken } = useClarify();
   const params = useLocalSearchParams<{ activate?: string; request?: string; token?: string }>();
   const handled = useRef('');
@@ -83,9 +85,12 @@ export default function Home() {
     <SectionList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[ui.content, { gap: 0 }]} contentInsetAdjustmentBehavior="automatic"
       sections={sections} stickySectionHeadersEnabled={false} keyExtractor={(entry) => `${entry.localOnly ? 'local' : 'account'}:${entry.id}`}
       onEndReached={() => { if (cursor) void load(cursor, true); }} onEndReachedThreshold={0.4}
-      ListHeaderComponent={<View style={{ gap: 16 }}>
-        <Title subtitle={t("Fale. O Clarify transcreve e revisa suas palavras.")}>{t("Boas-vindas ao Clarify")}</Title>
+      ListHeaderComponent={<View testID="app.home" collapsable={false} style={{ gap: 16 }}>
+        <ClarifyLogo size={28} />
+        <ScreenHeader title={t('Início')} />
         <MicrophoneSwitch />
+        <Text style={[ui.small, { color: c.muted, marginTop: -8 }]}>{state.sessionActive ? t('O Clarify está ativo para receber ditados do teclado.') : t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>
+        {state.phase === 'error' && state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(state.message)}</Text>}
       </View>}
       renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { color: c.text, paddingTop: 16, paddingBottom: 12 }]}>{historyDayTitle(section.date, today, uiLanguage, t("Hoje"))}</Text>}
       renderItem={({ item, index, section }) => <TableRow first={index === 0} last={index === section.data.length - 1}
@@ -101,10 +106,12 @@ export default function Home() {
           </View>
         </View>
       </TableRow>}
-      ListEmptyComponent={!loading && !error ? <View style={{ gap: 12, paddingVertical: 24 }}><Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t("Hoje")}</Text><Text style={[ui.body, { color: c.muted }]}>{account?.historyAccount ? t("Seus próximos ditados aparecerão aqui e nos dispositivos conectados à sua conta.") : t("Seus próximos ditados aparecerão aqui. O histórico fica somente neste iPhone.")}</Text></View> : null}
+      ListEmptyComponent={!loading && !error ? <View style={{ paddingTop: 20 }}><EmptyState title={t('Seu histórico está vazio')}
+        detail={account?.historyAccount ? t("Seus próximos ditados aparecerão aqui e nos dispositivos conectados à sua conta.") : t("Seus próximos ditados aparecerão aqui. O histórico fica somente neste iPhone.")}>
+        </EmptyState></View> : null}
       ListFooterComponent={loading ? <ActivityIndicator style={{ padding: 20 }} /> : error ? <Button onPress={() => void load()}>{t("Tentar carregar novamente")}</Button> : cursor ? <Button onPress={() => void load(cursor, true)}>{t("Carregar mais")}</Button> : null}
     />
-    <Modal visible={selected !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSelected(null)}>
+    <Modal visible={selected !== null} animationType={reducedMotion ? 'none' : 'slide'} presentationStyle="pageSheet" onRequestClose={() => setSelected(null)}>
       <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>
         <ScrollView contentContainerStyle={ui.content} keyboardShouldPersistTaps="handled">
           <View style={ui.row}><Text style={[ui.section, { color: c.text }]}>{t("Transcrição")}</Text><Button onPress={() => setSelected(null)}>{t("Fechar")}</Button></View>

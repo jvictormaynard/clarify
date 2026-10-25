@@ -47,9 +47,10 @@ translate selected text without opening a separate editor.
 
 ## Features
 
-Version 0.9.0 uses the device language for Portuguese, English and Spanish,
-including the passwordless authentication email. On first launch, enter your
-email and confirm the code inside the app to enter or create an account.
+Clarify uses the device language for Portuguese, English and Spanish,
+including the passwordless authentication email. On first launch, use Google,
+Microsoft or GitHub, or enter your email and confirm the code inside the app
+to enter or create an account.
 **Continue without an account** opens local-model setup; a personal API key is
 also available there. Signing in activates Clarify processing automatically.
 Signed-in accounts use Clarify-managed models; personal provider and local-model

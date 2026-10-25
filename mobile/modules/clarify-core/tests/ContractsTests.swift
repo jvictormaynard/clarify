@@ -186,19 +186,23 @@ final class ContractsTests: XCTestCase {
     state.heartbeat -= 10
     XCTAssertFalse(state.isLive)
   }
-  func testNativeUpwardLockAndReleaseDoNotStopUntilNextPress() {
-    var gesture = RecordGesture()
-    XCTAssertEqual(gesture.press(), "start")
-    XCTAssertNil(gesture.move(vertical: 80))
-    XCTAssertNil(gesture.move(vertical: 0)) // Horizontal-only movement.
-    XCTAssertNil(gesture.move(vertical: -27))
-    XCTAssertEqual(gesture.move(vertical: -28), "lock")
-    XCTAssertNil(gesture.move(vertical: -90))
-    XCTAssertNil(gesture.release())
-    XCTAssertEqual(gesture.press(), "finish")
-    XCTAssertNil(gesture.release())
-    XCTAssertEqual(gesture.press(), "start")
-    XCTAssertEqual(gesture.release(), "finish")
+  func testTapStartsOneContinuousClipAndWaitsForAcknowledgement() {
+    var request = RecordingRequest()
+    let now = Date().timeIntervalSince1970
+    XCTAssertTrue(request.submit("start", operationID: "clip", now: now))
+    XCTAssertFalse(request.submit("start", operationID: "duplicate", now: now))
+    XCTAssertFalse(request.submit("finish", operationID: "clip", now: now))
+    var state = DictationSnapshot(); state.sessionActive = true
+    XCTAssertFalse(request.observe(state, now: now + 1))
+    XCTAssertEqual(request.action, "start")
+    state.operationID = "clip"; state.phase = .recording
+    XCTAssertFalse(request.observe(state, now: now + 1))
+    XCTAssertNil(request.action)
+    XCTAssertTrue(request.submit("finish", operationID: "clip", now: now + 1))
+    XCTAssertFalse(request.submit("finish", operationID: "clip", now: now + 1))
+    state.phase = .transcribing
+    XCTAssertFalse(request.observe(state, now: now + 2))
+    XCTAssertNil(request.action)
   }
   func testKeyboardCasingPagesAndPortugueseAccents() {
     var keyboard = KeyboardState()

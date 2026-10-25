@@ -2,34 +2,51 @@ import XCTest
 @testable import ClarifyContracts
 
 final class OnboardingTests: XCTestCase {
-  func testFreshProfileRemainsInSetupUntilSuccessfulCompletion() throws {
+  private func withDefaults(_ test: (UserDefaults) throws -> Void) rethrows {
     let suite = "clarify.test.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
-    let setup = Onboarding(defaults: defaults)
-    XCTAssertTrue(setup.required(signedIn: false))
-    // Saving credentials mid-flow must not complete the flow on a restart.
-    XCTAssertTrue(Onboarding(defaults: defaults).required(signedIn: true))
-    XCTAssertThrowsError(try setup.complete(configured: false))
-    XCTAssertTrue(setup.required(signedIn: false))
-    try setup.complete(configured: true)
-    XCTAssertFalse(Onboarding(defaults: defaults).required(signedIn: true))
-    XCTAssertTrue(Onboarding(defaults: defaults).required(signedIn: false))
+    try test(defaults)
   }
-  func testExistingAccountNeedsSignInAgainAfterLogoutWithoutRepeatingSetup() {
-    let suite = "clarify.test.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite) }
-    XCTAssertFalse(Onboarding(defaults: defaults).required(signedIn: true))
-    XCTAssertTrue(Onboarding(defaults: defaults).required(signedIn: false))
-    XCTAssertFalse(Onboarding(defaults: defaults).required(signedIn: true))
+
+  func testFreshInstallShowsOnceEvenWhenSetupIsSkipped() {
+    withDefaults { defaults in
+      let setup = Onboarding(defaults: defaults)
+      XCTAssertTrue(setup.required(signedIn: false))
+      // Reading readiness is not proof that a screen reached the user.
+      XCTAssertTrue(Onboarding(defaults: defaults).required(signedIn: false))
+      setup.presented()
+      XCTAssertFalse(Onboarding(defaults: defaults).required(signedIn: false))
+      XCTAssertFalse(Onboarding(defaults: defaults).required(signedIn: true))
+      XCTAssertFalse(Onboarding(defaults: defaults).required(signedIn: false))
+    }
   }
-  func testCompletedLegacyKeySetupStillRequiresAnAccount() {
-    let suite = "clarify.test.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite) }
-    defaults.set(true, forKey: "clarify.onboarding.completed")
-    XCTAssertTrue(Onboarding(defaults: defaults).required(signedIn: false))
-    XCTAssertTrue(defaults.bool(forKey: "clarify.onboarding.completed"))
+
+  func testExistingAccountsDoNotSeeGeneralOnboardingAfterUpgradeOrLogout() {
+    withDefaults { defaults in
+      XCTAssertFalse(Onboarding(defaults: defaults).required(signedIn: true))
+      XCTAssertFalse(Onboarding(defaults: defaults).required(signedIn: false))
+    }
+  }
+
+  func testExistingSetupPreferencesDoNotPresentAgainAfterUpgrade() {
+    for completed in [true, false] {
+      withDefaults { defaults in
+        defaults.set(completed, forKey: "clarify.onboarding.completed")
+        XCTAssertFalse(Onboarding(defaults: defaults).required(signedIn: false))
+        XCTAssertEqual(defaults.bool(forKey: "clarify.onboarding.completed"), completed)
+      }
+    }
+  }
+
+  func testCompletionStillRequiresAConfiguredAccount() throws {
+    try withDefaults { defaults in
+      let setup = Onboarding(defaults: defaults)
+      XCTAssertThrowsError(try setup.complete(configured: false))
+      XCTAssertTrue(setup.required(signedIn: false))
+      try setup.complete(configured: true)
+      XCTAssertTrue(defaults.bool(forKey: "clarify.onboarding.completed"))
+      XCTAssertFalse(Onboarding(defaults: defaults).required(signedIn: false))
+    }
   }
 }
