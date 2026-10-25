@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from cloud.service import audio, groq, ledger, maintenance
 from cloud.service.models import Allowance, Dictionary, Operation
-from .test_api import client_for
+from .test_api import client_for, fund_hosted
 
 
 def clip(milliseconds=1000):
@@ -31,6 +31,7 @@ def clip(milliseconds=1000):
 class DictationTests(TestCase):
     def setUp(self):
         self.user, self.client = client_for("dictation@example.test")
+        fund_hosted(self.user)
 
     def send(self, op, *, milliseconds=1000, content=None, **fields):
         return self.client.post(
@@ -105,13 +106,13 @@ class DictationTests(TestCase):
         self.assertEqual(result["code"], "no_speech")
         self.assertEqual(result["phase"], "transcription")
         self.assertEqual(result["operation_id"], str(operation_id))
-        self.assertEqual(result["usage"]["used_ms"], 1000)
-        self.assertEqual(result["usage"]["reserved_ms"], 0)
+        self.assertGreater(result["usage"]["used_percent"], 0)
+        self.assertEqual(result["usage"]["reserved_percent"], 0)
         self.assertEqual(self.send(operation_id).status_code, 410)
         provider.assert_called_once()
         operation = Operation.objects.get(user=self.user)
         self.assertEqual(operation.state, "uncertain")
-        self.assertEqual(operation.cost, ledger.MAX_COST)
+        self.assertEqual(operation.cost, ledger.asr_cost(1000))
         self.assertEqual(Allowance.objects.get(user=self.user).used_ms, 1000)
 
     @patch("cloud.service.groq.perform")
@@ -197,7 +198,9 @@ class DictationTests(TestCase):
             {key: value for key, value in result.json().items() if key != "usage"},
             {"text": "Original.", "transcript": "Original.", "rewritten": False},
         )
-        self.assertEqual(Operation.objects.get(user=self.user).cost, ledger.MAX_COST)
+        operation = Operation.objects.get(user=self.user)
+        self.assertEqual(operation.cost, operation.authorized_cost)
+        self.assertLess(operation.cost, operation.reserved_cost)
 
     @patch("cloud.service.groq.perform")
     def test_arbitrary_provider_controls_are_rejected(self, provider):

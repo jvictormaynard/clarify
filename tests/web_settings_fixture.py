@@ -3,6 +3,7 @@
 import json
 import os
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 import sys
 import threading
 from pathlib import Path
@@ -17,6 +18,47 @@ from microphone_controls import MicrophoneInventory, MicrophoneDevice
 from local_asr_product import LocalASRProductState
 from clarify.desktop.qml_settings import QmlSettingsController
 from clarify.desktop.qml_web_settings import SettingsProtocol, WebSettingsProcess
+
+
+def weekly_usage():
+    now = datetime.now(timezone.utc)
+    start = (now - timedelta(days=now.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    usage = dict(
+        schema_version=2,
+        period_start=start.isoformat(),
+        reset_at=(start + timedelta(days=7)).isoformat(),
+        used_percent=12.5,
+        remaining_percent=82.5,
+        reserved_percent=5,
+        allocation_status="available",
+        hosted_available=True,
+    )
+    if "--usage-legacy" in sys.argv:
+        return dict(used_ms=450000, reserved_ms=60000, limit_ms=18000000)
+    if "--usage-malformed" in sys.argv:
+        usage["remaining_percent"] = "invalid"
+    for status in ("waiting", "unfunded", "inactive"):
+        if f"--usage-{status}" in sys.argv:
+            # A bad old cache must not make an unallocated account look usable.
+            usage.update(
+                allocation_status=status,
+                used_percent=0,
+                remaining_percent=100,
+                reserved_percent=0,
+                hosted_available=False,
+            )
+    if "--usage-paused" in sys.argv:
+        usage["hosted_available"] = False
+    if "--usage-exhausted" in sys.argv:
+        usage.update(
+            used_percent=100,
+            remaining_percent=0,
+            reserved_percent=0,
+            hosted_available=False,
+        )
+    return usage
 
 
 class OnboardingAccount:
@@ -39,11 +81,7 @@ class OnboardingAccount:
 
             raise AccountError("Não foi possível conectar ao Clarify. Tente novamente.")
         if self.signed_in:
-            self.state["usage"] = {
-                "used_ms": 450000,
-                "reserved_ms": 60000,
-                "limit_ms": 18000000,
-            }
+            self.state["usage"] = weekly_usage()
 
     def refresh(self):
         self.refresh_if_due(None)
@@ -79,11 +117,7 @@ class OnboardingAccount:
             if value != "123456":
                 raise AccountError("Código inválido. Tente novamente.")
             self.state.update(signedIn=True, pending="", hosted=True, managed=True)
-            self.state["usage"] = {
-                "used_ms": 450000,
-                "reserved_ms": 60000,
-                "limit_ms": 18000000,
-            }
+            self.state["usage"] = weekly_usage()
         else:
             self.state.update(email=value, pending=action)
 

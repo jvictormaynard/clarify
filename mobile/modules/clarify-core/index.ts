@@ -37,7 +37,8 @@ export interface AccountSnapshot {
   dictionaryConflict?: boolean;
   historyAccount?: boolean;
   historyContext: string;
-  usage: { month?: string; limit_ms?: number; used_ms?: number; reserved_ms?: number; hosted_available?: boolean };
+  // Native and cached servers can return an empty or legacy snapshot.
+  usage: unknown;
 }
 
 export default requireNativeModule<{

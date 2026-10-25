@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="{{ language }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ copy.intro }}">
+  <title>{{ copy.nav }} · Clarify</title>
+  <link rel="stylesheet" href="/transparency/assets/transparency.css">
+</head>
+<body>
+  <a class="skip" href="#finances">{{ copy.skip }}</a>
+  <header class="header wrap">
+    <a class="brand" href="/transparency/">Clarify<span class="brand-dot" aria-hidden="true"></span></a>
+    <nav class="languages" aria-label="{{ copy.language }}">
+      {% for item in languages %}<a href="{{ item.url }}" lang="{{ item.code }}" hreflang="{{ item.code }}"{% if item.code == language %} aria-current="page"{% endif %}>{{ item.label }}</a>{% endfor %}
+    </nav>
+  </header>
+  <main class="wrap" id="finances">
+    <section class="intro" aria-labelledby="title">
+      <p class="eyebrow">{{ copy.nav }}</p>
+      <h1 id="title">{{ copy.title }}</h1>
+      <p class="lede">{{ copy.intro }}</p>
+    </section>
+    <section class="panel" aria-labelledby="budget-title">
+      <div class="section-top"><h2 id="budget-title">{{ copy.budget }}</h2><span class="pill">USD</span></div>
+      <p class="muted measure">{{ copy.budget_note }}</p>
+      {% if budget_cards %}
+      <dl class="budget-grid">
+        {% for card in budget_cards %}<div class="metric"><dt>{{ card.label }}</dt><dd><span class="currency-code">USD</span> {{ card.amount }}</dd></div>{% endfor %}
+      </dl>
+      {% if project_budget.updated_at %}<p class="metadata">{{ copy.updated }}: <time datetime="{{ project_budget.updated_at }}">{{ project_budget.updated_at }}</time></p>{% endif %}
+      {% else %}<p class="notice">{{ copy.unavailable }}</p>{% endif %}
+    </section>
+    <section class="panel" aria-labelledby="stripe-title">
+      <div class="section-top"><h2 id="stripe-title">{{ copy.stripe }}</h2><span class="pill">Stripe</span></div>
+      <p class="muted measure">{{ copy.stripe_note }}</p>
+      <p class="notice{% if stripe.stale %} warning{% endif %}">{{ stripe_state }}</p>
+      {% if stripe.sync_failed %}<p class="muted">{{ copy.sync_failed }}</p>{% endif %}
+      {% if stripe.last_successful_sync %}
+      <p class="metadata">{{ copy.last_sync }}: <time datetime="{{ stripe.last_successful_sync }}">{{ stripe.last_successful_sync }}</time></p>
+      {% if stripe.balances %}
+      <div class="table-wrap" tabindex="0" role="region" aria-label="{{ copy.stripe }}">
+        <table class="balances"><caption class="sr-only">{{ copy.stripe }}</caption><thead><tr><th scope="col">{{ copy.currency }}</th><th scope="col">{{ copy.available }}</th><th scope="col">{{ copy.pending }}</th></tr></thead>
+        <tbody>{% for balance in stripe.balances %}<tr><th scope="row">{{ balance.currency|upper }}</th><td class="number">{{ balance.available }}</td><td class="number">{{ balance.pending }}</td></tr>{% endfor %}</tbody></table>
+      </div>
+      {% endif %}
+      {% endif %}
+    </section>
+    <section class="rules" aria-labelledby="rules-title">
+      <div><p class="eyebrow">Clarify</p><h2 id="rules-title">{{ copy.rules }}</h2></div>
+      <div class="rule-copy"><p>{{ copy.operations }}</p><p>{{ copy.split }}</p><p>{{ copy.quota }}</p></div>
+    </section>
+    <section class="panel" aria-labelledby="stripe-movements">
+      <h2 id="stripe-movements">{{ copy.stripe_movements }}</h2>
+      <p class="muted measure">{{ copy.payout_note }}</p>
+      {% if stripe.last_successful_sync %}<p class="coverage{% if not stripe.history_complete %} warning{% endif %}">{% if stripe.history_complete %}{{ copy.complete }}{% else %}{{ copy.partial }}{% endif %}</p>{% endif %}
+      {% if stripe.movements %}
+      <div class="table-wrap" tabindex="0" role="region" aria-labelledby="stripe-movements">
+        <table><caption class="sr-only">{{ copy.stripe_movements }}</caption><thead><tr>
+          <th scope="col">{{ copy.time }}</th><th scope="col">{{ copy.kind }}</th><th scope="col">{{ copy.currency }}</th><th scope="col">{{ copy.amount }}</th><th scope="col">{{ copy.fee }}</th><th scope="col">{{ copy.net }}</th><th scope="col">{{ copy.availability }}</th><th scope="col">{{ copy.available_on }}</th>
+        </tr></thead><tbody>
+          {% for row in stripe.movements %}<tr><td><time datetime="{{ row.occurred_at }}">{{ row.occurred_at }}</time></td><td>{{ row.label }}</td><td>{{ row.currency|upper }}</td><td class="number">{{ row.amount }}</td><td class="number">{{ row.fee }}</td><td class="number">{{ row.net }}</td><td>{{ row.availability_label }}</td><td><time datetime="{{ row.available_on }}">{{ row.available_on }}</time></td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+      <nav class="pagination" aria-label="{{ copy.stripe_movements }}">
+        <span>{{ copy.page }} {{ stripe.pagination.page }} {{ copy.of }} {{ stripe.pagination.pages }} · {{ stripe.pagination.total }} {{ copy.records }}</span>
+        <div>{% if stripe.previous_url %}<a href="{{ stripe.previous_url }}">{{ copy.previous }}</a>{% endif %}{% if stripe.next_url %}<a href="{{ stripe.next_url }}">{{ copy.next }}</a>{% endif %}</div>
+      </nav>
+      {% else %}<p class="empty">{{ copy.no_movements }}</p>{% endif %}
+    </section>
+    <section class="panel" aria-labelledby="project-movements">
+      <h2 id="project-movements">{{ copy.project_movements }}</h2>
+      {% if project_budget.movements %}
+      <div class="table-wrap" tabindex="0" role="region" aria-labelledby="project-movements">
+        <table><caption class="sr-only">{{ copy.project_movements }}</caption><thead><tr><th scope="col">{{ copy.time }}</th><th scope="col">{{ copy.kind }}</th><th scope="col">{{ copy.amount }} (USD)</th></tr></thead><tbody>
+          {% for row in project_budget.movements %}<tr><td>{% if row.occurred_at %}<time datetime="{{ row.occurred_at }}">{{ row.occurred_at }}</time>{% else %}{{ copy.before_weekly_accounting }}{% endif %}</td><td>{{ row.label }}</td><td class="number">{{ row.amount }}</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+      <nav class="pagination" aria-label="{{ copy.project_movements }}">
+        <span>{{ copy.page }} {{ project_budget.pagination.page }} {{ copy.of }} {{ project_budget.pagination.pages }} · {{ project_budget.pagination.total }} {{ copy.records }}</span>
+        <div>{% if project_budget.previous_url %}<a href="{{ project_budget.previous_url }}">{{ copy.previous }}</a>{% endif %}{% if project_budget.next_url %}<a href="{{ project_budget.next_url }}">{{ copy.next }}</a>{% endif %}</div>
+      </nav>
+      {% else %}<p class="empty">{{ copy.no_movements }}</p>{% endif %}
+    </section>
+    <aside class="support" aria-label="{{ copy.support }}">
+      {% if sponsorship.payment_link %}<div><h2>{{ copy.support }}</h2><p>{{ copy.support_note }}</p></div><a class="button" href="{{ sponsorship.payment_link }}" rel="noopener noreferrer">{{ copy.support }} <span aria-hidden="true">↗</span></a>
+      {% else %}<p>{{ copy.support_pending }}</p>{% endif %}
+    </aside>
+    <footer><p>{{ copy.privacy }}</p><a href="{{ api_url }}">{{ copy.api }}</a><span>Clarify</span></footer>
+  </main>
+</body>
+</html>

@@ -1,7 +1,7 @@
 from django.urls import include, path
 from allauth.headless.constants import Client
 from .service.accounts import ContinueWithEmailView
-from .service import admin_views
+from .service import admin_views, transparency
 from .service.api import (
     AccountView,
     DictionaryView,
@@ -15,6 +15,9 @@ from .service.api import (
 
 urlpatterns = [
     path("health", health),
+    path("transparency/", transparency.page),
+    path("transparency/assets/<str:name>", transparency.asset),
+    path("v1/public/finances", transparency.summary),
     path("admin/", admin_views.dashboard),
     path("admin/assets/<str:name>", admin_views.asset),
     path("admin/api/session", admin_views.session),

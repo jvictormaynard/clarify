@@ -5,6 +5,12 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models.functions import Lower
 
+from .transparency_models import (  # noqa: F401 -- register durable projections
+    PublicFinanceSnapshot,
+    PublicStripeBalance,
+    PublicStripeMovement,
+)
+
 
 class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra):
@@ -25,6 +31,8 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     monthly_audio_ms = models.PositiveBigIntegerField(null=True, blank=True)
     funded_access = models.BooleanField(default=True)
+    hosted_requested_at = models.DateTimeField(null=True, blank=True)
+    hosted_last_active_at = models.DateTimeField(null=True, blank=True)
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
     objects = UserManager()
@@ -128,6 +136,12 @@ class Operation(models.Model):
     output_tokens = models.PositiveIntegerField(default=0)
     result = models.JSONField(default=dict)
     result_expires_at = models.DateTimeField(null=True)
+    quota = models.ForeignKey("WeeklyQuota", on_delete=models.PROTECT, null=True)
+    # A reservation is not a charge. Persist the paid work authorized so far
+    # before each provider call, including calls whose response may be lost.
+    authorized_cost = models.DecimalField(max_digits=18, decimal_places=9, default=0)
+    quota_debit = models.DecimalField(max_digits=18, decimal_places=9, default=0)
+    cost_estimated = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
@@ -142,3 +156,91 @@ class RateBucket(models.Model):
     key = models.CharField(max_length=64, primary_key=True)
     count = models.PositiveIntegerField(default=0)
     expires_at = models.DateTimeField(db_index=True)
+
+
+class Treasury(models.Model):
+    """One financial mutex, independent of UTC months and operation retention."""
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    processing_spent = models.DecimalField(max_digits=18, decimal_places=9, default=0)
+    processing_reserved = models.DecimalField(
+        max_digits=18, decimal_places=9, default=0
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(id=1), name="one_treasury")
+        ]
+
+
+class FundingEntry(models.Model):
+    kind = models.CharField(
+        max_length=32,
+        choices=[
+            ("contribution", "Contribution"),
+            ("operating_expense", "Operating expense"),
+            ("operating_reserve", "Operating reserve"),
+            ("operating_release", "Operating reserve released"),
+            ("processing_cost", "Processing cost"),
+            ("processing_estimate", "Processing cost (conservative estimate)"),
+            (
+                "historical_processing_cost",
+                "Historical processing costs (date unavailable)",
+            ),
+        ],
+    )
+    amount_usd = models.DecimalField(max_digits=18, decimal_places=9)
+    reserve_consumed_usd = models.DecimalField(
+        max_digits=18, decimal_places=9, default=0
+    )
+    source = models.CharField(max_length=32)
+    reference = models.CharField(max_length=200)
+    occurred_at = models.DateTimeField(null=True)
+    release_until = models.DateTimeField(null=True)
+    processing_ready_at = models.DateTimeField(null=True)
+    processing_basis_usd = models.DecimalField(
+        max_digits=18, decimal_places=9, default=0
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "reference"], name="one_funding_receipt"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount_usd__gt=0), name="positive_funding_entry"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(processing_basis_usd__gte=0)
+                & models.Q(processing_basis_usd__lte=models.F("amount_usd"))
+                & (models.Q(kind="contribution") | models.Q(processing_basis_usd=0)),
+                name="valid_receipt_processing_basis",
+            ),
+        ]
+
+
+class FundingPeriod(models.Model):
+    start = models.DateTimeField(primary_key=True)
+    reset_at = models.DateTimeField()
+    released_usd = models.DecimalField(max_digits=18, decimal_places=9)
+    regular_share_usd = models.DecimalField(max_digits=18, decimal_places=9)
+    newcomers_remaining_usd = models.DecimalField(max_digits=18, decimal_places=9)
+    population = models.PositiveIntegerField()
+
+
+class WeeklyQuota(models.Model):
+    # Keep finance totals after account deletion, without retaining identity.
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True
+    )
+    period = models.ForeignKey(FundingPeriod, on_delete=models.PROTECT)
+    allocated_usd = models.DecimalField(max_digits=18, decimal_places=9)
+    used_usd = models.DecimalField(max_digits=18, decimal_places=9, default=0)
+    reserved_usd = models.DecimalField(max_digits=18, decimal_places=9, default=0)
+    operations = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "period"], name="one_weekly_quota"),
+        ]

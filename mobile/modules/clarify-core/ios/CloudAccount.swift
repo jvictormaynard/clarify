@@ -435,6 +435,7 @@ final class CloudAccount {
       "invalid_audio_request": "Grave um áudio válido de até 5 minutos.",
       "invalid_text_request": "Selecione um texto válido para processar.",
       "allowance_exhausted": "Sua cota foi atingida.",
+      "allocation_waiting": "Sua conta aguarda a próxima distribuição de cotas.",
       "rate_limited": "Muitas solicitações. Aguarde um momento.",
       "account_busy": "Já existe um processamento em andamento.",
       "operation_pending": "Já existe um processamento em andamento.",

@@ -26,6 +26,21 @@ def entry(term, **kwargs):
     return DictionaryEntry(term, **kwargs).to_mapping()
 
 
+def weekly_usage(**changes):
+    usage = dict(
+        schema_version=2,
+        period_start="2026-10-19T00:00:00Z",
+        reset_at="2026-10-26T00:00:00Z",
+        used_percent=12.5,
+        remaining_percent=82.5,
+        reserved_percent=5,
+        allocation_status="available",
+        hosted_available=True,
+    )
+    usage.update(changes)
+    return usage
+
+
 class AccountTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -78,8 +93,37 @@ class AccountTests(unittest.TestCase):
             self.request.call_args.kwargs["headers"]["Accept-Language"], "es"
         )
 
+    def test_weekly_usage_envelope_passes_through_without_duration_inference(self):
+        user_id = self.signed_in()
+        for status in ("available", "waiting", "unfunded", "inactive"):
+            with self.subTest(status=status):
+                usage = weekly_usage(allocation_status=status)
+                self.request.return_value = self.response(
+                    {"id": user_id, "email": "user@example.test", "usage": usage}
+                )
+                self.account.refresh()
+                self.assertEqual(self.account.snapshot()["usage"], usage)
+                self.assertNotIn("limit_ms", self.account.snapshot()["usage"])
+                self.assertTrue(self.account.signed_in)
+
+    def test_failed_processing_updates_weekly_percentages_without_hiding_error(self):
+        self.signed_in()
+        usage = weekly_usage(
+            used_percent=100,
+            remaining_percent=0,
+            reserved_percent=0,
+            hosted_available=False,
+        )
+        self.request.return_value = self.response(
+            {"code": "quota_exceeded", "usage": usage}, 429
+        )
+        with self.assertRaises(AccountError):
+            self.account.transform_text("Text", "rewrite")
+        self.assertEqual(self.account.snapshot()["usage"], usage)
+
     def test_late_account_refresh_cannot_undo_usage_returned_by_processing(self):
         user_id = self.signed_in()
+        newer = weekly_usage(used_percent=50, remaining_percent=45)
 
         def respond(method, url, **kwargs):
             if method == "GET":
@@ -88,14 +132,14 @@ class AccountTests(unittest.TestCase):
                     {
                         "id": user_id,
                         "email": "user@example.test",
-                        "usage": {"used_ms": 10},
+                        "usage": weekly_usage(),
                     }
                 )
-            return self.response({"usage": {"used_ms": 500}})
+            return self.response({"usage": newer})
 
         self.request.side_effect = respond
         self.account.refresh()
-        self.assertEqual(self.account.snapshot()["usage"]["used_ms"], 500)
+        self.assertEqual(self.account.snapshot()["usage"], newer)
 
     def test_cancelled_result_still_updates_consumption_without_publishing(self):
         from provider_http import CancellationToken, ProviderCancelledError
@@ -149,6 +193,13 @@ class AccountTests(unittest.TestCase):
 
     def test_processing_errors_use_the_cause_and_keep_safe_diagnostics(self):
         cases = [
+            (
+                "dictation",
+                429,
+                "allocation_waiting",
+                "admission",
+                "Sua conta aguarda a próxima distribuição de cotas.",
+            ),
             (
                 "dictation",
                 422,

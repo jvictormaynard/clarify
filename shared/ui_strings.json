@@ -854,16 +854,6 @@
     "en": "To dictate in other apps, add the Clarify keyboard:",
     "es": "Para dictar en otras aplicaciones, añade el teclado Clarify:"
   },
-  "Para transcrever e reescrever, áudio, texto e palavras ativas do dicionário serão processados pelo Clarify. O histórico fica neste computador. A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.": {
-    "pt": "Para transcrever e reescrever, áudio, texto e palavras ativas do dicionário serão processados pelo Clarify. O histórico fica neste computador. A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.",
-    "en": "Clarify processes audio, text and active dictionary words for transcription and rewriting. History stays on this computer. The account includes up to 300 minutes per month, subject to beta availability.",
-    "es": "Clarify procesa el audio, el texto y las palabras activas del diccionario para transcribir y reescribir. El historial permanece en este ordenador. La cuenta incluye hasta 300 minutos al mes, sujetos a la disponibilidad de la beta."
-  },
-  "Para transcrever e reescrever, áudio, texto e palavras ativas do dicionário serão processados pelo Clarify. O histórico fica neste iPhone. A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.": {
-    "pt": "Para transcrever e reescrever, áudio, texto e palavras ativas do dicionário serão processados pelo Clarify. O histórico fica neste iPhone. A conta inclui até 300 minutos por mês, sujeitos à disponibilidade do beta.",
-    "en": "Clarify processes audio, text and active dictionary words for transcription and rewriting. History stays on this iPhone. The account includes up to 300 minutes per month, subject to beta availability.",
-    "es": "Clarify procesa el audio, el texto y las palabras activas del diccionario para transcribir y reescribir. El historial permanece en este iPhone. La cuenta incluye hasta 300 minutos al mes, sujetos a la disponibilidad de la beta."
-  },
   "Parar após fala e silêncio": {
     "pt": "Parar após fala e silêncio",
     "en": "Stop after speech and silence",
@@ -4723,5 +4713,65 @@
     "pt": "Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.",
     "en": "With rewriting enabled, snippet text is sent to AI as part of the message. When you say only the trigger phrase, saved text is inserted without rewriting.",
     "es": "Con la reescritura activa, el texto del snippet se envía a la IA como parte del mensaje. Cuando dices solo la frase de activación, el texto guardado se inserta sin reescritura."
+  },
+  "Uso nesta semana": {
+    "pt": "Uso nesta semana",
+    "en": "Usage this week",
+    "es": "Uso esta semana"
+  },
+  "{v0} usados · {v1} restantes": {
+    "pt": "{v0} usados · {v1} restantes",
+    "en": "{v0} used · {v1} remaining",
+    "es": "{v0} usado · {v1} restante"
+  },
+  "Próxima renovação: {v0}.": {
+    "pt": "Próxima renovação: {v0}.",
+    "en": "Next reset: {v0}.",
+    "es": "Próxima renovación: {v0}."
+  },
+  "A cota semanal não está disponível. Atualize para tentar novamente.": {
+    "pt": "A cota semanal não está disponível. Atualize para tentar novamente.",
+    "en": "Weekly quota information is unavailable. Refresh to try again.",
+    "es": "La información de la cuota semanal no está disponible. Actualiza para volver a intentarlo."
+  },
+  "Sua conta aguarda a próxima distribuição de cotas.": {
+    "pt": "Sua conta aguarda a próxima distribuição de cotas.",
+    "en": "Your account is waiting for the next quota distribution.",
+    "es": "Tu cuenta espera la próxima distribución de cuotas."
+  },
+  "Não há saldo de patrocínio para uma cota neste momento.": {
+    "pt": "Não há saldo de patrocínio para uma cota neste momento.",
+    "en": "Sponsorship funds are not available for a quota at this time.",
+    "es": "En este momento no hay fondos de patrocinio para una cuota."
+  },
+  "O processamento da conta está inativo.": {
+    "pt": "O processamento da conta está inativo.",
+    "en": "Account processing is inactive.",
+    "es": "El procesamiento de la cuenta está inactivo."
+  },
+  "O processamento da conta está indisponível no momento.": {
+    "pt": "O processamento da conta está indisponível no momento.",
+    "en": "Account processing is currently unavailable.",
+    "es": "El procesamiento de la cuenta no está disponible en este momento."
+  },
+  "Sua cota semanal é individual e vale em todos os seus dispositivos. Ela fica fixa até a renovação.": {
+    "pt": "Sua cota semanal é individual e vale em todos os seus dispositivos. Ela fica fixa até a renovação.",
+    "en": "Your weekly quota is individual and shared across all your devices. It stays fixed until the reset.",
+    "es": "Tu cuota semanal es individual y se comparte entre todos tus dispositivos. Se mantiene fija hasta la renovación."
+  },
+  "Os patrocínios financiam as cotas semanais. A disponibilidade depende do saldo de patrocínio.": {
+    "pt": "Os patrocínios financiam as cotas semanais. A disponibilidade depende do saldo de patrocínio.",
+    "en": "Sponsorships fund the weekly quotas. Availability depends on sponsorship funds.",
+    "es": "Los patrocinios financian las cuotas semanales. La disponibilidad depende de los fondos de patrocinio."
+  },
+  "Para transcrever e reescrever, o Clarify processa áudio, texto e palavras ativas do dicionário. O histórico da conta é sincronizado entre seus dispositivos. Patrocínios financiam uma cota semanal individual. Novas contas podem receber uma cota inicial proporcional ao tempo até a renovação. Sem saldo de patrocínio, a conta aguarda a próxima distribuição.": {
+    "pt": "Para transcrever e reescrever, o Clarify processa áudio, texto e palavras ativas do dicionário. O histórico da conta é sincronizado entre seus dispositivos. Patrocínios financiam uma cota semanal individual. Novas contas podem receber uma cota inicial proporcional ao tempo até a renovação. Sem saldo de patrocínio, a conta aguarda a próxima distribuição.",
+    "en": "Clarify processes audio, text and active dictionary words for transcription and rewriting. Account history syncs across your devices. Sponsorships fund an individual weekly quota. New accounts can receive an initial quota based on the time until the reset. Without sponsorship funds, the account waits for the next distribution.",
+    "es": "Clarify procesa el audio, el texto y las palabras activas del diccionario para transcribir y reescribir. El historial de la cuenta se sincroniza entre tus dispositivos. Los patrocinios financian una cuota semanal individual. Las cuentas nuevas pueden recibir una cuota inicial proporcional al tiempo hasta la renovación. Sin fondos de patrocinio, la cuenta espera la próxima distribución."
+  },
+  "Você usou toda a sua cota semanal.": {
+    "pt": "Você usou toda a sua cota semanal.",
+    "en": "You have used your weekly quota.",
+    "es": "Has agotado tu cuota semanal."
   }
 }

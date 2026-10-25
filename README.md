@@ -37,7 +37,8 @@ translate selected text without opening a separate editor.
 > computer. With your own key, cloud audio/text goes directly to the provider you configure; Local
 > Whisper keeps transcription local unless you explicitly enable cloud
 > refinement. Hosted dictation sends audio and text through the Clarify service
-> to Groq and is subject to the account allowance and the global beta budget.
+> to Groq and uses a sponsored individual allowance within the project's funded
+> budget. Operating costs are reserved before processing funds are distributed.
 
 > The Settings and dictionary described here are included in v0.4.0.
 > Check the [release notes](https://github.com/jvictormaynard/clarify/releases/latest)
@@ -52,8 +53,10 @@ email and confirm the code inside the app to enter or create an account.
 **Continue without an account** opens local-model setup; a personal API key is
 also available there. Signing in activates Clarify processing automatically.
 Signed-in accounts use Clarify-managed models; personal provider and local-model
-settings and the Text page appear only in account-free mode. Monthly consumption
-has a progress bar; an unknown quota shows a loading state. Sign-out and deletion
+settings and the Text page appear only in account-free mode. Weekly sponsored
+usage appears as a percentage with the next renewal in your local time. Quotas
+renew each Monday at 00:00 UTC. An unknown quota shows a loading state, and an
+unfunded allowance has an explicit availability message. Sign-out and deletion
 are inside a collapsed Danger zone, with separate confirmations. Vocabulary sync runs automatically,
 and usage updates after processing. Local caches preserve offline edits and
 conflicts keep both copies until resolved. New account transcriptions synchronize
@@ -66,6 +69,9 @@ See [history synchronization](docs/history-sync.md) and [voice snippets](docs/di
 Existing profiles retain their setup. The [iOS client](mobile/README.md) is
 delivered through TestFlight. The [account service](server/README.md) can also
 be self-hosted. Production keys and user data are never public.
+The [financial model and public transparency page](docs/finances.md) explain how
+confirmed support pays operating costs and weekly processing quotas. Stripe
+registration is deferred until a business account is available.
 
 - Voice transcription and prompt-quality rewriting from any Windows app
 - Optional Local Whisper transcription after an explicit, verified asset download

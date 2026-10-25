@@ -39,7 +39,19 @@ class RequestLimits:
             response["Cache-Control"] = "no-store"
             return response
 
-        if request.path.startswith(("/v1/", "/_allauth/")):
+        public_finance = request.path in {
+            "/transparency",
+            "/transparency/",
+            "/v1/public/finances",
+        }
+        if public_finance:
+            ip = request.META.get("REMOTE_ADDR", "unknown")
+            if not take_rate("public_finance_global", "all", 600) or not take_rate(
+                "public_finance", ip, 60
+            ):
+                return reject("rate_limited", 429)
+
+        if not public_finance and request.path.startswith(("/v1/", "/_allauth/")):
             audio = request.path == "/v1/dictations"
             maximum = settings.CLARIFY_MAX_UPLOAD_BYTES + 65536 if audio else 512 * 1024
             try:

@@ -183,6 +183,7 @@ final class CloudAccountTests: XCTestCase {
       (502, "transcription_failed", "Não foi possível transcrever o áudio. Tente novamente."),
       (502, "text_processing_failed", "Não foi possível processar o texto. Tente novamente."),
       (429, "allowance_exhausted", "Sua cota foi atingida."),
+      (429, "allocation_waiting", "Sua conta aguarda a próxima distribuição de cotas."),
       (429, "rate_limited", "Muitas solicitações. Aguarde um momento."),
       (429, "account_busy", "Já existe um processamento em andamento."),
       (503, "service_busy", "O Clarify está ocupado. Aguarde um momento."),
@@ -215,6 +216,35 @@ final class CloudAccountTests: XCTestCase {
         "Muitas solicitações. Aguarde um momento.")
       XCTAssertEqual(CloudAccount.processingFailure(503, result: result, operationID: "").message,
         "O processamento do Clarify está indisponível no momento.")
+    }
+  }
+  @MainActor func testWeeklyUsageEnvelopePreservesPercentagesAndAccountStatus() async throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+    var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
+    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    var allocation = "available"
+    let account = CloudAccount(defaults: defaults, transport: { request in
+      XCTAssertEqual(request.url!.path, "/v1/account")
+      return try self.response(request, ["id": state.userID!, "email": "fixture@example.test", "usage": [
+        "schema_version": 2, "period_start": "2026-10-19T00:00:00Z", "reset_at": "2026-10-26T00:00:00Z",
+        "used_percent": 12.5, "remaining_percent": 82.5, "reserved_percent": 5,
+        "allocation_status": allocation, "hosted_available": allocation == "available"]])
+    }, readCredential: { "fixture" }, saveCredential: { _ in })
+    let library = try LocalLibrary(root: root)
+    for status in ["available", "waiting", "unfunded", "inactive"] {
+      allocation = status
+      _ = try await account.command("refresh", value: "", library: library)
+      let usage = try XCTUnwrap(account.snapshot()["usage"] as? [String: Any])
+      XCTAssertEqual(usage["schema_version"] as? Int, 2)
+      XCTAssertEqual(usage["used_percent"] as? Double, 12.5)
+      XCTAssertEqual(usage["remaining_percent"] as? Double, 82.5)
+      XCTAssertEqual(usage["reserved_percent"] as? Int, 5)
+      XCTAssertEqual(usage["allocation_status"] as? String, status)
+      XCTAssertEqual(usage["hosted_available"] as? Bool, status == "available")
+      XCTAssertNil(usage["used_ms"]); XCTAssertNil(usage["limit_ms"])
+      XCTAssertTrue(account.configured)
     }
   }
   @MainActor func testShortDictationFailureUpdatesUsageAndDoesNotRetryOrStoreHistory() async throws {

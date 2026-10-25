@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 let child: ChildProcessWithoutNullStreams;
 let id = 0;
 const pending = new Map<number, (value: unknown) => void>();
-let releaseUsage: () => void;
+let releaseUsage: () => Promise<void>;
 test("snippets: add edit disable discard and remove a multiline snippet", async ({ page }) => {
   await page.getByRole("button", { name: "Snippets", exact: true }).click();
   await page.getByRole("textbox", { name: "Nova frase de ativação" }).fill("minha assinatura");
@@ -64,20 +64,33 @@ test.beforeEach(async ({ page }, testInfo) => {
   const onboarding = testInfo.title.startsWith("onboarding:");
   const quota = testInfo.title.startsWith("quota:");
   const signedIn = quota || testInfo.title.startsWith("snippets account:");
-  const usageReady = new Promise<void>(resolve => { releaseUsage = resolve; });
+  releaseUsage = async () => {
+    await page.evaluate(async () => {
+      await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["refresh", ""] });
+    });
+  };
   const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : [])], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : []), ...["legacy", "malformed", "waiting", "unfunded", "inactive", "paused", "exhausted"].filter(mode => testInfo.title.includes(`quota ${mode}`)).map(mode => `--usage-${mode}`)], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);
   });
   await page.route("**/__test_rpc", async route => {
     const request = route.request().postDataJSON();
-    if (quota && request.method === "accountCommand") await usageReady;
+    // Quota tests control refresh explicitly. Automatic refreshes must not
+    // race the request that releases the initial empty usage snapshot.
+    if (quota && request.method === "accountCommand" && request.args[0] === "auto") {
+      request.method = "snapshot"; request.args = [];
+    }
     const key = ++id;
     const result = new Promise(resolve => pending.set(key, resolve));
     child.stdin.write(JSON.stringify({ id: key, ...request }) + "\n");
-    await route.fulfill({ json: await result });
+    const reply = await result as { result?: { accountState?: { usage?: Record<string, unknown> } } };
+    const usage = reply.result?.accountState?.usage;
+    if (usage && testInfo.title.includes("quota reserved")) {
+      Object.assign(usage, { used_percent: 100, remaining_percent: 0, reserved_percent: 1, hosted_available: false });
+    }
+    await route.fulfill({ json: reply });
   });
   await page.addInitScript(() => {
     (window as any).__TAURI_INTERNALS__ = { invoke: async (_command: string, request: unknown) => {
@@ -87,10 +100,10 @@ test.beforeEach(async ({ page }, testInfo) => {
   });
   await page.goto("/");
   // A cold Windows real-controller fixture took 20.28 s. Keep action deadlines unchanged.
-  await expect(onboarding ? page.getByRole("heading", { name: locale === "en" ? "Welcome to Clarify" : locale === "es" ? "Te damos la bienvenida a Clarify" : "Boas-vindas ao Clarify" }) : page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
+  await expect(onboarding ? page.getByRole("heading", { name: locale === "en" ? "Welcome to Clarify" : locale === "es" ? "Te damos la bienvenida a Clarify" : "Boas-vindas ao Clarify" }) : page.getByRole("combobox", { name: locale === "en" ? "Microphone" : locale === "es" ? "Micrófono" : "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
 });
-test.afterEach(async () => { releaseUsage?.(); child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
+test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
 
 test("history: existing records stay visible and local delete and clear update the list", async ({ page }) => {
   await page.getByRole("button", { name: "Histórico", exact: true }).click();
@@ -134,21 +147,21 @@ test("history: session context changes close a stale delete dialog", async ({ pa
   await expect(page.getByRole("listitem")).toHaveCount(2);
 });
 
-test("quota: a signed-in startup shows loading until the quota arrives", async ({ page }) => {
+test("quota: a signed-in startup shows no allowance until the quota arrives", async ({ page }) => {
   await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Carregando…" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "A cota semanal não está disponível." })).toBeVisible();
   await expect(page.getByText("0 de 0 minutos neste mês", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("progressbar")).toHaveCount(0);
-  releaseUsage();
-  await expect(page.getByRole("progressbar", { name: "Uso neste mês" })).toHaveAttribute("aria-valuetext", "7,5 de 300 minutos neste mês");
-  await expect(page.getByRole("status").filter({ hasText: "Carregando…" })).toHaveCount(0);
+  await releaseUsage();
+  await expect(page.getByRole("progressbar", { name: "Uso nesta semana" })).toHaveAttribute("aria-valuetext", "12,5% usados · 82,5% restantes");
+  await expect(page.getByRole("status").filter({ hasText: "A cota semanal não está disponível." })).toHaveCount(0);
 });
 
 test("quota: a failed quota request shows an error and allows a retry", async ({ page }) => {
   await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
-  releaseUsage();
+  await releaseUsage();
   await expect(page.getByRole("alert")).toContainText("Não foi possível conectar ao Clarify.");
-  await expect(page.getByRole("status").filter({ hasText: "Carregando…" })).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: "A cota semanal não está disponível." })).toBeVisible();
   await expect(page.getByRole("progressbar")).toHaveCount(0);
   const retry = page.getByRole("button", { name: "Tentar novamente", exact: true });
   await expect(retry).toBeEnabled();
@@ -157,8 +170,71 @@ test("quota: a failed quota request shows an error and allows a retry", async ({
   await expect(retry).toBeEnabled();
 });
 
+for (const mode of ["legacy", "malformed"]) {
+  test(`quota: quota ${mode} stays unknown and allows a refresh`, async ({ page }) => {
+    await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+    await releaseUsage();
+    const retry = page.getByRole("button", { name: "Tentar novamente", exact: true });
+    await expect(retry).toBeEnabled();
+    await retry.click();
+    await expect(retry).toBeEnabled();
+    await expect(page.getByRole("status").filter({ hasText: "A cota semanal não está disponível." })).toBeVisible();
+    await expect(page.getByRole("progressbar")).toHaveCount(0);
+    await expect(page.getByText(/minutos neste mês/)).toHaveCount(0);
+  });
+}
+for (const [mode, notice] of [
+  ["waiting", "Sua conta aguarda a próxima distribuição de cotas."],
+  ["unfunded", "Não há saldo de patrocínio para uma cota neste momento."],
+  ["inactive", "O processamento da conta está inativo."],
+]) {
+  test(`quota: quota ${mode} shows its status without usable credit`, async ({ page }) => {
+    await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+    await releaseUsage();
+    await expect(page.getByRole("status").filter({ hasText: notice })).toBeVisible();
+    await expect(page.getByRole("progressbar")).toHaveCount(0);
+    await expect(page.getByText(/100%/)).toHaveCount(0);
+    await expect(page.getByText(/Próxima renovação:/)).toBeVisible();
+  });
+}
+for (const mode of ["paused", "reserved"]) {
+  test(`quota: quota ${mode} keeps percentages and reports processing unavailable`, async ({ page }) => {
+    await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+    await releaseUsage();
+    await expect(page.getByRole("status").filter({ hasText: "O processamento da conta está indisponível no momento." })).toBeVisible();
+    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-valuetext", mode === "reserved"
+      ? "100% usados · 0% restantes" : "12,5% usados · 82,5% restantes");
+    await expect(page.getByText("Você usou toda a sua cota semanal.", { exact: true })).toHaveCount(0);
+  });
+}
+
+test.describe("weekly reset timezone", () => {
+  test.use({ timezoneId: "America/Los_Angeles" });
+  for (const labels of [
+    { locale: "pt", account: "Conta Clarify", exhausted: "Você usou toda a sua cota semanal.", reset: "Próxima renovação:", percent: "100% usados · 0% restantes" },
+    { locale: "en", account: "Clarify account", exhausted: "You have used your weekly quota.", reset: "Next reset:", percent: "100% used · 0% remaining" },
+    { locale: "es", account: "Cuenta Clarify", exhausted: "Has agotado tu cuota semanal.", reset: "Próxima renovación:", percent: "100 % usado · 0 % restante" },
+  ]) {
+    test(`quota: quota exhausted locale ${labels.locale} identifies exhaustion and shows the local reset`, async ({ page }) => {
+      await page.getByRole("button", { name: labels.account, exact: true }).click();
+      await releaseUsage();
+      await expect(page.getByRole("status").filter({ hasText: labels.exhausted })).toHaveText(labels.exhausted);
+      await expect(page.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
+      const reset = page.getByText(new RegExp(labels.reset));
+      await expect(reset).toContainText(labels.locale === "pt" ? /, (16|17):00 GMT-(7|8)\./ : /(PDT|PST|GMT-[78])/);
+      await expect(page.getByRole("progressbar")).toHaveAttribute("aria-valuetext", labels.locale === "es" ? /100\s*% usado · 0\s*% restante/ : labels.percent);
+    });
+  }
+  test("quota: reset uses local device time", async ({ page }) => {
+    await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+    await releaseUsage();
+    await expect(page.getByText(/Próxima renovação:/)).toContainText(/, (16|17):00 GMT-(7|8)\./);
+  });
+});
+
 test("onboarding: first run shows email and a local link before Settings", async ({ page }) => {
   await expect(page.getByRole("navigation", { name: "Configurações" })).toBeHidden();
+  await expect(page.getByText(/300 minutos/)).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
   for (const name of ["Entrar", "Criar conta", "Usar minha chave de API"])
@@ -186,6 +262,8 @@ test("onboarding: email confirmation activates account processing immediately", 
   await page.getByRole("textbox", { name: "Código recebido por e-mail" }).fill("123456");
   await page.getByRole("button", { name: "Confirmar código" }).click();
   await expect(page.getByRole("heading", { name: "Sua conta está pronta" })).toBeVisible();
+  await expect(page.getByText(/Patrocínios financiam uma cota semanal individual/)).toBeVisible();
+  await expect(page.getByText(/300 minutos/)).toHaveCount(0);
   await expect(page.getByRole("navigation")).toBeHidden();
   await expect(page.getByRole("button", { name: "Ativar processamento do Clarify" })).toHaveCount(0);
   await page.getByRole("button", { name: "Começar", exact: true }).click();
@@ -194,9 +272,9 @@ test("onboarding: email confirmation activates account processing immediately", 
   await expect(page.getByRole("button", { name: "Texto", exact: true })).toBeHidden();
   await expect(page.getByRole("combobox", { name: "Serviço", exact: true })).toBeHidden();
   await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
-  const usage = page.getByRole("progressbar", { name: "Uso neste mês" });
-  await expect(usage).toHaveAttribute("aria-valuenow", "2.5");
-  await expect(usage).toHaveAttribute("aria-valuetext", "7,5 de 300 minutos neste mês");
+  const usage = page.getByRole("progressbar", { name: "Uso nesta semana" });
+  await expect(usage).toHaveAttribute("aria-valuenow", "12.5");
+  await expect(usage).toHaveAttribute("aria-valuetext", "12,5% usados · 82,5% restantes");
   await expect(page.getByText("Atualizada após cada processamento.", { exact: false })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Ativar processamento do Clarify" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Sair da conta", exact: true })).toBeHidden();

@@ -6,11 +6,13 @@ from django.contrib.sessions.models import Session
 from django.utils import timezone
 
 from .ledger import expire_leases
+from .funding import distribute
 from .models import Operation, RateBucket
 
 
 def maintain():
     expire_leases()
+    distribute()
     now = timezone.now()
     Operation.objects.filter(result_expires_at__lt=now).exclude(result={}).update(
         result={}
