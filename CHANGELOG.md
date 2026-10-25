@@ -26,6 +26,9 @@ Notable user-facing changes are documented here. This project follows
 - Hosted dictation uses plain vocabulary spellings for short speech. Distinguish unrecognized speech from transcription, service-capacity and allowance errors. Preserve the transcript if rewriting fails, without repeating paid requests.
 - Show localized processing causes instead of a generic quota warning. Preserve safe operation diagnostics and updated usage. Keep the full keyboard error visible within its existing height.
 - iOS converts native microphone input to 24 kHz mono AAC, including inputs whose rate or channel count cannot be encoded directly. Preserve clip cleanup and cancellation.
+- Keep a keyboard Cancel action effective when a result arrives late, after acknowledgement or timeout.
+- Wait for automatic account refresh before iOS microphone activation, then verify the account and foreground state again.
+- Preserve the browser origin during OAuth confirmation so Chrome accepts the protected form submission. Suppress cross-origin referrers.
 
 ### Security
 

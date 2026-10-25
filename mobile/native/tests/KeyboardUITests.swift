@@ -224,6 +224,25 @@ final class KeyboardUITests: XCTestCase {
   @MainActor
   private func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
   @MainActor
+  private func beginProcessing(in keyboard: SelectionKeyboard, store: SharedState) throws -> String {
+    var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970
+    try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+    let mic = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
+    XCTAssertTrue(mic.accessibilityActivate())
+    let start = try XCTUnwrap(store.commands().last?.1)
+    XCTAssertEqual(start.action, "start")
+    state.operationID = start.operationID; state.phase = .recording; state.text = nil
+    state.heartbeat = Date().timeIntervalSince1970
+    try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+    let finish = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? UIButton }
+      .first { $0.accessibilityIdentifier == "clarify.keyboard.finish" })
+    XCTAssertTrue(finish.isEnabled); finish.sendActions(for: .touchUpInside)
+    XCTAssertEqual(store.commands().last?.1.action, "finish")
+    state.phase = .transcribing; state.heartbeat = Date().timeIntervalSince1970
+    try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+    return start.operationID
+  }
+  @MainActor
   private func publish(_ text: String, to keyboard: SelectionKeyboard, store: SharedState) throws {
     // The real containing app refreshes its heartbeat during editing. This
     // isolated fixture has no audio session or background heartbeat producer.
@@ -733,6 +752,101 @@ final class KeyboardUITests: XCTestCase {
       state.phase = .ready; state.text = "Must not auto-insert"; state.heartbeat = Date().timeIntervalSince1970
       try store.write(state, to: "state.json"); keyboard.refreshFromStore()
       XCTAssertNil(store.receipt()); XCTAssertFalse(keyboard.field.before.contains("Must not auto-insert"))
+      keyboard.insertResult(); keyboard.insertResult(); keyboard.refreshFromStore()
+      XCTAssertEqual(keyboard.field.before, "Must not auto-insert", "Explicit insertion remains available exactly once")
+      XCTAssertEqual(store.receipt(), "resumed")
+    }
+  }
+  func testCancelAfterCompletionBeforePollSuppressesAutomaticAndExplicitInsertion() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer {
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+        window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+      }
+      keyboard.field.before = "Keep this"; keyboard.field.after = " and this"
+      try store.acknowledge("previous")
+      let id = try self.beginProcessing(in: keyboard, store: store)
+      let cancel = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.accessibilityIdentifier == "clarify.keyboard.cancel" })
+      let insert = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.title(for: .normal) == L("Inserir") })
+      var state = store.snapshot(); state.phase = .ready; state.text = "Cancelled result"
+      state.heartbeat = Date().timeIntervalSince1970
+      // Do not poll here: the app completes while the keyboard still shows Cancel.
+      try store.write(state, to: "state.json")
+      XCTAssertTrue(cancel.isEnabled); cancel.sendActions(for: .touchUpInside)
+      XCTAssertEqual(store.commands().last?.1.action, "cancel")
+      XCTAssertEqual(store.commands().last?.1.operationID, id)
+      XCTAssertEqual(keyboard.field.before, "Keep this")
+      XCTAssertEqual(store.receipt(), "previous", "Cancel must not claim an insertion receipt")
+      // AudioSession.cancel leaves an already completed result in ready and
+      // acknowledges the command by publishing a fresh heartbeat.
+      for _ in 0..<3 {
+        state.heartbeat = Date().timeIntervalSince1970
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+        XCTAssertTrue(insert.isHidden)
+        insert.sendActions(for: .touchUpInside); keyboard.insertResult()
+        XCTAssertEqual(keyboard.field.before, "Keep this")
+        XCTAssertEqual(keyboard.field.after, " and this")
+        XCTAssertEqual(store.receipt(), "previous")
+      }
+      state.phase = .error; state.text = "Cancelled rewrite fallback"
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore(); keyboard.insertResult()
+      XCTAssertTrue(insert.isHidden); XCTAssertEqual(keyboard.field.before, "Keep this")
+      XCTAssertEqual(store.receipt(), "previous")
+    }
+  }
+  func testLateReadyAfterAcknowledgedCancelAllowsAnotherClipExactlyOnce() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer {
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+        window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+      }
+      var inserted: [String] = []; keyboard.field.didInsert = { inserted.append($0) }
+      defer { keyboard.field.didInsert = nil }
+      let id = try self.beginProcessing(in: keyboard, store: store)
+      let cancel = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.accessibilityIdentifier == "clarify.keyboard.cancel" })
+      cancel.sendActions(for: .touchUpInside); cancel.sendActions(for: .touchUpInside)
+      XCTAssertEqual(store.commands().filter { $0.1.action == "cancel" }.count, 1)
+      var state = store.snapshot(); state.phase = .idle; state.operationID = nil; state.text = nil
+      state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      let mic = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
+      XCTAssertTrue(mic.isEnabled)
+      state.operationID = id; state.phase = .ready; state.text = "Late cancelled result"
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore(); keyboard.insertResult()
+      XCTAssertTrue(inserted.isEmpty); XCTAssertNil(store.receipt())
+      try self.publish("New result", to: keyboard, store: store)
+      let next = try XCTUnwrap(store.receipt()); XCTAssertNotEqual(next, id)
+      keyboard.refreshFromStore(); keyboard.insertResult(); keyboard.refreshFromStore()
+      XCTAssertEqual(inserted, ["New result"]); XCTAssertEqual(keyboard.field.before, "New result")
+      // A stale cancelled result must not overwrite the new operation's receipt.
+      state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore(); keyboard.insertResult()
+      XCTAssertEqual(store.receipt(), next); XCTAssertEqual(inserted, ["New result"])
+    }
+  }
+  func testCancelledResultStaysSuppressedWhenTheSessionExpiresAndReturns() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer {
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+        window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+      }
+      _ = try self.beginProcessing(in: keyboard, store: store)
+      let cancel = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.accessibilityIdentifier == "clarify.keyboard.cancel" })
+      cancel.sendActions(for: .touchUpInside)
+      var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970 - 4
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      state.phase = .ready; state.text = "Late result after expiry"; state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore(); keyboard.insertResult()
+      XCTAssertEqual(keyboard.field.before, ""); XCTAssertNil(store.receipt())
+      let mic = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
+      XCTAssertTrue(mic.isEnabled, "Expired command state must not block another operation")
     }
   }
   func testKeyPressRequestsFeedbackOncePerPress() async {

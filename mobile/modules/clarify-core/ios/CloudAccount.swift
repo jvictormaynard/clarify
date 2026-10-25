@@ -156,6 +156,28 @@ final class CloudAccount {
     }
     try Task.checkCancellation()
   }
+  @MainActor func withActivationAccount(prepare: @MainActor () async throws -> Void,
+    activate: @MainActor () throws -> Void) async throws {
+    let identity = locked { (state.endpoint, state.userID, generation, readCredential()) }
+    func checkIdentity() throws {
+      try Task.checkCancellation()
+      try locked {
+        guard !busy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
+        guard state.endpoint == identity.0, state.userID == identity.1,
+          generation == identity.2, readCredential() == identity.3 else { throw CancellationError() }
+        guard configured else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
+      }
+    }
+    // The existing automatic command retains ownership. Activation must never
+    // queue behind an explicit account operation or adopt another session.
+    try await waitForAutomaticRefresh()
+    try checkIdentity()
+    try await prepare()
+    // Permission and foreground waits can overlap another automatic refresh.
+    try await waitForAutomaticRefresh()
+    try checkIdentity()
+    try activate()
+  }
   @MainActor private func perform(_ method: String, _ path: String, json: [String: Any]? = nil, body: Data? = nil,
     contentType: String? = nil) async throws -> (Int, [String: Any]) {
     try Task.checkCancellation()

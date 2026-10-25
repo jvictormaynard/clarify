@@ -64,7 +64,8 @@ def response(data=None, status=200):
 
 def secure_response(result):
     result["Cache-Control"] = "no-store"
-    result["Referrer-Policy"] = "no-referrer"
+    # Keep the form POST's Origin; never send the invitation URL to a provider.
+    result["Referrer-Policy"] = "same-origin"
     result["X-Frame-Options"] = "DENY"
     result["Content-Security-Policy"] = (
         "default-src 'none'; style-src 'self'; form-action 'self'; "

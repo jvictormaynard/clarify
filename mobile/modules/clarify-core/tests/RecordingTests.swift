@@ -64,4 +64,95 @@ final class RecordingTests: XCTestCase {
     request.observe(state, now: now + 0.4)
     XCTAssertNil(request.action)
   }
+  func testCompletedSnapshotBeforeCancelDoesNotEraseCancellationIntent() {
+    let now = Date().timeIntervalSince1970
+    var request = RecordingRequest()
+    var state = DictationSnapshot(); state.sessionActive = true
+    state.operationID = "clip"; state.phase = .recording; state.heartbeat = now
+    XCTAssertTrue(request.submit("finish", operationID: "clip", now: now))
+    XCTAssertEqual(request.action, "finish")
+    // Completion reaches the store between the last poll and the Cancel tap.
+    state.phase = .ready; state.text = "Do not insert"; state.heartbeat = now + 0.1
+    XCTAssertTrue(request.submit("cancel", operationID: "clip", now: now + 0.2))
+    XCTAssertFalse(request.observe(state, now: now + 0.3))
+    XCTAssertEqual(request.action, "cancel", "A snapshot from before the tap is not an acknowledgement")
+    XCTAssertTrue(request.isCancelled("clip"))
+    // AudioSession.cancel republishes ready if processing has already ended.
+    state.heartbeat = now + 0.4
+    XCTAssertFalse(request.observe(state, now: now + 0.5))
+    XCTAssertNil(request.action)
+    XCTAssertTrue(request.isCancelled("clip"), "Acknowledgement must not permit publication")
+    XCTAssertFalse(request.isCancelled("other"))
+  }
+  func testAcknowledgedCancelSuppressesLateReadyWithoutBlockingTheNextOperation() {
+    let now = Date().timeIntervalSince1970
+    var request = RecordingRequest()
+    var state = DictationSnapshot(); state.sessionActive = true
+    XCTAssertTrue(request.submit("start", operationID: "clip", now: now))
+    XCTAssertTrue(request.submit("cancel", operationID: "clip", now: now + 0.1))
+    XCTAssertFalse(request.submit("cancel", operationID: "clip", now: now + 0.2))
+    state.heartbeat = now + 0.3
+    request.observe(state, now: now + 0.4)
+    XCTAssertNil(request.action)
+    state.operationID = "clip"; state.phase = .ready; state.text = "Late result"
+    request.observe(state, now: now + 0.5)
+    XCTAssertTrue(request.isCancelled("clip"))
+    XCTAssertTrue(request.submit("start", operationID: "next", now: now + 0.6))
+    state.operationID = "next"; state.phase = .recording
+    request.observe(state, now: now + 0.7)
+    XCTAssertTrue(request.submit("finish", operationID: "next", now: now + 0.8))
+    state.phase = .ready; state.text = "Keep this result"
+    request.observe(state, now: now + 0.9)
+    XCTAssertNil(request.action)
+    XCTAssertFalse(request.isCancelled("next"))
+    XCTAssertTrue(request.isCancelled("clip"), "A new operation must not revive the cancelled result")
+  }
+  func testCancelTimeoutReleasesTheCommandButKeepsLateResultsSuppressed() {
+    let now = Date().timeIntervalSince1970
+    var request = RecordingRequest()
+    var state = DictationSnapshot(); state.sessionActive = true
+    state.operationID = "clip"; state.phase = .transcribing; state.heartbeat = now
+    XCTAssertTrue(request.submit("cancel", operationID: "clip", now: now))
+    XCTAssertFalse(request.observe(state, now: now + 5.9))
+    XCTAssertEqual(request.action, "cancel")
+    XCTAssertFalse(request.submit("start", operationID: "next", now: now + 5.9))
+    XCTAssertTrue(request.observe(state, now: now + 6))
+    XCTAssertNil(request.action)
+    state.phase = .ready; state.text = "Expired command result"; state.heartbeat = now + 7
+    XCTAssertFalse(request.observe(state, now: now + 7))
+    XCTAssertTrue(request.isCancelled("clip"))
+    XCTAssertTrue(request.submit("start", operationID: "next", now: now + 7))
+    XCTAssertFalse(request.isCancelled("next"))
+  }
+  func testExpiredSessionAndResetDoNotReviveCancelledResults() {
+    let now = Date().timeIntervalSince1970
+    var request = RecordingRequest()
+    var state = DictationSnapshot(); state.sessionActive = true; state.heartbeat = now - 4
+    XCTAssertTrue(request.submit("cancel", operationID: "clip", now: now))
+    XCTAssertFalse(request.observe(state, now: now))
+    XCTAssertNil(request.action)
+    request.reset()
+    state.operationID = "clip"; state.phase = .ready; state.text = "Late result"; state.heartbeat = now
+    request.observe(state, now: now)
+    XCTAssertTrue(request.isCancelled("clip"))
+    XCTAssertTrue(request.submit("cancel", operationID: "second", now: now))
+    request.reset()
+    XCTAssertTrue(request.isCancelled("clip"))
+    XCTAssertTrue(request.isCancelled("second"))
+    XCTAssertTrue(request.submit("start", operationID: "next", now: now))
+    XCTAssertFalse(request.isCancelled("next"))
+  }
+  func testRejectedCommandsDoNotCreateCancellationIntent() {
+    let now = Date().timeIntervalSince1970
+    var request = RecordingRequest()
+    XCTAssertFalse(request.submit("invalid", operationID: "invalid", now: now))
+    XCTAssertTrue(request.submit("start", operationID: "clip", now: now))
+    XCTAssertFalse(request.submit("cancel", operationID: "other", now: now))
+    XCTAssertFalse(request.isCancelled("other"))
+    XCTAssertFalse(request.isCancelled("clip"))
+    XCTAssertTrue(request.submit("cancel", operationID: "clip", now: now))
+    XCTAssertFalse(request.submit("cancel", operationID: "other", now: now))
+    XCTAssertTrue(request.isCancelled("clip"))
+    XCTAssertFalse(request.isCancelled("other"))
+  }
 }

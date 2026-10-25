@@ -2,6 +2,203 @@ import XCTest
 @testable import ClarifyContracts
 
 final class CloudAccountTests: XCTestCase {
+  @MainActor private final class ActivationFixture {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let user = UUID().uuidString
+    let defaults: UserDefaults
+    let library: LocalLibrary
+    var token: String? = "fixture"
+    var responseUser: String?
+    var status = 200
+    var failure: Error?
+    var suspended: CheckedContinuation<Void, Never>?
+    var onRequest: (() -> Void)?
+    var paths: [String] = []
+    lazy var account = CloudAccount(defaults: defaults, transport: { request in
+      self.paths.append(request.url!.path)
+      if request.url!.path == "/v1/account" {
+        await withCheckedContinuation { self.suspended = $0; self.onRequest?() }
+        if let failure = self.failure { throw failure }
+        return try self.response(request, ["id": self.responseUser ?? self.user, "email": "fixture@example.test"], self.status)
+      }
+      if request.httpMethod == "DELETE" { return try self.response(request, [:], 204) }
+      return try self.response(request, ["revision": 0, "entries": []])
+    }, readCredential: { self.token }, saveCredential: { self.token = $0 })
+    init() throws {
+      defaults = UserDefaults(suiteName: suite)!
+      library = try LocalLibrary(root: root)
+      var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = user
+      defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    }
+    func response(_ request: URLRequest, _ json: [String: Any], _ status: Int = 200) throws -> (Data, HTTPURLResponse) {
+      (try JSONSerialization.data(withJSONObject: json), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+    }
+    func resume() { suspended?.resume(); suspended = nil }
+    func cleanup() {
+      resume(); defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root)
+    }
+  }
+  @MainActor func testActivationWaitsForAutomaticRefreshWithoutTakingAccountOwnership() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    let refreshing = expectation(description: "automatic refresh suspended")
+    f.onRequest = { refreshing.fulfill() }
+    let automatic = Task { try await f.account.command("auto", value: "", library: f.library) }
+    await fulfillment(of: [refreshing], timeout: 2)
+    var prepared = false, activations = 0
+    let entered = expectation(description: "activation entered")
+    let activation = Task { @MainActor in
+      entered.fulfill()
+      try await f.account.withActivationAccount(prepare: { prepared = true }, activate: {
+        XCTAssertFalse(f.account.isBusy); activations += 1
+      })
+    }
+    await fulfillment(of: [entered], timeout: 2)
+    XCTAssertTrue(f.account.isBusy); XCTAssertFalse(prepared); XCTAssertEqual(activations, 0)
+    f.resume(); _ = try await automatic.value
+    try await activation.value
+    XCTAssertTrue(prepared); XCTAssertEqual(activations, 1); XCTAssertFalse(f.account.isBusy)
+    XCTAssertEqual(f.paths, ["/v1/account", "/v1/dictionary", "/v1/snippets"])
+  }
+  @MainActor func testActivationRejectsInteractiveAccountWorkWithoutWaiting() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    let refreshing = expectation(description: "explicit refresh suspended")
+    f.onRequest = { refreshing.fulfill() }
+    let interactive = Task { try await f.account.command("refresh", value: "", library: f.library) }
+    await fulfillment(of: [refreshing], timeout: 2)
+    let rejected = expectation(description: "activation rejected before explicit refresh ends")
+    let activation = Task { @MainActor in
+      do {
+        try await f.account.withActivationAccount(prepare: { XCTFail("Busy account must not request permission") },
+          activate: { XCTFail("Busy account must not start audio") })
+        XCTFail("Explicit account work must exclude activation")
+      } catch let error as ClarifyError { XCTAssertEqual(error.localizedDescription, L("Aguarde a operação da conta.")) }
+      rejected.fulfill()
+    }
+    await fulfillment(of: [rejected], timeout: 2)
+    XCTAssertTrue(f.account.isBusy)
+    f.resume(); _ = try await interactive.value; try await activation.value
+  }
+  @MainActor func testActivationWaitsForRefreshStartedDuringPermissionAndChecksForegroundLast() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    let permission = expectation(description: "permission suspended"), refreshing = expectation(description: "automatic refresh suspended")
+    var permissionContinuation: CheckedContinuation<Void, Never>?
+    var foreground = true, activations = 0
+    let activation = Task { @MainActor in
+      try await f.account.withActivationAccount(prepare: {
+        await withCheckedContinuation { permissionContinuation = $0; permission.fulfill() }
+      }, activate: {
+        guard foreground else { throw ClarifyError("foreground") }
+        activations += 1
+      })
+    }
+    await fulfillment(of: [permission], timeout: 2)
+    f.onRequest = { refreshing.fulfill() }
+    let automatic = Task { try await f.account.command("auto", value: "", library: f.library) }
+    await fulfillment(of: [refreshing], timeout: 2)
+    permissionContinuation?.resume()
+    await Task.yield()
+    XCTAssertTrue(f.account.isBusy); XCTAssertEqual(activations, 0)
+    foreground = false
+    f.resume(); _ = try await automatic.value
+    do { try await activation.value; XCTFail("Background activation must fail after the refresh wait") }
+    catch let error as ClarifyError { XCTAssertEqual(error.message, "foreground") }
+    XCTAssertEqual(activations, 0); XCTAssertFalse(f.account.isBusy)
+  }
+  @MainActor func testActivationRejectsRevocationAccountChangeAndReplacedCredentialDuringRefresh() async throws {
+    for change in ["expired", "account", "credential"] {
+      let f = try ActivationFixture(); defer { f.cleanup() }
+      let refreshing = expectation(description: "automatic refresh suspended")
+      f.onRequest = { refreshing.fulfill() }
+      let automatic = Task { try await f.account.command("auto", value: "", library: f.library) }
+      await fulfillment(of: [refreshing], timeout: 2)
+      let entered = expectation(description: "activation entered")
+      let activation = Task { @MainActor in
+        entered.fulfill()
+        try await f.account.withActivationAccount(prepare: { XCTFail("Changed session must not request permission") },
+          activate: { XCTFail("Changed session must not start audio") })
+      }
+      await fulfillment(of: [entered], timeout: 2)
+      if change == "expired" { f.status = 401 }
+      if change == "account" { f.responseUser = UUID().uuidString }
+      if change == "credential" { f.token = "replacement-fixture" }
+      f.resume(); _ = try await automatic.value
+      do { try await activation.value; XCTFail("Activation must retain its original account") }
+      catch is CancellationError {}
+      catch is ClarifyError { XCTAssertFalse(f.account.configured) }
+      XCTAssertFalse(f.account.isBusy)
+    }
+  }
+  @MainActor func testCancellingActivationLeavesAutomaticRefreshRunning() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    let refreshing = expectation(description: "automatic refresh suspended")
+    f.onRequest = { refreshing.fulfill() }
+    let automatic = Task { try await f.account.command("auto", value: "", library: f.library) }
+    await fulfillment(of: [refreshing], timeout: 2)
+    let entered = expectation(description: "activation entered"), cancelled = expectation(description: "activation cancelled during refresh")
+    let activation = Task { @MainActor in
+      entered.fulfill()
+      do {
+        try await f.account.withActivationAccount(prepare: { XCTFail("Cancelled activation must not request permission") },
+          activate: { XCTFail("Cancelled activation must not start audio") })
+        XCTFail("Cancelled activation must fail")
+      } catch is CancellationError {}
+      cancelled.fulfill()
+    }
+    await fulfillment(of: [entered], timeout: 2)
+    activation.cancel()
+    await fulfillment(of: [cancelled], timeout: 2)
+    XCTAssertTrue(f.account.isBusy); XCTAssertNotNil(f.suspended); XCTAssertEqual(f.token, "fixture")
+    f.resume(); _ = try await automatic.value; try await activation.value
+    XCTAssertTrue(f.account.configured); XCTAssertFalse(f.account.isBusy)
+  }
+  @MainActor func testOfflineAutomaticRefreshStillAllowsActivationOfTheSameSignedInAccount() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    f.failure = URLError(.notConnectedToInternet)
+    let refreshing = expectation(description: "automatic refresh suspended")
+    f.onRequest = { refreshing.fulfill() }
+    let automatic = Task { try await f.account.command("auto", value: "", library: f.library) }
+    await fulfillment(of: [refreshing], timeout: 2)
+    var activations = 0
+    let entered = expectation(description: "activation entered")
+    let activation = Task { @MainActor in
+      entered.fulfill()
+      try await f.account.withActivationAccount(prepare: {}, activate: { activations += 1 })
+    }
+    await fulfillment(of: [entered], timeout: 2)
+    f.resume(); _ = try await automatic.value; try await activation.value
+    XCTAssertEqual(activations, 1); XCTAssertTrue(f.account.configured)
+  }
+  @MainActor func testActivationRechecksSignoutEndpointAndCredentialsAfterPermissionWait() async throws {
+    for change in ["logout", "endpoint", "credential", "cancel"] {
+      let f = try ActivationFixture(); defer { f.cleanup() }
+      do {
+        try await f.account.withActivationAccount(prepare: {
+          if change == "logout" || change == "endpoint" {
+            _ = try await f.account.command("logout", value: "", library: f.library)
+            if change == "endpoint" { _ = try await f.account.command("configure", value: "https://two.test", library: f.library) }
+          } else if change == "credential" { f.token = "replacement-fixture" }
+          else { throw CancellationError() }
+        }, activate: { XCTFail("A stale activation must not start audio") })
+        XCTFail("The account must be checked after permission and foreground waits")
+      } catch is CancellationError {}
+      catch is ClarifyError { XCTAssertFalse(f.account.configured) }
+      XCTAssertFalse(f.account.isBusy)
+    }
+  }
+  @MainActor func testActivationPropagatesPermissionForegroundAndAudioFailuresWithoutTakingBusyState() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    for stage in ["permission", "foreground", "audio"] {
+      var activations = 0
+      do {
+        try await f.account.withActivationAccount(prepare: {
+          if stage != "audio" { throw ClarifyError(stage) }
+        }, activate: { activations += 1; throw ClarifyError(stage) })
+        XCTFail("Activation failure must reach the caller")
+      } catch let error as ClarifyError { XCTAssertEqual(error.message, stage) }
+      XCTAssertEqual(activations, stage == "audio" ? 1 : 0); XCTAssertFalse(f.account.isBusy)
+    }
+  }
   @MainActor func testSnippetRewriteAndExpandedFallbackStayTerminalAndKeepRawHistory() async throws {
     let raw = "Quero avisar que minha disponibilidade."
     let expanded = "Quero avisar que posso atender de segunda a sexta."

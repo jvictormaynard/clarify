@@ -55,10 +55,15 @@ struct RecordingRequest {
   private(set) var action: String?
   private(set) var operationID: String?
   private var requestedAt: TimeInterval = 0
+  // Keep local publication intent for this keyboard's lifetime. A command can
+  // expire or be acknowledged while its cancelled result remains in the store.
+  private var cancelledOperations: Set<String> = []
+  func isCancelled(_ id: String?) -> Bool { id.map { cancelledOperations.contains($0) } ?? false }
   mutating func submit(_ next: String, operationID id: String, now: TimeInterval) -> Bool {
     guard ["start", "finish", "cancel"].contains(next) else { return false }
     guard action == nil || (next == "cancel" && action != "cancel" && operationID == id) else { return false }
     action = next; operationID = id; requestedAt = now
+    if next == "cancel" { cancelledOperations.insert(id) }
     return true
   }
   @discardableResult
@@ -67,7 +72,8 @@ struct RecordingRequest {
     if !state.isLive { reset(); return false }
     let same = state.operationID == operationID
     let acknowledged = same && (action == "start" ? state.phase != .idle :
-      action == "finish" ? ![.recording, .locked].contains(state.phase) : !state.phase.busy)
+      action == "finish" ? ![.recording, .locked].contains(state.phase) :
+      !state.phase.busy && state.heartbeat >= requestedAt)
     if acknowledged || (state.phase == .error && state.heartbeat >= requestedAt) ||
       (action == "cancel" && !state.phase.busy && state.operationID == nil && state.heartbeat >= requestedAt) { reset(); return false }
     // Commands older than five seconds are rejected by the app. Do not permit
@@ -75,6 +81,7 @@ struct RecordingRequest {
     if now - requestedAt >= 6 { reset(); return true }
     return false
   }
+  // Reset delivery state only; acknowledgement does not undo a Cancel tap.
   mutating func reset() { action = nil; operationID = nil; requestedAt = 0 }
 }
 

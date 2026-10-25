@@ -510,18 +510,95 @@ class SocialTests(SocialFlowMixin, TestCase):
         self.assertEqual(self.poll(attempt).json(), {"code": "social_login_failed"})
         self.assertFalse(get_user_model().objects.exists())
 
+    def test_browser_referrer_policy_preserves_confirmation_and_provider_privacy(self):
+        for provider in PROVIDERS:
+            with self.subTest(provider=provider):
+                self.native = APIClient()
+                self.browser = Client(enforce_csrf_checks=True)
+                attempt = self.start(provider)
+                path = urlsplit(attempt["authorization_url"]).path
+                confirmation = self.browser.get(path, secure=True)
+                self.assertEqual(confirmation.status_code, 200)
+                # no-referrer makes Chromium send Origin: null on this form POST.
+                self.assertEqual(confirmation["Referrer-Policy"], "same-origin")
+                token = re.search(
+                    r'name="csrfmiddlewaretoken" value="([^"]+)"',
+                    confirmation.content.decode(),
+                ).group(1)
+                navigation = self.browser.post(
+                    path,
+                    {"csrfmiddlewaretoken": token},
+                    secure=True,
+                    HTTP_ORIGIN="https://testserver",
+                )
+                self.assertEqual(navigation.status_code, 200, navigation.content)
+                provider_url = unescape(
+                    re.search(r'href="([^"]+)"', navigation.content.decode()).group(1)
+                )
+                self.assertEqual(urlsplit(provider_url).scheme, "https")
+                self.assertNotEqual(urlsplit(provider_url).netloc, "testserver")
+                self.assertNotIn(path, provider_url)
+                self.assertIn("&amp;", navigation.content.decode())
+                self.assertContains(navigation, 'rel="noreferrer"')
+                completion = self.browser.get("/social/complete/desktop/", secure=True)
+                self.assertEqual(completion.status_code, 200)
+                for page in (confirmation, navigation, completion):
+                    # same-origin suppresses Referer on both provider navigations:
+                    # the meta refresh and the fallback link.
+                    self.assertEqual(page["Referrer-Policy"], "same-origin")
+                    self.assertEqual(page["Cache-Control"], "no-store")
+                    self.assertEqual(page["X-Frame-Options"], "DENY")
+                    self.assertEqual(
+                        page["Content-Security-Policy"],
+                        "default-src 'none'; style-src 'self'; form-action 'self'; "
+                        "base-uri 'none'; frame-ancestors 'none'",
+                    )
+
+    @override_settings(CSRF_TRUSTED_ORIGINS=[])
     def test_confirmation_requires_csrf_and_get_does_not_start_oauth(self):
         attempt = self.start()
         url = urlsplit(attempt["authorization_url"]).path
-        self.assertEqual(self.browser.get(url, secure=True).status_code, 200)
-        self.assertEqual(
-            self.browser.post(
-                url, secure=True, HTTP_ORIGIN="https://evil.test"
-            ).status_code,
-            403,
+        confirmation = self.browser.get(url, secure=True)
+        self.assertEqual(confirmation.status_code, 200)
+        token = re.search(
+            r'name="csrfmiddlewaretoken" value="([^"]+)"',
+            confirmation.content.decode(),
+        ).group(1)
+        for origin, submitted_token in (
+            ("null", token),
+            ("https://evil.test", token),
+            ("http://testserver", token),
+            ("https://testserver:8443", token),
+            (None, token),
+            ("https://testserver", ""),
+            ("https://testserver", "x" * 64),
+        ):
+            with self.subTest(origin=origin, valid_token=submitted_token == token):
+                headers = {} if origin is None else {"HTTP_ORIGIN": origin}
+                self.assertEqual(
+                    self.browser.post(
+                        url,
+                        {"csrfmiddlewaretoken": submitted_token},
+                        secure=True,
+                        **headers,
+                    ).status_code,
+                    403,
+                )
+        stored = SocialAttempt.objects.get(pk=attempt["attempt_id"])
+        self.assertEqual(stored.state, "created")
+        self.assertTrue(stored.launch_digest)
+        self.assertEqual(stored.browser_digest, "")
+        self.assertEqual(stored.browser_session_key, "")
+        self.assertFalse(Session.objects.exists())
+        accepted = self.browser.post(
+            url,
+            {"csrfmiddlewaretoken": token},
+            secure=True,
+            HTTP_ORIGIN="https://testserver",
         )
+        self.assertEqual(accepted.status_code, 200, accepted.content)
         self.assertEqual(
-            SocialAttempt.objects.get(pk=attempt["attempt_id"]).state, "created"
+            SocialAttempt.objects.get(pk=attempt["attempt_id"]).state, "pending"
         )
 
     def test_disabled_provider_at_callback_is_a_controlled_terminal_failure(self):

@@ -25,11 +25,25 @@ provider completion/cancellation, physical iPhone and Bluetooth recording, and
 live provider/SMTP acceptance require separate evidence. Automated fixtures do
 not establish those interactions. iOS distribution is internal TestFlight only.
 
-Production was pinned to the pre-quota server at preparation time. Before
-migration, stop hosted admissions, drain old workers and verify a fresh database
-backup. Deploy the reviewed source and verify migrations, health and finance
-routes. The configured spending cap does not create a funding receipt; funded
-processing requires actual contributions and reviewed operating provisions.
+Production deployed PR #159 automatically and applied its migrations. The
+cutover audit found no operations during migration, no running operations or
+reservations, and equal historical and treasury processing costs. Health and
+both public finance routes return 200. A pre-migration daily backup and a
+separate post-migration verified backup exist. The new OAuth referrer-policy
+repair still requires deployment and a real browser confirmation check.
+
+The release candidate also repairs late keyboard cancellation and microphone
+activation during automatic account refresh. Their Swift and UIKit regression
+tests require macOS execution on the final source. CSRF regression tests retain
+origin validation and reject a literal null origin.
+
+The owner confirmed the current USD 10 contribution. Production records that
+receipt, a USD 0.97 provision for observed Railway usage, and USD 1.003217337 of
+historical processing. Uncommitted cash is USD 8.026782663. The receipt releases
+over one calendar month; historical costs exceed this week's released slice, so
+no quota is available before the 2026-10-26 00:00 UTC reset. Distribution retains
+the 80 percent regular and 20 percent newcomer split. Future receipts are not
+booked in advance. A provision is not evidence of a paid invoice.
 
 ## Verified baseline for v0.4.0 — 2026-09-13
 

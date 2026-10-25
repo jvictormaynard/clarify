@@ -63,24 +63,28 @@ public class ClarifyCoreModule: Module {
       }
     }.runOnQueue(.main)
     AsyncFunction("activate") { (promise: Promise) in
-      guard !CloudAccount.shared.isBusy else {
-        promise.resolve(["active": false, "message": L("Aguarde a operação da conta.")] as [String: Any]); return
-      }
-      AVAudioSession.sharedInstance().requestRecordPermission { allowed in
-        Task { @MainActor in
-          guard allowed else { promise.resolve(["active": false, "message": L("Ative o microfone em Ajustes > Clarify.")] as [String: Any]); return }
-          // The permission sheet and keyboard handoff can leave the app inactive.
-          // Start audio only after that transition, and never from the background.
-          let deadline = Date().addingTimeInterval(2)
-          while UIApplication.shared.applicationState == .inactive, Date() < deadline {
-            try? await Task.sleep(nanoseconds: 50_000_000)
-          }
-          guard UIApplication.shared.applicationState == .active else {
-            promise.resolve(["active": false, "message": L("Mantenha o Clarify aberto e tente ativar o microfone novamente.")] as [String: Any]); return
-          }
-          do { try ClarifyAudioSession.shared.activate(); promise.resolve(["active": true]) }
-          catch { promise.resolve(["active": false, "message": MicrophoneFailure.message(for: error)] as [String: Any]) }
-        }
+      Task { @MainActor in
+        do {
+          try await CloudAccount.shared.withActivationAccount(prepare: {
+            let allowed = await withCheckedContinuation { continuation in
+              AVAudioSession.sharedInstance().requestRecordPermission { continuation.resume(returning: $0) }
+            }
+            guard allowed else { throw ClarifyError(L("Ative o microfone em Ajustes > Clarify.")) }
+            // The permission sheet and keyboard handoff can leave the app inactive.
+            // Start audio only after that transition, and never from the background.
+            let deadline = Date().addingTimeInterval(2)
+            while UIApplication.shared.applicationState == .inactive, Date() < deadline {
+              try await Task.sleep(nanoseconds: 50_000_000)
+            }
+          }, activate: {
+            // Account refresh can suspend after the permission sheet closes.
+            guard UIApplication.shared.applicationState == .active else {
+              throw ClarifyError(L("Mantenha o Clarify aberto e tente ativar o microfone novamente."))
+            }
+            try ClarifyAudioSession.shared.activate()
+          })
+          promise.resolve(["active": true])
+        } catch { promise.resolve(["active": false, "message": MicrophoneFailure.message(for: error)] as [String: Any]) }
       }
     }.runOnQueue(.main)
     AsyncFunction("deactivate") { ClarifyAudioSession.shared.deactivate() }.runOnQueue(.main)
