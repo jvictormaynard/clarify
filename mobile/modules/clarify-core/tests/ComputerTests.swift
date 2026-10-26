@@ -422,7 +422,7 @@ final class ComputerTests: XCTestCase {
     let input = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800)); input.frameLength = 4_800
     for channel in 0..<2 { for index in 0..<4_800 { input.floatChannelData![channel][index] = Float(sin(Double(index) * 0.05)) * 0.2 } }
     for _ in 0..<10 { try writer.write(input) }; try writer.finish()
-    let result = try await ComputerAudio.convert(url)
+    let result = try await ComputerAudio.convert(url, diagnostic: { print("COMPUTER_AUDIO_DIAGNOSTIC: " + $0) })
     XCTAssertNoThrow(try ComputerWAV.validate(result))
     XCTAssertGreaterThan(result.count, 30_000); XCTAssertLessThan(result.count, 34_000)
   }
