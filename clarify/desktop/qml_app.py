@@ -536,6 +536,7 @@ def main(argv: list[str] | None = None) -> int:
         hotkey_capture_changed=capture_qml_hotkeys,
         dictionary_service=getattr(runtime, "dictionary_service", None),
         account_service=getattr(runtime, "account", None),
+        application_target=lambda: quick_paste.target,
         account_can_change=lambda: (
             workflow_service.state.phase.value
             in {"ready", "completed", "failed", "cancelled", "microphone_unavailable"}

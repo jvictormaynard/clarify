@@ -460,6 +460,7 @@ class QmlSettingsController(QObject):
         dictionary_service: DictionarySnippetService | None = None,
         account_service=None,
         account_can_change=None,
+        application_target=None,
     ) -> None:
         super().__init__(parent)
         self._background_mailbox = _SettingsMailbox()
@@ -473,6 +474,7 @@ class QmlSettingsController(QObject):
             default_endpoint=os.environ.get("CLARIFY_CLOUD_URL", DEFAULT_CLOUD_URL),
         )
         self._account_can_change = account_can_change or (lambda: True)
+        self._application_target = application_target
         self._history = getattr(self._account, "history", None)
         if self._history is None and isinstance(self._account, AccountService):
             self._history = AccountHistory(
@@ -968,6 +970,17 @@ class QmlSettingsController(QObject):
     def dictationCleanupLevel(self) -> str:
         level = self._config.dictation_cleanup_level
         return level.value if level is not None else ""
+
+    @Property("QVariantList", notify=configChanged)
+    def applicationWritingStyles(self):
+        return self._config.application_writing_styles.to_mapping()["rules"]
+
+    @Property(str, notify=configChanged)
+    def applicationStyleTarget(self):
+        from writing_styles import windows_executable_key
+
+        target = self._application_target() if self._application_target else None
+        return windows_executable_key(getattr(target, "executable", None)) or ""
 
     @Property(bool, notify=configChanged)
     def dictationCleanupRefinementAllowed(self) -> bool:
@@ -2815,6 +2828,8 @@ class QmlSettingsController(QObject):
                 and type(args[0]) is str
                 and isinstance(args[1], (str, dict))
             )
+        elif method == "setApplicationWritingStyle":
+            valid = len(args) == 2 and all(type(value) is str for value in args)
         else:
             valid = method in {"resetAllHotkeys", "useLocalAsr"} and not args
         if not valid:
@@ -2838,6 +2853,16 @@ class QmlSettingsController(QObject):
 
             level = cleanup_level(args[0] or None)
             return lambda config: replace(config, dictation_cleanup_level=level)
+        if method == "setApplicationWritingStyle":
+            from shared.writing_style_policy import writing_style
+
+            style = writing_style(args[1] or None)
+            return lambda config: replace(
+                config,
+                application_writing_styles=config.application_writing_styles.with_rule(
+                    args[0], style
+                ),
+            )
         if method in bool_fields:
             if method == "setLocalAsrCloudRefinement":
                 return lambda config: replace(

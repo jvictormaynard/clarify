@@ -9,17 +9,15 @@ from __future__ import annotations
 import ntpath
 from dataclasses import dataclass, replace
 from enum import Enum
+from collections.abc import Mapping
+
+from shared.writing_style_policy import WritingStyle
 
 
 MAX_APPLICATION_STYLE_RULES = 32
-
-
-class WritingStyle(str, Enum):
-    """Presentation choices, independent of cleanup depth and provider routes."""
-
-    NATURAL = "natural"
-    INFORMAL = "informal"
-    ORGANIZED = "organized"
+_RESERVED_DOS_NAMES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
+    f"{prefix}{digit}" for prefix in ("COM", "LPT") for digit in "123456789¹²³"
+}
 
 
 class WritingStyleDecisionReason(str, Enum):
@@ -63,6 +61,11 @@ def windows_executable_key(executable: str | None) -> str | None:
     components = candidate.split("\\")
     if any(
         part in {".", ".."} or part.endswith((" ", ".")) for part in components if part
+    ):
+        return None
+    if any(
+        part.split(".", 1)[0].rstrip(" ").upper() in _RESERVED_DOS_NAMES
+        for part in tail.split("\\")
     ):
         return None
     if ntpath.splitext(tail)[1].lower() != ".exe":
@@ -125,6 +128,35 @@ class ApplicationWritingStyles:
     """A bounded immutable rule set; no rule means no style override."""
 
     rules: tuple[ApplicationWritingStyleRule, ...] = ()
+
+    @classmethod
+    def from_mapping(cls, value) -> ApplicationWritingStyles:
+        if value is None:
+            return cls()
+        if not isinstance(value, Mapping) or not isinstance(value.get("rules"), list):
+            raise WritingStyleConfigurationError("invalid_application_rule")
+        rows = value["rules"]
+        if len(rows) > MAX_APPLICATION_STYLE_RULES:
+            raise WritingStyleConfigurationError("too_many_application_rules")
+        if any(
+            not isinstance(row, Mapping) or set(row) != {"executable", "style"}
+            for row in rows
+        ):
+            raise WritingStyleConfigurationError("invalid_application_rule")
+        return cls(
+            tuple(
+                ApplicationWritingStyleRule(row["executable"], row["style"])
+                for row in rows
+            )
+        )
+
+    def to_mapping(self):
+        return {
+            "rules": [
+                {"executable": rule.executable, "style": rule.style.value}
+                for rule in self.rules
+            ]
+        }
 
     def __post_init__(self) -> None:
         try:

@@ -12,12 +12,14 @@ import { WorkflowRoute } from "../components/workflow-route";
 import { RecordingOptions } from "../components/recording-options";
 import { recordingDraft } from "../settings/recording";
 import { DictationCleanup } from "../components/dictation-cleanup";
+import { ApplicationWritingStyles } from "../components/application-writing-styles";
 
 export function DictationPage({ controller }: SettingsPageProps) {
   const { state, run, prompt, setPrompt, recording, setRecording } = controller;
   return (
     <>
       <DictationCleanup controller={controller} />
+      <ApplicationWritingStyles controller={controller} />
       {(state.accountState?.managed || state.accountState?.signedIn) && <p className="hint">{t("O Clarify gerencia os modelos de transcrição e reescrita da sua conta.")}</p>}
       <Section title={t("Entrada de áudio")}>
         <Row title={t("Microfone")}>

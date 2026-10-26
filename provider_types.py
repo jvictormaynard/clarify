@@ -142,6 +142,9 @@ class TranscriptionResult:
     # marks legacy clients/routes. These fields never contain transcript text.
     cleanup_level_requested: str | None = None
     cleanup_level_applied: str | None = None
+    writing_style_requested: str | None = None
+    writing_style_applied: str | None = None
+    writing_style_status: str | None = None
 
 
 @dataclass(frozen=True)

@@ -77,6 +77,16 @@ class WindowsExecutableIdentityTests(unittest.TestCase):
             rules = ApplicationWritingStyles().with_rule(EDITOR, WritingStyle.NATURAL)
             self.assertIs(rules.resolve(EDITOR).requested_style, WritingStyle.NATURAL)
 
+    def test_reserved_dos_names_are_rejected_in_files_and_directories(self):
+        rules = ApplicationWritingStyles().with_rule(EDITOR, WritingStyle.NATURAL)
+        for name in ("NUL", "con", "PRN", "AUX", "COM1", "LPT9", "COM¹", "LPT²"):
+            for executable in (rf"C:\Apps\{name}.exe", rf"C:\{name}.data\Editor.exe"):
+                with self.subTest(executable=executable):
+                    self.assertIsNone(windows_executable_key(executable))
+                    self.assertIsNone(rules.resolve(executable).requested_style)
+                    with self.assertRaises(WritingStyleConfigurationError):
+                        rules.with_rule(executable, WritingStyle.INFORMAL)
+
 
 class ApplicationWritingStyleTests(unittest.TestCase):
     def test_absent_unknown_and_unmatched_apps_use_default(self):

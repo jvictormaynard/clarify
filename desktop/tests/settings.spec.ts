@@ -7,6 +7,35 @@ let id = 0;
 const pending = new Map<number, (value: unknown) => void>();
 let releaseUsage: () => Promise<void>;
 
+test("styles: application rules persist and removal restores default", async ({ page }, testInfo) => {
+  await expect(page.getByText("Padrão para todos os aplicativos.", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Caminho do aplicativo", exact: true }).fill("C:\\Apps\\Editor.exe");
+  await page.getByRole("combobox", { name: "Estilo de escrita", exact: true }).click();
+  await page.getByRole("option", { name: "Informal", exact: true }).click();
+  await page.getByRole("button", { name: "Salvar regra", exact: true }).click();
+  const saved = page.getByRole("combobox", { name: "Estilo para c:\\apps\\editor.exe", exact: true });
+  await expect(saved).toContainText("Informal");
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
+  await page.reload();
+  await expect(saved).toContainText("Informal");
+  await page.screenshot({ path: testInfo.outputPath("application-writing-styles.png"), fullPage: true });
+  await page.getByRole("button", { name: "Remover regra", exact: true }).click();
+  await expect(saved).toBeHidden();
+  await expect(page.getByText("Padrão para todos os aplicativos.", { exact: true })).toBeVisible();
+});
+
+test("styles: preserve explains that an app rule cannot enable cloud processing", async ({ page }) => {
+  await page.getByRole("combobox", { name: "Nível de revisão", exact: true }).click();
+  await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Estilo não aplicado nesta rota." })).toBeVisible();
+});
+
+test("quota: styles remain configurable for managed accounts", async ({ page }) => {
+  await page.getByRole("textbox", { name: "Caminho do aplicativo", exact: true }).fill("C:\\Apps\\Chat.exe");
+  await page.getByRole("button", { name: "Salvar regra", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Estilo para c:\\apps\\chat.exe", exact: true })).toContainText("Natural");
+});
+
 test("cleanup: levels persist across pages and explain minimal changes", async ({ page }, testInfo) => {
   const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
   await expect(level).toContainText("Padrão atual");

@@ -8,6 +8,12 @@ does not load Qt, start capture, or read a user profile.
 
 from __future__ import annotations
 
+from shared.writing_style_policy import (
+    writing_style as parse_writing_style,
+    with_writing_style,
+    style_outcome,
+)
+
 from dataclasses import replace
 import re
 import time
@@ -259,8 +265,10 @@ class WorkflowProviderService:
         *,
         selection: FileTranscriptionSelection | None = None,
         cleanup_level: str | None = None,
+        writing_style: str | None = None,
     ) -> TranscriptionResult:
         current = self.config.current()
+        style = parse_writing_style(writing_style)
         policy = DictationCleanupPolicy(
             parse_cleanup_level(
                 cleanup_level
@@ -269,17 +277,16 @@ class WorkflowProviderService:
             )
         )
         if self._uses_account():
+            options = {}
             if policy.requested is not None:
-                return self.account.transcribe(
-                    audio_source,
-                    selection.language if selection is not None else language,
-                    self.dictionary_service,
-                    cleanup_level=policy.requested,
-                )
+                options["cleanup_level"] = policy.requested
+            if style is not None:
+                options["writing_style"] = style
             return self.account.transcribe(
                 audio_source,
                 selection.language if selection is not None else language,
                 self.dictionary_service,
+                **options,
             )
         route = current.workflow(WorkflowScope.TRANSCRIPTION)
         if not route.enabled or not route.model_id:
@@ -298,6 +305,7 @@ class WorkflowProviderService:
         # editing, and inline saved content is present before optional cleanup.
         snippet_two_stage = metadata.supports(ProviderCapability.MULTIMODAL_AUDIO) and (
             policy.separate_recognition
+            or style is not None
             or any(item.enabled for item in self.dictionary_service.state.snippets)
         )
         language = str(language or "auto").strip().lower()
@@ -308,7 +316,7 @@ class WorkflowProviderService:
         mode = "prompt"
         instruction = (
             RECOGNITION_INSTRUCTION
-            if policy.separate_recognition
+            if policy.separate_recognition or style is not None
             else (
                 TRANSCRIPTION_INSTRUCTION
                 if mode == "transcription" or snippet_two_stage
@@ -321,7 +329,7 @@ class WorkflowProviderService:
             language=provider_language,
             instruction=instruction,
             prompt=instruction
-            if policy.separate_recognition
+            if policy.separate_recognition or style is not None
             else route.prompt or instruction,
             temperature=0.0 if mode == "transcription" or snippet_two_stage else 0.1,
             audio_bytes=audio_source.audio_bytes,
@@ -402,6 +410,7 @@ class WorkflowProviderService:
                     refinement_scope,
                     audio_source.cancel_token,
                     route=refinement_route,
+                    writing_style=style,
                 )
             except ProviderCancelledError:
                 raise
@@ -450,6 +459,7 @@ class WorkflowProviderService:
             timings_ms=safe_timings(timings),
             raw_text=raw_transcript
             if policy.requested is not None
+            or style is not None
             or refinement_requested
             or transcript != raw_transcript
             else None,
@@ -467,6 +477,12 @@ class WorkflowProviderService:
             cleanup_level_applied=policy.applied(
                 refined=refinement_used, standalone=standalone_snippet is not None
             ),
+            **style_outcome(
+                style,
+                refined=refinement_used,
+                attempted=refinement_requested,
+                standalone=standalone_snippet is not None,
+            ),
         )
 
     def _refine_transcript(
@@ -478,11 +494,15 @@ class WorkflowProviderService:
         cancel_token,
         *,
         route=None,
+        writing_style=None,
     ) -> RewriteResult:
         refinement_route = route if route is not None else self._route(refinement_scope)
         refinement_instruction = _workflow_instruction(
             TRANSCRIPT_REWRITE_INSTRUCTION.format(lang=language_label),
             refinement_route.prompt,
+        )
+        refinement_instruction = with_writing_style(
+            refinement_instruction, writing_style
         )
         refinement_request = RewriteRequest(
             text=raw_transcript,

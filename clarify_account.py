@@ -843,10 +843,20 @@ class AccountService:
             self._sync_error = ""
             service.reload()
 
-    def transcribe(self, source, language, dictionary_service, *, cleanup_level=None):
+    def transcribe(
+        self,
+        source,
+        language,
+        dictionary_service,
+        *,
+        cleanup_level=None,
+        writing_style=None,
+    ):
         from shared.dictation_policy import cleanup_level as parse_cleanup_level
+        from shared.writing_style_policy import writing_style as parse_writing_style
 
         level = parse_cleanup_level(cleanup_level)
+        style = parse_writing_style(writing_style)
         if not self.hosted:
             raise AccountError("Entre na conta novamente.")
         if source.cancel_token:
@@ -864,6 +874,8 @@ class AccountService:
         }
         if level is not None:
             fields["cleanup_level"] = level.value
+        if style is not None:
+            fields["writing_style"] = style.value
         code, result = self._request(
             "POST",
             "/v1/dictations",
@@ -896,6 +908,40 @@ class AccountService:
                 raise AccountError(
                     "O Clarify retornou um resultado inválido."
                 ) from None
+        style_fields = {}
+        if style is not None:
+            try:
+                requested_style = parse_writing_style(
+                    result.get("writing_style_requested")
+                )
+                applied_style = parse_writing_style(result.get("writing_style_applied"))
+                style_status = result.get("writing_style_status")
+                if requested_style != style or applied_style not in (None, style):
+                    raise ValueError()
+                if style_status not in {
+                    "applied",
+                    "standalone",
+                    "refinement_failed",
+                    "refinement_not_allowed",
+                }:
+                    raise ValueError()
+                if (applied_style is not None) != (style_status == "applied"):
+                    raise ValueError()
+                if applied_style is not None and (
+                    not rewritten or level not in (None, parse_cleanup_level("clarity"))
+                ):
+                    raise ValueError()
+                style_fields = {
+                    "writing_style_requested": style.value,
+                    "writing_style_applied": applied_style.value
+                    if applied_style
+                    else None,
+                    "writing_style_status": style_status,
+                }
+            except ValueError:
+                raise AccountError(
+                    "O Clarify retornou um resultado inválido."
+                ) from None
         return TranscriptionResult(
             text,
             "clarify",
@@ -905,16 +951,19 @@ class AccountService:
             if rewritten or text != raw or result.get("snippet_expanded") is True
             else None,
             refinement_failed=(result.get("refinement_failed") is True)
-            if level is not None
+            if level is not None or style is not None
             else not rewritten and result.get("snippet_expanded") is not True,
             refinement_provider_id="clarify"
-            if level is None or result.get("refinement_attempted") is True
+            if (level is None and style is None)
+            or result.get("refinement_attempted") is True
             else None,
             refinement_model="openai/gpt-oss-20b"
-            if level is None or result.get("refinement_attempted") is True
+            if (level is None and style is None)
+            or result.get("refinement_attempted") is True
             else None,
             cleanup_level_requested=level,
             cleanup_level_applied=applied,
+            **style_fields,
         )
 
     def transform_text(self, text, action, language="auto", *, cancel=None):

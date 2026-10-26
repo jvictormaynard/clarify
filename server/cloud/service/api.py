@@ -272,15 +272,18 @@ class DictationView(ServiceView):
             return Response({"code": "rate_limited"}, status=429)
         try:
             from shared.dictation_policy import cleanup_level as parse_cleanup_level
+            from shared.writing_style_policy import writing_style as parse_writing_style
 
             if set(request.data) - {
                 "audio",
                 "operation_id",
                 "language",
                 "cleanup_level",
+                "writing_style",
             }:
                 raise ValueError()
             level = parse_cleanup_level(request.data.get("cleanup_level"))
+            style = parse_writing_style(request.data.get("writing_style"))
             if any(len(request.data.getlist(key)) != 1 for key in request.data):
                 raise ValueError()
             operation_id = uuid.UUID(request.data["operation_id"])
@@ -295,7 +298,9 @@ class DictationView(ServiceView):
         operation = None
         outcome = None
         try:
-            digest = audio.fingerprint(upload, language, cleanup_level=level)
+            digest = audio.fingerprint(
+                upload, language, cleanup_level=level, writing_style=style
+            )
             with tempfile.TemporaryDirectory(prefix="clarify-cloud-") as directory:
                 path, duration_ms = audio.decode(upload, directory)
                 operation, fresh = ledger.reserve(
@@ -317,6 +322,7 @@ class DictationView(ServiceView):
                     language,
                     snippets=snippets.entries if snippets else [],
                     cleanup_level=level,
+                    writing_style=style,
                     cost_budget=operation.reserved_cost,
                     authorize=lambda total: ledger.authorize(operation, total),
                 )

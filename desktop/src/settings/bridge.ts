@@ -3,6 +3,8 @@ import type { RecordingControls } from "./recording";
 
 export type Option = { id: string; label: string };
 export type DictationCleanupLevel = "preserve" | "light" | "clarity";
+export type WritingStyle = "natural" | "informal" | "organized";
+export type ApplicationWritingStyle = { executable: string; style: WritingStyle };
 export type DictionaryEntry = {
   term: string;
   pronunciation: string;
@@ -51,6 +53,8 @@ export interface Settings {
   microphoneTestStatus: string;
   recordingControls: RecordingControls;
   dictationCleanupLevel?: DictationCleanupLevel | "";
+  applicationWritingStyles?: ApplicationWritingStyle[];
+  applicationStyleTarget?: string;
   dictationCleanupRefinementAllowed?: boolean;
   selectedScope: string;
   routeProviderId: string;
@@ -108,6 +112,7 @@ export type SettingsArguments = {
   setDictionaryEntries: [entries: DictionaryEntry[], context?: string, expectedEntries?: DictionaryEntry[]];
   setMode: [value: string];
   setDictationCleanupLevel: [value: DictationCleanupLevel | ""];
+  setApplicationWritingStyle: [executable: string, style: WritingStyle | ""];
   setAutostart: [value: boolean];
   setAutomaticUpdates: [value: boolean];
   checkForUpdates: [];
@@ -157,6 +162,7 @@ export type SettingsMethod = keyof SettingsArguments;
 
 export const preferenceMethods = [
   "setDictationCleanupLevel",
+  "setApplicationWritingStyle",
   "setMode", "setLanguage", "setAutostart", "setHistoryEnabled", "setAutomaticUpdates",
   "selectMicrophone", "setRouteProviderId", "setRouteModelId", "setRouteEnabled",
   "setLocalStreaming", "setLocalAsrCloudRefinement", "setHotkey", "setHotkeyActivationMode",

@@ -9,7 +9,8 @@ Window {
                                                            Screen.devicePixelRatio)
     readonly property int designWidth: 168
     readonly property bool refinementWarning: workflow.refinementFailed === true
-    readonly property int designHeight: 50
+    readonly property string styleCaption: workflow.writingStyleCaption || ""
+    readonly property int designHeight: styleCaption ? 68 : 50
     readonly property bool feedback: workflow.feedbackVisible
     property string feedbackCaption: ""
     readonly property int horizontalInset: 6
@@ -124,10 +125,25 @@ Window {
             border.width: 1
             Accessible.name: qsTr(workflow.status)
 
+            Label {
+                objectName: "writingStyleCaption"
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 5
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width - 24
+                text: pill.styleCaption
+                visible: text.length > 0
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                font.pixelSize: 11
+                color: theme.dim
+                Accessible.name: text
+            }
+
             Item {
                 x: pill.horizontalInset
                 width: parent.width - 2 * pill.horizontalInset
-                height: parent.height
+                height: 50
 
                 Image {
                     id: targetIcon
