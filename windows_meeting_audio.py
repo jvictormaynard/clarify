@@ -58,6 +58,27 @@ def _guid(value):
     return (C.c_ubyte * 16).from_buffer_copy(uuid.UUID(value).bytes_le)
 
 
+def _ole32():
+    # WinDLL uses stdcall without OleDLL's implicit HRESULT handling. These
+    # declarations follow combaseapi.h; Windows LONG/DWORD are always 32 bits.
+    ole = C.WinDLL("ole32")
+    ole.CoInitializeEx.argtypes = [C.c_void_p, C.c_uint32]
+    ole.CoInitializeEx.restype = C.c_int32
+    ole.CoCreateInstance.argtypes = [
+        C.c_void_p,
+        C.c_void_p,
+        C.c_uint32,
+        C.c_void_p,
+        C.POINTER(C.c_void_p),
+    ]
+    ole.CoCreateInstance.restype = C.c_int32
+    ole.CoTaskMemFree.argtypes = [C.c_void_p]
+    ole.CoTaskMemFree.restype = None
+    ole.CoUninitialize.argtypes = []
+    ole.CoUninitialize.restype = None
+    return ole
+
+
 class WasapiSource:
     def __init__(self, source):
         if source not in {"microphone", "system"}:
@@ -67,18 +88,7 @@ class WasapiSource:
     def run(self, stop, packet, warning):
         if sys.platform != "win32":
             raise MeetingError("meeting.windows_only")
-        ole = C.OleDLL("ole32")
-        ole.CoInitializeEx.argtypes = [C.c_void_p, C.c_uint32]
-        ole.CoInitializeEx.restype = C.c_long
-        ole.CoCreateInstance.argtypes = [
-            C.c_void_p,
-            C.c_void_p,
-            C.c_uint32,
-            C.c_void_p,
-            C.POINTER(C.c_void_p),
-        ]
-        ole.CoCreateInstance.restype = C.c_long
-        ole.CoTaskMemFree.argtypes = [C.c_void_p]
+        ole = _ole32()
         pointers = []
         format_ptr = C.c_void_p()
         client = C.c_void_p()
@@ -86,9 +96,12 @@ class WasapiSource:
 
         def call(pointer, index, types=(), args=()):
             vtable = C.cast(pointer, C.POINTER(C.POINTER(C.c_void_p))).contents
-            method = C.WINFUNCTYPE(C.c_long, C.c_void_p, *types)(vtable[index])
+            # IUnknown::Release returns ULONG; all other methods called here
+            # return HRESULT. Do not interpret a reference count as an error.
+            restype = C.c_uint32 if index == 2 else C.c_int32
+            method = C.WINFUNCTYPE(restype, C.c_void_p, *types)(vtable[index])
             result = method(pointer, *args)
-            if result < 0:
+            if index != 2 and result < 0:
                 raise MeetingError("meeting.capture_error")
             return result
 
@@ -225,14 +238,23 @@ class WasapiSource:
                         call(capture, 4, (C.c_uint32,), (frames.value,))
                     call(capture, 5, (C.POINTER(C.c_uint32),), (C.byref(count),))
         finally:
-            if started:
+            failed = sys.exc_info()[0] is not None
+            cleanup_failed = False
+
+            def cleanup(action, *args):
+                nonlocal cleanup_failed
                 try:
-                    call(client, 11)
-                except MeetingError:
-                    pass
+                    action(*args)
+                except Exception:
+                    cleanup_failed = True
+
+            if started:
+                cleanup(call, client, 11)
             if format_ptr:
-                ole.CoTaskMemFree(format_ptr)
+                cleanup(ole.CoTaskMemFree, format_ptr)
             for pointer in reversed(pointers):
-                call(pointer, 2)
+                cleanup(call, pointer, 2)
             if initialized:
-                ole.CoUninitialize()
+                cleanup(ole.CoUninitialize)
+            if cleanup_failed and not failed:
+                raise MeetingError("meeting.capture_error")

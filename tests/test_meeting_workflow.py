@@ -107,6 +107,56 @@ class MeetingWorkflowTests(unittest.TestCase):
         self.workflow.selected = row["id"]
         return row["id"], cid, path
 
+    def test_delete_rejects_old_account_confirmation_after_guest_or_same_account_login(
+        self,
+    ):
+        account = MeetingIdentity("account:" + "a" * 64, 1, True)
+        mid = self.store.create(account.owner)["id"]
+        cid, path = self.store.open_chunk(account.owner, mid, "microphone", 0)
+        path.write_bytes(b"synthetic fixture")
+        guest, _, guest_path = self.pending()
+        for current in (
+            MeetingIdentity("guest", 2, False),
+            MeetingIdentity(account.owner, 3, True),
+        ):
+            with self.subTest(current=current):
+                self.provider.current = current
+                self.workflow.selected = guest if current.owner == "guest" else mid
+                with self.assertRaisesRegex(MeetingError, "meeting.scope_changed"):
+                    self.workflow.delete(mid, account.owner + ":1")
+                self.assertEqual(self.store.get(account.owner, mid)["id"], mid)
+                self.assertEqual(self.store.get("guest", guest)["id"], guest)
+                self.assertTrue(path.exists())
+                self.assertTrue(guest_path.exists())
+        self.provider.current = MeetingIdentity("guest", 0, False)
+        with self.assertRaisesRegex(MeetingError, "meeting.scope_changed"):
+            self.workflow.delete(mid, "guest:0")
+        self.assertTrue(path.exists())
+
+    def test_delete_uses_captured_id_when_selection_changes_in_same_session(self):
+        mid, _, path = self.pending()
+        other, _, other_path = self.pending()
+        self.workflow.delete(mid, "guest:0")
+        self.assertFalse(path.exists())
+        self.assertEqual(self.workflow.selected, other)
+        self.assertEqual(self.store.get("guest", other)["id"], other)
+        self.assertTrue(other_path.exists())
+
+    def test_delete_revalidates_session_under_publication_guard(self):
+        mid, _, path = self.pending()
+
+        @contextmanager
+        def changed_before_guard(expected):
+            self.provider.current = MeetingIdentity("guest", 1, False)
+            self.provider.validate(expected)
+            yield
+
+        self.provider.publication = changed_before_guard
+        with self.assertRaisesRegex(MeetingError, "meeting.scope_changed"):
+            self.workflow.delete(mid, "guest:0")
+        self.assertTrue(path.exists())
+        self.assertEqual(self.store.get("guest", mid)["id"], mid)
+
     def test_stop_during_capture_creation_does_not_open_a_late_recorder(self):
         entered, release = threading.Event(), threading.Event()
         capture = Mock(alive=False)

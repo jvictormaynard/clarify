@@ -365,17 +365,26 @@ class MeetingWorkflow:
             self.provider.validate(self._identity)
         self.store.save_notes(identity.owner, meeting_id, text)
 
-    def delete(self):
-        if self.active:
-            raise MeetingError("meeting.busy")
-        owner = self.provider.identity().owner
-        try:
-            self.store.delete(owner, self.selected)
-        except MeetingError as error:
-            if error.code == "meeting.delete_pending":
-                self._cleanup_pending[owner] = True
-            raise
-        self.selected = ""
+    def delete(self, meeting_id, context):
+        with self._lock:
+            if self.active:
+                raise MeetingError("meeting.busy")
+            expected = self.provider.identity()
+            # The dialog owns its target. Account publication excludes logout
+            # and revalidates the generation before storage checks owner + ID.
+            with self.provider.publication(expected):
+                if not meeting_id or context != expected.owner + ":" + str(
+                    expected.generation
+                ):
+                    raise MeetingError("meeting.scope_changed")
+                try:
+                    self.store.delete(expected.owner, meeting_id)
+                except MeetingError as error:
+                    if error.code == "meeting.delete_pending":
+                        self._cleanup_pending[expected.owner] = True
+                    raise
+                if self.selected == meeting_id:
+                    self.selected = ""
 
     def export(self):
         row = self.store.get(self.provider.identity().owner, self.selected)

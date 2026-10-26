@@ -288,9 +288,11 @@ class QmlMeetingController(QObject):
 
         return self._run(save, editing=True)
 
-    @Slot(result=bool)
-    def delete(self):
-        return self._run(self.workflow.delete, editing=True)
+    @Slot(str, str, result=bool)
+    def delete(self, meeting_id, context):
+        return self._run(
+            lambda: self.workflow.delete(meeting_id, context), editing=True
+        )
 
     def shutdown(self):
         self.flushNotesRequested.emit()

@@ -7,12 +7,13 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+from contextlib import contextmanager
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from PySide6.QtCore import QUrl, QTimer, QPointF, Qt  # noqa: E402
+from PySide6.QtCore import QUrl, QTimer, QPointF, Qt, QMetaObject, QObject  # noqa: E402
 from PySide6.QtQuick import QQuickItem  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
@@ -22,7 +23,7 @@ from clarify.desktop.qml_localization import ClarifyTranslator  # noqa: E402
 from clarify.desktop.qml_meetings import QmlMeetingController  # noqa: E402
 from meeting_store import MeetingStore  # noqa: E402
 from meeting_workflow import MeetingWorkflow  # noqa: E402
-from shared.meeting_contract import MeetingIdentity  # noqa: E402
+from shared.meeting_contract import MeetingIdentity, MeetingError  # noqa: E402
 
 
 def main():
@@ -66,6 +67,14 @@ def main():
                 )
         provider = Mock()
         provider.identity.return_value = MeetingIdentity("guest", 0, False)
+
+        @contextmanager
+        def publication(expected):
+            if provider.identity() != expected:
+                raise MeetingError("meeting.scope_changed")
+            yield
+
+        provider.publication = publication
         provider.workflows.registry.metadata = (
             SimpleNamespace(
                 provider_id="openai",
@@ -116,6 +125,69 @@ def main():
 
         def verify():
             try:
+                if "--delete" in sys.argv:
+                    controller._timer.stop()
+                    QMetaObject.invokeMethod(window, "saveNotes")
+                    assert not window.property("notesDirty")
+                    dialog = window.findChild(QObject, "meetingDeleteDialog")
+                    assert dialog is not None
+                    account_owner = "account:" + "a" * 64
+                    account = store.create(account_owner)["id"]
+                    store.end(account_owner, account)
+
+                    def switch(owner, generation, selected):
+                        provider.identity.return_value = MeetingIdentity(
+                            owner, generation, owner != "guest"
+                        )
+                        workflow.selected = selected
+                        controller.refresh()
+                        app.processEvents()
+
+                    def request_delete():
+                        assert QMetaObject.invokeMethod(window, "requestDelete")
+                        app.processEvents()
+                        assert dialog.property("visible"), (
+                            controller.state,
+                            window.property("notesId"),
+                            window.property("notesContext"),
+                            window.property("notesDirty"),
+                            dialog.property("context"),
+                            dialog.property("meetingId"),
+                        )
+
+                    switch(account_owner, 1, account)
+                    request_delete()
+                    assert dialog.property("meetingId") == account
+                    switch("guest", 2, mid)
+                    QTest.qWait(250)
+                    assert not dialog.property("visible")
+                    assert dialog.property("meetingId") == ""
+                    QMetaObject.invokeMethod(dialog, "accept")
+                    assert store.get("guest", mid)["id"] == mid
+                    assert store.get(account_owner, account)["id"] == account
+
+                    switch(account_owner, 3, account)
+                    request_delete()
+                    switch("guest", 4, mid)
+                    switch(account_owner, 5, account)
+                    QTest.qWait(250)
+                    assert not dialog.property("visible")
+                    QMetaObject.invokeMethod(dialog, "accept")
+                    assert store.get(account_owner, account)["id"] == account
+
+                    switch("guest", 6, mid)
+                    request_delete()
+                    other = store.create("guest", "Other selection")["id"]
+                    store.save_notes("guest", other, "Keep this manual note")
+                    store.end("guest", other)
+                    workflow.select(other)
+                    controller.refresh()
+                    assert dialog.property("meetingId") == mid
+                    QMetaObject.invokeMethod(dialog, "accept")
+                    app.processEvents()
+                    assert all(row["id"] != mid for row in store.list("guest"))
+                    assert workflow.selected == other
+                    assert store.get("guest", other)["notes"] == "Keep this manual note"
                 if "--pages" in sys.argv:
                     button = window.findChild(QQuickItem, "meetingNextPage")
                     assert button is not None and button.isEnabled()
@@ -133,8 +205,10 @@ def main():
                 app.processEvents()
                 assert not window.isVisible()
                 assert not workflow._cancel.cancelled
-            except Exception as error:
-                failures.append(repr(error))
+            except Exception:
+                import traceback
+
+                failures.append(traceback.format_exc())
             finally:
                 controller.shutdown()
                 app.quit()

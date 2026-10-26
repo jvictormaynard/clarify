@@ -69,12 +69,25 @@ ApplicationWindow {
         personalNotes.text = current ? current.notes : ""
         notesLoading = false
     }
+    function requestDelete() {
+        if (!current || !saveNotes()) return
+        deleteDialog.meetingId = current.id
+        deleteDialog.context = view.context
+        deleteDialog.open()
+    }
+    function invalidateDelete() {
+        if (deleteDialog.context !== "" && deleteDialog.context !== view.context) {
+            deleteDialog.meetingId = ""
+            deleteDialog.context = ""
+            deleteDialog.reject()
+        }
+    }
     onCurrentChanged: loadNotes()
     onClosing: function(close) { close.accepted = false; if (saveNotes()) root.hide() }
     Connections {
         target: meetings
         function onOpenRequested() { root.show(); root.raise(); root.requestActivate() }
-        function onStateChanged() { root.loadNotes() }
+        function onStateChanged() { root.invalidateDelete(); root.loadNotes() }
         function onFlushNotesRequested() { root.saveNotes() }
     }
     Timer { id: notesTimer; interval: 500; onTriggered: root.saveNotes() }
@@ -88,12 +101,16 @@ ApplicationWindow {
     }
     Dialog {
         id: deleteDialog
+        objectName: "meetingDeleteDialog"
+        property string meetingId: ""
+        property string context: ""
         title: qsTr("meeting.delete_title")
         anchors.centerIn: parent
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
         Label { text: qsTr("meeting.delete_warning"); color: theme.text; wrapMode: Text.WordWrap; width: 360 }
-        onAccepted: { notesDirty = false; meetings.delete() }
+        onAccepted: meetings.delete(meetingId, context)
+        onClosed: { meetingId = ""; context = "" }
     }
 
     ColumnLayout {
@@ -254,7 +271,7 @@ ApplicationWindow {
                     Item { Layout.fillWidth: true }
                     MeetingButton { text: qsTr("meeting.copy"); onClicked: { if (root.saveNotes()) meetings.copy() } }
                     MeetingButton { text: qsTr("meeting.export"); onClicked: { if (root.saveNotes()) exportDialog.open() } }
-                    MeetingButton { text: qsTr("meeting.delete"); enabled: !view.active; onClicked: deleteDialog.open() }
+                    MeetingButton { text: qsTr("meeting.delete"); enabled: !view.active; onClicked: root.requestDelete() }
                 }
             }
             Label { visible: current === null; Layout.fillWidth: true; text: qsTr("meeting.empty"); color: theme.subtleText; wrapMode: Text.WordWrap }
