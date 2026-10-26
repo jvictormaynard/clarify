@@ -437,7 +437,13 @@ class ChatGPTPlanSession:
                 data["active"], str
             ):
                 raise ValueError()
-            if (accounts or data["ext_agent_host_id"]) and not _text(
+            pending = data.get("pending_client_id", "")
+            if not isinstance(pending, str) or (
+                pending
+                and (not _text(pending, 1024) or pending == "dynamic_agent_client")
+            ):
+                raise ValueError()
+            if (accounts or pending or data["ext_agent_host_id"]) and not _text(
                 data["ext_agent_host_id"], 1024
             ):
                 raise ValueError()
@@ -788,6 +794,9 @@ class ChatGPTPlanSession:
                 data["ext_agent_host_id"] = "urn:uuid:" + str(uuid.uuid4())
                 self._save_locked(data)
             selected = None if new_account else copy.deepcopy(self._selected_locked())
+            saved_client = (
+                selected["client_id"] if selected else data.get("pending_client_id", "")
+            )
             generation = self._generation
             host_id = data["ext_agent_host_id"]
         deadline = self._monotonic() + self._auth_timeout
@@ -825,9 +834,7 @@ class ChatGPTPlanSession:
                 secrets.token_urlsafe(64),
             )
             params = {
-                "client_id": selected["client_id"]
-                if selected
-                else "dynamic_agent_client",
+                "client_id": saved_client or "dynamic_agent_client",
                 "ext_agent_host_id": host_id,
                 "response_type": "code",
                 "redirect_uri": listener.redirect_uri,
@@ -849,7 +856,7 @@ class ChatGPTPlanSession:
                     selected["tokens"]["scopes"]
                 ):
                     params["prompt"] = "consent"
-            else:
+            elif not saved_client:
                 params["agent_name_hint"] = "Clarify"
             check()
             try:
@@ -864,8 +871,15 @@ class ChatGPTPlanSession:
                 result,
                 listener.redirect_uri,
                 state,
-                selected["client_id"] if selected else None,
+                saved_client,
             )
+            if not saved_client:
+                # The code is single-use. Keep only its issued registration so
+                # a failed or interrupted exchange can use fresh authorization.
+                with self._transaction(check):
+                    data = copy.deepcopy(self._data)
+                    data["pending_client_id"] = client_id
+                    self._save_locked(data)
             payload = self._request(
                 "POST",
                 TOKEN_ENDPOINT,
@@ -898,6 +912,8 @@ class ChatGPTPlanSession:
                     "plan_notice_seen": bool(previous.get("plan_notice_seen", False)),
                 }
                 data["active"] = account_id
+                if data.get("pending_client_id") == client_id:
+                    data.pop("pending_client_id")
                 self._save_locked(data)
                 self._local_signouts.discard(account_id)
                 self._invalidate_locked()

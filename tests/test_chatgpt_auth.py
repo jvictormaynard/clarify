@@ -57,6 +57,7 @@ class OAuthServer:
         self.claims_override = {}
         self.token_override = {}
         self.fail_refresh = False
+        self.code_error = ""
         self.fail_revoke = False
         self.refresh_started = threading.Event()
         self.release_refresh = None
@@ -143,6 +144,11 @@ class OAuthServer:
             )
         if self.before_token:
             self.before_token()
+        if self.code_error:
+            return Response(
+                {"error": self.code_error, "error_description": "SECRET remote text"},
+                status=400,
+            )
         payload = {
             "id_token": self.id_token(),
             "access_token": "first-access",
@@ -326,6 +332,248 @@ class ChatGPTSessionTests(unittest.TestCase):
         credential = self.session.credential()
         self.assertEqual(credential.access_token, "first-access")
         self.session.check_current(credential.generation)
+
+    def test_failed_initial_exchange_recovers_issued_registration_after_restart(self):
+        def session():
+            return ChatGPTPlanSession(
+                self.directory,
+                http=self.server,
+                clock=lambda: self.server.now,
+                monotonic=lambda: self.server.now,
+                listener_factory=lambda: Listener(lambda: self.callback()),
+            )
+
+        records_at_exchange = []
+        self.server.before_token = lambda: records_at_exchange.append(
+            json.loads(
+                create_secret_store(
+                    self.directory, filename_stem="chatgpt-secrets"
+                ).get("chatgpt")
+            )
+        )
+        self.callback = lambda: self.server.callback(code="spent-code")
+        self.server.code_error = "invalid_grant"
+        first_session = session()
+        self.assert_code(
+            "authorization_failed",
+            lambda: first_session.sign_in(open_browser=self.server.browser),
+        )
+        first_query = copy.deepcopy(self.server.query)
+        self.assertEqual(
+            records_at_exchange[0].get("pending_client_id"), "oaiapp_first"
+        )
+        self.assertEqual(records_at_exchange[0]["active"], "")
+        self.assertEqual(records_at_exchange[0]["accounts"], {})
+        self.assertFalse(first_session.snapshot()["connected"])
+        self.assert_code("sign_in_required", first_session.credential)
+
+        recovered = session()
+        self.assertEqual(recovered.snapshot()["accounts"], [])
+        self.server.code_error = ""
+        self.callback = lambda: self.server.callback(client=False, code="fresh-code")
+        recovered.sign_in(open_browser=self.server.browser)
+        query = self.server.query
+        self.assertEqual(first_query["client_id"], ["dynamic_agent_client"])
+        self.assertEqual(query["client_id"], ["oaiapp_first"])
+        self.assertEqual(query["ext_agent_host_id"], first_query["ext_agent_host_id"])
+        for name in ("state", "nonce", "code_challenge"):
+            self.assertNotEqual(query[name], first_query[name])
+        for name in ("id_token_hint", "login_hint", "agent_name_hint"):
+            self.assertNotIn(name, query)
+        calls = self.token_calls("authorization_code")
+        self.assertEqual(
+            [call[2]["data"]["code"] for call in calls], ["spent-code", "fresh-code"]
+        )
+        self.assertNotEqual(
+            calls[0][2]["data"]["code_verifier"], calls[1][2]["data"]["code_verifier"]
+        )
+        for call in calls:
+            self.assertEqual(call[2]["data"]["client_id"], "oaiapp_first")
+        self.assertEqual(records_at_exchange[1]["active"], "")
+        self.assertEqual(records_at_exchange[1]["accounts"], {})
+        status = recovered.snapshot()
+        self.assertTrue(status["connected"])
+        self.assertEqual(len(status["accounts"]), 1)
+        saved = json.loads(
+            create_secret_store(self.directory, filename_stem="chatgpt-secrets").get(
+                "chatgpt"
+            )
+        )
+        self.assertFalse(saved.get("pending_client_id"))
+        self.assertEqual(
+            saved["accounts"][status["accountId"]]["client_id"], "oaiapp_first"
+        )
+
+    def test_failed_add_account_preserves_selection_and_resumes_only_when_requested(
+        self,
+    ):
+        self.sign_in()
+        before = self.session.snapshot()
+        first_record = copy.deepcopy(json.loads(self.store.get("chatgpt"))["accounts"])
+        self.server.client = "oaiapp_second"
+        self.server.code_error = "invalid_grant"
+        self.assert_code("authorization_failed", lambda: self.sign_in(new_account=True))
+        host = self.server.query["ext_agent_host_id"]
+        self.assertEqual(self.session.snapshot(), before)
+        self.assertEqual(
+            json.loads(self.store.get("chatgpt"))["accounts"], first_record
+        )
+        self.assertEqual(self.session.credential().access_token, "first-access")
+
+        self.session = self.make_session()
+        self.server.code_error = ""
+        self.server.client = "oaiapp_first"
+        self.sign_in()
+        self.assertEqual(self.server.query["client_id"], ["oaiapp_first"])
+        self.assertEqual(
+            json.loads(self.store.get("chatgpt"))["pending_client_id"], "oaiapp_second"
+        )
+        first_record = copy.deepcopy(json.loads(self.store.get("chatgpt"))["accounts"])
+        self.server.client = "oaiapp_second"
+        self.callback = lambda: self.server.callback(client=False)
+        self.sign_in(new_account=True)
+        self.assertEqual(self.server.query["client_id"], ["oaiapp_second"])
+        self.assertEqual(self.server.query["ext_agent_host_id"], host)
+        self.assertNotIn("id_token_hint", self.server.query)
+        status = self.session.snapshot()
+        self.assertEqual(len(status["accounts"]), 2)
+        self.assertNotEqual(status["accountId"], before["accountId"])
+        self.assertEqual(
+            json.loads(self.store.get("chatgpt"))["accounts"][before["accountId"]],
+            first_record[before["accountId"]],
+        )
+
+    def test_pending_registration_rejects_callback_and_identity_mismatches(self):
+        self.server.code_error = "invalid_grant"
+        self.assert_code("authorization_failed", self.sign_in)
+        pending = self.store.get("chatgpt")
+        before = len(self.token_calls("authorization_code"))
+        self.server.code_error = ""
+        self.callback = lambda: self.server.callback(client="oaiapp_other")
+        self.assert_code("registration_mismatch", self.sign_in)
+        self.assertEqual(len(self.token_calls("authorization_code")), before)
+        self.callback = lambda: self.server.callback(client=False)
+        self.server.claims_override = {"nonce": "wrong"}
+        self.assert_code("identity_invalid", self.sign_in)
+        self.assertEqual(self.store.get("chatgpt"), pending)
+        self.assertEqual(self.session.snapshot()["accounts"], [])
+        self.assert_code("sign_in_required", self.session.credential)
+
+    def test_pending_registration_is_retained_when_exchange_is_cancelled(self):
+        cancel = threading.Event()
+        self.server.before_token = cancel.set
+        self.assert_code("cancelled", lambda: self.sign_in(cancel=cancel))
+        saved = json.loads(self.store.get("chatgpt"))
+        self.assertEqual(saved["pending_client_id"], "oaiapp_first")
+        self.assertEqual(saved["active"], "")
+        self.assertEqual(saved["accounts"], {})
+        self.assertTrue(self.listeners[-1].closed)
+        self.server.before_token = None
+        self.callback = lambda: self.server.callback(client=False, code="fresh-code")
+        self.session = self.make_session()
+        self.sign_in()
+        self.assertEqual(self.server.query["client_id"], ["oaiapp_first"])
+        self.assertEqual(len(self.session.snapshot()["accounts"]), 1)
+
+    def test_cancelled_callback_cannot_save_an_issued_registration(self):
+        cancel = threading.Event()
+
+        def callback():
+            cancel.set()
+            return self.server.callback()
+
+        self.callback = callback
+        self.assert_code("cancelled", lambda: self.sign_in(cancel=cancel))
+        self.assertFalse(self.token_calls("authorization_code"))
+        self.assertFalse(json.loads(self.store.get("chatgpt")).get("pending_client_id"))
+        self.assertEqual(self.session.snapshot()["accounts"], [])
+
+    def test_pending_save_failure_stops_before_the_code_is_sent(self):
+        original = self.store.set
+
+        def save(provider, value):
+            if json.loads(value).get("pending_client_id"):
+                raise OSError("SECRET storage diagnostics")
+            original(provider, value)
+
+        with patch.object(self.store, "set", side_effect=save):
+            self.assert_code("storage_unavailable", self.sign_in)
+        self.assertFalse(self.token_calls("authorization_code"))
+        self.assertFalse(self.session.snapshot()["connected"])
+        self.assertFalse(json.loads(self.store.get("chatgpt")).get("pending_client_id"))
+        self.assertTrue(self.listeners[-1].closed)
+
+    def test_pending_field_is_bounded_and_invalid_records_are_not_overwritten(self):
+        self.sign_in()
+        saved = json.loads(self.store.get("chatgpt"))
+        for value in (
+            None,
+            False,
+            1,
+            [],
+            {},
+            "dynamic_agent_client",
+            "x" * 1025,
+            "bad\nID",
+        ):
+            with self.subTest(value=value):
+                data = copy.deepcopy(saved)
+                data["pending_client_id"] = value
+                raw = json.dumps(data)
+                self.store.set("chatgpt", raw)
+                before = len(self.server.calls)
+                self.assert_code("storage_invalid", self.session.snapshot)
+                self.assert_code("storage_invalid", self.sign_in)
+                self.assertEqual(len(self.server.calls), before)
+                self.assertEqual(self.store.get("chatgpt"), raw)
+        data = copy.deepcopy(saved)
+        data.update(
+            accounts={},
+            active="",
+            ext_agent_host_id="",
+            pending_client_id="oaiapp_pending",
+        )
+        self.store.set("chatgpt", json.dumps(data))
+        self.assert_code("storage_invalid", self.sign_in)
+
+    def test_other_session_change_rejects_stale_pending_callback_or_tokens(self):
+        self.store = create_secret_store(
+            self.directory, filename_stem="chatgpt-secrets"
+        )
+        self.session = self.make_session()
+        self.sign_in()
+        active = self.session.snapshot()["accountId"]
+        other = ChatGPTPlanSession(self.directory)
+        self.server.client = "oaiapp_second"
+        for phase in ("callback", "exchange"):
+            with self.subTest(phase=phase):
+
+                def change_selection():
+                    other.select_account(active)
+
+                def callback():
+                    change_selection()
+                    return self.server.callback()
+
+                self.callback = (
+                    callback if phase == "callback" else self.server.callback
+                )
+                self.server.before_token = (
+                    change_selection if phase == "exchange" else None
+                )
+                before = len(self.token_calls("authorization_code"))
+                self.assert_code("cancelled", lambda: self.sign_in(new_account=True))
+                saved = json.loads(self.store.get("chatgpt"))
+                self.assertEqual(saved["active"], active)
+                self.assertEqual(len(saved["accounts"]), 1)
+                self.assertEqual(
+                    bool(saved.get("pending_client_id")), phase == "exchange"
+                )
+                self.assertEqual(
+                    len(self.token_calls("authorization_code")),
+                    before + (phase == "exchange"),
+                )
+                self.assertTrue(self.listeners[-1].closed)
 
     def test_plan_notice_is_per_registration_and_persists(self):
         self.assert_code("plan_disabled", self.session.acknowledge_plan_notice)
@@ -918,10 +1166,10 @@ class ChatGPTSessionTests(unittest.TestCase):
 
     def test_later_authorization_wins_and_earlier_response_is_discarded(self):
         self.sign_in()
+        self.server.client = "oaiapp_later"
 
         def later_signin():
             self.server.before_token = None
-            self.server.client = "oaiapp_later"
             self.sign_in(new_account=True)
 
         self.server.before_token = later_signin
