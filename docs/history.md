@@ -26,6 +26,27 @@ All pre-upgrade records remain in the local store and are never uploaded. Guest
 records remain local, including records created after this change. Signing out
 restores the local view; switching accounts never exposes another account cache.
 
+## Explicit dictionary corrections
+
+History entries with an original transcript offer **Correct term**. Enter the
+heard term and the correct spelling, then review both before saving. The heard
+term must occur in the original. The original record stays unchanged. The action
+does not observe text in other apps or retain audio.
+
+Corrections use the existing dictionary limits, including multiword terms.
+The heard spelling becomes an alias when it differs beyond letter case. An
+existing term keeps its metadata and enabled state. Local records can add words
+only to the local dictionary; account records require the same active account.
+
+Undo removes only this operation's new entry while its session and durable file
+revision still match. An edit, equal-content replacement, sync, or session change
+can disable Undo. Receipts last at most ten minutes and do not survive restart.
+Account corrections schedule sync after one five-second undo window; polling
+does not extend that window. Undo resolves the window and uses normal sync.
+Closing Settings, quitting, or changing accounts preserves the scoped library
+file so the existing sync can reconcile it when that account is active again.
+Native Windows acceptance remains a separate gate.
+
 ## Privacy contract
 
 `HistoryStore` is disabled unless the user explicitly enables **Local history**

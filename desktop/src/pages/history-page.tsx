@@ -3,6 +3,7 @@ import { Cloud, HardDrive, History, LoaderCircle, Monitor, Smartphone, Trash2 } 
 import { t, uiLanguage } from "../i18n";
 import { Button, Confirm, Input } from "../components/ui";
 import { HistoryComparison, HistoryEntryActions, type HistoryEntryExtension } from "../components/history-entry";
+import { HistoryCorrectionAction } from "../components/history-correction-dialog";
 import { getHistoryPage, type HistoryEntry } from "../settings/bridge";
 import type { SettingsPageProps } from "../settings/use-settings";
 
@@ -94,7 +95,7 @@ export function HistoryPage({ controller, renderEntryAction }: SettingsPageProps
               <p className="history-text">{entry.text || t("Sem texto")}</p>
               <HistoryEntryActions entry={entry} scope={scope} isCurrent={isCurrent}>
                 <Button variant="text" aria-expanded={expanded === entry.id} onClick={() => setExpanded(value => value === entry.id ? null : entry.id)}>{t(expanded === entry.id ? "Fechar textos" : "Abrir textos")}</Button>
-                {renderEntryAction?.(entry, scope)}
+                {renderEntryAction ? renderEntryAction(entry, scope) : <HistoryCorrectionAction entry={entry} scope={scope} controller={controller} />}
               </HistoryEntryActions>
               {expanded === entry.id && <HistoryComparison entry={entry} scope={scope} isCurrent={isCurrent} />}
             </div>

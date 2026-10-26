@@ -35,6 +35,12 @@ from dictionary_snippets import (
     DictionarySnippetService,
     LocalDictionarySnippetsRepository,
 )
+from history_corrections import (
+    CorrectionError,
+    CorrectionIdentity,
+    CorrectionSource,
+    HistoryDictionaryCorrectionService,
+)
 
 from hotkey_config import (
     ActivationMode,
@@ -507,6 +513,21 @@ class QmlSettingsController(QObject):
             )
         )
         self._dictionary_draft = self._dictionary_service.state
+        self._history_correction_guard = getattr(
+            self._account, "_lock", threading.RLock()
+        )
+        self._history_corrections = HistoryDictionaryCorrectionService(
+            self._dictionary_service,
+            read_part=self.getHistoryTextPart,
+            identity=self._history_correction_identity,
+            guard=lambda: self._history_correction_guard,
+        )
+        self._history_correction_sync = QTimer(self)
+        self._history_correction_sync.setSingleShot(True)
+        self._history_correction_sync.timeout.connect(
+            self._finish_history_correction_window
+        )
+        self._history_correction_sync_context = None
         self._dictionary_baseline = self._dictionary_draft
         self._snippet_draft_context = self.snippetContext
         self._autostart_registry = registry
@@ -2355,6 +2376,8 @@ class QmlSettingsController(QObject):
     @Slot()
     def shutdown(self) -> None:
         self._account_shutdown = True
+        self._history_correction_sync.stop()
+        self._history_corrections.clear()
         self._background_mailbox.close()
         self._background_timer.stop()
         self._microphone_inventory_shutdown = True
@@ -2451,6 +2474,120 @@ class QmlSettingsController(QObject):
         if self._history_view is None:
             raise ValueError("Invalid history context")
         return self._history_view.text_part(context, token, offset, field)
+
+    def _history_correction_identity(self):
+        if (
+            self._account_shutdown
+            or getattr(self._account, "_ending_session", False)
+            or (self._account.managed and not self._account.signed_in)
+        ):
+            raise CorrectionError("context_changed")
+        return CorrectionIdentity(
+            self.snippetContext,
+            getattr(self._account, "_generation", 0),
+            "account" if self._account.scope else "local",
+        )
+
+    def _finish_history_correction_window(self):
+        context = self._history_correction_sync_context
+        self._history_correction_sync_context = None
+        if not self._account_shutdown:
+            try:
+                if context == self._history_correction_identity():
+                    self._sync_library_preferences()
+            except CorrectionError:
+                pass
+        # The scoped library file is durable even after sign-out or quit.
+        # Existing library reconciliation will sync it on the next login.
+
+    def historyCorrection(self, action, payload):
+        """Explicit correction RPC. Tokens never contain transcript text."""
+        messages = {
+            "invalid_term": "Use um termo de até 256 caracteres, sem quebras de linha.",
+            "no_change": "Informe uma grafia diferente para o termo correto.",
+            "heard_not_found": "O termo ouvido não foi encontrado no original.",
+            "history_changed": "O histórico mudou. Atualize e tente novamente.",
+            "owner_mismatch": "O registro e o dicionário devem pertencer à mesma conta ou ao modo local.",
+            "context_changed": "A conta mudou. Abra a correção novamente.",
+            "library_changed": "O dicionário mudou. Revise a correção novamente.",
+            "library_unavailable": "Não foi possível ler o dicionário. A correção não foi salva.",
+            "library_full": "O dicionário atingiu o limite de 512 termos.",
+            "source_too_large": "Este original excede o limite de leitura para correção.",
+            "expired": "Esta correção expirou. Revise os termos novamente.",
+            "persistence_failed": "Não foi possível salvar a correção. Tente novamente.",
+        }
+        try:
+            if type(action) is not str or type(payload) is not dict:
+                raise CorrectionError("invalid_term")
+            if action == "preview":
+                if set(payload) != {
+                    "context",
+                    "revision",
+                    "id",
+                    "libraryContext",
+                    "heard",
+                    "corrected",
+                } or any(type(value) is not str for value in payload.values()):
+                    raise CorrectionError("invalid_term")
+                with self._history_correction_guard:
+                    self._require_library_context(payload["libraryContext"])
+                    preview = self._history_corrections.preview(
+                        CorrectionSource(
+                            payload["context"], payload["revision"], payload["id"]
+                        ),
+                        payload["libraryContext"],
+                        payload["heard"],
+                        payload["corrected"],
+                    )
+                return {
+                    "status": "already_exists" if preview.already_exists else "preview",
+                    "token": preview.token,
+                    "heard": preview.heard,
+                    "entry": preview.entry.to_mapping(),
+                }
+            if (
+                set(payload) != {"token"}
+                or type(payload["token"]) is not str
+                or len(payload["token"]) > 128
+            ):
+                raise CorrectionError("expired")
+            token = payload["token"]
+            if action == "cancel":
+                self._history_corrections.cancel(token)
+                return {"status": "cancelled"}
+            if action == "status":
+                return {"canUndo": self._history_corrections.can_undo(token)}
+            if action not in {"confirm", "undo"}:
+                raise CorrectionError("expired")
+            with self._history_correction_guard:
+                self._require_library_context(self.snippetContext)
+                result = getattr(self._history_corrections, action)(token)
+                if result.status in {"saved", "saved_without_undo", "undone"}:
+                    self._reconcile_library_draft(self._dictionary_service.state)
+                    self.dirtyChanged.emit()
+                    self.saved.emit()
+                    if action == "undo":
+                        self._history_correction_sync.stop()
+                        self._history_correction_sync_context = None
+                        self._sync_library_preferences()
+                    elif self._account.scope:
+                        # One bounded window. Polling never restarts it.
+                        if not self._history_correction_sync.isActive():
+                            self._history_correction_sync_context = (
+                                self._history_correction_identity()
+                            )
+                            self._history_correction_sync.start(5000)
+                return {
+                    "status": result.status,
+                    "receipt": result.receipt,
+                    "canUndo": bool(result.receipt)
+                    and self._history_corrections.can_undo(result.receipt),
+                }
+        except Exception as error:
+            code = (
+                error.code if isinstance(error, CorrectionError) else "context_changed"
+            )
+            return {"error": messages.get(code, messages["persistence_failed"])}
 
     @staticmethod
     def _write_history_clipboard(text):
