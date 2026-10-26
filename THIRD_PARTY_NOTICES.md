@@ -16,8 +16,8 @@ The release SBOM records cryptography and its statically linked OpenSSL.
 | Python | Runtime | Python Software Foundation License |
 | PySide6 / Qt | Desktop engine and QML pill | PySide6 metadata: LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only; Qt module and distribution terms must be reviewed for the release |
 | React / React DOM | Settings interface | MIT; Meta Platforms, Inc. and affiliates |
-| Radix UI | Settings controls | MIT; WorkOS |
-| cmdk | Searchable Settings pickers | MIT; Paco Coursey |
+| Base UI | Settings controls | MIT; Material-UI SAS |
+| t3code | Adapted Settings controls | MIT; T3 Tools Inc.; preserved in `desktop/licenses/t3code-MIT.txt` |
 | Lucide | Settings icons | ISC, with Feather portions under MIT; see the package LICENSE |
 | Tauri | Native Settings child window | MIT OR Apache-2.0; transitive crate terms also apply |
 | Pillow | Image rendering | HPND |
@@ -79,6 +79,11 @@ locked Cargo graph for Windows. Each Settings build produces
 embedded beside the Settings child in the portable executable; the notices are
 also included in the release ZIP. The release SBOM merges Settings with the
 existing Python and SoX inventory.
+
+Adapted frontend source is recorded in
+[`desktop/licenses/source-components.json`](desktop/licenses/source-components.json)
+with its source revision and preserved license. The Settings notices and SBOM
+include these components with the npm and Cargo dependencies.
 
 The Settings SBOM records the child executable SHA-256, lockfile hashes, and
 pinned Rust toolchain. Cargo build-only crates are included with excluded scope

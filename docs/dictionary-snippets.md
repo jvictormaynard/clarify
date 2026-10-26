@@ -58,8 +58,9 @@ entry ordering.
 
 Desktop Settings has a separate **Snippets** page. On iOS, open **Dictionary →
 Snippets**. Add a distinctive spoken phrase and its saved text, then save. Both
-interfaces support search, editing, enable/disable and deletion. Desktop drafts
-use the existing Save/Discard bar. A draft is bound to the account where it began;
+interfaces support search, editing, enable/disable and deletion. Desktop additions,
+text edits and deletions use the Snippets page's Save/Discard actions. Enablement
+and case sensitivity changes on saved snippets persist automatically. A draft is bound to the account where it began;
 a session or account change cannot save it into another account or the guest profile.
 
 Guest snippets remain on their device. Account snippets have an endpoint/account
@@ -133,8 +134,9 @@ so dictionary content and credentials are not written to provider logs.
 
 The current React/Tauri Settings window exposes **Dicionário**: add a word or
 phrase with Enter, search, edit, enable/disable, or remove it. Optional aliases
-and pronunciation appear in a disclosure. Changes remain drafts across tab
-navigation and use the existing floating Save/Discard bar. Saving updates the
+and pronunciation appear in a disclosure. Additions, text edits and removals
+remain drafts across tab navigation and use the Dictionary page's Save/Discard
+actions. Enablement changes on saved terms persist automatically. Saving updates the
 same service used by the running transcription pipeline; no restart is needed.
 Dictionary edits preserve existing snippets. Saving validates and atomically
 replaces the dictionary file; an error leaves its active in-memory value intact.

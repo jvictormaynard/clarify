@@ -126,7 +126,7 @@ payload finding, corrective packaging policy, and still-open acceptance gates.
 | Dictionary | Add, edit, disable, delete, save, discard, and restart work; enabled terms reach the correct ASR/refinement route |
 | Offline local ASR | A verified installed model transcribes with network blocked and cloud refinement off |
 | Focus and clipboard | Test at least three target apps; unsafe paste leaves text available without an automatic result window |
-| Settings layout | Title bar stays fixed, only content scrolls; floating save bar, keyboard focus, and close confirmation work at 100% and scaled DPI |
+| Settings layout | Title bar stays fixed, only content scrolls; contextual Save/Discard actions, keyboard focus, and close confirmation work at 100% and scaled DPI |
 | Shutdown and update | No live recorder or local server is left behind; do not delete recoverable user audio to make a check pass |
 
 Unsigned portable releases and signed MSI/update releases have different gates.

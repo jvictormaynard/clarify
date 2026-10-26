@@ -40,7 +40,7 @@ translate selected text without opening a separate editor.
 > to Groq and uses a sponsored individual allowance within the project's funded
 > budget. Operating costs are reserved before processing funds are distributed.
 
-> The Settings and dictionary described here are included in v0.4.0.
+> The Settings interface described here follows the current source on `main`.
 > Check the [release notes](https://github.com/jvictormaynard/clarify/releases/latest)
 > before downloading; older releases have a different interface. Release acceptance is tracked in
 > [Release readiness](docs/release-readiness.md).
@@ -90,11 +90,19 @@ registration is deferred until a business account is available.
 - Optional account with email-code, Google, Microsoft or GitHub login, shared vocabulary, new transcription history and hosted allowance
 - Local and personal-key modes remain available without an account; no telemetry service
 
+Settings keeps navigation available while microphone tests, refreshes and saves
+run. Choices, switches, shortcuts and flags on saved library rows save
+automatically. Text and numeric drafts use **Salvar alterações** (Save changes)
+and **Descartar** (Discard) for the current page. Provider key and connection URL
+edits on **Modelos e serviços** (Models and services) require **Validar e salvar
+chave** (Validate and save key). Validate or discard those edits before saving
+other drafts. Closing Settings can save or discard drafts from all pages.
+
 ## Interface preview
 
-![Personal dictionary in the current Settings frontend](docs/images/settings-dictionary.png)
+![Dictation in the current Settings frontend](docs/images/settings-desktop-dictation.png)
 
-The v0.4.0 React frontend, captured in an isolated browser test with synthetic
+The current React frontend, captured in an isolated browser test with synthetic
 data. Native-window checks and untested scenarios are recorded in
 [Release readiness](docs/release-readiness.md).
 
@@ -129,9 +137,9 @@ hours while running. Automatic installation is off by default. A red dot on
 the home pill's Settings button marks an available update. Open its menu and
 select **Install update** to download and install it.
 
-To enable automatic installation, open **Settings → Geral → Atualizações**,
-enable **Atualização automática**, and save. Clarify downloads in the
-background, waits until active work is complete and Settings are closed,
+To enable automatic installation, open **Settings → Geral → Atualizações** and
+enable **Atualização automática**. This preference saves automatically. Clarify
+downloads in the background, waits until active work is complete and Settings are closed,
 then restarts to apply the update. Settings, keys, models, and shortcuts stay
 in place. If the new version fails to start, the previous executable is restored.
 The app verifies signed metadata and the executable's size and SHA-256 before
@@ -275,8 +283,10 @@ selected cloud model. The Windows/offline product acceptance remains pending.
 ## Personal dictionary
 
 Add names and technical terms in **Settings → Dicionário**, for example
-`Railway`, `pill`, `Lana`, or `Eva Desktop`. Save or discard through the floating
-bar that appears after a change. You can edit, disable, or remove each term.
+`Railway`, `pill`, `Lana`, or `Eva Desktop`. Additions, text edits and removals
+remain drafts until you select **Salvar alterações** on this page. Use
+**Descartar** to cancel these drafts. Enablement changes on saved terms save
+automatically.
 Enabled terms provide bounded vocabulary context to ASR and optional text
 refinement. They are hints, not guaranteed replacements. When a cloud route is
 used, this vocabulary is sent to that provider with the request. See
@@ -288,7 +298,9 @@ Open **Settings → Snippets** on desktop or **Dictionary → Snippets** on iOS.
 Add a phrase such as `minha assinatura` and the text to insert, then save.
 Say the phrase alone to insert its exact saved text. Inside a sentence, the
 snippet is substituted before rewriting so the model can adjust the whole message. Search, edit, disable or delete snippets
-from the same page. Desktop changes use the existing Save/Discard bar.
+from the same page. On desktop, additions, text edits and removals use this
+page's **Salvar alterações** and **Descartar** actions. Enablement and case
+sensitivity changes on saved snippets save automatically.
 
 Account snippets synchronize between devices. Guest snippets stay on their device
 and are not uploaded at sign-in. Only trigger phrases can become recognition
