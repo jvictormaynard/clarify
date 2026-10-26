@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -17,6 +18,7 @@ from dictionary_snippets import (
 )
 from history_store import HistoryRecord
 from local_asr_product import LocalASRProductState
+from meeting_workflow import MeetingWorkflow
 from microphone_controls import MicrophoneInventory
 from secret_store import PlaintextFileSecretStore
 from test_pyside6_qml_settings import _repositories
@@ -149,9 +151,85 @@ class HistoryCorrectionSettingsTests(unittest.TestCase):
             self.assertEqual(
                 self.call("undo", {"token": result["receipt"]})["status"], "undone"
             )
-            sync.assert_called_once_with()
+            sync.assert_called_once_with(
+                expected_identity=self.settings._history_correction_identity()
+            )
         self.assertFalse(self.timer.active)
         self.assertFalse(self.guest.path.exists())
+
+    def test_undo_releases_account_guard_before_meeting_processing_preflight(self):
+        self.signed_in()
+        result = self.call("confirm", {"token": self.preview()["token"]})
+        meeting = MeetingWorkflow(Mock(), Mock(), source_factory=Mock())
+        meeting_locked = threading.Event()
+        preflight_entered = threading.Event()
+        publication_acquired = []
+
+        def publish():
+            # Match the meeting publication order, with a bounded probe so the
+            # old UI/account -> meeting cycle fails without hanging the suite.
+            with meeting._lock:
+                meeting_locked.set()
+                if not preflight_entered.wait(3):
+                    return
+                acquired = self.account._lock.acquire(timeout=1)
+                publication_acquired.append(acquired)
+                if acquired:
+                    self.account._lock.release()
+
+        def can_change():
+            preflight_entered.set()
+            meeting.active  # The real getter acquires the meeting lock.
+            return False  # A running meeting defers library synchronization.
+
+        worker = threading.Thread(target=publish, daemon=True)
+        worker.start()
+        self.assertTrue(meeting_locked.wait(3))
+        self.settings._account_can_change = can_change
+        try:
+            undone = self.call("undo", {"token": result["receipt"]})
+        finally:
+            preflight_entered.set()
+            worker.join(3)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(undone["status"], "undone")
+        self.assertEqual(
+            publication_acquired,
+            [True],
+            "Meeting publication must acquire the account guard during preflight",
+        )
+        self.request.assert_not_called()
+
+    def test_undo_does_not_reserve_sync_after_preflight_changes_session(self):
+        self.signed_in()
+        result = self.call("confirm", {"token": self.preview()["token"]})
+
+        def changed_session():
+            self.account._generation += 1
+            return True
+
+        self.settings._account_can_change = changed_session
+        with patch.object(self.account, "begin_change", return_value=False) as begin:
+            undone = self.call("undo", {"token": result["receipt"]})
+        self.assertEqual(undone["status"], "undone")
+        begin.assert_not_called()
+        self.request.assert_not_called()
+
+    def test_deferred_undo_sync_cannot_follow_a_relogin_to_the_same_account(self):
+        self.signed_in()
+        result = self.call("confirm", {"token": self.preview()["token"]})
+        self.settings._account_can_change = lambda: False
+        self.assertEqual(
+            self.call("undo", {"token": result["receipt"]})["status"], "undone"
+        )
+        self.assertTrue(self.settings._library_sync_pending)
+        self.account._generation += 1
+        self.settings._account_can_change = lambda: True
+        with patch.object(self.account, "begin_change", return_value=False) as begin:
+            self.settings._library_sync_timer.timeout.emit()
+        begin.assert_not_called()
+        self.assertFalse(self.settings._library_sync_pending)
+        self.request.assert_not_called()
 
     def test_managed_immediate_normal_sync_invalidates_receipt_without_losing_addition(
         self,
@@ -202,7 +280,9 @@ class HistoryCorrectionSettingsTests(unittest.TestCase):
         )
         with patch.object(self.settings, "_sync_library_preferences") as sync:
             self.settings._finish_history_correction_window()
-            sync.assert_called_once_with()
+            sync.assert_called_once_with(
+                expected_identity=self.settings._history_correction_identity()
+            )
 
     def test_combined_draft_limit_is_checked_before_persistence(self):
         self.dictionary.replace(

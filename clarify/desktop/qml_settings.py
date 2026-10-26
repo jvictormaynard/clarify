@@ -501,11 +501,12 @@ class QmlSettingsController(QObject):
         self._account_social = False
         self._account_cancel = threading.Event()
         self._library_sync_pending = False
+        self._library_sync_expected_identity = None
         self._library_sync_context = None
         self._library_sync_timer = QTimer(self)
         self._library_sync_timer.setSingleShot(True)
         self._library_sync_timer.setInterval(1000)
-        self._library_sync_timer.timeout.connect(self._sync_library_preferences)
+        self._library_sync_timer.timeout.connect(self._retry_library_preference_sync)
         self._accountFinished.connect(
             self._finish_account, Qt.ConnectionType.QueuedConnection
         )
@@ -1354,21 +1355,42 @@ class QmlSettingsController(QObject):
         self._sync_library_preferences()
         return True
 
-    def _sync_library_preferences(self):
+    def _retry_library_preference_sync(self):
+        if self._library_sync_pending:
+            self._sync_library_preferences(
+                expected_identity=self._library_sync_expected_identity
+            )
+
+    def _sync_library_preferences(self, *, expected_identity=None):
         """Use account sync without its draft-replacing sign-in completion path."""
         if not self._account.scope or self._account_shutdown:
             self._library_sync_pending = False
+            self._library_sync_expected_identity = None
             self._library_sync_timer.stop()
             return
-        if (
-            self._account_busy
-            or not self._account_can_change()
-            or not self._account.begin_change()
-        ):
+        # The processing guard can acquire workflow/meeting locks. Consult it
+        # before reserving the account, never while holding its lock.
+        blocked = self._account_busy or not self._account_can_change()
+        if not blocked:
+            with self._history_correction_guard:
+                if expected_identity is not None:
+                    try:
+                        current_identity = self._history_correction_identity()
+                    except CorrectionError:
+                        current_identity = None
+                    if current_identity != expected_identity:
+                        self._library_sync_pending = False
+                        self._library_sync_expected_identity = None
+                        self._library_sync_timer.stop()
+                        return
+                blocked = not self._account.begin_change()
+        if blocked:
             self._library_sync_pending = True
+            self._library_sync_expected_identity = expected_identity
             self._library_sync_timer.start()
             return
         self._library_sync_pending = False
+        self._library_sync_expected_identity = None
         self._library_sync_timer.stop()
         context = self._snippet_draft_context
         try:
@@ -1421,7 +1443,7 @@ class QmlSettingsController(QObject):
         self.accountStateChanged.emit()
         self.dirtyChanged.emit()
         if self._library_sync_pending:
-            self._sync_library_preferences()
+            self._retry_library_preference_sync()
 
     @Property(str, notify=errorChanged)
     def lastError(self) -> str:
@@ -2590,7 +2612,7 @@ class QmlSettingsController(QObject):
         if not self._account_shutdown:
             try:
                 if context == self._history_correction_identity():
-                    self._sync_library_preferences()
+                    self._sync_library_preferences(expected_identity=context)
             except CorrectionError:
                 pass
         # The scoped library file is durable even after sign-out or quit.
@@ -2656,6 +2678,7 @@ class QmlSettingsController(QObject):
                 return {"canUndo": self._history_corrections.can_undo(token)}
             if action not in {"confirm", "undo"}:
                 raise CorrectionError("expired")
+            sync_identity = None
             with self._history_correction_guard:
                 self._require_library_context(self.snippetContext)
 
@@ -2668,14 +2691,13 @@ class QmlSettingsController(QObject):
                 result = getattr(self._history_corrections, action)(
                     token, validate=validate
                 )
-                if result.status in {"saved", "saved_without_undo", "undone"}:
+                changed = result.status in {"saved", "saved_without_undo", "undone"}
+                if changed:
                     self._reconcile_library_draft(self._dictionary_service.state)
-                    self.dirtyChanged.emit()
-                    self.saved.emit()
                     if action == "undo":
                         self._history_correction_sync.stop()
                         self._history_correction_sync_context = None
-                        self._sync_library_preferences()
+                        sync_identity = self._history_correction_identity()
                     elif self._account.scope:
                         # One bounded window. Polling never restarts it.
                         identity = self._history_correction_identity()
@@ -2686,12 +2708,18 @@ class QmlSettingsController(QObject):
                             self._history_correction_sync.stop()
                             self._history_correction_sync_context = identity
                             self._history_correction_sync.start(5000)
-                return {
+                response = {
                     "status": result.status,
                     "receipt": result.receipt,
                     "canUndo": bool(result.receipt)
                     and self._history_corrections.can_undo(result.receipt),
                 }
+            if changed:
+                self.dirtyChanged.emit()
+                self.saved.emit()
+            if sync_identity is not None:
+                self._sync_library_preferences(expected_identity=sync_identity)
+            return response
         except Exception as error:
             code = (
                 error.code if isinstance(error, CorrectionError) else "context_changed"
