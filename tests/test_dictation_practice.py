@@ -1,6 +1,7 @@
 """Practice exercises the production workflow with fake audio and providers."""
 
 import unittest
+from itertools import product
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
@@ -283,6 +284,75 @@ class PracticeTests(unittest.TestCase):
         while self.scheduler.background:
             self.scheduler.background.pop(0)()
         self.assertEqual(self.audio.started, 2)
+        self.assertEqual(self.audio.cancelled, 0)
+
+    def test_unaccepted_publication_is_discarded_on_close_cancel_or_identity_change(
+        self,
+    ):
+        for delivered, boundary in product(
+            (False, True), ("close", "cancel", "identity")
+        ):
+            self.setUp()
+            self.scheduler = ManualScheduler()
+            self.make_practice()
+            identity = ["session-a"]
+            self.practice.identity = lambda: identity[0]
+            self.practice.command("open")
+            self.practice.command("start")
+            self.scheduler.background.pop(0)()
+            self.practice.command("stop")
+            self.scheduler.background.pop(0)()
+            # COMPLETED exists; delivery has not yet accepted publication.
+            self.assertEqual(self.workflow.state.phase.value, "completed")
+            if delivered:
+                while self.scheduler.soon:
+                    self.scheduler.soon.pop(0)()
+            if boundary == "identity":
+                identity[0] = "session-b"
+                self.practice.snapshot()
+            else:
+                self.practice.command(boundary)
+            while self.scheduler.soon:
+                self.scheduler.soon.pop(0)()
+            while self.scheduler.background:
+                self.scheduler.background.pop(0)()
+            self.assertEqual(self.statistics.dictations, [])
+            self.assertEqual(self.audio.cancelled, 0)
+            self.assertEqual(self.practice.snapshot()["text"], "")
+
+    def test_identity_change_after_publication_claim_keeps_one_usage_without_cancelling_recorder(
+        self,
+    ):
+        identity = ["session-a"]
+        self.practice.identity = lambda: identity[0]
+        record = self.statistics.record_dictation
+
+        def accepted(*args):
+            identity[0] = "session-b"
+            state = self.practice.snapshot()
+            self.assertEqual(state["text"], "")
+            self.assertEqual(state["blocked"], "practice_session")
+            record(*args)
+
+        self.statistics.record_dictation = accepted
+        self.practice.command("open")
+        self.practice.command("start")
+        self.practice.command("stop")
+        self.assertEqual(len(self.statistics.dictations), 1)
+        self.assertEqual(self.audio.cancelled, 0)
+        self.assertEqual(self.workflow.state.phase.value, "ready")
+
+    def test_discard_completed_rejects_old_ids_and_active_capture(self):
+        self.practice.command("open")
+        self.practice.command("start")
+        operation = self.workflow.state.operation_id
+        self.assertFalse(self.workflow.discard_completed(operation))
+        self.assertEqual(self.workflow.state.phase.value, "recording")
+        self.practice.command("stop")
+        self.assertFalse(self.workflow.discard_completed(operation + 1))
+        self.assertEqual(self.workflow.state.phase.value, "completed")
+        self.assertTrue(self.workflow.discard_completed(operation))
+        self.assertEqual(self.workflow.state.phase.value, "ready")
         self.assertEqual(self.audio.cancelled, 0)
 
 

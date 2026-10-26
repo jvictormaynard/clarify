@@ -85,11 +85,9 @@ class PracticeController:
 
     def _release_workflow(self):
         state = self.workflow.state
-        if state.phase in {
-            WorkflowPhase.COMPLETED,
-            WorkflowPhase.FAILED,
-            WorkflowPhase.CANCELLED,
-        }:
+        if state.phase is WorkflowPhase.COMPLETED:
+            self.workflow.discard_completed(state.operation_id)
+        elif state.phase in {WorkflowPhase.FAILED, WorkflowPhase.CANCELLED}:
             self.workflow.finish(state.operation_id)
         elif state.phase is WorkflowPhase.MICROPHONE_UNAVAILABLE:
             self.workflow.dispatch(DismissMicrophoneUnavailable())
