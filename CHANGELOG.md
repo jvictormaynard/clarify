@@ -5,6 +5,8 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-26
+
 ### Added
 
 - Sign in or create an account with Google, Microsoft or GitHub on Windows and iOS. Keep email-code login and local cancellation. Provider credentials stay on the server.
@@ -21,6 +23,8 @@ Notable user-facing changes are documented here. This project follows
 
 ### Fixed
 
+- Keep Cancel login available on the desktop Account page during browser sign-in.
+- Prevent a desktop shutdown hang when another Clarify process waits for activation.
 - Hosted dictation uses plain vocabulary spellings for short speech. Distinguish unrecognized speech from transcription, service-capacity and allowance errors. Preserve the transcript if rewriting fails, without repeating paid requests.
 - Show localized processing causes instead of a generic quota warning. Preserve safe operation diagnostics and updated usage. Keep the full keyboard error visible within its existing height.
 - iOS converts native microphone input to 24 kHz mono AAC, including inputs whose rate or channel count cannot be encoded directly. Preserve clip cleanup and cancellation.
@@ -400,7 +404,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/jvictormaynard/clarify/compare/v0.9.0...v0.11.0
 [0.9.0]: https://github.com/jvictormaynard/clarify/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jvictormaynard/clarify/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jvictormaynard/clarify/compare/v0.6.0...v0.7.0

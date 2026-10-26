@@ -1,14 +1,12 @@
 {
   "schema": 1,
-  "component": "mobile",
+  "component": "desktop",
   "version": "0.11.0",
-  "base_sha": "fb11cbdeaf7730dd6e1fdcbd4aabbc7ba1b260a2",
-  "notes": "Prepare iOS 0.11.0 (39) for the existing Clarify Interno TestFlight group. Includes Google, Microsoft and GitHub sign-in, funded weekly quotas, synchronized snippets, and microphone and cancellation repairs. Delivery is limited to internal TestFlight, with no App Store submission. Real new-user signup, SMTP delivery, physical-iPhone and Bluetooth acceptance remain separate validation limits.",
+  "base_sha": "b907f80b207966e718897f2edf20e8ade97b93fa",
+  "notes": "Desktop 0.11.0 community portable: Google, Microsoft and GitHub sign-in, funded weekly quotas, synchronized snippets, Account login cancellation and the Exit deadlock repair. Native scoped acceptance is recorded for the exact base. Primary-card activation, intentional tray Quit, full provider sign-in/SMTP and clean-machine scenarios remain unverified. The package is unsigned; SmartScreen warnings may occur. iOS TestFlight delivery is separate.",
   "evidence": {
-    "build": "39",
-    "highest_build": "38",
-    "pending_builds_checked": true,
-    "checked_at": "2026-10-26T00:00:25Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/pull/166#issuecomment-6405314544"
+    "tested_sha": "b907f80b207966e718897f2edf20e8ade97b93fa",
+    "windows_accepted": true,
+    "report_url": "https://github.com/jvictormaynard/clarify/pull/167#issuecomment-6408726056"
   }
 }
