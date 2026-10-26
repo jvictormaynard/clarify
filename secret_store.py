@@ -21,7 +21,7 @@ from typing import Callable, Mapping
 
 SECRET_STORE_VERSION = 1
 SUPPORTED_SECRET_PROVIDERS = ("gemini", "openai", "groq")
-SUPPORTED_SECRET_IDS = (*SUPPORTED_SECRET_PROVIDERS, "clarify_account")
+SUPPORTED_SECRET_IDS = (*SUPPORTED_SECRET_PROVIDERS, "clarify_account", "chatgpt")
 
 
 class SecretStoreError(OSError):

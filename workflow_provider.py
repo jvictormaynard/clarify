@@ -250,6 +250,7 @@ class WorkflowProviderService:
         connection = ProviderConnection(
             api_key=provider.api_key,
             base_url=provider.base_url or metadata.default_base_url,
+            account_id=route.account_id,
         )
         return self.registry.connection_for_route(
             route.provider_id,

@@ -18,6 +18,7 @@ from microphone_controls import MicrophoneInventory, MicrophoneDevice
 from local_asr_product import LocalASRProductState
 from clarify.desktop.qml_settings import QmlSettingsController
 from clarify.desktop.qml_web_settings import SettingsProtocol, WebSettingsProcess
+from contextlib import ExitStack
 
 
 def weekly_usage():
@@ -294,6 +295,34 @@ def main():
 
         backend.test_microphone = preview
         repositories = _repositories(directory)
+        chatgpt = None
+        fixtures = ExitStack()
+        if "--chatgpt" in sys.argv:
+            from test_chatgpt_settings import (
+                FakeChatGPTAdapter,
+                FakeChatGPTSession,
+            )
+            from provider_registry import PROVIDER_REGISTRY
+
+            chatgpt = FakeChatGPTSession()
+            if "--chatgpt-no-plan" in sys.argv:
+                chatgpt.state.update(
+                    connected=True,
+                    planEnabled=False,
+                    email="demo@example.test",
+                    accountId="personal",
+                    accounts=[
+                        dict(id="personal", label="demo@example.test · Personal")
+                    ],
+                )
+            if "--chatgpt-wait" in sys.argv:
+                chatgpt.wait = threading.Event()
+            fixtures.enter_context(
+                patch.dict(
+                    PROVIDER_REGISTRY._adapters, chatgpt=FakeChatGPTAdapter(chatgpt)
+                )
+            )
+            fixtures.enter_context(patch("webbrowser.open", return_value=True))
         onboarding = "--onboarding" in sys.argv
         if not onboarding:
             repositories.config.apply(
@@ -306,6 +335,7 @@ def main():
             else None,
             microphone_backend=backend,
             local_product=Mock(state=LocalASRProductState("installed"), busy=False),
+            chatgpt_session=chatgpt,
         )
         from practice_settings_fixture import bind_practice
 
@@ -412,6 +442,7 @@ def main():
             if host is not None:
                 host.shutdown()
             settings.shutdown()
+            fixtures.close()
         return result
 
 

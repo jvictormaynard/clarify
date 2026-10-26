@@ -86,6 +86,59 @@ class ApplicationStyleProviderTests(unittest.TestCase):
     setUp = provider_fixture.WorkflowProviderTests.setUp
     set_cleanup = provider_fixture.WorkflowProviderTests.set_cleanup
 
+    def test_local_cleanup_and_style_use_the_bound_chatgpt_account_only_with_permission(
+        self,
+    ):
+        from unittest.mock import Mock
+        from tests import test_chatgpt_provider as oauth
+        from provider_registry import build_provider_registry
+        from provider_types import TranscriptionResult
+        from workflow_config import WorkflowRoute
+
+        for level, allowed, applied in (
+            ("preserve", True, False),
+            ("light", True, False),
+            ("clarity", False, False),
+            ("clarity", True, True),
+        ):
+            with self.subTest(level=level, cloud_permission=allowed):
+                http = oauth.Http(oauth.Response([oauth.completed("Use 42 units.")]))
+                registry = build_provider_registry(
+                    http, chatgpt_session=oauth.Session()
+                )
+                registry.transcribe = Mock(
+                    return_value=TranscriptionResult(
+                        self.raw, "local_asr", "ggml-small"
+                    )
+                )
+                self.service._registry = registry
+                self.current = replace(
+                    self.current,
+                    dictation_cleanup_level=level,
+                    local_asr_cloud_refinement=allowed,
+                    workflows=self.current.workflows.with_route(
+                        "transcription", WorkflowRoute("local_asr", "ggml-small")
+                    ).with_route(
+                        "local_asr_refinement",
+                        WorkflowRoute(
+                            "chatgpt", "fixture-model", account_id="synthetic-account"
+                        ),
+                    ),
+                )
+                result = self.service.transcribe(
+                    self.audio, "prompt", "pt", writing_style="organized"
+                )
+                self.assertEqual(len(http.calls), int(applied))
+                self.assertEqual(result.raw_text, self.raw)
+                self.assertEqual(
+                    result.writing_style_applied, "organized" if applied else None
+                )
+                if applied:
+                    self.assertEqual(result.cleanup_level_applied, "clarity")
+                    self.assertEqual(
+                        http.calls[0][1], "https://api.openai.com/v1/responses"
+                    )
+
     def test_legacy_multimodal_style_keeps_existing_provider_and_one_request(self):
         from types import SimpleNamespace
         from workflow_config import WorkflowRoute

@@ -212,14 +212,25 @@ class QmlMeetingController(QObject):
             if self.blocks_processing or context != self.workflow.snapshot()["context"]:
                 raise MeetingError("meeting.busy")
             registry = self.workflow.provider.workflows.registry
-            registry.adapter(provider, ProviderCapability.TEXT_GENERATION)
+            adapter = registry.adapter(provider, ProviderCapability.TEXT_GENERATION)
             if not model.strip() or len(model) > 256:
                 raise MeetingError("meeting.configure_notes")
+            account_id = ""
+            if adapter.metadata.authentication == "oauth":
+                state = adapter.session.snapshot()
+                if enabled and not (
+                    state.get("connected")
+                    and state.get("planEnabled")
+                    and state.get("accountId")
+                ):
+                    raise MeetingError("meeting.configure_notes")
+                account_id = str(state.get("accountId") or "")
             route = WorkflowRoute(
                 provider_id=provider,
                 model_id=model.strip(),
                 enabled=enabled,
                 independent=True,
+                account_id=account_id,
             )
             # Reuse the existing text-capability validator. The saved meeting
             # route is independent of the active selected-text rewrite route.

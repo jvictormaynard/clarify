@@ -88,6 +88,63 @@ AUTOSTART_REGISTRY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 AUTOSTART_VALUE_NAME = "Clarify"
 _EXPECTED_LIBRARY_ENTRIES_UNSET = object()
 
+
+def _chatgpt_error_message(error):
+    """Translate bounded auth codes; never expose exception text or credentials."""
+    groups = (
+        ({"cancelled"}, "A conexão com o ChatGPT foi cancelada."),
+        ({"timeout"}, "O tempo para conectar ao ChatGPT terminou. Tente novamente."),
+        (
+            {"browser_failed"},
+            "Não foi possível abrir o navegador. Verifique o navegador padrão e tente novamente.",
+        ),
+        (
+            {"access_denied"},
+            "A conexão com o ChatGPT não foi autorizada. Conecte novamente para permitir o acesso.",
+        ),
+        (
+            {"plan_disabled"},
+            "Permita que o Clarify use seu plano ChatGPT e conecte novamente.",
+        ),
+        (
+            {"network"},
+            "Não foi possível conectar ao ChatGPT. Verifique sua conexão e tente novamente.",
+        ),
+        (
+            {"storage_unavailable", "storage_invalid"},
+            "Não foi possível acessar as credenciais do ChatGPT. Verifique o armazenamento seguro deste computador e tente novamente.",
+        ),
+        (
+            {"revocation_failed"},
+            "Você saiu do ChatGPT neste computador. A revogação remota não foi confirmada. Desconecte o Clarify nas configurações do ChatGPT.",
+        ),
+        ({"unknown_account"}, "Selecione uma conta ChatGPT salva."),
+        (
+            {
+                "stale_session",
+                "sign_in_required",
+                "refresh_failed",
+                "authorization_failed",
+                "registration_mismatch",
+                "identity_invalid",
+                "callback_invalid",
+                "invalid_response",
+            },
+            "Não foi possível validar a conexão com o ChatGPT. Conecte novamente.",
+        ),
+    )
+    try:
+        from chatgpt_auth import ChatGPTPlanError
+
+        if isinstance(error, ChatGPTPlanError):
+            for codes, message in groups:
+                if error.code in codes:
+                    return message
+    except ImportError:
+        pass
+    return "Não foi possível concluir a operação com o ChatGPT."
+
+
 _HOTKEY_ACTION_LABELS = {
     HotkeyAction.RECORDING: "Record / stop",
     HotkeyAction.REWRITE: "Rewrite selected text",
@@ -420,6 +477,7 @@ def _merge_library_draft(before, draft, persisted, key):
 
 
 class QmlSettingsController(QObject):
+    chatgptStateChanged = Signal()
     accountStateChanged = Signal()
     _accountFinished = Signal(object)
     _libraryPreferenceSynced = Signal(str, str)
@@ -469,6 +527,7 @@ class QmlSettingsController(QObject):
         account_can_change=None,
         application_target=None,
         processing_allowed: Callable[[], bool] = lambda: True,
+        chatgpt_session=None,
     ) -> None:
         super().__init__(parent)
         self._background_mailbox = _SettingsMailbox()
@@ -500,6 +559,22 @@ class QmlSettingsController(QObject):
         self._account_shutdown = False
         self._account_social = False
         self._account_cancel = threading.Event()
+        self._chatgpt_session = chatgpt_session
+        self._chatgpt_snapshot = {
+            "connected": False,
+            "planEnabled": False,
+            "email": "",
+            "accountId": "",
+            "accounts": [],
+            "generation": 0,
+            "planNoticeSeen": False,
+        }
+        self._chatgpt_busy = False
+        self._chatgpt_error = ""
+        self._chatgpt_generation = 0
+        self._chatgpt_initialized = False
+        self._chatgpt_account_reserved = False
+        self._chatgpt_cancel = threading.Event()
         self._library_sync_pending = False
         self._library_sync_expected_identity = None
         self._library_sync_context = None
@@ -674,6 +749,278 @@ class QmlSettingsController(QObject):
                 self._apply_local_state((generation, payload))
             elif kind == "local_devices":
                 self._apply_local_devices(payload)
+            elif kind == "chatgpt":
+                self._finish_chatgpt_command(generation, payload)
+
+    def _get_chatgpt_session(self):
+        if self._chatgpt_session is None:
+            from chatgpt_auth import get_chatgpt_session
+
+            self._chatgpt_session = get_chatgpt_session(
+                Path(self.repositories.config.path).parent
+            )
+        return self._chatgpt_session
+
+    def _read_chatgpt_snapshot(self):
+        if self._account_shutdown or self._chatgpt_busy:
+            return
+        if (
+            self._chatgpt_session is None
+            and "chatgpt" not in PROVIDER_REGISTRY.provider_ids
+        ):
+            return
+        try:
+            raw = self._get_chatgpt_session().snapshot()
+            # Explicit projection: credentials and future auth fields cannot enter RPC.
+            snapshot = {
+                "connected": raw.get("connected") is True,
+                "planEnabled": raw.get("planEnabled") is True,
+                "email": str(raw.get("email") or ""),
+                "accountId": str(raw.get("accountId") or ""),
+                "accounts": [
+                    {"id": str(a["id"]), "label": str(a["label"])}
+                    for a in raw.get("accounts", [])
+                ],
+                "generation": int(raw.get("generation", 0)),
+                "planNoticeSeen": raw.get("planNoticeSeen") is True,
+            }
+        except Exception:
+            self._chatgpt_error = "Não foi possível ler a conexão com o ChatGPT."
+            snapshot = {
+                **self._chatgpt_snapshot,
+                "connected": False,
+                "planEnabled": False,
+                "email": "",
+                "accountId": "",
+                "accounts": [],
+            }
+        previous = self._chatgpt_snapshot
+        self._chatgpt_snapshot = snapshot
+        identity = ("accountId", "generation", "connected", "planEnabled")
+        if self._chatgpt_initialized and any(
+            previous[key] != snapshot[key] for key in identity
+        ):
+            self._invalidate_chatgpt_models()
+        self._chatgpt_initialized = True
+        if previous != snapshot:
+            self.chatgptStateChanged.emit()
+            self.providerStateChanged.emit()
+
+    @Property("QVariantMap", notify=chatgptStateChanged)
+    def chatgptState(self):
+        self._read_chatgpt_snapshot()
+        return {
+            **self._chatgpt_snapshot,
+            "busy": self._chatgpt_busy,
+            "error": self._chatgpt_error,
+        }
+
+    def _chatgpt_ready(self):
+        state = self.chatgptState
+        return state["connected"] and state["planEnabled"] and not state["busy"]
+
+    @Slot(str, str, result=bool)
+    def chatgptCommand(self, action, value=""):
+        actions = {
+            "sign_in",
+            "add_account",
+            "select_account",
+            "sign_out",
+            "cancel",
+            "manage_usage",
+            "dismiss_notice",
+        }
+        if action not in actions or (action != "select_account" and value):
+            self._set_error(ValueError("Invalid ChatGPT action"))
+            return False
+        if action == "cancel":
+            self.cancelChatGPT()
+            return True
+        if self._account_shutdown or self._chatgpt_busy:
+            return False
+        identity_change = action in {
+            "sign_in",
+            "add_account",
+            "select_account",
+            "sign_out",
+        }
+        if identity_change and (
+            self._account_busy
+            or not self._account_can_change()
+            or self.microphoneTestBusy
+            or self._model_token is not None
+            or self._provider_tokens
+            or self.localAsrBusy
+            or self.localBenchmarkBusy
+            or self._account.snapshot().get("signedIn")
+        ):
+            self._set_error(
+                ValueError("Finalize a operação antes de alterar a conta ChatGPT.")
+            )
+            return False
+        if action == "select_account" and value not in {
+            a["id"] for a in self.chatgptState["accounts"]
+        }:
+            self._set_error(ValueError("Selecione uma conta ChatGPT salva."))
+            return False
+        try:
+            session = None if action == "manage_usage" else self._get_chatgpt_session()
+        except Exception:
+            self._set_error(ValueError("Não foi possível ler a conexão com o ChatGPT."))
+            return False
+        if identity_change:
+            if not self._account.begin_change():
+                self._set_error(
+                    ValueError("Finalize a operação antes de alterar a conta ChatGPT.")
+                )
+                return False
+            self._chatgpt_account_reserved = True
+        self._chatgpt_generation += 1
+        generation = self._chatgpt_generation
+        cancel = self._chatgpt_cancel = threading.Event()
+        self._chatgpt_busy = True
+        self._chatgpt_error = ""
+        self._set_error(None)
+        self.chatgptStateChanged.emit()
+        mailbox = self._background_mailbox
+
+        def work():
+            import webbrowser
+
+            error_message = ""
+            try:
+                if action == "manage_usage":
+                    if not cancel.is_set():
+                        webbrowser.open("https://chatgpt.com/settings/usage")
+                elif action in {"sign_in", "add_account"}:
+                    session.sign_in(
+                        open_browser=webbrowser.open,
+                        cancel=cancel,
+                        new_account=action == "add_account",
+                    )
+                elif action == "select_account":
+                    session.select_account(value)
+                elif action == "sign_out":
+                    session.sign_out()
+                elif action == "dismiss_notice":
+                    session.acknowledge_plan_notice()
+            except Exception as error:
+                error_message = _chatgpt_error_message(error)
+            mailbox.post("chatgpt", generation, (cancel.is_set(), error_message))
+
+        try:
+            threading.Thread(
+                target=work, name="ClarifyChatGPTSettings", daemon=True
+            ).start()
+        except RuntimeError:
+            self._chatgpt_busy = False
+            self._release_chatgpt_change()
+            self._set_error(
+                ValueError("Não foi possível concluir a operação com o ChatGPT.")
+            )
+            return False
+        return True
+
+    def _release_chatgpt_change(self):
+        if self._chatgpt_account_reserved:
+            self._chatgpt_account_reserved = False
+            self._account.end_change()
+
+    @Slot()
+    def cancelChatGPT(self):
+        # Keep busy until the worker exits, so repeated cancel/connect stays bounded.
+        self._chatgpt_cancel.set()
+        if self._model_loading_key and self._model_loading_key[0] == "chatgpt":
+            self._model_generation += 1
+            if self._model_token:
+                self._model_token.cancel()
+            self._model_token = None
+            self._model_loading_key = None
+        token = self._provider_tokens.pop("chatgpt", None)
+        if token:
+            token.cancel()
+            self._provider_generations["chatgpt"] += 1
+            self._provider_activity.pop("chatgpt", None)
+
+    def _finish_chatgpt_command(self, generation, payload):
+        if self._account_shutdown or generation != self._chatgpt_generation:
+            return
+        cancelled, error = payload
+        self._release_chatgpt_change()
+        self._chatgpt_busy = False
+        self._chatgpt_error = (
+            "A conexão com o ChatGPT foi cancelada." if cancelled else error
+        )
+        previous_generation = self._chatgpt_snapshot["generation"]
+        self._read_chatgpt_snapshot()
+        self.chatgptStateChanged.emit()
+        self.providerStateChanged.emit()
+        if (
+            not cancelled
+            and not error
+            and previous_generation != self._chatgpt_snapshot["generation"]
+            and self._chatgpt_ready()
+            and not self._provider_tokens
+        ):
+            if self.selectedProviderId == "chatgpt":
+                self.validateProvider()
+            elif self.routeProviderId == "chatgpt":
+                self.loadRouteModels()
+
+    def _invalidate_chatgpt_models(self):
+        if self._model_loading_key and self._model_loading_key[0] == "chatgpt":
+            self._model_generation += 1
+            if self._model_token:
+                self._model_token.cancel()
+            self._model_token = None
+            self._model_loading_key = None
+        self._model_catalogs = {
+            k: v for k, v in self._model_catalogs.items() if k[0] != "chatgpt"
+        }
+        self._model_error_key = None
+        token = self._provider_tokens.pop("chatgpt", None)
+        if token:
+            token.cancel()
+        self._provider_generations["chatgpt"] = (
+            self._provider_generations.get("chatgpt", 0) + 1
+        )
+        self._provider_activity.pop("chatgpt", None)
+
+        def clear_models(config):
+            routes = config.workflows
+            for scope in WORKFLOW_SCOPES:
+                route = config.workflow(scope)
+                if route.provider_id == "chatgpt":
+                    routes = routes.with_route(
+                        scope,
+                        replace(route, model_id="", custom_endpoint="", account_id=""),
+                    )
+            fields = {"workflows": routes}
+            if config.voice_translation.route.provider_id == "chatgpt":
+                fields["voice_translation"] = replace(
+                    config.voice_translation,
+                    route=replace(
+                        config.voice_translation.route, model_id="", account_id=""
+                    ),
+                )
+            if hasattr(config, "chatgpt"):
+                fields["chatgpt"] = replace(config.chatgpt, text_model="")
+            if config.selection.refinement_provider == "chatgpt":
+                fields["selection"] = replace(config.selection, refinement_model="")
+            return replace(config, **fields)
+
+        self._config = clear_models(self._config)
+        try:
+            persisted = self._config_repository.load()
+            cleared = clear_models(persisted)
+            if cleared != persisted:
+                self._config_repository.apply(cleared)
+        except Exception:
+            self._chatgpt_error = (
+                "Não foi possível limpar os modelos da conta anterior."
+            )
+        self.routeChanged.emit()
+        self.modelCatalogChanged.emit()
 
     @Property("QStringList", constant=True)
     def workflowScopes(self) -> list[str]:
@@ -766,6 +1113,8 @@ class QmlSettingsController(QObject):
 
     @Property(bool, notify=providerStateChanged)
     def providerHasApiKey(self) -> bool:
+        if self.selectedProviderId == "chatgpt":
+            return False
         return bool(
             self._provider_api_key_draft.strip()
             or self._provider_config(self._selected_provider_id).api_key.strip()
@@ -1081,6 +1430,12 @@ class QmlSettingsController(QObject):
 
     @Property(str, notify=routeChanged)
     def routeModelId(self) -> str:
+        if self.routeProviderId == "chatgpt" and (
+            self._selected_route().account_id != self.chatgptState["accountId"]
+            or self._selected_route().model_id
+            not in {option["id"] for option in self.routeModelOptions}
+        ):
+            return ""
         return self._selected_route().model_id
 
     @routeModelId.setter
@@ -1917,6 +2272,7 @@ class QmlSettingsController(QObject):
                 route,
                 provider_id=provider_id,
                 custom_endpoint="",
+                account_id="",
                 model_id=metadata.default_audio_model
                 if audio
                 else metadata.default_text_model,
@@ -1925,6 +2281,9 @@ class QmlSettingsController(QObject):
 
     def _model_connection_key(self) -> tuple[str, str, str]:
         provider = self.routeProviderId
+        if provider == "chatgpt":
+            state = self.chatgptState
+            return (provider, state["accountId"], str(state["generation"]))
         if provider == LOCAL_ASR_PROVIDER_ID:
             return (provider, "", "")
         config = self._provider_config(provider)
@@ -1937,7 +2296,9 @@ class QmlSettingsController(QObject):
     @Property(str, notify=modelCatalogChanged)
     def routeModelStatus(self) -> str:
         key = self._model_connection_key()
-        if key[0] != LOCAL_ASR_PROVIDER_ID and not key[2]:
+        if (key[0] == "chatgpt" and not self._chatgpt_ready()) or (
+            key[0] not in {LOCAL_ASR_PROVIDER_ID, "chatgpt"} and not key[2]
+        ):
             return "not_configured"
         if key == self._model_loading_key:
             return "loading"
@@ -1950,6 +2311,8 @@ class QmlSettingsController(QObject):
     @Property("QVariantList", notify=modelCatalogChanged)
     def routeModelOptions(self) -> list[dict[str, str]]:
         key = self._model_connection_key()
+        if key[0] == "chatgpt" and not self._chatgpt_ready():
+            return []
         catalog = self._model_catalogs.get(key)
         if catalog is None:
             return []
@@ -1966,9 +2329,11 @@ class QmlSettingsController(QObject):
                 "id": model,
                 "label": local_labels.get(model, model)
                 if key[0] == LOCAL_ASR_PROVIDER_ID
-                else model,
+                else getattr(catalog, "display_names", {}).get(model, model),
             }
-            for model in sorted(set(models))
+            for model in (
+                dict.fromkeys(models) if key[0] == "chatgpt" else sorted(set(models))
+            )
         ]
 
     @Slot(result=bool)
@@ -1986,7 +2351,8 @@ class QmlSettingsController(QObject):
             return False
         key = self._model_connection_key()
         if (
-            key[0] != LOCAL_ASR_PROVIDER_ID and not key[2]
+            (key[0] == "chatgpt" and not self._chatgpt_ready())
+            or (key[0] not in {LOCAL_ASR_PROVIDER_ID, "chatgpt"} and not key[2])
         ) or key == self._model_loading_key:
             return False
         if self._model_token is not None:
@@ -1998,6 +2364,12 @@ class QmlSettingsController(QObject):
         self._model_loading_key = key
         self._model_error_key = None
         self.modelCatalogChanged.emit()
+
+        discovery_registry = (
+            PROVIDER_REGISTRY.with_chatgpt_session(self._get_chatgpt_session())
+            if key[0] == "chatgpt"
+            else PROVIDER_REGISTRY
+        )
 
         def discover() -> None:
             try:
@@ -2011,8 +2383,12 @@ class QmlSettingsController(QObject):
                             installed.append(model)
                     catalog = ModelCatalog(audio_models=tuple(installed))
                 else:
-                    catalog = PROVIDER_REGISTRY.discover_models(
-                        key[0], ProviderConnection(key[2], key[1]), token
+                    catalog = discovery_registry.discover_models(
+                        key[0],
+                        ProviderConnection("", "https://api.openai.com/v1")
+                        if key[0] == "chatgpt"
+                        else ProviderConnection(key[2], key[1]),
+                        token,
                     )
             except Exception:
                 # Provider errors can contain URLs or credentials. Do not expose them.
@@ -2028,6 +2404,8 @@ class QmlSettingsController(QObject):
     def _finish_model_discovery(
         self, generation: int, key: object, catalog: object
     ) -> None:
+        # A session can change outside Settings while its worker is in flight.
+        self._read_chatgpt_snapshot()
         if generation != self._model_generation:
             return
         self._model_loading_key = None
@@ -2242,8 +2620,25 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setRouteModelId(self, value: str) -> bool:
+        if (
+            self.routeProviderId == "chatgpt"
+            and value
+            and value not in {option["id"] for option in self.routeModelOptions}
+        ):
+            self._set_error(
+                ValueError("Selecione um modelo disponível nesta conta ChatGPT.")
+            )
+            return False
         return self._update_selected_route(
-            lambda route: replace(route, model_id=str(value or "").strip())
+            lambda route: replace(
+                route,
+                model_id=str(value or "").strip(),
+                account_id=(
+                    self.chatgptState["accountId"]
+                    if route.provider_id == "chatgpt" and str(value or "").strip()
+                    else ""
+                ),
+            )
         )
 
     @Slot(str, result=bool)
@@ -2254,6 +2649,8 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setRouteCustomEndpoint(self, value: str) -> bool:
+        if self.routeProviderId == "chatgpt" and value:
+            return False
         return self._update_selected_route(
             lambda route: replace(route, custom_endpoint=str(value or "").strip())
         )
@@ -2306,6 +2703,8 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setProviderApiKey(self, value: str) -> bool:
+        if self.selectedProviderId == "chatgpt":
+            return False
         self._provider_api_key_draft = str(value or "")
         self._set_error(None)
         self.providerStateChanged.emit()
@@ -2313,6 +2712,8 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setProviderBaseUrl(self, value: str) -> bool:
+        if self.selectedProviderId == "chatgpt":
+            return False
         self._provider_base_url_draft = str(value or "").strip()
         self._set_error(None)
         self.providerStateChanged.emit()
@@ -2332,14 +2733,19 @@ class QmlSettingsController(QObject):
                 ValueError("Local Whisper is configured with the install action")
             )
             return False
-        if self.providerBusy:
+        if self.providerBusy or self._chatgpt_busy:
             return False
 
         provider_config = self._provider_config(provider_id)
         api_key = (
-            self._provider_api_key_draft.strip() or provider_config.api_key.strip()
+            ""
+            if provider_id == "chatgpt"
+            else self._provider_api_key_draft.strip() or provider_config.api_key.strip()
         )
-        if not api_key:
+        if provider_id == "chatgpt" and not self._chatgpt_ready():
+            self._set_error(ValueError("Conecte o ChatGPT e permita o uso do plano."))
+            return False
+        if not api_key and provider_id != "chatgpt":
             self._set_error(
                 ValueError("Enter an API key before validating the provider")
             )
@@ -2365,9 +2771,15 @@ class QmlSettingsController(QObject):
         self._set_error(None)
         self.providerStateChanged.emit()
 
+        discovery_registry = (
+            PROVIDER_REGISTRY.with_chatgpt_session(self._get_chatgpt_session())
+            if provider_id == "chatgpt"
+            else PROVIDER_REGISTRY
+        )
+
         def validate() -> None:
             try:
-                catalog = PROVIDER_REGISTRY.discover_models(
+                catalog = discovery_registry.discover_models(
                     provider_id,
                     ProviderConnection(api_key, base_url),
                     token,
@@ -2377,7 +2789,11 @@ class QmlSettingsController(QObject):
                     provider_id,
                     generation,
                     False,
-                    {"error": str(error).strip() or type(error).__name__},
+                    {
+                        "error": "Não foi possível carregar os modelos ChatGPT."
+                        if provider_id == "chatgpt"
+                        else str(error).strip() or type(error).__name__
+                    },
                 )
                 return
             self._providerValidationFinished.emit(
@@ -2389,6 +2805,7 @@ class QmlSettingsController(QObject):
                     "base_url": base_url,
                     "models": list(catalog.audio_models),
                     "text_models": list(catalog.text_models),
+                    "catalog": catalog if provider_id == "chatgpt" else None,
                 },
             )
 
@@ -2402,6 +2819,8 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def clearProvider(self) -> bool:
         """Remove the selected cloud credential from the secure store."""
+        if self.selectedProviderId == "chatgpt":
+            return False
 
         provider_id = self._selected_provider_id
         if provider_id == LOCAL_ASR_PROVIDER_ID:
@@ -2493,6 +2912,9 @@ class QmlSettingsController(QObject):
     def shutdown(self) -> None:
         if self._practice is not None:
             self._practice.command("close")
+        self.cancelChatGPT()
+        self._release_chatgpt_change()
+        self._chatgpt_generation += 1
         self._account_shutdown = True
         self._history_correction_sync.stop()
         self._history_corrections.clear()
@@ -2801,6 +3223,7 @@ class QmlSettingsController(QObject):
         """Commit the first-run choice through the existing config transaction."""
         if (
             self._account_busy
+            or self._chatgpt_busy
             or not self._account_can_change()
             or self.dirty
             or self.providerDirty
@@ -2884,7 +3307,7 @@ class QmlSettingsController(QObject):
             or not self._account.signed_in
         ):
             return False
-        if self._account_busy or not self._account_can_change():
+        if self._account_busy or self._chatgpt_busy or not self._account_can_change():
             self._set_error(ValueError("Finalize o ditado antes de alterar a conta."))
             return False
         if self.dirty or self.providerDirty:
@@ -3265,6 +3688,7 @@ class QmlSettingsController(QObject):
                     else metadata.default_text_model
                 )
                 fields["custom_endpoint"] = ""
+                fields["account_id"] = ""
         elif method == "setRouteModelId":
             metadata = PROVIDER_REGISTRY.describe(old_route.provider_id)
             audio = (
@@ -3273,10 +3697,21 @@ class QmlSettingsController(QObject):
             model = args[0].strip() or (
                 metadata.default_audio_model if audio else metadata.default_text_model
             )
+            if (
+                old_route.provider_id == "chatgpt"
+                and model
+                and model not in {option["id"] for option in self.routeModelOptions}
+            ):
+                raise ValueError("Selecione um modelo disponível nesta conta ChatGPT.")
             fields["model_id"] = (
                 PROVIDER_REGISTRY.canonical_audio_model(old_route.provider_id, model)
                 if audio
                 else model
+            )
+            fields["account_id"] = (
+                self.chatgptState["accountId"]
+                if old_route.provider_id == "chatgpt" and model
+                else ""
             )
         elif method == "setRouteEnabled":
             fields["enabled"] = args[0]
@@ -3284,6 +3719,7 @@ class QmlSettingsController(QObject):
             fields.update(
                 provider_id=LOCAL_ASR_PROVIDER_ID,
                 model_id=self._local_profile,
+                account_id="",
                 custom_endpoint="",
                 enabled=True,
             )
@@ -3461,6 +3897,27 @@ class QmlSettingsController(QObject):
 
     def _provider_state(self, provider_id: str) -> dict[str, Any]:
         metadata = PROVIDER_REGISTRY.describe(provider_id)
+        if provider_id == "chatgpt":
+            state = self.chatgptState
+            activity = self._provider_activity.get(provider_id, {})
+            return {
+                "providerId": provider_id,
+                "displayName": metadata.display_name,
+                "kind": "cloud",
+                "status": activity.get("status")
+                or (
+                    "configured"
+                    if state["connected"] and state["planEnabled"]
+                    else "not_configured"
+                ),
+                "busy": state["busy"] or bool(activity.get("busy")),
+                "error": activity.get("error") or state["error"],
+                "configured": state["connected"] and state["planEnabled"],
+                "hasApiKey": False,
+                "baseUrl": metadata.default_base_url,
+                "models": [],
+                "textModels": list(activity.get("textModels", [])),
+            }
         if provider_id == LOCAL_ASR_PROVIDER_ID:
             state = self._local_state
             return {
@@ -3513,7 +3970,10 @@ class QmlSettingsController(QObject):
         success: bool,
         payload: object,
     ) -> None:
-        if generation != self._provider_generations.get(provider_id):
+        self._read_chatgpt_snapshot()
+        if self._account_shutdown or generation != self._provider_generations.get(
+            provider_id
+        ):
             return
         self._provider_tokens.pop(provider_id, None)
         data = payload if isinstance(payload, dict) else {}
@@ -3529,11 +3989,12 @@ class QmlSettingsController(QObject):
             self.providerStateChanged.emit()
             return
         try:
-            self._persist_provider_credentials(
-                provider_id,
-                str(data.get("api_key") or ""),
-                str(data.get("base_url") or ""),
-            )
+            if provider_id != "chatgpt":
+                self._persist_provider_credentials(
+                    provider_id,
+                    str(data.get("api_key") or ""),
+                    str(data.get("base_url") or ""),
+                )
         except Exception as error:
             self._provider_activity[provider_id] = {
                 "status": "error",
@@ -3552,6 +4013,11 @@ class QmlSettingsController(QObject):
             "textModels": list(data.get("text_models") or []),
             "busy": False,
         }
+        if provider_id == "chatgpt":
+            state = self.chatgptState
+            self._model_catalogs[
+                (provider_id, state["accountId"], str(state["generation"]))
+            ] = data["catalog"]
         if provider_id == self._selected_provider_id:
             self._provider_api_key_draft = ""
             self._provider_base_url_draft = self._config_provider_base_url(provider_id)

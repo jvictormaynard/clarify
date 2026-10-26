@@ -38,6 +38,10 @@ uses the saved transcription route. Summary has its own meeting preference,
 disabled by default. Select a text provider and model in the meeting area before
 starting a new meeting. This preference does not change selected-text rewriting.
 Provider credentials remain with the existing configuration and secret owners.
+For ChatGPT summaries, connect and select the account in Models first, then save
+the meeting summary provider and model. The saved route keeps that account ID.
+Changing the selected ChatGPT account does not redirect an existing meeting;
+select the original account again to process it. ChatGPT does not transcribe audio.
 
 Language and provider/model metadata are saved with each meeting. Jobs take a
 connection snapshot. Retrying a chunk after restart keeps its original language

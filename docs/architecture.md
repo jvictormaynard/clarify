@@ -238,6 +238,28 @@ source map and component conventions.
 
 ## Current modules
 
+### Personal ChatGPT plan Settings
+
+The desktop ChatGPT subscription route is separate from Clarify-managed account
+processing. `qml_settings.py` owns its Settings worker, cancellation and safe
+state projection; the auth session owns credentials and protected notice
+acknowledgement. The RPC allowlist exposes `chatgptState` and explicit
+`chatgptCommand` actions. React never receives OAuth tokens. Identity mutations
+reserve the existing
+`AccountService.begin_change` operation guard, which blocks native recording;
+completion or shutdown releases that reservation once. Auth errors map bounded
+codes to the shared localized catalog. Catalog caches use
+account identity and auth generation. Account changes invalidate cached models
+and saved model choices, without changing provider selection or marking an auth
+change as an unsaved config draft. Model slugs and server order are preserved;
+display names are labels. Saved OAuth model selections include the local account registration ID. The
+provider rejects an absent or different ID before inference, including after a
+restart or a failed Settings save. ChatGPT credentials use a dedicated
+`chatgpt-secrets` store so provider-key writes cannot restore rotating tokens.
+ChatGPT is available only for text routes, with no
+API-key draft or custom endpoint. See [ChatGPT plan support](chatgpt-plan.md) for
+the direct OAuth flow, shared limits and current VM support boundary.
+
 ### `clarify/desktop/qml_app.py`, `qml_bridge.py`, and `qml_runtime.py`
 
 These modules are the production desktop entrypoint and Qt integration layer:
@@ -700,6 +722,7 @@ boundary.
 | --- | --- | --- |
 | Settings | `%APPDATA%\Clarify\config.json` | Provider endpoints, models, selections, and UI preferences; no API keys |
 | Provider secrets | `%APPDATA%\Clarify\secrets.dpapi.json` | Current-user DPAPI ciphertext keyed by provider |
+| ChatGPT credentials | `%APPDATA%\Clarify\chatgpt-secrets.dpapi.json` | Current-user DPAPI; isolated from provider-key writes |
 | Usage stats | `%APPDATA%\Clarify\usage_stats.json` | Counts, durations, model identifiers, and estimates; no transcript text |
 | Dictionary and snippets | `%APPDATA%\Clarify\dictionary.json` | Versioned local terms, aliases, and bounded replacement rules; no credentials or usage events |
 | Working audio | `%APPDATA%\Clarify\clarify-recording-*.wav` | One unique session-owned file, deleted after the provider no longer needs it |

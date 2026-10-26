@@ -22,6 +22,15 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
           onChange={(value) => void selectRouteProvider(value)}
         />
       </Row>
+      {state.routeProviderId === "chatgpt" && (
+        <div>
+          <p className="hint" role="status">{t(state.chatgptState?.connected && state.chatgptState.planEnabled
+            ? "Usando seu plano ChatGPT" : "Conecte o ChatGPT e permita o uso do plano.")}</p>
+          <Button variant="text" onClick={() => void run("chatgptCommand", "manage_usage", "")}>
+            {t("Gerenciar uso no ChatGPT")}
+          </Button>
+        </div>
+      )}
       <Row title={t("Modelo")}>
         <Picker
           label={t("Modelo")}
@@ -47,7 +56,7 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
           <ArrowRight size={15} />
         </Button>
       )}
-      {state.routeProviderId !== "local_asr" && (
+      {!["local_asr", "chatgpt"].includes(state.routeProviderId) && (
         <details key={state.selectedScope}>
           <summary>{t("Modelo e endereço personalizados")}</summary>
           <Field

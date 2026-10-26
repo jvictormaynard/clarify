@@ -207,6 +207,8 @@ foreach ($backendModule in @(
     "account_meetings.py",
     "audio_file_batch.py",
     "audio_file_batch_ui.py",
+    "chatgpt_auth.py",
+    "chatgpt_provider.py",
     "clarify_account.py",
     "cloud_defaults.py",
     "dictionary_settings.py",

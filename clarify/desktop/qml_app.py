@@ -497,6 +497,7 @@ def main(argv: list[str] | None = None) -> int:
             or settings.localBenchmarkBusy
             or settings.providerBusy
             or settings.routeModelStatus == "loading"
+            or getattr(settings, "chatgptState", {}).get("busy", False)
         )
 
     def capture_idle() -> bool:
@@ -548,6 +549,7 @@ def main(argv: list[str] | None = None) -> int:
         on_usage=partial(_record_voice_translation_usage, usage_statistics),
         provider=QmlVoiceTranslationProvider(
             repositories.config.load,
+            registry=runtime.provider_registry,
             account=runtime.account,
             dictionary_service=runtime.dictionary_service,
         ),
@@ -686,6 +688,7 @@ def main(argv: list[str] | None = None) -> int:
             and not settings.localAsrBusy
             and not settings.localBenchmarkBusy
             and not settings.providerBusy
+            and not getattr(settings, "chatgptState", {}).get("busy", False)
             and not settings.dirty
             and not settings.providerDirty
             and not web_settings.blocks_update()

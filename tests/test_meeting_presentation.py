@@ -20,6 +20,45 @@ class MeetingPresentationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_meeting_note_route_binds_the_selected_oauth_account(self):
+        from provider_registry import build_provider_registry
+
+        session = Mock()
+        session.snapshot.return_value = {
+            "connected": True,
+            "planEnabled": True,
+            "accountId": "selected-account",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            account = AccountService(
+                root, secrets=PlaintextFileSecretStore(root / "secrets.json")
+            )
+            runtime = SimpleNamespace(
+                account=account,
+                dictionary_service=Mock(),
+                provider_registry=build_provider_registry(chatgpt_session=session),
+                repositories=Mock(),
+                copy_result=Mock(),
+                scheduler=SimpleNamespace(run_dispatch=lambda cb: cb()),
+            )
+            controller = create_qml_meetings(
+                runtime, can_start=lambda: True, workflow_config=Mock()
+            )
+            self.addCleanup(controller.shutdown)
+            controller.activate()
+            context = controller.state["context"]
+            self.assertTrue(
+                controller.saveNotesRoute(context, "chatgpt", "fixture-model", True)
+            )
+            saved = controller.workflow.store.notes_route("guest")
+            self.assertEqual(saved.account_id, "selected-account")
+            session.snapshot.return_value = {"connected": False}
+            self.assertFalse(
+                controller.saveNotesRoute(context, "chatgpt", "other-model", True)
+            )
+            self.assertEqual(controller.workflow.store.notes_route("guest"), saved)
+
     def test_factory_and_copy_export_use_only_fixture_storage(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -174,6 +213,11 @@ class MeetingPresentationTests(unittest.TestCase):
         environment["updates"].installing = True
         self.assertFalse(environment["meetings_can_start"]())
         environment["updates"].installing = False
+        settings.chatgptState = {"busy": True}
+        self.assertFalse(environment["meetings_can_start"]())
+        self.assertFalse(environment["external_processing_allowed"]())
+        self.assertFalse(environment["practice_can_start"]())
+        settings.chatgptState = {"busy": False}
         for owner, field in (
             ("practice", "blocks_processing"),
             ("voice_translation", "active"),

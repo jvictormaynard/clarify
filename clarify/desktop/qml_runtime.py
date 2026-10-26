@@ -1902,7 +1902,14 @@ def create_real_workflow_runtime(
     )
     recording_audio = QtRecordingAudioGateway(QtRecorder(config), config)
     clipboard = QtClipboardGateway()
-    provider = QtProviderGateway(config, dictionary_service, account=account)
+    from chatgpt_auth import get_chatgpt_session
+
+    scoped_registry = PROVIDER_REGISTRY.with_chatgpt_session(
+        get_chatgpt_session(Path(active.config.path).parent)
+    )
+    provider = QtProviderGateway(
+        config, dictionary_service, account=account, registry=scoped_registry
+    )
     audio_batch_gateway = QtAudioFileGateway(provider)
     audio_batch_service = AudioFileBatchService(
         audio_batch_gateway,
@@ -1943,6 +1950,7 @@ def create_real_workflow_runtime(
         dictionary_service=dictionary_service,
         account=account,
         practice_workflow=practice_workflow,
+        provider_registry=provider.registry,
     )
 
 

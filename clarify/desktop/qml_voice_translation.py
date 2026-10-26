@@ -162,11 +162,13 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         config: AppConfig,
         provider_id: str,
         custom_endpoint: str,
+        account_id: str = "",
     ) -> ProviderConnection:
         metadata = self._registry.describe(provider_id)
         provider_config = getattr(config, provider_id)
         connection = ProviderConnection(
             api_key=str(getattr(provider_config, "api_key", "") or "").strip(),
+            account_id=account_id,
             base_url=(
                 str(getattr(provider_config, "base_url", "") or "").strip()
                 or str(metadata.default_base_url or "").strip()
@@ -250,7 +252,9 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         result = self._registry.transcribe(
             provider_id,
             request,
-            self._provider_connection(config, provider_id, route.custom_endpoint),
+            self._provider_connection(
+                config, provider_id, route.custom_endpoint, route.account_id
+            ),
             _registry_cancel_token(getattr(audio_source, "cancel_token", None)),
         )
         if not isinstance(result, TranscriptionResult):
@@ -295,7 +299,9 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         result = self._registry.translate(
             provider_id,
             typed_request,
-            self._provider_connection(config, provider_id, route.custom_endpoint),
+            self._provider_connection(
+                config, provider_id, route.custom_endpoint, route.account_id
+            ),
             _registry_cancel_token(request.cancel_event),
         )
         if not isinstance(result, TranslationResult):

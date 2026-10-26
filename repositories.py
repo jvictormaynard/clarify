@@ -113,6 +113,8 @@ def environment_defaults(
         "groq_base_url": env.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
         "groq_audio_model": env.get("GROQ_AUDIO_MODEL", "whisper-large-v3-turbo"),
         "groq_text_model": env.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile"),
+        "chatgpt_audio_model": "",
+        "chatgpt_text_model": "",
         "local_asr_model": env.get("LOCAL_ASR_MODEL", "ggml-small"),
         "local_asr_cloud_refinement": False,
         "refinement_provider": env.get("REFINEMENT_PROVIDER", ""),
@@ -187,6 +189,9 @@ class AppConfig:
     openai: ProviderConfig = field(default_factory=ProviderConfig)
     groq: ProviderConfig = field(default_factory=ProviderConfig)
     local_asr: ProviderConfig = field(default_factory=ProviderConfig)
+    chatgpt: ProviderConfig = field(
+        default_factory=lambda: ProviderConfig(base_url="https://api.openai.com/v1")
+    )
     ui: UIPreferences = field(default_factory=UIPreferences)
     startup: StartupSettings = field(default_factory=StartupSettings)
     local_asr_cloud_refinement: bool = False
@@ -277,6 +282,11 @@ class AppConfig:
         def provider_config(name: str) -> ProviderConfig:
             metadata = PROVIDER_REGISTRY.describe(name)
             defaults_for_provider = provider_defaults[name]
+            if name == "chatgpt":
+                return ProviderConfig(
+                    base_url=metadata.default_base_url,
+                    text_model=string(metadata.text_model_key),
+                )
             audio_model = string(
                 metadata.audio_model_key, defaults_for_provider["audio_model"]
             )
@@ -543,6 +553,7 @@ class AppConfig:
             openai=provider_configs["openai"],
             groq=provider_configs["groq"],
             local_asr=provider_configs["local_asr"],
+            chatgpt=provider_configs["chatgpt"],
             ui=UIPreferences(mode, language),
             startup=StartupSettings(autostart),
             local_asr_cloud_refinement=local_asr_cloud_refinement,
@@ -586,6 +597,10 @@ class AppConfig:
             "groq_base_url": self.groq.base_url,
             "groq_audio_model": self.groq.audio_model,
             "groq_text_model": self.groq.text_model,
+            "chatgpt_text_model": self.chatgpt.text_model,
+            # The legacy loader enumerates every registered audio-model key.
+            # Text-only providers retain an empty compatibility field.
+            "chatgpt_audio_model": "",
             "local_asr_model": self.local_asr.audio_model,
             "local_asr_cloud_refinement": self.local_asr_cloud_refinement,
             "dictation_cleanup_level": self.dictation_cleanup_level,

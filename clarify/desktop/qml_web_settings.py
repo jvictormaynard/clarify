@@ -21,6 +21,7 @@ PROPERTIES = (
     "onboardingRequired",
     "practiceState",
     "accountState",
+    "chatgptState",
     "historyState",
     "dirty",
     "dictionaryEntries",
@@ -101,6 +102,7 @@ METHODS = frozenset(
         "beginHotkeyCapture",
         "cancelHotkeyCapture",
         "accountCommand",
+        "chatgptCommand",
         "deleteHistoryEntry",
         "clearHistory",
         "setLanguage",
@@ -251,6 +253,10 @@ class SettingsProtocol:
                     or args[0] not in {"open", "close", "start", "stop", "cancel"}
                 ):
                     raise ValueError()
+                if method == "chatgptCommand" and (
+                    len(args) != 2 or any(type(value) is not str for value in args)
+                ):
+                    raise ValueError()
                 if method in {"setDictionaryEntries", "setSnippets"} and (
                     len(args)
                     not in ({1, 2, 3} if method == "setDictionaryEntries" else {2, 3})
@@ -372,6 +378,7 @@ class WebSettingsProcess(QObject):
 
     def hide(self):
         self.settings.practiceCommand("close")
+        self.settings.cancelChatGPT()
         if self._visible:
             self._visible = False
             self.settings.stopMicrophoneTest()
@@ -400,6 +407,7 @@ class WebSettingsProcess(QObject):
 
     def _failed(self, error):
         self.settings.practiceCommand("close")
+        self.settings.cancelChatGPT()
         self.startup_timer.stop()
         self.failed = True
         if self.process.state() != QProcess.ProcessState.NotRunning:
@@ -409,6 +417,7 @@ class WebSettingsProcess(QObject):
 
     def _finished(self, code, status):
         self.settings.practiceCommand("close")
+        self.settings.cancelChatGPT()
         self.startup_timer.stop()
         self._visible = False
         self.settings.stopMicrophoneTest()
@@ -424,6 +433,7 @@ class WebSettingsProcess(QObject):
 
     def shutdown(self):
         self.settings.practiceCommand("close")
+        self.settings.cancelChatGPT()
         self._shutting_down = True
         self.startup_timer.stop()
         if self.process.state() != QProcess.ProcessState.NotRunning:

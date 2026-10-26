@@ -30,7 +30,7 @@ for _provider_variable in (
 import app
 from desktop_state import WorkflowController
 from provider_http import AuthenticationError
-from repositories import LocalConfigRepository
+from repositories import AppConfig, LocalConfigRepository
 from version import __version__
 from update_security import UpdateTransportError
 import windows_hotkeys
@@ -1136,7 +1136,7 @@ class ProviderTests(unittest.TestCase):
         self.assertTrue(app._settings_onboarding_decision(config, product))
 
     def test_load_app_config_rejects_local_asr_refinement_provider(self):
-        values = app.DEFAULT_CONFIG.copy()
+        values = AppConfig.from_mapping(app.DEFAULT_CONFIG).to_legacy_mapping()
         values.update(
             {
                 "transcription_provider": "local_asr",

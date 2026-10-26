@@ -109,7 +109,16 @@ class MeetingProviderService:
                 note_route, WorkflowScope.REWRITE, registry=self.workflows.registry
             )
             note_connection = self.workflows._connection(note_route)
-            if not note_connection.api_key:
+            authentication = self.workflows.registry.describe(
+                note_route.provider_id
+            ).authentication
+            if authentication == "oauth":
+                if (
+                    not note_route.account_id
+                    or note_connection.account_id != note_route.account_id
+                ):
+                    raise MeetingError("meeting.configure_notes")
+            elif not note_connection.api_key:
                 raise MeetingError("meeting.configure_notes")
         return MeetingRoutes(
             route, connection, note_route, note_connection, execution_device=device

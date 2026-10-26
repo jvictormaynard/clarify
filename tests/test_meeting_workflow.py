@@ -324,6 +324,37 @@ class MeetingWorkflowTests(unittest.TestCase):
 
 
 class MeetingProviderTests(unittest.TestCase):
+    def test_oauth_summary_uses_the_saved_account_without_an_api_key(self):
+        from provider_registry import PROVIDER_REGISTRY
+
+        service = Mock()
+        service.registry = Mock(wraps=PROVIDER_REGISTRY)
+        service._connection.side_effect = lambda route: ProviderConnection(
+            api_key="",
+            base_url="https://api.openai.com/v1",
+            account_id=route.account_id,
+        )
+        service.registry.rewrite.return_value = SimpleNamespace(text="Supported facts")
+        provider = MeetingProviderService(service, Mock())
+        provider.validate = Mock()
+        route = WorkflowRoute("chatgpt", "fixture-model", account_id="saved-account")
+        expected = MeetingIdentity("guest", 0, False)
+        routes = provider.snapshot(expected, notes=route, action="summary")
+        self.assertEqual(routes.persisted()["notes"]["account_id"], "saved-account")
+        self.assertEqual(
+            provider.summarize(expected, routes, "op", "Source", "pt", Mock()),
+            "Supported facts",
+        )
+        self.assertEqual(
+            service.registry.rewrite.call_args.args[2].account_id, "saved-account"
+        )
+        with self.assertRaises(MeetingError):
+            provider.snapshot(
+                expected,
+                notes=WorkflowRoute("chatgpt", "fixture-model"),
+                action="summary",
+            )
+
     def test_managed_snapshot_records_fixed_models_without_credentials(self):
         service = Mock()
         provider = MeetingProviderService(service, Mock())

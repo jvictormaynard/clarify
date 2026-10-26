@@ -63,6 +63,7 @@ class ProviderMetadata:
     text_model_key: str
     default_audio_model: str
     default_text_model: str
+    authentication: str = "api_key"
 
     def supports(self, capability: ProviderCapability) -> bool:
         return capability in self.capabilities
@@ -72,12 +73,14 @@ class ProviderMetadata:
 class ProviderConnection:
     api_key: str
     base_url: str
+    account_id: str = ""
 
 
 @dataclass(frozen=True)
 class ModelCatalog:
     audio_models: tuple[str, ...] = ()
     text_models: tuple[str, ...] = ()
+    display_names: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
