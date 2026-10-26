@@ -38,7 +38,8 @@ export function ChatGPTPlan({ controller }: SettingsPageProps) {
           <Button onClick={() => void command("cancel")}>{t("Cancelar")}</Button>
         ) : (
           <>
-            {!enabled && <Button onClick={() => void command("sign_in")}>{t("Continuar com ChatGPT")}</Button>}
+            <Button disabled={state.providerBusy || state.routeModelStatus === "loading"}
+              onClick={() => void command("sign_in")}>{t("Continuar com ChatGPT")}</Button>
             {connected && <>
               <Button disabled={state.providerBusy || state.routeModelStatus === "loading"}
                 onClick={() => void command("add_account")}>{t("Adicionar conta ChatGPT")}</Button>
