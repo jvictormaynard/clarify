@@ -140,6 +140,8 @@ class WorkflowState:
     model: str | None = None
     refinement_provider_id: str | None = None
     refinement_model: str | None = None
+    cleanup_level_requested: str | None = None
+    cleanup_level_applied: str | None = None
 
 
 @dataclass(frozen=True)
@@ -526,6 +528,8 @@ class WorkflowService:
         model: str | None = None,
         refinement_provider_id: str | None = None,
         refinement_model: str | None = None,
+        cleanup_level_requested: str | None = None,
+        cleanup_level_applied: str | None = None,
         after_delivery: Callable[[], None] | None = None,
     ) -> bool:
         with self._lock:
@@ -546,6 +550,8 @@ class WorkflowService:
                 model=model,
                 refinement_provider_id=refinement_provider_id,
                 refinement_model=refinement_model,
+                cleanup_level_requested=cleanup_level_requested,
+                cleanup_level_applied=cleanup_level_applied,
             )
             self._state = state
 
@@ -842,6 +848,12 @@ class WorkflowService:
                     provider_result, "refinement_provider_id", None
                 ),
                 refinement_model=getattr(provider_result, "refinement_model", None),
+                cleanup_level_requested=getattr(
+                    provider_result, "cleanup_level_requested", None
+                ),
+                cleanup_level_applied=getattr(
+                    provider_result, "cleanup_level_applied", None
+                ),
                 after_delivery=lambda: self._scheduler.run_in_background(
                     lambda: self._write_dictation_if_current(session, result, elapsed)
                 ),

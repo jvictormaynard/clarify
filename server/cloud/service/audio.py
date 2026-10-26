@@ -6,8 +6,13 @@ from pathlib import Path
 from .ledger import Rejected
 
 
-def fingerprint(upload, language):
+def fingerprint(upload, language, *, cleanup_level=None):
     digest = hashlib.sha256(language.encode() + b"\0")
+    if cleanup_level is not None:
+        from shared.dictation_policy import cleanup_level as parse_cleanup_level
+
+        level = parse_cleanup_level(cleanup_level)
+        digest.update(b"cleanup_level\0" + level.value.encode() + b"\0")
     for chunk in upload.chunks():
         digest.update(chunk)
     upload.seek(0)

@@ -843,7 +843,10 @@ class AccountService:
             self._sync_error = ""
             service.reload()
 
-    def transcribe(self, source, language, dictionary_service):
+    def transcribe(self, source, language, dictionary_service, *, cleanup_level=None):
+        from shared.dictation_policy import cleanup_level as parse_cleanup_level
+
+        level = parse_cleanup_level(cleanup_level)
         if not self.hosted:
             raise AccountError("Entre na conta novamente.")
         if source.cancel_token:
@@ -855,14 +858,17 @@ class AccountService:
                 with self._lock:
                     self._sync_error = str(error)
         data = source.audio_bytes or source.audio_path.read_bytes()
+        fields = {
+            "operation_id": str(uuid.uuid4()),
+            "language": str(language or "auto").split("-")[0],
+        }
+        if level is not None:
+            fields["cleanup_level"] = level.value
         code, result = self._request(
             "POST",
             "/v1/dictations",
             cancel=source.cancel_token,
-            data={
-                "operation_id": str(uuid.uuid4()),
-                "language": str(language or "auto").split("-")[0],
-            },
+            data=fields,
             files={"audio": ("clip.wav", data, "audio/wav")},
         )
         if code != 200:
@@ -873,18 +879,42 @@ class AccountService:
         if not isinstance(raw, str) or not isinstance(text, str) or not text.strip():
             raise AccountError("O Clarify retornou um resultado inválido.")
         rewritten = result.get("rewritten") is True
+        applied = None
+        if level is not None:
+            # An old or mismatched server must not silently apply a different
+            # policy. No retry or personal-provider fallback is safe here.
+            try:
+                requested = parse_cleanup_level(result.get("cleanup_level_requested"))
+                applied = parse_cleanup_level(result.get("cleanup_level_applied"))
+                if requested != level or applied is None:
+                    raise ValueError()
+                if applied not in {level, parse_cleanup_level("preserve")}:
+                    raise ValueError()
+                if rewritten != (applied.value == "clarity"):
+                    raise ValueError()
+            except ValueError:
+                raise AccountError(
+                    "O Clarify retornou um resultado inválido."
+                ) from None
         return TranscriptionResult(
             text,
             "clarify",
             "whisper-large-v3-turbo",
             raw_text=raw,
             refined_text=text
-            if rewritten or result.get("snippet_expanded") is True
+            if rewritten or text != raw or result.get("snippet_expanded") is True
             else None,
-            refinement_failed=not rewritten
-            and result.get("snippet_expanded") is not True,
-            refinement_provider_id="clarify",
-            refinement_model="openai/gpt-oss-20b",
+            refinement_failed=(result.get("refinement_failed") is True)
+            if level is not None
+            else not rewritten and result.get("snippet_expanded") is not True,
+            refinement_provider_id="clarify"
+            if level is None or result.get("refinement_attempted") is True
+            else None,
+            refinement_model="openai/gpt-oss-20b"
+            if level is None or result.get("refinement_attempted") is True
+            else None,
+            cleanup_level_requested=level,
+            cleanup_level_applied=applied,
         )
 
     def transform_text(self, text, action, language="auto", *, cancel=None):

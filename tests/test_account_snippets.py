@@ -15,6 +15,51 @@ class AccountSnippetTests(unittest.TestCase):
     response = fixture.AccountTests.response
     signed_in = fixture.AccountTests.signed_in
 
+    def test_cleanup_is_optional_and_preserve_has_no_false_failure_or_model(self):
+        self.signed_in()
+        self.account._last_sync_attempt = self.account._clock()
+        self.request.return_value = self.response(
+            {
+                "transcript": "Não  envie 42.",
+                "text": "Não  envie 42.",
+                "rewritten": False,
+                "cleanup_level_requested": "preserve",
+                "cleanup_level_applied": "preserve",
+                "refinement_attempted": False,
+                "refinement_failed": False,
+            }
+        )
+        result = self.account.transcribe(
+            RecordingSnapshot(Path("unused"), b"fake"),
+            "pt",
+            self.service,
+            cleanup_level="preserve",
+        )
+        self.assertEqual(
+            self.request.call_args.kwargs["data"]["cleanup_level"], "preserve"
+        )
+        self.assertEqual(result.cleanup_level_requested, "preserve")
+        self.assertEqual(result.cleanup_level_applied, "preserve")
+        self.assertFalse(result.refinement_failed)
+        self.assertIsNone(result.refinement_model)
+        self.assertEqual(result.raw_text, "Não  envie 42.")
+
+    def test_explicit_cleanup_rejects_missing_or_mismatched_response_policy(self):
+        self.signed_in()
+        self.account._last_sync_attempt = self.account._clock()
+        self.request.reset_mock()
+        self.request.return_value = self.response(
+            {"transcript": "Source", "text": "Changed", "rewritten": True}
+        )
+        with self.assertRaises(AccountError):
+            self.account.transcribe(
+                RecordingSnapshot(Path("unused"), b"fake"),
+                "pt",
+                self.service,
+                cleanup_level="preserve",
+            )
+        self.request.assert_called_once()
+
     def test_cloud_result_is_not_expanded_again_or_replaced_with_raw_text(self):
         self.signed_in()
         self.account._last_sync_attempt = self.account._clock()
