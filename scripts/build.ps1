@@ -159,12 +159,15 @@ $argumentLine = ($arguments | ForEach-Object {
     ConvertTo-ProcessArgument ([string]$_)
 }) -join " "
 $inheritedPath = $env:PATH
+$inheritedPyInstallerConfig = $env:PYINSTALLER_CONFIG_DIR
+$env:PYINSTALLER_CONFIG_DIR = Join-Path $repoRoot 'build\pyinstaller-cache'
 $env:PATH = Get-IsolatedBuildPath $inheritedPath
 try {
     $builder = Start-Process -FilePath $python -ArgumentList $argumentLine `
         -Wait -PassThru -NoNewWindow
 } finally {
     $env:PATH = $inheritedPath
+    $env:PYINSTALLER_CONFIG_DIR = $inheritedPyInstallerConfig
 }
 if ($builder.ExitCode -ne 0) {
     throw "Clarify build failed."

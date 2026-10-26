@@ -46,3 +46,6 @@ account-secrets*.json
 account-data/
 server/.development.sqlite3*
 *.wav
+
+# Tauri-generated schemas
+desktop/src-tauri/gen/

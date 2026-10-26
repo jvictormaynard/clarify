@@ -94,6 +94,7 @@ jobs:
         uses: ./.github/actions/settings-build
         with:
           python: ${{ env.pythonLocation }}/python.exe
+          audit: 'true'
 
       - name: Build portable executable
         shell: pwsh

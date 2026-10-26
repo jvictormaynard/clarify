@@ -32,10 +32,14 @@ ASSETS = {
     "Clarify-portable-update.json",
     "Clarify-portable-update.json.sig",
 }
-COMMON_CHECKS = {
-    "Tests (ubuntu-latest)",
-    "Tests (windows-latest)",
-    "Package Windows executable",
+COMMON_CHECKS = {"CI required"}
+COMPONENT_CHECKS = {
+    "desktop": {
+        "Tests (ubuntu-latest)",
+        "Tests (windows-latest)",
+        "Package Windows executable",
+    },
+    "mobile": {"Mobile checks", "iOS validation / Native tests and unsigned build"},
 }
 
 
@@ -396,11 +400,7 @@ def dedicated_plan(api, source, intent):
 
 def check_jobs(api, run_id, component):
     jobs = api.pages(f"/actions/runs/{int(run_id)}/jobs?filter=latest", "jobs")
-    required = COMMON_CHECKS | (
-        {"iOS validation / Native tests and unsigned build"}
-        if component == "mobile"
-        else set()
-    )
+    required = COMMON_CHECKS | COMPONENT_CHECKS[component]
     for name in required:
         matches = [job for job in jobs if job.get("name") == name]
         require(

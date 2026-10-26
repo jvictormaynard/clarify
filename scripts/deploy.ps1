@@ -7,6 +7,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'windows-build-paths.ps1')
+$taskBuildPaths = Get-ClarifyWindowsBuildPaths -RepositoryPath $repoRoot
 if (-not $SettingsExecutable) {
     $SettingsExecutable = Join-Path $repoRoot 'dist\clarify-settings.exe'
     & (Join-Path $PSScriptRoot 'build-settings.ps1') -OutputPath $SettingsExecutable
@@ -23,7 +25,7 @@ $repoQmlPython = Join-Path $repoRoot "clarify\desktop"
 $repoQml = Join-Path $repoQmlPython "qml"
 $repoLocalAsrManifest = Join-Path $repoRoot "local_asr_manifest.json"
 $repoLocalAsrLicenses = Join-Path $repoRoot "licenses"
-$buildRoot = Join-Path $env:TEMP "clarify-build"
+$buildRoot = $taskBuildPaths.DeployRoot
 $venvDir = Join-Path $buildRoot "venv"
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
 $requirementsDir = Join-Path $buildRoot "requirements"
@@ -324,12 +326,15 @@ if ($SettingsExecutable) {
 $pyinstallerArgs += $source
 
 $inheritedPath = $env:PATH
+$inheritedPyInstallerConfig = $env:PYINSTALLER_CONFIG_DIR
+$env:PYINSTALLER_CONFIG_DIR = Join-Path $buildRoot 'pyinstaller-cache'
 $env:PATH = Get-IsolatedBuildPath $inheritedPath
 try {
     Invoke-LoggedProcess $venvPython $pyinstallerArgs $buildOutLog $buildErrLog `
         "Clarify build failed. The installed version was not changed."
 } finally {
     $env:PATH = $inheritedPath
+    $env:PYINSTALLER_CONFIG_DIR = $inheritedPyInstallerConfig
 }
 if (-not (Test-Path $builtExe)) {
     throw "Clarify build completed without producing an executable."

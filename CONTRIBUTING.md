@@ -31,6 +31,38 @@ privately as described in [SECURITY.md](SECURITY.md).
 
 ## Development setup
 
+Choose the setup for your change. Settings design and documentation
+contributions do not need a native Windows build or an Apple account.
+
+### Settings design or web behavior
+
+Use Python 3.12 and Node.js 22. Rust, Visual Studio and WebView2 are needed only
+for native Settings builds. On Windows, prepare the locked Python environment:
+
+```powershell
+.\scripts\setup.ps1 -Dev
+cd desktop
+npm ci
+npm run build
+$env:CLARIFY_TEST_PYTHON = (Resolve-Path ..\.venv\Scripts\python.exe).Path
+$env:CLARIFY_TEST_FIXTURE = (Resolve-Path ..\tests\web_settings_fixture.py).Path
+$env:CLARIFY_TEST_BROWSER = 'chromium'
+npx --no-install playwright install chromium
+npm test
+```
+
+When running tests in multiple worktrees, assign each run a different
+`CLARIFY_TEST_PORT` (the default is `1420`). The test server fails if that port
+is occupied. Each worktree keeps its own dependencies and build outputs.
+
+The browser tests use a temporary Python controller with fake providers. They
+need no user profile, account, provider key, microphone or native executable.
+Linux contributors can use the same checks with the Linux lock and interpreter;
+see the `settings` job in [CI](.github/workflows/ci.yml) for runtime packages and
+`playwright install --with-deps chromium`. Record screenshots for visual changes.
+
+### Python, QML or native Windows behavior
+
 On Windows:
 
 ```powershell
@@ -72,20 +104,42 @@ and integration.
 4. Update user documentation when installation, shortcuts, providers, privacy,
    or configuration changes.
 5. Run the checks below.
-6. Build and test the real Windows executable for integration or visual changes.
+6. For native integration changes, build and test the Windows executable when
+   your environment supports it. Report unavailable platform checks in the PR.
+   Maintainers complete native acceptance before publication.
 
 Use clear commit messages. Conventional prefixes such as `fix:`, `feat:`,
 `docs:`, `test:`, and `chore:` are encouraged but not required.
 
-## Required checks
+## Checks for your change
+
+CI selects checks from the complete PR diff. No special branch prefix, label,
+paid service or secret is required. Pushes to a branch with an open PR run one
+PR workflow. Maintainers may need to approve a first-time fork's workflow run.
+
+- Documentation: run `python scripts/check_agent_skills.py` when changing agent
+  guidance, and `git diff --check`. No product build is needed.
+- Settings design: run the frontend build and isolated browser tests above.
+  Rust and the portable EXE are not required for a frontend-only PR.
+- Python or QML: run the Python suite and relevant QML checks. CI tests Python
+  behavior on Linux and Windows.
+- Mobile TypeScript: run `npm ci` and `npm run check` in `mobile/`. CI also checks
+  the iOS JavaScript bundle with bounded worker concurrency. Native source, config, plugins and dependencies
+  additionally select macOS tests and an unsigned native build.
+- Server: use the isolated database tests in [server/README.md](server/README.md).
+- Dependencies or packaging: run the corresponding locked checks and native
+  build. MSI lifecycle checks apply to installer inputs, not ordinary design PRs.
+
+For Python changes, use the configured interpreter:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe -m compileall -q clarify\desktop\qml_app.py clarify\desktop\qml_bridge.py clarify\desktop\qml_runtime.py clarify\desktop\qml_settings.py clarify\desktop\qml_audio_batch.py clarify\desktop\qml_clipboard.py clarify\desktop\qml_voice_translation.py clarify\desktop\qt_shell.py workflows.py repositories.py dictionary_snippets.py dictionary_settings.py secret_store.py desktop_state.py version.py windows_hotkeys.py windows_clipboard.py provider_types.py workflow_provider.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py tests
-ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py tests/test_repository.py
-mypy desktop_state.py windows_hotkeys.py
-python scripts/dependency_audit.py
 ```
+
+The [CI policy](docs/ci-delivery.md) defines the checks and branch-protection
+migration. Unknown inputs select full validation. Manual CI runs remain available
+for a complete diagnostic. Native builds use public tools on GitHub-hosted
+runners; fork PRs receive no publication credentials.
 
 Dependency intent is kept in `requirements.txt` and `requirements-dev.txt`;
 the generated platform locks (`requirements-lock-linux.txt` and
@@ -95,23 +149,9 @@ with `python -m piptools compile --strip-extras --output-file=...` and include
 both resulting diffs. Do not add an audit exception without a reviewed rationale
 in `dependency-audit.json`.
 
-For Settings changes, also run from `desktop/`:
-
-```powershell
-npm ci
-npm run build
-$env:CLARIFY_TEST_PYTHON = (Resolve-Path ..\.venv\Scripts\python.exe).Path
-$env:CLARIFY_TEST_FIXTURE = (Resolve-Path ..\tests\web_settings_fixture.py).Path
-$env:CLARIFY_TEST_BROWSER = 'chromium'
-npx --no-install playwright install chromium
-npm test
-cargo build --locked --manifest-path src-tauri/Cargo.toml --release --features custom-protocol
-```
-
-The browser tests use an isolated Python controller, not your personal profile
-or a live provider. They do not replace native Windows acceptance. Commit
-`desktop/package-lock.json` and `desktop/src-tauri/Cargo.lock` when changing
-their dependencies. Dependabot covers both ecosystems.
+Commit `desktop/package-lock.json` and `desktop/src-tauri/Cargo.lock` when
+changing their dependencies. Dependabot covers both ecosystems. Browser tests
+do not prove native Windows focus, hotkeys, tray behavior or WebView2 integration.
 
 For packaging-related changes:
 
@@ -119,10 +159,10 @@ For packaging-related changes:
 .\scripts\build.ps1
 ```
 
-Do not accept a Windows UI change based only on unit tests. Check the installed
-or built executable, including focus behavior, global shortcuts, the system
-tray, window transparency, and at least the DPI setting where the defect was
-reported.
+For native Windows behavior and release acceptance, check the built executable,
+including affected focus, shortcuts, tray, transparency and DPI behavior. A
+frontend-only PR can use browser evidence; list any native checks left for the
+maintainer. CI never publishes a client simply because a contribution passes.
 
 ## Pull requests
 
@@ -140,9 +180,10 @@ Maintainers may ask for a smaller scope when a change mixes unrelated concerns.
 Review is collaborative, and specific technical disagreement is welcome when it
 stays respectful and evidence-based.
 
-`main` requires a pull request, resolved review conversations, and passing
-`Tests (ubuntu-latest)`, `Tests (windows-latest)`, and `Package Windows executable`
-checks against the current base. Force pushes and branch deletion are disabled,
+`main` requires a pull request, resolved review conversations, and passing checks
+against the current base. The selective workflow reports `CI required`; see the
+[protection migration](docs/ci-delivery.md#branch-protection-migration) when the
+repository still requires the previous three unconditional Desktop checks. Force pushes and branch deletion are disabled,
 including for administrators. A second person's approval is not required for
 this single-maintainer repository; this does not replace the release gates.
 

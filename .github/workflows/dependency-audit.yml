@@ -1,0 +1,54 @@
+name: Desktop dependency audit
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python audit (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            lock: requirements-lock-linux.txt
+          - os: windows-latest
+            lock: requirements-lock-windows.txt
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ${{ matrix.lock }}
+      - run: python scripts/install_bootstrap_tools.py --lock-file "${{ matrix.lock }}"
+      - run: python -m pip install --disable-pip-version-check pip-audit -c "${{ matrix.lock }}"
+      - run: python scripts/dependency_audit.py
+
+  settings:
+    name: Settings dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci --ignore-scripts --no-fund
+        working-directory: desktop
+      - run: npm audit --include=dev --audit-level=high
+        working-directory: desktop
