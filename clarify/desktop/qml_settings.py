@@ -2870,7 +2870,7 @@ class QmlSettingsController(QObject):
         return True
 
     @Slot(str, str, result=bool)
-    def accountCommand(self, action, value=""):
+    def accountCommand(self, action, value="", *, expected_identity=None):
         if action == "cancel-social":
             if self._account_busy and self._account_social:
                 self._account_cancel.set()
@@ -2907,8 +2907,16 @@ class QmlSettingsController(QObject):
             "delete",
         }:
             return False
-        if not self._account.begin_change():
-            return False
+        with self._history_correction_guard:
+            if expected_identity is not None:
+                try:
+                    current_identity = self._history_correction_identity()
+                except CorrectionError:
+                    current_identity = None
+                if current_identity != expected_identity:
+                    return False
+            if not self._account.begin_change():
+                return False
         self._account_busy, self._account_error = True, ""
         self._account_social = action == "social"
         self._account_cancel.clear()
@@ -2988,20 +2996,33 @@ class QmlSettingsController(QObject):
             with self._dictionary_service.transaction(expected_context=context):
                 self._require_library_context(context)
                 self._reconcile_library_draft()
-                return self._save_owned_library(context)
+                sync_identity = (
+                    self._history_correction_identity()
+                    if self._account.scope and not self._account_busy
+                    else None
+                )
+                if not self._save_owned_library(context):
+                    return False
         except Exception as error:
             self._set_error(error)
             return False
+        self.saved.emit()
+        if sync_identity is not None:
+            self.accountCommand("sync", "", expected_identity=sync_identity)
+        return True
 
     @Slot(str, "QVariantList", result=bool)
     def savePreference(self, method: str, args: list) -> bool:
         """Persist one allowlisted control against current storage, never Save All."""
         try:
             with self._dictionary_service.transaction():
-                return self._save_preference(method, args)
+                if not self._save_preference(method, args):
+                    return False
         except Exception as error:
             self._set_error(error)
             return False
+        self.saved.emit()
+        return True
 
     def _save_preference(self, method: str, args: list) -> bool:
         before = None
@@ -3068,7 +3089,6 @@ class QmlSettingsController(QObject):
         if method == "useLocalAsr":
             self.selectWorkflow(WorkflowScope.TRANSCRIPTION.value)
         self._set_error(None)
-        self.saved.emit()
         return True
 
     def _preference_change(
@@ -3368,9 +3388,6 @@ class QmlSettingsController(QObject):
         self._dictionary_baseline = self._dictionary_draft
         self._replace_loaded_config(persisted_config)
         self._set_error(None)
-        self.saved.emit()
-        if self._account.scope and not self._account_busy:
-            self.accountCommand("sync", "")
         return True
 
     @Slot(str, result=bool)

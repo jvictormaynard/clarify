@@ -10,11 +10,13 @@ from PySide6.QtWidgets import QApplication
 
 from clarify_account import AccountDictionaryRepository, AccountService
 from clarify.desktop.qml_settings import QmlSettingsController
+from clarify.desktop.qml_updates import QmlUpdateController
 from clarify.desktop.qml_web_settings import SettingsProtocol
 from dictionary_snippets import (
     DictionaryEntry,
     DictionarySnippetService,
     LocalDictionarySnippetsRepository,
+    Snippet,
 )
 from history_store import HistoryRecord
 from local_asr_product import LocalASRProductState
@@ -213,6 +215,117 @@ class HistoryCorrectionSettingsTests(unittest.TestCase):
             undone = self.call("undo", {"token": result["receipt"]})
         self.assertEqual(undone["status"], "undone")
         begin.assert_not_called()
+        self.request.assert_not_called()
+
+    def test_normal_save_releases_account_guard_before_meeting_preflight(self):
+        self.signed_in()
+        context = self.settings.snippetContext
+        self.settings.setDictionaryEntries([DictionaryEntry("Saved term").to_mapping()])
+        self.settings.setSnippets(
+            [Snippet("saved", "Saved text").to_mapping()], context
+        )
+        meeting = MeetingWorkflow(Mock(), Mock(), source_factory=Mock())
+        meeting_locked = threading.Event()
+        preflight_entered = threading.Event()
+        publication_acquired = []
+
+        def publish():
+            with meeting._lock:
+                meeting_locked.set()
+                if not preflight_entered.wait(3):
+                    return
+                acquired = self.account._lock.acquire(timeout=1)
+                publication_acquired.append(acquired)
+                if acquired:
+                    self.account._lock.release()
+
+        def can_change():
+            preflight_entered.set()
+            meeting.active
+            return False
+
+        worker = threading.Thread(target=publish, daemon=True)
+        worker.start()
+        self.assertTrue(meeting_locked.wait(3))
+        self.settings._account_can_change = can_change
+        try:
+            saved = self.settings.save(context)
+        finally:
+            preflight_entered.set()
+            worker.join(3)
+        self.assertTrue(saved)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(publication_acquired, [True])
+        self.assertEqual(
+            self.dictionary.state.dictionary, (DictionaryEntry("Saved term"),)
+        )
+        self.assertEqual(
+            self.dictionary.state.snippets, (Snippet("saved", "Saved text"),)
+        )
+        self.request.assert_not_called()
+
+    def test_normal_save_revalidates_session_after_processing_preflight(self):
+        self.signed_in()
+        context = self.settings.snippetContext
+        self.settings.setDictionaryEntries([DictionaryEntry("Saved term").to_mapping()])
+
+        def changed_session():
+            self.account._generation += 1
+            return True
+
+        self.settings._account_can_change = changed_session
+        with patch.object(self.account, "begin_change", return_value=False) as begin:
+            self.assertTrue(self.settings.save(context))
+        begin.assert_not_called()
+        self.assertEqual(
+            self.dictionary.state.dictionary, (DictionaryEntry("Saved term"),)
+        )
+        self.request.assert_not_called()
+
+    def test_preference_save_releases_account_guard_before_update_notification(self):
+        self.signed_in()
+        updates = QmlUpdateController(supported=False, automatic=True)
+        self.addCleanup(updates.shutdown)
+        updates._phase = "downloading"  # No transport or download worker is started.
+        meeting = MeetingWorkflow(Mock(), Mock(), source_factory=Mock())
+        meeting_locked = threading.Event()
+        notification_entered = threading.Event()
+        publication_acquired = []
+        config = self.settings.repositories.config
+
+        def publish():
+            with meeting._lock:
+                meeting_locked.set()
+                if not notification_entered.wait(3):
+                    return
+                acquired = self.account._lock.acquire(timeout=1)
+                publication_acquired.append(acquired)
+                if acquired:
+                    self.account._lock.release()
+
+        def refresh_meeting():
+            notification_entered.set()
+            meeting.active
+
+        def sync_updates():
+            updates.setAutomatic(config.load().automatic_updates)
+
+        updates.changed.connect(refresh_meeting)
+        self.settings.saved.connect(sync_updates)
+        worker = threading.Thread(target=publish, daemon=True)
+        worker.start()
+        self.assertTrue(meeting_locked.wait(3))
+        try:
+            saved = self.settings.savePreference("setAutomaticUpdates", [False])
+        finally:
+            notification_entered.set()
+            worker.join(3)
+            self.settings.saved.disconnect(sync_updates)
+            updates.changed.disconnect(refresh_meeting)
+        self.assertTrue(saved)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(updates._cancel.is_set())
+        self.assertEqual(publication_acquired, [True])
         self.request.assert_not_called()
 
     def test_deferred_undo_sync_cannot_follow_a_relogin_to_the_same_account(self):
