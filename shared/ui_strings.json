@@ -5690,5 +5690,335 @@
     "pt": "Valor de configuração inválido",
     "en": "Invalid settings value",
     "es": "Valor de configuración no válido"
+  },
+  "meeting.title": {
+    "pt": "Reuniões",
+    "en": "Meetings",
+    "es": "Reuniones"
+  },
+  "meeting.new": {
+    "pt": "Nova reunião",
+    "en": "New meeting",
+    "es": "Nueva reunión"
+  },
+  "meeting.stop": {
+    "pt": "Parar",
+    "en": "Stop",
+    "es": "Detener"
+  },
+  "meeting.cancel": {
+    "pt": "Cancelar",
+    "en": "Cancel",
+    "es": "Cancelar"
+  },
+  "meeting.open": {
+    "pt": "Abrir",
+    "en": "Open",
+    "es": "Abrir"
+  },
+  "meeting.idle": {
+    "pt": "Pronto",
+    "en": "Ready",
+    "es": "Listo"
+  },
+  "meeting.starting": {
+    "pt": "Iniciando",
+    "en": "Starting",
+    "es": "Iniciando"
+  },
+  "meeting.recording": {
+    "pt": "Gravando",
+    "en": "Recording",
+    "es": "Grabando"
+  },
+  "meeting.stopped": {
+    "pt": "Parado",
+    "en": "Stopped",
+    "es": "Detenido"
+  },
+  "meeting.interrupted": {
+    "pt": "Interrompido",
+    "en": "Interrupted",
+    "es": "Interrumpido"
+  },
+  "meeting.processing": {
+    "pt": "Transcrevendo",
+    "en": "Transcribing",
+    "es": "Transcribiendo"
+  },
+  "meeting.summarizing": {
+    "pt": "Gerando resumo",
+    "en": "Creating summary",
+    "es": "Creando resumen"
+  },
+  "meeting.cancelled": {
+    "pt": "Cancelado",
+    "en": "Cancelled",
+    "es": "Cancelado"
+  },
+  "meeting.failed": {
+    "pt": "Falha",
+    "en": "Failed",
+    "es": "Error"
+  },
+  "meeting.pending": {
+    "pt": "áudio salvo. Transcrição pendente.",
+    "en": "Audio saved. Transcription pending.",
+    "es": "Audio guardado. Transcripción pendiente."
+  },
+  "meeting.microphone": {
+    "pt": "Microfone padrão de comunicação",
+    "en": "Default communication microphone",
+    "es": "Micrófono de comunicación predeterminado"
+  },
+  "meeting.system": {
+    "pt": "áudio da saída padrão",
+    "en": "Default output audio",
+    "es": "Audio de la salida predeterminada"
+  },
+  "meeting.notes": {
+    "pt": "Notas pessoais",
+    "en": "Personal notes",
+    "es": "Notas personales"
+  },
+  "meeting.summary": {
+    "pt": "Resumo",
+    "en": "Summary",
+    "es": "Resumen"
+  },
+  "meeting.transcript": {
+    "pt": "Transcrição",
+    "en": "Transcript",
+    "es": "Transcripción"
+  },
+  "meeting.title_placeholder": {
+    "pt": "Título para a próxima reunião",
+    "en": "Title for the next meeting",
+    "es": "Título de la próxima reunión"
+  },
+  "meeting.notes_placeholder": {
+    "pt": "Escreva suas notas. O Clarify salva as alterações neste computador.",
+    "en": "Write your notes. Clarify saves changes on this computer.",
+    "es": "Escribe tus notas. Clarify guarda los cambios en este ordenador."
+  },
+  "meeting.summary_stale": {
+    "pt": "O resumo está desatualizado. A fonte mudou.",
+    "en": "The summary is out of date. The source changed.",
+    "es": "El resumen está desactualizado. La fuente cambió."
+  },
+  "meeting.untitled": {
+    "pt": "Reunião sem título",
+    "en": "Untitled meeting",
+    "es": "Reunión sin título"
+  },
+  "meeting.retry": {
+    "pt": "Tentar trechos com falha",
+    "en": "Retry failed chunks",
+    "es": "Reintentar fragmentos con error"
+  },
+  "meeting.generate": {
+    "pt": "Gerar resumo",
+    "en": "Create summary",
+    "es": "Crear resumen"
+  },
+  "meeting.copy": {
+    "pt": "Copiar",
+    "en": "Copy",
+    "es": "Copiar"
+  },
+  "meeting.export": {
+    "pt": "Exportar Markdown",
+    "en": "Export Markdown",
+    "es": "Exportar Markdown"
+  },
+  "meeting.delete": {
+    "pt": "Excluir",
+    "en": "Delete",
+    "es": "Eliminar"
+  },
+  "meeting.delete_title": {
+    "pt": "Excluir reunião?",
+    "en": "Delete meeting?",
+    "es": "¿Eliminar reunión?"
+  },
+  "meeting.delete_warning": {
+    "pt": "Esta ação exclui as notas, o resumo, a transcrição e os Áudios desta reunião neste computador.",
+    "en": "This deletes the notes, summary, transcript and audio for this meeting on this computer.",
+    "es": "Esto elimina las notas, el resumen, la transcripción y el audio de esta reunión en este ordenador."
+  },
+  "meeting.markdown_filter": {
+    "pt": "Markdown (*.md)",
+    "en": "Markdown (*.md)",
+    "es": "Markdown (*.md)"
+  },
+  "meeting.limits": {
+    "pt": "Início manual. Duas fontes separadas, sem identificar pessoas ou remover eco. Captura de até 4 horas, em trechos de até 30 s. Resumo: fonte de até 64.000 bytes UTF-8. Notas pessoais: até 16.000 bytes. Áudios com falha ficam neste computador até nova tentativa ou exclusão.",
+    "en": "Manual start. Two separate sources, without speaker identification or echo removal. Capture up to 4 hours in chunks of up to 30 s. Summary source: up to 64,000 UTF-8 bytes. Personal notes: up to 16,000 bytes. Failed audio stays on this computer until retry or deletion.",
+    "es": "Inicio manual. Dos fuentes separadas, sin identificar personas ni eliminar eco. Captura de hasta 4 horas en fragmentos de hasta 30 s. Fuente del resumen: hasta 64.000 bytes UTF-8. Notas personales: hasta 16.000 bytes. El audio con error queda en este ordenador hasta reintentar o eliminar."
+  },
+  "meeting.empty": {
+    "pt": "Inicie uma reunião para capturar áudio. Notas, transcrições e resumos ficam neste computador, separados por conta. Dados sem conta não são enviados ao entrar.",
+    "en": "Start a meeting to capture audio. Notes, transcripts and summaries stay on this computer, separated by account. Guest data is not uploaded at sign-in.",
+    "es": "Inicia una reunión para capturar audio. Las notas, transcripciones y resúmenes quedan en este ordenador, separados por cuenta. Los datos sin cuenta no se suben al iniciar sesión."
+  },
+  "meeting.notes_route": {
+    "pt": "Resumo de novas reuniões",
+    "en": "Summary for new meetings",
+    "es": "Resumen de nuevas reuniones"
+  },
+  "meeting.enable_notes": {
+    "pt": "Habilitar",
+    "en": "Enable",
+    "es": "Activar"
+  },
+  "meeting.model": {
+    "pt": "ID do modelo de texto",
+    "en": "Text model ID",
+    "es": "ID del modelo de texto"
+  },
+  "meeting.save_route": {
+    "pt": "Salvar opção",
+    "en": "Save option",
+    "es": "Guardar opción"
+  },
+  "meeting.notes_disabled": {
+    "pt": "Habilite o resumo nas opções de reunião antes de iniciar uma nova reunião.",
+    "en": "Enable summary in the meeting options before starting a new meeting.",
+    "es": "Activa el resumen en las opciones de reunión antes de iniciar una nueva reunión."
+  },
+  "meeting.too_large": {
+    "pt": "A fonte excede o limite do resumo ou das notas. O Clarify manteve a fonte e o resumo anterior. Exporte o material completo.",
+    "en": "The source exceeds the summary or notes limit. Clarify kept the source and previous summary. Export the complete material.",
+    "es": "La fuente supera el límite del resumen o de las notas. Clarify conservó la fuente y el resumen anterior. Exporta el material completo."
+  },
+  "meeting.no_source": {
+    "pt": "Adicione notas ou transcreva áudio antes de gerar um resumo.",
+    "en": "Add notes or transcribe audio before creating a summary.",
+    "es": "Añade notas o transcribe audio antes de crear un resumen."
+  },
+  "meeting.newer_schema": {
+    "pt": "Uma versão mais nova criou o banco de reuniões. Abra com essa versão. Os dados foram preservados.",
+    "en": "A newer version created the meeting database. Open it with that version. The data was preserved.",
+    "es": "Una versión más nueva creó la base de reuniones. Ábrela con esa versión. Los datos se conservaron."
+  },
+  "meeting.store_error": {
+    "pt": "Não foi possível acessar o banco de reuniões. Os arquivos foram preservados.",
+    "en": "Could not access the meeting database. The files were preserved.",
+    "es": "No se pudo acceder a la base de reuniones. Los archivos se conservaron."
+  },
+  "meeting.scope_changed": {
+    "pt": "A sessão mudou. O resultado foi descartado. Abra a reunião na conta original.",
+    "en": "The session changed. The result was discarded. Open the meeting in the original account.",
+    "es": "La sesión cambió. El resultado se descartó. Abre la reunión en la cuenta original."
+  },
+  "meeting.summary_changed": {
+    "pt": "A fonte mudou durante o processamento. O resumo anterior foi mantido. Gere o resumo novamente.",
+    "en": "The source changed during processing. The previous summary was kept. Create the summary again.",
+    "es": "La fuente cambió durante el procesamiento. Se conservó el resumen anterior. Genera el resumen otra vez."
+  },
+  "meeting.processing_error": {
+    "pt": "Não foi possível processar a reunião. O áudio e as notas foram mantidos. Tente novamente.",
+    "en": "Could not process the meeting. Audio and notes were kept. Try again.",
+    "es": "No se pudo procesar la reunión. El audio y las notas se conservaron. Inténtalo otra vez."
+  },
+  "meeting.capture_error": {
+    "pt": "A captura desta fonte falhou. Verifique o dispositivo. O áudio já salvo foi mantido.",
+    "en": "Capture failed for this source. Check the device. Saved audio was kept.",
+    "es": "La captura de esta fuente falló. Revisa el dispositivo. El audio guardado se conservó."
+  },
+  "meeting.audio_damaged": {
+    "pt": "O trecho de áudio está ausente ou danificado. O Clarify manteve os arquivos disponíveis.",
+    "en": "The audio chunk is missing or damaged. Clarify kept the available files.",
+    "es": "El fragmento de audio falta o está dañado. Clarify conservó los archivos disponibles."
+  },
+  "meeting.device_changed": {
+    "pt": "O dispositivo padrão mudou. Esta fonte parou. Inicie uma nova reunião para usar o novo dispositivo.",
+    "en": "The default device changed. This source stopped. Start a new meeting to use the new device.",
+    "es": "El dispositivo predeterminado cambió. Esta fuente se detuvo. Inicia otra reunión para usar el nuevo dispositivo."
+  },
+  "meeting.audio_gap": {
+    "pt": "O Windows informou uma interrupção no áudio desta fonte. A transcrição pode ter lacunas.",
+    "en": "Windows reported an audio interruption for this source. The transcript can have gaps.",
+    "es": "Windows informó de una interrupción en el audio de esta fuente. La transcripción puede tener lagunas."
+  },
+  "meeting.audio_format": {
+    "pt": "O formato de áudio deste dispositivo não é compatível com reuniões.",
+    "en": "This device audio format is not supported for meetings.",
+    "es": "El formato de audio de este dispositivo no es compatible con reuniones."
+  },
+  "meeting.duration_limit": {
+    "pt": "O limite de 4 horas foi atingido. A captura parou.",
+    "en": "The 4-hour limit was reached. Capture stopped.",
+    "es": "Se alcanzó el límite de 4 horas. La captura se detuvo."
+  },
+  "meeting.windows_only": {
+    "pt": "A captura de reuniões requer Windows.",
+    "en": "Meeting capture requires Windows.",
+    "es": "La captura de reuniones requiere Windows."
+  },
+  "meeting.sign_in": {
+    "pt": "Entre na conta novamente para processar esta reunião.",
+    "en": "Sign in again to process this meeting.",
+    "es": "Inicia sesión otra vez para procesar esta reunión."
+  },
+  "meeting.allowance": {
+    "pt": "O processamento da conta está indisponível ou a cota terminou. O áudio foi mantido.",
+    "en": "Account processing is unavailable or the allowance is used. Audio was kept.",
+    "es": "El procesamiento de la cuenta no está disponible o se agotó la cuota. El audio se conservó."
+  },
+  "meeting.busy": {
+    "pt": "Aguarde o fim da operação atual antes de iniciar outra.",
+    "en": "Wait for the current operation to finish before starting another.",
+    "es": "Espera a que termine la operación actual antes de iniciar otra."
+  },
+  "meeting.configure_asr": {
+    "pt": "Configure a transcrição antes de iniciar uma reunião.",
+    "en": "Configure transcription before starting a meeting.",
+    "es": "Configura la transcripción antes de iniciar una reunión."
+  },
+  "meeting.configure_notes": {
+    "pt": "Selecione um provedor e um modelo de texto para o resumo.",
+    "en": "Select a provider and text model for the summary.",
+    "es": "Selecciona un proveedor y un modelo de texto para el resumen."
+  },
+  "meeting.draft_recovery": {
+    "pt": "A sessão mudou. Salve o rascunho na reunião original ou descarte o rascunho para entrar novamente.",
+    "en": "The session changed. Save the draft in the original meeting or discard the draft to sign in again.",
+    "es": "La sesión cambió. Guarda el borrador en la reunión original o descártalo para iniciar sesión otra vez."
+  },
+  "meeting.keep_draft": {
+    "pt": "Salvar na reunião original",
+    "en": "Save in original meeting",
+    "es": "Guardar en la reunión original"
+  },
+  "meeting.discard_draft": {
+    "pt": "Descartar rascunho",
+    "en": "Discard draft",
+    "es": "Descartar borrador"
+  },
+  "meeting.delete_pending": {
+    "pt": "A exclusão de áudio está pendente. Os registros de exclusão foram mantidos para nova tentativa.",
+    "en": "Audio deletion is pending. Deletion records were kept for retry.",
+    "es": "La eliminación de audio está pendiente. Los registros de eliminación se conservaron para reintentar."
+  },
+  "meeting.retry_cleanup": {
+    "pt": "Tentar exclusão novamente",
+    "en": "Retry deletion",
+    "es": "Reintentar eliminación"
+  },
+  "meeting.previous": {
+    "pt": "Anterior",
+    "en": "Previous",
+    "es": "Anterior"
+  },
+  "meeting.next": {
+    "pt": "Próxima",
+    "en": "Next",
+    "es": "Siguiente"
+  },
+  "meeting.export_error": {
+    "pt": "Não foi possível exportar a reunião. Escolha um arquivo local.",
+    "en": "Could not export the meeting. Select a local file.",
+    "es": "No se pudo exportar la reunión. Selecciona un archivo local."
   }
 }

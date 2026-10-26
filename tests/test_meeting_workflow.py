@@ -1,0 +1,409 @@
+import tempfile
+import json
+import threading
+import time
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+from dataclasses import asdict
+from contextlib import contextmanager
+
+from meeting_provider import MeetingProviderService
+from meeting_store import MeetingStore
+from meeting_workflow import MeetingWorkflow
+from provider_types import ProviderConnection
+from shared.meeting_contract import MeetingError, MeetingIdentity
+from workflow_config import WorkflowRoute
+
+
+def wait_for(predicate):
+    until = time.monotonic() + 3
+    while not predicate() and time.monotonic() < until:
+        time.sleep(0.01)
+    if not predicate():
+        raise AssertionError("fixture worker did not reach expected state")
+
+
+class FakeProvider:
+    def __init__(self):
+        self.current = MeetingIdentity("guest", 0, False)
+        self.acquire = Mock()
+        self.release = Mock()
+        self.snapshot = Mock(return_value=None)
+        self.calls = []
+        self.entered = threading.Event()
+        self.resume = threading.Event()
+        self.delayed = False
+        self.failure = False
+
+    def identity(self):
+        return self.current
+
+    def validate(self, expected):
+        if expected != self.current:
+            raise MeetingError("meeting.scope_changed")
+
+    @contextmanager
+    def publication(self, expected):
+        self.validate(expected)
+        yield
+
+    def transcribe(self, expected, routes, chunk, path, language, cancel):
+        self.calls.append((chunk["operation_id"], language))
+        self.entered.set()
+        if self.delayed:
+            self.resume.wait(3)
+        if self.failure:
+            raise TimeoutError("uncertain provider failure")
+        return "Original speech"
+
+    def summarize(self, *args):
+        self.entered.set()
+        if self.delayed:
+            self.resume.wait(3)
+        return "New summary"
+
+
+class FakeCapture:
+    last = None
+
+    def __init__(self, store, owner, mid, **kwargs):
+        FakeCapture.last = self
+        self.alive = False
+        self.closed = False
+
+    def start(self):
+        self.alive = True
+
+    def stop(self):
+        self.alive = False
+        self.closed = True
+
+    def snapshot(self):
+        return {}
+
+
+class MeetingWorkflowTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.store = MeetingStore(self.temp.name)
+        self.provider = FakeProvider()
+        self.workflow = MeetingWorkflow(
+            self.store,
+            self.provider,
+            source_factory=Mock(),
+            capture_factory=FakeCapture,
+        )
+        self.addCleanup(self.workflow.shutdown)
+
+    def pending(self, *, language="es"):
+        row = self.store.create("guest", language=language)
+        cid, path = self.store.open_chunk("guest", row["id"], "microphone", 0)
+        path.write_bytes(b"synthetic fixture")
+        self.store.finish_chunk("guest", row["id"], cid, 1000)
+        self.store.end("guest", row["id"])
+        self.workflow.selected = row["id"]
+        return row["id"], cid, path
+
+    def test_delete_rejects_old_account_confirmation_after_guest_or_same_account_login(
+        self,
+    ):
+        account = MeetingIdentity("account:" + "a" * 64, 1, True)
+        mid = self.store.create(account.owner)["id"]
+        cid, path = self.store.open_chunk(account.owner, mid, "microphone", 0)
+        path.write_bytes(b"synthetic fixture")
+        guest, _, guest_path = self.pending()
+        for current in (
+            MeetingIdentity("guest", 2, False),
+            MeetingIdentity(account.owner, 3, True),
+        ):
+            with self.subTest(current=current):
+                self.provider.current = current
+                self.workflow.selected = guest if current.owner == "guest" else mid
+                with self.assertRaisesRegex(MeetingError, "meeting.scope_changed"):
+                    self.workflow.delete(mid, account.owner + ":1")
+                self.assertEqual(self.store.get(account.owner, mid)["id"], mid)
+                self.assertEqual(self.store.get("guest", guest)["id"], guest)
+                self.assertTrue(path.exists())
+                self.assertTrue(guest_path.exists())
+        self.provider.current = MeetingIdentity("guest", 0, False)
+        with self.assertRaisesRegex(MeetingError, "meeting.scope_changed"):
+            self.workflow.delete(mid, "guest:0")
+        self.assertTrue(path.exists())
+
+    def test_delete_uses_captured_id_when_selection_changes_in_same_session(self):
+        mid, _, path = self.pending()
+        other, _, other_path = self.pending()
+        self.workflow.delete(mid, "guest:0")
+        self.assertFalse(path.exists())
+        self.assertEqual(self.workflow.selected, other)
+        self.assertEqual(self.store.get("guest", other)["id"], other)
+        self.assertTrue(other_path.exists())
+
+    def test_delete_revalidates_session_under_publication_guard(self):
+        mid, _, path = self.pending()
+
+        @contextmanager
+        def changed_before_guard(expected):
+            self.provider.current = MeetingIdentity("guest", 1, False)
+            self.provider.validate(expected)
+            yield
+
+        self.provider.publication = changed_before_guard
+        with self.assertRaisesRegex(MeetingError, "meeting.scope_changed"):
+            self.workflow.delete(mid, "guest:0")
+        self.assertTrue(path.exists())
+        self.assertEqual(self.store.get("guest", mid)["id"], mid)
+
+    def test_stop_during_capture_creation_does_not_open_a_late_recorder(self):
+        entered, release = threading.Event(), threading.Event()
+        capture = Mock(alive=False)
+
+        def factory(*args, **kwargs):
+            entered.set()
+            release.wait(3)
+            return capture
+
+        self.workflow.capture_factory = factory
+        self.workflow.start()
+        self.assertTrue(entered.wait(2))
+        stopper = threading.Thread(target=self.workflow.stop)
+        stopper.start()
+        wait_for(self.workflow._stop.is_set)
+        release.set()
+        stopper.join(2)
+        wait_for(lambda: not self.workflow.active)
+        self.assertFalse(stopper.is_alive())
+        capture.start.assert_not_called()
+
+    def test_stop_closes_capture_even_while_transcription_is_blocked(self):
+        self.provider.delayed = True
+        self.workflow.start(language="pt")
+        wait_for(lambda: self.workflow.phase == "recording")
+        mid = self.workflow.selected
+        cid, path = self.store.open_chunk("guest", mid, "microphone", 0)
+        path.write_bytes(b"synthetic fixture")
+        self.store.finish_chunk("guest", mid, cid, 1000)
+        self.assertTrue(self.provider.entered.wait(2))
+        self.workflow.stop()
+        self.assertTrue(FakeCapture.last.closed)
+        self.assertTrue(self.workflow.active)
+        self.provider.resume.set()
+        wait_for(lambda: not self.workflow.active)
+        self.assertFalse(path.exists())
+        self.provider.release.assert_called_once()
+
+    def test_cancel_or_session_switch_rejects_late_result_and_retains_audio(self):
+        for cancel in (True, False):
+            mid, cid, path = self.pending()
+            self.provider.entered.clear()
+            self.provider.resume.clear()
+            self.provider.delayed = True
+            self.workflow.retry()
+            self.assertTrue(self.provider.entered.wait(2))
+            if cancel:
+                self.workflow.cancel()
+            else:
+                self.provider.current = MeetingIdentity("guest", 1, False)
+            self.provider.resume.set()
+            wait_for(lambda: not self.workflow.active)
+            self.assertTrue(path.exists())
+            self.assertEqual(
+                self.store.get("guest", mid)["chunks"][0]["transcript"], ""
+            )
+
+    def test_uncertain_retry_after_restart_keeps_operation_and_original_language(self):
+        mid, cid, path = self.pending()
+        self.provider.failure = True
+        self.workflow.retry()
+        wait_for(lambda: not self.workflow.active)
+        self.assertTrue(path.exists())
+        other = MeetingWorkflow(self.store, self.provider, source_factory=Mock())
+        self.addCleanup(other.shutdown)
+        other.selected = mid
+        other.language = "en"
+        self.provider.failure = False
+        other.retry()
+        wait_for(lambda: not other.active)
+        self.assertEqual(self.provider.calls, [(cid, "es"), (cid, "es")])
+        self.assertFalse(path.exists())
+
+    def test_cancelled_summary_keeps_personal_note_and_previous_summary(self):
+        mid, cid, path = self.pending()
+        self.store.save_notes("guest", mid, "Manual note")
+        op, rev, _ = self.store.summary_request("guest", mid)
+        self.store.save_summary("guest", mid, rev, "Previous summary")
+        self.provider.delayed = True
+        self.workflow.summarize()
+        self.assertTrue(self.provider.entered.wait(2))
+        self.workflow.cancel()
+        self.provider.resume.set()
+        wait_for(lambda: not self.workflow.active)
+        saved = self.store.get("guest", mid)
+        self.assertEqual(
+            (saved["notes"], saved["summary"]), ("Manual note", "Previous summary")
+        )
+        self.assertEqual(op, self.store.summary_request("guest", mid)[0])
+
+    def test_stale_manual_notes_and_other_capture_cannot_start(self):
+        mid, _, _ = self.pending()
+        with self.assertRaises(MeetingError):
+            self.workflow.save_notes(mid, "guest:old", "late note")
+        self.workflow.can_start = lambda: False
+        with self.assertRaises(MeetingError):
+            self.workflow.start()
+        self.provider.acquire.assert_not_called()
+
+    def test_job_id_survives_a_stale_list_snapshot(self):
+        mid, cid, path = self.pending()
+        other = self.store.create("guest", "other")
+        self.provider.delayed = True
+        self.workflow.retry()
+        self.assertTrue(self.provider.entered.wait(2))
+        with patch.object(self.store, "list", return_value=[other]):
+            self.workflow.snapshot()
+        self.provider.resume.set()
+        wait_for(lambda: not self.workflow.active)
+        self.assertEqual(self.workflow.selected, mid)
+        self.assertEqual(
+            self.store.get("guest", mid)["chunks"][0]["transcript"], "Original speech"
+        )
+        self.assertEqual(self.store.get("guest", other["id"])["chunks"], [])
+
+    def test_cancel_waits_for_an_already_started_publication_commit(self):
+        mid, cid, path = self.pending()
+        entered, release, cancelled = (
+            threading.Event(),
+            threading.Event(),
+            threading.Event(),
+        )
+        save = self.store.save_transcript
+
+        def blocked_commit(*args):
+            entered.set()
+            release.wait(3)
+            save(*args)
+
+        self.store.save_transcript = blocked_commit
+        self.workflow.retry()
+        self.assertTrue(entered.wait(2))
+
+        def cancel():
+            self.workflow.cancel()
+            cancelled.set()
+
+        thread = threading.Thread(target=cancel)
+        thread.start()
+        self.assertFalse(cancelled.wait(0.05))
+        release.set()
+        thread.join(2)
+        wait_for(lambda: not self.workflow.active)
+        self.assertTrue(cancelled.is_set())
+        self.assertEqual(
+            self.store.get("guest", mid)["chunks"][0]["state"], "transcribed"
+        )
+        self.assertFalse(path.exists())
+
+    def test_oversized_summary_preserves_all_source_and_previous_summary(self):
+        mid, cid, _ = self.pending()
+        self.store.save_notes("guest", mid, "personal")
+        op, revision, _ = self.store.summary_request("guest", mid)
+        self.store.save_summary("guest", mid, revision, "previous")
+        self.store.save_transcript("guest", mid, cid, "A" * 32000)
+        second, path = self.store.open_chunk("guest", mid, "system", 2000)
+        self.store.finish_chunk("guest", mid, second, 1000)
+        self.store.save_transcript("guest", mid, second, "B" * 32000)
+        self.workflow.summarize()
+        wait_for(lambda: not self.workflow.active)
+        self.assertEqual(self.workflow.error, "meeting.too_large")
+        saved = self.store.get("guest", mid)
+        self.assertEqual(saved["summary"], "previous")
+        self.assertEqual(sum(len(c["transcript"]) for c in saved["chunks"]), 64000)
+
+
+class MeetingProviderTests(unittest.TestCase):
+    def test_managed_snapshot_records_fixed_models_without_credentials(self):
+        service = Mock()
+        provider = MeetingProviderService(service, Mock())
+        provider.validate = Mock()
+        routes = provider.snapshot(MeetingIdentity("account:" + "a" * 64, 3, True))
+        persisted = routes.persisted()
+        self.assertEqual(persisted["transcription"]["provider_id"], "clarify")
+        self.assertEqual(
+            persisted["transcription"]["model_id"], "whisper-large-v3-turbo"
+        )
+        self.assertEqual(persisted["notes"]["model_id"], "openai/gpt-oss-20b")
+        self.assertNotIn("api_key", str(persisted))
+        service._connection.assert_not_called()
+        with tempfile.TemporaryDirectory() as directory:
+            store = MeetingStore(directory)
+            fake = FakeProvider()
+            fake.current = MeetingIdentity("account:" + "a" * 64, 3, True)
+            fake.snapshot.return_value = routes
+            workflow = MeetingWorkflow(
+                store, fake, source_factory=Mock(), capture_factory=FakeCapture
+            )
+            self.addCleanup(workflow.shutdown)
+            workflow.start(language="es")
+            wait_for(lambda: workflow.phase == "recording")
+            workflow.stop()
+            wait_for(lambda: not workflow.active)
+            saved = store.get(fake.current.owner, workflow.selected)
+            self.assertEqual(json.loads(saved["routes"]), persisted)
+            self.assertEqual(saved["language"], "es")
+
+    def test_summary_resolves_only_its_own_connection(self):
+        service = Mock()
+        provider = MeetingProviderService(service, Mock())
+        provider.validate = Mock()
+        notes = WorkflowRoute(
+            provider_id="openai", model_id="fixture-notes", enabled=True
+        )
+        asr = WorkflowRoute(provider_id="groq", model_id="old-asr")
+        service._connection.side_effect = lambda route: ProviderConnection(
+            api_key="fixture" if route.provider_id == "openai" else "", base_url=""
+        )
+        routes = provider.snapshot(
+            MeetingIdentity("guest", 0, False),
+            {"transcription": asdict(asr), "notes": asdict(notes)},
+            action="summary",
+        )
+        self.assertIsNone(routes.transcription_connection)
+        self.assertEqual(service._connection.call_args.args[0].provider_id, "openai")
+        service._connection.assert_called_once()
+
+    def test_local_asr_has_no_key_and_routes_connections_are_fixed_per_job(self):
+        account = Mock()
+        service = Mock()
+        route = WorkflowRoute(provider_id="local_asr", model_id="ggml-base")
+        service._route.return_value = route
+        connection = ProviderConnection(api_key="", base_url="")
+        service._connection.return_value = connection
+        service.config.current.return_value = SimpleNamespace(local_asr_device="cpu")
+        service.registry.canonical_audio_model.side_effect = lambda provider, model: (
+            model
+        )
+        provider = MeetingProviderService(service, account)
+        provider.validate = Mock()
+        expected = MeetingIdentity("guest", 0, False)
+        routes = provider.snapshot(expected, notes=WorkflowRoute(enabled=False))
+        service._route.return_value = WorkflowRoute(
+            provider_id="groq", model_id="changed"
+        )
+        service.config.current.return_value = SimpleNamespace(local_asr_device="cuda")
+        service.registry.transcribe.return_value = SimpleNamespace(text="speech")
+        provider.transcribe(expected, routes, {}, Path("fixture.wav"), "pt", Mock())
+        self.assertEqual(service.registry.transcribe.call_args.args[0], "local_asr")
+        self.assertEqual(
+            service.registry.transcribe.call_args.args[1].model, "ggml-base"
+        )
+        self.assertEqual(
+            service.registry.transcribe.call_args.args[1].execution_device, "cpu"
+        )
+        self.assertEqual(routes.persisted()["execution_device"], "cpu")
+        self.assertEqual(service._connection.call_count, 1)
+        with self.assertRaises(MeetingError):
+            provider.summarize(expected, routes, "op", "source", "pt", Mock())
+        service.registry.rewrite.assert_not_called()

@@ -97,6 +97,7 @@ try:
     )
     from .qml_runtime import (  # noqa: E402
         QtRuntimeError,
+        QtWorkflowConfig,
         QtStatisticsGateway,
         QtWorkflowScheduler,
         create_real_workflow_runtime,
@@ -115,6 +116,7 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     )
     from qml_runtime import (  # noqa: E402
         QtRuntimeError,
+        QtWorkflowConfig,
         QtStatisticsGateway,
         QtWorkflowScheduler,
         create_real_workflow_runtime,
@@ -196,6 +198,7 @@ def _register_qml_context(
     voice_translation=None,
     audio_batch=None,
     status_pill=None,
+    meetings=None,
 ) -> None:
     """Expose the real Qt-facing controllers before QML is loaded."""
 
@@ -208,6 +211,8 @@ def _register_qml_context(
         context.setContextProperty("audioBatch", audio_batch)
     if status_pill is not None:
         context.setContextProperty("pillStatus", status_pill)
+    if meetings is not None:
+        context.setContextProperty("meetings", meetings)
 
 
 def _connect_preference_sync(bridge, settings) -> None:
@@ -401,6 +406,7 @@ def _connect_shutdown(
     runtime,
     voice_translation=None,
     audio_batch=None,
+    meetings=None,
 ) -> None:
     """Stop shell-owned native resources before the workflow runtime."""
 
@@ -408,6 +414,8 @@ def _connect_shutdown(
         app.aboutToQuit.connect(voice_translation.cancel)
     if audio_batch is not None:
         app.aboutToQuit.connect(audio_batch.cancel)
+    if meetings is not None:
+        app.aboutToQuit.connect(meetings.shutdown)
     app.aboutToQuit.connect(shell.stop)
     app.aboutToQuit.connect(runtime.shutdown)
 
@@ -478,6 +486,8 @@ def main(argv: list[str] | None = None) -> int:
     voice_translation = None
     audio_batch = None
     bridge = None
+    meetings = None
+    updates = None
 
     def settings_work_busy() -> bool:
         return settings is not None and (
@@ -496,17 +506,39 @@ def main(argv: list[str] | None = None) -> int:
             bridge,
             voice_translation,
             audio_batch,
-        )
+        ) and (meetings is None or not meetings.blocks_processing)
 
     def external_processing_allowed() -> bool:
         return (
             (practice is None or not practice.blocks_processing)
             and not settings_work_busy()
+            and (meetings is None or not meetings.blocks_processing)
             and not runtime.recording_audio.busy
         )
 
     def settings_processing_allowed() -> bool:
         return (practice is None or not practice.busy) and capture_idle()
+
+    def meetings_can_start() -> bool:
+        return (
+            capture_idle()
+            and not settings_work_busy()
+            and (practice is None or not practice.blocks_processing)
+            and (updates is None or not updates.installing)
+        )
+
+    try:
+        from .qml_meetings import create_qml_meetings
+    except ImportError:
+        from qml_meetings import create_qml_meetings
+
+    meetings = create_qml_meetings(
+        runtime,
+        can_start=meetings_can_start,
+        workflow_config=QtWorkflowConfig(repositories, runtime.account),
+        editing_allowed=lambda: updates is None or not updates.installing,
+        parent=app,
+    )
 
     voice_translation = create_qml_voice_translation_controller(
         repositories.config.load,
@@ -628,6 +660,7 @@ def main(argv: list[str] | None = None) -> int:
             and not voice_translation.active
             and not audio_batch.running
             and not practice.blocks_processing
+            and not meetings.blocks_processing
         ),
     )
     settings.bindPractice(practice)
@@ -646,6 +679,7 @@ def main(argv: list[str] | None = None) -> int:
             and not bridge.feedbackVisible
             and not voice_translation.active
             and not audio_batch.running
+            and not meetings.blocks_processing
             and not settings.microphoneTestBusy
             and not practice.open
             and not settings.localAsrBusy
@@ -663,6 +697,7 @@ def main(argv: list[str] | None = None) -> int:
         parent=app,
     )
     settings.bindUpdates(updates)
+    updates.changed.connect(meetings.refresh)
 
     def sync_updates():
         updates.setAutomatic(repositories.config.load().automatic_updates)
@@ -686,6 +721,7 @@ def main(argv: list[str] | None = None) -> int:
         voice_translation,
         audio_batch,
         status_pill,
+        meetings,
     )
 
     qml_root = _qml_root()
@@ -693,6 +729,8 @@ def main(argv: list[str] | None = None) -> int:
     engine.load(QUrl.fromLocalFile(str(qml_root / "Main.qml")))
     engine.load(QUrl.fromLocalFile(str(qml_root / "SettingsWindow.qml")))
     engine.load(QUrl.fromLocalFile(str(qml_root / "StatusPill.qml")))
+    engine.load(QUrl.fromLocalFile(str(qml_root / "MeetingWindow.qml")))
+    engine.load(QUrl.fromLocalFile(str(qml_root / "MeetingIndicator.qml")))
     roots = engine.rootObjects()
     window = next(
         (root for root in roots if root.objectName() == "clarifyMainWindow"),
@@ -705,7 +743,20 @@ def main(argv: list[str] | None = None) -> int:
     settings_window = next(
         (root for root in roots if root.objectName() == "clarifySettingsWindow"), None
     )
-    if window is None or pill_window is None or settings_window is None:
+    meeting_window = next(
+        (root for root in roots if root.objectName() == "clarifyMeetingWindow"), None
+    )
+    meeting_indicator = next(
+        (root for root in roots if root.objectName() == "clarifyMeetingIndicator"), None
+    )
+    if (
+        window is None
+        or pill_window is None
+        or settings_window is None
+        or meeting_window is None
+        or meeting_indicator is None
+    ):
+        meetings.shutdown()
         runtime.shutdown()
         return 1
 
@@ -757,14 +808,16 @@ def main(argv: list[str] | None = None) -> int:
     bridge.settingsRequested.connect(web_settings.activate)
     app.aboutToQuit.connect(web_settings.shutdown)
     _ = workflow_window_visibility, settings_window_visibility, pill_window_order
-    _connect_shutdown(app, shell, runtime, voice_translation, audio_batch)
+    _connect_shutdown(app, shell, runtime, voice_translation, audio_batch, meetings)
     app.aboutToQuit.connect(settings.shutdown)
     app.aboutToQuit.connect(updates.shutdown)
 
     shell_result = _start_shell_if_available(shell)
     if shell_result is ShellStartResult.SECONDARY_INSTANCE:
+        meetings.shutdown()
         runtime.shutdown()
         return 0
+    meetings.activate()
     app.setQuitOnLastWindowClosed(
         shell_result
         in (ShellStartResult.STARTED_WITHOUT_TRAY, ShellStartResult.SETUP_FAILED)

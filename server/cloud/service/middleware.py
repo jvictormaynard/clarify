@@ -56,6 +56,10 @@ class RequestLimits:
         ):
             audio = request.path == "/v1/dictations"
             maximum = settings.CLARIFY_MAX_UPLOAD_BYTES + 65536 if audio else 512 * 1024
+            if request.path == "/v1/meetings/transcriptions":
+                maximum = (
+                    min(settings.CLARIFY_MAX_UPLOAD_BYTES, 12 * 1024 * 1024) + 65536
+                )
             try:
                 length = int(request.META.get("CONTENT_LENGTH") or 0)
             except ValueError:

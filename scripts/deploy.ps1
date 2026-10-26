@@ -204,6 +204,7 @@ Copy-Item (Join-Path $repoQmlPython "dictation_practice.py") $sourceQmlPython -F
 Copy-Item (Join-Path $repoQmlPython "practice_local_model.py") $sourceQmlPython -Force
 foreach ($backendModule in @(
     "account_history.py",
+    "account_meetings.py",
     "audio_file_batch.py",
     "audio_file_batch_ui.py",
     "clarify_account.py",
@@ -219,6 +220,10 @@ foreach ($backendModule in @(
     "transcription_performance.py",
     "local_asr_product.py",
     "microphone_controls.py",
+    "meeting_capture.py",
+    "meeting_provider.py",
+    "meeting_store.py",
+    "meeting_workflow.py",
     "provider_adapters.py",
     "provider_http.py",
     "provider_registry.py",
@@ -232,6 +237,7 @@ foreach ($backendModule in @(
     "voice_translation_runtime.py",
     "windows_clipboard.py",
     "windows_hotkeys.py",
+    "windows_meeting_audio.py",
     "workflow_config.py",
     "workflow_provider.py",
     "workflow_settings.py",
@@ -240,7 +246,7 @@ foreach ($backendModule in @(
     Copy-Item (Join-Path $repoRoot $backendModule) $sourceDir -Force
 }
 New-Item (Join-Path $sourceDir "shared") -ItemType Directory -Force | Out-Null
-foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json")) {
+foreach ($catalogFile in @("__init__.py", "localization.py", "meeting_contract.py", "ui_strings.json")) {
     Copy-Item (Join-Path $repoRoot "shared\$catalogFile") (Join-Path $sourceDir "shared") -Force
 }
 Copy-Item $repoQml $qml -Recurse -Force
