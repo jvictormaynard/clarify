@@ -323,6 +323,25 @@ for(const library of ['dictionary','snippets']) test(`${library} stale-account d
  assert.equal((library==='dictionary'?c.dictionary:c.snippets)[0][library==='dictionary'?'term':'replacement'],'private guest draft');assert.equal(await c.save(),false);assert.equal(h.persisted[key][0][library==='dictionary'?'term':'trigger'],'other account');
 });
 
+test('dictionary correction adopts a matching unsaved row and keeps pending metadata', async () => {
+ const h=setup();let c=h.render();await c.navigate('dictionary');c=h.render();
+ const added={term:'Clarify',pronunciation:'',aliases:[],enabled:true};
+ c.setDictionary([...c.state.dictionaryEntries,added]);c=h.render();
+ c.setDictionary(c.dictionary.map((entry,i)=>i===1?{...entry,pronunciation:'pending pronunciation'}:entry));c=h.render();
+ const saved={...added,aliases:['clear if eye']};h.replaceLibrary('dictionary',[c.state.dictionaryEntries[0],saved]);await c.run('snapshot');c=h.render();
+ assert.equal(c.dictionary.length,2);assert.equal(c.dictionary[1].pronunciation,'pending pronunciation');assert.deepEqual(clone(c.dictionary[1].aliases),['clear if eye']);
+ assert.equal(await c.save(),true);c=h.render();assert.equal(c.error,'');assert.equal(h.persisted.dictionaryEntries.length,2);assert.equal(h.persisted.dictionaryEntries[1].pronunciation,'pending pronunciation');assert.deepEqual(clone(h.persisted.dictionaryEntries[1].aliases),['clear if eye']);
+});
+
+test('dictionary correction preserves an explicit clearing of new-row metadata', async () => {
+ const h=setup();let c=h.render();await c.navigate('dictionary');c=h.render();
+ const added={term:'Clarify',pronunciation:'',aliases:[],enabled:true};
+ c.setDictionary([...c.state.dictionaryEntries,added]);c=h.render();
+ for(const aliases of [['local alias'],[]]) {c.setDictionary(c.dictionary.map((entry,i)=>i===1?{...entry,aliases}:entry));c=h.render();}
+ h.replaceLibrary('dictionary',[c.state.dictionaryEntries[0],{...added,aliases:['clear if eye']}]);await c.run('snapshot');c=h.render();
+ assert.equal(c.dictionary.length,2);assert.deepEqual(clone(c.dictionary[1].aliases),[]);assert.equal(await c.save(),true);assert.equal(h.persisted.dictionaryEntries.length,2);assert.deepEqual(clone(h.persisted.dictionaryEntries[1].aliases),[]);
+});
+
 test('provider selection guards old-provider key and endpoint input events and validation', async () => {
  const h=setup();let c=h.render();const gate=h.pause('selectProvider');const selecting=c.selectProvider('groq');await gate.started;
  c.setApiKey('old-provider-key');c.setEndpoint('https://old-provider.test/v1');await c.validateProvider();

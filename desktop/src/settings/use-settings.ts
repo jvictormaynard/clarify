@@ -19,6 +19,7 @@ type RouteBaseline = { prompt: string; model: string; endpoint: string };
 type LibraryField = "enabled" | "case_sensitive";
 type LibraryIdentity<T> = {
   persisted: T | null;
+  editedFields?: Set<string>;
   revisions?: Partial<Record<LibraryField, number>>;
   inFlight?: Partial<Record<LibraryField, boolean>>;
   // Flags changed before a new row had an identity survive a failed replay.
@@ -40,14 +41,21 @@ function useDraft<T>(initial: T) {
   return [value, set, ref] as const;
 }
 
-function libraryDraft<T>(entries: T[], previous: LibraryDraft<T> | null, persisted: T[], context: string, identify: (entry: T) => LibraryIdentity<T>): LibraryDraft<T> {
+function libraryDraft<T extends DictionaryEntry | Snippet>(entries: T[], previous: LibraryDraft<T> | null, persisted: T[], context: string, identify: (entry: T) => LibraryIdentity<T>): LibraryDraft<T> {
   const before = previous?.entries ?? persisted;
   const identities = previous?.identities ?? persisted.map(entry => identify(entry));
   const nextIdentities = entries.map((entry, index) => {
     const oldIndex = before.indexOf(entry);
     if (oldIndex >= 0) return identities[oldIndex];
     // Page editors replace one row at a time; add/remove keep other references.
-    return entries.length === before.length ? identities[index] : { persisted: null };
+    if (entries.length !== before.length) return { persisted: null };
+    const identity = identities[index];
+    if (!identity.persisted && "term" in entry) {
+      for (const field of Object.keys(entry) as (keyof T & string)[]) {
+        if (!settingsValuesEqual(entry[field], before[index][field])) (identity.editedFields ??= new Set()).add(field);
+      }
+    }
+    return identity;
   });
   const baseline = previous?.baseline ?? persisted.map((entry, index) => ({ entry, identity: identities[index] }));
   return {
@@ -93,6 +101,17 @@ function reconcileLibrary<T extends DictionaryEntry | Snippet>(
     const saved = row.identity.persisted ?? row.entry;
     return saved ? [[key(saved), row.identity] as const] : [];
   }));
+  const newDictionaryRows = new Map<string, LibraryIdentity<T> | null>();
+  draft.entries.forEach((entry, index) => {
+    const identity = draft.identities[index];
+    if ("term" in entry && !identity.persisted && !originals.get(identity)) {
+      const name = key(entry);
+      newDictionaryRows.set(name, newDictionaryRows.has(name) ? null : identity);
+    }
+  });
+  for (const [name, identity] of newDictionaryRows) {
+    if (identity && !byKey.has(name)) byKey.set(name, identity);
+  }
   const baseline: LibraryBaseline<T>[] = incoming.map(entry => ({ entry, identity: identify(entry, byKey.get(key(entry))) }));
   const latest = new Map<LibraryIdentity<T>, T>(baseline.map(row => [row.identity, row.entry!]));
   const present = new Set(draft.identities);
@@ -101,6 +120,15 @@ function reconcileLibrary<T extends DictionaryEntry | Snippet>(
     const identity = draft.identities[index], original = originals.get(identity), remote = latest.get(identity);
     if (!remote && original && settingsValuesEqual(entry, original) && !Object.keys(identity.pending ?? {}).length) return;
     let merged = entry;
+    if (remote && !original && "term" in entry && "term" in remote) {
+      // A correction can persist a row that was still new in this draft.
+      // Adopt untouched metadata; explicit edits and clearings stay local.
+      merged = { ...entry,
+        pronunciation: !entry.pronunciation && !identity.editedFields?.has("pronunciation") ? remote.pronunciation : entry.pronunciation,
+        aliases: !entry.aliases.length && !identity.editedFields?.has("aliases") ? remote.aliases : entry.aliases,
+        enabled: identity.pending?.enabled ?? (identity.editedFields?.has("enabled") || !entry.enabled ? entry.enabled : remote.enabled),
+      };
+    }
     if (remote && original) {
       merged = { ...entry };
       // Only fields changed locally override the incoming saved row.
