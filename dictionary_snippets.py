@@ -300,7 +300,18 @@ def _migrate_payload(value: Mapping[str, Any]) -> dict[str, Any]:
     return migrated
 
 
-def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+def dictionary_file_revision(path: Path) -> tuple[int, int, int, int] | None:
+    """Identify one persisted file version, including an equal-content rewrite."""
+    try:
+        stat = Path(path).stat()
+    except FileNotFoundError:
+        return None
+    return stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size
+
+
+def _atomic_write_json(
+    path: Path, payload: Mapping[str, Any]
+) -> tuple[int, int, int, int]:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -312,7 +323,12 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
+            stat = os.fstat(stream.fileno())
+            published = stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size
         os.replace(temporary_name, path)
+        # This is the temp file this operation published, not a later path read
+        # that could accidentally claim another writer's identical replacement.
+        return published
     except BaseException:
         try:
             os.unlink(temporary_name)
@@ -346,7 +362,9 @@ class LocalDictionarySnippetsRepository:
                 # atomically only after complete validation.
                 return DictionarySnippets.empty()
 
-    def save(self, state: DictionarySnippets | Mapping[str, Any]) -> None:
+    def save(
+        self, state: DictionarySnippets | Mapping[str, Any]
+    ) -> tuple[int, int, int, int]:
         with self._lock:
             current_schema = self._current_schema_version()
             if current_schema > DICTIONARY_SCHEMA_VERSION:
@@ -359,7 +377,7 @@ class LocalDictionarySnippetsRepository:
                 if isinstance(state, DictionarySnippets)
                 else DictionarySnippets.from_mapping(state)
             )
-            _atomic_write_json(self.path, validated.to_mapping())
+            return _atomic_write_json(self.path, validated.to_mapping())
 
     def export_json(self) -> str:
         with self._lock:
@@ -625,15 +643,24 @@ class DictionarySnippetService:
         *,
         expected_context: str | None = None,
     ) -> DictionarySnippets:
+        return self.replace_with_revision(state, expected_context=expected_context)[0]
+
+    def replace_with_revision(
+        self,
+        state: DictionarySnippets | Mapping[str, Any],
+        *,
+        expected_context: str | None = None,
+    ):
+        """Return state and the repository's own atomic-write proof, if any."""
         validated = (
             state
             if isinstance(state, DictionarySnippets)
             else DictionarySnippets.from_mapping(state)
         )
         with self.transaction(expected_context=expected_context), self._lock:
-            self.repository.save(validated)
+            revision = self.repository.save(validated)
             self._state = validated
-            return self.state
+            return self.state, revision
 
     def import_json(
         self, document: str | bytes | Mapping[str, Any]

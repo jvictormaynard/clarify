@@ -975,8 +975,9 @@ class AccountDictionaryRepository:
         before_words, before_snippets = vocabulary.load(), snippets.load()
         words_changed = before_words.dictionary != state.dictionary
         snippets_changed = before_snippets.snippets != state.snippets
+        revision = None
         if words_changed:
-            vocabulary.save(replace(state, snippets=()))
+            revision = vocabulary.save(replace(state, snippets=()))
         try:
             if snippets_changed:
                 snippets.save(DictionarySnippets(snippets=state.snippets))
@@ -984,3 +985,4 @@ class AccountDictionaryRepository:
             if words_changed:
                 vocabulary.save(before_words)
             raise
+        return revision
