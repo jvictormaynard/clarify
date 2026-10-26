@@ -89,6 +89,10 @@ class OnboardingAccount:
     def signed_in(self):
         return self.state["signedIn"]
 
+    @property
+    def managed(self):
+        return self.state.get("managed", False)
+
     def refresh_if_due(self, service, *, force=False):
         if "--usage-error" in sys.argv:
             from clarify_account import AccountError
