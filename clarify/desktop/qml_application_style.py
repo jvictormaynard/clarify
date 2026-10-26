@@ -1,4 +1,4 @@
-"""Present style selection separately from confirmed application."""
+"""Present style selection separately from confirmed application in Qt."""
 
 from shared.localization import translate
 

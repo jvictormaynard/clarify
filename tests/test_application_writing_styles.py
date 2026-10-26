@@ -86,6 +86,40 @@ class ApplicationStyleProviderTests(unittest.TestCase):
     setUp = provider_fixture.WorkflowProviderTests.setUp
     set_cleanup = provider_fixture.WorkflowProviderTests.set_cleanup
 
+    def test_style_keeps_route_and_connection_from_before_asr(self):
+        original = self.current
+
+        def recognize(*args):
+            self.current = replace(
+                original,
+                openai=replace(
+                    original.openai,
+                    api_key="changed-key",
+                    base_url="https://changed.invalid",
+                ),
+            )
+            return provider_fixture.TranscriptionResult(self.raw, "openai", "whisper-1")
+
+        self.registry.transcribe.side_effect = recognize
+        self.service.transcribe(self.audio, "prompt", "pt", writing_style="natural")
+        connection = self.registry.rewrite.call_args.args[2]
+        self.assertEqual(connection.api_key, "test-only")
+        self.assertEqual(connection.base_url, "https://base.invalid")
+
+    def test_style_does_not_bypass_invalid_refinement_model(self):
+        self.current = replace(
+            self.current,
+            workflows=self.current.workflows.with_route(
+                "refinement", replace(self.current.workflow("refinement"), model_id="")
+            ),
+        )
+        result = self.service.transcribe(
+            self.audio, "prompt", "pt", writing_style="natural"
+        )
+        self.registry.rewrite.assert_not_called()
+        self.assertTrue(result.refinement_failed)
+        self.assertIsNone(result.writing_style_applied)
+
     def test_style_uses_existing_refinement_and_preserves_raw_numbers_and_prompt(self):
         self.current = replace(
             self.current,

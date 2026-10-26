@@ -35,7 +35,7 @@ export function ApplicationWritingStyles({ controller }: SettingsPageProps) {
       informal: "Usa linguagem cotidiana, sem acrescentar gírias ou emojis.",
       organized: "Organiza os pontos em parágrafos e as enumerações em listas, sem acrescentar conteúdo.",
     }[style])}</p>
-    <Button loading={saving} disabled={!executable || rules.length >= 32 && !rules.some(rule => rule.executable.toLowerCase() === executable.toLowerCase())}
+    <Button loading={saving} disabled={!executable}
       onClick={() => void save()}>{t("Salvar regra")}</Button>
     {unavailable && <p className="hint" role="status">{t("Estilo não aplicado nesta rota. A regra não ativa revisão nem processamento na nuvem.")}</p>}
     {rules.length === 0 && <p className="hint">{t("Padrão para todos os aplicativos.")}</p>}

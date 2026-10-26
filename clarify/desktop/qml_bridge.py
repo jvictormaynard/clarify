@@ -302,7 +302,7 @@ class QmlWorkflowBridge(QObject):
 
     @Property(str, notify=statusChanged)
     def writingStyleCaption(self):
-        from clarify.desktop.application_style_presentation import style_caption
+        from clarify.desktop.qml_application_style import style_caption
 
         return style_caption(self._state)
 

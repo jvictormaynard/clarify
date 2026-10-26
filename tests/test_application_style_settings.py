@@ -5,7 +5,7 @@ import unittest
 
 from PySide6.QtWidgets import QApplication
 from clarify.desktop.qml_settings import QmlSettingsController
-from clarify.desktop.application_style_presentation import style_caption
+from clarify.desktop.qml_application_style import style_caption
 from repositories import (
     ApplicationRepositories,
     LocalConfigRepository,
