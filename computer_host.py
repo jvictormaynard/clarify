@@ -218,7 +218,9 @@ class _Server(ThreadingMixIn, HTTPServer):
     # resource cleanup finish. The shared registry remains owned by the caller.
     daemon_threads = False
     block_on_close = True
-    allow_reuse_address = False
+    # POSIX can rebind closed TIME_WAIT connections without sharing a listener.
+    # Windows SO_REUSEADDR can share an active port, so keep it disabled there.
+    allow_reuse_address = os.name != "nt"
     request_queue_size = 8
 
     def __init__(self, owner, context, workers, timeout):

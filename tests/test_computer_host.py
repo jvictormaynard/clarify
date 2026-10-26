@@ -7,6 +7,7 @@ import hashlib
 import http.client
 import io
 import json
+import os
 from pathlib import Path
 import socket
 import sqlite3
@@ -1284,6 +1285,40 @@ class ComputerHostTests(unittest.TestCase):
             self.request(
                 "POST", "/v1/computer/text", self.text(), session["session_token"]
             )[0],
+            200,
+        )
+
+    def test_listener_restarts_after_server_closes_tls_without_sharing_live_port(self):
+        _, session = self.pair()
+        port = self.host.port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as competitor:
+            if os.name != "nt":
+                competitor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            with self.assertRaises(OSError):
+                competitor.bind(("127.0.0.1", port))
+        context = ssl._create_unverified_context()
+        with context.wrap_socket(
+            socket.create_connection(("127.0.0.1", port), timeout=2),
+            server_hostname="localhost",
+        ) as client:
+            client.sendall(
+                (
+                    "GET /v1/computer/status HTTP/1.1\r\nHost: localhost\r\n"
+                    "Authorization: Bearer " + session["session_token"] + "\r\n\r\n"
+                ).encode()
+            )
+            response = bytearray()
+            while chunk := client.recv(4096):
+                response.extend(chunk)
+            self.assertTrue(response.startswith(b"HTTP/1.1 200 "))
+        # The server initiated TCP close. Restart must not wait for TIME_WAIT.
+        self.host.stop()
+        self.host.start()
+        self.assertEqual(self.host.port, port)
+        self.assertEqual(
+            self.request("GET", "/v1/computer/status", token=session["session_token"])[
+                0
+            ],
             200,
         )
 
