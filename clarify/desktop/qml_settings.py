@@ -2528,8 +2528,6 @@ class QmlSettingsController(QObject):
     def practiceCommand(self, action):
         if self._practice is None:
             return False
-        if action == "close":
-            self.stopMicrophoneTest()
         return self._practice.command(action)
 
     @Slot(str, str, result=bool)

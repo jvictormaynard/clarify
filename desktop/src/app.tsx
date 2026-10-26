@@ -98,8 +98,8 @@ export function App() {
             {saved ? t("Alterações salvas") : ""}
           </span>
         </main>
-        <SettingsDialogs controller={controller} />
       </div>}
+      <SettingsDialogs controller={controller} />
     </div>
   );
 }

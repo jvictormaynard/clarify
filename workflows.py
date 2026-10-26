@@ -23,11 +23,23 @@ from provider_types import (
     TranscriptionResult,
     TranslationResult,
 )
+from clarify_account import AccountError
 
 
 def _failure_status(error: Exception, fallback: str) -> str:
     """Expose only known error categories, never provider error messages."""
     code = getattr(error, "code", None)
+    if (
+        isinstance(error, AccountError)
+        and isinstance(code, str)
+        and code
+        in {
+            "allowance_exhausted",
+            "allocation_waiting",
+            "authentication_required",
+        }
+    ):
+        return f"account_{code}"
     if isinstance(error, ProviderError) and code in {
         "authentication",
         "quota",

@@ -1272,6 +1272,14 @@ class QtRecordingAudioGateway:
         self._active: QtRecordingSession | None = None
         self._lock = threading.Lock()
 
+    @property
+    def busy(self) -> bool:
+        """Keep capture reserved until its recording and provider workers exit."""
+        with self._lock:
+            return (
+                self._active is not None and not self._active.shutdown_complete.is_set()
+            )
+
     def microphone_available(self) -> bool | None:
         return bool(self.recorder.sox)
 

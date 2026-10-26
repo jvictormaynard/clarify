@@ -4,6 +4,11 @@
     "en": "Practice your first dictation",
     "es": "Practica tu primer dictado"
   },
+  "practice_waiting": {
+    "pt": "Aguardando o fim da tentativa anterior…",
+    "en": "Waiting for the previous attempt to finish…",
+    "es": "Esperando a que termine el intento anterior…"
+  },
   "practice_optional": {
     "pt": "A prática é opcional. Comece quando estiver pronto.",
     "en": "Practice is optional. Start when you are ready.",

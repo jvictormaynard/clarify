@@ -97,6 +97,9 @@ class QmlWorkflowBridge(QObject):
         WorkflowPhase.FAILED: "The dictation could not be completed",
     }
     _STATUS_KEYS = {
+        "account_allowance_exhausted": "Sua cota foi atingida.",
+        "account_allocation_waiting": "Sua conta aguarda a próxima distribuição de cotas.",
+        "account_authentication_required": "Entre na conta novamente.",
         "error": "The dictation could not be completed",
         "no_audio": "No usable audio was captured",
         "refinement_failed": "Refinement failed. Original text is available.",
@@ -116,6 +119,9 @@ class QmlWorkflowBridge(QObject):
         "provider_cancelled": "Operation cancelled.",
     }
     _ERROR_MESSAGES_PT = {
+        "account_allowance_exhausted": "Sua cota foi atingida.",
+        "account_allocation_waiting": "Sua conta aguarda a próxima distribuição de cotas.",
+        "account_authentication_required": "Entre na conta novamente.",
         "error": "Não foi possível concluir a operação. Tente novamente.",
         "no_audio": "Nenhum áudio foi capturado. Verifique o microfone.",
         "no_selection": "Nenhum texto selecionado. Selecione um texto e tente novamente.",
@@ -325,12 +331,10 @@ class QmlWorkflowBridge(QObject):
 
     @Slot(result=bool)
     def undoCancellation(self) -> bool:
-        if not self.canUndoCancellation:
+        if not self.canUndoCancellation or not self._processing_allowed():
             return False
         operation_id = self._state.operation_id
-        self._submit(
-            lambda: self._workflow_service.dispatch(UndoCancelDictation(operation_id))
-        )
+        self._submit_start(UndoCancelDictation(operation_id))
         return True
 
     @Property(bool, notify=surfaceChanged)
@@ -390,12 +394,10 @@ class QmlWorkflowBridge(QObject):
 
     @Slot(result=bool)
     def retryTranscription(self) -> bool:
-        if not self.canRetryTranscription:
+        if not self.canRetryTranscription or not self._processing_allowed():
             return False
         operation_id = self._state.operation_id
-        self._submit(
-            lambda: self._workflow_service.dispatch(RetryDictation(operation_id))
-        )
+        self._submit_start(RetryDictation(operation_id))
         return True
 
     @Property(str, notify=modeChanged)
