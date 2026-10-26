@@ -224,7 +224,12 @@ class ProviderGateway(Protocol):
     """
 
     def transcribe(
-        self, audio_source: RecordingSnapshot, mode: str, language: str
+        self,
+        audio_source: RecordingSnapshot,
+        mode: str,
+        language: str,
+        *,
+        writing_style: str | None = None,
     ) -> TranscriptionResult: ...
     def rewrite(self, text: str) -> RewriteResult: ...
     def translate(self, text: str, target_language: str) -> TranslationResult: ...

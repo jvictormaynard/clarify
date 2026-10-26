@@ -25,6 +25,9 @@ def main():
     if font_path.is_file():
         font_id = QFontDatabase.addApplicationFont(str(font_path))
         app.setFont(QFont(QFontDatabase.applicationFontFamilies(font_id)[0], 10))
+    symbol_font = Path("C:/Windows/Fonts/seguisym.ttf")
+    if symbol_font.is_file():
+        QFontDatabase.addApplicationFont(str(symbol_font))
     service = Service()
     bridge = QmlWorkflowBridge(service)
     status = Status()
