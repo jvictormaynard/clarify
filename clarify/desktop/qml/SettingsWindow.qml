@@ -100,6 +100,7 @@ ApplicationWindow {
     onClosing: function(event) { event.accepted = false; requestClose() }
     onVisibleChanged: {
         if (!visible) {
+            settings.closeComputerPairing()
             settings.stopMicrophoneTest()
             settings.cancelHotkeyCapture()
         }
@@ -442,6 +443,14 @@ ApplicationWindow {
                         }
                     }
 
+                    }
+
+                    ComputerAccess {
+                        objectName: "computerAccessSection"
+                        controller: settings
+                        visualTheme: root.visualTheme
+                        Layout.fillWidth: true
+                        visible: settingsPage.selectedSection === 0
                     }
 
                     SettingsGroup {

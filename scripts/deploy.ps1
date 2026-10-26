@@ -208,6 +208,8 @@ foreach ($backendModule in @(
     "chatgpt_provider.py",
     "clarify_account.py",
     "cloud_defaults.py",
+    "computer_host.py",
+    "computer_processing.py",
     "dictionary_settings.py",
     "dictionary_snippets.py",
     "experimental_audio_history.py",

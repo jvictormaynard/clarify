@@ -2,8 +2,9 @@
 
 Clarify has a local-first Windows desktop client, an iOS client in `mobile/`,
 and an account service in `server/`. On desktop, local models and personal API keys
-work without an account. The iOS client requires an authenticated Clarify account;
-stored personal keys from older versions do not enable mobile processing.
+work without an account. The iOS client uses an authenticated Clarify account or
+an explicitly paired computer. Stored personal keys from older versions do not
+enable mobile processing.
 Hosted dictation requires an authenticated account and
 uses a server-owned Groq key; personal keys never pass through that service.
 
@@ -67,10 +68,10 @@ Legacy profiles retain their choices. The iOS app stores separate app-only
 presentation and setup preferences. General onboarding appears once when first
 shown and can be dismissed. Existing signed-in installations and legacy setup
 preferences migrate without another presentation. The guide can be replayed from
-Account without resetting that marker. Protected Router screens require a session
-before the iOS tabs can be used.
-The iOS route guard also checks the current session, so a completed legacy
-personal-key setup cannot bypass sign-in. Its old history remains on the device
+Account without resetting that marker. Protected Router screens require an
+account session or a selected paired computer before the iOS tabs can be used.
+The iOS route guard checks the selected processing destination, so a completed
+legacy personal-key setup cannot enable processing. Its old history remains on the device
 and is never assigned to an account. The existing first-login import of local
 dictionary words is preserved; the local dictionary is not deleted.
 Setup does not acquire the microphone or send an email without a user action.
@@ -81,16 +82,16 @@ limits still apply; no usable password is saved. Legacy separate endpoints remai
 available. Authentication forms are shared with desktop Settings and the iOS
 sign-in screen. After sign-in, the bottom tabs contain Home, Dictionary, Snippets
 and Account. Account opens Settings and the explicit guide replay. The tabs,
-Settings and guide routes share the session guard. On iOS,
-sign-out or session expiry returns to sign-in before the tabs can be used.
+Settings and guide routes share the destination guard. In iOS account mode,
+sign-out or session expiry returns to the connection choice before tabs can be used.
 
 An authenticated account uses Clarify-managed processing for dictation, imported
 audio, selected-text rewrite and translation. Personal provider and local-model
 controls are hidden in this mode. An expired managed session fails closed; it
 cannot fall back to a saved personal key. Signing out explicitly restores the
-personal configuration on desktop. The iOS client stops microphone access and
-requires sign-in; it has no personal-provider route. Signing in activates account
-processing automatically,
+personal configuration on desktop. The iOS account route stops microphone access
+when its session expires; it cannot fall back to a paired computer. In account
+mode, signing in activates account processing automatically,
 including for existing signed-in profiles. There is no separate activation step.
 
 Shortcut capture is owned by the Qt Settings controller, including the React
@@ -153,6 +154,34 @@ Focus and selection safety check
 The Qt/QML event loop owns the desktop surface. Provider calls, audio
 processing, and clipboard transactions run through scheduled workers so the
 floating window remains responsive.
+
+## Paired computer processing
+
+`computer_host.py` owns the opt-in HTTPS listener, TLS identity, expiring one-use
+pairing codes, per-device authorization and bounded operation admission. Private
+identity material uses `clarify_computer` in the existing secret store. The
+profile's `computer.sqlite3` stores device token hashes, operation metadata and
+explicit startup consent. Result text remains in a bounded memory cache.
+
+`computer_processing.py` adapts accepted WAV and text input to
+`WorkflowProviderService`. It snapshots the computer's personal configuration
+and dictionary and reuses the provider registry. It owns no microphone,
+clipboard or hosted account. Provider keys, models and prompts remain on the
+computer. `clarify/desktop/qml_computer.py` owns Qt lifecycle and temporary QR
+presentation. Account transitions stop personal hosting before changing owners.
+Application shutdown must drain mobile processing before closing shared providers.
+
+The iOS containing app's `ComputerConnection` owns camera pairing, private
+Keychain credentials and scoped HTTPS transport. `ProcessingDestination` selects
+it or the existing `CloudAccount` boundary. Computer mode needs no hosted
+account and cannot silently fall back to hosted processing. The existing
+recorder and keyboard bridge remain authoritative. The keyboard receives no
+connection credential. Computer history stays in its own scope on the iPhone;
+it does not enter account synchronization. Computer dictation uses the
+computer's dictionary and snippets.
+
+See the [computer connection protocol](computer-connection.md) for wire bounds,
+certificate pinning, operation identity and open delivery evidence.
 
 ## Settings process boundary
 
