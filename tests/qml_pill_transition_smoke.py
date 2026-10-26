@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from PySide6.QtCore import (
     QObject,
+    QMetaObject,
     Property,
     QPointF,
     Qt,
@@ -17,7 +18,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
-from PySide6.QtTest import QTest
+from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication
 
 from clarify.desktop.qml_bridge import QmlWorkflowBridge
@@ -106,6 +107,22 @@ def main():
         QTest.mouseClick(pill, Qt.LeftButton, Qt.NoModifier, point.toPoint())
         QTest.qWait(350)
 
+    def expire_feedback(operation_id, interval):
+        timer = pill.findChild(QObject, "statusDismissTimer")
+        assert timer.property("running")
+        assert timer.property("operationId") == operation_id
+        assert timer.property("interval") == interval
+        timer.setProperty("running", False)
+        hidden = QSignalSpy(pill.visibleChanged)
+        # READY ends feedback; the native window stays up until its fade ends.
+        # Deliver expiry independently of the animation clock and observe both.
+        assert QMetaObject.invokeMethod(timer, "triggered")
+        assert service.state.phase is WorkflowPhase.READY
+        assert not pill.property("requestedVisible")
+        assert pill.isVisible()
+        assert hidden.wait(350)
+        assert not pill.isVisible()
+
     status.ready = False
     service.publish(WorkflowPhase.RECORDING)
     QTest.qWait(350)
@@ -161,9 +178,7 @@ def main():
     QTest.qWait(3000)
     assert service.state.phase is WorkflowPhase.PROCESSING
     service.publish(WorkflowPhase.FAILED, operation_id=3, status_key="no_selection")
-    QTest.qWait(3500)
-    assert service.state.phase is WorkflowPhase.READY
-    assert not pill.isVisible()
+    expire_feedback(3, 3200)
     # Retained audio does not expire, and the inline retry remains clickable.
     service.publish(
         WorkflowPhase.FAILED,
@@ -214,9 +229,7 @@ def main():
     assert label.property("text") == "Transcript cancelled"
     assert not label.property("truncated")
     shot("07-cancelled-en")
-    QTest.qWait(5100)
-    assert service.state.phase is WorkflowPhase.READY
-    assert not pill.isVisible()
+    expire_feedback(6, 5000)
     bridge.startRecordingFromButton()
     service.publish(WorkflowPhase.RECORDING)
     QTest.qWait(350)
