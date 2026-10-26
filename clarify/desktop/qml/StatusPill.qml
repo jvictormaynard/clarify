@@ -156,7 +156,7 @@ Window {
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
                 font.pixelSize: 11
-                color: theme.dim
+                color: theme.text
                 Accessible.name: text
             }
 
