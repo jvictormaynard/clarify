@@ -377,13 +377,19 @@ final class ClarifyAudioSession: NSObject {
     if publish { self.publish() }
   }
   func destinationChanged() {
-    if let id = state.operationID { ComputerConnection.shared.cancelOperation(id) }
+    if let id = state.operationID {
+      // Control callbacks already use the main queue. Cancel synchronously so
+      // the remote action is retired before publishing another destination.
+      MainActor.assumeIsolated { ComputerConnection.shared.cancelOperation(id) }
+    }
     // Clear ownership before cancel/deactivate publish any intermediate state.
     clearResult(publish: false)
     deactivate(); libraryChanged()
   }
   func cancel() {
-    if ProcessingDestination.shared.computerMode, let id = state.operationID { ComputerConnection.shared.cancelOperation(id) }
+    if ProcessingDestination.shared.computerMode, let id = state.operationID {
+      MainActor.assumeIsolated { ComputerConnection.shared.cancelOperation(id) }
+    }
     cuePlayer?.stop(); cuePlayer = nil
     task?.cancel(); task = nil; startedAt = nil
     if let url = closeFile() { try? FileManager.default.removeItem(at: url) }
