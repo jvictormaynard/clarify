@@ -16,6 +16,31 @@ from workflows import WorkflowState, WorkflowPhase, WorkflowKind
 
 
 class ApplicationStyleSettingsTests(unittest.TestCase):
+    def test_missing_or_invalid_executable_keeps_last_known_application(self):
+        from unittest.mock import Mock
+        from clarify.desktop.qml_quick_paste import QuickPasteController
+        from workflows import SelectionTarget
+
+        window = Mock()
+        window.isActive.return_value = False
+        window.winId.return_value = 1
+        clipboard = Mock()
+        editor = SelectionTarget(2, r"C:\Apps\Editor.exe")
+        clipboard.capture_target.return_value = editor
+        controller = QuickPasteController(
+            clipboard, lambda callback: callback(), lambda: [window], lambda: None
+        )
+        try:
+            for executable in (None, "", "editor.exe", r"C:\Apps\NUL.exe"):
+                with self.subTest(executable=executable):
+                    clipboard.capture_target.return_value = SelectionTarget(
+                        3, executable
+                    )
+                    self.assertIsNone(controller.capture_target())
+                    self.assertEqual(controller.target, editor)
+        finally:
+            controller.timer.stop()
+
     def test_native_settings_outside_qt_windows_preserves_external_app(self):
         from unittest.mock import Mock
         from clarify.desktop.qml_quick_paste import QuickPasteController

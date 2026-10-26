@@ -28,6 +28,8 @@ class QuickPasteController(QObject):
         if any(window.isActive() for window in windows):
             return self.target
         target = self.clipboard.capture_target()
+        if target is None or windows_executable_key(target.executable) is None:
+            return None
         excluded = windows_executable_key(self.excluded_executable())
         if (
             target is not None
