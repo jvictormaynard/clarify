@@ -5664,5 +5664,100 @@
     "pt": "Valor de configuração inválido",
     "en": "Invalid settings value",
     "es": "Valor de configuración no válido"
+  },
+  "Copiar resultado": {
+    "pt": "Copiar resultado",
+    "en": "Copy result",
+    "es": "Copiar resultado"
+  },
+  "Copiar original": {
+    "pt": "Copiar original",
+    "en": "Copy original",
+    "es": "Copiar original"
+  },
+  "Copiado.": {
+    "pt": "Copiado.",
+    "en": "Copied.",
+    "es": "Copiado."
+  },
+  "Não foi possível copiar. Tente novamente.": {
+    "pt": "Não foi possível copiar. Tente novamente.",
+    "en": "Could not copy. Try again.",
+    "es": "No se pudo copiar. Inténtalo de nuevo."
+  },
+  "Resultado": {
+    "pt": "Resultado",
+    "en": "Result",
+    "es": "Resultado"
+  },
+  "Original": {
+    "pt": "Original",
+    "en": "Original",
+    "es": "Original"
+  },
+  "Trecho anterior": {
+    "pt": "Trecho anterior",
+    "en": "Previous section",
+    "es": "Sección anterior"
+  },
+  "Próximo trecho": {
+    "pt": "Próximo trecho",
+    "en": "Next section",
+    "es": "Sección siguiente"
+  },
+  "O original não está disponível para este registro.": {
+    "pt": "O original não está disponível para este registro.",
+    "en": "The original is not available for this record.",
+    "es": "El original no está disponible para este registro."
+  },
+  "O original e o resultado são iguais.": {
+    "pt": "O original e o resultado são iguais.",
+    "en": "The original and the result are the same.",
+    "es": "El original y el resultado son iguales."
+  },
+  "Abrir textos": {
+    "pt": "Abrir textos",
+    "en": "Open texts",
+    "es": "Abrir textos"
+  },
+  "Fechar textos": {
+    "pt": "Fechar textos",
+    "en": "Close texts",
+    "es": "Cerrar textos"
+  },
+  "Buscar no histórico": {
+    "pt": "Buscar no histórico",
+    "en": "Search history",
+    "es": "Buscar en el historial"
+  },
+  "Buscar": {
+    "pt": "Buscar",
+    "en": "Search",
+    "es": "Buscar"
+  },
+  "Limpar busca": {
+    "pt": "Limpar busca",
+    "en": "Clear search",
+    "es": "Borrar búsqueda"
+  },
+  "Busca no original e no resultado, sem distinguir maiúsculas, nos registros disponíveis neste dispositivo.": {
+    "pt": "Busca no original e no resultado, sem distinguir maiúsculas, nos registros disponíveis neste dispositivo.",
+    "en": "Search the original and result, ignoring letter case, in records available on this device.",
+    "es": "Busca en el original y el resultado, sin distinguir mayúsculas, en los registros disponibles en este dispositivo."
+  },
+  "Continuar busca": {
+    "pt": "Continuar busca",
+    "en": "Continue search",
+    "es": "Continuar búsqueda"
+  },
+  "Ainda há registros para pesquisar.": {
+    "pt": "Ainda há registros para pesquisar.",
+    "en": "There are more records to search.",
+    "es": "Aún hay registros por buscar."
+  },
+  "Nenhum resultado encontrado.": {
+    "pt": "Nenhum resultado encontrado.",
+    "en": "No results found.",
+    "es": "No se encontraron resultados."
   }
 }

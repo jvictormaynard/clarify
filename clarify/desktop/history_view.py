@@ -62,9 +62,24 @@ class HistoryView:
             raise ValueError(_CHANGED)
         return current
 
-    def page(self, context, cursor):
+    @staticmethod
+    def _text(record, field):
+        if field not in ("text", "transcript"):
+            raise ValueError("Invalid history text field")
+        return (
+            record.raw_text or ""
+            if field == "transcript"
+            else record.refined_text
+            if record.refined_text is not None
+            else record.raw_text or ""
+        )
+
+    def page(self, context, cursor, query=""):
         if not isinstance(cursor, str) or (cursor and not _HEX.fullmatch(cursor)):
             raise ValueError("Invalid history cursor")
+        if not isinstance(query, str) or len(query) > 200:
+            raise ValueError("Invalid history query")
+        query = query.strip().casefold()
         with (
             self.history.account._lock,
             self._lock,
@@ -88,34 +103,61 @@ class HistoryView:
             if cursor:
                 if cursor not in self._cursors:
                     raise ValueError(_CHANGED)
-                offset = self._cursors[cursor]
+                cursor_query, position = self._cursors[cursor]
+                if cursor_query != query:
+                    raise ValueError(_CHANGED)
             else:
-                offset = 0
-            rows = self._rows[offset : offset + 20]
+                position = (0, 0, 0)
+            offset, field_index, text_offset = position
+            rows = []
+            # Search the entire accessible cache, in bounded continuations.
+            # Bound work even for a single giant pre-upgrade record. Overlap
+            # preserves matches that cross chunk boundaries (including casefold).
+            budget = 128
+            while offset < len(self._rows) and len(rows) < 20 and budget:
+                row = self._rows[offset]
+                if not query:
+                    rows.append(row)
+                    offset += 1
+                    budget -= 1
+                    continue
+                text = self._text(row[2], ("text", "transcript")[field_index])
+                chunk = text[text_offset : text_offset + 4000 + len(query)]
+                budget -= 1
+                if query in chunk.casefold():
+                    rows.append(row)
+                    offset, field_index, text_offset = offset + 1, 0, 0
+                elif text_offset + 4000 < len(text):
+                    text_offset += 4000
+                elif field_index == 0:
+                    field_index, text_offset = 1, 0
+                else:
+                    offset, field_index, text_offset = offset + 1, 0, 0
             entries = []
-            for token, _, record in rows:
-                text = (
-                    record.refined_text
-                    if record.refined_text is not None
-                    else record.raw_text or ""
-                )
+            for token, item_id, record in rows:
+                text = self._text(record, "text")
                 entries.append(
                     {
                         "id": token,
                         "timestamp": record.timestamp.timestamp(),
                         "text": text[:500],
                         "truncated": len(text) > 500,
+                        "hasOriginal": bool(record.raw_text),
+                        "originalDiffers": bool(record.raw_text)
+                        and record.raw_text != text,
                         "sourceDevice": record.source_device or "desktop",
+                        "owner": "account"
+                        if item_id.startswith("account:")
+                        else "local",
                     }
                 )
-            next_offset = offset + len(rows)
             next_cursor = ""
-            if next_offset < len(self._rows):
+            if offset < len(self._rows):
                 next_cursor = uuid.uuid4().hex
                 # A bounded cursor registry also makes arbitrary offsets opaque.
                 if len(self._cursors) >= 2048:
                     self._cursors.pop(next(iter(self._cursors)))
-                self._cursors[next_cursor] = next_offset
+                self._cursors[next_cursor] = (query, (offset, field_index, text_offset))
             return {
                 **current,
                 "entries": entries,
@@ -137,17 +179,14 @@ class HistoryView:
     def text_part(self, context, token, offset, field):
         if type(offset) is not int or offset < 0 or field not in ("text", "transcript"):
             raise ValueError("Invalid history text request")
-        with self.history.account._lock, self._lock:
-            _, record = self._resolve(context, token)
-            text = (
-                record.raw_text or ""
-                if field == "transcript"
-                else (
-                    record.refined_text
-                    if record.refined_text is not None
-                    else record.raw_text or ""
-                )
-            )
+        with (
+            self.history.account._lock,
+            self._lock,
+            self.history._lock,
+            self.history.local._lock,
+        ):
+            item_id, record = self._resolve(context, token)
+            text = self._text(record, field)
             if offset > len(text):
                 raise ValueError("Invalid history text offset")
             # An astral code point can use 12 bytes after JSON ASCII escaping.
@@ -156,11 +195,31 @@ class HistoryView:
             next_offset = offset + len(chunk)
             return {
                 "context": context,
+                "revision": self._key[1],
                 "id": token,
+                "owner": "account" if item_id.startswith("account:") else "local",
                 "text": chunk,
                 "nextOffset": next_offset,
                 "hasMore": next_offset < len(text),
             }
+
+    def copy_text(self, context, token, field, revision, write):
+        """Resolve and copy under the same scope/revision and storage locks.
+
+        Never accept text from the web client or paste into another window.
+        The injected writer keeps tests away from the real clipboard.
+        """
+        with (
+            self.history.account._lock,
+            self._lock,
+            self.history._lock,
+            self.history.local._lock,
+        ):
+            _, record = self._resolve(context, token)
+            if revision != self._key[1]:
+                raise ValueError(_CHANGED)
+            write(self._text(record, field))
+            return {"context": context, "revision": revision, "id": token}
 
     def delete(self, context, token):
         with self.history.account._lock, self._lock:
