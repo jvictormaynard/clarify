@@ -3989,7 +3989,7 @@ class QmlSettingsController(QObject):
         success: bool,
         payload: object,
     ) -> None:
-        self._read_chatgpt_snapshot()
+        chatgpt_state = self.chatgptState
         if self._account_shutdown or generation != self._provider_generations.get(
             provider_id
         ):
@@ -4033,9 +4033,12 @@ class QmlSettingsController(QObject):
             "busy": False,
         }
         if provider_id == "chatgpt":
-            state = self.chatgptState
             self._model_catalogs[
-                (provider_id, state["accountId"], str(state["generation"]))
+                (
+                    provider_id,
+                    chatgpt_state["accountId"],
+                    str(chatgpt_state["generation"]),
+                )
             ] = data["catalog"]
         if provider_id == self._selected_provider_id:
             self._provider_api_key_draft = ""

@@ -428,6 +428,41 @@ class ChatGPTSettingsTests(unittest.TestCase):
                 self.assertEqual(self.settings.routeModelOptions, [])
                 self.assertFalse(self.settings.providerBusy)
 
+        # A change after the first completion read must not relabel A's models
+        # with B's identity if completion reads the session again.
+        from provider_types import ModelCatalog
+
+        self.session.select_account("personal")
+        self.settings._read_chatgpt_snapshot()
+        generation = self.settings._provider_generations["chatgpt"]
+        snapshot = self.session.snapshot
+        reads = 0
+
+        def change_after_snapshot():
+            nonlocal reads
+            value = snapshot()
+            reads += 1
+            if reads == 1:
+                self.session.select_account("external-during-completion")
+            return value
+
+        with patch.object(self.session, "snapshot", side_effect=change_after_snapshot):
+            self.settings._finish_provider_validation(
+                "chatgpt",
+                generation,
+                True,
+                {
+                    "models": [],
+                    "text_models": ["personal-only-model"],
+                    "catalog": ModelCatalog(text_models=("personal-only-model",)),
+                },
+            )
+        self.assertEqual(self.settings.chatgptTextCatalog, {})
+        self.assertEqual(self.settings.routeModelOptions, [])
+        self.assertFalse(
+            self.settings.savePreference("setRouteModelId", ["personal-only-model"])
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
