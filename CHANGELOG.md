@@ -5,6 +5,22 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-26
+
+### Changed
+
+- Rebuild desktop Settings with shared Base UI controls and a neutral dark theme. Keep navigation and unrelated controls available during microphone tests, refreshes and saves.
+- Save preferences, shortcuts and flags on saved dictionary and snippet rows automatically. Use page-specific Save/Discard actions for text and numeric drafts, and handle all drafts when closing Settings.
+- Validate provider key and connection URL edits with the Models and services page's Validate and save key action before saving other drafts.
+- Remove the global Settings search and floating Save/Discard bar. Dictionary and snippet searches remain available on their pages.
+
+### Fixed
+
+- Preserve text typed after an earlier save starts, drafts on other pages and remote library changes imported during synchronization. Keep dictionary and snippet writes within their original account.
+- Retain provider and local-model operation targets while queued work completes. Keep social-login cancellation available with local drafts.
+- Wait for accepted automatic writes before closing Settings. Continue editing cancels a pending close, and cancelled shortcut capture rejects late events.
+- Run audio discovery outside the Qt thread and reject late worker notifications after Settings shutdown without retaining the Qt controller.
+
 ## [0.11.0] - 2026-10-26
 
 ### Added
@@ -404,7 +420,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/jvictormaynard/clarify/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/jvictormaynard/clarify/compare/v0.9.0...v0.11.0
 [0.9.0]: https://github.com/jvictormaynard/clarify/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jvictormaynard/clarify/compare/v0.7.0...v0.8.0
