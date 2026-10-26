@@ -8,9 +8,11 @@ export type DictionaryEntry = {
   aliases: string[];
   enabled: boolean;
 };
-export type HistoryEntry = { id: string; timestamp: number; text: string; truncated: boolean; sourceDevice: "desktop" | "mobile" };
+export type HistoryEntry = { id: string; timestamp: number; text: string; truncated: boolean; hasOriginal: boolean; originalDiffers: boolean; owner: "local" | "account"; sourceDevice: "desktop" | "mobile" };
+export type HistoryScope = Readonly<{ context: string; revision: string }>;
+export type HistoryTextField = "text" | "transcript";
 type HistoryPageResult = { context: string; revision: string; entries: HistoryEntry[]; cursor: string; hasMore: boolean };
-type HistoryTextPart = { context: string; id: string; text: string; nextOffset: number; hasMore: boolean };
+type HistoryTextPart = HistoryScope & { id: string; owner: "local" | "account"; text: string; nextOffset: number; hasMore: boolean };
 export type Snippet = { trigger: string; replacement: string; enabled: boolean; case_sensitive: boolean };
 export interface Settings {
   snippets: Snippet[];
@@ -174,8 +176,13 @@ function queuedCall<T>(method: string, args: unknown[]): Promise<T> {
 export function settingsTransaction<T>(operation: (call: SettingsCall) => Promise<T>): Promise<T> {
   return enqueue(() => operation((method, ...args) => invoke<Settings>("settings_call", { method, args })));
 }
-export const getHistoryPage = (context: string, cursor = "") => queuedCall<HistoryPageResult>("getHistoryPage", [context, cursor]);
-export const getHistoryTextPart = (context: string, id: string, offset: number) => queuedCall<HistoryTextPart>("getHistoryTextPart", [context, id, offset, "text"]);
+export const getHistoryPage = (context: string, cursor = "", query = "") => queuedCall<HistoryPageResult>("getHistoryPage", [context, cursor, query]);
+export const getHistoryTextPart = (context: string, id: string, offset: number, field: HistoryTextField = "text") => queuedCall<HistoryTextPart>("getHistoryTextPart", [context, id, offset, field]);
+export const copyHistoryText = (scope: HistoryScope, id: string, field: HistoryTextField, isCurrent: () => boolean) => enqueue(async () => {
+  // Navigation/search cancellation can happen while waiting for the pipe.
+  if (!isCurrent()) return null;
+  return invoke<HistoryScope & { id: string }>("settings_call", { method: "copyHistoryText", args: [scope.context, id, field, scope.revision] });
+});
 // Only periodic polls advance the Python baseline. Commands still return full state.
 export const pollSettings = () => queuedCall<Partial<Settings>>("poll", []);
 export function call<M extends SettingsMethod>(

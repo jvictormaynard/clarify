@@ -1734,6 +1734,38 @@ class WebSettingsTests(unittest.TestCase):
         self.assertIn("error", self.request("clearHistory", context))
         self.assertEqual(store.list_records()[0].raw_text, "Preserve guest.")
 
+    def test_history_copy_rpc_revalidates_and_sanitizes_clipboard_failure(self):
+        from history_store import HistoryRecord, HistoryStore
+
+        store = HistoryStore(self.settings._history.local.path, enabled=True)
+        store.append(HistoryRecord(raw_text="Original", refined_text="Result"))
+        context = self.settings.historyState["context"]
+        page = self.request("getHistoryPage", context, "", "original")["result"]
+        token, revision = page["entries"][0]["id"], page["revision"]
+        with patch.object(
+            self.settings,
+            "_write_history_clipboard",
+            side_effect=OSError("private-content"),
+        ) as writer:
+            reply = self.request("copyHistoryText", context, token, "text", revision)
+            self.assertEqual(
+                reply["error"], "Não foi possível copiar. Tente novamente."
+            )
+            self.assertNotIn("private-content", json.dumps(reply))
+            writer.side_effect = None
+            self.assertIn(
+                "result",
+                self.request("copyHistoryText", context, token, "transcript", revision),
+            )
+            writer.assert_called_with("Original")
+            writer.reset_mock()
+            self.settings._account._generation += 1
+            self.assertIn(
+                "error",
+                self.request("copyHistoryText", context, token, "text", revision),
+            )
+            writer.assert_not_called()
+
     def test_automatic_update_flag_is_an_optional_saved_draft(self):
         self.assertFalse(self.request("snapshot")["result"]["automaticUpdates"])
         state = self.request("setAutomaticUpdates", True)["result"]

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Cloud, HardDrive, History, LoaderCircle, Monitor, Smartphone, Trash2 } from "lucide-react";
 import { t, uiLanguage } from "../i18n";
-import { Button, Confirm } from "../components/ui";
-import { getHistoryPage, getHistoryTextPart, type HistoryEntry } from "../settings/bridge";
+import { Button, Confirm, Input } from "../components/ui";
+import { HistoryComparison, HistoryEntryActions, type HistoryEntryExtension } from "../components/history-entry";
+import { getHistoryPage, type HistoryEntry } from "../settings/bridge";
 import type { SettingsPageProps } from "../settings/use-settings";
 
-export function HistoryPage({ controller }: SettingsPageProps) {
+export function HistoryPage({ controller, renderEntryAction }: SettingsPageProps & { renderEntryAction?: HistoryEntryExtension }) {
   const { state, run } = controller;
   const context = state.historyState?.context || "";
   const revision = state.historyState?.revision || "";
@@ -13,28 +14,31 @@ export function HistoryPage({ controller }: SettingsPageProps) {
   const deletionPending = useRef(false);
   const [deletion, setDeletion] = useState<{ id: string; context: string } | null>(null);
   const [rows, setRows] = useState<HistoryEntry[]>([]);
-  const [loaded, setLoaded] = useState({ context: "", revision: "" });
+  const [loaded, setLoaded] = useState({ context: "", revision: "", query: "" });
   const [cursor, setCursor] = useState("");
   const [loading, setLoading] = useState(false);
-  const [expanding, setExpanding] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const generation = useRef(0);
-  const current = useRef({ context, revision });
-  current.current = { context, revision };
-  const entries = loaded.context === context && loaded.revision === revision ? rows : [];
+  const current = useRef({ context, revision, query });
+  current.current = { context, revision, query };
+  const entries = loaded.context === context && loaded.revision === revision && loaded.query === query ? rows : [];
+  const active = (request: number, expected = current.current) => generation.current === request && expected.context === current.current.context && expected.revision === current.current.revision && expected.query === current.current.query;
   const load = async (nextCursor: string, expected = current.current, request = generation.current) => {
     setLoading(true);
     try {
-      const page = await getHistoryPage(expected.context, nextCursor);
-      if (generation.current !== request || page.context !== current.current.context || page.revision !== current.current.revision) return;
+      const page = await getHistoryPage(expected.context, nextCursor, expected.query);
+      if (!active(request, expected) || page.context !== current.current.context || page.revision !== current.current.revision) return;
       setRows(previous => nextCursor ? [...previous, ...page.entries.filter(item => !previous.some(old => old.id === item.id))] : page.entries);
-      setLoaded({ context: page.context, revision: page.revision });
+      setLoaded({ context: page.context, revision: page.revision, query: expected.query });
       setCursor(page.cursor);
       setError("");
     } catch (problem) {
-      if (generation.current === request) setError(String(problem));
+      if (active(request, expected)) setError(String(problem));
     } finally {
-      if (generation.current === request) setLoading(false);
+      if (active(request, expected)) setLoading(false);
     }
   };
   useEffect(() => {
@@ -42,31 +46,11 @@ export function HistoryPage({ controller }: SettingsPageProps) {
     setDeletion(null);
     setRows([]);
     setCursor("");
-    setExpanding(null);
+    setExpanded(null);
     setError("");
-    void load("", { context, revision }, request);
+    void load("", { context, revision, query }, request);
     return () => { generation.current++; };
-  }, [context, revision]);
-  const expand = async (entry: HistoryEntry) => {
-    const request = generation.current;
-    const expected = current.current;
-    setExpanding(entry.id);
-    try {
-      let offset = 0, text = "", more = true;
-      while (more) {
-        const part = await getHistoryTextPart(expected.context, entry.id, offset);
-        if (request !== generation.current || part.context !== current.current.context) return;
-        text += part.text;
-        offset = part.nextOffset;
-        more = part.hasMore;
-      }
-      if (request === generation.current) setRows(previous => previous.map(row => row.id === entry.id ? { ...row, text, truncated: false } : row));
-    } catch (problem) {
-      if (request === generation.current) setError(String(problem));
-    } finally {
-      if (request === generation.current) setExpanding(null);
-    }
-  };
+  }, [context, revision, query]);
   const confirm = async () => {
     if (!deletion || deletion.context !== context || deletionPending.current) return;
     deletionPending.current = true;
@@ -86,12 +70,20 @@ export function HistoryPage({ controller }: SettingsPageProps) {
       ? "As novas transcrições da conta são sincronizadas automaticamente. Os registros antigos permanecem neste dispositivo."
       : "Seu histórico permanece somente neste computador.")}</p></div>
     {error && <p role="alert" className="error">{t(error)}</p>}
+    <form className="history-search" onSubmit={event => { event.preventDefault(); setQuery(draft.trim()); }}>
+      <Input type="search" maxLength={200} value={draft} aria-label={t("Buscar no histórico")} placeholder={t("Buscar no histórico")} onChange={event => setDraft(event.target.value)} />
+      <Button type="submit">{t("Buscar")}</Button>
+      {query && <Button onClick={() => { setDraft(""); setQuery(""); }}>{t("Limpar busca")}</Button>}
+    </form>
+    <p className="hint">{t("Busca no original e no resultado, sem distinguir maiúsculas, nos registros disponíveis neste dispositivo.")}</p>
     {entries.length ? <>
       <div className="history-actions"><Button variant="text" onClick={() => setDeletion({ id: "all", context })}><Trash2 size={14} aria-hidden="true" />{t("Limpar histórico")}</Button></div>
       <div className="history-list" role="list" aria-label={t("Histórico")}>
         {entries.map(entry => {
           const Device = entry.sourceDevice === "mobile" ? Smartphone : Monitor;
-          return <article className="history-row" role="listitem" key={entry.id}>
+          const request = generation.current, scope = Object.freeze({ context, revision }), expected = current.current;
+          const isCurrent = () => active(request, expected);
+          return <article className="history-row" role="listitem" key={`${context}:${revision}:${query}:${entry.id}`}>
             <div className="history-entry-content">
               <div className="history-meta">
                 <time dateTime={new Date(entry.timestamp * 1000).toISOString()}>
@@ -100,14 +92,20 @@ export function HistoryPage({ controller }: SettingsPageProps) {
                 <span><Device size={12} aria-hidden="true" />{entry.sourceDevice === "mobile" ? "Mobile" : "Desktop"}</span>
               </div>
               <p className="history-text">{entry.text || t("Sem texto")}</p>
-              {entry.truncated && <Button className="history-expand" variant="text" loading={expanding === entry.id} onClick={() => void expand(entry)}>{t("Mostrar texto completo")}</Button>}
+              <HistoryEntryActions entry={entry} scope={scope} isCurrent={isCurrent}>
+                <Button variant="text" aria-expanded={expanded === entry.id} onClick={() => setExpanded(value => value === entry.id ? null : entry.id)}>{t(expanded === entry.id ? "Fechar textos" : "Abrir textos")}</Button>
+                {renderEntryAction?.(entry, scope)}
+              </HistoryEntryActions>
+              {expanded === entry.id && <HistoryComparison entry={entry} scope={scope} isCurrent={isCurrent} />}
             </div>
             <Button className="history-delete" variant="text" aria-label={t("Excluir transcrição")} onClick={() => setDeletion({ id: entry.id, context })}><Trash2 size={15} aria-hidden="true" /></Button>
           </article>;
         })}
       </div>
-      {cursor && <div className="history-pagination"><Button loading={loading} onClick={() => void load(cursor)}>{t("Carregar mais")}</Button></div>}
-    </> : !loading && <div className="history-empty"><History size={26} aria-hidden="true" /><p className="hint">{t("Nenhuma transcrição ainda.")}</p></div>}
+    </> : !loading && !cursor && !error && <div className="history-empty"><History size={26} aria-hidden="true" /><p className="hint">{t(query ? "Nenhum resultado encontrado." : "Nenhuma transcrição ainda.")}</p></div>}
+    {cursor && <div className="history-pagination"><Button loading={loading} onClick={() => void load(cursor)}>{t(query ? "Continuar busca" : "Carregar mais")}</Button></div>}
+    {query && cursor && <p role="status" className="hint">{t("Ainda há registros para pesquisar.")}</p>}
+    {error && <Button onClick={() => void load(cursor)}>{t("Tentar novamente")}</Button>}
     {loading && !entries.length && <div className="history-empty" role="status" aria-label={t("Carregando…")}><LoaderCircle size={22} className="spin" aria-hidden="true" /></div>}
     <Confirm open={deletion !== null && deletion.context === context} onOpenChange={open => { if (!open && !deletionPending.current) setDeletion(null); }}
       title={t(deletion?.id === "all" ? "Limpar histórico" : "Excluir transcrição")}

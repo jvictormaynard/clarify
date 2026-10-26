@@ -2434,7 +2434,7 @@ class QmlSettingsController(QObject):
             else {"context": "", "revision": ""}
         )
 
-    def getHistoryPage(self, context, cursor):
+    def getHistoryPage(self, context, cursor, query=""):
         if self._history_view is None and context == "" and cursor == "":
             return {
                 "context": "",
@@ -2445,12 +2445,31 @@ class QmlSettingsController(QObject):
             }
         if self._history_view is None:
             raise ValueError("Invalid history context")
-        return self._history_view.page(context, cursor)
+        return self._history_view.page(context, cursor, query)
 
     def getHistoryTextPart(self, context, token, offset, field):
         if self._history_view is None:
             raise ValueError("Invalid history context")
         return self._history_view.text_part(context, token, offset, field)
+
+    @staticmethod
+    def _write_history_clipboard(text):
+        from PySide6.QtGui import QGuiApplication
+
+        app = QGuiApplication.instance()
+        if not isinstance(app, QGuiApplication) or app.clipboard() is None:
+            raise OSError("Clipboard unavailable")
+        clipboard = app.clipboard()
+        clipboard.setText(text)
+        if clipboard.text() != text:
+            raise OSError("Clipboard write failed")
+
+    def copyHistoryText(self, context, token, field, revision):
+        if self._history_view is None:
+            raise ValueError("Invalid history context")
+        return self._history_view.copy_text(
+            context, token, field, revision, self._write_history_clipboard
+        )
 
     @Slot(str, str, result=bool)
     def deleteHistoryEntry(self, token, context):

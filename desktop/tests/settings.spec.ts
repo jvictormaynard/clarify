@@ -421,7 +421,7 @@ test.beforeEach(async ({ page }, testInfo) => {
     });
   };
   const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.includes("social cancellation") ? ["--social-wait"] : []), ...(testInfo.title.includes("sync-import") ? ["--library-sync"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : []), ...["legacy", "malformed", "waiting", "unfunded", "inactive", "paused", "exhausted"].filter(mode => testInfo.title.includes(`quota ${mode}`)).map(mode => `--usage-${mode}`)], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.includes("social cancellation") ? ["--social-wait"] : []), ...(testInfo.title.includes("sync-import") ? ["--library-sync"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("review tools") ? ["--history-review"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : []), ...["legacy", "malformed", "waiting", "unfunded", "inactive", "paused", "exhausted"].filter(mode => testInfo.title.includes(`quota ${mode}`)).map(mode => `--usage-${mode}`)], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);
@@ -459,12 +459,12 @@ test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" })
 test("history: existing records stay visible and local delete and clear update the list", async ({ page }) => {
   await page.getByRole("button", { name: "Histórico", exact: true }).click();
   await expect(page.getByText("Isolated mobile history.", { exact: true })).toBeVisible();
-  await expect(page.getByText("Isolated desktop history.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Isolated revised desktop history.", { exact: true })).toBeVisible();
   const items = page.getByRole("listitem");
   await expect(items).toHaveCount(2);
   await expect(items.first()).toContainText("Mobile");
   await expect(items.last()).toContainText("Desktop");
-  await items.first().getByRole("button").click();
+  await items.first().getByRole("button", { name: "Excluir transcrição", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Excluir", exact: true }).click();
   await expect(items).toHaveCount(1);
   await page.getByRole("button", { name: "Limpar histórico", exact: true }).click();
@@ -476,9 +476,11 @@ test("history: large history loads bounded pages and full legacy text without bl
   test.setTimeout(60000);
   await page.getByRole("button", { name: "Histórico", exact: true }).click();
   await expect(page.getByRole("listitem")).toHaveCount(20);
-  await page.getByRole("listitem").first().getByRole("button", { name: "Mostrar texto completo", exact: true }).click();
-  await expect(page.getByRole("listitem").first()).toContainText("legacy end.", { timeout: 30000 });
-  await expect(page.getByRole("listitem").first().locator(".history-text")).toHaveText("Giant legacy " + "x".repeat(1100000) + " legacy end.");
+  await page.getByRole("listitem").first().getByRole("button", { name: "Abrir textos", exact: true }).click();
+  const reader = page.getByRole("region", { name: "Resultado", exact: true });
+  await expect(reader.locator(".history-text")).toHaveText(("Giant legacy " + "x".repeat(1100000)).slice(0, 4000));
+  await reader.getByRole("button", { name: "Próximo trecho", exact: true }).click();
+  await expect(reader.locator(".history-text")).toHaveText("x".repeat(4000));
   await page.getByRole("button", { name: "Carregar mais", exact: true }).click();
   await expect(page.getByRole("listitem")).toHaveCount(40);
   await page.getByRole("button", { name: "Carregar mais", exact: true }).click();
@@ -496,6 +498,78 @@ test("history: session context changes close a stale delete dialog", async ({ pa
   await page.evaluate(() => fetch("/__test_rpc", { method: "POST", body: JSON.stringify({ method: "testHistoryContextChange", args: [] }) }));
   await expect(page.getByRole("dialog")).toBeHidden();
   await expect(page.getByRole("listitem")).toHaveCount(2);
+});
+
+test("history: review tools compare preserved texts and recover from clipboard failure", async ({ page }, testInfo) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  const revised = page.getByRole("listitem").filter({ hasText: "Isolated revised desktop history." });
+  await revised.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await expect(revised.getByRole("region", { name: "Original", exact: true })).toContainText("Isolated desktop history.");
+  await expect(revised.getByRole("region", { name: "Resultado", exact: true })).toContainText("Isolated revised desktop history.");
+  await page.screenshot({ path: testInfo.outputPath("history-comparison.png"), fullPage: true });
+  let fail = true;
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method === "copyHistoryText" && fail) {
+      fail = false; await route.fulfill({ json: { error: "Não foi possível copiar. Tente novamente." } }); return;
+    }
+    await route.fallback();
+  });
+  await revised.getByRole("button", { name: "Copiar resultado", exact: true }).click();
+  await expect(revised.getByRole("alert")).toContainText("Não foi possível copiar.");
+  await revised.getByRole("button", { name: "Copiar resultado", exact: true }).click();
+  await expect(revised.getByRole("status")).toHaveText("Copiado.");
+  await revised.getByRole("button", { name: "Copiar original", exact: true }).click();
+  await expect.poll(() => page.evaluate(async () => (await (await fetch("/__test_rpc", { method: "POST", body: JSON.stringify({ method: "testHistoryClipboard", args: [] }) })).json()).result)).toEqual(["Isolated revised desktop history.", "Isolated desktop history."]);
+  const same = page.getByRole("listitem").filter({ hasText: "Isolated mobile history." });
+  await same.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await expect(same).toContainText("O original e o resultado são iguais.");
+  const absent = page.getByRole("listitem").filter({ hasText: "Result without original." });
+  await absent.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await expect(absent).toContainText("O original não está disponível para este registro.");
+  await expect(absent.getByRole("button", { name: "Copiar original", exact: true })).toHaveCount(0);
+});
+
+test("history: large history search reaches older originals and never reports partial scan as empty", async ({ page }) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  const search = page.getByRole("searchbox", { name: "Buscar no histórico", exact: true });
+  await search.fill("ISOLATED DESKTOP HISTORY.");
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  for (let i = 0; i < 20; i++) {
+    await expect(page.getByRole("button", { name: "Continuar busca", exact: true }).or(page.getByText("Isolated revised desktop history.", { exact: true }))).toBeVisible();
+    if (await page.getByText("Isolated revised desktop history.", { exact: true }).count()) break;
+    await expect(page.getByText("Nenhum resultado encontrado.", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Continuar busca", exact: true }).click();
+  }
+  await expect(page.getByRole("listitem")).toHaveCount(1);
+  await search.fill("no such text"); await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  for (let i = 0; i < 20; i++) {
+    const more = page.getByRole("button", { name: "Continuar busca", exact: true });
+    await expect(more.or(page.getByText("Nenhum resultado encontrado.", { exact: true }))).toBeVisible();
+    if (!await more.count()) break;
+    await more.click();
+  }
+  await expect(page.getByText("Nenhum resultado encontrado.", { exact: true })).toBeVisible();
+});
+
+test("history: cancelled expansion ignores late text and context change closes comparison", async ({ page }) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  let release!: () => void, started!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method === "getHistoryTextPart") { started(); await held; }
+    await route.fallback();
+  });
+  const row = page.getByRole("listitem").filter({ hasText: "Isolated revised desktop history." });
+  await row.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await entered;
+  await row.getByRole("button", { name: "Fechar textos", exact: true }).click();
+  release();
+  await expect(page.locator(".history-comparison")).toHaveCount(0);
+  await row.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await expect(row.getByRole("region", { name: "Original", exact: true })).toContainText("Isolated desktop history.");
+  await page.evaluate(() => fetch("/__test_rpc", { method: "POST", body: JSON.stringify({ method: "testHistoryContextChange", args: [] }) }));
+  await expect(page.locator(".history-comparison")).toHaveCount(0);
 });
 
 test("quota: a signed-in startup shows no allowance until the quota arrives", async ({ page }) => {

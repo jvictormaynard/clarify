@@ -212,7 +212,9 @@ class SettingsProtocol:
             elif method == "poll" and not args:
                 result = self.poll()
             elif method == "getHistoryPage":
-                if len(args) != 2 or any(type(value) is not str for value in args):
+                if len(args) not in (2, 3) or any(
+                    type(value) is not str for value in args
+                ):
                     raise ValueError()
                 result = self.settings.getHistoryPage(*args)
             elif method == "getHistoryTextPart":
@@ -223,6 +225,10 @@ class SettingsProtocol:
                 ):
                     raise ValueError()
                 result = self.settings.getHistoryTextPart(*args)
+            elif method == "copyHistoryText":
+                if len(args) != 4 or any(type(value) is not str for value in args):
+                    raise ValueError()
+                result = self.settings.copyHistoryText(*args)
             elif method in METHODS:
                 if method in {"setDictionaryEntries", "setSnippets"} and (
                     len(args)
@@ -265,7 +271,7 @@ class SettingsProtocol:
             return {**reply, "result": result}
         except (TypeError, ValueError) as error:
             # Do not echo arguments: they can contain a pending API key.
-            if method in {"getHistoryPage", "getHistoryTextPart"}:
+            if method in {"getHistoryPage", "getHistoryTextPart", "copyHistoryText"}:
                 return {
                     **reply,
                     "error": "O histórico mudou. Atualize e tente novamente."
@@ -274,6 +280,8 @@ class SettingsProtocol:
                 }
             return {**reply, "error": "Invalid settings value"}
         except Exception:
+            if method == "copyHistoryText":
+                return {**reply, "error": "Não foi possível copiar. Tente novamente."}
             if method in {"getHistoryPage", "getHistoryTextPart"}:
                 return {**reply, "error": "Não foi possível carregar o histórico."}
             return {**reply, "error": "Não foi possível ler as configurações."}
