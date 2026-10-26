@@ -105,6 +105,7 @@ class AccountMeetingTests(unittest.TestCase):
             )
         self.assertTrue(self.account.managed)
         self.assertFalse(self.account.signed_in)
+        self.assertEqual(identity(self.account).owner, "unavailable")
         with self.assertRaises(MeetingError):
             self.account.transcribe_meeting(
                 identity(self.account), self.operation, self.audio, "pt"

@@ -51,32 +51,38 @@ class MeetingProviderService:
     def release(self):
         self.account.end_change()
 
-    def snapshot(self, expected, persisted=None, notes=None):
+    def snapshot(self, expected, persisted=None, notes=None, *, action="record"):
         self.validate(expected)
         if expected.managed:
             return None
         route = (
             WorkflowRoute.from_mapping(persisted["transcription"])
             if persisted
+            else WorkflowRoute(enabled=False)
+            if action == "summary"
             else self.workflows._route(WorkflowScope.TRANSCRIPTION)
         )
         note_route = (
             WorkflowRoute.from_mapping(persisted["notes"]) if persisted else notes
         )
         note_route = note_route or WorkflowRoute(enabled=False)
-        route = validate_workflow_route(
-            route, WorkflowScope.TRANSCRIPTION, registry=self.workflows.registry
-        )
-        if note_route.enabled:
+        connection = note_connection = None
+        if action != "summary":
+            route = validate_workflow_route(
+                route, WorkflowScope.TRANSCRIPTION, registry=self.workflows.registry
+            )
+            connection = self.workflows._connection(route)
+            if route.provider_id != LOCAL_ASR_PROVIDER_ID and not connection.api_key:
+                raise MeetingError("meeting.configure_asr")
+        if action == "summary":
+            if not note_route.enabled:
+                raise MeetingError("meeting.notes_disabled")
             note_route = validate_workflow_route(
                 note_route, WorkflowScope.REWRITE, registry=self.workflows.registry
             )
-        connection = self.workflows._connection(route)
-        if route.provider_id != LOCAL_ASR_PROVIDER_ID and not connection.api_key:
-            raise MeetingError("meeting.configure_asr")
-        note_connection = (
-            self.workflows._connection(note_route) if note_route.enabled else None
-        )
+            note_connection = self.workflows._connection(note_route)
+            if not note_connection.api_key:
+                raise MeetingError("meeting.configure_notes")
         return MeetingRoutes(route, connection, note_route, note_connection)
 
     def transcribe(self, expected, routes, chunk, path, language, cancel):

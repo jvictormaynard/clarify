@@ -19,10 +19,15 @@ PROCESSING_PATHS = frozenset({"/v1/meetings/transcriptions", "/v1/meetings/summa
 def identity(account):
     with account._lock:
         current = account.history_identity()
+        managed = bool(account.managed)
         return MeetingIdentity(
-            account_owner(current) if current else "guest",
+            account_owner(current)
+            if current
+            else "unavailable"
+            if managed
+            else "guest",
             account._generation,
-            bool(account.managed),
+            managed,
             current,
         )
 

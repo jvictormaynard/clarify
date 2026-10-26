@@ -865,9 +865,13 @@ def main():
             quick_menu = find_item(QObject, "quickMenu")
             assert quick_menu.property("visible")
             files_item = find_item(QObject, "quickFilesItem")
+            meetings_item = find_item(QObject, "quickMeetingsItem")
             settings_item = find_item(QObject, "quickSettingsItem")
             update_item = find_item(QObject, "quickUpdateItem")
-            assert abs(settings_item.y() - files_item.y() - files_item.height()) < 1
+            assert abs(meetings_item.y() - files_item.y() - files_item.height()) < 1
+            assert (
+                abs(settings_item.y() - meetings_item.y() - meetings_item.height()) < 1
+            )
             assert update_item.height() == 0, "hidden update must not leave a blank row"
             assert (
                 abs(

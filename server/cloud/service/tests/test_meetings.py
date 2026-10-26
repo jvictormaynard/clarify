@@ -12,6 +12,7 @@ from cloud.service import groq
 from cloud.service.models import Allowance, Operation, FundingEntry
 from shared.meeting_contract import SUMMARY_INSTRUCTION
 from .test_api import client_for, fund_hosted
+from .test_dictation import clip
 
 
 @override_settings(
@@ -49,6 +50,26 @@ class MeetingApiTests(TestCase):
             },
             format="multipart",
         )
+
+    @patch("cloud.service.groq.perform")
+    def test_real_thirty_second_upload_passes_middleware_and_too_large_is_rejected(
+        self, provider
+    ):
+        provider.return_value = {"text": "bounded source"}
+        response = self.audio(
+            audio=SimpleUploadedFile("fixture.wav", clip(30000), "audio/wav")
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(Allowance.objects.get(user=self.user).used_ms, 30000)
+        self.assertEqual(
+            self.audio(
+                audio=SimpleUploadedFile(
+                    "large.wav", b"X" * (12 * 1024 * 1024 + 65536), "audio/wav"
+                )
+            ).status_code,
+            413,
+        )
+        provider.assert_called_once()
 
     @patch("cloud.service.groq.perform")
     def test_summary_is_separate_fixed_budgeted_and_idempotent(self, provider):

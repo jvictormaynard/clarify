@@ -37,6 +37,7 @@ class QmlMeetingController(QObject):
         copy_runner=None,
         dispatch=lambda callback: callback(),
         error="",
+        activate=True,
         parent=None,
     ):
         super().__init__(parent)
@@ -44,6 +45,8 @@ class QmlMeetingController(QObject):
         self._language, self._copy, self._dispatch = language, copy_runner, dispatch
         self._error = error
         self._notes_pending = False
+        self._enabled = False
+        self._note_contexts = {}
         self._state = {
             "active": False,
             "phase": "idle",
@@ -59,6 +62,12 @@ class QmlMeetingController(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(250)
         self._timer.timeout.connect(self.refresh)
+        if activate:
+            self.activate()
+
+    def activate(self):
+        """Call only after the composition acquires the global instance guard."""
+        self._enabled = True
         self._timer.start()
         self.refresh()
 
@@ -97,10 +106,14 @@ class QmlMeetingController(QObject):
 
     @Slot()
     def refresh(self):
-        if self.workflow is None:
+        if self.workflow is None or not self._enabled:
             return
         try:
             state = self.workflow.snapshot()
+            if state.get("selected"):
+                self._note_contexts[(state["context"], state["selected"]["id"])] = (
+                    state["context"].rsplit(":", 1)[0]
+                )
             if self._error:
                 state["error"] = self._error
             if state != self._state:
@@ -119,6 +132,8 @@ class QmlMeetingController(QObject):
         try:
             if self.workflow is None:
                 raise MeetingError(self._error or "meeting.store_error")
+            if not self._enabled:
+                raise MeetingError("meeting.busy")
             self._error = ""
             action()
             self.refresh()
@@ -165,6 +180,18 @@ class QmlMeetingController(QObject):
     @Slot(str, str, str, result=bool)
     def saveNotes(self, meeting_id, context, text):
         return self._run(lambda: self.workflow.save_notes(meeting_id, context, text))
+
+    @Slot(str, str, str, result=bool)
+    def preserveDraft(self, meeting_id, context, text):
+        def save():
+            owner = self._note_contexts.get((context, meeting_id))
+            if owner is None:
+                raise MeetingError("meeting.scope_changed")
+            # Explicit recovery of a manual draft writes only to the owner that
+            # was shown before expiry. It cannot assign it to the new session.
+            self.workflow.store.save_notes(owner, meeting_id, text)
+
+        return self._run(save)
 
     @Slot(str, str, str, bool, result=bool)
     def saveNotesRoute(self, context, provider, model, enabled):
@@ -269,7 +296,8 @@ def create_qml_meetings(runtime, *, can_start, workflow_config, parent=None):
             language=lambda: runtime.repositories.config.load().ui.language,
             copy_runner=runtime.copy_result,
             dispatch=runtime.scheduler.run_dispatch,
+            activate=False,
             parent=parent,
         )
     except MeetingError as error:
-        return QmlMeetingController(error=error.code, parent=parent)
+        return QmlMeetingController(error=error.code, activate=False, parent=parent)

@@ -806,6 +806,7 @@ def main(argv: list[str] | None = None) -> int:
         meetings.shutdown()
         runtime.shutdown()
         return 0
+    meetings.activate()
     app.setQuitOnLastWindowClosed(
         shell_result
         in (ShellStartResult.STARTED_WITHOUT_TRAY, ShellStartResult.SETUP_FAILED)

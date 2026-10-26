@@ -3,12 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+import uuid
 
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import QApplication
 
 from clarify.desktop.qml_meetings import create_qml_meetings
+from clarify.desktop.qml_app import _capture_idle
 from clarify_account import AccountService
 from secret_store import PlaintextFileSecretStore
 
@@ -37,6 +39,11 @@ class MeetingPresentationTests(unittest.TestCase):
             )
             self.addCleanup(controller.shutdown)
             self.assertIsNotNone(controller.workflow)
+            with patch.object(controller.workflow.store, "recover") as recovery:
+                controller.refresh()
+                recovery.assert_not_called()
+                controller.activate()
+                recovery.assert_called_once()
             mid = controller.workflow.store.create("guest", "Fixture")["id"]
             controller.workflow.store.save_notes("guest", mid, "Personal fixture")
             controller.workflow.store.end("guest", mid)
@@ -57,6 +64,44 @@ class MeetingPresentationTests(unittest.TestCase):
             self.assertEqual(
                 controller.workflow.store.get("guest", mid)["notes"], "Personal fixture"
             )
+
+    def test_expired_session_draft_can_be_saved_only_in_its_original_owner(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            account = AccountService(
+                root, secrets=PlaintextFileSecretStore(root / "secrets.json")
+            )
+            account._state.update(user_id=str(uuid.uuid4()), mode="hosted")
+            runtime = SimpleNamespace(
+                account=account,
+                dictionary_service=Mock(),
+                provider_registry=Mock(metadata=()),
+                repositories=Mock(),
+                copy_result=Mock(),
+                scheduler=SimpleNamespace(run_dispatch=lambda cb: cb()),
+            )
+            controller = create_qml_meetings(
+                runtime, can_start=lambda: True, workflow_config=Mock()
+            )
+            self.addCleanup(controller.shutdown)
+            owner = controller.workflow.provider.identity().owner
+            mid = controller.workflow.store.create(owner)["id"]
+            controller.workflow.store.end(owner, mid)
+            controller.activate()
+            context = controller.state["context"]
+            controller.setNotesPending(True)
+            account._state.pop("user_id")
+            account._generation += 1
+            controller.refresh()
+            self.assertFalse(controller.saveNotes(mid, context, "pending draft"))
+            self.assertTrue(controller.blocks_processing)
+            self.assertTrue(controller.preserveDraft(mid, context, "pending draft"))
+            controller.setNotesPending(False)
+            self.assertFalse(controller.blocks_processing)
+            self.assertEqual(
+                controller.workflow.store.get(owner, mid)["notes"], "pending draft"
+            )
+            self.assertEqual(controller.workflow.store.list("guest"), [])
 
     def test_composition_excludes_each_processing_owner_and_unsaved_notes(self):
         path = Path(__file__).resolve().parents[1] / "clarify/desktop/qml_app.py"
@@ -89,6 +134,7 @@ class MeetingPresentationTests(unittest.TestCase):
             routeModelStatus="idle",
         )
         environment = dict(
+            _capture_idle=_capture_idle,
             settings=settings,
             practice=SimpleNamespace(blocks_processing=False, busy=False),
             voice_translation=SimpleNamespace(active=False),
@@ -123,3 +169,7 @@ class MeetingPresentationTests(unittest.TestCase):
         self.assertFalse(environment["external_processing_allowed"]())
         self.assertFalse(environment["practice_can_start"]())
         self.assertFalse(environment["settings_processing_allowed"]())
+        environment["meetings"].blocks_processing = False
+        environment["runtime"].recording_audio.busy = True
+        self.assertFalse(environment["meetings_can_start"]())
+        self.assertFalse(environment["external_processing_allowed"]())

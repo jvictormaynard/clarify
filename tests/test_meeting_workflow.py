@@ -4,7 +4,8 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+from dataclasses import asdict
 from contextlib import contextmanager
 
 from meeting_provider import MeetingProviderService
@@ -204,6 +205,56 @@ class MeetingWorkflowTests(unittest.TestCase):
             self.workflow.start()
         self.provider.acquire.assert_not_called()
 
+    def test_job_id_survives_a_stale_list_snapshot(self):
+        mid, cid, path = self.pending()
+        other = self.store.create("guest", "other")
+        self.provider.delayed = True
+        self.workflow.retry()
+        self.assertTrue(self.provider.entered.wait(2))
+        with patch.object(self.store, "list", return_value=[other]):
+            self.workflow.snapshot()
+        self.provider.resume.set()
+        wait_for(lambda: not self.workflow.active)
+        self.assertEqual(self.workflow.selected, mid)
+        self.assertEqual(
+            self.store.get("guest", mid)["chunks"][0]["transcript"], "Original speech"
+        )
+        self.assertEqual(self.store.get("guest", other["id"])["chunks"], [])
+
+    def test_cancel_waits_for_an_already_started_publication_commit(self):
+        mid, cid, path = self.pending()
+        entered, release, cancelled = (
+            threading.Event(),
+            threading.Event(),
+            threading.Event(),
+        )
+        save = self.store.save_transcript
+
+        def blocked_commit(*args):
+            entered.set()
+            release.wait(3)
+            save(*args)
+
+        self.store.save_transcript = blocked_commit
+        self.workflow.retry()
+        self.assertTrue(entered.wait(2))
+
+        def cancel():
+            self.workflow.cancel()
+            cancelled.set()
+
+        thread = threading.Thread(target=cancel)
+        thread.start()
+        self.assertFalse(cancelled.wait(0.05))
+        release.set()
+        thread.join(2)
+        wait_for(lambda: not self.workflow.active)
+        self.assertTrue(cancelled.is_set())
+        self.assertEqual(
+            self.store.get("guest", mid)["chunks"][0]["state"], "transcribed"
+        )
+        self.assertFalse(path.exists())
+
     def test_oversized_summary_preserves_all_source_and_previous_summary(self):
         mid, cid, _ = self.pending()
         self.store.save_notes("guest", mid, "personal")
@@ -222,6 +273,26 @@ class MeetingWorkflowTests(unittest.TestCase):
 
 
 class MeetingProviderTests(unittest.TestCase):
+    def test_summary_resolves_only_its_own_connection(self):
+        service = Mock()
+        provider = MeetingProviderService(service, Mock())
+        provider.validate = Mock()
+        notes = WorkflowRoute(
+            provider_id="openai", model_id="fixture-notes", enabled=True
+        )
+        asr = WorkflowRoute(provider_id="groq", model_id="old-asr")
+        service._connection.side_effect = lambda route: ProviderConnection(
+            api_key="fixture" if route.provider_id == "openai" else "", base_url=""
+        )
+        routes = provider.snapshot(
+            MeetingIdentity("guest", 0, False),
+            {"transcription": asdict(asr), "notes": asdict(notes)},
+            action="summary",
+        )
+        self.assertIsNone(routes.transcription_connection)
+        self.assertEqual(service._connection.call_args.args[0].provider_id, "openai")
+        service._connection.assert_called_once()
+
     def test_local_asr_has_no_key_and_routes_connections_are_fixed_per_job(self):
         account = Mock()
         service = Mock()

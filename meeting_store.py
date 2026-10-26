@@ -277,13 +277,13 @@ class MeetingStore:
     def save_summary(self, owner, meeting_id, revision, text):
         bounded(text, MAX_SOURCE_BYTES)
         with self._connection() as db:
-            row = self._owned(db, owner, meeting_id)
-            if revision != row["revision"]:
+            self._owned(db, owner, meeting_id)
+            changed = db.execute(
+                "UPDATE meetings SET summary=?,summary_revision=? WHERE id=? AND owner=? AND revision=?",
+                (text, revision, meeting_id, owner, revision),
+            ).rowcount
+            if not changed:
                 raise MeetingError("meeting.summary_changed")
-            db.execute(
-                "UPDATE meetings SET summary=?,summary_revision=? WHERE id=?",
-                (text, revision, meeting_id),
-            )
 
     def recover(self, owner):
         """Recover this scope only; never upload or reassign local records."""

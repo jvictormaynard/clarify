@@ -5981,6 +5981,21 @@
     "en": "Select a provider and text model for the summary.",
     "es": "Selecciona un proveedor y un modelo de texto para el resumen."
   },
+  "meeting.draft_recovery": {
+    "pt": "A sessão mudou. Salve o rascunho na reunião original ou descarte o rascunho para entrar novamente.",
+    "en": "The session changed. Save the draft in the original meeting or discard the draft to sign in again.",
+    "es": "La sesión cambió. Guarda el borrador en la reunión original o descártalo para iniciar sesión otra vez."
+  },
+  "meeting.keep_draft": {
+    "pt": "Salvar na reunião original",
+    "en": "Save in original meeting",
+    "es": "Guardar en la reunión original"
+  },
+  "meeting.discard_draft": {
+    "pt": "Descartar rascunho",
+    "en": "Discard draft",
+    "es": "Descartar borrador"
+  },
   "meeting.export_error": {
     "pt": "Não foi possível exportar a reunião. Escolha um arquivo local.",
     "en": "Could not export the meeting. Select a local file.",

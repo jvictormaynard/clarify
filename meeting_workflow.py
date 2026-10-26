@@ -43,6 +43,7 @@ class MeetingWorkflow:
         self._recovered = set()
         self._routes = None
         self._capture_mid = ""
+        self._job_id = ""
 
     @property
     def active(self):
@@ -60,10 +61,13 @@ class MeetingWorkflow:
                 self.store.recover(identity.owner)
                 self._recovered.add(identity.owner)
             meetings = self.store.list(identity.owner)
-            if self.selected not in {row["id"] for row in meetings}:
+            visible_ids = {row["id"] for row in meetings}
+            if not self.active and self.selected not in visible_ids:
                 self.selected = meetings[0]["id"] if meetings else ""
             selected = (
-                self.store.get(identity.owner, self.selected) if self.selected else None
+                self.store.get(identity.owner, self.selected)
+                if self.selected in visible_ids
+                else None
             )
             capture = (
                 self._capture
@@ -115,8 +119,12 @@ class MeetingWorkflow:
                     self.language = meeting["language"]
                     self.selected = meeting_id
                 self._routes = self.provider.snapshot(
-                    expected, persisted or None, self.store.notes_route(expected.owner)
+                    expected,
+                    persisted or None,
+                    self.store.notes_route(expected.owner),
+                    action=action,
                 )
+                self._job_id = meeting_id or ""
                 self._identity = expected
                 self._cancel = CancellationToken()
                 self._stop = threading.Event()
@@ -181,14 +189,14 @@ class MeetingWorkflow:
         if self._thread:
             self._thread.join(timeout=0.2)
 
-    def _process(self, expected, attempted):
-        for chunk in self.store.get(expected.owner, self.selected)["chunks"]:
+    def _process(self, expected, meeting_id, attempted):
+        for chunk in self.store.get(expected.owner, meeting_id)["chunks"]:
             if chunk["state"] not in {"pending", "failed"} or chunk["id"] in attempted:
                 continue
             attempted.add(chunk["id"])
             self._check(expected)
             try:
-                path = self.store.audio_path(self.selected, chunk["id"])
+                path = self.store.audio_path(meeting_id, chunk["id"])
                 if not path.is_file():
                     raise MeetingError("meeting.audio_damaged")
                 # Failed uncertain requests reuse the same operation UUID.
@@ -199,7 +207,7 @@ class MeetingWorkflow:
                 with self._lock, self.provider.publication(expected):
                     self._check(expected)
                     self.store.save_transcript(
-                        expected.owner, self.selected, chunk["id"], text
+                        expected.owner, meeting_id, chunk["id"], text
                     )
             except Exception as error:
                 self._check(expected)
@@ -210,7 +218,7 @@ class MeetingWorkflow:
                 )
                 self.store.chunk_failed(
                     expected.owner,
-                    self.selected,
+                    meeting_id,
                     chunk["id"],
                     code,
                     retry_operation=getattr(error, "retry_operation", False),
@@ -224,7 +232,8 @@ class MeetingWorkflow:
                     raise
 
     def _run(self, action, expected):
-        mid = ""
+        mid = self._job_id
+        recording = action == "record"
         try:
             self._check(expected)
             if action == "record":
@@ -240,6 +249,7 @@ class MeetingWorkflow:
                         routes=self._routes.persisted() if self._routes else {},
                     )["id"]
                     self._capture_mid = mid
+                    self._job_id = mid
                     self._started = self.clock()
                     self._duration = 0
                     self._capture = self.capture_factory(
@@ -262,22 +272,22 @@ class MeetingWorkflow:
                         or self.clock() - self._started >= MAX_MEETING_SECONDS
                     ):
                         break
-                    self._process(expected, attempted)
+                    self._process(expected, mid, attempted)
                 self._capture.stop()
                 if self.phase == "recording":
                     self._duration = int(self.clock() - self._started)
                 self.store.end(expected.owner, mid)
                 self.phase = "processing"
                 self._check(expected)
-                self._process(expected, attempted)
+                self._process(expected, mid, attempted)
             elif action == "retry":
                 self.phase = "processing"
-                self.store.prepare_retry(expected.owner, self.selected)
-                self._process(expected, set())
+                self.store.prepare_retry(expected.owner, mid)
+                self._process(expected, mid, set())
             else:
                 self.phase = "summarizing"
                 operation, revision, source = self.store.summary_request(
-                    expected.owner, self.selected
+                    expected.owner, mid
                 )
                 text = self.provider.summarize(
                     expected,
@@ -290,15 +300,13 @@ class MeetingWorkflow:
                 self._check(expected)
                 with self._lock, self.provider.publication(expected):
                     self._check(expected)
-                    self.store.save_summary(
-                        expected.owner, self.selected, revision, text
-                    )
+                    self.store.save_summary(expected.owner, mid, revision, text)
             self.phase = "stopped"
         except Exception as error:
             if self.phase == "recording" and self._started is not None:
                 self._duration = int(self.clock() - self._started)
             if action == "summary" and getattr(error, "retry_operation", False):
-                self.store.allow_summary_retry(expected.owner, self.selected)
+                self.store.allow_summary_retry(expected.owner, mid)
             self.phase = "cancelled" if self._cancel.cancelled else "failed"
             self.error = (
                 ""
@@ -311,7 +319,7 @@ class MeetingWorkflow:
             try:
                 if self._capture:
                     self._capture.stop()
-                if mid:
+                if recording and mid:
                     self.store.end(expected.owner, mid, self.phase)
             finally:
                 self.provider.release()

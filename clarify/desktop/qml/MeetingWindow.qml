@@ -135,6 +135,20 @@ ApplicationWindow {
         }
         Label { visible: view.error !== ""; text: qsTr(view.error); color: theme.text; wrapMode: Text.WordWrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
         RowLayout {
+            visible: notesDirty && notesContext !== view.context
+            Label { text: qsTr("meeting.draft_recovery"); color: theme.text; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+            MeetingButton {
+                text: qsTr("meeting.keep_draft")
+                onClicked: {
+                    notesSaving = true
+                    var saved = meetings.preserveDraft(notesId, notesContext, personalNotes.text)
+                    notesSaving = false
+                    if (saved) { notesDirty = false; root.loadNotes() }
+                }
+            }
+            MeetingButton { text: qsTr("meeting.discard_draft"); onClicked: { notesDirty = false; root.loadNotes() } }
+        }
+        RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 18

@@ -87,6 +87,28 @@ class MeetingStoreTests(unittest.TestCase):
         self.store.end("guest", self.mid)
         self.assertEqual(self.store.get("guest", self.mid)["ended"], 100)
 
+    def test_summary_compare_and_update_rejects_a_concurrent_notes_commit(self):
+        self.store.save_notes("guest", self.mid, "original")
+        _, revision, _ = self.store.summary_request("guest", self.mid)
+        self.store.save_summary("guest", self.mid, revision, "previous summary")
+        owned = self.store._owned
+
+        def notes_commit(db, owner, meeting_id):
+            row = owned(db, owner, meeting_id)
+            with closing(sqlite3.connect(self.store.path)) as concurrent, concurrent:
+                concurrent.execute(
+                    "UPDATE meetings SET notes='new note',revision=revision+1 WHERE id=?",
+                    (meeting_id,),
+                )
+            return row
+
+        with patch.object(self.store, "_owned", side_effect=notes_commit):
+            with self.assertRaises(MeetingError):
+                self.store.save_summary("guest", self.mid, revision, "stale result")
+        saved = self.store.get("guest", self.mid)
+        self.assertEqual(saved["notes"], "new note")
+        self.assertEqual(saved["summary"], "previous summary")
+
     def test_newer_or_corrupt_database_is_not_replaced(self):
         for raw in (b"broken database", None):
             with tempfile.TemporaryDirectory() as directory:
