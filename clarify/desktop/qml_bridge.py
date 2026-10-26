@@ -117,6 +117,7 @@ class QmlWorkflowBridge(QObject):
         "provider_chatgpt_plan_limit": "Your ChatGPT plan or app limit was reached. Manage usage in ChatGPT settings.",
         "provider_chatgpt_plan_ineligible": "This ChatGPT account or workspace cannot use its plan here.",
         "provider_chatgpt_plan_permission": "Allow this app to use your ChatGPT plan, then connect again.",
+        "provider_chatgpt_identity": "Could not validate your ChatGPT identity. Check the selected account in settings.",
     }
     _ERROR_MESSAGES_PT = {
         "error": "Não foi possível concluir a operação. Tente novamente.",
@@ -139,6 +140,7 @@ class QmlWorkflowBridge(QObject):
         "provider_chatgpt_plan_limit": "O limite do plano ChatGPT ou do aplicativo foi atingido. Gerencie o uso nas configurações do ChatGPT.",
         "provider_chatgpt_plan_ineligible": "Esta conta ou workspace do ChatGPT não pode usar o plano aqui.",
         "provider_chatgpt_plan_permission": "Autorize o aplicativo a usar seu plano ChatGPT e conecte novamente.",
+        "provider_chatgpt_identity": "Não foi possível validar sua identidade ChatGPT. Verifique a conta selecionada nas configurações.",
     }
     _ERROR_PHASES = frozenset(
         {

@@ -158,6 +158,10 @@ class ChatGPTPermissionError(AuthenticationError):
     code = "chatgpt_plan_permission"
 
 
+class ChatGPTIdentityError(AuthenticationError):
+    code = "chatgpt_identity"
+
+
 def chatgpt_response_error(
     code: str,
     *,
@@ -178,7 +182,7 @@ def chatgpt_response_error(
         "subscription_sharing_user_unavailable": ServiceUnavailableError,
         "subscription_sharing_unsupported_capability": InvalidRequestError,
         "subscription_sharing_route_not_supported": InvalidRequestError,
-        "subscription_sharing_invalid_user": AuthenticationError,
+        "subscription_sharing_invalid_user": ChatGPTIdentityError,
     }.get(code, InvalidResponseError)
     error = error_type(
         provider="chatgpt",
@@ -271,26 +275,31 @@ _CHATGPT_MESSAGES = {
         "Your ChatGPT plan or app limit was reached. Manage usage in ChatGPT settings.",
         "This ChatGPT account or workspace cannot use its plan here.",
         "Allow this app to use your ChatGPT plan, then connect again.",
+        "Could not validate your ChatGPT identity. Check the selected account in settings.",
     ),
     "pt": (
         "O limite do plano ChatGPT ou do aplicativo foi atingido. Gerencie o uso nas configurações do ChatGPT.",
         "Esta conta ou workspace do ChatGPT não pode usar o plano aqui.",
         "Autorize o aplicativo a usar seu plano ChatGPT e conecte novamente.",
+        "Não foi possível validar sua identidade ChatGPT. Verifique a conta selecionada nas configurações.",
     ),
     "es": (
         "Se alcanzó el límite del plan ChatGPT o de la aplicación. Gestiona el uso en ChatGPT.",
         "Esta cuenta o espacio de trabajo de ChatGPT no puede usar el plan aquí.",
         "Autoriza el uso de tu plan ChatGPT y vuelve a conectar.",
+        "No se pudo validar tu identidad de ChatGPT. Revisa la cuenta seleccionada en los ajustes.",
     ),
     "de": (
         "Das ChatGPT- oder App-Limit wurde erreicht. Verwalten Sie die Nutzung in ChatGPT.",
         "Dieses ChatGPT-Konto oder dieser Arbeitsbereich kann den Plan hier nicht nutzen.",
         "Erlauben Sie dieser App die Nutzung Ihres ChatGPT-Plans und verbinden Sie sich erneut.",
+        "Ihre ChatGPT-Identität konnte nicht bestätigt werden. Prüfen Sie das ausgewählte Konto in den Einstellungen.",
     ),
     "ru": (
         "Достигнут лимит плана ChatGPT или приложения. Управляйте использованием в настройках ChatGPT.",
         "Этот аккаунт или рабочее пространство ChatGPT не может использовать план здесь.",
         "Разрешите приложению использовать план ChatGPT и подключитесь снова.",
+        "Не удалось подтвердить вашу личность ChatGPT. Проверьте выбранный аккаунт в настройках.",
     ),
 }
 for _language, _messages in _CHATGPT_MESSAGES.items():
@@ -300,6 +309,7 @@ for _language, _messages in _CHATGPT_MESSAGES.items():
                 "chatgpt_plan_limit",
                 "chatgpt_plan_ineligible",
                 "chatgpt_plan_permission",
+                "chatgpt_identity",
             ),
             _messages,
         )

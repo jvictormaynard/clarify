@@ -346,6 +346,70 @@ class ChatGPTProviderTests(unittest.TestCase):
         self.assertEqual(error.request_id, "synthetic-request")
         self.assertNotIn("private policy", str(error))
 
+    def test_invalid_subscriber_identity_reaches_oauth_ui_without_erasing_credentials(
+        self,
+    ):
+        from clarify.desktop.qml_bridge import QmlWorkflowBridge
+        from workflows import WorkflowPhase, WorkflowState, _failure_status
+
+        body = {
+            "error": {
+                "code": "subscription_sharing_invalid_user",
+                "message": "private source",
+            }
+        }
+        for transport in ("http", "sse"):
+            with self.subTest(transport=transport):
+                session = Session()
+                response = Response(payload=body)
+                if transport == "http":
+                    response.status_code = 401
+                    error = _http_error(
+                        response, "chatgpt", "text_generation", "operation"
+                    )
+                else:
+                    response.events = [{"type": "response.failed", "response": body}]
+                    adapter, _ = self.adapter(response, session=session)
+                    try:
+                        adapter.rewrite(self.rewrite, self.connection)
+                    except Exception as caught:
+                        error = caught
+                    else:
+                        self.fail("subscriber error was accepted")
+                    self.assertTrue(response.closed)
+                self.assertEqual(error.code, "chatgpt_identity")
+                self.assertEqual(
+                    error.response_code, "subscription_sharing_invalid_user"
+                )
+                self.assertEqual(error.request_id, "synthetic-request")
+                self.assertEqual(error.status_code, response.status_code)
+                self.assertEqual(
+                    session.credential().access_token, "synthetic-oauth-token"
+                )
+                state = WorkflowState(
+                    phase=WorkflowPhase.FAILED,
+                    status_key=_failure_status(error, "error"),
+                )
+                service = SimpleNamespace(state=state, subscribe=lambda callback: None)
+                for language, expected in (
+                    (
+                        "en",
+                        "Could not validate your ChatGPT identity. Check the selected account in settings.",
+                    ),
+                    (
+                        "pt",
+                        "Não foi possível validar sua identidade ChatGPT. Verifique a conta selecionada nas configurações.",
+                    ),
+                ):
+                    bridge = QmlWorkflowBridge(
+                        service,
+                        app_config=SimpleNamespace(
+                            ui=SimpleNamespace(language=language)
+                        ),
+                    )
+                    self.assertEqual(bridge.status, expected)
+                self.assertNotIn("private source", str(error))
+
     def test_cancellation_and_account_switch_reject_output_and_close_stream(self):
         for switch in (False, True):
             with self.subTest(switch=switch):
