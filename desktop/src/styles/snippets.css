@@ -1,16 +1,28 @@
 .snippet-composer,
 .snippet-entry {
   display: grid;
-  gap: var(--space-3);
+  gap: 10px;
   min-width: 0;
-  padding: var(--space-5) 0;
-  border-bottom: 1px solid var(--color-subtle-border);
+  padding: 16px;
+}
+
+.snippet-composer,
+.snippet-list {
+  border: 1px solid var(--border, var(--color-border));
+  border-radius: var(--radius, 10px);
+  background: var(--card, var(--color-surface));
+}
+
+.snippet-composer { margin-top: 16px; }
+.snippet-list { margin-top: 16px; }
+.snippet-entry + .snippet-entry {
+  border-top: 1px solid var(--border, var(--color-border));
 }
 
 .snippet-composer label,
 .snippet-entry label {
-  font-size: var(--text-sm);
-  color: var(--color-text);
+  font-size: var(--font-size-description);
+  color: var(--muted-foreground, var(--color-text-muted));
 }
 
 .snippet-actions {
@@ -19,6 +31,7 @@
   justify-content: space-between;
   gap: var(--space-3);
 }
+.snippet-actions > .hint { margin: 0; font-variant-numeric: tabular-nums; }
 
 .snippet-label {
   flex: 1;
@@ -26,7 +39,8 @@
 }
 
 .snippet-entry details {
-  font-size: var(--text-sm);
+  font-size: var(--font-size-description);
+  padding: 2px 0 0;
 }
 
 .snippet-entry details .snippet-actions {
@@ -34,6 +48,18 @@
 }
 
 .snippets textarea {
-  min-height: 90px;
+  min-height: 76px;
   resize: vertical;
+  line-height: 1.6;
+}
+
+.snippet-entry .dictionary-line > .ghost {
+  min-height: 28px;
+  padding: 4px 6px;
+}
+
+@media (max-width: 700px) {
+  .snippet-composer,
+  .snippet-entry { padding: 14px; }
+  .snippet-actions { flex-wrap: wrap; }
 }

@@ -1,0 +1,11 @@
+[
+  {
+    "name": "t3code",
+    "version": "67c3afbd58e72d088fec7af69d52dd255a00199e",
+    "purl": "pkg:github/pingdotgg/t3code@67c3afbd58e72d088fec7af69d52dd255a00199e",
+    "license": "MIT",
+    "file": "t3code-MIT.txt",
+    "source": "https://raw.githubusercontent.com/pingdotgg/t3code/67c3afbd58e72d088fec7af69d52dd255a00199e/LICENSE",
+    "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"
+  }
+]

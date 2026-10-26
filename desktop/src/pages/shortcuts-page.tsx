@@ -9,13 +9,13 @@ export function ShortcutsPage({ controller }: SettingsPageProps) {
       {state.hotkeyActions.map((item) => (
         <Row key={item.id} title={t(item.label)}>
           <div className="inline-actions">
-            <button
+            <Button
               type="button"
-              className="control shortcut"
+              className="shortcut"
               onClick={() => setCapture(item.id)}
             >
               {item.display || item.definition?.display || t("Definir atalho")}
-            </button>
+            </Button>
             <Button
               variant="ghost"
               aria-label={t("Restaurar {name}", { name: item.label })}

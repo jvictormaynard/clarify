@@ -16,7 +16,7 @@ const confirmations = {
   resetAllHotkeys: {
     title: t("Restaurar atalhos?"),
     description:
-      t("Os atalhos voltarão ao padrão. Use Salvar alterações para aplicar ou Descartar para manter os atalhos atuais."),
+      t("Os atalhos voltarão ao padrão e serão salvos agora."),
   },
 };
 
@@ -28,6 +28,7 @@ export function SettingsDialogs({
   const confirmation = c.confirmAction
     ? confirmations[c.confirmAction]
     : confirmations.resetAllHotkeys;
+  const waitingForDraftRoute = !c.closing && c.routeLoading && (c.page === "dictation" || c.page === "text");
   return (
     <>
       <Confirm
@@ -39,10 +40,10 @@ export function SettingsDialogs({
       >
         <Button
           variant="ghost"
-          disabled={c.busy}
+          disabled={c.confirming}
           onClick={() => c.setConfirmAction(null)}
         >{t("Cancelar")}</Button>
-        <Button disabled={c.busy} onClick={() => void c.confirmMutation()}>{t("Confirmar")}</Button>
+        <Button disabled={c.confirming} onClick={() => void c.confirmMutation()}>{t("Confirmar")}</Button>
       </Confirm>
       <Confirm
         open={(c.closing && c.dirty) || c.discarding}
@@ -50,15 +51,17 @@ export function SettingsDialogs({
           if (!open) c.cancelDiscard();
         }}
         title={t("Alterações não salvas")}
-        description={t("Salve suas alterações ou descarte-as para continuar.")}
+        description={t(c.closing
+          ? "Salve ou descarte as alterações de todas as páginas para fechar."
+          : "Salve suas alterações ou descarte-as para continuar.")}
       >
-        <Button variant="ghost" disabled={c.busy} onClick={c.cancelDiscard}>{t("Continuar editando")}</Button>
-        <Button disabled={c.busy} onClick={() => void c.discardAndClose()}>{t("Descartar")}</Button>
+        <Button variant="ghost" onClick={c.cancelDiscard}>{t("Continuar editando")}</Button>
+        <Button disabled={c.saving || c.discardingDrafts || waitingForDraftRoute} onClick={() => void c.discardAndClose()}>{t(c.closing ? "Descartar tudo" : "Descartar")}</Button>
         <Button
           variant="primary"
-          disabled={c.busy}
+          disabled={c.saving || c.discardingDrafts || c.validatingProvider || waitingForDraftRoute}
           onClick={() => void c.saveAndClose()}
-        >{t("Salvar")}</Button>
+        >{t(c.closing ? "Salvar tudo" : "Salvar")}</Button>
       </Confirm>
       <Confirm
         open={!!c.capture}

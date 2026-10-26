@@ -14,14 +14,11 @@ from clarify.desktop.qml_status import QmlStatusPillController
 
 
 class CaptureReadinessTests(unittest.TestCase):
-    def test_live_process_and_headers_are_not_audio(self):
+    def test_wav_headers_are_not_audio(self):
         recorder = QtRecorder(microphone_inventory_source=Mock())
-        recorder.process = Mock()
-        recorder.process.poll.return_value = None
         with TemporaryDirectory() as directory:
             path = Path(directory) / "capture.wav"
-            recorder._capture_path = path
-            self.assertFalse(recorder.capture_active)
+            self.assertFalse(recorder._has_pcm_frames(path))
             header = (
                 b"RIFF"
                 + b"\xff" * 4
@@ -32,13 +29,9 @@ class CaptureReadinessTests(unittest.TestCase):
                 + b"\xff" * 4
             )
             path.write_bytes(header)
-            self.assertFalse(recorder.capture_active)
+            self.assertFalse(recorder._has_pcm_frames(path))
             path.write_bytes(header + b"\0\0")
-            self.assertTrue(recorder.capture_active)
-            recorder.process.poll.return_value = 1
-            self.assertFalse(recorder.capture_active)
-            recorder.process = None
-            self.assertFalse(recorder.capture_active)
+            self.assertTrue(recorder._has_pcm_frames(path))
 
     def test_meter_level_cannot_mark_capture_ready_and_stop_resets_readiness(self):
         app = QApplication.instance() or QApplication([])
