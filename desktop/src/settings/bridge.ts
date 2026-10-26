@@ -18,6 +18,9 @@ export interface Settings {
   historyState?: { context: string; revision: string };
   uiLanguage?: string;
   onboardingRequired: boolean;
+  practiceState?: {
+    open: boolean; phase?: string; text?: string; source?: string; status?: string; blocked?: string;
+  };
   accountState?: {
     socialPending?: boolean;
     endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
@@ -95,6 +98,7 @@ export interface Settings {
 
 // Argument tuples keep every frontend call checked without changing the pipe protocol.
 export type SettingsArguments = {
+  practiceCommand: [action: "open" | "close" | "start" | "stop" | "cancel"];
   completeOnboarding: [mode: "account" | "byok" | "local", key: string];
   accountCommand: [action: string, value: string];
   deleteHistoryEntry: [id: string, context: string];

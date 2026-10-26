@@ -455,6 +455,38 @@ def main(argv: list[str] | None = None) -> int:
 
     loaded_config = repositories.config.load()
     usage_statistics = QtStatisticsGateway(repositories)
+    settings = None
+    practice = None
+    voice_translation = None
+    audio_batch = None
+    bridge = None
+
+    def settings_work_busy() -> bool:
+        return settings is not None and (
+            settings.microphoneTestBusy
+            or settings.microphoneInventoryBusy
+            or settings.localAsrBusy
+            or settings.localBenchmarkBusy
+            or settings.providerBusy
+            or settings.routeModelStatus == "loading"
+        )
+
+    def capture_idle() -> bool:
+        return (
+            workflow_service.state.phase.value == "ready"
+            and (bridge is None or not bridge.start_pending)
+            and (voice_translation is None or not voice_translation.active)
+            and (audio_batch is None or not audio_batch.running)
+        )
+
+    def external_processing_allowed() -> bool:
+        return (
+            practice is None or not practice.blocks_processing
+        ) and not settings_work_busy()
+
+    def settings_processing_allowed() -> bool:
+        return (practice is None or not practice.busy) and capture_idle()
+
     voice_translation = create_qml_voice_translation_controller(
         repositories.config.load,
         runtime.recording_audio,
@@ -467,6 +499,7 @@ def main(argv: list[str] | None = None) -> int:
             dictionary_service=runtime.dictionary_service,
         ),
         parent=app,
+        processing_allowed=lambda: external_processing_allowed() and capture_idle(),
     )
     audio_batch = QmlAudioFileImportController(
         runtime.audio_batch_service,
@@ -474,6 +507,7 @@ def main(argv: list[str] | None = None) -> int:
         scheduler=scheduler,
         copy_runner=runtime.copy_result,
         dispatch_runner=scheduler.run_dispatch,
+        processing_allowed=lambda: external_processing_allowed() and capture_idle(),
         parent=app,
     )
 
@@ -488,6 +522,8 @@ def main(argv: list[str] | None = None) -> int:
                 if voice_translation.phase == "recording"
                 else voice_translation.cancel()
             )
+        if not external_processing_allowed() or not capture_idle():
+            return False
         target = runtime.clipboard.capture_target()
         if target is None:
             return False
@@ -506,6 +542,21 @@ def main(argv: list[str] | None = None) -> int:
         lambda: shell.hide_window(),
         parent=app,
     )
+    try:
+        from .dictation_practice import PracticeController, practice_readiness
+    except ImportError:
+        from dictation_practice import PracticeController, practice_readiness
+
+    def practice_can_start() -> bool:
+        return capture_idle() and not settings_work_busy()
+
+    practice = PracticeController(
+        runtime.practice_workflow,
+        language=lambda: repositories.config.load().ui.language,
+        readiness=lambda: practice_readiness(settings, practice_can_start),
+        can_open=lambda: capture_idle() and not settings.microphoneTestBusy,
+        identity=runtime.account.history_identity,
+    )
     bridge = QmlWorkflowBridge(
         workflow_service,
         app_config=loaded_config,
@@ -516,6 +567,11 @@ def main(argv: list[str] | None = None) -> int:
         audio_batch_controller=audio_batch,
         target_provider=quick_paste.capture_target,
         paste_runner=quick_paste.paste,
+        processing_allowed=lambda: (
+            external_processing_allowed()
+            and not voice_translation.active
+            and not audio_batch.running
+        ),
         parent=app,
     )
     hotkeys = None
@@ -536,13 +592,16 @@ def main(argv: list[str] | None = None) -> int:
         hotkey_capture_changed=capture_qml_hotkeys,
         dictionary_service=getattr(runtime, "dictionary_service", None),
         account_service=getattr(runtime, "account", None),
+        processing_allowed=settings_processing_allowed,
         account_can_change=lambda: (
             workflow_service.state.phase.value
             in {"ready", "completed", "failed", "cancelled", "microphone_unavailable"}
             and not voice_translation.active
             and not audio_batch.running
+            and not practice.blocks_processing
         ),
     )
+    settings.bindPractice(practice)
     app.applicationStateChanged.connect(
         lambda state: (
             runtime.request_history_sync()
@@ -559,6 +618,7 @@ def main(argv: list[str] | None = None) -> int:
             and not voice_translation.active
             and not audio_batch.running
             and not settings.microphoneTestBusy
+            and not practice.open
             and not settings.localAsrBusy
             and not settings.localBenchmarkBusy
             and not settings.providerBusy
@@ -632,20 +692,29 @@ def main(argv: list[str] | None = None) -> int:
             parent=app,
         )
     if hotkeys is not None:
-        bridge.surfaceChanged.connect(
-            lambda: _sync_recording_escape_hotkey(bridge, hotkeys)
-        )
-        _sync_recording_escape_hotkey(bridge, hotkeys)
+
+        def sync_escape():
+            hotkeys.set_recording_active(
+                practice.busy or bridge.surface in {"recording", "translation_picker"}
+            )
+
+        bridge.surfaceChanged.connect(sync_escape)
+        practice.subscribe(sync_escape)
+        sync_escape()
     shell = QtShell(
         window,
         hotkeys=hotkeys,
         application=app,
-        visibility_hotkey_allowed=lambda: not bridge.recording,
+        visibility_hotkey_allowed=lambda: not bridge.recording and not practice.busy,
         icon=branding_icon,
         parent=app,
     )
     shell.hotkeyTriggered.connect(
-        lambda action: bridge.handleHotkey(action) if not updates.installing else None
+        lambda action: (
+            (practice.handle_hotkey(action) or bridge.handleHotkey(action))
+            if not updates.installing
+            else None
+        )
     )
     bridge.resultRequested.connect(shell.show_window)
     workflow_window_visibility = _WorkflowWindowVisibility(bridge, shell, window)

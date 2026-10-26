@@ -460,6 +460,7 @@ class QmlSettingsController(QObject):
         dictionary_service: DictionarySnippetService | None = None,
         account_service=None,
         account_can_change=None,
+        processing_allowed: Callable[[], bool] = lambda: True,
     ) -> None:
         super().__init__(parent)
         self._background_mailbox = _SettingsMailbox()
@@ -467,12 +468,14 @@ class QmlSettingsController(QObject):
         self._background_timer.setInterval(25)
         self._background_timer.timeout.connect(self._drain_background_publications)
         self._updates = None
+        self._practice = None
         self.repositories = repositories
         self._account = account_service or AccountService(
             Path(repositories.config.path).parent,
             default_endpoint=os.environ.get("CLARIFY_CLOUD_URL", DEFAULT_CLOUD_URL),
         )
         self._account_can_change = account_can_change or (lambda: True)
+        self._processing_allowed = processing_allowed
         self._history = getattr(self._account, "history", None)
         if self._history is None and isinstance(self._account, AccountService):
             self._history = AccountHistory(
@@ -1665,7 +1668,11 @@ class QmlSettingsController(QObject):
     def testMicrophone(self) -> bool:
         """Stream local input levels for up to 30 seconds off the GUI thread."""
 
-        if self._microphone_test_busy or self._microphone_inventory_busy:
+        if not self._processing_allowed() or (
+            self._microphone_test_busy
+            or self._microphone_inventory_busy
+            or (self._practice is not None and self._practice.busy)
+        ):
             return False
         selection = self._microphone_selection_for_test()
         if selection is None or not selection.can_record:
@@ -1861,6 +1868,8 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def refreshRouteModels(self) -> bool:
         """Discover models without saving credentials or changing the route."""
+        if not self._processing_allowed():
+            return False
         if getattr(self._account, "managed", False) is True:
             return False
         key = self._model_connection_key()
@@ -1970,7 +1979,11 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def measureLocalDevice(self):
-        if self.localAsrBusy or self._local_benchmark_busy:
+        if (
+            not self._processing_allowed()
+            or self.localAsrBusy
+            or self._local_benchmark_busy
+        ):
             return False
         from local_asr import default_manifest_path
         from local_asr_catalog import calibrate
@@ -2078,6 +2091,8 @@ class QmlSettingsController(QObject):
         return self._browse_local(self._local_profile, self._local_devices[index]["id"])
 
     def _browse_local(self, model, device):
+        if not self._processing_allowed():
+            return False
         try:
             from local_asr_catalog import ModelInstaller
 
@@ -2194,6 +2209,8 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def validateProvider(self) -> bool:
         """Validate and persist the selected cloud provider without blocking QML."""
+        if not self._processing_allowed():
+            return False
         if getattr(self._account, "managed", False) is True:
             return False
 
@@ -2318,7 +2335,11 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def installLocalAsr(self) -> bool:
-        if self.localAsrBusy or self._local_benchmark_busy:
+        if (
+            not self._processing_allowed()
+            or self.localAsrBusy
+            or self._local_benchmark_busy
+        ):
             return False
         self._local_device = "auto"
         try:
@@ -2333,6 +2354,8 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def removeLocalAsr(self) -> bool:
+        if not self._processing_allowed():
+            return False
         try:
             self._local_product.remove_async()
         except Exception as error:
@@ -2350,10 +2373,14 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def refreshLocalAsr(self) -> bool:
+        if not self._processing_allowed():
+            return False
         return bool(self._local_product.refresh_async())
 
     @Slot()
     def shutdown(self) -> None:
+        if self._practice is not None:
+            self._practice.command("close")
         self._account_shutdown = True
         self._background_mailbox.close()
         self._background_timer.stop()
@@ -2488,6 +2515,23 @@ class QmlSettingsController(QObject):
     def onboardingRequired(self):
         return not self._config.onboarding_completed
 
+    def bindPractice(self, controller):
+        self._practice = controller
+
+    @Property("QVariantMap", notify=configChanged)
+    def practiceState(self):
+        return (
+            self._practice.snapshot() if self._practice is not None else {"open": False}
+        )
+
+    @Slot(str, result=bool)
+    def practiceCommand(self, action):
+        if self._practice is None:
+            return False
+        if action == "close":
+            self.stopMicrophoneTest()
+        return self._practice.command(action)
+
     @Slot(str, str, result=bool)
     def completeOnboarding(self, mode, key=""):
         """Commit the first-run choice through the existing config transaction."""
@@ -2557,6 +2601,8 @@ class QmlSettingsController(QObject):
             self.selectProvider("groq")
         self._set_error(None)
         self.saved.emit()
+        if self._practice is not None:
+            self._practice.command("open")
         return True
 
     @Slot(str, str, result=bool)
