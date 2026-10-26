@@ -145,6 +145,20 @@ class MeetingStoreTests(unittest.TestCase):
         with self.assertRaises(MeetingError):
             restarted.get("guest", self.mid)
 
+    def test_transcribed_audio_cleanup_failure_keeps_text_and_a_retry_reference(self):
+        cid, path = self.chunk()
+        with patch.object(Path, "unlink", side_effect=PermissionError("fixture")):
+            self.assertFalse(
+                self.store.save_transcript("guest", self.mid, cid, "saved source")
+            )
+            self.assertTrue(self.store.recover("guest"))
+        self.assertEqual(
+            self.store.get("guest", self.mid)["chunks"][0]["transcript"], "saved source"
+        )
+        self.assertTrue(path.exists())
+        self.assertFalse(self.store.recover("guest"))
+        self.assertFalse(path.exists())
+
     def test_oldest_of_201_meetings_is_paged_and_recovered(self):
         cid, path = self.chunk()
         with closing(sqlite3.connect(self.store.path)) as db, db:

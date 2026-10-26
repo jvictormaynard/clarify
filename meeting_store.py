@@ -242,7 +242,12 @@ class MeetingStore:
                     "UPDATE meetings SET revision=revision+1 WHERE id=?", (meeting_id,)
                 )
         # Only a confirmed committed transcript permits audio removal.
-        self.audio_path(meeting_id, chunk_id).unlink(missing_ok=True)
+        try:
+            self.audio_path(meeting_id, chunk_id).unlink(missing_ok=True)
+            return True
+        except OSError:
+            # Keep the committed reference so recovery can finish this cleanup.
+            return False
 
     def save_notes(self, owner, meeting_id, notes):
         bounded(notes, MAX_NOTES_BYTES)
@@ -322,7 +327,10 @@ class MeetingStore:
             for chunk in self.get(owner, meeting["id"])["chunks"]:
                 path = self.audio_path(meeting["id"], chunk["id"])
                 if chunk["state"] == "transcribed":
-                    path.unlink(missing_ok=True)
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        cleanup_pending = True
                 elif chunk["state"] == "capturing":
                     try:
                         with wave.open(str(path)) as audio:

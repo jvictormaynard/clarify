@@ -234,9 +234,11 @@ class MeetingWorkflow:
                 self._check(expected)
                 with self._lock, self.provider.publication(expected):
                     self._check(expected)
-                    self.store.save_transcript(
+                    cleaned = self.store.save_transcript(
                         expected.owner, meeting_id, chunk["id"], text
                     )
+                    if cleaned is False:
+                        self._cleanup_pending[expected.owner] = True
             except Exception as error:
                 self._check(expected)
                 code = (
