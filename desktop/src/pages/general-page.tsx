@@ -1,6 +1,6 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
-import { Field, Picker, Row, Section, Toggle } from "../components/ui";
+import { Button, Field, Picker, Row, Section, Toggle } from "../components/ui";
 const languageNames: Record<string, string> = {
   en: "English",
   pt: "Portuguese",
@@ -47,12 +47,12 @@ export function GeneralPage({ controller }: SettingsPageProps) {
               t("Com a atualização automática desativada, o menu do Clarify avisa quando há uma nova versão.")
             }
           >
-            <button
+            <Button
               type="button"
-              className="control"
+              className="w-full"
               disabled={!state.updateSupported || state.updateBusy}
               onClick={() => void run("checkForUpdates")}
-            >{t("Verificar atualizações")}</button>
+            >{t("Verificar atualizações")}</Button>
           </Row>
         </Section>
       )}

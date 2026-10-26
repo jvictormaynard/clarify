@@ -27,6 +27,7 @@ export function DictationPage({ controller }: SettingsPageProps) {
             )}
             onChange={(v) => void run("selectMicrophone", v)}
             onRefresh={() => void run("refreshMicrophones")}
+            busy={state.microphoneInventoryBusy}
           />
         </Row>
         <div className="mic-test">
@@ -41,6 +42,7 @@ export function DictationPage({ controller }: SettingsPageProps) {
             ))}
           </div>
           <Button
+            disabled={state.microphoneInventoryBusy}
             onClick={() =>
               void run(
                 state.microphoneTestBusy
@@ -52,6 +54,7 @@ export function DictationPage({ controller }: SettingsPageProps) {
             {state.microphoneTestBusy ? t("Parar teste") : t("Testar microfone")}
           </Button>
         </div>
+        {state.microphoneInventoryBusy && <p className="hint" role="status">{t("Carregando…")}</p>}
         {state.microphoneTestStatus && (
           <p className="hint" role="status">
             {state.microphoneTestStatus === "Test stopped."
@@ -79,8 +82,9 @@ export function DictationPage({ controller }: SettingsPageProps) {
       </Section>}
       <Section>
         <RecordingOptions
-          value={recording ?? recordingDraft(state.recordingControls)}
+          value={{ ...(recording ?? recordingDraft(state.recordingControls)), enabled: state.recordingControls.vad.enabled }}
           onChange={setRecording}
+          onEnabledChange={(enabled) => void run("setRecordingVadEnabled", enabled)}
         />
       </Section>
       {!(state.accountState?.managed || state.accountState?.signedIn) && state.routeProviderId === "local_asr" && (

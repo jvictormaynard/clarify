@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import sys
 import os
+import io
 import subprocess
 import threading
+import textwrap
 import time
 import unittest
 from dataclasses import replace
@@ -120,6 +122,570 @@ class DeterministicWorkflowService:
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional spike dependency")
 class QtRecordingSessionTests(unittest.TestCase):
+    def setUp(self):
+        # No test in this process may fall through to a real native backend.
+        self.enterContext(patch("clarify.desktop.qml_runtime._sounddevice", None))
+
+    def _drain_readiness(self, recorder):
+        worker = recorder._readiness_worker
+        if worker is not None:
+            worker.join(timeout=2)
+            self.assertFalse(
+                worker.is_alive(), "readiness reader retained a stopped WAV"
+            )
+
+    def test_cancel_cleans_wav_with_readiness_read_in_progress(self):
+        from clarify.desktop import qml_runtime
+
+        entered, release, closed, cancelled = (threading.Event() for _ in range(4))
+        process = Mock()
+        process.poll.return_value = None
+        recorder = QtRecorder()
+        recorder.sox = "sox"
+        errors = []
+        original_open = io.open
+
+        class Reader:
+            def __init__(self, source):
+                self.source = source
+
+            def __enter__(self):
+                self.source.__enter__()
+                return self
+
+            def __exit__(self, *exception):
+                try:
+                    return self.source.__exit__(*exception)
+                finally:
+                    closed.set()
+
+            def read(self, size):
+                # Hold a real handle, including on Windows. A gate before open
+                # would not reproduce sharing violations during deletion.
+                entered.set()
+                if not release.wait(5):
+                    raise RuntimeError("readiness read not released")
+                return self.source.read(size)
+
+        def opening(path, *args, **kwargs):
+            source = original_open(path, *args, **kwargs)
+            if path == session.audio_path and args and args[0] == "rb":
+                return Reader(source)
+            return source
+
+        def launch(*_args, **_kwargs):
+            session.audio_path.write_bytes(b"RIFF" + b"0" * 1196)
+            return process
+
+        def cancel():
+            try:
+                session.cancel()
+            except Exception as error:
+                errors.append(error)
+            finally:
+                cancelled.set()
+
+        with (
+            TemporaryDirectory() as directory,
+            patch.object(qml_runtime, "_data_directory", return_value=Path(directory)),
+            patch.object(qml_runtime.subprocess, "Popen", side_effect=launch),
+            patch.object(io, "open", side_effect=opening),
+        ):
+            session = QtRecordingSession(recorder)
+            session.start()
+            canceller = threading.Thread(target=cancel)
+            try:
+                self.assertTrue(entered.wait(2))
+                canceller.start()
+                self.assertTrue(cancelled.wait(1), "cancel waited for a readiness read")
+                self.assertEqual(errors, [], "owned reader prevented WAV deletion")
+                self.assertTrue(session.shutdown_complete.is_set())
+                self.assertFalse(closed.is_set(), "read gate did not retain the handle")
+            finally:
+                release.set()
+                if canceller.ident is not None:
+                    canceller.join(2)
+                recorder.stop()
+                self._drain_readiness(recorder)
+            self.assertTrue(closed.is_set())
+            self.assertFalse(
+                session.audio_path.exists(), "cancelled WAV survived reader release"
+            )
+
+    def test_audio_backend_is_lazy_shared_and_loaded_only_by_workers(self):
+        # A fresh process also detects an eager import before test patching.
+        for available in (True, False):
+            with self.subTest(available=available), TemporaryDirectory() as directory:
+                environment = dict(os.environ, CLARIFY_DATA_DIR=directory)
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        "-c",
+                        textwrap.dedent("""
+                        import builtins
+                        import sys
+                        import threading
+                        from types import SimpleNamespace
+                        entered, release = threading.Event(), threading.Event()
+                        original_import = builtins.__import__
+                        calls, errors, inventories = [], [], []
+                        fake = SimpleNamespace(query_devices=lambda: [])
+                        def importing(name, *args, **kwargs):
+                            if name != 'sounddevice':
+                                return original_import(name, *args, **kwargs)
+                            assert threading.current_thread() is not threading.main_thread(), 'module import or constructor loaded audio'
+                            calls.append(threading.current_thread())
+                            entered.set()
+                            assert release.wait(3), 'backend not released'
+                            if sys.argv[1] == 'False':
+                                raise OSError('PortAudio unavailable')
+                            return fake
+                        builtins.__import__ = importing
+                        from clarify.desktop.qml_runtime import QtRecorder
+                        recorders = [QtRecorder(), QtRecorder()]
+                        assert not calls, 'module import or constructor loaded audio'
+                        requested = [threading.Event(), threading.Event()]
+                        def snapshot(index):
+                            requested[index].set()
+                            try:
+                                inventories.append(recorders[index].microphone_inventory())
+                            except BaseException as error:
+                                errors.append(error)
+                        workers = [threading.Thread(target=snapshot, args=(i,)) for i in range(2)]
+                        try:
+                            workers[0].start()
+                            assert entered.wait(1)
+                            workers[1].start()
+                            assert requested[1].wait(1)
+                            assert len(calls) == 1
+                        finally:
+                            release.set()
+                            for worker in workers:
+                                if worker.ident is not None:
+                                    worker.join(2)
+                        assert not errors, errors
+                        assert all(not worker.is_alive() for worker in workers)
+                        assert len(inventories) == 2
+                        assert len(calls) == 1
+                        assert calls[0] is not threading.main_thread()
+                        recorders[0].microphone_inventory()
+                        assert len(calls) == 1, 'failed initialization must also be cached'
+                        if sys.argv[1] == 'False':
+                            assert all(i.error_code == 'portaudio_unavailable' for i in inventories)
+                    """),
+                        str(available),
+                    ],
+                    cwd=Path(__file__).resolve().parents[1],
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_capture_sample_returns_while_process_launch_is_held(self):
+        from clarify.desktop import qml_runtime
+
+        entered, release, sampled = (threading.Event() for _ in range(3))
+        process = Mock()
+        process.poll.return_value = None
+        errors, samples = [], []
+        recorder = QtRecorder()
+        recorder.sox = "sox"
+
+        def launch(*_args, **_kwargs):
+            entered.set()
+            if not release.wait(3):
+                raise RuntimeError("launch not released")
+            return process
+
+        def start():
+            try:
+                recorder.start(Path("capture.wav"), threading.Event())
+            except Exception as error:
+                errors.append(error)
+
+        def sample():
+            samples.append(recorder.capture_active)
+            sampled.set()
+
+        with (
+            patch.object(qml_runtime.subprocess, "Popen", side_effect=launch),
+            patch.object(qml_runtime, "_sounddevice", None),
+            patch.object(qml_runtime.time, "sleep"),
+        ):
+            starter = threading.Thread(target=start)
+            sampler = threading.Thread(target=sample)
+            try:
+                starter.start()
+                self.assertTrue(entered.wait(1))
+                sampler.start()
+                self.assertTrue(sampled.wait(0.5), "Qt capture sample waited for Popen")
+                self.assertEqual(samples, [False])
+            finally:
+                release.set()
+                starter.join(2)
+                if sampler.ident is not None:
+                    sampler.join(2)
+                recorder.stop()
+                self._drain_readiness(recorder)
+        self.assertEqual(errors, [])
+
+    def test_capture_sample_does_not_read_files_and_worker_requires_pcm(self):
+        from clarify.desktop import qml_runtime
+
+        entered, release, sampled = (threading.Event() for _ in range(3))
+        process = Mock()
+        process.poll.return_value = None
+        recorder = QtRecorder()
+        recorder.sox = "sox"
+        header = b"RIFF" + b"\xff" * 4 + b"WAVEdata" + b"\xff" * 4
+        original_open = qml_runtime._open_readiness_file
+
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.wav"
+            path.write_bytes(header)
+
+            def opening(target):
+                if target == path:
+                    entered.set()
+                    if not release.wait(3):
+                        raise RuntimeError("read not released")
+                return original_open(target)
+
+            with (
+                patch.object(qml_runtime.subprocess, "Popen", return_value=process),
+                patch.object(qml_runtime, "_sounddevice", None),
+                patch.object(qml_runtime.time, "sleep"),
+                patch.object(qml_runtime, "_open_readiness_file", opening),
+            ):
+                recorder.start(path, threading.Event())
+                # The old implementation reads from this sampler. The new
+                # implementation has its own reader, so both reach the gate.
+                sampler = threading.Thread(
+                    target=lambda: (recorder.capture_active, sampled.set())
+                )
+                try:
+                    sampler.start()
+                    self.assertTrue(entered.wait(1))
+                    self.assertTrue(
+                        sampled.wait(0.5), "Qt sample performed readiness file I/O"
+                    )
+                    self.assertFalse(recorder.capture_active)
+                    path.write_bytes(header + b"\0\0")
+                    release.set()
+                    self.assertTrue(recorder._capture.ready.wait(1))
+                    self.assertTrue(recorder.capture_active)
+                finally:
+                    release.set()
+                    sampler.join(2)
+                    recorder.stop()
+                    self._drain_readiness(recorder)
+                self.assertFalse(recorder.capture_active)
+
+    def test_readiness_worker_rejects_headers_and_clears_ready_when_capture_exits(self):
+        from clarify.desktop import qml_runtime
+
+        inspected, cleared = threading.Event(), threading.Event()
+        process = Mock()
+        process.poll.return_value = None
+        recorder = QtRecorder()
+        recorder.sox = "sox"
+        read_frames = recorder._has_pcm_frames
+
+        def inspect(path):
+            ready = read_frames(path)
+            inspected.set()
+            return ready
+
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.wav"
+            self.assertFalse(read_frames(path))
+            header = (
+                b"RIFF"
+                + b"\xff" * 4
+                + b"WAVEfmt "
+                + (16).to_bytes(4, "little")
+                + b"\0" * 16
+                + b"data"
+                + b"\xff" * 4
+            )
+            path.write_bytes(header)
+            with (
+                patch.object(qml_runtime.subprocess, "Popen", return_value=process),
+                patch.object(qml_runtime, "_sounddevice", None),
+                patch.object(recorder, "_has_pcm_frames", side_effect=inspect),
+            ):
+                recorder.start(path, threading.Event())
+                capture = recorder._capture
+                try:
+                    self.assertTrue(inspected.wait(1))
+                    self.assertFalse(recorder.capture_active, "WAV headers are not PCM")
+                    path.write_bytes(header + b"\0\0")
+                    self.assertTrue(
+                        capture.ready.wait(1), "silent PCM is usable capture"
+                    )
+                    self.assertTrue(recorder.capture_active)
+                    clear = capture.ready.clear
+
+                    def clear_readiness():
+                        clear()
+                        cleared.set()
+
+                    with patch.object(
+                        capture.ready, "clear", side_effect=clear_readiness
+                    ):
+                        process.poll.return_value = 1
+                        self.assertTrue(cleared.wait(1))
+                        self.assertFalse(recorder.capture_active)
+                finally:
+                    recorder.stop()
+                    self._drain_readiness(recorder)
+                    self.assertTrue(capture.meter_finished.wait(1))
+
+    def test_finalization_and_restart_do_not_wait_for_optional_meter_open(self):
+        from clarify.desktop import qml_runtime
+
+        for action in ("stop", "stop_for_cancel", "cancel"):
+            with self.subTest(action=action), TemporaryDirectory() as directory:
+                entered, release, finalized = (threading.Event() for _ in range(3))
+                late_closed = threading.Event()
+                streams, errors = [], []
+                recorder = QtRecorder()
+                recorder.sox = "sox"
+
+                class Stream:
+                    def __init__(self, **options):
+                        self.options = options
+                        self.started = self.stopped = self.closed = 0
+                        streams.append(self)
+                        if len(streams) == 1:
+                            entered.set()
+                            if not release.wait(3):
+                                raise RuntimeError("meter not released")
+
+                    def start(self):
+                        self.started += 1
+
+                    def stop(self):
+                        self.stopped += 1
+
+                    def close(self):
+                        self.closed += 1
+                        if self is streams[0]:
+                            late_closed.set()
+
+                def launch(args, **_kwargs):
+                    Path(args[-1]).write_bytes(b"RIFF" + b"0" * 1196)
+                    process = Mock()
+                    process.poll.return_value = None
+                    return process
+
+                def start():
+                    try:
+                        session.start()
+                    except Exception as error:
+                        errors.append(error)
+
+                def finish():
+                    try:
+                        getattr(session, action)()
+                        if action != "cancel":
+                            session.complete()
+                    except Exception as error:
+                        errors.append(error)
+                    finally:
+                        finalized.set()
+
+                with (
+                    patch.object(
+                        qml_runtime, "_data_directory", return_value=Path(directory)
+                    ),
+                    patch.object(qml_runtime.subprocess, "Popen", side_effect=launch),
+                    patch.object(
+                        qml_runtime,
+                        "_sounddevice",
+                        SimpleNamespace(RawInputStream=Stream),
+                    ),
+                    patch.object(qml_runtime.time, "sleep"),
+                ):
+                    session = QtRecordingSession(recorder)
+                    starter = threading.Thread(target=start)
+                    finisher = threading.Thread(target=finish)
+                    next_capture = None
+                    try:
+                        starter.start()
+                        self.assertTrue(entered.wait(1))
+                        self.assertTrue(
+                            session.start_finished.wait(0.5),
+                            "startup waited for visual meter",
+                        )
+                        finisher.start()
+                        self.assertTrue(
+                            finalized.wait(0.5), "finalization waited for visual meter"
+                        )
+                        self.assertTrue(session.shutdown_complete.is_set())
+                        self._drain_readiness(recorder)
+                        self.assertFalse(session.audio_path.exists())
+                        recorder.start(Path(directory) / "next.wav", threading.Event())
+                        next_capture = recorder._capture
+                        self.assertEqual(
+                            len(streams), 1, "overlapping meter initialization"
+                        )
+                        release.set()
+                        self.assertTrue(late_closed.wait(1))
+                        self.assertTrue(next_capture.meter_ready.wait(1))
+                        self.assertIs(recorder.mic_stream, streams[1])
+                        self.assertEqual(
+                            streams[0].started, 0, "stale open revived a stopped stream"
+                        )
+                        streams[0].options["callback"](b"\0\x40" * 32, 32, None, None)
+                        self.assertEqual(
+                            recorder.mic_level,
+                            0.0,
+                            "stale callback changed next recording",
+                        )
+                    finally:
+                        release.set()
+                        starter.join(2)
+                        if finisher.ident is not None:
+                            finisher.join(2)
+                        recorder.stop()
+                        self._drain_readiness(recorder)
+                        if next_capture is not None:
+                            self.assertTrue(next_capture.meter_finished.wait(1))
+                    self.assertEqual(errors, [])
+                    self.assertEqual(
+                        [(s.stopped, s.closed) for s in streams], [(1, 1), (1, 1)]
+                    )
+
+    def test_cancel_during_launch_cleans_late_process_without_stopping_next_capture(
+        self,
+    ):
+        from clarify.desktop import qml_runtime
+
+        entered, release, cancelled = (threading.Event() for _ in range(3))
+        old_process, next_process = Mock(), Mock()
+        old_process.poll.return_value = next_process.poll.return_value = None
+        errors = []
+        recorder = QtRecorder()
+        recorder.sox = "sox"
+
+        def launch(args, **_kwargs):
+            if Path(args[-1]) == session.audio_path:
+                entered.set()
+                if not release.wait(3):
+                    raise RuntimeError("launch not released")
+                session.audio_path.write_bytes(b"late cancelled capture")
+                return old_process
+            return next_process
+
+        def start():
+            try:
+                session.start()
+            except Exception as error:
+                errors.append(error)
+
+        with (
+            TemporaryDirectory() as directory,
+            patch.object(qml_runtime, "_data_directory", return_value=Path(directory)),
+            patch.object(qml_runtime.subprocess, "Popen", side_effect=launch),
+            patch.object(qml_runtime, "_sounddevice", None),
+        ):
+            session = QtRecordingSession(recorder)
+            starter = threading.Thread(target=start)
+            canceller = threading.Thread(
+                target=lambda: (session.cancel(), cancelled.set())
+            )
+            try:
+                starter.start()
+                self.assertTrue(entered.wait(1))
+                canceller.start()
+                self.assertTrue(cancelled.wait(0.5), "cancel waited for native launch")
+                recorder.start(Path(directory) / "next.wav", threading.Event())
+                next_capture = recorder._capture
+                release.set()
+                starter.join(1)
+                self.assertFalse(starter.is_alive())
+                self.assertIs(recorder._capture, next_capture)
+                self.assertIs(recorder.process, next_process)
+                old_process.terminate.assert_called_once()
+                next_process.terminate.assert_not_called()
+                self.assertFalse(
+                    session.audio_path.exists(), "late launch recreated cancelled audio"
+                )
+                self.assertEqual(len(errors), 1)
+                self.assertIn("cancelled", str(errors[0]))
+            finally:
+                release.set()
+                starter.join(2)
+                if canceller.ident is not None:
+                    canceller.join(2)
+                recorder.stop()
+                self._drain_readiness(recorder)
+
+    def test_recording_stop_and_next_start_do_not_wait_for_optional_meter_close(self):
+        from clarify.desktop import qml_runtime
+
+        entered, release, stopped, stream_started = (
+            threading.Event() for _ in range(4)
+        )
+        streams = []
+
+        class Stream:
+            def __init__(self, **_options):
+                streams.append(self)
+                self.closed = 0
+
+            def start(self):
+                stream_started.set()
+
+            def stop(self):
+                if self is streams[0]:
+                    entered.set()
+                    if not release.wait(3):
+                        raise RuntimeError("close not released")
+
+            def close(self):
+                self.closed += 1
+
+        recorder = QtRecorder()
+        recorder.sox = "sox"
+        process = Mock()
+        process.poll.return_value = None
+        with (
+            TemporaryDirectory() as directory,
+            patch.object(qml_runtime.subprocess, "Popen", return_value=process),
+            patch.object(
+                qml_runtime, "_sounddevice", SimpleNamespace(RawInputStream=Stream)
+            ),
+        ):
+            recorder.start(Path(directory) / "first.wav", threading.Event())
+            self.assertTrue(stream_started.wait(1))
+            capture = getattr(recorder, "_capture", None)
+            stopper = threading.Thread(target=lambda: (recorder.stop(), stopped.set()))
+            next_capture = None
+            try:
+                stopper.start()
+                self.assertTrue(entered.wait(1))
+                self.assertTrue(stopped.wait(0.5), "stop waited for meter driver close")
+                recorder.start(Path(directory) / "next.wav", threading.Event())
+                next_capture = recorder._capture
+                self.assertEqual(len(streams), 1)
+                release.set()
+                self.assertTrue(next_capture.meter_ready.wait(1))
+                self.assertEqual(streams[0].closed, 1)
+            finally:
+                release.set()
+                stopper.join(2)
+                recorder.stop()
+                self._drain_readiness(recorder)
+                if capture is not None:
+                    self.assertTrue(capture.meter_finished.wait(1))
+                if next_capture is not None:
+                    self.assertTrue(next_capture.meter_finished.wait(1))
+            self.assertEqual([s.closed for s in streams], [1, 1])
+
     def test_snapshot_owns_provider_cancellation_until_completion(self):
         class Recorder:
             def __init__(self):
@@ -235,6 +801,8 @@ class QtRecordingSessionTests(unittest.TestCase):
             patch("clarify.desktop.qml_runtime.time.sleep"),
         ):
             recorder.start(Path("capture.wav"), threading.Event())
+            capture = recorder._capture
+            self.assertTrue(capture.meter_ready.wait(1))
 
         self.assertEqual(
             popen.call_args.args[0][0:4],
@@ -250,6 +818,8 @@ class QtRecordingSessionTests(unittest.TestCase):
         )
         self.assertGreater(recorder.mic_level, 0.0)
         recorder.stop()
+        self._drain_readiness(recorder)
+        self.assertTrue(capture.meter_finished.wait(1))
         self.assertTrue(level_streams[0].closed)
         self.assertEqual(recorder.mic_level, 0.0)
 
@@ -323,9 +893,12 @@ class QtRecordingSessionTests(unittest.TestCase):
             starter = threading.Thread(target=run_start)
             starter.start()
             self.assertTrue(level_stream.entered_start.wait(timeout=1))
+            capture = recorder._capture
             recorder.stop()
+            self._drain_readiness(recorder)
             level_stream.release_start.set()
             starter.join(timeout=1)
+            self.assertTrue(capture.meter_finished.wait(1))
 
         self.assertFalse(starter.is_alive())
         self.assertEqual(start_errors, [])
