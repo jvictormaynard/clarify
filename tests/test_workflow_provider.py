@@ -179,6 +179,63 @@ class WorkflowProviderTests(unittest.TestCase):
         self.assertEqual(result.cleanup_level_applied, "preserve")
         self.assertTrue(result.refinement_failed)
 
+    def test_clarity_with_missing_model_recovers_without_provider_request(self):
+        self.set_cleanup("clarity")
+        self.current = replace(
+            self.current,
+            workflows=replace(
+                self.current.workflows, refinement=WorkflowRoute("openai", "")
+            ),
+        )
+        result = self.service.transcribe(self.audio, "prompt", "pt")
+        self.assertEqual(result.text, self.raw + " expanded")
+        self.assertEqual(result.cleanup_level_applied, "preserve")
+        self.assertTrue(result.refinement_failed)
+        self.registry.rewrite.assert_not_called()
+
+    def test_refinement_connection_comes_from_the_same_snapshot_as_its_route(self):
+        self.set_cleanup("clarity")
+        self.current = replace(
+            self.current,
+            workflows=replace(
+                self.current.workflows,
+                refinement=WorkflowRoute(
+                    "openai",
+                    "original-editor",
+                    custom_endpoint="https://old.invalid/v1",
+                    prompt="Original policy.",
+                ),
+            ),
+        )
+        original = self.current
+
+        def recognize(*args):
+            self.current = replace(
+                original,
+                openai=ProviderConfig(
+                    api_key="new-test-key", base_url="https://new.invalid/v1"
+                ),
+                workflows=replace(
+                    original.workflows,
+                    refinement=WorkflowRoute(
+                        "openai",
+                        "new-editor",
+                        custom_endpoint="https://new.invalid/v1",
+                        prompt="New policy.",
+                    ),
+                ),
+            )
+            return TranscriptionResult(self.raw, "openai", "whisper-1")
+
+        self.registry.transcribe.side_effect = recognize
+        self.service.transcribe(self.audio, "prompt", "pt")
+        _, request, connection, _ = self.registry.rewrite.call_args.args
+        self.assertEqual(request.model, "original-editor")
+        self.assertIn("Original policy.", request.instruction)
+        self.assertNotIn("New policy.", request.instruction)
+        self.assertEqual(connection.api_key, original.openai.api_key)
+        self.assertEqual(connection.base_url, "https://old.invalid/v1")
+
     def test_explicit_multimodal_recognition_cannot_use_rewrite_prompt(self):
         for level in ("preserve", "light", "clarity"):
             with self.subTest(level=level):

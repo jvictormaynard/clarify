@@ -237,8 +237,8 @@ class WorkflowProviderService:
             or getattr(self.account, "managed", False) is True
         )
 
-    def _connection(self, route):
-        current = self.config.current()
+    def _connection(self, route, *, current: AppConfig | None = None):
+        current = current if current is not None else self.config.current()
         metadata = self.registry.describe(route.provider_id)
         provider = getattr(current, route.provider_id)
         connection = ProviderConnection(
@@ -343,7 +343,7 @@ class WorkflowProviderService:
                     request,
                     selection.connection
                     if selection is not None
-                    else self._connection(route),
+                    else self._connection(route, current=current),
                     audio_source.cancel_token,
                 )
         except (NetworkError, ProviderTimeoutError) as error:
@@ -402,6 +402,7 @@ class WorkflowProviderService:
                     refinement_scope,
                     audio_source.cancel_token,
                     route=refinement_route,
+                    connection=self._connection(refinement_route, current=current),
                 )
             except ProviderCancelledError:
                 raise
@@ -478,8 +479,11 @@ class WorkflowProviderService:
         cancel_token,
         *,
         route=None,
+        connection: ProviderConnection | None = None,
     ) -> RewriteResult:
         refinement_route = route if route is not None else self._route(refinement_scope)
+        if not refinement_route.enabled or not refinement_route.model_id:
+            raise RuntimeError("Refinement workflow is disabled or unconfigured")
         refinement_instruction = _workflow_instruction(
             TRANSCRIPT_REWRITE_INSTRUCTION.format(lang=language_label),
             refinement_route.prompt,
@@ -502,7 +506,9 @@ class WorkflowProviderService:
         refined = self.registry.rewrite(
             refinement_route.provider_id,
             refinement_request,
-            self._connection(refinement_route),
+            connection
+            if connection is not None
+            else self._connection(refinement_route),
             cancel_token,
         )
         if not refined.text or not refined.text.strip():
