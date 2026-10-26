@@ -119,6 +119,19 @@ def completed(text):
     }
 
 
+def item_done(text, index=0):
+    return {
+        "type": "response.output_item.done",
+        "output_index": index,
+        "item": {
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "content": [{"type": "output_text", "text": text}],
+        },
+    }
+
+
 class ChatGPTProviderTests(unittest.TestCase):
     connection = ProviderConnection(
         "", "https://api.openai.com/v1", "synthetic-account"
@@ -400,6 +413,157 @@ class ChatGPTProviderTests(unittest.TestCase):
         self.assertFalse(kwargs["safe_to_retry"])
         self.assertFalse(kwargs["allow_redirects"])
         self.assertTrue(response.closed)
+
+    def test_completed_stream_uses_finalized_items_when_terminal_output_is_empty(self):
+        for snapshot in (
+            {"status": "completed", "output": []},
+            {"status": "completed"},
+        ):
+            with self.subTest(snapshot=snapshot):
+                response = Response(
+                    [
+                        {"type": "response.output_text.delta", "delta": "partial text"},
+                        {
+                            "type": "response.output_text.done",
+                            "text": "Olá. Use 42 unidades.",
+                        },
+                        item_done("Olá. Use 42 unidades."),
+                        {"type": "response.completed", "response": snapshot},
+                    ]
+                )
+                adapter, http = self.adapter(response)
+                self.assertEqual(
+                    adapter.rewrite(self.rewrite, self.connection).text,
+                    "Olá. Use 42 unidades.",
+                )
+                self.assertTrue(response.closed)
+                self.assertEqual(len(http.calls), 1)
+
+    def test_streamed_items_preserve_order_spaces_and_do_not_override_final_snapshot(
+        self,
+    ):
+        events = [item_done("world", 2), item_done("Hello ", 1), item_done("Hello ", 1)]
+        for terminal, expected in (
+            (
+                {
+                    "type": "response.completed",
+                    "response": {"status": "completed", "output": []},
+                },
+                "Hello world",
+            ),
+            (completed("Authoritative final text."), "Authoritative final text."),
+        ):
+            with self.subTest(expected=expected):
+                adapter, _ = self.adapter(Response([*events, terminal]))
+                self.assertEqual(
+                    adapter.rewrite(self.rewrite, self.connection).text, expected
+                )
+
+    def test_finalized_items_require_successful_terminal_completion(self):
+        for terminal in (
+            None,
+            {"type": "response.incomplete"},
+            {
+                "type": "response.completed",
+                "response": {"status": "failed", "output": []},
+            },
+            {
+                "type": "response.completed",
+                "response": {"status": "completed", "output": "malformed"},
+            },
+            {
+                "type": "response.completed",
+                "response": {
+                    "status": "completed",
+                    "output": [
+                        {
+                            "type": "message",
+                            "content": [{"type": "refusal", "refusal": "declined"}],
+                        }
+                    ],
+                },
+            },
+        ):
+            with self.subTest(terminal=terminal):
+                events = [item_done("must not escape")]
+                if terminal is not None:
+                    events.append(terminal)
+                response = Response(events)
+                adapter, _ = self.adapter(response)
+                with self.assertRaises(InvalidResponseError):
+                    adapter.rewrite(self.rewrite, self.connection)
+                self.assertTrue(response.closed)
+        adapter, _ = self.adapter(
+            Response(
+                [
+                    item_done("must not escape"),
+                    {
+                        "type": "response.failed",
+                        "response": {
+                            "error": {
+                                "code": "subscription_sharing_usage_limit_exceeded"
+                            }
+                        },
+                    },
+                ]
+            )
+        )
+        with self.assertRaises(QuotaError):
+            adapter.rewrite(self.rewrite, self.connection)
+
+    def test_finalized_items_reject_conflicting_or_malformed_completion(self):
+        for events in (
+            [item_done("one"), item_done("different")],
+            [item_done("one", "invalid-index")],
+            [
+                {
+                    **item_done("one"),
+                    "item": {**item_done("one")["item"], "status": "incomplete"},
+                }
+            ],
+        ):
+            response = Response(
+                [
+                    *events,
+                    {
+                        "type": "response.completed",
+                        "response": {"status": "completed", "output": []},
+                    },
+                ]
+            )
+            adapter, _ = self.adapter(response)
+            with self.assertRaises(InvalidResponseError):
+                adapter.rewrite(self.rewrite, self.connection)
+            self.assertTrue(response.closed)
+
+    def test_finalized_items_revalidate_session_and_cancellation_before_publication(
+        self,
+    ):
+        for change_session in (False, True):
+            with self.subTest(change_session=change_session):
+                session, token = Session(), CancellationToken()
+
+                def interrupt(event):
+                    if event["type"] == "response.completed":
+                        if change_session:
+                            session.generation += 1
+                        else:
+                            token.cancel()
+
+                response = Response(
+                    [
+                        item_done("stale"),
+                        {
+                            "type": "response.completed",
+                            "response": {"status": "completed", "output": []},
+                        },
+                    ],
+                    before_event=interrupt,
+                )
+                adapter, _ = self.adapter(response, session=session)
+                with self.assertRaises(ProviderCancelledError):
+                    adapter.rewrite(self.rewrite, self.connection, token)
+                self.assertTrue(response.closed)
 
     def test_translation_preserves_target_and_uses_same_text_boundary(self):
         adapter, _ = self.adapter(Response([completed("Olá.")]))

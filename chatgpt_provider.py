@@ -157,11 +157,13 @@ class ChatGPTPlanAdapter(ProviderAdapter):
         return ModelCatalog(text_models=models, display_names=names)
 
     @staticmethod
-    def _completed_text(event):
+    def _completed_text(event, streamed_output=()):
         response = event.get("response")
         if not isinstance(response, Mapping) or response.get("status") != "completed":
             return ""
         output = response.get("output")
+        if "output" not in response or output == []:
+            output = list(streamed_output)
         if not isinstance(output, list):
             return ""
         parts = []
@@ -213,6 +215,9 @@ class ChatGPTPlanAdapter(ProviderAdapter):
         started, total, event_size = time.monotonic(), 0, 0
         last_session_check = started
         data = []
+        # These finalized items are still provisional until response.completed.
+        # The existing total-stream byte limit also bounds this collection.
+        streamed_items = {}
 
         def check(*, force_session=True):
             nonlocal last_session_check
@@ -273,8 +278,30 @@ class ChatGPTPlanAdapter(ProviderAdapter):
                 if not isinstance(event, Mapping):
                     raise invalid()
                 kind = event.get("type")
+                if kind == "response.output_item.done":
+                    item, index = event.get("item"), event.get("output_index")
+                    if not isinstance(item, Mapping):
+                        raise invalid()
+                    if item.get("type") == "message":
+                        if (
+                            item.get("role") != "assistant"
+                            or item.get("status") != "completed"
+                            or not isinstance(index, int)
+                            or isinstance(index, bool)
+                            or index < 0
+                            or (
+                                index in streamed_items
+                                and streamed_items[index] != item
+                            )
+                        ):
+                            raise invalid()
+                        streamed_items[index] = item
+                    continue
                 if kind == "response.completed":
-                    text = self._completed_text(event)
+                    text = self._completed_text(
+                        event,
+                        (streamed_items[index] for index in sorted(streamed_items)),
+                    )
                     if not text:
                         raise invalid()
                     check()
