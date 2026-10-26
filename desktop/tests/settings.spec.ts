@@ -421,7 +421,7 @@ test.beforeEach(async ({ page }, testInfo) => {
     });
   };
   const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
-  const practiceArgs = testInfo.title.includes("practice account error") ? ["--practice-account-error"] : testInfo.title.includes("practice BYOK auth error") ? ["--practice-auth-error"] : [];
+  const practiceArgs = testInfo.title.includes("practice account error") ? ["--practice-account-error"] : testInfo.title.includes("practice BYOK auth error") ? ["--practice-auth-error"] : testInfo.title.includes("practice BYOK quota") ? ["--practice-provider-quota"] : [];
   child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...practiceArgs, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.includes("social cancellation") ? ["--social-wait"] : []), ...(testInfo.title.includes("sync-import") ? ["--library-sync"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : []), ...["legacy", "malformed", "waiting", "unfunded", "inactive", "paused", "exhausted"].filter(mode => testInfo.title.includes(`quota ${mode}`)).map(mode => `--usage-${mode}`)], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
@@ -668,6 +668,18 @@ test("onboarding: practice BYOK auth error links to personal configuration", asy
   await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
   await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
   await expect(page.getByText("Conclua e salve a configuração de transcrição antes de ditar.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
+});
+
+test("onboarding: practice BYOK quota points to the provider balance or plan", async ({ page }) => {
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
+  await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
+  await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
+  await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+  await expect(page.getByText("Limite do provedor atingido. Verifique seu saldo ou plano.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
 });

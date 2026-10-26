@@ -597,16 +597,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         from .dictation_practice import PracticeController, practice_readiness
+        from .practice_local_model import LocalModelReadiness
     except ImportError:
         from dictation_practice import PracticeController, practice_readiness
+        from practice_local_model import LocalModelReadiness
 
     def practice_can_start() -> bool:
         return capture_idle() and not settings_work_busy()
 
+    local_practice_model = LocalModelReadiness(scheduler)
+    app.aboutToQuit.connect(local_practice_model.close)
     practice = PracticeController(
         runtime.practice_workflow,
         language=lambda: repositories.config.load().ui.language,
-        readiness=lambda: practice_readiness(settings, practice_can_start),
+        readiness=lambda: practice_readiness(
+            settings, practice_can_start, local_practice_model.ready
+        ),
+        refresh_readiness=local_practice_model.invalidate,
         can_open=lambda: capture_idle() and not settings.microphoneTestBusy,
         identity=runtime.account.history_identity,
         stop_microphone_test=lambda: settings.stopMicrophoneTest(),

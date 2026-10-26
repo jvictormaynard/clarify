@@ -27,11 +27,18 @@ def bind_practice(settings, app):
                 from clarify_account import AccountError
 
                 raise AccountError("fixture", code="allowance_exhausted")
-            if "--practice-auth-error" in sys.argv:
+            if (
+                "--practice-auth-error" in sys.argv
+                or "--practice-provider-quota" in sys.argv
+            ):
                 from provider_types import ProviderError
 
                 error = ProviderError("groq", "fixture")
-                error.code = "authentication"
+                error.code = (
+                    "quota"
+                    if "--practice-provider-quota" in sys.argv
+                    else "authentication"
+                )
                 raise error
             return TranscriptionResult(
                 "Hoje vou escrever com o Clarify.", "groq", "fixture"
@@ -50,7 +57,9 @@ def bind_practice(settings, app):
     practice = PracticeController(
         workflow,
         language=lambda: settings.language,
-        readiness=lambda: practice_readiness(settings, lambda: True),
+        readiness=lambda: practice_readiness(
+            settings, lambda: True, lambda _model, _device: True
+        ),
         stop_microphone_test=settings.stopMicrophoneTest,
     )
     settings.bindPractice(practice)
