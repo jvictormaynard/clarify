@@ -47,6 +47,7 @@ class WebSettingsTests(unittest.TestCase):
         from dataclasses import replace
 
         cases = (
+            ("setDictationCleanupLevel", ["light"], "dictationCleanupLevel", "light"),
             ("setMode", ["transcription"], "mode", "prompt"),
             ("setLanguage", ["pt"], "language", "pt"),
             ("setAutostart", [True], "autostart", True),

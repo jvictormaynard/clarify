@@ -2,13 +2,15 @@ import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Picker, Row, Section, TextArea, Toggle } from "../components/ui";
 import { WorkflowRoute } from "../components/workflow-route";
+import { DictationCleanup } from "../components/dictation-cleanup";
 
 export function TextPage({ controller }: SettingsPageProps) {
   const { state, navigate, prompt, setPrompt, setTextRouteEnabled } =
     controller;
-  if ((state.accountState?.managed || state.accountState?.signedIn)) return <p className="hint">{t("O Clarify gerencia os modelos e as instruções da sua conta.")}</p>;
+  if ((state.accountState?.managed || state.accountState?.signedIn)) return <><DictationCleanup controller={controller} /><p className="hint">{t("O Clarify gerencia os modelos e as instruções da sua conta.")}</p></>;
   return (
     <>
+      {(state.selectedScope === "refinement" || state.selectedScope === "local_asr_refinement") && <DictationCleanup controller={controller} />}
       <div className="segmented" aria-label={t("Fluxo de texto")}>
         {[
           { id: "refinement", label: t("Revisão") },

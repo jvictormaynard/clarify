@@ -843,6 +843,8 @@ class WorkflowServiceTests(unittest.TestCase):
             refined_text="refined transcript",
             refinement_provider_id="groq",
             refinement_model="llama-refiner",
+            cleanup_level_requested="clarity",
+            cleanup_level_applied="clarity",
         )
 
         self.service.dispatch(
@@ -858,6 +860,8 @@ class WorkflowServiceTests(unittest.TestCase):
         self.assertEqual(state.model, "whisper-1")
         self.assertEqual(state.refinement_provider_id, "groq")
         self.assertEqual(state.refinement_model, "llama-refiner")
+        self.assertEqual(state.cleanup_level_requested, "clarity")
+        self.assertEqual(state.cleanup_level_applied, "clarity")
         self.assertEqual(state.phase, WorkflowPhase.COMPLETED)
 
     def test_dictation_focus_change_during_transcription_uses_copied_fallback(self):

@@ -51,6 +51,8 @@ PROPERTIES = (
     "microphoneTestLevel",
     "microphoneTestStatus",
     "recordingControls",
+    "dictationCleanupLevel",
+    "dictationCleanupRefinementAllowed",
     "selectedScope",
     "routeProviderId",
     "routeModelId",

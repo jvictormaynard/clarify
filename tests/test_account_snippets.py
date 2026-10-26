@@ -60,6 +60,44 @@ class AccountSnippetTests(unittest.TestCase):
             )
         self.request.assert_called_once()
 
+    def test_explicit_cleanup_rejects_account_switch_and_cancelled_reply(self):
+        from provider_http import CancellationToken, ProviderCancelledError
+
+        for switched in (True, False):
+            with self.subTest(switched=switched):
+                self.signed_in()
+                self.account._last_sync_attempt = self.account._clock()
+                self.request.reset_mock()
+                token = CancellationToken()
+
+                def respond(*args, **kwargs):
+                    if switched:
+                        self.account._generation += 1
+                    else:
+                        token.cancel()
+                    return self.response(
+                        {
+                            "transcript": "Source",
+                            "text": "Source",
+                            "rewritten": False,
+                            "cleanup_level_requested": "preserve",
+                            "cleanup_level_applied": "preserve",
+                        }
+                    )
+
+                self.request.side_effect = respond
+                with self.assertRaises(
+                    AccountError if switched else ProviderCancelledError
+                ):
+                    self.account.transcribe(
+                        RecordingSnapshot(Path("unused"), b"fake", token),
+                        "pt",
+                        self.service,
+                        cleanup_level="preserve",
+                    )
+                self.request.assert_called_once()
+                self.request.side_effect = None
+
     def test_cloud_result_is_not_expanded_again_or_replaced_with_raw_text(self):
         self.signed_in()
         self.account._last_sync_attempt = self.account._clock()
