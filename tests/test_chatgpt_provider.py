@@ -14,6 +14,7 @@ from provider_http import (
     InvalidModelError,
     ProviderCancelledError,
     ProviderTimeoutError,
+    ProviderHttpClient,
     QuotaError,
     _http_error,
     localized_error_message,
@@ -131,6 +132,137 @@ class ChatGPTProviderTests(unittest.TestCase):
         session = session or Session()
         registry = build_provider_registry(http, chatgpt_session=session)
         return registry.adapter("chatgpt"), http
+
+    @staticmethod
+    def streaming_http_response(body, *, status=401, on_byte=None):
+        import requests
+
+        class StreamingResponse(requests.Response):
+            def __init__(self):
+                super().__init__()
+                self.status_code = status
+                self.headers["x-request-id"] = "synthetic-request"
+                self.consumed = 0
+                self.closed = False
+                self.close_count = 0
+
+            def iter_content(self, chunk_size=1, **kwargs):
+                for byte in body:
+                    self.consumed += 1
+                    if on_byte:
+                        on_byte()
+                    yield bytes([byte])
+
+            def close(self):
+                self.closed = True
+                self.close_count += 1
+
+        return StreamingResponse()
+
+    def test_real_http_policy_bounds_chatgpt_json_before_classification(self):
+        for mode, status, method, expected, limit in (
+            ("size", 401, "POST", InvalidResponseError, 17),
+            ("deadline", 429, "POST", ProviderTimeoutError, 3),
+            ("cancel", 503, "POST", ProviderCancelledError, 1),
+            ("size", 200, "GET", InvalidResponseError, 17),
+            ("cancel", 503, "GET", ProviderCancelledError, 1),
+        ):
+            with self.subTest(mode=mode, status=status, method=method):
+                token, now = CancellationToken(), [0.0]
+
+                def on_byte():
+                    if mode == "cancel":
+                        token.cancel()
+                    if mode == "deadline":
+                        now[0] += 1
+
+                response = self.streaming_http_response(
+                    b"x" * 40, status=status, on_byte=on_byte
+                )
+                sender = Mock(return_value=response)
+                client = ProviderHttpClient(
+                    session=SimpleNamespace(post=sender, get=sender)
+                )
+                with (
+                    patch("provider_http.MAX_CHATGPT_JSON_BYTES", 16, create=True),
+                    patch("provider_http.MAX_CHATGPT_JSON_SECONDS", 2, create=True),
+                    patch("provider_http.time.monotonic", side_effect=lambda: now[0]),
+                    self.assertRaises(expected),
+                ):
+                    client.request(
+                        method,
+                        self.connection.base_url,
+                        provider="chatgpt",
+                        operation="text_generation"
+                        if method == "POST"
+                        else "model_discovery",
+                        stream=method == "POST",
+                        cancel_token=token,
+                    )
+                self.assertLessEqual(response.consumed, limit)
+                self.assertTrue(response.closed)
+                self.assertEqual(response.close_count, 1)
+                self.assertEqual(sender.call_count, 1)
+
+    def test_bounded_http_json_keeps_error_metadata_and_leaves_sse_unread(self):
+        body = json.dumps(
+            {"error": {"code": "subscription_sharing_invalid_user"}}
+        ).encode()
+        response = self.streaming_http_response(body)
+        client = ProviderHttpClient(
+            session=SimpleNamespace(post=Mock(return_value=response))
+        )
+        with self.assertRaises(Exception) as caught:
+            client.request(
+                "POST",
+                self.connection.base_url,
+                provider="chatgpt",
+                operation="text_generation",
+                stream=True,
+            )
+        self.assertEqual(caught.exception.code, "chatgpt_identity")
+        self.assertEqual(caught.exception.request_id, "synthetic-request")
+        self.assertEqual(caught.exception.status_code, 401)
+        self.assertEqual(response.consumed, len(body))
+        self.assertTrue(response.closed)
+        self.assertEqual(response.close_count, 1)
+
+        payload = {"models": [{"slug": "model", "visibility": "list"}]}
+        body = json.dumps(payload).encode()
+        response = self.streaming_http_response(body, status=200)
+        sender = Mock(return_value=response)
+        client = ProviderHttpClient(session=SimpleNamespace(get=sender))
+        result = client.request(
+            "GET",
+            self.connection.base_url,
+            provider="chatgpt",
+            operation="model_discovery",
+        )
+        self.assertTrue(sender.call_args.kwargs["stream"])
+        self.assertEqual(
+            client.json(result, provider="chatgpt", operation="model_discovery"),
+            payload,
+        )
+        self.assertEqual(response.consumed, len(body))
+        self.assertFalse(response.closed)
+        response.close()
+
+        response = self.streaming_http_response(b"data: pending\n\n", status=200)
+        client = ProviderHttpClient(
+            session=SimpleNamespace(post=Mock(return_value=response))
+        )
+        self.assertIs(
+            client.request(
+                "POST",
+                self.connection.base_url,
+                provider="chatgpt",
+                operation="text_generation",
+                stream=True,
+            ),
+            response,
+        )
+        self.assertEqual(response.consumed, 0)
+        self.assertFalse(response.closed)
 
     def test_previous_account_model_is_rejected_before_inference(self):
         for account_id in ("previous-account", ""):

@@ -33,6 +33,8 @@ TIMEOUTS = {
     "text_generation": (5.0, 60.0),
 }
 TRANSIENT_STATUS_CODES = frozenset((429, 502, 503, 504))
+MAX_CHATGPT_JSON_BYTES = 1024 * 1024
+MAX_CHATGPT_JSON_SECONDS = 12.0
 MAX_SAFE_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 0.25
 BACKOFF_CAP_SECONDS = 4.0
@@ -725,6 +727,11 @@ class ProviderHttpClient:
         attempts = MAX_SAFE_ATTEMPTS if retryable else 1
         sender = getattr(self.session, method.lower())
         operation_id = secrets.token_hex(6)
+        requested_stream = bool(kwargs.get("stream", False))
+        if provider == "chatgpt":
+            # Read JSON ourselves too: requests' default buffering can wait
+            # indefinitely while a peer drips bytes within the read timeout.
+            kwargs["stream"] = True
 
         for attempt in range(1, attempts + 1):
             if cancel_token is not None:
@@ -799,11 +806,53 @@ class ProviderHttpClient:
                     provider=provider, operation=operation, operation_id=operation_id
                 )
             status = int(response.status_code)
+            if provider == "chatgpt" and (
+                not requested_stream or not 200 <= status < 300
+            ):
+                try:
+                    self._cache_chatgpt_json(
+                        response, cancel_token, operation, operation_id
+                    )
+                except (ProviderError, requests.RequestException) as error:
+                    typed_error = (
+                        error
+                        if isinstance(error, ProviderError)
+                        else _network_error(error, provider, operation, operation_id)
+                    )
+                    typed_error.status_code = status
+                    request_id = (getattr(response, "headers", {}) or {}).get(
+                        "x-request-id"
+                    )
+                    typed_error.request_id = (
+                        request_id
+                        if isinstance(request_id, str)
+                        and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", request_id)
+                        else None
+                    )
+                    self._log(
+                        event="provider_http_error",
+                        provider=provider,
+                        operation=operation,
+                        operation_id=operation_id,
+                        method=method,
+                        host=self._host(url),
+                        attempt=attempt,
+                        max_attempts=attempts,
+                        status_code=status,
+                        error_type=typed_error.code,
+                    )
+                    # A cancelled or incomplete error body cannot authorize a
+                    # retry, even for an otherwise safe GET.
+                    raise typed_error from None
             if 200 <= status < 300:
                 setattr(response, "_clarify_operation_id", operation_id)
                 return response
 
-            typed_error = _http_error(response, provider, operation, operation_id)
+            try:
+                typed_error = _http_error(response, provider, operation, operation_id)
+            finally:
+                if provider == "chatgpt":
+                    response.close()
             should_retry = (
                 retryable
                 and status in TRANSIENT_STATUS_CODES
@@ -831,15 +880,53 @@ class ProviderHttpClient:
             )
             if not should_retry:
                 close = getattr(response, "close", None)
-                if callable(close):
+                if provider != "chatgpt" and callable(close):
                     close()
                 raise typed_error
             close = getattr(response, "close", None)
-            if callable(close):
+            if provider != "chatgpt" and callable(close):
                 close()
             self._sleep(delay or 0.0, cancel_token, provider, operation, operation_id)
 
         raise AssertionError("provider HTTP retry loop exhausted unexpectedly")
+
+    @staticmethod
+    def _cache_chatgpt_json(response, token, operation, operation_id):
+        deadline = time.monotonic() + MAX_CHATGPT_JSON_SECONDS
+        body = bytearray()
+        complete = False
+
+        def check():
+            if token is not None:
+                token.raise_if_cancelled("chatgpt", operation, operation_id)
+            if time.monotonic() > deadline:
+                raise ProviderTimeoutError(
+                    provider="chatgpt", operation=operation, operation_id=operation_id
+                )
+
+        try:
+            check()
+            for chunk in response.iter_content(chunk_size=1):
+                check()
+                if (
+                    not isinstance(chunk, bytes)
+                    or len(body) + len(chunk) > MAX_CHATGPT_JSON_BYTES
+                ):
+                    raise InvalidResponseError(
+                        provider="chatgpt",
+                        operation=operation,
+                        operation_id=operation_id,
+                    )
+                body.extend(chunk)
+            check()
+            # Populate requests' normal content cache. json()/text diagnostics
+            # can now inspect only these bounded bytes, without another read.
+            response._content = bytes(body)
+            response._content_consumed = True
+            complete = True
+        finally:
+            if not complete:
+                response.close()
 
     def invalid_response(
         self, response: requests.Response, *, provider: str, operation: str
