@@ -500,6 +500,25 @@ def _http_error(
             operation_id=operation_id,
             request_id=headers.get("x-request-id") or headers.get("openai-request-id"),
         )
+    if provider == "chatgpt" and status in (401, 403):
+        # Direct-route admission can return only a free-form 'detail'. Avoid
+        # presenting an API-key diagnosis for an OAuth/policy rejection.
+        error_type = ChatGPTPermissionError if status == 401 else ChatGPTIneligibleError
+        error = error_type(
+            provider=provider,
+            operation=operation,
+            status_code=status,
+            operation_id=operation_id,
+        )
+        error.response_code = ""
+        request_id = (getattr(response, "headers", {}) or {}).get("x-request-id")
+        error.request_id = (
+            request_id
+            if isinstance(request_id, str)
+            and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", request_id)
+            else None
+        )
+        return error
     error_status = _response_error_status(response)
     try:
         classification_text = str(getattr(response, "text", ""))[:2000].casefold()

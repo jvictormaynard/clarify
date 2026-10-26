@@ -35,6 +35,10 @@ from workflow_provider import WorkflowProviderService
 from workflows import RecordingSnapshot
 
 
+class SessionChanged(RuntimeError):
+    code = "stale_session"
+
+
 class Session:
     def __init__(self):
         self.generation = 1
@@ -48,9 +52,7 @@ class Session:
 
     def check_current(self, generation):
         if generation != self.generation:
-            raise ProviderCancelledError(
-                provider="chatgpt", operation="text_generation"
-            )
+            raise SessionChanged("The selected ChatGPT session changed.")
 
 
 class Response:
@@ -258,6 +260,16 @@ class ChatGPTProviderTests(unittest.TestCase):
         )
         self.assertIn("ChatGPT", localized_error_message(error, "pt"))
         self.assertNotIn("private source", str(error))
+
+    def test_freeform_admission_error_is_safe_and_does_not_invent_a_server_code(self):
+        response = Response(payload={"detail": "private policy explanation"})
+        response.status_code = 403
+        error = _http_error(response, "chatgpt", "validation", "operation-id")
+        self.assertEqual(error.code, "chatgpt_plan_ineligible")
+        self.assertEqual(error.response_code, "")
+        self.assertEqual(error.status_code, 403)
+        self.assertEqual(error.request_id, "synthetic-request")
+        self.assertNotIn("private policy", str(error))
 
     def test_cancellation_and_account_switch_reject_output_and_close_stream(self):
         for switch in (False, True):

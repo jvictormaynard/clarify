@@ -10,7 +10,9 @@ import requests
 
 from provider_adapters import ProviderAdapter, _invalid_response_error
 from provider_http import (
+    ChatGPTPermissionError,
     NetworkError,
+    ProviderCancelledError,
     ProviderTimeoutError,
     chatgpt_response_error,
 )
@@ -19,6 +21,7 @@ from provider_types import (
     ProviderCapability,
     ProviderConfigurationError,
     ProviderMetadata,
+    ProviderError,
     RewriteResult,
     TranslationResult,
 )
@@ -69,6 +72,29 @@ class ChatGPTPlanAdapter(ProviderAdapter):
                 "chatgpt", "ChatGPT plan requests require the official OpenAI endpoint."
             )
 
+    @staticmethod
+    def _session_call(callback, *args, operation="text_generation", **kwargs):
+        try:
+            return callback(*args, **kwargs)
+        except ProviderError:
+            raise
+        except RuntimeError as error:
+            # Session errors have safe machine codes. Cancellation must retain
+            # its type so optional refinement cannot publish a stale result.
+            code = getattr(error, "code", None)
+            error_type = {
+                "cancelled": ProviderCancelledError,
+                "stale_session": ProviderCancelledError,
+                "network": NetworkError,
+                "timeout": ProviderTimeoutError,
+                "plan_disabled": ChatGPTPermissionError,
+                "sign_in_required": ChatGPTPermissionError,
+                "refresh_failed": ChatGPTPermissionError,
+            }.get(code)
+            if error_type is None:
+                raise
+            raise error_type(provider="chatgpt", operation=operation) from None
+
     def parse_audio_models(self, payload):
         return ()
 
@@ -87,7 +113,9 @@ class ChatGPTPlanAdapter(ProviderAdapter):
     def validate(self, connection, cancel_token=None, *, operation="validation"):
         self._require_connection(connection)
         session = self.session
-        credential = session.credential(cancel_token=cancel_token)
+        credential = self._session_call(
+            session.credential, cancel_token=cancel_token, operation=operation
+        )
         response = self.http.request(
             "GET",
             f"{CHATGPT_BASE_URL}/models",
@@ -99,7 +127,9 @@ class ChatGPTPlanAdapter(ProviderAdapter):
         )
         try:
             payload = self.http.json(response, provider="chatgpt", operation=operation)
-            session.check_current(credential.generation)
+            self._session_call(
+                session.check_current, credential.generation, operation=operation
+            )
             if not isinstance(payload, Mapping) or not isinstance(
                 payload.get("models"), list
             ):
@@ -150,7 +180,7 @@ class ChatGPTPlanAdapter(ProviderAdapter):
                 "chatgpt", "Choose a model available to your ChatGPT account."
             )
         session = self.session
-        credential = session.credential(cancel_token=cancel_token)
+        credential = self._session_call(session.credential, cancel_token=cancel_token)
         response = self.http.request(
             "POST",
             f"{CHATGPT_BASE_URL}/responses",
@@ -178,7 +208,7 @@ class ChatGPTPlanAdapter(ProviderAdapter):
         def check():
             if cancel_token:
                 cancel_token.raise_if_cancelled("chatgpt", "text_generation")
-            session.check_current(credential.generation)
+            self._session_call(session.check_current, credential.generation)
             if time.monotonic() - started > MAX_STREAM_SECONDS:
                 raise ProviderTimeoutError(
                     provider="chatgpt", operation="text_generation"
