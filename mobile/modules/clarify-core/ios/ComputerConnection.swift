@@ -178,7 +178,7 @@ final class ComputerConnection {
           "operation_expired": "Esta solicitação não pode ser repetida. Inicie uma nova ação.",
           "operation_in_future": "Verifique a data e a hora do iPhone e do computador. Depois, inicie uma nova ação.",
           "operation_limit": "O computador atingiu o limite temporário de solicitações. Aguarde e inicie uma nova ação.",
-          "operation_history_full": "O computador atingiu o limite. No computador, revogue o acesso de um celular que não usa mais ou deste iPhone. Depois, leia um novo QR.",
+          "operation_history_full": "Limite atingido. Revogue no computador o acesso de um celular ou deste iPhone. Leia outro QR.",
           "result_unavailable": "Esta solicitação não pode ser repetida. Inicie uma nova ação."]
         let message = (raw?["error"] as? String).flatMap { messages[$0] } ?? (code == 429 ? "Muitas solicitações. Aguarde um momento." : "Não foi possível concluir o processamento. Tente novamente.")
         throw ClarifyError(message, code: "computer_processing_failed", phase: action == nil ? "transcribing" : "rewriting", operationID: operationID, status: code)

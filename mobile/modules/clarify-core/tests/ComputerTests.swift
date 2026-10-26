@@ -322,7 +322,7 @@ final class ComputerTests: XCTestCase {
       ("operation_in_future", 400, "Verifique a data e a hora do iPhone e do computador. Depois, inicie uma nova ação."),
       ("result_unavailable", 409, "Esta solicitação não pode ser repetida. Inicie uma nova ação."),
       ("operation_limit", 429, "O computador atingiu o limite temporário de solicitações. Aguarde e inicie uma nova ação."),
-      ("operation_history_full", 409, "O computador atingiu o limite. No computador, revogue o acesso de um celular que não usa mais ou deste iPhone. Depois, leia um novo QR.")]
+      ("operation_history_full", 409, "Limite atingido. Revogue no computador o acesso de um celular ou deste iPhone. Leia outro QR.")]
     for (code, status, message) in errors {
       let f = Fixture(); try await f.connection.refresh()
       f.processingError = code; f.status = status

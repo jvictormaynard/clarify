@@ -64,7 +64,7 @@ final class KeyboardUITests: XCTestCase {
       let status = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UILabel }.first { $0.accessibilityIdentifier == "clarify.keyboard.status" })
       let messages = ["Nenhuma fala foi reconhecida. Tente falar novamente.", "Não foi possível transcrever o áudio. Tente novamente.",
         "O processamento do Clarify está indisponível no momento.", "Esta solicitação não pode ser repetida. Inicie uma nova ação.",
-        "O computador atingiu o limite. No computador, revogue o acesso de um celular que não usa mais ou deste iPhone. Depois, leia um novo QR.",
+        "Limite atingido. Revogue no computador o acesso de um celular ou deste iPhone. Leia outro QR.",
         "A reescrita falhou. Você pode inserir a transcrição original."]
       for language in ["pt", "en", "es"] {
         for message in messages {
