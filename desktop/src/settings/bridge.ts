@@ -9,8 +9,8 @@ export type DictionaryEntry = {
   enabled: boolean;
 };
 export type HistoryEntry = { id: string; timestamp: number; text: string; truncated: boolean; sourceDevice: "desktop" | "mobile" };
-export type HistoryPageResult = { context: string; revision: string; entries: HistoryEntry[]; cursor: string; hasMore: boolean };
-export type HistoryTextPart = { context: string; id: string; text: string; nextOffset: number; hasMore: boolean };
+type HistoryPageResult = { context: string; revision: string; entries: HistoryEntry[]; cursor: string; hasMore: boolean };
+type HistoryTextPart = { context: string; id: string; text: string; nextOffset: number; hasMore: boolean };
 export type Snippet = { trigger: string; replacement: string; enabled: boolean; case_sensitive: boolean };
 export interface Settings {
   snippets: Snippet[];
@@ -42,6 +42,7 @@ export interface Settings {
   historyEnabled: boolean;
   historyRetentionDays: number | null;
   microphoneDevices: Option[];
+  microphoneInventoryBusy: boolean;
   selectedMicrophoneId: string | null;
   microphoneStatus: string;
   microphoneTestBusy: boolean;
@@ -100,8 +101,8 @@ export type SettingsArguments = {
   clearHistory: [context: string];
   snapshot: [];
   setLanguage: [value: string];
-  setSnippets: [entries: Snippet[], context: string];
-  setDictionaryEntries: [entries: DictionaryEntry[]];
+  setSnippets: [entries: Snippet[], context: string, expectedEntries?: Snippet[]];
+  setDictionaryEntries: [entries: DictionaryEntry[], context?: string, expectedEntries?: DictionaryEntry[]];
   setMode: [value: string];
   setAutostart: [value: boolean];
   setAutomaticUpdates: [value: boolean];
@@ -113,6 +114,7 @@ export type SettingsArguments = {
   testMicrophone: [];
   stopMicrophoneTest: [];
   setRecordingControls: [value: RecordingControls];
+  setRecordingVadEnabled: [value: boolean];
   selectWorkflow: [scope: string];
   setRouteProviderId: [id: string];
   setRouteModelId: [id: string];
@@ -142,26 +144,43 @@ export type SettingsArguments = {
   removeLocalAsr: [];
   useLocalAsr: [];
   cancelLocalMeasurement: [];
-  save: [];
+  save: [context?: string];
   load: [];
+  savePreference: [method: PreferenceMethod, args: unknown[]];
+  saveLibraryPreference: [library: "dictionary" | "snippets", identity: DictionaryEntry | Snippet, field: "enabled" | "case_sensitive", value: boolean, context: string];
 };
 export type SettingsMethod = keyof SettingsArguments;
 
+export const preferenceMethods = [
+  "setMode", "setLanguage", "setAutostart", "setHistoryEnabled", "setAutomaticUpdates",
+  "selectMicrophone", "setRouteProviderId", "setRouteModelId", "setRouteEnabled",
+  "setLocalStreaming", "setLocalAsrCloudRefinement", "setHotkey", "setHotkeyActivationMode",
+  "resetHotkey", "resetAllHotkeys", "useLocalAsr", "setRecordingVadEnabled",
+] as const;
+export type PreferenceMethod = typeof preferenceMethods[number];
+export type SettingsCall = <M extends SettingsMethod>(method: M, ...args: SettingsArguments[M]) => Promise<Settings>;
+
 let queue: Promise<unknown> = Promise.resolve();
-function historyCall<T>(method: string, args: unknown[]): Promise<T> {
-  const next = queue.then(() => invoke<T>("settings_call", { method, args }));
+function enqueue<T>(operation: () => Promise<T>): Promise<T> {
+  const next = queue.then(operation);
   queue = next.catch(() => undefined);
   return next;
 }
-export const getHistoryPage = (context: string, cursor = "") => historyCall<HistoryPageResult>("getHistoryPage", [context, cursor]);
-export const getHistoryTextPart = (context: string, id: string, offset: number) => historyCall<HistoryTextPart>("getHistoryTextPart", [context, id, offset, "text"]);
+function queuedCall<T>(method: string, args: unknown[]): Promise<T> {
+  return enqueue(() => invoke<T>("settings_call", { method, args }));
+}
+// Reserve the connection for the complete operation. A poll or another action
+// cannot change workflow/account scope between staging and persistence.
+export function settingsTransaction<T>(operation: (call: SettingsCall) => Promise<T>): Promise<T> {
+  return enqueue(() => operation((method, ...args) => invoke<Settings>("settings_call", { method, args })));
+}
+export const getHistoryPage = (context: string, cursor = "") => queuedCall<HistoryPageResult>("getHistoryPage", [context, cursor]);
+export const getHistoryTextPart = (context: string, id: string, offset: number) => queuedCall<HistoryTextPart>("getHistoryTextPart", [context, id, offset, "text"]);
+// Only periodic polls advance the Python baseline. Commands still return full state.
+export const pollSettings = () => queuedCall<Partial<Settings>>("poll", []);
 export function call<M extends SettingsMethod>(
   method: M,
   ...args: SettingsArguments[M]
 ): Promise<Settings> {
-  const next = queue.then(() =>
-    invoke<Settings>("settings_call", { method, args }),
-  );
-  queue = next.catch(() => undefined);
-  return next;
+  return queuedCall<Settings>(method, args);
 }

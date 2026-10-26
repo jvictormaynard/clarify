@@ -20,7 +20,8 @@ export function ModelsPage({ controller }: SettingsPageProps) {
     setApiKey,
     endpoint,
     setEndpoint,
-    busy,
+    validatingProvider,
+    selectingProvider,
     selectProvider,
     validateProvider,
     useLocalModel,
@@ -140,7 +141,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
                 <Button
                   variant="ghost"
                   disabled={state.localAsrBusy || state.localBenchmarkBusy}
-                  onClick={() => setConfirmAction("removeLocalAsr")}
+                  onClick={() => setConfirmAction("removeLocalAsr", undefined, state)}
                 >{t("Remover modelo")}</Button>
               </>
             )}
@@ -156,6 +157,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
         <Row title={t("Serviço")}>
           <Picker
             label={t("Serviço na nuvem")}
+            disabled={selectingProvider}
             value={state.selectedProviderId}
             options={state.providers.filter((p) => p.id !== "local_asr")}
             onChange={(value) => void selectProvider(value)}
@@ -170,6 +172,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
                   ? t("Uma chave já está salva. Preencha apenas para substituí-la.")
                   : t("A chave fica no armazenamento seguro do Clarify.")
               }
+              disabled={selectingProvider}
               type="password"
               autoComplete="off"
               value={apiKey}
@@ -183,6 +186,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
                 <summary>{t("Endereço personalizado")}</summary>
                 <Input
                   aria-label={t("Endpoint")}
+                  disabled={selectingProvider}
                   value={endpoint}
                   onChange={(e) => setEndpoint(e.target.value)}
                 />
@@ -196,7 +200,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
                     : t("Sem chave configurada"))}
               </span>
               <Button
-                disabled={state.providerBusy || busy}
+                disabled={state.providerBusy || validatingProvider || selectingProvider}
                 onClick={() => void validateProvider()}
               >
                 {state.providerBusy ? t("Validando…") : t("Validar e salvar chave")}
@@ -206,7 +210,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
               <Button
                 variant="text"
                 disabled={state.providerBusy}
-                onClick={() => setConfirmAction("clearProvider")}
+                onClick={() => setConfirmAction("clearProvider", state.selectedProviderId)}
               >{t("Remover chave salva")}</Button>
             )}
           </>

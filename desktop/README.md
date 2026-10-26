@@ -1,8 +1,7 @@
 # Clarify Settings
 
-React/TypeScript with Radix and cmdk primitives, hosted by Tauri 2 / WebView2.
-Components follow the composition approach used by shadcn/ui and are maintained
-here without a shadcn runtime dependency. Settings use the web UI;
+React/TypeScript with reusable Base UI controls and Tailwind CSS, hosted by
+Tauri 2 / WebView2. Settings use the web UI;
 the recording engine and pill remain in Python/Qt.
 
 ## Source map
@@ -12,6 +11,9 @@ src/
   main.tsx                    React entrypoint
   app.tsx                     Window layout, navigation and page selection
   components/                 Reusable controls and shared Settings views
+    primitives/               Base UI controls, variants and overlay composition
+    settings-navigation.tsx   Grouped sidebar navigation
+  lib/utils.ts                Conditional and merged utility classes
   pages/                      General, Dictation, Text, Dictionary, Shortcuts, Models
   settings/
     bridge.ts                 Typed commands and serialized Settings state
@@ -24,6 +26,7 @@ src/
     tokens.css                Colors, type, spacing, radius and motion values
     base.css                  Document defaults
     components.css            Common control states and dialogs
+    primitives.css            Shared overlay surfaces and opaque fallbacks
     pages.css                 Feature-specific layouts
     layout.css                Window layout and responsive overrides
 ```
@@ -31,12 +34,14 @@ src/
 Add a page under `pages/`. Use the controls in `components/ui.tsx`:
 `Button`, `Field`, `Input`, `TextArea`, `Picker`, `Toggle`, `Row`, `Section`, and
 `Confirm`. `Field` owns the input label and help-text association. `Toggle`
-provides the same association for switches. Radix imports belong in the common
-controls, so page code does not duplicate their behavior or class names.
+provides the same association for switches. Base UI imports belong in
+`components/primitives/`; page code uses the facade and does not duplicate
+keyboard, focus or popup behavior.
 
 Put multi-command operations in `use-settings.ts`. Its operation boundary owns
-busy state, errors and success updates. Save and navigation share the workflow
-draft staging operation. Native close handling has its own hook. Command argument
+ordered transactions, local pending states, errors and success updates. Choice
+controls persist only their preference. Text drafts remain local until a contextual
+save or the explicit save-all action on close. Native close handling has its own hook. Command argument
 tuples in `bridge.ts` check frontend callers; the Python allowlist remains the
 runtime authority. Keep providers, persisted configuration and credentials in
 their existing Python owners.
@@ -46,6 +51,13 @@ specific to one component with that component's styles. Keep feature geometry in
 `pages.css` and window geometry in `layout.css`. The Qt/QML pill retains its
 existing theme and behavior. Settings tests cover help-text associations,
 placeholder contrast, keyboard selection, drafts, persistence and window geometry.
+
+The [desktop design system](../docs/desktop-design-system.md) records the pinned
+shared tokens, component rules and UX contracts.
+`Section` places its heading above a shared `.section-content` panel. Sidebar
+buttons remain available during settings operations. Managed-account visibility
+applies to navigation and the rendered pages. Global Settings search is omitted;
+long option lists and libraries retain their own filters.
 
 The Python engine remains the sole owner of configuration, secrets, audio,
 shortcuts and clipboard delivery. `clarify/desktop/qml_web_settings.py` defines a
@@ -109,5 +121,5 @@ overhead and can double-count shared memory; they are not an Electron comparison
 or an end-user latency guarantee.
 
 References: [Tauri](https://v2.tauri.app/start/),
-[shadcn/ui](https://ui.shadcn.com/docs),
-[Radix](https://www.radix-ui.com/primitives/docs/overview/accessibility).
+[Base UI](https://base-ui.com/react/overview/accessibility),
+[Tailwind CSS](https://tailwindcss.com/docs).
