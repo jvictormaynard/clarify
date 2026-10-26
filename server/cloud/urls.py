@@ -2,6 +2,7 @@ from django.urls import include, path
 from allauth.headless.constants import Client
 from .service.accounts import ContinueWithEmailView
 from .service import admin_views, social, transparency
+from .service.meetings import MeetingSummaryView, MeetingTranscriptionView
 from .service.api import (
     AccountView,
     DictionaryView,
@@ -65,4 +66,6 @@ urlpatterns = [
     path("v1/history/sync", HistorySyncView.as_view()),
     path("v1/dictations", DictationView.as_view()),
     path("v1/text", TextView.as_view()),
+    path("v1/meetings/transcriptions", MeetingTranscriptionView.as_view()),
+    path("v1/meetings/summary", MeetingSummaryView.as_view()),
 ]
