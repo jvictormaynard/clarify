@@ -92,6 +92,7 @@ class _OAuthResponseError(ChatGPTPlanError):
 class ChatGPTCredential:
     access_token: str = field(repr=False)
     generation: int
+    account_id: str
 
 
 def _cancelled(token):
@@ -382,7 +383,9 @@ class ChatGPTPlanSession:
         self._store = (
             secret_store
             if secret_store is not None
-            else create_secret_store(self.data_directory)
+            else create_secret_store(
+                self.data_directory, filename_stem="chatgpt-secrets"
+            )
         )
         self._http = http
         self._clock, self._monotonic = clock, monotonic
@@ -963,7 +966,9 @@ class ChatGPTPlanSession:
                     now < tokens.get("earliest_refresh_at", 0)
                     and tokens["expires_at"] > now
                 ):
-                    return ChatGPTCredential(tokens["access_token"], generation)
+                    return ChatGPTCredential(
+                        tokens["access_token"], generation, self._data["active"]
+                    )
                 if now < tokens.get("earliest_refresh_at", 0):
                     raise _error("refresh_failed")
                 account_id, client_id = self._data["active"], record["client_id"]
@@ -1000,7 +1005,9 @@ class ChatGPTPlanSession:
                 self._save_locked(data)
                 if not PLAN_SCOPES.issubset(replacement["scopes"]):
                     raise _error("plan_disabled")
-                return ChatGPTCredential(replacement["access_token"], generation)
+                return ChatGPTCredential(
+                    replacement["access_token"], generation, account_id
+                )
         except ChatGPTPlanError as error:
             if (
                 isinstance(error, _OAuthResponseError)

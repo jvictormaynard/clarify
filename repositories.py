@@ -110,6 +110,8 @@ def environment_defaults(
         "groq_base_url": env.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
         "groq_audio_model": env.get("GROQ_AUDIO_MODEL", "whisper-large-v3-turbo"),
         "groq_text_model": env.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile"),
+        "chatgpt_audio_model": "",
+        "chatgpt_text_model": "",
         "local_asr_model": env.get("LOCAL_ASR_MODEL", "ggml-small"),
         "local_asr_cloud_refinement": False,
         "refinement_provider": env.get("REFINEMENT_PROVIDER", ""),

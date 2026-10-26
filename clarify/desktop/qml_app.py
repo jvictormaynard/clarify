@@ -463,6 +463,7 @@ def main(argv: list[str] | None = None) -> int:
         on_usage=partial(_record_voice_translation_usage, usage_statistics),
         provider=QmlVoiceTranslationProvider(
             repositories.config.load,
+            registry=runtime.provider_registry,
             account=runtime.account,
             dictionary_service=runtime.dictionary_service,
         ),

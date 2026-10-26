@@ -949,9 +949,17 @@ class QmlSettingsController(QObject):
                 route = config.workflow(scope)
                 if route.provider_id == "chatgpt":
                     routes = routes.with_route(
-                        scope, replace(route, model_id="", custom_endpoint="")
+                        scope,
+                        replace(route, model_id="", custom_endpoint="", account_id=""),
                     )
             fields = {"workflows": routes}
+            if config.voice_translation.route.provider_id == "chatgpt":
+                fields["voice_translation"] = replace(
+                    config.voice_translation,
+                    route=replace(
+                        config.voice_translation.route, model_id="", account_id=""
+                    ),
+                )
             if hasattr(config, "chatgpt"):
                 fields["chatgpt"] = replace(config.chatgpt, text_model="")
             if config.selection.refinement_provider == "chatgpt":
@@ -1331,9 +1339,9 @@ class QmlSettingsController(QObject):
 
     @Property(str, notify=routeChanged)
     def routeModelId(self) -> str:
-        if (
-            self.routeProviderId == "chatgpt"
-            and self._selected_route().model_id
+        if self.routeProviderId == "chatgpt" and (
+            self._selected_route().account_id != self.chatgptState["accountId"]
+            or self._selected_route().model_id
             not in {option["id"] for option in self.routeModelOptions}
         ):
             return ""
@@ -2145,6 +2153,7 @@ class QmlSettingsController(QObject):
                 route,
                 provider_id=provider_id,
                 custom_endpoint="",
+                account_id="",
                 model_id=metadata.default_audio_model
                 if audio
                 else metadata.default_text_model,
@@ -2494,7 +2503,15 @@ class QmlSettingsController(QObject):
             )
             return False
         return self._update_selected_route(
-            lambda route: replace(route, model_id=str(value or "").strip())
+            lambda route: replace(
+                route,
+                model_id=str(value or "").strip(),
+                account_id=(
+                    self.chatgptState["accountId"]
+                    if route.provider_id == "chatgpt" and str(value or "").strip()
+                    else ""
+                ),
+            )
         )
 
     @Slot(str, result=bool)
@@ -3323,6 +3340,7 @@ class QmlSettingsController(QObject):
                     else metadata.default_text_model
                 )
                 fields["custom_endpoint"] = ""
+                fields["account_id"] = ""
         elif method == "setRouteModelId":
             metadata = PROVIDER_REGISTRY.describe(old_route.provider_id)
             audio = (
@@ -3342,12 +3360,18 @@ class QmlSettingsController(QObject):
                 if audio
                 else model
             )
+            fields["account_id"] = (
+                self.chatgptState["accountId"]
+                if old_route.provider_id == "chatgpt" and model
+                else ""
+            )
         elif method == "setRouteEnabled":
             fields["enabled"] = args[0]
         else:  # useLocalAsr
             fields.update(
                 provider_id=LOCAL_ASR_PROVIDER_ID,
                 model_id=self._local_profile,
+                account_id="",
                 custom_endpoint="",
                 enabled=True,
             )

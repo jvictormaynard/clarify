@@ -11,7 +11,9 @@ from unittest.mock import Mock, patch
 from provider_http import (
     CancellationToken,
     InvalidResponseError,
+    InvalidModelError,
     ProviderCancelledError,
+    ProviderTimeoutError,
     QuotaError,
     _http_error,
     localized_error_message,
@@ -49,7 +51,9 @@ class Session:
         if cancel_token:
             cancel_token.raise_if_cancelled()
         return SimpleNamespace(
-            access_token="synthetic-oauth-token", generation=self.generation
+            access_token="synthetic-oauth-token",
+            generation=self.generation,
+            account_id="synthetic-account",
         )
 
     def check_current(self, generation):
@@ -80,6 +84,14 @@ class Response:
     def close(self):
         self.closed = True
 
+    def iter_content(self, chunk_size):
+        for event in self.events:
+            if self.before_event:
+                self.before_event(event)
+            content = ("data: " + json.dumps(event) + "\n\n").encode()
+            for offset in range(0, len(content), chunk_size):
+                yield content[offset : offset + chunk_size]
+
 
 class Http:
     def __init__(self, *responses):
@@ -107,7 +119,9 @@ def completed(text):
 
 
 class ChatGPTProviderTests(unittest.TestCase):
-    connection = ProviderConnection("", "https://api.openai.com/v1")
+    connection = ProviderConnection(
+        "", "https://api.openai.com/v1", "synthetic-account"
+    )
     rewrite = RewriteRequest(
         "source", "available-model", "pt", "Keep all facts.", "source"
     )
@@ -117,6 +131,65 @@ class ChatGPTProviderTests(unittest.TestCase):
         session = session or Session()
         registry = build_provider_registry(http, chatgpt_session=session)
         return registry.adapter("chatgpt"), http
+
+    def test_previous_account_model_is_rejected_before_inference(self):
+        for account_id in ("previous-account", ""):
+            with self.subTest(account_id=account_id):
+                adapter, http = self.adapter(Response([completed("wrong account")]))
+                connection = SimpleNamespace(
+                    base_url=self.connection.base_url, api_key="", account_id=account_id
+                )
+                with self.assertRaises(InvalidModelError):
+                    adapter.rewrite(self.rewrite, connection)
+                self.assertFalse(http.calls)
+
+    def test_unterminated_stream_checks_limits_during_read(self):
+        class DripResponse(Response):
+            def __init__(self, on_chunk=None):
+                super().__init__()
+                self.consumed = 0
+                self.on_chunk = on_chunk
+
+            def chunks(self):
+                for _ in range(40):
+                    self.consumed += 1
+                    if self.on_chunk:
+                        self.on_chunk()
+                    yield b"x"
+
+            def iter_lines(self, **kwargs):
+                yield b"".join(self.chunks())
+
+            def iter_content(self, chunk_size):
+                yield from self.chunks()
+
+        for mode, expected, limit in (
+            ("size", InvalidResponseError, 17),
+            ("deadline", ProviderTimeoutError, 2),
+            ("cancel", ProviderCancelledError, 1),
+        ):
+            with self.subTest(mode=mode):
+                token = CancellationToken()
+                now = [0.0]
+
+                def on_chunk():
+                    if mode == "cancel":
+                        token.cancel()
+                    if mode == "deadline":
+                        now[0] += 70.0
+
+                response = DripResponse(on_chunk)
+                adapter, _ = self.adapter(response)
+                with (
+                    patch("chatgpt_provider.MAX_EVENT_BYTES", 16),
+                    patch(
+                        "chatgpt_provider.time.monotonic", side_effect=lambda: now[0]
+                    ),
+                    self.assertRaises(expected),
+                ):
+                    adapter.rewrite(self.rewrite, self.connection, token)
+                self.assertLessEqual(response.consumed, limit)
+                self.assertTrue(response.closed)
 
     def test_registered_only_for_text_and_model_discovery(self):
         metadata = build_provider_registry().describe("chatgpt")
@@ -325,6 +398,7 @@ class ChatGPTProviderTests(unittest.TestCase):
                     "rewrite": {
                         "provider_id": "chatgpt",
                         "model_id": "available-model",
+                        "account_id": "synthetic-account",
                     },
                 }
             }
@@ -332,6 +406,7 @@ class ChatGPTProviderTests(unittest.TestCase):
         loaded = AppConfig.from_mapping(config.to_mapping())
         self.assertEqual(loaded.workflow("rewrite").provider_id, "chatgpt")
         self.assertEqual(loaded.workflow("rewrite").model_id, "available-model")
+        self.assertEqual(loaded.workflow("rewrite").account_id, "synthetic-account")
         self.assertEqual(loaded.selection.transcription_provider, "gemini")
         self.assertEqual(loaded.chatgpt.api_key, "")
         self.assertNotIn("chatgpt_api_key", loaded.to_mapping())
@@ -342,6 +417,33 @@ class ChatGPTProviderTests(unittest.TestCase):
 
 
 class ChatGPTWorkflowIntegrationTests(unittest.TestCase):
+    def test_voice_translation_preserves_the_profile_account_binding(self):
+        from clarify.desktop.qml_voice_translation import QmlVoiceTranslationProvider
+        from voice_translation import VoiceTranslationRequest
+
+        config = AppConfig.from_mapping(
+            {
+                "voice_translation": {
+                    "route": {
+                        "provider_id": "chatgpt",
+                        "model_id": "available-model",
+                        "account_id": "synthetic-account",
+                    }
+                },
+            }
+        )
+        config = AppConfig.from_mapping(config.to_mapping())
+        http = Http(Response([completed("Translated text.")]))
+        provider = QmlVoiceTranslationProvider(
+            lambda: config,
+            registry=build_provider_registry(http, chatgpt_session=Session()),
+        )
+        request = VoiceTranslationRequest(
+            "Original.", "pt", "en", config.voice_translation.route
+        )
+        self.assertEqual(provider.translate(request).text, "Translated text.")
+        self.assertEqual(len(http.calls), 1)
+
     def test_pending_model_selection_persists_and_cannot_start_inference(self):
         with TemporaryDirectory() as directory:
             repository = LocalConfigRepository(
@@ -394,6 +496,7 @@ class ChatGPTWorkflowIntegrationTests(unittest.TestCase):
                     "local_asr_refinement": {
                         "provider_id": "chatgpt",
                         "model_id": "available-model",
+                        "account_id": "synthetic-account",
                         "enabled": True,
                     },
                 },

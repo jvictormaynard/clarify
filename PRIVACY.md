@@ -55,8 +55,8 @@ Accounts with the same email address are not linked automatically.
 
 The separate ChatGPT plan connection stores the verified OpenAI account
 identifier, email, client registration, host identifier, and OAuth credentials
-in the desktop credential store. Windows protects this record with current-user
-DPAPI. Experimental Linux and macOS source runs use the existing owner-restricted
+in a separate `chatgpt-secrets` desktop credential store. Windows protects this
+record with current-user DPAPI. Experimental Linux and macOS source runs use the owner-restricted
 file backend. Tokens are not sent to the Clarify account service or Settings web
 interface. Signing out clears the selected connection's tokens and attempts to
 revoke its renewable session. If revocation cannot be confirmed, disconnect the

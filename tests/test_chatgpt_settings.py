@@ -16,6 +16,9 @@ from clarify.desktop.qml_web_settings import SettingsProtocol
 from local_asr_product import LocalASRProductState
 from provider_registry import PROVIDER_REGISTRY
 from provider_types import ProviderCapability, ProviderMetadata
+from provider_http import InvalidModelError
+from provider_registry import build_provider_registry
+from workflow_provider import WorkflowProviderService
 from shared.localization import translate
 
 try:
@@ -236,6 +239,7 @@ class ChatGPTSettingsTests(unittest.TestCase):
         )
         self.assertTrue(self.settings.savePreference("setRouteModelId", ["personal-a"]))
         self.assertEqual(repository.load().workflow("rewrite").model_id, "personal-a")
+        self.assertEqual(repository.load().workflow("rewrite").account_id, "personal")
         self.assertTrue(self.settings.selectProvider("chatgpt"))
         self.assertFalse(self.settings.setProviderApiKey("secret"))
         self.assertFalse(self.settings.setProviderBaseUrl("https://evil.example"))
@@ -265,6 +269,56 @@ class ChatGPTSettingsTests(unittest.TestCase):
                 for c in self.adapter.calls
             )
         )
+
+    def test_failed_account_model_reset_stays_blocked_after_restart(self):
+        repository = self.install_fake_provider()
+        self.settings.selectWorkflow("rewrite")
+        self.settings.savePreference("setRouteProviderId", ["chatgpt"])
+        self.command("sign_in")
+        self.wait_idle()
+        self.wait_models()
+        self.assertTrue(self.settings.savePreference("setRouteModelId", ["personal-a"]))
+        with patch.object(repository, "apply", side_effect=OSError("disk unavailable")):
+            self.command("add_account")
+            self.wait_idle()
+            self.wait_models()
+        persisted = repository.load()
+        self.assertEqual(persisted.workflow("rewrite").account_id, "personal")
+        self.assertEqual(self.session.state["accountId"], "second")
+        self.settings.shutdown()
+
+        # A crash/restart retains the old disk route. Even if its slug exists
+        # in the new catalog, the UI and runtime must reject its account ID.
+        restarted = QmlSettingsController(
+            self.settings.repositories,
+            chatgpt_session=self.session,
+            microphone_backend=_MicrophoneBackend(
+                MicrophoneInventory.unavailable("test")
+            ),
+            local_product=Mock(state=LocalASRProductState("missing"), busy=False),
+        )
+        self.addCleanup(restarted.shutdown)
+        restarted.selectWorkflow("rewrite")
+        from provider_types import ModelCatalog
+
+        key = restarted._model_connection_key()
+        restarted._model_catalogs[key] = ModelCatalog(text_models=("personal-a",))
+        self.assertEqual(restarted.routeModelId, "")
+        http = Mock()
+        session = SimpleNamespace(
+            credential=lambda **kwargs: SimpleNamespace(
+                access_token="synthetic", generation=1, account_id="second"
+            ),
+            check_current=lambda generation: None,
+        )
+        service = WorkflowProviderService(
+            SimpleNamespace(current=repository.load, workflow=persisted.workflow),
+            SimpleNamespace(),
+            registry=build_provider_registry(http, chatgpt_session=session),
+        )
+        with self.assertRaises(InvalidModelError):
+            service.rewrite("Keep all facts.")
+        http.request.assert_not_called()
 
     def test_identity_without_plan_permission_has_no_catalog_and_provider_tests_block_mutation(
         self,

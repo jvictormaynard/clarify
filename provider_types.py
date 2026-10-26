@@ -73,6 +73,7 @@ class ProviderMetadata:
 class ProviderConnection:
     api_key: str
     base_url: str
+    account_id: str = ""
 
 
 @dataclass(frozen=True)

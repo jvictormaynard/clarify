@@ -11,6 +11,7 @@ import requests
 from provider_adapters import ProviderAdapter, _invalid_response_error
 from provider_http import (
     ChatGPTPermissionError,
+    InvalidModelError,
     NetworkError,
     ProviderCancelledError,
     ProviderTimeoutError,
@@ -186,6 +187,8 @@ class ChatGPTPlanAdapter(ProviderAdapter):
             )
         session = self.session
         credential = self._session_call(session.credential, cancel_token=cancel_token)
+        if not connection.account_id or connection.account_id != credential.account_id:
+            raise InvalidModelError(provider="chatgpt", operation="text_generation")
         response = self.http.request(
             "POST",
             f"{CHATGPT_BASE_URL}/responses",
@@ -208,34 +211,53 @@ class ChatGPTPlanAdapter(ProviderAdapter):
             allow_redirects=False,
         )
         started, total, event_size = time.monotonic(), 0, 0
+        last_session_check = started
         data = []
 
-        def check():
+        def check(*, force_session=True):
+            nonlocal last_session_check
             if cancel_token:
                 cancel_token.raise_if_cancelled("chatgpt", "text_generation")
-            self._session_call(session.check_current, credential.generation)
-            if time.monotonic() - started > MAX_STREAM_SECONDS:
+            now = time.monotonic()
+            if now - started > MAX_STREAM_SECONDS:
                 raise ProviderTimeoutError(
                     provider="chatgpt", operation="text_generation"
                 )
+            if force_session or now - last_session_check >= 0.05:
+                self._session_call(session.check_current, credential.generation)
+                last_session_check = now
 
         def invalid():
             return _invalid_response_error(
                 self.http, response, "chatgpt", "text_generation"
             )
 
-        try:
-            for line in response.iter_lines(chunk_size=1024):
-                check()
-                if isinstance(line, bytes):
-                    total += len(line)
-                    line = line.decode("utf-8")
-                elif isinstance(line, str):
-                    total += len(line.encode("utf-8"))
-                else:
+        def bounded_lines():
+            nonlocal total
+            pending = bytearray()
+            # A one-byte read returns even when a peer drips bytes without a
+            # newline. Larger iter_content reads can wait for a complete chunk.
+            for chunk in response.iter_content(chunk_size=1):
+                check(force_session=False)
+                if not isinstance(chunk, bytes):
                     raise invalid()
+                total += len(chunk)
                 if total > MAX_STREAM_BYTES:
                     raise invalid()
+                for byte in chunk:
+                    if byte == 10:
+                        yield pending.rstrip(b"\r").decode("utf-8")
+                        pending.clear()
+                    else:
+                        pending.append(byte)
+                        if len(pending) > MAX_EVENT_BYTES:
+                            raise invalid()
+            if pending:
+                yield pending.rstrip(b"\r").decode("utf-8")
+
+        try:
+            for line in bounded_lines():
+                check()
                 if line:
                     if line.startswith("data:"):
                         value = line[5:].lstrip(" ")

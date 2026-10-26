@@ -170,6 +170,8 @@ class WorkflowRoute:
     # from a legacy flat selector.  An explicitly authored scoped route
     # remains authoritative even when its values equal another route.
     independent: bool = False
+    # OAuth model selections belong to one local account registration.
+    account_id: str = ""
 
     @property
     def provider(self) -> str:
@@ -232,10 +234,11 @@ class WorkflowRoute:
             ),
             enabled=enabled,
             independent=independent,
+            account_id=text("account_id", fallback_value=fallback.account_id),
         )
 
     def to_mapping(self) -> dict[str, Any]:
-        return {
+        values = {
             "provider_id": self.provider_id,
             "model_id": self.model_id,
             "prompt": self.prompt,
@@ -243,12 +246,16 @@ class WorkflowRoute:
             "enabled": self.enabled,
             "independent": self.independent,
         }
+        if self.account_id:
+            values["account_id"] = self.account_id
+        return values
 
     def without_prompt(self) -> dict[str, Any]:
         """Safe route summary for diagnostics and usage metadata."""
         values = self.to_mapping()
         values.pop("prompt", None)
         values.pop("independent", None)
+        values.pop("account_id", None)
         values["custom_endpoint"] = _safe_endpoint_for_diagnostics(self.custom_endpoint)
         return values
 
@@ -582,6 +589,11 @@ def validate_workflow_route(
         custom_endpoint=endpoint,
         enabled=bool(route.enabled),
         independent=bool(route.independent),
+        account_id=(
+            str(route.account_id or "").strip()
+            if getattr(metadata, "authentication", "api_key") == "oauth" and model
+            else ""
+        ),
     )
 
 

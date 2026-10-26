@@ -326,9 +326,9 @@ own randomized loopback sidecar. Account processing uses the optional Clarify
 service; see the [privacy notice](PRIVACY.md). The app stores:
 
 - provider settings in `%APPDATA%\Clarify\config.json`;
-- DPAPI-encrypted provider keys and ChatGPT OAuth credentials in
-  `%APPDATA%\Clarify\secrets.dpapi.json`, decryptable only by the same
-  Windows user on the same machine;
+- DPAPI-encrypted provider keys in `%APPDATA%\Clarify\secrets.dpapi.json`
+  and ChatGPT OAuth credentials in `%APPDATA%\Clarify\chatgpt-secrets.dpapi.json`,
+  decryptable only by the same Windows user on the same machine;
 - anonymous usage counters in `%APPDATA%\Clarify\usage_stats.json`;
 - optional Local ASR assets below `%LOCALAPPDATA%\Clarify\local-asr` after
   an explicit download; the runtime and model are not bundled in the executable;

@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from chatgpt_auth import ChatGPTPlanError, ChatGPTPlanSession, get_chatgpt_session
-from secret_store import DpapiSecretStore, MemorySecretStore
+from secret_store import DpapiSecretStore, MemorySecretStore, create_secret_store
 
 
 ISSUER = "https://auth.openai.com"
@@ -229,6 +229,54 @@ class ChatGPTSessionTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, code)
         self.assertNotIn(
             "SECRET", "".join(traceback.format_exception(raised.exception))
+        )
+
+    def test_personal_key_write_cannot_restore_a_rotated_chatgpt_token(self):
+        def session():
+            return ChatGPTPlanSession(
+                self.directory,
+                http=self.server,
+                clock=lambda: self.server.now,
+                listener_factory=lambda: Listener(self.server.callback),
+            )
+
+        active = session()
+        active.sign_in(open_browser=self.server.browser)
+        keys = create_secret_store(self.directory)
+        keys.set("openai", "old-api-key")
+        loaded, release = threading.Event(), threading.Event()
+        original_encode = keys._encode
+
+        def pause_after_loading(entries):
+            loaded.set()
+            if not release.wait(5):
+                raise RuntimeError("key writer timed out")
+            return original_encode(entries)
+
+        failures = []
+
+        def write_key():
+            try:
+                keys.set("openai", "new-api-key")
+            except Exception as error:
+                failures.append(error)
+
+        with patch.object(keys, "_encode", side_effect=pause_after_loading):
+            writer = threading.Thread(target=write_key)
+            writer.start()
+            try:
+                self.assertTrue(loaded.wait(3))
+                self.server.now += 3570
+                self.assertEqual(active.credential().access_token, "rotated-access")
+            finally:
+                release.set()
+                writer.join(5)
+        self.assertFalse(writer.is_alive())
+        self.assertFalse(failures)
+        self.assertEqual(session().credential().access_token, "rotated-access")
+        self.assertEqual(len(self.token_calls("refresh_token")), 1)
+        self.assertEqual(
+            create_secret_store(self.directory).get("openai"), "new-api-key"
         )
 
     def test_constructor_and_snapshot_do_not_write(self):

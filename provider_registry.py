@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 import os
 import platform
 from pathlib import Path
@@ -142,7 +143,7 @@ class ProviderRegistry:
         endpoint = str(custom_endpoint or "").strip().rstrip("/")
         if endpoint:
             self.adapter(provider_id, ProviderCapability.CUSTOM_BASE_URL)
-        return ProviderConnection(connection.api_key, endpoint or connection.base_url)
+        return replace(connection, base_url=endpoint or connection.base_url)
 
     def audio_model_from_legacy(
         self, provider_id: str, config: Mapping[str, object]
