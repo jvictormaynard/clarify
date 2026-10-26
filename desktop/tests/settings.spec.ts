@@ -7,6 +7,58 @@ let id = 0;
 const pending = new Map<number, (value: unknown) => void>();
 let releaseUsage: () => Promise<void>;
 
+test("cleanup: levels persist across pages and explain minimal changes", async ({ page }, testInfo) => {
+  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
+  await expect(level).toContainText("Padrão atual");
+  await level.click();
+  await page.getByRole("option", { name: "Ajustes mínimos", exact: true }).click();
+  await expect(level).toContainText("Ajustes mínimos");
+  await expect(page.getByText("Ajusta apenas espaços e tabulações. Mantém hesitações, repetições e autocorreções.")).toBeVisible();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(level).toContainText("Ajustes mínimos");
+  await level.click();
+  await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(level).toContainText("Preservar palavras");
+  await page.getByRole("button", { name: "Ditado", exact: true }).click();
+  await expect(level).toContainText("Preservar palavras");
+  await level.click();
+  await page.getByRole("option", { name: "Revisar clareza", exact: true }).click();
+  await expect(level).toContainText("Revisar clareza");
+  await page.screenshot({ path: testInfo.outputPath("dictation-cleanup.png"), fullPage: true });
+  await level.click();
+  await page.getByRole("option", { name: "Padrão atual", exact: true }).click();
+  await expect(level).toContainText("Padrão atual");
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
+});
+
+for (const locale of ["en", "es"] as const) {
+  test(`cleanup: locale ${locale} shows honest minimal changes example`, async ({ page }) => {
+    const level = page.getByRole("combobox", { name: locale === "en" ? "Cleanup level" : "Nivel de revisión", exact: true });
+    await level.click();
+    await page.getByRole("option", { name: locale === "en" ? "Minimal changes" : "Ajustes mínimos", exact: true }).click();
+    await expect(page.getByText(locale === "en" ? "Adjusts spaces and tabs only. Keeps hesitations, repetitions and self-corrections." : "Ajusta solo espacios y tabulaciones. Conserva vacilaciones, repeticiones y autocorrecciones.")).toBeVisible();
+  });
+}
+
+test("quota: cleanup choices remain available for managed accounts", async ({ page }) => {
+  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
+  await level.click();
+  await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(level).toContainText("Preservar palavras");
+  await page.reload();
+  await expect(level).toContainText("Preservar palavras");
+});
+
+test("cleanup: clarity explains when the refinement route is disabled", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
+  await level.click();
+  await page.getByRole("option", { name: "Revisar clareza", exact: true }).click();
+  await page.getByRole("switch", { name: "Ativar este fluxo", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Revisão indisponível nesta rota." })).toBeVisible();
+  await expect(level).toContainText("Revisar clareza");
+});
+
 for (const method of ["testMicrophone", "stopMicrophoneTest", "refreshMicrophones"] as const) {
   test(`responsive operations: ${method} keeps navigation and unrelated controls stable`, async ({ page }) => {
     if (method === "stopMicrophoneTest") {

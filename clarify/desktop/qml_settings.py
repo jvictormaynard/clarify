@@ -964,6 +964,21 @@ class QmlSettingsController(QObject):
 
         return self._config.recording_controls.to_mapping()
 
+    @Property(str, notify=configChanged)
+    def dictationCleanupLevel(self) -> str:
+        level = self._config.dictation_cleanup_level
+        return level.value if level is not None else ""
+
+    @Property(bool, notify=configChanged)
+    def dictationCleanupRefinementAllowed(self) -> bool:
+        if getattr(self._account, "managed", False) is True:
+            return getattr(self._account, "signed_in", False) is True
+        local = self._config.workflow("transcription").provider_id == "local_asr"
+        scope = "local_asr_refinement" if local else "refinement"
+        return self._config.workflow(scope).enabled and (
+            not local or self._config.local_asr_cloud_refinement
+        )
+
     @Property(bool, notify=configChanged)
     def localAsrCloudRefinement(self) -> bool:
         return self._config.local_asr_cloud_refinement
@@ -2778,6 +2793,7 @@ class QmlSettingsController(QObject):
             "setRecordingVadEnabled",
         }
         text_methods = {
+            "setDictationCleanupLevel",
             "setMode",
             "setLanguage",
             "setRouteProviderId",
@@ -2817,6 +2833,11 @@ class QmlSettingsController(QObject):
         ):
             raise ValueError("A conta Clarify gerencia as opções de processamento.")
 
+        if method == "setDictationCleanupLevel":
+            from shared.dictation_policy import cleanup_level
+
+            level = cleanup_level(args[0] or None)
+            return lambda config: replace(config, dictation_cleanup_level=level)
         if method in bool_fields:
             if method == "setLocalAsrCloudRefinement":
                 return lambda config: replace(

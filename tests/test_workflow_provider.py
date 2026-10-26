@@ -198,6 +198,55 @@ class WorkflowProviderTests(unittest.TestCase):
                 self.assertNotIn("Rewrite everything", request.prompt)
                 self.assertEqual(result.raw_text, self.raw)
 
+    def test_explicit_levels_keep_standalone_snippet_literal_and_skip_review(self):
+        from dictionary_snippets import (
+            DictionarySnippetService,
+            DictionarySnippets,
+            InMemoryDictionarySnippetsRepository,
+            Snippet,
+        )
+
+        self.service.dictionary_service = DictionarySnippetService(
+            InMemoryDictionarySnippetsRepository(
+                DictionarySnippets(
+                    snippets=(Snippet("assinatura", "João\n  Equipe\n"),)
+                )
+            )
+        )
+        self.registry.transcribe.return_value = TranscriptionResult(
+            "assinatura", "openai", "whisper-1"
+        )
+        for level in ("preserve", "light", "clarity"):
+            with self.subTest(level=level):
+                self.set_cleanup(level)
+                result = self.service.transcribe(self.audio, "prompt", "pt")
+                self.assertEqual(result.text, "João\n  Equipe\n")
+                self.assertEqual(result.raw_text, "assinatura")
+                self.assertEqual(result.cleanup_level_applied, "preserve")
+                self.assertFalse(result.refinement_failed)
+        self.registry.rewrite.assert_not_called()
+
+    def test_light_does_not_normalize_spaces_inside_inline_saved_text(self):
+        from dictionary_snippets import (
+            DictionarySnippetService,
+            DictionarySnippets,
+            InMemoryDictionarySnippetsRepository,
+            Snippet,
+        )
+
+        self.service.dictionary_service = DictionarySnippetService(
+            InMemoryDictionarySnippetsRepository(
+                DictionarySnippets(snippets=(Snippet("assinatura", "João  Victor"),))
+            )
+        )
+        self.set_cleanup("light")
+        self.registry.transcribe.return_value = TranscriptionResult(
+            "Use  assinatura amanhã.", "openai", "whisper-1"
+        )
+        result = self.service.transcribe(self.audio, "prompt", "pt")
+        self.assertEqual(result.text, "Use João  Victor amanhã.")
+        self.registry.rewrite.assert_not_called()
+
     def test_success_keeps_routes_provenance_dictionary_and_timing(self):
         result = self.service.transcribe(self.audio, "transcription", "pt-BR")
         self.assertEqual(result.raw_text, self.raw)
