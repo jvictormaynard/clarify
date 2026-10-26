@@ -1,110 +1,22 @@
-name: iOS TestFlight
+name: iOS 39 installed keyboard diagnosis (tests only)
 
 on:
   workflow_dispatch:
     inputs:
-      source_sha:
-        description: Exact reviewed source SHA (required for signed upload on an ios/v tag)
-        type: string
-        default: ''
       tests_only:
-        description: Run checks without signing or upload
+        description: Confirm execution without signing or upload
         type: boolean
-        default: false
-      extension_diagnostic:
-        description: Also enforce the unresolved opening-height diagnostic (tests only)
-        type: boolean
-        default: false
-      status_only:
-        description: Read Apple build and group status without building or uploading
-        type: boolean
-        default: false
-      short_dictation_acceptance:
-        description: Validate synthetic short speech with the live Groq client
-        type: boolean
-        default: false
-      snippets_acceptance:
-        description: Validate snippets with the live native client and temporary test accounts
-        type: boolean
-        default: false
-      availability_only:
-        description: Complete internal TestFlight delivery of the already uploaded build
-        type: boolean
-        default: false
+        required: true
+        default: true
 
 permissions:
   contents: read
-  actions: read
-  pull-requests: read
-
-concurrency:
-  group: clarify-ios-${{ inputs.tests_only && github.run_id || 'testflight' }}
-  queue: max
-  cancel-in-progress: false
 
 jobs:
-  release_gate:
-    if: >-
-      github.repository == 'jvictormaynard/clarify' &&
-      !inputs.tests_only && !inputs.status_only && !inputs.availability_only
-    runs-on: ubuntu-latest
-    outputs:
-      result: ${{ steps.gate.outputs.result }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
-      - name: Verify reviewed mobile source before signing or upload
-        id: gate
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_SOURCE: ${{ inputs.source_sha }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: python scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
-
-  availability:
-    name: Verify the uploaded TestFlight build
-    needs: release_gate
-    if: >-
-      always() && !inputs.status_only && !inputs.tests_only &&
-      (inputs.availability_only || needs.release_gate.outputs.result == 'availability')
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 22.21.1
-      - name: Verify processing and publish to the existing internal group
-        working-directory: mobile
-        env:
-          CLARIFY_ASC_KEY_P8: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
-          CLARIFY_ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
-          CLARIFY_ASC_ISSUER_ID: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
-        run: node scripts/publish-testflight.cjs
-      - name: Preserve TestFlight availability evidence
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: clarify-testflight-${{ github.sha }}
-          path: mobile/test-results/testflight-availability.json
-          if-no-files-found: error
-          retention-days: 7
-  publish:
-    name: Test, sign and upload iOS
-    needs: release_gate
-    if: >-
-      always() && github.repository == 'jvictormaynard/clarify' &&
-      !inputs.availability_only && !inputs.status_only &&
-      (inputs.tests_only || needs.release_gate.outputs.result == 'publish')
+  installed_keyboard:
+    if: inputs.tests_only
     runs-on: macos-26
-    timeout-minutes: 120
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: mobile
@@ -122,184 +34,45 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.21.1
-          cache: npm
-          cache-dependency-path: mobile/package-lock.json
-      - name: Recheck upload history before signing or retrying
-        id: resume
-        if: ${{ !inputs.tests_only }}
-        working-directory: .
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_SOURCE: ${{ inputs.source_sha }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: python3 scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
-      - name: Verify Xcode
-        run: xcodebuild -version
-      - name: Install locked dependencies
-        run: npm ci
-      - name: Check prompts, types, lint and JavaScript contracts
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
-        run: npm run check
-      - name: Check Expo configuration
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
-        run: npx --yes expo-doctor
-      - name: Generate native project
-        run: npx expo prebuild --clean --platform ios --no-install
-      - name: Install CocoaPods dependencies
-        run: pod install --project-directory=ios
-      - name: Test first launch and navigation in the containing app
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
-        run: node scripts/test-app-ui.cjs
-      - name: Test Swift contracts
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
-        run: npm run test:native
-      - name: Validate short speech with the live mobile client
-        if: ${{ inputs.short_dictation_acceptance }}
-        env:
-          CLARIFY_SHORT_DICTATION_ACCEPTANCE: ${{ secrets.CLARIFY_SHORT_DICTATION_ACCEPTANCE }}
-        run: node scripts/test-short-dictation.cjs
-      - name: Validate snippets with the live mobile client
-        if: inputs.snippets_acceptance
-        env:
-          CLARIFY_SNIPPETS_ACCEPTANCE: ${{ secrets.CLARIFY_SNIPPETS_ACCEPTANCE }}
-        run: node scripts/test-snippets-acceptance.cjs
-      - name: Test keyboard on iPhone simulator
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
-        env:
-          CLARIFY_NATIVE_TESTS: '1'
-        run: node scripts/test-keyboard-ui.cjs
-      - name: Test installed keyboard typing and activation
-        env:
-          STRICT_OPENING_HEIGHT: ${{ inputs.tests_only && inputs.extension_diagnostic }}
+      - name: Record exact source and tools
         run: |
-          if [[ "$STRICT_OPENING_HEIGHT" == 'true' ]]; then
-            node scripts/test-keyboard-extension.cjs --check-opening-height
-          else
-            node scripts/test-keyboard-extension.cjs
-          fi
-      - name: Preserve simulator results
+          set -euo pipefail
+          mkdir -p test-results/diagnosis
+          git rev-parse HEAD HEAD:mobile > test-results/diagnosis/source.txt
+          git ls-files -z native modules scripts | xargs -0 shasum -a 256 > test-results/diagnosis/source-sha256.txt
+          xcodebuild -version | tee test-results/diagnosis/xcode.txt
+          xcrun simctl list devices available --json > test-results/diagnosis/devices-before.json
+          xcrun simctl list runtimes --json > test-results/diagnosis/runtimes.json
+          ruby -rxcodeproj -e 'puts Xcodeproj::VERSION'
+      - name: Check locked mobile JavaScript contracts, types and lint
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run check
+          node --check scripts/test-keyboard-extension.cjs
+          ruby -c scripts/keyboard-extension-project.rb
+          xcrun swiftc -frontend -parse native/tests/KeyboardExtensionTests.swift
+          xcrun swiftc -frontend -parse native/tests/KeyboardExtensionHost.swift
+      - name: Check Swift contracts
+        run: npm run test:native
+      - name: Run unchanged installed typing and twice activation on fresh simulator
+        run: |
+          set -euo pipefail
+          node scripts/test-keyboard-extension.cjs 2>&1 | tee test-results/diagnosis/installed-keyboard.log
+      - name: Export result summaries
+        if: always()
+        run: |
+          for result in test-results/installed-keyboard-*/KeyboardExtension.xcresult; do
+            if [[ -d "$result" ]]; then
+              xcrun xcresulttool get test-results summary --path "$result" > "${result%/*}/xcresult-summary.json"
+              xcrun xcresulttool get test-results tests --path "$result" > "${result%/*}/xcresult-tests.json"
+            fi
+          done
+      - name: Preserve all diagnostic evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: clarify-keyboard-tests-${{ github.sha }}
-          path: |
-            mobile/test-results/keyboard-ui.zip
-            mobile/test-results/app-ui/
-            !mobile/test-results/app-ui/AppFlow.xcresult/Staging/**
-            mobile/test-results/installed-keyboard-*
-            mobile/test-results/short-dictation-acceptance.json
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Build the containing app without signing
-        if: ${{ inputs.tests_only }}
-        run: |
-          set -euo pipefail
-          xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
-            -configuration Debug -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/ClarifyValidation" \
-            CODE_SIGNING_ALLOWED=NO build | xcbeautify
-      - name: Install existing Apple signing credentials
-        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
-        env:
-          CLARIFY_IOS_CERTIFICATE_BASE64: ${{ secrets.CLARIFY_IOS_CERTIFICATE_BASE64 }}
-          CLARIFY_IOS_CERTIFICATE_PASSWORD: ${{ secrets.CLARIFY_IOS_CERTIFICATE_PASSWORD }}
-          CLARIFY_IOS_PROFILES_GZIP_BASE64: ${{ secrets.CLARIFY_IOS_PROFILES_GZIP_BASE64 }}
-        run: python3 scripts/ios-signing.py install
-      - name: Apply signing to generated app and extension targets
-        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
-        run: ruby scripts/ios-signing.rb
-      - name: Archive and export signed IPA
-        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
-        run: |
-          set -euo pipefail
-          xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
-            -configuration Release -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/Clarify.xcarchive" \
-            -derivedDataPath "$RUNNER_TEMP/ClarifyDerivedData" archive | xcbeautify
-          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Clarify.xcarchive" \
-            -exportOptionsPlist "$RUNNER_TEMP/clarify-signing/ExportOptions.plist" \
-            -exportPath "$RUNNER_TEMP/clarify-export" | xcbeautify
-      - name: Verify signed app and both extensions
-        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
-        run: python3 scripts/verify-ios-ipa.py "$RUNNER_TEMP/clarify-export/Clarify.ipa"
-      - name: Upload directly to App Store Connect
-        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
-        env:
-          CLARIFY_ASC_KEY_P8: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
-          CLARIFY_ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
-          CLARIFY_ASC_ISSUER_ID: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
-        run: |
-          set -euo pipefail
-          key_dir="$RUNNER_TEMP/clarify-upload/private_keys"
-          mkdir -p "$key_dir"
-          chmod 700 "$RUNNER_TEMP/clarify-upload" "$key_dir"
-          printf '%s' "$CLARIFY_ASC_KEY_P8" > "$key_dir/AuthKey_${CLARIFY_ASC_KEY_ID}.p8"
-          chmod 600 "$key_dir/AuthKey_${CLARIFY_ASC_KEY_ID}.p8"
-          API_PRIVATE_KEYS_DIR="$key_dir" xcrun altool --upload-app --type ios \
-            --file "$RUNNER_TEMP/clarify-export/Clarify.ipa" \
-            --apiKey "$CLARIFY_ASC_KEY_ID" --apiIssuer "$CLARIFY_ASC_ISSUER_ID"
-      - name: Preserve verified IPA and checksum
-        if: success() && !inputs.tests_only && steps.resume.outputs.result == 'publish'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: clarify-ios-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/clarify-export/Clarify.ipa
-            ${{ runner.temp }}/clarify-export/Clarify.ipa.sha256
-            ${{ runner.temp }}/clarify-export/verification.json
+          name: ios39-installed-keyboard-ax-${{ github.sha }}
+          path: mobile/test-results/
           if-no-files-found: error
           retention-days: 7
-      - name: Verify processing and publish to the existing internal group
-        if: success() && !inputs.tests_only
-        env:
-          CLARIFY_ASC_KEY_P8: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
-          CLARIFY_ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
-          CLARIFY_ASC_ISSUER_ID: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
-        run: node scripts/publish-testflight.cjs
-      - name: Preserve TestFlight availability evidence
-        if: success() && !inputs.tests_only
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: clarify-testflight-${{ github.sha }}
-          path: mobile/test-results/testflight-availability.json
-          if-no-files-found: error
-          retention-days: 7
-      - name: Remove temporary signing credentials
-        if: always() && !inputs.tests_only
-        run: python3 scripts/ios-signing.py clean
-  apple_status:
-    if: ${{ inputs.status_only }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Read App Store Connect build availability
-        env:
-          ASC_KEY: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
-          ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
-          ASC_ISSUER: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
-        shell: bash
-        run: |
-          node <<'JS'
-          const { sign } = require('node:crypto');
-          const encode = x => Buffer.from(JSON.stringify(x)).toString('base64url');
-          const now = Math.floor(Date.now() / 1000);
-          const body = encode({ alg: 'ES256', kid: process.env.ASC_KEY_ID, typ: 'JWT' }) + '.' +
-            encode({ iss: process.env.ASC_ISSUER, iat: now, exp: now + 300, aud: 'appstoreconnect-v1' });
-          const signature = sign('sha256', Buffer.from(body), { key: process.env.ASC_KEY, dsaEncoding: 'ieee-p1363' });
-          const token = body + '.' + signature.toString('base64url');
-          async function get(path) {
-            const response = await fetch('https://api.appstoreconnect.apple.com/v1/' + path, { headers: { Authorization: 'Bearer ' + token } });
-            if (!response.ok) throw new Error('Apple status request failed: HTTP ' + response.status);
-            return response.json();
-          }
-          (async () => {
-            const builds = await get('builds?filter[app]=6820869157&sort=-uploadedDate&limit=10&include=preReleaseVersion,buildBetaDetail');
-            console.log(JSON.stringify({ checkedAt: new Date().toISOString(), builds }, null, 2));
-            const groups = await get('betaGroups?filter[app]=6820869157&limit=100');
-            for (const group of groups.data.filter(item => item.attributes.isInternalGroup)) {
-              group.builds = (await get('betaGroups/' + group.id + '/builds?limit=100')).data.map(item => item.id);
-              group.existingTesters = (await get('betaGroups/' + group.id + '/relationships/betaTesters?limit=200')).data.length;
-            }
-            console.log(JSON.stringify({ groups }, null, 2));
-          })().catch(error => { console.error(error.message); process.exitCode = 1; });
-          JS
