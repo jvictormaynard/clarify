@@ -8,6 +8,8 @@ import threading
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from hotkey_config import HotkeyAction, HotkeySettings
 from windows_hotkeys import ESCAPE_HOTKEY_ID, HotkeyRegistrationError
@@ -22,6 +24,7 @@ try:
         QtSingleInstanceGuard,
         WindowsGlobalHotkeyBackend,
         WindowsHotkeyEventFilter,
+        _WindowsSingleInstanceActivationApi,
     )
 
     PYSIDE6_AVAILABLE = True
@@ -64,6 +67,7 @@ class FakeLock:
 
 class FakeActivationApi:
     WAIT_OBJECT_0 = 0
+    WAIT_TIMEOUT = 0x102
 
     def __init__(self):
         self.handle = 9001
@@ -86,7 +90,7 @@ class FakeActivationApi:
         self.close_calls.append(handle)
 
 
-class BlockingActivationApi(FakeActivationApi):
+class TimeoutActivationApi(FakeActivationApi):
     def __init__(self):
         super().__init__()
         self.waiting = threading.Event()
@@ -97,12 +101,7 @@ class BlockingActivationApi(FakeActivationApi):
         self.waiting.set()
         self.woken.wait(timeout=2)
         self.wait_returned.set()
-        return self.WAIT_OBJECT_0
-
-    def set_event(self, handle):
-        result = super().set_event(handle)
-        self.woken.set()
-        return result
+        return self.WAIT_TIMEOUT
 
     def close(self, handle):
         self.assert_wait_finished = self.wait_returned.is_set()
@@ -310,26 +309,68 @@ class QtSingleInstanceGuardTests(unittest.TestCase):
             [activation_api.handle, activation_api.handle],
         )
 
-    def test_release_wakes_and_joins_activation_listener_before_closing_handle(self):
-        activation_api = BlockingActivationApi()
+    def test_native_activation_wait_is_bounded(self):
+        api = _WindowsSingleInstanceActivationApi.__new__(
+            _WindowsSingleInstanceActivationApi
+        )
+        wait = Mock(return_value=0x102)
+        api._kernel32 = SimpleNamespace(WaitForSingleObject=wait)
+
+        self.assertEqual(api.wait_for_event(9001), 0x102)
+        handle, timeout_ms = wait.call_args.args
+        self.assertEqual(handle, 9001)
+        self.assertGreater(timeout_ms, 0)
+        self.assertLessEqual(timeout_ms, 1000)
+
+    def test_listener_survives_timeout_before_a_real_activation(self):
+        activation_api = FakeActivationApi()
+        results = iter((activation_api.WAIT_TIMEOUT, activation_api.WAIT_OBJECT_0))
+        activation_api.wait_for_event = lambda _handle: next(results)
         guard = QtSingleInstanceGuard(
-            "clarify-test",
-            lock_path=Path(tempfile.gettempdir()) / "clarify-test.lock",
+            "clarify-timeout-test",
+            lock_path=Path(tempfile.gettempdir()) / "clarify-timeout-test.lock",
             lock_factory=FakeLock,
             activation_api=activation_api,
         )
+        received = threading.Event()
+
+        def activate():
+            guard.stop_activation_listener()
+            received.set()
 
         self.assertTrue(guard.acquire())
-        guard.start_activation_listener(lambda: None)
+        try:
+            guard.start_activation_listener(activate)
+            self.assertTrue(received.wait(timeout=1))
+        finally:
+            guard.release()
+
+    def test_release_joins_listener_before_close_without_shared_activation_signal(self):
+        activation_api = TimeoutActivationApi()
+        guard = QtSingleInstanceGuard(
+            "clarify-stop-test",
+            lock_path=Path(tempfile.gettempdir()) / "clarify-stop-test.lock",
+            lock_factory=FakeLock,
+            activation_api=activation_api,
+        )
+        self.assertTrue(guard.acquire())
+        guard.start_activation_listener(
+            lambda: self.fail("Shutdown activated a window")
+        )
         worker = guard._activation_listener_thread
-        self.assertIsNotNone(worker)
         self.assertTrue(activation_api.waiting.wait(timeout=1))
+        join = worker.join
 
-        guard.release()
+        def allow_native_timeout():
+            # Release the fake Win32 wait only when shutdown reaches the join.
+            activation_api.woken.set()
+            join(timeout=1)
 
-        self.assertTrue(activation_api.woken.is_set())
-        self.assertTrue(activation_api.wait_returned.is_set())
+        with patch.object(worker, "join", side_effect=allow_native_timeout):
+            guard.release()
+
         self.assertFalse(worker.is_alive())
+        self.assertEqual(activation_api.set_calls, [])
         self.assertTrue(activation_api.assert_wait_finished)
 
 

@@ -116,7 +116,8 @@ class _WindowsSingleInstanceActivationApi:
     """Small Win32 named-event boundary shared by primary and secondary runs."""
 
     WAIT_OBJECT_0 = 0
-    INFINITE = 0xFFFFFFFF
+    WAIT_TIMEOUT = 0x102
+    POLL_TIMEOUT_MS = 250
 
     def __init__(self) -> None:
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -145,7 +146,7 @@ class _WindowsSingleInstanceActivationApi:
         return bool(self._kernel32.SetEvent(handle))
 
     def wait_for_event(self, handle: Any) -> int:
-        return int(self._kernel32.WaitForSingleObject(handle, self.INFINITE))
+        return int(self._kernel32.WaitForSingleObject(handle, self.POLL_TIMEOUT_MS))
 
     def close(self, handle: Any) -> None:
         if handle:
@@ -279,6 +280,8 @@ class QtSingleInstanceGuard:
         def wait_loop() -> None:
             while self._activation_listening and self._activation_event == handle:
                 result = api.wait_for_event(handle)
+                if result == api.WAIT_TIMEOUT:
+                    continue
                 if result != api.WAIT_OBJECT_0:
                     return
                 if self._activation_listening:
@@ -303,9 +306,9 @@ class QtSingleInstanceGuard:
             self._activation_listener_thread = None
             return
 
-        handle = self._activation_event
-        if handle is not None:
-            self._activation_event_api().set_event(handle)
+        # The auto-reset activation event can have listeners in other TEMP
+        # namespaces. Its signal cannot reliably wake this worker and can
+        # activate another process. The bounded native wait observes shutdown.
         worker.join()
         self._activation_listener_thread = None
 
