@@ -238,7 +238,7 @@ foreach ($backendModule in @(
     Copy-Item (Join-Path $repoRoot $backendModule) $sourceDir -Force
 }
 New-Item (Join-Path $sourceDir "shared") -ItemType Directory -Force | Out-Null
-foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json")) {
+foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json", "dictation_policy.py")) {
     Copy-Item (Join-Path $repoRoot "shared\$catalogFile") (Join-Path $sourceDir "shared") -Force
 }
 Copy-Item $repoQml $qml -Recurse -Force
