@@ -100,6 +100,7 @@ class ApplicationStyleProviderTests(unittest.TestCase):
             ),
         )
         self.dictionary.state = SimpleNamespace(snippets=())
+        self.dictionary.expand.side_effect = lambda text: text
         result = self.service.transcribe(
             self.audio, "prompt", "pt", writing_style="informal"
         )
@@ -115,6 +116,7 @@ class ApplicationStyleProviderTests(unittest.TestCase):
             self.registry.transcribe.call_args.args[1].instruction,
         )
         self.assertEqual(result.writing_style_applied, "informal")
+        self.assertIsNone(result.raw_text)
 
     def test_style_keeps_route_and_connection_from_before_asr(self):
         original = self.current

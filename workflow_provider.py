@@ -467,7 +467,7 @@ class WorkflowProviderService:
             timings_ms=safe_timings(timings),
             raw_text=raw_transcript
             if policy.requested is not None
-            or style is not None
+            or (style is not None and not inline_style)
             or refinement_requested
             or transcript != raw_transcript
             else None,
