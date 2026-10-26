@@ -19,7 +19,8 @@ from django.db.models import Count, Exists, Max, OuterRef, Q, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 
-from .models import Allowance, Budget, Operation, User
+from .funding import week_bounds
+from .models import Budget, FundingPeriod, Operation, User, WeeklyQuota
 
 PAGE_SIZE = 25
 RETENTION_DAYS = 31
@@ -254,7 +255,10 @@ def overview(days=7):
 
 def _user_query(start, now):
     verified = EmailAddress.objects.filter(
-        user_id=OuterRef("pk"), verified=True, primary=True
+        user_id=OuterRef("pk"),
+        email__iexact=OuterRef("email"),
+        verified=True,
+        primary=True,
     )
     active = _ops(start, now).filter(user_id=OuterRef("pk"), state="complete")
     return User.objects.filter(date_joined__lte=now).annotate(
@@ -272,7 +276,7 @@ def _user_rows(query, start, now):
             "period_active",
             "is_active",
             "funded_access",
-            "monthly_audio_ms",
+            "hosted_requested_at",
         )
     )
     if not rows:
@@ -296,16 +300,38 @@ def _user_rows(query, start, now):
         .annotate(last=Max("created_at"))
         .values_list("user_id", "last")
     )
-    allowances = {
+    week_start, reset_at = week_bounds(now)
+    distributed = FundingPeriod.objects.filter(
+        start=week_start, reset_at__gt=now
+    ).exists()
+    quotas = {
         item["user_id"]: item
-        for item in Allowance.objects.filter(
-            user_id__in=ids, month=now.date().replace(day=1)
-        ).values("user_id", "used_ms", "reserved_ms")
+        for item in WeeklyQuota.objects.filter(
+            user_id__in=ids, period_id=week_start, period__reset_at__gt=now
+        ).values("user_id", "allocated_usd", "used_usd", "reserved_usd")
     }
     result = []
     for item in rows:
         aggregate = totals.get(item["id"], {})
-        quota = allowances.get(item["id"], {})
+        quota = quotas.get(item["id"], {})
+        allocated = quota.get("allocated_usd", Decimal(0))
+        used = reserved = remaining = Decimal(0)
+        if allocated > 0:
+            used = min(Decimal(100), quota["used_usd"] * 100 / allocated)
+            reserved = min(100 - used, quota["reserved_usd"] * 100 / allocated)
+            remaining = max(Decimal(0), 100 - used - reserved)
+        # Describe persisted allocation only. Unlike ledger.usage(), this read
+        # must not request access, distribute funding or admit processing.
+        if not (item["is_active"] and item["funded_access"] and item["verified"]):
+            allocation_status = "inactive"
+        elif allocated > 0:
+            allocation_status = "available"
+        elif item["hosted_requested_at"] is None:
+            allocation_status = "not_requested"
+        elif not distributed:
+            allocation_status = "not_distributed"
+        else:
+            allocation_status = "waiting"
         activity = last.get(item["id"])
         result.append(
             {
@@ -320,11 +346,13 @@ def _user_rows(query, start, now):
                 "audio_minutes": _minutes(aggregate.get("audio_ms")),
                 "cost_usd": _money(aggregate.get("cost")),
                 "quota": {
-                    "used_ms": quota.get("used_ms", 0),
-                    "reserved_ms": quota.get("reserved_ms", 0),
-                    "limit_ms": item["monthly_audio_ms"]
-                    if item["monthly_audio_ms"] is not None
-                    else settings.CLARIFY_MONTHLY_AUDIO_MS,
+                    "schema_version": 2,
+                    "period_start": week_start.isoformat(),
+                    "reset_at": reset_at.isoformat(),
+                    "used_percent": round(float(used), 6),
+                    "reserved_percent": round(float(reserved), 6),
+                    "remaining_percent": round(float(remaining), 6),
+                    "allocation_status": allocation_status,
                 },
                 "status": "unverified"
                 if not item["verified"]

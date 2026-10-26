@@ -154,9 +154,14 @@ main{max-width:1530px;margin:0 auto;padding:34px 36px 25px}
 .status::before{content:"";width:4px;height:4px;background:currentColor;border-radius:50%}
 .status.inactive{background:#f5f6f8;border-color:#edf0f3;color:#939ba8}
 .status.unverified{background:#fdf8ed;border-color:#f6eed9;color:#b19a61}
-.quota-cell{display:flex;align-items:center;justify-content:flex-end;gap:7px}
-.quota-track{width:48px;height:4px;background:#eef0f5;border-radius:3px;display:block}
-.quota-track rect{fill:#93a0df;stroke:none}
+.quota-summary{display:flex;flex-direction:column;gap:6px;min-width:235px;text-align:left;font-variant-numeric:tabular-nums}
+.quota-status{font-size:10px;font-weight:550;color:#566173}
+.quota-track{width:100%;height:5px;background:#eef0f5;border-radius:3px;display:block}
+.quota-track rect{fill:#7384db;stroke:none}
+.quota-track rect.quota-reserved{fill:#c5cdee}
+.quota-values{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:10px;color:#637188}
+.quota-reset,.quota-note{font-size:10px;color:#637188}
+.quota-note{margin-top:10px}
 .page-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:24px;color:#9aa1ad;font-size:9px}
 .text-link{font-size:9px;color:#929aaa;padding:4px 0}
 .text-link:hover{color:#4d5d9c}

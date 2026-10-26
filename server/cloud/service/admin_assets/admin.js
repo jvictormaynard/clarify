@@ -12,6 +12,7 @@
   const names = { overview: 'Visão geral', users: 'Usuários', usage: 'Uso e custos' };
   const subtitles = { overview: 'O que está acontecendo com seu produto.', users: 'Conheça quem usa o Clarify e encontre oportunidades de ativação.', usage: 'Acompanhe volume, conclusão e orçamento com contexto.' };
   const statusNames = { active: 'Ativo', inactive: 'Sem uso confirmado', unverified: 'Não verificado' };
+  const allocationNames = { available: 'Cota atribuída', waiting: 'Aguardando cota', inactive: 'Sem acesso à cota', not_requested: 'Não solicitada', not_distributed: 'Ainda não distribuída' };
   const state = { page: 'overview', days: 30, userPage: 1, users: null, overview: null, chart: 'active_users', load: 0, userLoad: 0, detailLoad: 0, authEpoch: 0, signedIn: false, authBusy: false };
   let userTimer;
   let resizeTimer;
@@ -327,20 +328,35 @@
     text.append(button, el('span', 'user-date', `Cadastro em ${when(user.date_joined)}`)); wrapper.append(avatar, text); return wrapper;
   }
 
+  function quotaSummary(quota) {
+    const summary = el('div', 'quota-summary');
+    if (quota?.schema_version !== 2 || !Object.hasOwn(allocationNames, quota.allocation_status)) {
+      summary.append(el('span', 'quota-status', 'Cota indisponível')); return summary;
+    }
+    const used = Math.max(0, Math.min(100, num(quota.used_percent)));
+    const reserved = Math.max(0, Math.min(100, num(quota.reserved_percent)));
+    const remaining = Math.max(0, Math.min(100, num(quota.remaining_percent)));
+    summary.append(el('span', 'quota-status', allocationNames[quota.allocation_status]));
+    const track = bar(used, 100, 'quota-track');
+    track.append(svgEl('rect', { x: used, y: 0, width: Math.min(100 - used, reserved), height: 7, rx: 2, class: 'quota-reserved' }));
+    const values = el('div', 'quota-values');
+    values.append(el('span', '', `Usado ${fmt(used)}%`), el('span', '', `Reservado ${fmt(reserved)}%`), el('span', '', `Saldo ${fmt(remaining)}%`));
+    const reset = validDate(quota.reset_at) ? `Renova em ${dateTime.format(new Date(quota.reset_at))} UTC` : 'Renovação indisponível';
+    summary.append(track, values, el('span', 'quota-reset', reset));
+    return summary;
+  }
+
   function renderUsersTable(target, users, compact = false) {
     target.replaceChildren();
     if (!users.length) { const empty = el('div', 'empty-state'); empty.append(el('strong', '', 'Nenhum usuário encontrado'), el('p', '', compact ? 'A atividade dos usuários aparecerá aqui após o primeiro uso no período.' : 'Ajuste a busca ou o filtro para ver outras contas.')); target.append(empty); return; }
     const table = el('table', 'data-table'); const caption = el('caption', 'sr-only', compact ? 'Usuários com atividade no período' : 'Usuários e consumo'); table.append(caption);
     const head = el('thead'); const heading = el('tr');
-    ['Usuário', 'Status', 'Operações', 'Áudio', compact ? 'Custo (USD)' : 'Cota do mês', 'Última atividade'].forEach((label, index) => { const th = el('th', index > 1 && index < 5 ? 'num' : '', label); th.scope = 'col'; heading.append(th); }); head.append(heading); table.append(head);
+    ['Usuário', 'Status', 'Operações', 'Áudio', compact ? 'Custo (USD)' : 'Cota da semana', 'Última atividade'].forEach((label, index) => { const th = el('th', index === 2 || index === 3 || (index === 4 && compact) ? 'num' : '', label); th.scope = 'col'; heading.append(th); }); head.append(heading); table.append(head);
     const body = el('tbody'); users.forEach((user) => {
       const row = el('tr'); const identity = el('td'); identity.append(userIdentity(user)); const badge = el('td'); badge.append(status(user));
-      const quota = el('td', 'num');
+      const quota = el('td', compact ? 'num' : '');
       if (compact) quota.textContent = usd(user.cost_usd);
-      else {
-        const q = user.quota || {}; const used = num(q.used_ms) + num(q.reserved_ms); const limit = num(q.limit_ms); const value = limit > 0 ? Math.round(used / limit * 100) : 0;
-        const inner = el('div', 'quota-cell'); inner.append(bar(used, limit, 'quota-track'), el('span', '', limit > 0 ? `${value}%` : 'Sem cota')); quota.append(inner);
-      }
+      else quota.append(quotaSummary(user.quota));
       row.append(identity, badge, el('td', 'num', count(user.operations)), el('td', 'num', `${fmt(user.audio_minutes)} min`), quota, el('td', '', when(user.last_active_at))); body.append(row);
     }); table.append(body); target.append(table);
   }
@@ -408,8 +424,9 @@
     const identity = el('div', 'detail-identity'); identity.append(el('span', 'user-avatar', initials(user.email))); const title = el('h2', '', user.email); title.id = 'detail-title'; identity.append(title, el('p', '', `Cadastro em ${when(user.date_joined)}`), status(user)); target.append(identity);
     const metrics = el('div', 'detail-metrics');
     [['Operações no período', count(user.operations)], ['Áudio no período', `${fmt(user.audio_minutes)} min`], ['Custo no período', usd(user.cost_usd)], ['Última atividade', when(user.last_active_at)]].forEach(([label, value]) => { const card = el('div', 'detail-metric'); card.append(el('span', '', label), el('strong', '', value)); metrics.append(card); }); target.append(metrics);
-    const details = el('section', 'detail-section'); details.append(el('h3', '', 'Conta e cota do mês')); const facts = el('dl', 'detail-facts'); const quota = user.quota || {};
-    [['E-mail', user.verified ? 'Verificado' : 'Não verificado'], ['Conta', user.is_active ? 'Habilitada' : 'Desabilitada'], ['Processamento', user.funded_access ? 'Permitido pela conta' : 'Não permitido pela conta'], ['Cota de áudio', `${fmt(num(quota.limit_ms) / 60000)} min`], ['Consumido no mês', `${fmt(num(quota.used_ms) / 60000)} min`], ['Reservado no mês', `${fmt(num(quota.reserved_ms) / 60000)} min`]].forEach(([label, value]) => { const row = el('div'); row.append(el('dt', '', label), el('dd', '', value)); facts.append(row); }); details.append(facts); target.append(details);
+    const details = el('section', 'detail-section'); details.append(el('h3', '', 'Conta')); const facts = el('dl', 'detail-facts');
+    [['E-mail', user.verified ? 'Verificado' : 'Não verificado'], ['Conta', user.is_active ? 'Habilitada' : 'Desabilitada'], ['Processamento', user.funded_access ? 'Permitido pela conta' : 'Não permitido pela conta']].forEach(([label, value]) => { const row = el('div'); row.append(el('dt', '', label), el('dd', '', value)); facts.append(row); }); details.append(facts); target.append(details);
+    const quota = el('section', 'detail-section'); quota.append(el('h3', '', 'Cota da semana atual'), quotaSummary(user.quota), el('p', 'quota-note', 'Independe do filtro de histórico. O saldo já exclui as reservas.')); target.append(quota);
     const quality = el('section', 'detail-section'); quality.append(el('h3', '', `Conclusão nos últimos ${state.days} dias`)); const health = el('div'); renderQuality(health, data.health || {}); quality.append(health); target.append(quality);
     target.append(el('p', 'detail-note', 'Esta visão mostra metadados de uso. Textos, gravações e chaves do usuário não são exibidos. A atividade detalhada fica disponível por 31 dias.'));
   }
