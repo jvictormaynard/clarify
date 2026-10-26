@@ -646,10 +646,12 @@ class QmlVoiceTranslationController(QObject):
         registry: Any = PROVIDER_REGISTRY,
         on_usage: Callable[[VoiceTranslationConfig, VoiceTranslationState, float], None]
         | None = None,
+        processing_allowed: Callable[[], bool] = lambda: True,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._config_factory = config_factory
+        self._processing_allowed = processing_allowed
         self._runtime_state = VoiceTranslationRuntimeState(VoiceTranslationPhase.READY)
         self._runtime_state_arrived.connect(
             self._deliver_runtime_state,
@@ -717,11 +719,11 @@ class QmlVoiceTranslationController(QObject):
 
     @Slot(result=bool)
     def start(self) -> bool:
-        return self._runtime.start()
+        return self._processing_allowed() and self._runtime.start()
 
     @Slot(object, result=bool)
     def startForTarget(self, target: Any) -> bool:
-        return self._runtime.start(target)
+        return self._processing_allowed() and self._runtime.start(target)
 
     @Slot(result=bool)
     def stop(self) -> bool:
@@ -755,6 +757,7 @@ def create_qml_voice_translation_controller(
     registry: Any = PROVIDER_REGISTRY,
     on_usage: Callable[[VoiceTranslationConfig, VoiceTranslationState, float], None]
     | None = None,
+    processing_allowed: Callable[[], bool] = lambda: True,
     parent: QObject | None = None,
 ) -> QmlVoiceTranslationController:
     """Compose the QML controller without adding a second clipboard adapter."""
@@ -767,6 +770,7 @@ def create_qml_voice_translation_controller(
         provider=provider,
         registry=registry,
         on_usage=on_usage,
+        processing_allowed=processing_allowed,
         parent=parent,
     )
 

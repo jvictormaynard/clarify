@@ -597,10 +597,43 @@ test("onboarding: first run shows email and a local link before Settings", async
   await expect(page.getByRole("alert")).toContainText("chave válida");
   await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
   await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Configurações" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
+});
+
+test("onboarding: practice is explicit, keeps its result here and can be repeated", async ({ page }) => {
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
+  await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
+  await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
+  await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await expect(page.getByText(/Use Alt\+L para começar/)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Testar microfone", exact: true }).click();
+  await expect(page.getByRole("meter", { name: "Nível do microfone" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Parar teste", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toBeEnabled();
+  await page.screenshot({ path: "test-results/practice-ready.png" });
+  await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
+  await expect(page.getByText("Gravando. Diga uma frase e pare a gravação.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveValue("Hoje vou escrever com o Clarify.");
+  await page.screenshot({ path: "test-results/practice-result.png" });
+  await page.setViewportSize({ width: 640, height: 520 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.getByRole("button", { name: "Concluir prática", exact: true }).click();
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
 });
 
 test("onboarding: email confirmation activates account processing immediately", async ({ page }) => {
@@ -618,6 +651,8 @@ test("onboarding: email confirmation activates account processing immediately", 
   await expect(page.getByRole("navigation")).toBeHidden();
   await expect(page.getByRole("button", { name: "Ativar processamento do Clarify" })).toHaveCount(0);
   await page.getByRole("button", { name: "Começar", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await expect(page.getByRole("navigation")).toBeVisible();
   await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: "Texto", exact: true })).toBeHidden();
@@ -662,6 +697,7 @@ for (const provider of ["Google", "Microsoft", "GitHub"]) {
     await expect(page.getByRole("heading", { name: "Sua conta está pronta" })).toBeVisible();
     await expect(page.getByText(`${provider.toLowerCase()}@example.test`, { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Começar", exact: true }).click();
+    await page.getByRole("button", { name: "Pular prática", exact: true }).click();
     await expect(page.getByRole("navigation")).toBeVisible();
   });
 }
@@ -680,6 +716,7 @@ test("onboarding: social cancellation stays enabled while the browser login is p
 test("onboarding: account social cancellation restores provider actions after local setup", async ({ page }) => {
   await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
   await page.getByText("Servidor próprio", { exact: true }).click();
   const server = page.getByRole("textbox", { name: "Endereço do servidor", exact: true });
@@ -833,6 +870,8 @@ test("cancelled shortcut capture rejects retained keyboard and mouse events", as
 test("onboarding: local choice leads to model setup without a login", async ({ page }) => {
   await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Modelo local", exact: true })).toBeVisible();
 });

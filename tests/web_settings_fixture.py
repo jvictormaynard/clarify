@@ -292,6 +292,9 @@ def main():
             microphone_backend=backend,
             local_product=Mock(state=LocalASRProductState("installed"), busy=False),
         )
+        from practice_settings_fixture import bind_practice
+
+        bind_practice(settings, app)
         if "--history" in sys.argv:
             from history_store import HistoryRecord, HistoryStore
             from datetime import datetime, timezone
