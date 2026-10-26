@@ -10,6 +10,7 @@ import {
   Toggle,
 } from "../components/ui";
 import { Check, LoaderCircle, Download } from "lucide-react";
+import { ChatGPTPlan } from "../components/chatgpt-plan";
 
 export function ModelsPage({ controller }: SettingsPageProps) {
   const {
@@ -150,7 +151,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
       </Section>
       <Section
         title={
-          <>{t("Serviços na nuvem")}<span className="badge">{t("Sua chave de API")}</span>
+          <>{t("Serviços na nuvem")}<span className="badge">{t(state.selectedProviderId === "chatgpt" ? "Seu plano ChatGPT" : "Sua chave de API")}</span>
           </>
         }
       >
@@ -163,7 +164,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
             onChange={(value) => void selectProvider(value)}
           />
         </Row>
-        {state.selectedProviderId !== "local_asr" && (
+        {state.selectedProviderId === "chatgpt" ? <ChatGPTPlan controller={controller} /> : state.selectedProviderId !== "local_asr" && (
           <>
             <Field
               title={t("Chave de API")}

@@ -15,7 +15,7 @@ import { mergeSettings, settingsValuesEqual } from "./state";
 
 type RouteOverride = { model?: string; endpoint?: string };
 type RouteDraft = { prompt?: string; override?: RouteOverride };
-type RouteBaseline = { prompt: string; model: string; endpoint: string };
+type RouteBaseline = { prompt: string; model: string; endpoint: string; provider?: string };
 type LibraryField = "enabled" | "case_sensitive";
 type LibraryIdentity<T> = {
   persisted: T | null;
@@ -226,13 +226,20 @@ export function useSettings() {
     const previous = current.current;
     const next = previous ? mergeSettings(previous, update) : update as Settings;
     if (next === previous) return;
+    if (previous?.chatgptState && next.chatgptState &&
+      (previous.chatgptState.generation !== next.chatgptState.generation ||
+       previous.chatgptState.accountId !== next.chatgptState.accountId)) {
+      // Account-scoped model overrides must not survive a session transition.
+      setRoutes(before => Object.fromEntries(Object.entries(before).map(([scope, draft]) => [scope,
+        routeBaselines.current[scope]?.provider === "chatgpt" ? { ...draft, override: undefined } : draft])));
+    }
     if (next.dictionaryEntries !== previous?.dictionaryEntries && dictionaryRef.current)
       setDictionaryDraft(reconcileLibrary(dictionaryRef.current, next.dictionaryEntries, next.snippetContext, identify));
     if (next.snippets !== previous?.snippets && snippetsRef.current)
       setSnippetDraft(reconcileLibrary(snippetsRef.current, next.snippets, next.snippetContext, identify));
     current.current = next;
     routeBaselines.current[next.selectedScope] = {
-      prompt: next.routePrompt, model: next.routeModelId, endpoint: next.routeCustomEndpoint,
+      prompt: next.routePrompt, model: next.routeModelId, endpoint: next.routeCustomEndpoint, provider: next.routeProviderId,
     };
     setUiLanguage(next.uiLanguage);
     setState(previous => previous ? mergeSettings(previous, update) : next);
@@ -491,7 +498,7 @@ export function useSettings() {
             if (draft.prompt !== undefined) route = await call("setRoutePrompt", draft.prompt);
             if (draft.override?.model !== undefined) route = await call("setRouteModelId", draft.override.model);
             if (draft.override?.endpoint !== undefined) route = await call("setRouteCustomEndpoint", draft.override.endpoint);
-            savedRoutes[routeScope] = { prompt: route.routePrompt, model: route.routeModelId, endpoint: route.routeCustomEndpoint };
+            savedRoutes[routeScope] = { prompt: route.routePrompt, model: route.routeModelId, endpoint: route.routeCustomEndpoint, provider: route.routeProviderId };
           }
           if (captured.retention !== null) await call("setHistoryRetentionDays", retained === "" ? null : Number(retained));
           await call("selectWorkflow", restoreScope);
