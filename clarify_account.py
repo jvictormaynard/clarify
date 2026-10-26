@@ -419,12 +419,30 @@ class AccountService:
                 method,
                 endpoint(base) + path,
                 headers=headers,
-                timeout=(5, 100 if path in {"/v1/dictations", "/v1/text"} else 15),
+                timeout=(
+                    5,
+                    100
+                    if path
+                    in {
+                        "/v1/dictations",
+                        "/v1/text",
+                        "/v1/meetings/transcriptions",
+                        "/v1/meetings/summary",
+                    }
+                    else 15,
+                ),
                 allow_redirects=False,
                 **kwargs,
             )
             processing_failure = (
-                path in {"/v1/dictations", "/v1/text"} and response.status_code != 200
+                path
+                in {
+                    "/v1/dictations",
+                    "/v1/text",
+                    "/v1/meetings/transcriptions",
+                    "/v1/meetings/summary",
+                }
+                and response.status_code != 200
             )
             try:
                 result = response.json() if response.content else {}
@@ -842,6 +860,22 @@ class AccountService:
             self._dictionary_conflict = False
             self._sync_error = ""
             service.reload()
+
+    def transcribe_meeting(
+        self, identity, operation_id, path, language, *, cancel=None
+    ):
+        from account_meetings import process
+
+        return process(self, identity, operation_id, language, path=path, cancel=cancel)
+
+    def summarize_meeting(
+        self, identity, operation_id, source, language, *, cancel=None
+    ):
+        from account_meetings import process
+
+        return process(
+            self, identity, operation_id, language, source=source, cancel=cancel
+        )
 
     def transcribe(
         self,
