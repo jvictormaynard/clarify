@@ -50,6 +50,24 @@ def main():
         workflow = MeetingWorkflow(store, provider, source_factory=Mock())
         workflow.selected = mid
         controller = QmlMeetingController(workflow)
+        if "--recording" in sys.argv:
+            controller._timer.stop()
+            workflow._thread = Mock()
+            workflow._thread.is_alive.return_value = True
+            controller._state = {
+                **controller.state,
+                "phase": "recording",
+                "active": True,
+                "duration": 73,
+                "sources": {
+                    "microphone": {"state": "recording", "level": 0.55, "warning": ""},
+                    "system": {
+                        "state": "failed",
+                        "level": 0,
+                        "warning": "meeting.device_changed",
+                    },
+                },
+            }
         engine = QQmlApplicationEngine()
         messages = []
         engine.warnings.connect(

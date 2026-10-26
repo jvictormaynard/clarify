@@ -105,6 +105,27 @@ class MeetingWorkflowTests(unittest.TestCase):
         self.workflow.selected = row["id"]
         return row["id"], cid, path
 
+    def test_stop_during_capture_creation_does_not_open_a_late_recorder(self):
+        entered, release = threading.Event(), threading.Event()
+        capture = Mock(alive=False)
+
+        def factory(*args, **kwargs):
+            entered.set()
+            release.wait(3)
+            return capture
+
+        self.workflow.capture_factory = factory
+        self.workflow.start()
+        self.assertTrue(entered.wait(2))
+        stopper = threading.Thread(target=self.workflow.stop)
+        stopper.start()
+        wait_for(self.workflow._stop.is_set)
+        release.set()
+        stopper.join(2)
+        wait_for(lambda: not self.workflow.active)
+        self.assertFalse(stopper.is_alive())
+        capture.start.assert_not_called()
+
     def test_stop_closes_capture_even_while_transcription_is_blocked(self):
         self.provider.delayed = True
         self.workflow.start(language="pt")

@@ -5731,6 +5731,11 @@
     "en": "Stopped",
     "es": "Detenido"
   },
+  "meeting.interrupted": {
+    "pt": "Interrompido",
+    "en": "Interrupted",
+    "es": "Interrumpido"
+  },
   "meeting.processing": {
     "pt": "Transcrevendo",
     "en": "Transcribing",

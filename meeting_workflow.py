@@ -42,6 +42,7 @@ class MeetingWorkflow:
         self._duration = 0
         self._recovered = set()
         self._routes = None
+        self._capture_mid = ""
 
     @property
     def active(self):
@@ -64,14 +65,22 @@ class MeetingWorkflow:
             selected = (
                 self.store.get(identity.owner, self.selected) if self.selected else None
             )
-            capture = self._capture
+            capture = (
+                self._capture
+                if self._identity is not None
+                and self._identity.owner == identity.owner
+                and self.selected == self._capture_mid
+                else None
+            )
             duration = (
                 int(self.clock() - self._started)
                 if self.phase == "recording" and self._started is not None
                 else self._duration
             )
             return {
-                "phase": self.phase,
+                "phase": self.phase
+                if self.active or selected is None
+                else selected["state"],
                 "active": self.active,
                 "error": self.error,
                 "meetings": meetings,
@@ -158,6 +167,9 @@ class MeetingWorkflow:
             self._cancel.cancel()
             self._stop.set()
             capture = self._capture
+            if self.phase == "recording" and self._started is not None:
+                self._duration = int(self.clock() - self._started)
+                self.phase = "cancelled"
         if capture:
             capture.stop()
 
@@ -184,7 +196,7 @@ class MeetingWorkflow:
                     expected, self._routes, chunk, path, self.language, self._cancel
                 )
                 self._check(expected)
-                with self.provider.publication(expected):
+                with self._lock, self.provider.publication(expected):
                     self._check(expected)
                     self.store.save_transcript(
                         expected.owner, self.selected, chunk["id"], text
@@ -216,19 +228,32 @@ class MeetingWorkflow:
         try:
             self._check(expected)
             if action == "record":
-                self.selected = mid = self.store.create(
-                    expected.owner,
-                    self._title,
-                    language=self.language,
-                    routes=self._routes.persisted() if self._routes else {},
-                )["id"]
-                self._started = self.clock()
-                self._duration = 0
-                self.phase = "recording"
-                self._capture = self.capture_factory(
-                    self.store, expected.owner, mid, source_factory=self.source_factory
-                )
-                self._capture.start()
+                with self._lock:
+                    self._check(expected)
+                    if self._stop.is_set():
+                        self.phase = "stopped"
+                        return
+                    self.selected = mid = self.store.create(
+                        expected.owner,
+                        self._title,
+                        language=self.language,
+                        routes=self._routes.persisted() if self._routes else {},
+                    )["id"]
+                    self._capture_mid = mid
+                    self._started = self.clock()
+                    self._duration = 0
+                    self._capture = self.capture_factory(
+                        self.store,
+                        expected.owner,
+                        mid,
+                        source_factory=self.source_factory,
+                    )
+                    self._check(expected)
+                    if self._stop.is_set():
+                        self.phase = "stopped"
+                        return
+                    self.phase = "recording"
+                    self._capture.start()
                 attempted = set()
                 while not self._stop.wait(0.2):
                     self._check(expected)
@@ -263,7 +288,7 @@ class MeetingWorkflow:
                     self._cancel,
                 )
                 self._check(expected)
-                with self.provider.publication(expected):
+                with self._lock, self.provider.publication(expected):
                     self._check(expected)
                     self.store.save_summary(
                         expected.owner, self.selected, revision, text
