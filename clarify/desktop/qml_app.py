@@ -536,6 +536,7 @@ def main(argv: list[str] | None = None) -> int:
         hotkey_capture_changed=capture_qml_hotkeys,
         dictionary_service=getattr(runtime, "dictionary_service", None),
         account_service=getattr(runtime, "account", None),
+        application_target=lambda: quick_paste.target,
         account_can_change=lambda: (
             workflow_service.state.phase.value
             in {"ready", "completed", "failed", "cancelled", "microphone_unavailable"}
@@ -653,6 +654,7 @@ def main(argv: list[str] | None = None) -> int:
     web_settings = WebSettingsProcess(
         settings, bridge, lambda: settings_window_visibility.show_native(), app
     )
+    quick_paste.excluded_executable = web_settings.process.program
     settings_window_visibility = _SettingsWindowVisibility(
         bridge, settings_window, web_settings
     )

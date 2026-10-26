@@ -2,6 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type { RecordingControls } from "./recording";
 
 export type Option = { id: string; label: string };
+export type DictationCleanupLevel = "preserve" | "light" | "clarity";
+export type WritingStyle = "natural" | "informal" | "organized";
+export type ApplicationWritingStyle = { executable: string; style: WritingStyle };
 export type DictionaryEntry = {
   term: string;
   pronunciation: string;
@@ -49,6 +52,11 @@ export interface Settings {
   microphoneTestLevel: number;
   microphoneTestStatus: string;
   recordingControls: RecordingControls;
+  dictationCleanupLevel?: DictationCleanupLevel | "";
+  applicationWritingStyles?: ApplicationWritingStyle[];
+  applicationStyleTarget?: string;
+  applicationStyleRefinementAllowed?: boolean;
+  dictationCleanupRefinementAllowed?: boolean;
   selectedScope: string;
   routeProviderId: string;
   routeModelId: string;
@@ -104,6 +112,8 @@ export type SettingsArguments = {
   setSnippets: [entries: Snippet[], context: string, expectedEntries?: Snippet[]];
   setDictionaryEntries: [entries: DictionaryEntry[], context?: string, expectedEntries?: DictionaryEntry[]];
   setMode: [value: string];
+  setDictationCleanupLevel: [value: DictationCleanupLevel | ""];
+  setApplicationWritingStyle: [executable: string, style: WritingStyle | ""];
   setAutostart: [value: boolean];
   setAutomaticUpdates: [value: boolean];
   checkForUpdates: [];
@@ -152,6 +162,8 @@ export type SettingsArguments = {
 export type SettingsMethod = keyof SettingsArguments;
 
 export const preferenceMethods = [
+  "setDictationCleanupLevel",
+  "setApplicationWritingStyle",
   "setMode", "setLanguage", "setAutostart", "setHistoryEnabled", "setAutomaticUpdates",
   "selectMicrophone", "setRouteProviderId", "setRouteModelId", "setRouteEnabled",
   "setLocalStreaming", "setLocalAsrCloudRefinement", "setHotkey", "setHotkeyActivationMode",

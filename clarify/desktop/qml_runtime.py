@@ -322,6 +322,9 @@ class QtWorkflowConfig:
     def workflow(self, scope: WorkflowScope):
         return self.current().workflow(scope)
 
+    def dictation_writing_style(self, executable):
+        return self.current().application_writing_styles.resolve(executable)
+
     def recording_usage_context(self, mode: str) -> dict[str, Any]:
         if self.account is not None and self.account.hosted:
             return {

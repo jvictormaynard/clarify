@@ -300,6 +300,26 @@ class QmlWorkflowBridge(QObject):
     def targetExecutable(self) -> str:
         return self._target_executable
 
+    @Property(str, notify=statusChanged)
+    def writingStyleCaption(self):
+        from clarify.desktop.qml_application_style import style_caption
+
+        return style_caption(self._state)
+
+    @Property(bool, notify=statusChanged)
+    def writingStyleFinished(self):
+        return (
+            self._state.phase is WorkflowPhase.COMPLETED
+            and self._state.writing_style_requested is not None
+        )
+
+    @Property(bool, notify=statusChanged)
+    def writingStyleApplied(self):
+        return (
+            self._state.writing_style_applied is not None
+            and self._state.writing_style_status == "applied"
+        )
+
     @Property(bool, notify=canShowResultChanged)
     def canShowResult(self) -> bool:
         if self.surface == "voice_result":

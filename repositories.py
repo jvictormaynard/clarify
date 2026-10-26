@@ -17,6 +17,9 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping
 
+from shared.dictation_policy import DictationCleanupLevel, cleanup_level
+from writing_styles import ApplicationWritingStyles
+
 from provider_registry import PROVIDER_IDS, PROVIDER_REGISTRY
 from provider_types import ProviderCapability, ProviderError
 from hotkey_config import HotkeySettings
@@ -71,7 +74,7 @@ __all__ = [
 ]
 
 
-CONFIG_SCHEMA_VERSION = 2
+CONFIG_SCHEMA_VERSION = 4
 STATS_SCHEMA_VERSION = 1
 SUPPORTED_PROVIDERS = PROVIDER_IDS
 PROVIDER_SECRET_KEYS = {
@@ -187,6 +190,10 @@ class AppConfig:
     ui: UIPreferences = field(default_factory=UIPreferences)
     startup: StartupSettings = field(default_factory=StartupSettings)
     local_asr_cloud_refinement: bool = False
+    dictation_cleanup_level: DictationCleanupLevel | None = None
+    application_writing_styles: ApplicationWritingStyles = field(
+        default_factory=ApplicationWritingStyles
+    )
     local_asr_device: str = "auto"
     local_asr_streaming: bool = False
     history_enabled: bool = False
@@ -539,6 +546,12 @@ class AppConfig:
             ui=UIPreferences(mode, language),
             startup=StartupSettings(autostart),
             local_asr_cloud_refinement=local_asr_cloud_refinement,
+            dictation_cleanup_level=_config_cleanup_level(
+                source.get("dictation_cleanup_level")
+            ),
+            application_writing_styles=_config_writing_styles(
+                source.get("application_writing_styles")
+            ),
             local_asr_device=__import__("local_asr_catalog").normalize_device(
                 source.get("local_asr_device")
             ),
@@ -575,6 +588,8 @@ class AppConfig:
             "groq_text_model": self.groq.text_model,
             "local_asr_model": self.local_asr.audio_model,
             "local_asr_cloud_refinement": self.local_asr_cloud_refinement,
+            "dictation_cleanup_level": self.dictation_cleanup_level,
+            "application_writing_styles": self.application_writing_styles.to_mapping(),
             "local_asr_device": self.local_asr_device,
             "local_asr_streaming": self.local_asr_streaming,
             "refinement_provider": self.selection.refinement_provider,
@@ -1037,7 +1052,36 @@ def _migrate_v1_to_v2(payload: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
-CONFIG_MIGRATIONS = {0: _migrate_legacy_to_v1, 1: _migrate_v1_to_v2}
+def _config_cleanup_level(value):
+    try:
+        return cleanup_level(value)
+    except ValueError:
+        return None
+
+
+def _migrate_v2_to_v3(payload: dict[str, Any]) -> dict[str, Any]:
+    # v2 readers already refuse writes to a future schema. Keep that downgrade
+    # protection instead of allowing them to silently erase the new preference.
+    return {**payload, "schema_version": 3}
+
+
+def _config_writing_styles(value):
+    try:
+        return ApplicationWritingStyles.from_mapping(value)
+    except ValueError:
+        return ApplicationWritingStyles()
+
+
+def _migrate_v3_to_v4(payload: dict[str, Any]) -> dict[str, Any]:
+    return {**payload, "schema_version": 4}
+
+
+CONFIG_MIGRATIONS = {
+    0: _migrate_legacy_to_v1,
+    1: _migrate_v1_to_v2,
+    2: _migrate_v2_to_v3,
+    3: _migrate_v3_to_v4,
+}
 
 
 def migrate_config_payload(payload: Any) -> dict[str, Any]:

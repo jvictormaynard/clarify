@@ -233,12 +233,13 @@ foreach ($backendModule in @(
     "workflow_config.py",
     "workflow_provider.py",
     "workflow_settings.py",
+    "writing_styles.py",
     "workflows.py"
 )) {
     Copy-Item (Join-Path $repoRoot $backendModule) $sourceDir -Force
 }
 New-Item (Join-Path $sourceDir "shared") -ItemType Directory -Force | Out-Null
-foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json")) {
+foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json", "dictation_policy.py", "writing_style_policy.py")) {
     Copy-Item (Join-Path $repoRoot "shared\$catalogFile") (Join-Path $sourceDir "shared") -Force
 }
 Copy-Item $repoQml $qml -Recurse -Force

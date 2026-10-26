@@ -49,6 +49,58 @@ class DictationTests(TestCase):
         )
 
     @patch("cloud.service.groq.perform")
+    def test_cleanup_levels_are_bounded_idempotent_and_preserve_original(
+        self, provider
+    ):
+        raw = "  João,  não envie 15,5. Talvez terça, quer dizer, sexta.  "
+        provider.return_value = {"text": raw}
+        op = uuid.uuid4()
+        first = self.send(op, cleanup_level="preserve")
+        self.assertEqual(first.status_code, 200, first.content)
+        self.assertEqual(first.json()["transcript"], raw)
+        self.assertEqual(first.json()["text"], raw)
+        self.assertEqual(first.json()["cleanup_level_applied"], "preserve")
+        self.assertFalse(first.json()["refinement_failed"])
+        self.assertEqual(self.send(op, cleanup_level="preserve").json(), first.json())
+        self.assertEqual(self.send(op, cleanup_level="light").status_code, 409)
+        self.assertEqual(self.send(op).status_code, 409)
+        provider.assert_called_once()
+        self.assertEqual(Allowance.objects.get(user=self.user).used_ms, 1000)
+        self.assertEqual(
+            Operation.objects.get(user=self.user).cost, ledger.asr_cost(1000)
+        )
+
+    @patch("cloud.service.groq.perform")
+    def test_light_is_local_and_clarity_failure_records_fallback(self, provider):
+        raw = "Não  envie 42. Talvez sim, quer dizer, não."
+        provider.return_value = {"text": raw}
+        response = self.send(uuid.uuid4(), cleanup_level="light")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            response.json()["text"], "Não envie 42. Talvez sim, quer dizer, não."
+        )
+        self.assertEqual(response.json()["cleanup_level_applied"], "light")
+        provider.assert_called_once()
+        provider.reset_mock()
+        provider.side_effect = [{"text": raw}, groq.ProviderFailure()]
+        response = self.send(uuid.uuid4(), cleanup_level="clarity")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["text"], raw)
+        self.assertEqual(response.json()["cleanup_level_requested"], "clarity")
+        self.assertEqual(response.json()["cleanup_level_applied"], "preserve")
+        self.assertTrue(response.json()["refinement_failed"])
+        self.assertEqual(provider.call_count, 2)
+
+    @patch("cloud.service.groq.perform")
+    def test_invalid_cleanup_does_not_reserve_or_call_provider(self, provider):
+        for value in ("", "legacy", "Clarity", "https://example.test", "x" * 1000):
+            self.assertEqual(
+                self.send(uuid.uuid4(), cleanup_level=value).status_code, 400
+            )
+        self.assertFalse(Operation.objects.filter(user=self.user).exists())
+        provider.assert_not_called()
+
+    @patch("cloud.service.groq.perform")
     def test_short_audio_uses_only_enabled_canonical_spellings(self, provider):
         Dictionary.objects.create(
             user=self.user,

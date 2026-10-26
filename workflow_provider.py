@@ -8,10 +8,22 @@ does not load Qt, start capture, or read a user profile.
 
 from __future__ import annotations
 
+from shared.writing_style_policy import (
+    writing_style as parse_writing_style,
+    with_writing_style,
+    style_outcome,
+)
+
 from dataclasses import replace
 import re
 import time
 from typing import Protocol
+
+from shared.dictation_policy import (
+    DictationCleanupPolicy,
+    cleanup_level as parse_cleanup_level,
+    RECOGNITION_INSTRUCTION,
+)
 
 from audio_file_batch import FileTranscriptionSelection
 from dictionary_snippets import DictionarySnippetService
@@ -231,8 +243,8 @@ class WorkflowProviderService:
             or getattr(self.account, "managed", False) is True
         )
 
-    def _connection(self, route):
-        current = self.config.current()
+    def _connection(self, route, *, current: AppConfig | None = None):
+        current = current if current is not None else self.config.current()
         metadata = self.registry.describe(route.provider_id)
         provider = getattr(current, route.provider_id)
         connection = ProviderConnection(
@@ -252,14 +264,33 @@ class WorkflowProviderService:
         language: str,
         *,
         selection: FileTranscriptionSelection | None = None,
+        cleanup_level: str | None = None,
+        writing_style: str | None = None,
     ) -> TranscriptionResult:
+        current = self.config.current()
+        style = parse_writing_style(writing_style)
+        policy = DictationCleanupPolicy(
+            parse_cleanup_level(
+                cleanup_level
+                if cleanup_level is not None
+                else current.dictation_cleanup_level
+            )
+        )
         if self._uses_account():
+            options = {}
+            if policy.requested is not None:
+                options["cleanup_level"] = policy.requested
+            if style is not None:
+                options["writing_style"] = style
             return self.account.transcribe(
                 audio_source,
                 selection.language if selection is not None else language,
                 self.dictionary_service,
+                **options,
             )
-        route = self._route(WorkflowScope.TRANSCRIPTION)
+        route = current.workflow(WorkflowScope.TRANSCRIPTION)
+        if not route.enabled or not route.model_id:
+            raise RuntimeError("Transcription workflow is disabled or unconfigured")
         if selection is not None:
             route = replace(
                 route,
@@ -272,9 +303,14 @@ class WorkflowProviderService:
         # A multimodal model normally edits in its audio request. With active
         # snippets, keep recognition separate so standalone saved text bypasses
         # editing, and inline saved content is present before optional cleanup.
-        snippet_two_stage = metadata.supports(
-            ProviderCapability.MULTIMODAL_AUDIO
-        ) and any(item.enabled for item in self.dictionary_service.state.snippets)
+        snippet_two_stage = metadata.supports(ProviderCapability.MULTIMODAL_AUDIO) and (
+            policy.separate_recognition
+            or any(item.enabled for item in self.dictionary_service.state.snippets)
+        )
+        inline_style = style is not None and policy.allows_refinement(
+            metadata.supports(ProviderCapability.MULTIMODAL_AUDIO)
+            and not snippet_two_stage
+        )
         language = str(language or "auto").strip().lower()
         language_label = _language_display_name(language)
         provider_language = (
@@ -282,19 +318,29 @@ class WorkflowProviderService:
         )
         mode = "prompt"
         instruction = (
-            TRANSCRIPTION_INSTRUCTION
-            if mode == "transcription" or snippet_two_stage
-            else PROMPT_INSTRUCTION
+            RECOGNITION_INSTRUCTION
+            if policy.separate_recognition
+            else (
+                TRANSCRIPTION_INSTRUCTION
+                if mode == "transcription" or snippet_two_stage
+                else PROMPT_INSTRUCTION
+            )
         ).format(lang=language_label)
+        prompt = (
+            instruction if policy.separate_recognition else route.prompt or instruction
+        )
+        if inline_style:
+            instruction = with_writing_style(instruction, style)
+            prompt = with_writing_style(prompt, style)
         request = TranscriptionRequest(
             audio_path=audio_source.audio_path,
             model=route.model_id,
             language=provider_language,
             instruction=instruction,
-            prompt=route.prompt or instruction,
+            prompt=prompt,
             temperature=0.0 if mode == "transcription" or snippet_two_stage else 0.1,
             audio_bytes=audio_source.audio_bytes,
-            execution_device=self.config.current().local_asr_device,
+            execution_device=current.local_asr_device,
         )
         request = self.dictionary_service.apply_context(request)
         asr_started = time.perf_counter()
@@ -312,7 +358,7 @@ class WorkflowProviderService:
                     request,
                     selection.connection
                     if selection is not None
-                    else self._connection(route),
+                    else self._connection(route, current=current),
                     audio_source.cancel_token,
                 )
         except (NetworkError, ProviderTimeoutError) as error:
@@ -334,7 +380,7 @@ class WorkflowProviderService:
             raw_transcript
         )
         transcript = (
-            self.dictionary_service.expand(raw_transcript)
+            self.dictionary_service.expand(policy.prepare_source(raw_transcript))
             if standalone_snippet is None
             else standalone_snippet
         )
@@ -345,9 +391,10 @@ class WorkflowProviderService:
             if provider == "local_asr"
             else WorkflowScope.REFINEMENT
         )
-        refinement_route = self.config.workflow(refinement_scope)
+        refinement_route = current.workflow(refinement_scope)
         refinement_requested = (
-            standalone_snippet is None
+            policy.allows_refinement(True)
+            and standalone_snippet is None
             and mode == "prompt"
             and (
                 not metadata.supports(ProviderCapability.MULTIMODAL_AUDIO)
@@ -355,8 +402,7 @@ class WorkflowProviderService:
             )
             and refinement_route.enabled
             and (
-                provider != LOCAL_ASR_PROVIDER_ID
-                or self.config.current().local_asr_cloud_refinement
+                provider != LOCAL_ASR_PROVIDER_ID or current.local_asr_cloud_refinement
             )
         )
         refinement_used = False
@@ -370,6 +416,9 @@ class WorkflowProviderService:
                     language_label,
                     refinement_scope,
                     audio_source.cancel_token,
+                    route=refinement_route,
+                    writing_style=style,
+                    connection=self._connection(refinement_route, current=current),
                 )
             except ProviderCancelledError:
                 raise
@@ -417,7 +466,10 @@ class WorkflowProviderService:
             route.model_id,
             timings_ms=safe_timings(timings),
             raw_text=raw_transcript
-            if refinement_requested or transcript != raw_transcript
+            if policy.requested is not None
+            or (style is not None and not inline_style)
+            or refinement_requested
+            or transcript != raw_transcript
             else None,
             refined_text=transcript
             if refinement_used or transcript != raw_transcript
@@ -429,6 +481,17 @@ class WorkflowProviderService:
             refinement_model=(
                 refinement_route.model_id if refinement_requested else None
             ),
+            cleanup_level_requested=policy.requested,
+            cleanup_level_applied=policy.applied(
+                refined=refinement_used, standalone=standalone_snippet is not None
+            ),
+            **style_outcome(
+                style,
+                refined=refinement_used
+                or (inline_style and standalone_snippet is None),
+                attempted=refinement_requested,
+                standalone=standalone_snippet is not None,
+            ),
         )
 
     def _refine_transcript(
@@ -438,11 +501,20 @@ class WorkflowProviderService:
         language_label,
         refinement_scope,
         cancel_token,
+        *,
+        route=None,
+        writing_style=None,
+        connection: ProviderConnection | None = None,
     ) -> RewriteResult:
-        refinement_route = self._route(refinement_scope)
+        refinement_route = route if route is not None else self._route(refinement_scope)
+        if not refinement_route.enabled or not refinement_route.model_id:
+            raise RuntimeError("Refinement workflow is disabled or unconfigured")
         refinement_instruction = _workflow_instruction(
             TRANSCRIPT_REWRITE_INSTRUCTION.format(lang=language_label),
             refinement_route.prompt,
+        )
+        refinement_instruction = with_writing_style(
+            refinement_instruction, writing_style
         )
         refinement_request = RewriteRequest(
             text=raw_transcript,
@@ -462,7 +534,9 @@ class WorkflowProviderService:
         refined = self.registry.rewrite(
             refinement_route.provider_id,
             refinement_request,
-            self._connection(refinement_route),
+            connection
+            if connection is not None
+            else self._connection(refinement_route),
             cancel_token,
         )
         if not refined.text or not refined.text.strip():

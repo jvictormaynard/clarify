@@ -7,6 +7,87 @@ let id = 0;
 const pending = new Map<number, (value: unknown) => void>();
 let releaseUsage: () => Promise<void>;
 
+test("styles: application rules persist and removal restores default", async ({ page }, testInfo) => {
+  await expect(page.getByText("Padrão para todos os aplicativos.", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Caminho do aplicativo", exact: true }).fill("C:\\Apps\\Editor.exe");
+  await page.getByRole("combobox", { name: "Estilo de escrita", exact: true }).click();
+  await page.getByRole("option", { name: "Informal", exact: true }).click();
+  await page.getByRole("button", { name: "Salvar regra", exact: true }).click();
+  const saved = page.getByRole("combobox", { name: "Estilo para c:\\apps\\editor.exe", exact: true });
+  await expect(saved).toContainText("Informal");
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
+  await page.reload();
+  await expect(saved).toContainText("Informal");
+  await page.screenshot({ path: testInfo.outputPath("application-writing-styles.png"), fullPage: true });
+  await page.getByRole("button", { name: "Remover regra", exact: true }).click();
+  await expect(saved).toBeHidden();
+  await expect(page.getByText("Padrão para todos os aplicativos.", { exact: true })).toBeVisible();
+});
+
+test("styles: preserve explains that an app rule cannot enable cloud processing", async ({ page }) => {
+  await page.getByRole("combobox", { name: "Nível de revisão", exact: true }).click();
+  await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Estilo não aplicado nesta rota." })).toBeVisible();
+});
+
+test("quota: styles remain configurable for managed accounts", async ({ page }) => {
+  await page.getByRole("textbox", { name: "Caminho do aplicativo", exact: true }).fill("C:\\Apps\\Chat.exe");
+  await page.getByRole("button", { name: "Salvar regra", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Estilo para c:\\apps\\chat.exe", exact: true })).toContainText("Natural");
+});
+
+test("cleanup: levels persist across pages and explain minimal changes", async ({ page }, testInfo) => {
+  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
+  await expect(level).toContainText("Padrão atual");
+  await level.click();
+  await page.getByRole("option", { name: "Ajustes mínimos", exact: true }).click();
+  await expect(level).toContainText("Ajustes mínimos");
+  await expect(page.getByText("Ajusta apenas espaços e tabulações. Mantém hesitações, repetições e autocorreções.")).toBeVisible();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(level).toContainText("Ajustes mínimos");
+  await level.click();
+  await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(level).toContainText("Preservar palavras");
+  await page.getByRole("button", { name: "Ditado", exact: true }).click();
+  await expect(level).toContainText("Preservar palavras");
+  await level.click();
+  await page.getByRole("option", { name: "Revisar clareza", exact: true }).click();
+  await expect(level).toContainText("Revisar clareza");
+  await page.screenshot({ path: testInfo.outputPath("dictation-cleanup.png"), fullPage: true });
+  await level.click();
+  await page.getByRole("option", { name: "Padrão atual", exact: true }).click();
+  await expect(level).toContainText("Padrão atual");
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
+});
+
+for (const locale of ["en", "es"] as const) {
+  test(`cleanup: locale ${locale} shows honest minimal changes example`, async ({ page }) => {
+    const level = page.getByRole("combobox", { name: locale === "en" ? "Cleanup level" : "Nivel de revisión", exact: true });
+    await level.click();
+    await page.getByRole("option", { name: locale === "en" ? "Minimal changes" : "Ajustes mínimos", exact: true }).click();
+    await expect(page.getByText(locale === "en" ? "Adjusts spaces and tabs only. Keeps hesitations, repetitions and self-corrections." : "Ajusta solo espacios y tabulaciones. Conserva vacilaciones, repeticiones y autocorrecciones.")).toBeVisible();
+  });
+}
+
+test("quota: cleanup choices remain available for managed accounts", async ({ page }) => {
+  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
+  await level.click();
+  await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(level).toContainText("Preservar palavras");
+  await page.reload();
+  await expect(level).toContainText("Preservar palavras");
+});
+
+test("cleanup: clarity explains when the refinement route is disabled", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
+  await level.click();
+  await page.getByRole("option", { name: "Revisar clareza", exact: true }).click();
+  await page.getByRole("switch", { name: "Ativar este fluxo", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Revisão indisponível nesta rota." })).toBeVisible();
+  await expect(level).toContainText("Revisar clareza");
+});
+
 for (const method of ["testMicrophone", "stopMicrophoneTest", "refreshMicrophones"] as const) {
   test(`responsive operations: ${method} keeps navigation and unrelated controls stable`, async ({ page }) => {
     if (method === "stopMicrophoneTest") {

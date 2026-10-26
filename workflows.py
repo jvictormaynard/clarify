@@ -140,6 +140,11 @@ class WorkflowState:
     model: str | None = None
     refinement_provider_id: str | None = None
     refinement_model: str | None = None
+    cleanup_level_requested: str | None = None
+    cleanup_level_applied: str | None = None
+    writing_style_requested: str | None = None
+    writing_style_applied: str | None = None
+    writing_style_status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -219,7 +224,12 @@ class ProviderGateway(Protocol):
     """
 
     def transcribe(
-        self, audio_source: RecordingSnapshot, mode: str, language: str
+        self,
+        audio_source: RecordingSnapshot,
+        mode: str,
+        language: str,
+        *,
+        writing_style: str | None = None,
     ) -> TranscriptionResult: ...
     def rewrite(self, text: str) -> RewriteResult: ...
     def translate(self, text: str, target_language: str) -> TranslationResult: ...
@@ -326,6 +336,7 @@ class _Session:
     target: SelectionTarget | None = None
     target_executable: str | None = None
     mode: str = ""
+    writing_style: str | None = None
     language: str = ""
     started_at: float = 0.0
     elapsed_seconds: float = 0.0
@@ -526,6 +537,11 @@ class WorkflowService:
         model: str | None = None,
         refinement_provider_id: str | None = None,
         refinement_model: str | None = None,
+        cleanup_level_requested: str | None = None,
+        cleanup_level_applied: str | None = None,
+        writing_style_requested: str | None = None,
+        writing_style_applied: str | None = None,
+        writing_style_status: str | None = None,
         after_delivery: Callable[[], None] | None = None,
     ) -> bool:
         with self._lock:
@@ -546,6 +562,12 @@ class WorkflowService:
                 model=model,
                 refinement_provider_id=refinement_provider_id,
                 refinement_model=refinement_model,
+                cleanup_level_requested=cleanup_level_requested,
+                cleanup_level_applied=cleanup_level_applied,
+                writing_style_requested=writing_style_requested
+                or session.writing_style,
+                writing_style_applied=writing_style_applied,
+                writing_style_status=writing_style_status,
             )
             self._state = state
 
@@ -662,6 +684,11 @@ class WorkflowService:
             self._run_recording(recording, recording.cancel)
             return False
         session.mode = command.mode
+        resolve_style = getattr(self._config, "dictation_writing_style", None)
+        if callable(resolve_style):
+            session.writing_style = resolve_style(
+                command.target.executable if command.target is not None else None
+            ).requested_style
         session.language = command.language
         session.started_at = self._clock.time()
         session.usage_context = self._config.recording_usage_context(command.mode)
@@ -800,9 +827,17 @@ class WorkflowService:
                 )
                 * 1000
             )
-            provider_result = self._provider.transcribe(
-                audio_source, session.mode, session.language
-            )
+            if session.writing_style is not None:
+                provider_result = self._provider.transcribe(
+                    audio_source,
+                    session.mode,
+                    session.language,
+                    writing_style=session.writing_style,
+                )
+            else:
+                provider_result = self._provider.transcribe(
+                    audio_source, session.mode, session.language
+                )
             session.timings_ms.update(
                 safe_timings(getattr(provider_result, "timings_ms", {}))
             )
@@ -842,6 +877,21 @@ class WorkflowService:
                     provider_result, "refinement_provider_id", None
                 ),
                 refinement_model=getattr(provider_result, "refinement_model", None),
+                cleanup_level_requested=getattr(
+                    provider_result, "cleanup_level_requested", None
+                ),
+                cleanup_level_applied=getattr(
+                    provider_result, "cleanup_level_applied", None
+                ),
+                writing_style_requested=getattr(
+                    provider_result, "writing_style_requested", None
+                ),
+                writing_style_applied=getattr(
+                    provider_result, "writing_style_applied", None
+                ),
+                writing_style_status=getattr(
+                    provider_result, "writing_style_status", None
+                ),
                 after_delivery=lambda: self._scheduler.run_in_background(
                     lambda: self._write_dictation_if_current(session, result, elapsed)
                 ),
