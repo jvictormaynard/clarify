@@ -5,6 +5,7 @@ final class ComputerConnection {
   typealias Transport = (URLRequest, ComputerRoute) async throws -> (Data, HTTPURLResponse)
   private let transport: Transport
   private let save: (ComputerCredential?) throws -> Void
+  private let newOperationID: () throws -> UUID
   private(set) var credential: ComputerCredential?
   private(set) var generation: UInt64 = 0
   private(set) var busy = false
@@ -12,12 +13,16 @@ final class ComputerConnection {
   private(set) var status = "unpaired"
   private var activeRoute: ComputerRoute?
   private var invalidated: (() -> Void)?
-  private var operations: [String: (credential: ComputerCredential, route: ComputerRoute)] = [:]
+  private var operations: [String: (credential: ComputerCredential, route: ComputerRoute, wireID: UUID)] = [:]
+  // Keep local action tombstones for this connection's lifetime. A delayed
+  // command or uncertain response cannot mint a new remote operation.
+  private var retiredOperations = Set<String>()
 
   init(read: () -> ComputerCredential? = ComputerKeychain.read,
     save: @escaping (ComputerCredential?) throws -> Void = ComputerKeychain.save,
-    transport: @escaping Transport = ComputerHTTPS.send) {
-    self.save = save; self.transport = transport
+    transport: @escaping Transport = ComputerHTTPS.send,
+    newOperationID: @escaping () throws -> UUID = { try ComputerOperationID.make() }) {
+    self.save = save; self.transport = transport; self.newOperationID = newOperationID
     credential = read()
     if let credential, (try? credential.validate()) == nil { self.credential = nil }
     if self.credential != nil { status = "offline" }
@@ -50,7 +55,7 @@ final class ComputerConnection {
     catch is CancellationError { throw CancellationError() }
     catch { throw ComputerFailure.offline }
     try Task.checkCancellation()
-    guard response.url == url, data.count <= 128 * 1024, !(300...399).contains(response.statusCode) else { throw ComputerFailure.invalidResponse }
+    guard response.url == url, data.count <= ComputerProtocolLimits.maximumResponseBytes, !(300...399).contains(response.statusCode) else { throw ComputerFailure.invalidResponse }
     return (data, response.statusCode)
   }
   @MainActor func pair(_ qr: String, deviceName: String, now: Date = Date()) async throws {
@@ -125,29 +130,38 @@ final class ComputerConnection {
     if configured { status = "offline" }
   }
   @MainActor func cancelOperation(_ id: String) {
-    guard UUID(uuidString: id) != nil, let operation = operations.removeValue(forKey: id) else { return }
-    Task { @MainActor in _ = try? await self.send("DELETE", path: "/v1/computer/operations/" + id, route: operation.route, token: operation.credential.sessionToken, timeout: 2) }
+    guard let localID = UUID(uuidString: id) else { return }
+    let key = localID.uuidString
+    retiredOperations.insert(key)
+    guard let operation = operations.removeValue(forKey: key) else { return }
+    Task { @MainActor in _ = try? await self.send("DELETE", path: "/v1/computer/operations/" + operation.wireID.uuidString, route: operation.route, token: operation.credential.sessionToken, timeout: 2) }
   }
   @MainActor func process(_ operationID: String, action: String? = nil, text: String? = nil, wav: Data? = nil,
     language: String = ClarifyLocale.language) async throws -> ComputerResult {
-    guard UUID(uuidString: operationID) != nil, let credential, let route = activeRoute, ready else { throw ComputerFailure.notReady }
+    try Task.checkCancellation()
+    guard let localID = UUID(uuidString: operationID) else { throw ComputerFailure.notReady }
+    let key = localID.uuidString
+    guard !retiredOperations.contains(key) else { throw CancellationError() }
+    guard let credential, let route = activeRoute, ready else { throw ComputerFailure.notReady }
     guard !language.isEmpty, language.utf8.count <= 32,
       language.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || $0 == 45 }) else { throw ComputerFailure.invalidResponse }
-    guard operations[operationID] == nil else { throw ComputerFailure.busy }
+    guard operations[key] == nil else { throw ComputerFailure.busy }
     let owner = generation
-    var json: [String: Any] = ["operation_id": operationID, "language": language]
+    var json: [String: Any] = ["language": language]
     if let action, let text {
       guard ["rewrite", "translate"].contains(action), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
         text.utf8.count <= 32_768 else { throw ComputerFailure.invalidResponse }
       json["action"] = action; json["text"] = text
     } else if let wav { try ComputerWAV.validate(wav); json["audio_wav"] = wav.base64EncodedString() }
     else { throw ComputerFailure.invalidAudio }
-    operations[operationID] = (credential, route)
-    defer { operations.removeValue(forKey: operationID) }
+    let wireID = try newOperationID()
+    json["operation_id"] = wireID.uuidString
+    operations[key] = (credential, route, wireID)
+    defer { operations.removeValue(forKey: key); retiredOperations.insert(key) }
     do {
       let (data, code) = try await send("POST", path: action == nil ? "/v1/computer/dictations" : "/v1/computer/text", route: route,
         token: credential.sessionToken, json: json, timeout: 100)
-      guard accepts(owner) else { throw CancellationError() }
+      guard accepts(owner), operations[key]?.wireID == wireID else { throw CancellationError() }
       if [401, 403].contains(code) { try invalidate(); throw ComputerFailure.authentication }
       guard code == 200 else {
         // Only stable local messages are exposed. Provider error bodies remain
@@ -159,14 +173,20 @@ final class ComputerConnection {
           "processing_failed": "Não foi possível concluir o processamento. Tente novamente.",
           "operation_cancelled": "Esta solicitação foi cancelada.",
           "operation_conflict": "Esta solicitação não pode ser repetida. Inicie uma nova ação.",
+          "operation_expired": "Esta solicitação não pode ser repetida. Inicie uma nova ação.",
+          "operation_in_future": "Verifique a data e a hora do iPhone e do computador. Depois, inicie uma nova ação.",
+          "operation_limit": "O computador atingiu o limite temporário de solicitações. Aguarde e inicie uma nova ação.",
+          "operation_history_full": "O computador atingiu o limite. Nele, revogue o acesso dos celulares que não usa mais e tente novamente.",
           "result_unavailable": "Esta solicitação não pode ser repetida. Inicie uma nova ação."]
         let message = (raw?["error"] as? String).flatMap { messages[$0] } ?? (code == 429 ? "Muitas solicitações. Aguarde um momento." : "Não foi possível concluir o processamento. Tente novamente.")
         throw ClarifyError(message, code: "computer_processing_failed", phase: action == nil ? "transcribing" : "rewriting", operationID: operationID, status: code)
       }
-      return try ComputerResult.decode(data, operationID: operationID)
+      let result = try ComputerResult.decode(data, operationID: wireID.uuidString)
+      return ComputerResult(operationID: localID, transcript: result.transcript, text: result.text,
+        rewritten: result.rewritten, successful: result.successful)
     } catch {
       if Task.isCancelled { cancelOperation(operationID); throw CancellationError() }
-      guard accepts(owner) else { throw CancellationError() }
+      guard accepts(owner), operations[key]?.wireID == wireID else { throw CancellationError() }
       if error as? ComputerFailure == .offline { ready = false; status = "offline" }
       throw error
     }

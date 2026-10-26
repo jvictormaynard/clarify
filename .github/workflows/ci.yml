@@ -201,6 +201,8 @@ jobs:
           ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py scripts/format_staged.py
           clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
           workflow_provider.py tests/test_workflow_provider.py
+          computer_host.py computer_processing.py clarify/desktop/qml_computer.py
+          tests/test_computer_host.py tests/test_computer_processing.py tests/test_pyside6_qml_computer.py
           clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
           clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
           clarify/desktop/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
@@ -213,6 +215,7 @@ jobs:
           scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py
           tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py
           scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
+          scripts/testflight_candidate.py tests/test_testflight_candidate.py
 
       - name: Run Ruff format check
         if: matrix.os == 'ubuntu-latest'
@@ -220,6 +223,8 @@ jobs:
           ruff format --check scripts/dependency_audit.py scripts/format_staged.py tests/test_repository.py
           clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
           workflow_provider.py tests/test_workflow_provider.py
+          computer_host.py computer_processing.py clarify/desktop/qml_computer.py
+          tests/test_computer_host.py tests/test_computer_processing.py tests/test_pyside6_qml_computer.py
           clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
           clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
           clarify/desktop/qt_shell.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py
@@ -231,6 +236,7 @@ jobs:
           scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py
           tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py
           scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
+          scripts/testflight_candidate.py tests/test_testflight_candidate.py
 
       - name: Run targeted type checks
         if: matrix.os == 'ubuntu-latest'
@@ -252,6 +258,7 @@ jobs:
           provider_registry.py workflow_provider.py scripts/format_staged.py scripts/create_release_manifest.py tests
           local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py
           scripts/delivery_policy.py scripts/release_delivery.py
+          computer_host.py computer_processing.py clarify/desktop/qml_computer.py scripts/testflight_candidate.py
 
       - name: Validate QML assets
         run: >-

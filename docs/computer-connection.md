@@ -67,18 +67,43 @@ Audio is base64-encoded PCM16 mono WAV at 16 kHz, with a maximum duration of
 its recorded AAC clip before upload and removes its temporary WAV on every
 terminal path. The computer owns its temporary input until processing ends.
 Text input and each result text field have a 32 KiB UTF-8 limit, matching the
-native history contract. Oversized results fail without truncation.
+native history contract. Oversized results fail without truncation. The native
+client accepts at most 512 KiB for a complete JSON response. This permits JSON
+escaping of both valid result fields within their individual limits.
 
-Operation IDs are UUIDs scoped to the paired device. An identical retry reuses a
-bounded stored result. Different content with the same ID is rejected. An
-uncertain or expired operation must not automatically start expensive work again.
-Cancellation and device revocation prevent a late result from being published.
+Remote operation IDs use [UUIDv7](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-7)
+and are scoped to the paired device. The native app creates one remote ID for
+each explicit action and maps it to the existing local recording or text ID.
+Cancellation and reply validation use that same remote ID. An identical retry
+reuses a bounded stored result. Different content with the same ID is rejected.
+An uncertain or expired operation must not automatically start expensive work
+again. Cancellation and device revocation prevent a late result from being
+published.
+
+New IDs must have a timestamp within the previous two hours or the next five
+minutes. SQLite schema 2 stores the greatest observed time before expired
+metadata is removed. A restart or clock rollback cannot make a removed ID valid
+again. Active claims remain protected. Existing schema 1 identity, devices and
+legacy operation claims migrate without an identity reset; unknown UUIDv4
+operation IDs cannot start new work.
+
+The host retains at most 4,096 operation records. Expired inactive UUIDv7 claims
+are removed automatically. `429 operation_limit` reports temporary capacity.
+`409 operation_history_full` means retained legacy claims fill the store; the
+user must revoke old device access on the computer to release those claims.
+If the current device is revoked, it needs a new pairing. `409 operation_expired`
+and `409 result_unavailable` require a new explicit action, rather than an
+automatic upload with a new ID.
+`400 operation_in_future` requires checking the date and time on both devices
+before starting a new action.
 
 The computer selects providers, models, prompts and its dictionary. The mobile
 cannot supply provider credentials, arbitrary endpoints, file paths or tools.
 Computer-scoped history must not enter account synchronization. Switching
 destinations invalidates old operations and recording ownership. An unavailable
-computer cannot silently select hosted processing.
+computer cannot silently select hosted processing. The computer identity owns
+its iPhone history independently of network addresses. Pairing the same computer
+after an address change preserves access to its existing records and deletion.
 
 ## Delivery evidence
 

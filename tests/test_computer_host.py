@@ -17,7 +17,7 @@ import time
 import unittest
 from unittest.mock import patch
 from urllib.parse import urlsplit, parse_qs
-from uuid import uuid4
+from uuid import UUID, uuid4
 import wave
 
 from computer_host import ComputerHost
@@ -134,9 +134,16 @@ class ComputerHostTests(unittest.TestCase):
         self.assertEqual(status, 200)
         return qr, session
 
+    def operation(self, at=None):
+        timestamp = int((self.now if at is None else at) * 1000)
+        data = bytearray(timestamp.to_bytes(6, "big") + uuid4().bytes[6:])
+        data[6] = 0x70 | (data[6] & 0x0F)
+        data[8] = 0x80 | (data[8] & 0x3F)
+        return str(UUID(bytes=bytes(data)))
+
     def text(self, operation=None, text="Original"):
         return {
-            "operation_id": operation or str(uuid4()),
+            "operation_id": operation or self.operation(),
             "action": "rewrite",
             "text": text,
             "language": "pt",
@@ -332,7 +339,7 @@ class ComputerHostTests(unittest.TestCase):
         response = self.request(
             "POST",
             "/v1/computer/dictations",
-            {"operation_id": str(uuid4()), "language": "en", "audio_wav": audio()},
+            {"operation_id": self.operation(), "language": "en", "audio_wav": audio()},
             token,
         )
         self.assertEqual(response[0], 200)
@@ -398,7 +405,7 @@ class ComputerHostTests(unittest.TestCase):
                         "POST",
                         "/v1/computer/dictations",
                         {
-                            "operation_id": str(uuid4()),
+                            "operation_id": self.operation(),
                             "language": "en",
                             "audio_wav": value,
                         },
@@ -611,6 +618,390 @@ class ComputerHostTests(unittest.TestCase):
             200,
         )
         self.assertEqual(len(self.processor.calls), 2)
+
+    def test_uuid7_rfc_vector_and_time_admission_boundaries(self):
+        _, session = self.pair()
+        token = session["session_token"]
+        self.now = 1645557742.0
+        # RFC 9562 Appendix A.6, independent of the fixture generator.
+        vector = "017f22e2-79b0-7cc3-98c4-dc0c0c07398f"
+        for operation in (
+            vector,
+            self.operation(self.now - 7200),
+            self.operation(self.now + 300),
+        ):
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", self.text(operation), token)[
+                    0
+                ],
+                200,
+            )
+        for operation, code, status in (
+            (self.operation(self.now - 7200.001), "operation_expired", 409),
+            (self.operation(self.now + 300.001), "operation_in_future", 400),
+            (str(uuid4()), "invalid_operation_id", 400),
+            (vector[:19] + "7" + vector[20:], "invalid_operation_id", 400),
+        ):
+            with self.subTest(code=code, operation=operation):
+                self.assertEqual(
+                    self.request(
+                        "POST", "/v1/computer/text", self.text(operation), token
+                    ),
+                    (status, {"error": code}),
+                )
+        self.assertEqual(len(self.processor.calls), 3)
+
+    def test_operation_window_recovers_capacity_and_does_not_revive_pruned_ids(self):
+        _, session = self.pair()
+        token = session["session_token"]
+        first = self.text()
+        with patch("computer_host.MAX_OPERATIONS", 2):
+            for request in (first, self.text()):
+                self.assertEqual(
+                    self.request("POST", "/v1/computer/text", request, token)[0], 200
+                )
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", self.text(), token),
+                (429, {"error": "operation_limit"}),
+            )
+            self.now += 7501
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", self.text(), token)[0], 200
+            )
+            self.assertNotIn(
+                (session["device_id"], first["operation_id"]), self.host._results
+            )
+            with closing(sqlite3.connect(self.path)) as db:
+                self.assertEqual(
+                    db.execute(
+                        "SELECT COUNT(*) FROM operations WHERE operation_id=?",
+                        (first["operation_id"],),
+                    ).fetchone()[0],
+                    0,
+                )
+            self.host.stop()
+            self.now -= 7501
+            self.host = self.new_host()
+            self.host.start()
+            for method, path, body in (
+                ("POST", "/v1/computer/text", first),
+                ("DELETE", "/v1/computer/operations/" + first["operation_id"], None),
+            ):
+                self.assertEqual(
+                    self.request(method, path, body, token),
+                    (409, {"error": "operation_expired"}),
+                )
+        self.assertEqual(len(self.processor.calls), 3)
+
+    def test_v1_legacy_capacity_requires_explicit_revocation_and_pairing(self):
+        _, session = self.pair()
+        token = session["session_token"]
+        legacy = str(uuid4())
+        identity = session["computer_id"]
+        self.host.stop()
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("DROP TABLE IF EXISTS replay_window")
+            db.execute("PRAGMA user_version=1")
+            db.execute(
+                "INSERT INTO operations VALUES (?,?,?,?,?)",
+                (
+                    session["device_id"],
+                    legacy,
+                    "legacy-hash",
+                    "failed",
+                    self.now - 9000,
+                ),
+            )
+            db.commit()
+        self.host = self.new_host()
+        self.host.start()
+        with patch("computer_host.MAX_OPERATIONS", 1):
+            for _ in range(2):
+                request = self.text()
+                self.assertEqual(
+                    self.request("POST", "/v1/computer/text", request, token),
+                    (409, {"error": "operation_history_full"}),
+                )
+                self.assertEqual(
+                    self.request(
+                        "DELETE",
+                        "/v1/computer/operations/" + request["operation_id"],
+                        token=token,
+                    ),
+                    (409, {"error": "operation_history_full"}),
+                )
+                self.now += 7501
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", self.text(legacy), token),
+                (409, {"error": "operation_conflict"}),
+            )
+            with closing(sqlite3.connect(self.path)) as db:
+                self.assertEqual(
+                    db.execute("SELECT COUNT(*) FROM operations").fetchone()[0], 1
+                )
+                self.assertEqual(
+                    db.execute(
+                        "SELECT content_hash,state FROM operations WHERE operation_id=?",
+                        (legacy,),
+                    ).fetchone(),
+                    ("legacy-hash", "failed"),
+                )
+            self.assertEqual(self.processor.calls, [])
+            self.host.revoke_device(session["device_id"])
+            self.assertEqual(
+                self.request("GET", "/v1/computer/status", token=token),
+                (401, {"error": "unauthorized"}),
+            )
+            with closing(sqlite3.connect(self.path)) as db:
+                self.assertEqual(
+                    db.execute("SELECT COUNT(*) FROM operations").fetchone()[0], 0
+                )
+            _, replacement = self.pair()
+            self.assertEqual(
+                self.request(
+                    "POST",
+                    "/v1/computer/text",
+                    self.text(legacy),
+                    replacement["session_token"],
+                ),
+                (400, {"error": "invalid_operation_id"}),
+            )
+            self.assertEqual(
+                self.request(
+                    "POST",
+                    "/v1/computer/text",
+                    self.text(),
+                    replacement["session_token"],
+                )[0],
+                200,
+            )
+            self.assertEqual(replacement["computer_id"], identity)
+            self.assertNotEqual(replacement["device_id"], session["device_id"])
+        self.assertEqual(len(self.processor.calls), 1)
+
+    def test_mixed_legacy_and_uuid7_claims_share_the_total_metadata_bound(self):
+        _, session = self.pair()
+        token = session["session_token"]
+        legacy = str(uuid4())
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute(
+                "INSERT INTO operations VALUES (?,?,?,?,?)",
+                (session["device_id"], legacy, "fixture", "uncertain", self.now - 9000),
+            )
+            db.commit()
+        with patch("computer_host.MAX_OPERATIONS", 2):
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", self.text(), token)[0], 200
+            )
+            blocked = self.text()
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", blocked, token),
+                (429, {"error": "operation_limit"}),
+            )
+            self.assertEqual(
+                self.request(
+                    "DELETE",
+                    "/v1/computer/operations/" + blocked["operation_id"],
+                    token=token,
+                ),
+                (429, {"error": "operation_limit"}),
+            )
+            self.now += 7201
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", self.text(), token)[0], 200
+            )
+            with closing(sqlite3.connect(self.path)) as db:
+                self.assertEqual(
+                    db.execute("SELECT COUNT(*) FROM operations").fetchone()[0], 2
+                )
+                self.assertEqual(
+                    db.execute(
+                        "SELECT state FROM operations WHERE operation_id=?", (legacy,)
+                    ).fetchone()[0],
+                    "uncertain",
+                )
+        self.assertEqual(len(self.processor.calls), 2)
+
+    def test_unknown_legacy_and_future_ids_cannot_reserve_cancellation(self):
+        _, session = self.pair()
+        for operation, code in (
+            (str(uuid4()), "invalid_operation_id"),
+            (self.operation(self.now + 301), "operation_in_future"),
+        ):
+            self.assertEqual(
+                self.request(
+                    "DELETE",
+                    "/v1/computer/operations/" + operation,
+                    token=session["session_token"],
+                ),
+                (400, {"error": code}),
+            )
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM operations").fetchone()[0], 0
+            )
+
+    def test_pruning_removes_expired_uncertain_but_preserves_active_and_legacy(self):
+        _, session = self.pair()
+        token = session["session_token"]
+        claims = [
+            (self.operation(), state)
+            for state in ("succeeded", "failed", "cancelled", "uncertain")
+        ] + [(str(uuid4()), "failed")]
+        with closing(sqlite3.connect(self.path)) as db:
+            db.executemany(
+                "INSERT INTO operations VALUES (?,?,?,?,?)",
+                [
+                    (session["device_id"], operation, "fixture", state, self.now)
+                    for operation, state in claims
+                ],
+            )
+            db.commit()
+        active = self.text()
+        self.processor.block = True
+        with ThreadPoolExecutor(1) as executor:
+            pending = executor.submit(
+                self.request, "POST", "/v1/computer/text", active, token
+            )
+            self.assertTrue(self.processor.entered.wait(2))
+            self.now += 7501
+            self.assertEqual(
+                self.request(
+                    "DELETE",
+                    "/v1/computer/operations/" + active["operation_id"],
+                    token=token,
+                )[0],
+                200,
+            )
+            # A second admission runs pruning while the cancelled callback is
+            # still active; only its owning request may release its resources.
+            self.processor.block = False
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", self.text(), token)[0], 200
+            )
+            with closing(sqlite3.connect(self.path)) as db:
+                rows = dict(db.execute("SELECT operation_id,state FROM operations"))
+            for operation, _ in claims[:4]:
+                self.assertNotIn(operation, rows)
+            self.assertEqual(rows[claims[4][0]], "failed")
+            self.assertEqual(rows[active["operation_id"]], "cancelled")
+            self.processor.release.set()
+            self.assertEqual(pending.result(), (409, {"error": "operation_cancelled"}))
+        self.assertEqual(
+            self.request("POST", "/v1/computer/text", self.text(), token)[0], 200
+        )
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertIsNone(
+                db.execute(
+                    "SELECT 1 FROM operations WHERE operation_id=?",
+                    (active["operation_id"],),
+                ).fetchone()
+            )
+
+    def test_crash_restart_windows_keep_actual_metadata_bounded_without_reexecution(
+        self,
+    ):
+        _, session = self.pair()
+        token = session["session_token"]
+        first = self.text()
+        initial_time = self.now
+        requests = [first, self.text()]
+        with patch("computer_host.MAX_OPERATIONS", 2):
+            for cycle in range(4):
+                if cycle:
+                    requests = [self.text(), self.text()]
+                for request in requests:
+                    self.assertEqual(
+                        self.request("POST", "/v1/computer/text", request, token)[0],
+                        200,
+                    )
+                    with closing(sqlite3.connect(self.path)) as db:
+                        self.assertLessEqual(
+                            db.execute("SELECT COUNT(*) FROM operations").fetchone()[0],
+                            2,
+                        )
+                self.host.stop()
+                # Simulate the durable claims left by a process crash, without
+                # using real providers or leaving a live request worker behind.
+                with closing(sqlite3.connect(self.path)) as db:
+                    db.execute("UPDATE operations SET state='running'")
+                    db.commit()
+                self.host = self.new_host()
+                self.host.start()
+                with closing(sqlite3.connect(self.path)) as db:
+                    self.assertEqual(
+                        db.execute("SELECT state FROM operations").fetchall(),
+                        [("uncertain",), ("uncertain",)],
+                    )
+                self.assertEqual(
+                    self.request("POST", "/v1/computer/text", self.text(), token),
+                    (429, {"error": "operation_limit"}),
+                )
+                self.assertEqual(
+                    self.request("POST", "/v1/computer/text", requests[0], token),
+                    (409, {"error": "result_unavailable"}),
+                )
+                self.now += 7201
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", self.text(), token)[0], 200
+            )
+            self.host.stop()
+            self.now = initial_time
+            self.host = self.new_host()
+            self.host.start()
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", first, token),
+                (409, {"error": "operation_expired"}),
+            )
+            with closing(sqlite3.connect(self.path)) as db:
+                self.assertLessEqual(
+                    db.execute("SELECT COUNT(*) FROM operations").fetchone()[0], 2
+                )
+        self.assertEqual(len(self.processor.calls), 9)
+
+    def test_unknown_future_schema_is_not_modified(self):
+        self.host.stop()
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("PRAGMA user_version=3")
+            db.commit()
+        before = self.path.read_bytes()
+        with self.assertRaisesRegex(ValueError, "Unsupported computer state version"):
+            self.new_host().start()
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_missing_persisted_window_cannot_reset_replay_barrier(self):
+        self.host.stop()
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("DELETE FROM replay_window")
+            db.commit()
+        with self.assertRaisesRegex(ValueError, "Invalid computer replay window"):
+            self.new_host().start()
+
+    def test_address_provider_preserves_priority_filters_and_deduplicates(self):
+        self.host.stop()
+        self.host = self.new_host(
+            address_provider=lambda: [
+                "garbage",
+                "::1",
+                "8.8.8.8",
+                "192.168.1.255",
+                "192.168.1.255",
+                "10.0.0.0",
+                "172.16.3.2",
+                "10.0.1.1",
+                "10.0.2.1",
+            ]
+        )
+        self.host.start()
+        with patch.object(self.host, "host", "0.0.0.0"):
+            qr = self.pairing()
+        self.assertEqual(
+            [route["url"] for route in qr["routes"]],
+            [
+                f"https://{ip}:{self.host.port}"
+                for ip in ("192.168.1.255", "10.0.0.0", "172.16.3.2", "10.0.1.1")
+            ],
+        )
 
     def test_concurrent_operation_limit_rejects_before_claim_then_allows_retry(self):
         self.host.stop()
@@ -925,7 +1316,7 @@ class ComputerHostTests(unittest.TestCase):
             [route["url"] for route in qr["routes"]],
             [
                 f"https://{ip}:{self.host.port}"
-                for ip in ("10.0.0.0", "10.0.0.255", "172.16.0.7", "172.31.255.255")
+                for ip in ("192.168.2.4", "10.0.0.255", "172.16.0.7", "10.0.0.0")
             ],
         )
         self.assertTrue(

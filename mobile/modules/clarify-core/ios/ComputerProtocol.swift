@@ -1,5 +1,26 @@
 import Foundation
 
+enum ComputerProtocolLimits {
+  static let maximumResponseBytes = 512 * 1024
+}
+
+enum ComputerOperationID {
+  // RFC 9562 UUIDv7: 48 timestamp bits, version 7, variant 10, 74 random bits.
+  // Local recording, history, computer and device IDs keep their UUIDv4 format.
+  static func make(now: Date = Date(), random: UUID = UUID()) throws -> UUID {
+    let milliseconds = (now.timeIntervalSince1970 * 1000).rounded(.down)
+    guard milliseconds.isFinite, milliseconds >= 0, milliseconds < 281_474_976_710_656 else { throw ComputerFailure.invalidResponse }
+    let timestamp = UInt64(milliseconds)
+    var bytes = random.uuid
+    withUnsafeMutableBytes(of: &bytes) { bytes in
+      for index in 0..<6 { bytes[index] = UInt8(truncatingIfNeeded: timestamp >> (8 * (5 - index))) }
+      bytes[6] = (bytes[6] & 0x0f) | 0x70
+      bytes[8] = (bytes[8] & 0x3f) | 0x80
+    }
+    return UUID(uuid: bytes)
+  }
+}
+
 // JSONSerialization and JSONDecoder both accept duplicate object keys. Reject
 // that ambiguity before interpreting a trust invitation, including escaped keys.
 private struct ComputerJSONKeys {

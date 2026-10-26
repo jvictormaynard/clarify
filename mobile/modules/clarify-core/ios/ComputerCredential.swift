@@ -7,9 +7,8 @@ struct ComputerCredential: Codable, Equatable {
   let deviceID: UUID
   let sessionToken: String
   let routes: [ComputerRoute]
-  // All routes in one invitation name the same host. Sorting prevents route
-  // order from changing the local owner after pairing again.
-  var scope: String { "computer|" + computerID.uuidString.lowercased() + "|" + routes.map(\.url).sorted().joined(separator: "|") }
+  // Network addresses and device credentials can change for the same computer.
+  var scope: String { "computer|" + computerID.uuidString.lowercased() }
   func validate() throws {
     guard ComputerInvitation.validName(computerName), (1...4).contains(routes.count),
       Set(routes.map(\.url)).count == routes.count, Self.validToken(sessionToken) else { throw ComputerFailure.invalidResponse }

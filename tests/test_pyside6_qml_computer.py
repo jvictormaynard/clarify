@@ -1,6 +1,7 @@
 """Personal mobile access uses fake hosts and an isolated SQLite profile."""
 
 import json
+import os
 from pathlib import Path
 import threading
 import time
@@ -8,8 +9,11 @@ import unittest
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
+from PySide6.QtNetwork import QHostAddress, QNetworkInterface
+
 from PySide6.QtWidgets import QApplication
 
+from clarify.desktop import qml_computer
 from clarify.desktop.qml_computer import QmlComputerController
 from clarify.desktop.qml_settings import QmlSettingsController
 from clarify.desktop.qml_web_settings import SettingsProtocol
@@ -99,6 +103,79 @@ class ComputerControllerTests(unittest.TestCase):
         self.assertTrue(self.controller.command("enable"))
         self.wait()
         self.assertTrue(self.controller.snapshot()["running"])
+
+    def test_physical_wifi_precedes_more_than_four_virtual_ethernet_interfaces(self):
+        def interface(index, kind, addresses, flags=None):
+            value = Mock()
+            value.index.return_value = index
+            value.type.return_value = kind
+            value.flags.return_value = (
+                flags
+                if flags is not None
+                else (QNetworkInterface.IsUp | QNetworkInterface.IsRunning)
+            )
+            value.addressEntries.return_value = [
+                Mock(ip=Mock(return_value=QHostAddress(address)))
+                for address in addresses
+            ]
+            return value
+
+        interfaces = [
+            interface(index, QNetworkInterface.Ethernet, [f"192.168.{index}.2"])
+            for index in range(1, 7)
+        ]
+        interfaces += [
+            interface(9, QNetworkInterface.Wifi, ["10.9.0.255", "2001:db8::1"]),
+            interface(10, QNetworkInterface.Ethernet, ["172.16.1.0"]),
+            interface(11, QNetworkInterface.Wifi, ["10.8.0.2"], QNetworkInterface.IsUp),
+            interface(12, QNetworkInterface.Loopback, ["127.0.0.1"]),
+        ]
+        with (
+            patch.object(
+                qml_computer, "_windows_physical_interfaces", return_value={9, 10}
+            ),
+            patch.object(QNetworkInterface, "allInterfaces", return_value=interfaces),
+        ):
+            addresses = qml_computer.computer_addresses()
+        self.assertEqual(
+            addresses[:4], ["10.9.0.255", "172.16.1.0", "192.168.1.2", "192.168.2.2"]
+        )
+        self.assertNotIn("10.8.0.2", addresses)
+        self.assertNotIn("127.0.0.1", addresses)
+        with (
+            patch.object(
+                qml_computer, "_windows_physical_interfaces", return_value=None
+            ),
+            patch.object(QNetworkInterface, "allInterfaces", return_value=interfaces),
+        ):
+            self.assertEqual(qml_computer.computer_addresses()[0], "10.9.0.255")
+
+    @unittest.skipUnless(os.name == "nt", "Windows physical adapter query")
+    def test_windows_physical_query_is_fixed_hidden_bounded_and_fails_closed(self):
+        with patch.object(
+            qml_computer.subprocess, "run", return_value=Mock(stdout="9\n10\n")
+        ) as run:
+            self.assertEqual(qml_computer._windows_physical_interfaces(), {9, 10})
+            args, options = run.call_args
+            self.assertIn("Get-NetAdapter -Physical", args[0][-1])
+            self.assertIn("-First 128", args[0][-1])
+            self.assertEqual(options["timeout"], 8)
+            self.assertTrue(options["creationflags"])
+            self.assertFalse(options.get("shell", False))
+        with patch.object(qml_computer.subprocess, "run", side_effect=OSError()):
+            self.assertIsNone(qml_computer._windows_physical_interfaces())
+
+    def test_composition_supplies_address_provider(self):
+        runtime = Mock()
+        runtime.repositories.config.path = Path(self.directory.name) / "config.json"
+        runtime.account = None
+        with patch("computer_host.ComputerHost", return_value=self.host) as host:
+            controller = qml_computer.create_computer_controller(runtime)
+            self.addCleanup(controller.shutdown)
+            controller._factory()
+        self.assertIs(
+            host.call_args.kwargs["address_provider"], qml_computer.computer_addresses
+        )
 
     def test_default_off_and_profile_local_explicit_restart_consent(self):
         self.controller.initialize()

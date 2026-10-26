@@ -13,7 +13,6 @@ final class ComputerHTTPS: NSObject, URLSessionDataDelegate, @unchecked Sendable
   private var response: HTTPURLResponse?
   private var body = Data()
   private var cancelled = false
-  private static let maxResponse = 128 * 1024
 
   init(route: ComputerRoute, url: URL) { self.route = route; expectedURL = url }
   static func matchesCertificate(_ der: Data, pin: String) -> Bool {
@@ -69,11 +68,11 @@ final class ComputerHTTPS: NSObject, URLSessionDataDelegate, @unchecked Sendable
   func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
     guard let response = response as? HTTPURLResponse, response.url == expectedURL,
-      response.expectedContentLength <= Self.maxResponse else { completionHandler(.cancel); return }
+      response.expectedContentLength <= ComputerProtocolLimits.maximumResponseBytes else { completionHandler(.cancel); return }
     self.response = response; completionHandler(.allow)
   }
   func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-    guard body.count + data.count <= Self.maxResponse else { dataTask.cancel(); return }
+    guard body.count + data.count <= ComputerProtocolLimits.maximumResponseBytes else { dataTask.cancel(); return }
     body.append(data)
   }
   func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {

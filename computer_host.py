@@ -48,6 +48,8 @@ MAX_BODY_BYTES = 16 * 1024 * 1024
 MAX_TEXT_BYTES = 32768
 MAX_DEVICES = 32
 MAX_OPERATIONS = 4096
+OPERATION_SECONDS = 7200
+OPERATION_FUTURE_SECONDS = 300
 MAX_RESULTS = 64
 MAX_RESULT_BYTES = 8 * 1024 * 1024
 PAIRING_SECONDS = 300
@@ -108,6 +110,23 @@ def _uuid(value: Any) -> str:
         return str(UUID(value))
     except ValueError:
         raise _APIError(400, "invalid_request") from None
+
+
+def _operation_timestamp(operation: str) -> int:
+    """Read RFC 9562 UUIDv7 epoch milliseconds, separately from identity UUIDs."""
+    value = UUID(operation)
+    if value.version != 7 or value.bytes[8] & 0xC0 != 0x80:
+        raise _APIError(400, "invalid_operation_id")
+    return int.from_bytes(value.bytes[:6], "big")
+
+
+def _local_addresses() -> list[str]:
+    return [
+        item[4][0]
+        for item in socket.getaddrinfo(
+            socket.gethostname(), None, socket.AF_INET, socket.SOCK_STREAM
+        )
+    ]
 
 
 def _name(value: Any) -> str:
@@ -428,6 +447,7 @@ class ComputerHost:
         host="0.0.0.0",
         port=47653,
         clock: Callable[[], float] = time.time,
+        address_provider: Callable[[], list[str]] | None = None,
         max_handlers=8,
         max_concurrent_operations=2,
         read_timeout=10.0,
@@ -449,6 +469,7 @@ class ComputerHost:
         if not 0.1 <= read_timeout <= 60:
             raise ValueError("Invalid computer host timeout")
         self.port, self.clock = port, clock
+        self.address_provider = address_provider or _local_addresses
         self._max_handlers, self._read_timeout = max_handlers, read_timeout
         self._capacity = threading.BoundedSemaphore(max_concurrent_operations)
         self._lock = threading.RLock()
@@ -547,8 +568,18 @@ class ComputerHost:
             if db.execute("PRAGMA page_count").fetchone()[0] > 2048:
                 raise ValueError("Computer state exceeds the storage limit")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise ValueError("Unsupported computer state version")
+            if version == 2:
+                highwater = db.execute(
+                    "SELECT highwater_ms FROM replay_window WHERE id=1"
+                ).fetchone()
+                if (
+                    highwater is None
+                    or type(highwater[0]) is not int
+                    or highwater[0] < 0
+                ):
+                    raise ValueError("Invalid computer replay window")
             db.execute("PRAGMA journal_mode=DELETE")
             db.execute("PRAGMA synchronous=FULL")
             db.execute("PRAGMA foreign_keys=ON")
@@ -563,7 +594,11 @@ class ComputerHost:
                     operation_id TEXT NOT NULL, content_hash TEXT NOT NULL,
                     state TEXT NOT NULL, created_at REAL NOT NULL,
                     PRIMARY KEY(device_id, operation_id));
-                PRAGMA user_version=1;
+                CREATE TABLE IF NOT EXISTS replay_window (
+                    id INTEGER PRIMARY KEY CHECK (id=1),
+                    highwater_ms INTEGER NOT NULL CHECK (highwater_ms>=0));
+                INSERT OR IGNORE INTO replay_window VALUES (1, 0);
+                PRAGMA user_version=2;
             """)
             row = db.execute("SELECT computer_id FROM identity").fetchone()
             if row is None:
@@ -667,23 +702,22 @@ class ComputerHost:
             loopback = ipaddress.IPv4Address(self.host).is_loopback
             if routes is None:
                 addresses = (
-                    {ipaddress.IPv4Address(self.host)}
-                    if self.host != "0.0.0.0"
-                    else {
-                        ipaddress.IPv4Address(item[4][0])
-                        for item in socket.getaddrinfo(
-                            socket.gethostname(),
-                            None,
-                            socket.AF_INET,
-                            socket.SOCK_STREAM,
-                        )
-                    }
+                    [self.host] if self.host != "0.0.0.0" else self.address_provider()
                 )
-                routes = [
-                    f"https://{address}:{self.port}"
-                    for address in sorted(addresses)
-                    if _supported_route(address, loopback=loopback)
-                ][:4]
+                routes = []
+                for item in addresses:
+                    try:
+                        address = ipaddress.IPv4Address(item)
+                    except (ValueError, TypeError):
+                        continue
+                    url = f"https://{address}:{self.port}"
+                    if (
+                        _supported_route(address, loopback=loopback)
+                        and url not in routes
+                    ):
+                        routes.append(url)
+                        if len(routes) == 4:
+                            break
             if not isinstance(routes, (list, tuple)) or not 1 <= len(routes) <= 4:
                 raise ValueError("One to four computer LAN routes are required")
             canonical = []
@@ -763,7 +797,7 @@ class ComputerHost:
                         timeout=1,
                     )
                     owned = True
-                    if db.execute("PRAGMA user_version").fetchone()[0] != 1:
+                    if db.execute("PRAGMA user_version").fetchone()[0] not in (1, 2):
                         raise ValueError("Unsupported computer state version")
                     row = db.execute("SELECT computer_id FROM identity").fetchone()
                     if row is None or (
@@ -875,7 +909,68 @@ class ComputerHost:
                 if key[0] == device_id:
                     self._result_bytes -= len(self._results.pop(key))
 
+    def _operation_window(self):
+        """Persist the replay barrier before deleting any expired UUIDv7 claim.
+
+        Call only under _lock. A restart or wall-clock rollback cannot lower
+        this barrier. Legacy claims and keys with active workers remain stored.
+        """
+        now = int(self.clock() * 1000)
+        self._db.execute(
+            "UPDATE replay_window SET highwater_ms=MAX(highwater_ms, ?) WHERE id=1",
+            (now,),
+        )
+        highwater = self._db.execute(
+            "SELECT highwater_ms FROM replay_window WHERE id=1"
+        ).fetchone()[0]
+        self._db.commit()
+        cutoff = highwater - OPERATION_SECONDS * 1000
+        legacy_count = 0
+        for device, operation in self._db.execute(
+            "SELECT device_id,operation_id FROM operations"
+        ).fetchall():
+            try:
+                timestamp = _operation_timestamp(operation)
+            except (ValueError, _APIError):
+                legacy_count += 1
+                continue
+            key = (device, operation)
+            if timestamp < cutoff and key not in self._running:
+                self._db.execute(
+                    "DELETE FROM operations WHERE device_id=? AND operation_id=?", key
+                )
+                self._result_bytes -= len(self._results.pop(key, b""))
+        # The actual metadata count owns admission. Retained legacy and active
+        # claims use capacity even when their timestamps are outside the window.
+        count = self._db.execute("SELECT COUNT(*) FROM operations").fetchone()[0]
+        self._db.commit()
+        return now, cutoff, count, legacy_count
+
+    def _require_operation_capacity(self, window):
+        if window[2] >= MAX_OPERATIONS:
+            if window[3] >= MAX_OPERATIONS:
+                # Time cannot release legacy UUIDv4 claims. Explicit device
+                # revocation removes that device's claims through FK cascade.
+                raise _APIError(409, "operation_history_full")
+            raise _APIError(429, "operation_limit")
+
+    def _check_operation_time(self, operation, known, window):
+        try:
+            timestamp = _operation_timestamp(operation)
+        except _APIError:
+            # Older persisted UUIDv4 claims remain authoritative. An unknown
+            # legacy ID can never reserve work or cancellation on this host.
+            if known and UUID(operation).version == 4:
+                return
+            raise
+        now, cutoff = window[:2]
+        if timestamp < cutoff:
+            raise _APIError(409, "operation_expired")
+        if timestamp > now + OPERATION_FUTURE_SECONDS * 1000:
+            raise _APIError(400, "operation_in_future")
+
     def _cancel(self, device, operation):
+        operation = _uuid(operation)
         key = (device, operation)
         with self._lock:
             self._require_started()
@@ -886,19 +981,18 @@ class ComputerHost:
                 is None
             ):
                 raise _APIError(401, "unauthorized")
-            if (
-                self._db.execute(
-                    "SELECT 1 FROM operations WHERE device_id=? AND operation_id=?", key
-                ).fetchone()
-                is None
-            ):
-                if (
-                    self._db.execute("SELECT COUNT(*) FROM operations").fetchone()[0]
-                    >= MAX_OPERATIONS
-                ):
-                    raise _APIError(429, "operation_limit")
+            window = self._operation_window()
+            known = self._db.execute(
+                "SELECT 1 FROM operations WHERE device_id=? AND operation_id=?", key
+            ).fetchone()
+            # Cancelling an already running claim remains valid after expiry;
+            # it cannot admit new work or revive a removed claim.
+            if key not in self._running:
+                self._check_operation_time(operation, known, window)
+            if known is None:
+                self._require_operation_capacity(window)
                 # Cancellation may beat a slow upload to admission. This empty
-                # content hash reserves a device-scoped cancelled ID forever.
+                # content hash reserves the ID until its replay window expires.
                 self._db.execute(
                     "INSERT INTO operations VALUES (?,?,?,?,?)",
                     (*key, "", "cancelled", self.clock()),
@@ -971,19 +1065,17 @@ class ComputerHost:
                 is None
             ):
                 raise _APIError(401, "unauthorized")
+            window = self._operation_window()
             row = self._db.execute(
                 "SELECT content_hash,state FROM operations WHERE device_id=? AND operation_id=?",
                 key,
             ).fetchone()
+            self._check_operation_time(operation, row, window)
             if row:
                 return self._cached(key, row, content_hash)
             if not self.ready:
                 raise _APIError(503, "not_ready")
-            if (
-                self._db.execute("SELECT COUNT(*) FROM operations").fetchone()[0]
-                >= MAX_OPERATIONS
-            ):
-                raise _APIError(429, "operation_limit")
+            self._require_operation_capacity(window)
             if not self._capacity.acquire(blocking=False):
                 raise _APIError(429, "busy")
             work = _Running(device, CancellationToken(), self._generation)

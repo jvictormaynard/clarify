@@ -97,6 +97,10 @@ final class ComputerTests: XCTestCase {
     var onProcessing: (() -> Void)?
     var invalidations = 0
     var failure: Error?
+    var processingData: Data?
+    var processingError: String?
+    var resultOperationID: String?
+    var idsCreated = 0
     lazy var connection = ComputerConnection(read: { self.saved }, save: { self.saved = $0 }, transport: { request, route in
       XCTAssertEqual(request.url?.host, URL(string: route.url)?.host)
       self.requests.append(request)
@@ -114,13 +118,26 @@ final class ComputerTests: XCTestCase {
         } else if request.httpMethod == "POST" {
           let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
           await withCheckedContinuation { self.suspended = $0; self.onProcessing?() }
-          json = ["operation_id": body["operation_id"]!, "transcript": "Original", "text": "Revised", "rewritten": true, "successful": true]
+          json = ["operation_id": self.resultOperationID ?? (body["operation_id"] as! String), "transcript": "Original", "text": "Revised", "rewritten": true, "successful": true]
+          if let code = self.processingError { json = ["error": code] }
+          if let data = self.processingData {
+            return (data, HTTPURLResponse(url: request.url!, statusCode: self.status, httpVersion: nil, headerFields: nil)!)
+          }
         }
       }
       return (try JSONSerialization.data(withJSONObject: json), HTTPURLResponse(url: request.url!, statusCode: self.status, httpVersion: nil, headerFields: nil)!)
+    }, newOperationID: {
+      self.idsCreated += 1
+      return try ComputerOperationID.make(now: ComputerTests.now)
     })
     init(paired: Bool = true) { saved = paired ? ComputerTests.credential : nil }
     func resume() { suspended?.resume(); suspended = nil }
+    func postedIDs() throws -> [String] {
+      try requests.filter { $0.httpMethod == "POST" }.map {
+        let json = try JSONSerialization.jsonObject(with: $0.httpBody!) as! [String: Any]
+        return json["operation_id"] as! String
+      }
+    }
   }
   @MainActor func testPairStoresOnlyDeviceCredentialAndVerifiesComputerIdentity() async throws {
     let f = Fixture(paired: false)
@@ -158,7 +175,9 @@ final class ComputerTests: XCTestCase {
     do { _ = try await task.value; XCTFail("Late result escaped") } catch is CancellationError {} catch { XCTFail("Unexpected error") }
     await Task.yield()
     XCTAssertEqual(f.requests.filter { $0.httpMethod == "POST" }.count, 1)
-    XCTAssertTrue(f.requests.contains { $0.httpMethod == "DELETE" && $0.url?.path == "/v1/computer/operations/" + id })
+    let wireID = try XCTUnwrap(f.postedIDs().first)
+    XCTAssertNotEqual(wireID, id)
+    XCTAssertTrue(f.requests.contains { $0.httpMethod == "DELETE" && $0.url?.path == "/v1/computer/operations/" + wireID })
   }
   @MainActor func testCancellationSendsBoundedDeleteAndDoesNotRepeatExpensiveRequest() async throws {
     let f = Fixture(); try await f.connection.refresh()
@@ -171,6 +190,142 @@ final class ComputerTests: XCTestCase {
     await Task.yield()
     XCTAssertEqual(f.requests.filter { $0.httpMethod == "POST" }.count, 1)
     XCTAssertTrue(f.requests.contains { $0.httpMethod == "DELETE" && $0.timeoutInterval == 2 })
+  }
+  func testWireUUIDUsesRFC9562TimestampVersionVariantAndRemainingRandomBits() throws {
+    let random = UUID(uuidString: "FFFFFFFF-FFFF-4CC3-D8C4-DC0C0C07398F")!
+    let id = try ComputerOperationID.make(now: Date(timeIntervalSince1970: 1_645_557_742), random: random)
+    XCTAssertEqual(id.uuidString, "017F22E2-79B0-7CC3-98C4-DC0C0C07398F")
+    let zero = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+    XCTAssertEqual(try ComputerOperationID.make(now: Date(timeIntervalSince1970: 0), random: zero).uuidString,
+      "00000000-0000-7000-8000-000000000000")
+    XCTAssertThrowsError(try ComputerOperationID.make(now: Date(timeIntervalSince1970: -1), random: random))
+    XCTAssertThrowsError(try ComputerOperationID.make(now: Date(timeIntervalSince1970: .infinity), random: random))
+    XCTAssertThrowsError(try ComputerOperationID.make(now: Date(timeIntervalSince1970: 281_474_976_711), random: random))
+  }
+  @MainActor func testWireReplyKeepsLocalOwnerAndPollingCannotGenerateAnotherRemoteAction() async throws {
+    let f = Fixture(); try await f.connection.refresh()
+    f.onProcessing = { f.resume() }
+    let localID = UUID().uuidString
+    let result = try await f.connection.process(localID, action: "rewrite", text: "Original")
+    XCTAssertEqual(result.operationID, UUID(uuidString: localID))
+    let wireID = try XCTUnwrap(f.postedIDs().first)
+    XCTAssertNotEqual(wireID, localID)
+    XCTAssertEqual(wireID.split(separator: "-")[2].first, "7")
+    try await f.connection.refresh()
+    do { _ = try await f.connection.process(localID, action: "rewrite", text: "Original"); XCTFail("A poll restarted work") } catch {}
+    do { _ = try await f.connection.process(localID.lowercased(), action: "rewrite", text: "Original"); XCTFail("UUID casing restarted work") } catch {}
+    XCTAssertEqual(f.idsCreated, 1); XCTAssertEqual(try f.postedIDs(), [wireID])
+    let otherLocalID = UUID().uuidString
+    let other = try await f.connection.process(otherLocalID, action: "rewrite", text: "Original")
+    XCTAssertEqual(other.operationID, UUID(uuidString: otherLocalID))
+    XCTAssertEqual(f.idsCreated, 2); XCTAssertEqual(Set(try f.postedIDs()).count, 2)
+  }
+  @MainActor func testCancellationBeforeUploadCannotBeRegeneratedByStaleCommand() async throws {
+    let f = Fixture(); try await f.connection.refresh()
+    let id = UUID().uuidString
+    f.connection.cancelOperation(id.lowercased())
+    for _ in 0..<2 {
+      do { _ = try await f.connection.process(id, action: "rewrite", text: "Original"); XCTFail("Cancelled action uploaded") }
+      catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+      try await f.connection.refresh()
+    }
+    XCTAssertEqual(f.idsCreated, 0); XCTAssertTrue(try f.postedIDs().isEmpty)
+    XCTAssertFalse(f.requests.contains { $0.httpMethod == "DELETE" })
+  }
+  @MainActor func testCancelKeepsOriginalWireAndRejectsReplyEvenWithoutTaskCancellation() async throws {
+    let f = Fixture(); try await f.connection.refresh()
+    let started = expectation(description: "processing started")
+    f.onProcessing = { started.fulfill() }
+    let id = UUID().uuidString
+    let task = Task { try await f.connection.process(id, action: "rewrite", text: "Original") }
+    await fulfillment(of: [started], timeout: 2)
+    let wireID = try XCTUnwrap(f.postedIDs().first)
+    f.connection.cancelOperation(id); f.connection.cancelOperation(id)
+    f.resume()
+    do { _ = try await task.value; XCTFail("Cancelled reply escaped") } catch is CancellationError {} catch { XCTFail("Unexpected error") }
+    await Task.yield()
+    let deletes = f.requests.filter { $0.httpMethod == "DELETE" }
+    XCTAssertEqual(deletes.map { $0.url!.path }, ["/v1/computer/operations/" + wireID])
+    XCTAssertEqual(deletes.first?.timeoutInterval, 2)
+    try await f.connection.refresh()
+    do { _ = try await f.connection.process(id, action: "rewrite", text: "Original"); XCTFail("Stale action regenerated") } catch {}
+    XCTAssertEqual(f.idsCreated, 1); XCTAssertEqual(try f.postedIDs(), [wireID])
+  }
+  @MainActor func testLocalUUIDInWireReplyIsRejectedAndUncertainSendIsNotRetried() async throws {
+    let f = Fixture(); try await f.connection.refresh()
+    let id = UUID().uuidString
+    f.resultOperationID = id; f.onProcessing = { f.resume() }
+    do { _ = try await f.connection.process(id, action: "rewrite", text: "Original"); XCTFail("Local ID accepted from remote") }
+    catch { XCTAssertEqual(error as? ComputerFailure, .invalidResponse) }
+    do { _ = try await f.connection.process(id, action: "rewrite", text: "Original"); XCTFail("Invalid response retried") } catch {}
+    XCTAssertEqual(f.idsCreated, 1); XCTAssertEqual(try f.postedIDs().count, 1)
+    let uncertain = Fixture(); try await uncertain.connection.refresh()
+    uncertain.failure = ComputerFailure.offline
+    do { _ = try await uncertain.connection.process(id, action: "rewrite", text: "Original"); XCTFail("Uncertain send succeeded") } catch {}
+    uncertain.failure = nil; try await uncertain.connection.refresh()
+    do { _ = try await uncertain.connection.process(id, action: "rewrite", text: "Original"); XCTFail("Uncertain action regenerated") } catch {}
+    XCTAssertEqual(uncertain.idsCreated, 1); XCTAssertEqual(try uncertain.postedIDs().count, 1)
+  }
+  @MainActor func testExpiredResultAndDistinctCapacityErrorsRequireExplicitRecovery() async throws {
+    let errors = [
+      ("operation_expired", 409, "Esta solicitação não pode ser repetida. Inicie uma nova ação."),
+      ("operation_in_future", 400, "Verifique a data e a hora do iPhone e do computador. Depois, inicie uma nova ação."),
+      ("result_unavailable", 409, "Esta solicitação não pode ser repetida. Inicie uma nova ação."),
+      ("operation_limit", 429, "O computador atingiu o limite temporário de solicitações. Aguarde e inicie uma nova ação."),
+      ("operation_history_full", 409, "O computador atingiu o limite. Nele, revogue o acesso dos celulares que não usa mais e tente novamente.")]
+    for (code, status, message) in errors {
+      let f = Fixture(); try await f.connection.refresh()
+      f.processingError = code; f.status = status
+      f.onProcessing = { f.resume() }
+      let id = UUID().uuidString
+      do { _ = try await f.connection.process(id, action: "rewrite", text: "Original"); XCTFail("Error accepted") }
+      catch let error as ClarifyError {
+        XCTAssertEqual(error.localizedDescription, L(message))
+        XCTAssertEqual(error.operationID, id)
+        XCTAssertEqual(error.status, status)
+      }
+      do { _ = try await f.connection.process(id, action: "rewrite", text: "Original"); XCTFail("Error silently retried") } catch {}
+      XCTAssertEqual(f.idsCreated, 1); XCTAssertEqual(try f.postedIDs().count, 1)
+      XCTAssertEqual(f.saved, Self.credential); XCTAssertTrue(f.connection.configured)
+      XCTAssertFalse(f.requests.contains { $0.httpMethod == "DELETE" })
+    }
+  }
+  func testTransportAccepts512KiBAndRejectsLargerAdvertisedResponse() throws {
+    let url = URL(string: Self.route.url + "/v1/computer/status")!
+    let delegate = ComputerHTTPS(route: Self.route, url: url)
+    let session = URLSession(configuration: .ephemeral)
+    defer { session.invalidateAndCancel() }
+    let task = session.dataTask(with: url)
+    for (size, allowed) in [(512 * 1024, true), (512 * 1024 + 1, false)] {
+      let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["Content-Length": String(size)])!
+      delegate.urlSession(session, dataTask: task, didReceive: response) { disposition in
+        XCTAssertEqual(disposition == .allow, allowed)
+      }
+    }
+  }
+  @MainActor func testEscapedMaximumFieldsFitResponseBoundAndOversizedBodyIsRejected() async throws {
+    let f = Fixture(); try await f.connection.refresh()
+    for (escaped, decoded) in [("\\\"", "\""), ("\\u0000", "\u{0000}")] {
+      let field = String(repeating: escaped, count: 32_768)
+      let expected = String(repeating: decoded, count: 32_768)
+      f.onProcessing = {
+        let wireID = try! XCTUnwrap(f.postedIDs().last)
+        // Independent wire fixtures: six ASCII bytes per escaped NUL and two
+        // per quote. Do not rely on the production JSON encoder's escaping.
+        var body = Data(("{\"operation_id\":\"" + wireID + "\",\"transcript\":\"" + field
+          + "\",\"text\":\"" + field + "\",\"rewritten\":true,\"successful\":true}").utf8)
+        XCTAssertGreaterThan(body.count, 128 * 1024)
+        if escaped == "\\u0000" { XCTAssertGreaterThan(body.count, 393_216) }
+        body.append(Data(repeating: 32, count: 512 * 1024 - body.count))
+        f.processingData = body; f.resume()
+      }
+      let result = try await f.connection.process(UUID().uuidString, action: "rewrite", text: "Original")
+      XCTAssertEqual(result.transcript, expected); XCTAssertEqual(result.text, expected)
+      XCTAssertEqual(result.text.utf8.count, 32_768)
+    }
+    f.onProcessing = { f.processingData = Data(repeating: 32, count: 512 * 1024 + 1); f.resume() }
+    do { _ = try await f.connection.process(UUID().uuidString, action: "rewrite", text: "Original"); XCTFail("Oversized response accepted") }
+    catch { XCTAssertEqual(error as? ComputerFailure, .invalidResponse) }
   }
   @MainActor func testHistoryOwnerIsIsolatedFromGuestAndHostedAccounts() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -253,6 +408,10 @@ final class ComputerTests: XCTestCase {
     let valid = try ComputerResult.decode(JSONSerialization.data(withJSONObject: json), operationID: id)
     XCTAssertEqual(valid.text, "Revised")
     json["text"] = String(repeating: "x", count: 32_769)
+    XCTAssertThrowsError(try ComputerResult.decode(JSONSerialization.data(withJSONObject: json), operationID: id))
+    json["text"] = "Revised"; json["transcript"] = String(repeating: "é", count: 16_385)
+    XCTAssertThrowsError(try ComputerResult.decode(JSONSerialization.data(withJSONObject: json), operationID: id))
+    json["transcript"] = "Original"; json["text"] = " \n\t"
     XCTAssertThrowsError(try ComputerResult.decode(JSONSerialization.data(withJSONObject: json), operationID: id))
   }
   func testAACConversionProducesValidatedWAVWithoutReadingMicrophone() async throws {

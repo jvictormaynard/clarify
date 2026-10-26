@@ -12,14 +12,83 @@ from contextlib import closing
 from datetime import datetime, timezone
 import io
 import math
+import os
 from pathlib import Path
 from queue import Empty, SimpleQueue
 import sqlite3
+import subprocess
 import threading
 import time
 from typing import Callable, Protocol
 
 from PySide6.QtCore import QObject, Property, QTimer, Signal
+from PySide6.QtNetwork import QAbstractSocket, QNetworkInterface
+
+
+def _windows_physical_interfaces() -> set[int] | None:
+    if os.name != "nt":
+        return None
+    try:
+        # Hyper-V adapters can report Ethernet to Qt. Query hardware identity
+        # once per QR creation, on the lifecycle worker, with fixed arguments.
+        executable = (
+            Path(os.environ["SystemRoot"])
+            / "System32/WindowsPowerShell/v1.0/powershell.exe"
+        )
+        result = subprocess.run(
+            [
+                str(executable),
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "$ErrorActionPreference='Stop'; Get-NetAdapter -Physical -IncludeHidden | Select-Object -First 128 -ExpandProperty ifIndex",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if len(result.stdout) > 4096:
+            return None
+        lines = result.stdout.split()
+        if len(lines) > 128 or any(not value.isdecimal() for value in lines):
+            return None
+        return {int(value) for value in lines}
+    except (OSError, subprocess.SubprocessError, KeyError, ValueError):
+        return None
+
+
+def computer_addresses() -> list[str]:
+    """Order active physical LAN interfaces before VPN and virtual routes."""
+    physical = _windows_physical_interfaces()
+    ranked = []
+    for interface in QNetworkInterface.allInterfaces():
+        flags = interface.flags()
+        if (
+            not flags & QNetworkInterface.IsUp
+            or not flags & QNetworkInterface.IsRunning
+            or flags & QNetworkInterface.IsLoopBack
+            or interface.type() == QNetworkInterface.Loopback
+        ):
+            continue
+        lan = interface.type() in (QNetworkInterface.Wifi, QNetworkInterface.Ethernet)
+        if physical is not None:
+            priority = 0 if interface.index() in physical and lan else 2
+        else:
+            # Qt can distinguish Wi-Fi from Ethernet on supported platforms.
+            # Prefer it when hardware discovery cannot exclude virtual Ethernet.
+            priority = (
+                0 if interface.type() == QNetworkInterface.Wifi else (1 if lan else 2)
+            )
+        ranked.append((priority, interface))
+    return [
+        entry.ip().toString()
+        for _, interface in sorted(ranked, key=lambda item: item[0])
+        for entry in interface.addressEntries()
+        if entry.ip().protocol() == QAbstractSocket.IPv4Protocol
+    ]
 
 
 class ComputerHost(Protocol):
@@ -440,7 +509,12 @@ def create_computer_controller(runtime, parent=None):
             runtime.dictionary_service,
             registry=runtime.provider_registry,
         )
-        return Host(processor, runtime.repositories.config.secret_store, state_path)
+        return Host(
+            processor,
+            runtime.repositories.config.secret_store,
+            state_path,
+            address_provider=computer_addresses,
+        )
 
     return QmlComputerController(
         state_path,

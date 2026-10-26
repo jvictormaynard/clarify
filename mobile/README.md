@@ -12,7 +12,7 @@ The existing recorder, keyboard bridge and local history store serve both modes.
 Computer mode also exposes selected-text rewrite and translation in the keyboard,
 and text processing in Home. It uses the computer's configured dictionary and
 snippets. This protocol does not upload an iPhone library. Computer history has
-its own computer/endpoint scope and is never synchronized with a hosted account.
+its own stable computer scope and is never synchronized with a hosted account.
 An offline or revoked computer connection does not select hosted processing.
 Switching modes or disconnecting stops capture and rejects former operations.
 

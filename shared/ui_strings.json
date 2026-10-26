@@ -5933,5 +5933,20 @@
     "pt": "Não foi possível alterar o acesso do celular.",
     "en": "Could not change mobile access.",
     "es": "No se ha podido cambiar el acceso del teléfono."
+  },
+  "O computador atingiu o limite temporário de solicitações. Aguarde e inicie uma nova ação.": {
+    "pt": "O computador atingiu o limite temporário de solicitações. Aguarde e inicie uma nova ação.",
+    "en": "The computer has reached its temporary request limit. Wait, then start a new action.",
+    "es": "El ordenador ha alcanzado el límite temporal de solicitudes. Espera e inicia una nueva acción."
+  },
+  "O computador atingiu o limite. Nele, revogue o acesso dos celulares que não usa mais e tente novamente.": {
+    "pt": "O computador atingiu o limite. Nele, revogue o acesso dos celulares que não usa mais e tente novamente.",
+    "en": "The computer has reached its limit. On the computer, revoke access for phones you no longer use, then try again.",
+    "es": "El ordenador ha alcanzado el límite. En él, revoca el acceso de los móviles que ya no usas e inténtalo de nuevo."
+  },
+  "Verifique a data e a hora do iPhone e do computador. Depois, inicie uma nova ação.": {
+    "pt": "Verifique a data e a hora do iPhone e do computador. Depois, inicie uma nova ação.",
+    "en": "Check the date and time on your iPhone and computer. Then start a new action.",
+    "es": "Comprueba la fecha y la hora del iPhone y del ordenador. Después, inicia una nueva acción."
   }
 }
