@@ -86,6 +86,36 @@ class ApplicationStyleProviderTests(unittest.TestCase):
     setUp = provider_fixture.WorkflowProviderTests.setUp
     set_cleanup = provider_fixture.WorkflowProviderTests.set_cleanup
 
+    def test_legacy_multimodal_style_keeps_existing_provider_and_one_request(self):
+        from types import SimpleNamespace
+        from workflow_config import WorkflowRoute
+
+        self.current = replace(
+            self.current,
+            workflows=self.current.workflows.with_route(
+                "transcription",
+                WorkflowRoute(
+                    "gemini", "gemini-2.5-flash", prompt="Personal audio instruction."
+                ),
+            ),
+        )
+        self.dictionary.state = SimpleNamespace(snippets=())
+        result = self.service.transcribe(
+            self.audio, "prompt", "pt", writing_style="informal"
+        )
+        self.registry.rewrite.assert_not_called()
+        self.registry.transcribe.assert_called_once()
+        self.assertEqual(self.registry.transcribe.call_args.args[0], "gemini")
+        self.assertIn(
+            "Personal audio instruction.",
+            self.registry.transcribe.call_args.args[1].prompt,
+        )
+        self.assertIn(
+            "Informal presentation",
+            self.registry.transcribe.call_args.args[1].instruction,
+        )
+        self.assertEqual(result.writing_style_applied, "informal")
+
     def test_style_keeps_route_and_connection_from_before_asr(self):
         original = self.current
 

@@ -18,19 +18,20 @@ class QuickPasteController(QObject):
         self.timer.start()
 
     def capture_target(self):
-        self.remember_target()
-        return self.target
+        return self.remember_target()
 
     def remember_target(self):
         # Never remember the menu, settings, or the overlay as a paste target.
         windows = self.windows()
         if any(window.isActive() for window in windows):
-            return
+            return self.target
         target = self.clipboard.capture_target()
         if target is not None and target.window not in {
             int(window.winId()) for window in windows
         }:
             self.target = target
+            return target
+        return None
 
     def paste(self, text, finished):
         self.remember_target()

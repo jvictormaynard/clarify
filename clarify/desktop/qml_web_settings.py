@@ -54,6 +54,7 @@ PROPERTIES = (
     "dictationCleanupLevel",
     "applicationWritingStyles",
     "applicationStyleTarget",
+    "applicationStyleRefinementAllowed",
     "dictationCleanupRefinementAllowed",
     "selectedScope",
     "routeProviderId",

@@ -975,6 +975,28 @@ class QmlSettingsController(QObject):
     def applicationWritingStyles(self):
         return self._config.application_writing_styles.to_mapping()["rules"]
 
+    @Property(bool, notify=configChanged)
+    def applicationStyleRefinementAllowed(self):
+        from shared.dictation_policy import DictationCleanupPolicy
+
+        permitted = self.dictationCleanupRefinementAllowed
+        route = self._config.workflow("transcription")
+        if (
+            getattr(self._account, "managed", False) is not True
+            and self._config.dictation_cleanup_level is None
+            and route.provider_id in PROVIDER_REGISTRY.provider_ids
+            and PROVIDER_REGISTRY.supports(
+                route.provider_id, ProviderCapability.MULTIMODAL_AUDIO
+            )
+            and not any(
+                item.enabled for item in self._dictionary_service.state.snippets
+            )
+        ):
+            permitted = route.enabled and bool(route.model_id)
+        return DictationCleanupPolicy(
+            self._config.dictation_cleanup_level
+        ).allows_refinement(permitted)
+
     @Property(str, notify=configChanged)
     def applicationStyleTarget(self):
         from writing_styles import windows_executable_key

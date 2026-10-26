@@ -305,8 +305,11 @@ class WorkflowProviderService:
         # editing, and inline saved content is present before optional cleanup.
         snippet_two_stage = metadata.supports(ProviderCapability.MULTIMODAL_AUDIO) and (
             policy.separate_recognition
-            or style is not None
             or any(item.enabled for item in self.dictionary_service.state.snippets)
+        )
+        inline_style = style is not None and policy.allows_refinement(
+            metadata.supports(ProviderCapability.MULTIMODAL_AUDIO)
+            and not snippet_two_stage
         )
         language = str(language or "auto").strip().lower()
         language_label = _language_display_name(language)
@@ -316,21 +319,25 @@ class WorkflowProviderService:
         mode = "prompt"
         instruction = (
             RECOGNITION_INSTRUCTION
-            if policy.separate_recognition or style is not None
+            if policy.separate_recognition
             else (
                 TRANSCRIPTION_INSTRUCTION
                 if mode == "transcription" or snippet_two_stage
                 else PROMPT_INSTRUCTION
             )
         ).format(lang=language_label)
+        prompt = (
+            instruction if policy.separate_recognition else route.prompt or instruction
+        )
+        if inline_style:
+            instruction = with_writing_style(instruction, style)
+            prompt = with_writing_style(prompt, style)
         request = TranscriptionRequest(
             audio_path=audio_source.audio_path,
             model=route.model_id,
             language=provider_language,
             instruction=instruction,
-            prompt=instruction
-            if policy.separate_recognition or style is not None
-            else route.prompt or instruction,
+            prompt=prompt,
             temperature=0.0 if mode == "transcription" or snippet_two_stage else 0.1,
             audio_bytes=audio_source.audio_bytes,
             execution_device=current.local_asr_device,
@@ -480,7 +487,8 @@ class WorkflowProviderService:
             ),
             **style_outcome(
                 style,
-                refined=refinement_used,
+                refined=refinement_used
+                or (inline_style and standalone_snippet is None),
                 attempted=refinement_requested,
                 standalone=standalone_snippet is not None,
             ),

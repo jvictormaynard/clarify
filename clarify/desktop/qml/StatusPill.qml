@@ -10,7 +10,10 @@ Window {
     readonly property int designWidth: 168
     readonly property bool refinementWarning: workflow.refinementFailed === true
     readonly property string styleCaption: workflow.writingStyleCaption || ""
-    readonly property int designHeight: styleCaption ? 68 : 50
+    property bool styleFeedbackVisible: false
+    property int styleFeedbackOperation: 0
+    readonly property int designHeight: 50
+    readonly property int styleCaptionHeight: styleCaption ? 18 : 0
     readonly property bool feedback: workflow.feedbackVisible
     property string feedbackCaption: ""
     readonly property int horizontalInset: 6
@@ -23,13 +26,14 @@ Window {
         NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
     }
     width: Math.round(animatedWidth * dpiCompensation)
-    height: Math.round(designHeight * dpiCompensation)
+    height: Math.round((designHeight + styleCaptionHeight) * dpiCompensation)
     x: Screen.virtualX + (Screen.width - width) / 2
     y: Screen.virtualY + Screen.height - height - 80
     color: "transparent"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
            | Qt.WindowDoesNotAcceptFocus
     readonly property bool requestedVisible: workflow.surface === "recording"
+                                             || styleFeedbackVisible
                                              || workflow.transitionPending
                                              || feedback
                                              || workflow.surface === "processing"
@@ -55,6 +59,7 @@ Window {
     readonly property bool processing: requestedVisible && !recording
                                       && !starting
                                       && !feedback
+                                      && !styleFeedbackVisible
                                       && workflow.surface !== "success"
 
     function syncFeedback() {
@@ -91,6 +96,12 @@ Window {
         onTriggered: pill.successVisible = false
     }
 
+    Timer {
+        id: styleFeedbackTimer
+        interval: 2200
+        onTriggered: pill.styleFeedbackVisible = false
+    }
+
     Connections {
         target: workflow
 
@@ -106,12 +117,21 @@ Window {
         }
         function onStatusChanged() {
             if (pill.feedback) pill.feedbackCaption = qsTr(workflow.feedbackTitle)
+            if (workflow.writingStyleFinished === true
+                    && pill.styleFeedbackOperation !== workflow.feedbackOperationId) {
+                pill.styleFeedbackOperation = workflow.feedbackOperationId
+                pill.styleFeedbackVisible = true
+                styleFeedbackTimer.restart()
+            } else if (workflow.writingStyleFinished !== true) {
+                pill.styleFeedbackVisible = false
+                styleFeedbackTimer.stop()
+            }
         }
     }
 
     Item {
         width: pill.animatedWidth
-        height: pill.designHeight
+        height: pill.designHeight + pill.styleCaptionHeight
         scale: pill.dpiCompensation
         transformOrigin: Item.TopLeft
 
@@ -305,8 +325,8 @@ Window {
 
                 Label {
                     anchors.centerIn: progress
-                    property bool fadeShown: workflow.surface === "success"
-                                             && pill.successVisible
+                    property bool fadeShown: (workflow.surface === "success" && pill.successVisible)
+                                             || (pill.styleFeedbackVisible && workflow.writingStyleApplied === true)
                     visible: fadeShown || opacity > 0.001
                     opacity: fadeShown ? 1.0 : 0.0
                     Behavior on opacity {

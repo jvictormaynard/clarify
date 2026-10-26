@@ -55,6 +55,7 @@ export interface Settings {
   dictationCleanupLevel?: DictationCleanupLevel | "";
   applicationWritingStyles?: ApplicationWritingStyle[];
   applicationStyleTarget?: string;
+  applicationStyleRefinementAllowed?: boolean;
   dictationCleanupRefinementAllowed?: boolean;
   selectedScope: string;
   routeProviderId: string;

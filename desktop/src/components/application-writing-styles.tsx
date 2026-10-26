@@ -12,8 +12,7 @@ export function ApplicationWritingStyles({ controller }: SettingsPageProps) {
   const [style, setStyle] = useState<WritingStyle>("natural");
   const [saving, setSaving] = useState(false);
   const rules = state.applicationWritingStyles ?? [];
-  const unavailable = state.dictationCleanupLevel === "preserve" ||
-    state.dictationCleanupLevel === "light" || state.dictationCleanupRefinementAllowed === false;
+  const unavailable = state.applicationStyleRefinementAllowed === false;
   const save = async () => {
     setSaving(true);
     try { await run("setApplicationWritingStyle", executable, style); }

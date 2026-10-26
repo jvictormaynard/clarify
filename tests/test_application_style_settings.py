@@ -16,6 +16,46 @@ from workflows import WorkflowState, WorkflowPhase, WorkflowKind
 
 
 class ApplicationStyleSettingsTests(unittest.TestCase):
+    def test_unavailable_foreground_defaults_without_losing_capsule_target(self):
+        from unittest.mock import Mock
+        from clarify.desktop.qml_quick_paste import QuickPasteController
+        from workflows import SelectionTarget
+
+        window = Mock()
+        window.isActive.return_value = False
+        window.winId.return_value = 1
+        clipboard = Mock()
+        target = SelectionTarget(2, r"C:\Apps\Editor.exe")
+        clipboard.capture_target.return_value = target
+        controller = QuickPasteController(
+            clipboard, lambda callback: callback(), lambda: [window], lambda: None
+        )
+        try:
+            self.assertEqual(controller.capture_target(), target)
+            window.isActive.return_value = True
+            self.assertEqual(controller.capture_target(), target)
+            window.isActive.return_value = False
+            clipboard.capture_target.return_value = None
+            self.assertIsNone(controller.capture_target())
+            self.assertEqual(controller.target, target)
+        finally:
+            controller.timer.stop()
+
+    def test_real_capsule_shows_selection_and_confirmed_result_then_expires(self):
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).with_name("qml_application_style_smoke.py")),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
@@ -30,8 +70,15 @@ class ApplicationStyleSettingsTests(unittest.TestCase):
                 usage_stats=LocalUsageStatsRepository(root / "usage_stats.json"),
             )
             target = SimpleNamespace(executable=r"C:\Apps\Editor.exe")
+            from tests.test_pyside6_qml_settings import _MicrophoneBackend
+            from microphone_controls import MicrophoneInventory
+
             settings = QmlSettingsController(
-                repositories, application_target=lambda: target
+                repositories,
+                application_target=lambda: target,
+                microphone_backend=_MicrophoneBackend(
+                    MicrophoneInventory.unavailable("fixture")
+                ),
             )
             try:
                 settings.selectWorkflow("refinement")
