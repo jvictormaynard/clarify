@@ -241,11 +241,9 @@ class QmlMeetingController(QObject):
     def retryCleanup(self):
         return self._run(self.workflow.retry_cleanup, editing=True)
 
-    def markdown(self):
-        data = self.workflow.export()
-        row = self._state.get("selected") or {}
+    def markdown(self, data):
         summary = data["summary"]
-        if row.get("summary_stale"):
+        if data["summary_stale"]:
             summary = translate("meeting.summary_stale") + "\n\n" + summary
         return (
             "# "
@@ -264,27 +262,42 @@ class QmlMeetingController(QObject):
 
     @Slot(result=bool)
     def copy(self):
-        def copy():
+        row = self._state.get("selected") or {}
+        meeting_id, context = row.get("id", ""), self._state["context"]
+
+        def publish():
+            with self.workflow.export(meeting_id, context) as data:
+                self._copy(self.markdown(data))
+
+        def queue():
             if self._copy:
-                text = self.markdown()
-                self._dispatch(lambda: self._copy(text))
+                with self.workflow.export(meeting_id, context):
+                    pass
+                self._dispatch(lambda: self._run(publish, editing=True))
 
-        return self._run(copy, editing=True)
+        return self._run(queue, editing=True)
 
-    @Slot(str, result=bool)
-    def exportFile(self, url):
+    @Slot(str, str, str, result=bool)
+    def exportFile(self, meeting_id, context, url):
         def save():
             target = QUrl(url)
             if not target.isLocalFile():
                 raise MeetingError("meeting.export_error")
-            file = QSaveFile(str(Path(target.toLocalFile())))
-            data = self.markdown().encode("utf-8")
-            if (
-                not file.open(QIODevice.WriteOnly)
-                or file.write(data) != len(data)
-                or not file.commit()
-            ):
-                raise MeetingError("meeting.export_error")
+            with self.workflow.export(meeting_id, context) as content:
+                file = QSaveFile(str(Path(target.toLocalFile())))
+                data = self.markdown(content).encode("utf-8")
+                committed = False
+                try:
+                    if (
+                        not file.open(QIODevice.WriteOnly)
+                        or file.write(data) != len(data)
+                        or not file.commit()
+                    ):
+                        raise MeetingError("meeting.export_error")
+                    committed = True
+                finally:
+                    if not committed:
+                        file.cancelWriting()
 
         return self._run(save, editing=True)
 

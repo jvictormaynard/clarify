@@ -57,7 +57,11 @@ class MeetingPresentationTests(unittest.TestCase):
             self.assertIn("Personal fixture", runtime.copy_result.call_args.args[0])
             output = root / "export.md"
             self.assertTrue(
-                controller.exportFile(QUrl.fromLocalFile(str(output)).toString())
+                controller.exportFile(
+                    mid,
+                    controller.state["context"],
+                    QUrl.fromLocalFile(str(output)).toString(),
+                )
             )
             self.assertIn("Personal fixture", output.read_text(encoding="utf-8"))
             updating[0] = True

@@ -3,6 +3,7 @@
 import threading
 import time
 import json
+from contextlib import contextmanager
 
 from meeting_capture import MeetingCapture
 from shared.meeting_contract import MAX_MEETING_SECONDS, MeetingError
@@ -386,16 +387,27 @@ class MeetingWorkflow:
                 if self.selected == meeting_id:
                     self.selected = ""
 
-    def export(self):
-        row = self.store.get(self.provider.identity().owner, self.selected)
-        transcript = "\n".join(
-            f"[{c['start_ms'] / 1000:.1f}s {c['source']}] {c['transcript']}"
-            for c in row["chunks"]
-            if c["state"] == "transcribed"
-        )
-        return {
-            "title": row["title"],
-            "notes": row["notes"],
-            "summary": row["summary"],
-            "transcript": transcript,
-        }
+    @contextmanager
+    def export(self, meeting_id, context):
+        # Keep the session guard until the caller finishes the file/clipboard
+        # effect. A dialog's target is independent of subsequent selection.
+        with self._lock:
+            expected = self.provider.identity()
+            with self.provider.publication(expected):
+                if not meeting_id or context != expected.owner + ":" + str(
+                    expected.generation
+                ):
+                    raise MeetingError("meeting.scope_changed")
+                row = self.store.get(expected.owner, meeting_id)
+                transcript = "\n".join(
+                    f"[{c['start_ms'] / 1000:.1f}s {c['source']}] {c['transcript']}"
+                    for c in row["chunks"]
+                    if c["state"] == "transcribed"
+                )
+                yield {
+                    "title": row["title"],
+                    "notes": row["notes"],
+                    "summary": row["summary"],
+                    "summary_stale": row["summary_stale"],
+                    "transcript": transcript,
+                }

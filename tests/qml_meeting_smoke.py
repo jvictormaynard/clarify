@@ -28,6 +28,8 @@ from shared.meeting_contract import MeetingIdentity, MeetingError  # noqa: E402
 
 def main():
     QQuickStyle.setStyle("Basic")
+    if "--export" in sys.argv:
+        QApplication.setAttribute(Qt.AA_DontUseNativeDialogs)
     app = QApplication([])
     app.setQuitOnLastWindowClosed(False)
     translator = ClarifyTranslator(language="pt")
@@ -125,6 +127,75 @@ def main():
 
         def verify():
             try:
+                if "--export" in sys.argv:
+                    controller._timer.stop()
+                    QMetaObject.invokeMethod(window, "saveNotes")
+                    assert not window.property("notesDirty")
+                    dialog = window.findChild(QObject, "meetingExportDialog")
+                    assert dialog is not None
+                    dialog.setProperty("currentFolder", QUrl.fromLocalFile(directory))
+                    target = Path(directory) / "export.md"
+                    target_url = QUrl.fromLocalFile(str(target))
+                    account_owner = "account:" + "a" * 64
+                    account = store.create(account_owner, "Account export")["id"]
+                    store.save_notes(account_owner, account, "Account manual note")
+                    store.end(account_owner, account)
+
+                    def switch_export(owner, generation, selected):
+                        provider.identity.return_value = MeetingIdentity(
+                            owner, generation, owner != "guest"
+                        )
+                        workflow.selected = selected
+                        controller.refresh()
+                        app.processEvents()
+
+                    def request_export():
+                        dialog.setProperty("selectedFile", target_url)
+                        assert QMetaObject.invokeMethod(window, "requestExport")
+                        app.processEvents()
+                        assert dialog.property("visible")
+                        assert dialog.property("meetingId") == workflow.selected
+
+                    # Social login has been started while still guest; its
+                    # fixture completion changes the session after opening.
+                    request_export()
+                    switch_export(account_owner, 1, account)
+                    assert not dialog.property("visible")
+                    assert dialog.property("meetingId") == ""
+                    QMetaObject.invokeMethod(dialog, "accept")
+                    assert not target.exists()
+
+                    request_export()
+                    switch_export("guest", 2, mid)
+                    assert not dialog.property("visible")
+                    QMetaObject.invokeMethod(dialog, "accept")
+                    assert not target.exists()
+
+                    switch_export(account_owner, 3, account)
+                    request_export()
+                    switch_export("guest", 4, mid)
+                    switch_export(account_owner, 5, account)
+                    assert not dialog.property("visible")
+                    QMetaObject.invokeMethod(dialog, "accept")
+                    assert not target.exists()
+
+                    switch_export("guest", 6, mid)
+                    request_export()
+                    other = store.create("guest", "Other export")["id"]
+                    store.save_notes("guest", other, "Other manual note")
+                    store.end("guest", other)
+                    workflow.select(other)
+                    controller.refresh()
+                    assert dialog.property("meetingId") == mid
+                    dialog.setProperty("selectedFile", target_url)
+                    QMetaObject.invokeMethod(dialog, "accept")
+                    app.processEvents()
+                    assert target.exists(), controller.state["error"]
+                    exported = target.read_text(encoding="utf-8")
+                    assert "Validar as duas fontes no Windows." in exported
+                    assert "Other manual note" not in exported
+                    assert "Account manual note" not in exported
+                    assert store.get("guest", other)["notes"] == "Other manual note"
                 if "--delete" in sys.argv:
                     controller._timer.stop()
                     QMetaObject.invokeMethod(window, "saveNotes")

@@ -75,11 +75,22 @@ ApplicationWindow {
         deleteDialog.context = view.context
         deleteDialog.open()
     }
-    function invalidateDelete() {
+    function requestExport() {
+        if (!current || !saveNotes()) return
+        exportDialog.meetingId = current.id
+        exportDialog.context = view.context
+        exportDialog.open()
+    }
+    function invalidateDialogs() {
         if (deleteDialog.context !== "" && deleteDialog.context !== view.context) {
             deleteDialog.meetingId = ""
             deleteDialog.context = ""
             deleteDialog.reject()
+        }
+        if (exportDialog.context !== "" && exportDialog.context !== view.context) {
+            exportDialog.meetingId = ""
+            exportDialog.context = ""
+            exportDialog.reject()
         }
     }
     onCurrentChanged: loadNotes()
@@ -87,17 +98,27 @@ ApplicationWindow {
     Connections {
         target: meetings
         function onOpenRequested() { root.show(); root.raise(); root.requestActivate() }
-        function onStateChanged() { root.invalidateDelete(); root.loadNotes() }
+        function onStateChanged() { root.invalidateDialogs(); root.loadNotes() }
         function onFlushNotesRequested() { root.saveNotes() }
     }
     Timer { id: notesTimer; interval: 500; onTriggered: root.saveNotes() }
     FileDialog {
         id: exportDialog
+        objectName: "meetingExportDialog"
+        property string meetingId: ""
+        property string context: ""
         title: qsTr("meeting.export")
         fileMode: FileDialog.SaveFile
         defaultSuffix: "md"
         nameFilters: [qsTr("meeting.markdown_filter")]
-        onAccepted: { root.saveNotes(); meetings.exportFile(selectedFile.toString()) }
+        onAccepted: {
+            var id = meetingId
+            var scope = context
+            meetingId = ""
+            context = ""
+            meetings.exportFile(id, scope, selectedFile.toString())
+        }
+        onRejected: { meetingId = ""; context = "" }
     }
     Dialog {
         id: deleteDialog
@@ -270,7 +291,7 @@ ApplicationWindow {
                     MeetingButton { text: qsTr("meeting.generate"); enabled: !view.active; onClicked: { if (root.saveNotes()) meetings.summarize() } }
                     Item { Layout.fillWidth: true }
                     MeetingButton { text: qsTr("meeting.copy"); onClicked: { if (root.saveNotes()) meetings.copy() } }
-                    MeetingButton { text: qsTr("meeting.export"); onClicked: { if (root.saveNotes()) exportDialog.open() } }
+                    MeetingButton { text: qsTr("meeting.export"); onClicked: root.requestExport() }
                     MeetingButton { text: qsTr("meeting.delete"); enabled: !view.active; onClicked: root.requestDelete() }
                 }
             }
