@@ -11,7 +11,7 @@ Ditado para Windows, com modelos locais ou sua própria chave de IA. Fale,
 revise e cole sem sair do aplicativo. O Clarify também reescreve e traduz
 textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 
-> As Configurações e o dicionário descritos aqui fazem parte da v0.4.0.
+> As Configurações descritas aqui correspondem ao código atual da `main`.
 > Consulte as [notas da versão](https://github.com/jvictormaynard/clarify/releases/latest)
 > antes de baixar; versões anteriores têm uma interface diferente. A validação para publicação
 > está descrita em [Release readiness](release-readiness.md).
@@ -30,6 +30,15 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Estatísticas locais sem armazenar o conteúdo das transcrições
 - Conta opcional com entrada por Google, Microsoft, GitHub ou código de e-mail, dicionário, histórico novo e cota de ditado compartilhados
 - Modos locais e com chave própria disponíveis sem conta; sem telemetria
+
+As Configurações mantêm a navegação disponível durante testes de microfone,
+atualizações de listas e salvamentos. As escolhas nas listas, os atalhos e as
+opções dos itens já salvos nas bibliotecas são salvos automaticamente. Rascunhos de texto
+e números usam **Salvar alterações** e **Descartar** na página atual. Alterações
+na chave ou na URL de conexão em **Modelos e serviços** exigem **Validar e salvar
+chave**. Valide ou descarte essas alterações antes de salvar outros rascunhos.
+Ao fechar as Configurações, você pode salvar ou descartar os rascunhos de todas
+as páginas.
 
 O Clarify usa o idioma do dispositivo: português, inglês ou espanhol,
 incluindo o e-mail de autenticação. No primeiro acesso, use Google, Microsoft
@@ -68,9 +77,9 @@ pode ser hospedado por você. As chaves de produção e os dados dos usuários s
 
 ## Prévia da interface
 
-![Dicionário pessoal nas Configurações atuais](images/settings-dictionary.png)
+![Ditado nas Configurações atuais](images/settings-desktop-dictation.png)
 
-Captura do frontend React da v0.4.0, em teste de navegador com dados fictícios.
+Captura do frontend React atual, em teste de navegador com dados fictícios.
 Os testes da janela nativa e os cenários não testados estão registrados em
 [Release readiness](release-readiness.md).
 
@@ -105,9 +114,9 @@ e a cada seis horas enquanto estiver aberto. A instalação automática vem
 desativada. Uma bolinha vermelha no botão de Settings do home pill indica uma
 nova versão. Abra o menu e selecione **Install update** para baixar e instalar.
 
-Para ativar a instalação automática, abra **Settings → Geral → Atualizações**,
-ative **Atualização automática** e salve. O Clarify baixa a versão em segundo
-plano, espera concluir as tarefas e fechar os Settings, e reinicia para aplicar
+Para ativar a instalação automática, abra **Settings → Geral → Atualizações** e
+ative **Atualização automática**. Essa opção é salva automaticamente. O Clarify
+baixa a versão em segundo plano, espera concluir as tarefas e fechar os Settings, e reinicia para aplicar
 a atualização. Configurações, chaves, modelos e atalhos são preservados. Se a
 nova versão não iniciar, o executável anterior é restaurado. O aplicativo
 verifica a assinatura do manifesto, o tamanho e o SHA-256 do executável antes
@@ -199,8 +208,10 @@ Snippets**. Adicione uma frase, como `minha assinatura`, e o texto que será
 inserido. Salve as alterações. Diga a frase sozinha para inserir o texto exato.
 Dentro de uma mensagem, o snippet é substituído antes da reescrita, para que o
 modelo possa ajustar a mensagem completa.
-Você pode buscar, editar, desativar ou excluir os snippets. No desktop, use a
-barra Salvar/Descartar para aplicar ou cancelar os rascunhos.
+Você pode buscar, editar, desativar ou excluir os snippets. No desktop, adições,
+alterações de texto e exclusões usam **Salvar alterações** e **Descartar** na
+página atual. A ativação e a distinção entre maiúsculas e minúsculas dos snippets
+já salvos são salvas automaticamente.
 
 Os snippets da conta são sincronizados entre os dispositivos. Os snippets sem
 conta ficam no dispositivo e não são enviados ao entrar na conta. Somente as
@@ -213,8 +224,10 @@ mantido. A transcrição original permanece no histórico. Consulte as
 ## Dicionário pessoal
 
 Em **Configurações → Dicionário**, adicione termos como `Railway`, `pill`, `Lana`
-ou `Eva Desktop`. Cada termo pode ser editado, desativado ou removido. A barra
-de salvar e descartar aparece após uma alteração.
+ou `Eva Desktop`. Adições, alterações de texto e exclusões permanecem como
+rascunhos até você selecionar **Salvar alterações** nesta página. Use
+**Descartar** para cancelar esses rascunhos. A ativação dos termos já salvos é
+salva automaticamente.
 Os termos ativos entram como contexto limitado no ASR e na revisão opcional.
 Eles ajudam o modelo; não garantem uma substituição. Em uma rota na nuvem,
 esse vocabulário também é enviado ao provedor. Veja as etapas e os limites no
