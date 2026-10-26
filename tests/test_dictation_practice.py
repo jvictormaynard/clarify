@@ -192,8 +192,80 @@ class PracticeTests(unittest.TestCase):
         self.provider.on_transcribe = revoke
         self.practice.command("stop")
         self.assertEqual(self.practice.snapshot()["text"], "")
-        self.assertFalse(self.practice.snapshot()["open"])
+        self.assertTrue(self.practice.snapshot()["open"])
+        self.assertEqual(self.practice.snapshot()["blocked"], "practice_session")
         self.assertEqual(self.statistics.dictations, [])
+
+    def test_reopen_during_accepted_publication_hides_previous_result_and_waits(self):
+        record = self.statistics.record_dictation
+        observed = []
+
+        def publishing(*args):
+            self.practice.command("close")
+            self.practice.command("open")
+            observed.append(self.practice.snapshot())
+            record(*args)
+
+        self.statistics.record_dictation = publishing
+        self.practice.command("open")
+        self.practice.command("start")
+        self.practice.command("stop")
+        self.assertEqual(observed[0]["text"], "")
+        self.assertEqual(observed[0]["source"], "")
+        self.assertEqual(observed[0]["blocked"], "practice_busy")
+        self.assertEqual(self.practice.snapshot()["blocked"], "")
+        self.assertEqual(len(self.statistics.dictations), 1)
+
+    def test_repeat_waits_for_ready_and_revalidates_before_new_capture(self):
+        for outcome in ("start", "close", "blocked", "identity"):
+            self.setUp()
+            self.scheduler = ManualScheduler()
+            self.make_practice()
+            self.practice.command("open")
+            self.practice.command("start")
+            self.scheduler.background.pop(0)()
+            self.practice.command("stop")
+            self.scheduler.background.pop(0)()
+            while self.scheduler.soon:
+                self.scheduler.soon.pop(0)()
+            self.practice.command("start")
+            self.assertEqual(self.practice.snapshot()["phase"], "waiting")
+            self.assertEqual(self.audio.started, 1)
+            if outcome == "close":
+                self.practice.command("close")
+            elif outcome == "blocked":
+                self.reason = "practice_model"
+            elif outcome == "identity":
+                self.practice.identity = lambda: "new session"
+            while self.scheduler.background:
+                self.scheduler.background.pop(0)()
+            while self.scheduler.soon:
+                self.scheduler.soon.pop(0)()
+            while self.scheduler.background:
+                self.scheduler.background.pop(0)()
+            self.assertEqual(self.audio.started, 2 if outcome == "start" else 1)
+            self.assertLessEqual(len(self.statistics.dictations), 1)
+
+    def test_real_account_codes_are_bounded_and_keep_unknown_errors_generic(self):
+        from clarify_account import AccountError
+
+        cases = (
+            ("allowance_exhausted", "account_allowance_exhausted"),
+            ("allocation_waiting", "account_allocation_waiting"),
+            ("authentication_required", "account_authentication_required"),
+            ("untrusted diagnosis", "error"),
+            (None, "error"),
+            ([], "error"),
+        )
+        for code, expected in cases:
+            self.practice.command("open")
+            error = AccountError("private diagnostic must not be displayed", code=code)
+            self.provider.on_transcribe = lambda: (_ for _ in ()).throw(error)
+            self.practice.command("start")
+            self.practice.command("stop")
+            self.assertEqual(self.practice.snapshot()["status"], expected)
+            self.assertEqual(self.statistics.dictations, [])
+            self.practice.command("close")
 
 
 class PracticeSettingsTests(unittest.TestCase):
@@ -262,6 +334,14 @@ class PracticeSettingsTests(unittest.TestCase):
         )
         self.settings._account.snapshot = lambda: {"managed": True, "signedIn": True}
         self.assertEqual(practice_readiness(self.settings, lambda: True), "")
+        self.settings._account.snapshot = lambda: {
+            "managed": True,
+            "signedIn": True,
+            "usage": {"schema_version": 2, "hosted_available": False},
+        }
+        self.assertEqual(
+            practice_readiness(self.settings, lambda: True), "practice_quota"
+        )
 
     def test_protocol_allowlist_and_window_close_cancel_practice(self):
         from clarify.desktop.qml_web_settings import (
@@ -283,3 +363,50 @@ class PracticeSettingsTests(unittest.TestCase):
         )
         host._finished(0, None)
         self.assertFalse(self.settings.practiceState["open"])
+
+    def test_session_change_stops_the_microphone_test_and_clears_results(self):
+        import threading
+
+        identity = ["session-a"]
+        self.practice.identity = lambda: identity[0]
+        self.practice.command("open")
+        self.settings._microphone_test_busy = True
+        self.settings._microphone_test_cancel = threading.Event()
+        identity[0] = "session-b"
+        state = self.practice.snapshot()
+        self.assertTrue(self.settings._microphone_test_cancel.is_set())
+        self.assertEqual(state["text"], "")
+        self.assertEqual(state["blocked"], "practice_session")
+
+    def test_runtime_practice_uses_shared_pipeline_without_touching_clipboard(self):
+        import os
+        from unittest.mock import Mock, patch
+        from clarify.desktop.qml_runtime import create_real_workflow_runtime
+
+        with patch.dict(os.environ, {"CLARIFY_DATA_DIR": self.directory.name}):
+            runtime = create_real_workflow_runtime(
+                ImmediateScheduler(),
+                repositories=self.settings.repositories,
+            )
+        self.assertIs(
+            runtime.practice_workflow._provider, runtime.workflow_service._provider
+        )
+        self.assertIs(runtime.practice_workflow._audio, runtime.recording_audio)
+        self.assertIs(
+            runtime.practice_workflow._config, runtime.workflow_service._config
+        )
+        clipboard_write = Mock()
+        runtime.clipboard.write_dictation_result = clipboard_write
+        runtime.recording_audio.microphone_available = lambda: True
+        runtime.recording_audio.create_session = FakeAudio
+        runtime.practice_workflow._provider.transcribe = FakeProvider().transcribe
+        runtime.practice_workflow._provider.prepare_dictation = lambda _recording: None
+        practice = PracticeController(
+            runtime.practice_workflow, language=lambda: "pt", readiness=lambda: ""
+        )
+        practice.command("open")
+        practice.command("start")
+        practice.command("stop")
+        self.assertEqual(practice.snapshot()["text"], "Transcribed")
+        self.assertEqual(len(runtime.repositories.usage_stats.load_events()), 1)
+        clipboard_write.assert_not_called()

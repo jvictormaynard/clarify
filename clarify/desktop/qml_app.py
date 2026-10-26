@@ -377,6 +377,24 @@ def _sync_recording_escape_hotkey(bridge, hotkeys) -> None:
         )
 
 
+def _capture_idle(workflow, audio, bridge=None, voice=None, batch=None) -> bool:
+    """Permit Settings recovery while retaining terminal retry and undo audio."""
+    return (
+        workflow.state.phase.value
+        in {
+            "ready",
+            "completed",
+            "failed",
+            "cancelled",
+            "microphone_unavailable",
+        }
+        and not audio.busy
+        and (bridge is None or not bridge.start_pending)
+        and (voice is None or not voice.active)
+        and (batch is None or not batch.running)
+    )
+
+
 def _connect_shutdown(
     app,
     shell,
@@ -472,17 +490,20 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     def capture_idle() -> bool:
-        return (
-            workflow_service.state.phase.value == "ready"
-            and (bridge is None or not bridge.start_pending)
-            and (voice_translation is None or not voice_translation.active)
-            and (audio_batch is None or not audio_batch.running)
+        return _capture_idle(
+            workflow_service,
+            runtime.recording_audio,
+            bridge,
+            voice_translation,
+            audio_batch,
         )
 
     def external_processing_allowed() -> bool:
         return (
-            practice is None or not practice.blocks_processing
-        ) and not settings_work_busy()
+            (practice is None or not practice.blocks_processing)
+            and not settings_work_busy()
+            and not runtime.recording_audio.busy
+        )
 
     def settings_processing_allowed() -> bool:
         return (practice is None or not practice.busy) and capture_idle()
@@ -556,6 +577,7 @@ def main(argv: list[str] | None = None) -> int:
         readiness=lambda: practice_readiness(settings, practice_can_start),
         can_open=lambda: capture_idle() and not settings.microphoneTestBusy,
         identity=runtime.account.history_identity,
+        stop_microphone_test=lambda: settings.stopMicrophoneTest(),
     )
     bridge = QmlWorkflowBridge(
         workflow_service,
