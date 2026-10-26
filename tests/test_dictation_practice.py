@@ -267,6 +267,24 @@ class PracticeTests(unittest.TestCase):
             self.assertEqual(self.statistics.dictations, [])
             self.practice.command("close")
 
+    def test_close_after_completion_does_not_queue_an_old_recorder_cancel(self):
+        self.practice.command("open")
+        self.practice.command("start")
+        self.practice.command("stop")
+        self.scheduler = ManualScheduler()
+        self.workflow._scheduler = self.scheduler
+        self.practice.command("close")
+        self.assertEqual(self.scheduler.background, [])
+        # A later capture can start before any queued UI callbacks are drained.
+        self.practice.command("open")
+        self.practice.command("start")
+        while self.scheduler.soon:
+            self.scheduler.soon.pop(0)()
+        while self.scheduler.background:
+            self.scheduler.background.pop(0)()
+        self.assertEqual(self.audio.started, 2)
+        self.assertEqual(self.audio.cancelled, 0)
+
 
 class PracticeSettingsTests(unittest.TestCase):
     @classmethod
@@ -318,13 +336,46 @@ class PracticeSettingsTests(unittest.TestCase):
 
     def test_local_readiness_blocks_missing_model_and_pending_download(self):
         self.settings.completeOnboarding("local", "")
-        for status in ("missing", "installing", "checking"):
-            self.settings._local_state = SimpleNamespace(status=status)
-            self.assertEqual(
-                practice_readiness(self.settings, lambda: True), "practice_model"
-            )
+
+        def unavailable(_model, _device):
+            return False
+
+        self.assertEqual(
+            practice_readiness(self.settings, lambda: True, unavailable),
+            "practice_model",
+        )
         self.settings._local_state = SimpleNamespace(status="installed")
-        self.assertEqual(practice_readiness(self.settings, lambda: True), "")
+        self.assertEqual(
+            practice_readiness(self.settings, lambda: False, unavailable),
+            "practice_busy",
+        )
+
+    def test_local_readiness_uses_saved_route_and_device_instead_of_browsed_model(self):
+        from dataclasses import replace
+        from unittest.mock import Mock
+
+        self.settings.completeOnboarding("local", "")
+        repo = self.settings.repositories.config
+        config = repo.load()
+        config = replace(
+            config,
+            local_asr_device="cuda:1",
+            workflows=config.workflows.with_route(
+                "transcription",
+                replace(config.workflow("transcription"), model_id="ggml-small"),
+            ),
+        )
+        repo.apply(config)
+        self.settings._local_profile = "ggml-medium"
+        self.settings._local_state = SimpleNamespace(status="missing")
+        ready = Mock(return_value=True)
+        self.assertEqual(practice_readiness(self.settings, lambda: True, ready), "")
+        ready.assert_called_once_with("ggml-small", "cuda:1")
+        self.settings._local_state = SimpleNamespace(status="installed")
+        ready.return_value = False
+        self.assertEqual(
+            practice_readiness(self.settings, lambda: True, ready), "practice_model"
+        )
 
     def test_readiness_keeps_expired_managed_session_out_of_personal_route(self):
         self.settings.completeOnboarding("byok", "gsk_test_only")

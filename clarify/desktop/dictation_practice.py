@@ -37,6 +37,7 @@ class PracticeController:
         can_open: Callable[[], bool] = lambda: True,
         identity: Callable[[], object] = lambda: None,
         stop_microphone_test: Callable[[], None] = lambda: None,
+        refresh_readiness: Callable[[], None] = lambda: None,
     ):
         self.workflow = workflow
         self.language = language
@@ -44,6 +45,7 @@ class PracticeController:
         self.can_open = can_open
         self.identity = identity
         self.stop_microphone_test = stop_microphone_test
+        self.refresh_readiness = refresh_readiness
         self._identity = None
         self._identity_invalidated = False
         self._operation_id = None
@@ -74,11 +76,25 @@ class PracticeController:
         self._identity = self.identity()
         self._identity_invalidated = True
         self.stop_microphone_test()
+        self.refresh_readiness()
         self._pending_start = None
         self._operation_id = None
         self._held = False
         self._generation += 1
-        self.workflow.cancel_active()
+        self._release_workflow()
+
+    def _release_workflow(self):
+        state = self.workflow.state
+        if state.phase in {
+            WorkflowPhase.COMPLETED,
+            WorkflowPhase.FAILED,
+            WorkflowPhase.CANCELLED,
+        }:
+            self.workflow.finish(state.operation_id)
+        elif state.phase is WorkflowPhase.MICROPHONE_UNAVAILABLE:
+            self.workflow.dispatch(DismissMicrophoneUnavailable())
+        elif state.phase is not WorkflowPhase.READY:
+            self.workflow.cancel_active()
 
     def _blocked(self):
         if self._identity_invalidated:
@@ -135,6 +151,7 @@ class PracticeController:
                 return False
             if self.open:
                 return True
+            self.refresh_readiness()
             self._generation += 1
             self._identity = self.identity()
             self._identity_invalidated = False
@@ -142,12 +159,13 @@ class PracticeController:
             self.open = True
         elif action == "close":
             self.stop_microphone_test()
+            self.refresh_readiness()
             self._pending_start = None
             self.open = False
             self._held = False
             self._operation_id = None
             self._generation += 1
-            self.workflow.cancel_active()
+            self._release_workflow()
         elif not self.open:
             return False
         elif self.identity() != self._identity:
@@ -157,7 +175,7 @@ class PracticeController:
             self._pending_start = None
             self._generation += 1
             self._held = False
-            self.workflow.cancel_active()
+            self._release_workflow()
         elif action == "start":
             if self.busy or self._blocked():
                 return True
@@ -207,7 +225,9 @@ class PracticeController:
         return True
 
 
-def practice_readiness(settings, can_start):
+def practice_readiness(
+    settings, can_start, local_model_ready=lambda _model, _device: False
+):
     """Read persisted route readiness without testing credentials or capturing audio."""
     if (
         not can_start()
@@ -237,9 +257,12 @@ def practice_readiness(settings, can_start):
     if not route.enabled or not route.model_id:
         return "practice_configuration"
     if route.provider_id == "local_asr":
+        ready = local_model_ready(route.model_id, config.local_asr_device)
         return (
             ""
-            if settings.localAsrStatus == "installed" and not settings.localAsrBusy
+            if ready is True
+            else "practice_busy"
+            if ready is None
             else "practice_model"
         )
     if not getattr(getattr(config, route.provider_id), "api_key", ""):

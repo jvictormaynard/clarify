@@ -14,7 +14,7 @@ const statusMessages: Record<string, string> = {
   account_allocation_waiting: "practice_quota",
   account_authentication_required: "practice_session",
   provider_authentication: "practice_session",
-  provider_quota: "practice_quota",
+  provider_quota: "Provider quota exceeded. Check your balance or plan.",
   no_audio: "practice_no_audio",
   refinement_failed: "practice_review_failed",
 };
