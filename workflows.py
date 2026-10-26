@@ -441,6 +441,29 @@ class WorkflowService:
         self._scheduler.call_soon(lambda: self._deliver_ready())
         return True
 
+    def discard_completed(self, operation_id: int) -> bool:
+        """Discard unaccepted output without cancelling a completed recorder.
+
+        Publication uses the same lock. Once accepted, it retains ownership
+        until output and once-only accounting finish; an earlier discard
+        invalidates its queued callbacks and performs neither effect.
+        """
+        with self._lock:
+            if (
+                not self._is_current_locked(operation_id)
+                or self._state.phase is not WorkflowPhase.COMPLETED
+            ):
+                return False
+            session = self._session
+            if session.publication_claimed and not session.publication_finished:
+                session.finish_requested = True
+                return True
+            session.retry_audio = None
+            self._session = None
+            self._state = WorkflowState()
+        self._scheduler.call_soon(lambda: self._deliver_ready())
+        return True
+
     def cancel_active(self) -> None:
         """Invalidate any worker, used during application shutdown."""
         deferred_release = False
