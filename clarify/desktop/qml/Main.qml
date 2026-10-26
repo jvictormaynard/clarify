@@ -202,6 +202,13 @@ ApplicationWindow {
             })
         }
         QuickMenuItem {
+            objectName: "quickMeetingsItem"
+            visualTheme: root.visualTheme
+            text: qsTr("meeting.title")
+            icon.source: "icons/audio-lines.svg"
+            onTriggered: quickMenu.runAfterClose(function() { meetings.open() })
+        }
+        QuickMenuItem {
             objectName: "quickSettingsItem"
             visualTheme: root.visualTheme
             text: qsTr("Settings")

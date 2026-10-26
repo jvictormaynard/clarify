@@ -2,11 +2,12 @@
 
 from account_meetings import identity, validate
 from dataclasses import dataclass
+from contextlib import contextmanager
 
 from shared.meeting_contract import SUMMARY_INSTRUCTION, MeetingError
 from local_asr import PROVIDER_ID as LOCAL_ASR_PROVIDER_ID
 from provider_types import RewriteRequest, TranscriptionRequest
-from workflow_config import WorkflowRoute, WorkflowScope
+from workflow_config import WorkflowRoute, WorkflowScope, validate_workflow_route
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,14 @@ class MeetingProviderService:
     def validate(self, expected):
         validate(self.account, expected)
 
+    @contextmanager
+    def publication(self, expected):
+        # Account before storage is the existing lock order. A session cannot
+        # change between final validation and the local commit.
+        with self.account._lock:
+            self.validate(expected)
+            yield
+
     def acquire(self):
         if not self.account.begin_change():
             raise MeetingError("meeting.busy")
@@ -55,6 +64,13 @@ class MeetingProviderService:
             WorkflowRoute.from_mapping(persisted["notes"]) if persisted else notes
         )
         note_route = note_route or WorkflowRoute(enabled=False)
+        route = validate_workflow_route(
+            route, WorkflowScope.TRANSCRIPTION, registry=self.workflows.registry
+        )
+        if note_route.enabled:
+            note_route = validate_workflow_route(
+                note_route, WorkflowScope.REWRITE, registry=self.workflows.registry
+            )
         connection = self.workflows._connection(route)
         if route.provider_id != LOCAL_ASR_PROVIDER_ID and not connection.api_key:
             raise MeetingError("meeting.configure_asr")

@@ -184,9 +184,11 @@ class MeetingWorkflow:
                     expected, self._routes, chunk, path, self.language, self._cancel
                 )
                 self._check(expected)
-                self.store.save_transcript(
-                    expected.owner, self.selected, chunk["id"], text
-                )
+                with self.provider.publication(expected):
+                    self._check(expected)
+                    self.store.save_transcript(
+                        expected.owner, self.selected, chunk["id"], text
+                    )
             except Exception as error:
                 self._check(expected)
                 code = (
@@ -261,7 +263,11 @@ class MeetingWorkflow:
                     self._cancel,
                 )
                 self._check(expected)
-                self.store.save_summary(expected.owner, self.selected, revision, text)
+                with self.provider.publication(expected):
+                    self._check(expected)
+                    self.store.save_summary(
+                        expected.owner, self.selected, revision, text
+                    )
             self.phase = "stopped"
         except Exception as error:
             if self.phase == "recording" and self._started is not None:

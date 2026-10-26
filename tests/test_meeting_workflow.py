@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+from contextlib import contextmanager
 
 from meeting_provider import MeetingProviderService
 from meeting_store import MeetingStore
@@ -40,6 +41,11 @@ class FakeProvider:
     def validate(self, expected):
         if expected != self.current:
             raise MeetingError("meeting.scope_changed")
+
+    @contextmanager
+    def publication(self, expected):
+        self.validate(expected)
+        yield
 
     def transcribe(self, expected, routes, chunk, path, language, cancel):
         self.calls.append((chunk["operation_id"], language))
@@ -198,10 +204,13 @@ class MeetingProviderTests(unittest.TestCase):
     def test_local_asr_has_no_key_and_routes_connections_are_fixed_per_job(self):
         account = Mock()
         service = Mock()
-        route = WorkflowRoute(provider_id="local_asr", model_id="fixture-local")
+        route = WorkflowRoute(provider_id="local_asr", model_id="ggml-base")
         service._route.return_value = route
         connection = ProviderConnection(api_key="", base_url="")
         service._connection.return_value = connection
+        service.registry.canonical_audio_model.side_effect = lambda provider, model: (
+            model
+        )
         provider = MeetingProviderService(service, account)
         provider.validate = Mock()
         expected = MeetingIdentity("guest", 0, False)
@@ -213,7 +222,7 @@ class MeetingProviderTests(unittest.TestCase):
         provider.transcribe(expected, routes, {}, Path("fixture.wav"), "pt", Mock())
         self.assertEqual(service.registry.transcribe.call_args.args[0], "local_asr")
         self.assertEqual(
-            service.registry.transcribe.call_args.args[1].model, "fixture-local"
+            service.registry.transcribe.call_args.args[1].model, "ggml-base"
         )
         self.assertEqual(service._connection.call_count, 1)
         with self.assertRaises(MeetingError):

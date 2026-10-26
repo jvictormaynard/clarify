@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
 
 from cloud.service import groq
 from cloud.service.models import Allowance, Operation, FundingEntry
@@ -128,7 +129,6 @@ class MeetingApiTests(TestCase):
             self.assertEqual(self.audio().status_code, 400)
         FundingEntry.objects.all().delete()
         self.assertEqual(self.summary().status_code, 503)
-        self.client.logout()
-        self.client.credentials()
+        self.client = APIClient()
         self.assertIn(self.summary().status_code, {401, 403})
         provider.assert_not_called()
