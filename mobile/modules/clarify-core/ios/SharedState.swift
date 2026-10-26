@@ -16,9 +16,12 @@ struct DictationSnapshot: Codable {
   var errorPhase: String?
   var errorStatus: Int?
   var configured = false
+  var computerMode = false
+  var processingContext: String?
+  var textOperation = false
   var libraryRevision = 0
   var isLive: Bool { sessionActive && Date().timeIntervalSince1970 - heartbeat < 3 }
-  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, text, message, errorCode, errorPhase, errorStatus, configured, libraryRevision }
+  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, text, message, errorCode, errorPhase, errorStatus, configured, libraryRevision, computerMode, processingContext, textOperation }
   init() {}
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -32,6 +35,9 @@ struct DictationSnapshot: Codable {
     errorPhase = try values.decodeIfPresent(String.self, forKey: .errorPhase)
     errorStatus = try values.decodeIfPresent(Int.self, forKey: .errorStatus)
     configured = try values.decode(Bool.self, forKey: .configured)
+    computerMode = try values.decodeIfPresent(Bool.self, forKey: .computerMode) ?? false
+    processingContext = try values.decodeIfPresent(String.self, forKey: .processingContext)
+    textOperation = try values.decodeIfPresent(Bool.self, forKey: .textOperation) ?? false
     libraryRevision = try values.decodeIfPresent(Int.self, forKey: .libraryRevision) ?? 0
   }
 }
@@ -41,7 +47,11 @@ struct DictationCommand: Codable {
   let operationID: String
   let action: String
   let createdAt: TimeInterval
-  init(_ action: String, operationID: String) {
+  let text: String?
+  let language: String?
+  let context: String?
+  init(_ action: String, operationID: String, text: String? = nil, language: String? = nil, context: String? = nil) {
+    self.text = text; self.language = language; self.context = context
     self.commandID = UUID().uuidString
     self.operationID = operationID
     self.action = action
@@ -67,8 +77,8 @@ struct SharedState {
     try JSONEncoder().encode(value).write(to: root.appendingPathComponent(name), options: .atomic)
   }
   func snapshot() -> DictationSnapshot { read("state.json", as: DictationSnapshot.self) ?? DictationSnapshot() }
-  func send(_ action: String, operationID: String) throws {
-    let command = DictationCommand(action, operationID: operationID)
+  func send(_ action: String, operationID: String, text: String? = nil, language: String? = nil) throws {
+    let command = DictationCommand(action, operationID: operationID, text: text, language: language, context: snapshot().processingContext)
     // Persist intent before command delivery. App acknowledgement, command
     // expiry and controller replacement must not restore a cancelled result.
     if action == "cancel" {

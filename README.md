@@ -70,6 +70,8 @@ See [history synchronization](docs/history-sync.md) and [voice snippets](docs/di
 Existing profiles retain their setup. The [iOS client](mobile/README.md) is
 delivered through TestFlight. The [account service](server/README.md) can also
 be self-hosted. Production keys and user data are never public.
+The source also supports [pairing an iPhone with a computer](docs/computer-connection.md)
+by QR for direct LAN processing with the computer's personal configuration.
 The [financial model and public transparency page](docs/finances.md) explain how
 confirmed support pays operating costs and weekly processing quotas. Stripe
 registration is deferred until a business account is available.
@@ -311,7 +313,7 @@ See [matching, sync and limits](docs/dictionary-snippets.md).
 
 ## Privacy and local data
 
-Clarify has no project-owned server. Cloud provider requests go from your
+In personal-key mode, cloud provider requests go from your
 computer to the endpoint you select; Local Whisper sends audio only to its own
 randomized loopback sidecar. The app stores:
 

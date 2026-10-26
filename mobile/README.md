@@ -1,5 +1,34 @@
 # Clarify for iOS — MVP
 
+## Computer connection candidate
+
+Choose **Meu computador** on the sign-in page or Account tab, then scan the QR
+inside Clarify. The computer must have its iPhone connection enabled. The current
+LAN route requires both devices on the same Wi-Fi network. A Clarify account is
+not required for this mode. Route arrays support a future managed HTTPS route;
+this candidate does not provide an internet relay.
+
+The existing recorder, keyboard bridge and local history store serve both modes.
+Computer mode also exposes selected-text rewrite and translation in the keyboard,
+and text processing in Home. It uses the computer's configured dictionary and
+snippets. This protocol does not upload an iPhone library. Computer history has
+its own computer/endpoint scope and is never synchronized with a hosted account.
+An offline or revoked computer connection does not select hosted processing.
+Switching modes or disconnecting stops capture and rejects former operations.
+
+QR parsing, device credentials and HTTPS requests stay in Swift. Keychain stores
+the device session and trusted routes in the containing app only. The keyboard
+gets a nonsecret state projection. Pinned LAN routes require an exact SHA-256 hash
+of the DER certificate; managed routes use platform trust. Redirects are rejected.
+The recorder's AAC clip is converted locally to PCM16 mono 16 kHz WAV, capped at
+300 seconds. Conversion and upload cancellation remove temporary audio.
+
+`shared/ui_strings.json` owns the shared translations; generate the native catalog
+with `scripts/sync_locales.py`. Native contracts, UIKit fixtures,
+camera permission/cancel, local-network permission, pinned TLS, actual keyboard
+insertion and physical iPhone acceptance still require macOS/iOS validation.
+Local TypeScript or bundle checks do not establish TestFlight availability.
+
 ## Planned release — 0.11.0 (38)
 
 This candidate combines Google, Microsoft and GitHub sign-in with the complete
@@ -86,19 +115,21 @@ Publication is not complete until signing, upload, Apple processing and availabi
 in the existing internal group are verified. Physical-iPhone microphone, soundwave,
 source-app return and keyboard acceptance remain separate from these fixtures.
 
-Expo application plus a small Swift keyboard extension. A Clarify account is
-required for speech recognition and rewriting. Sign in with an emailed code,
-Google, Microsoft or GitHub. No personal provider key is needed. Native bottom tabs contain Início, Dicionário,
+Expo application plus a small Swift keyboard extension. Speech recognition and
+rewriting use either a Clarify account or a paired computer. Sign in with an
+emailed code, Google, Microsoft or GitHub, or choose **Meu computador** and scan
+its QR inside Clarify. No personal provider key is needed on the iPhone. Native bottom tabs contain Início, Dicionário,
 Snippets and Conta. Ajustes opens from Conta.
-Signed-out users return to the
-account screen, including after an upgrade from the former personal-key mode.
+Users without an account session or paired computer return to the
+connection screen, including after an upgrade from the former personal-key mode.
 SQLite keeps
 vocabulary and an offline history copy. New signed-in transcriptions sync
 automatically with desktop through the account. Guest and pre-upgrade records
 remain local and are never uploaded. Account caches are isolated by endpoint and
 user. Existing local history, vocabulary and stored personal keys are preserved;
-personal keys no longer enable mobile processing. Signing out stops microphone
-access and requires a new sign-in. See [history synchronization](../docs/history-sync.md).
+personal keys no longer enable mobile processing. Signing out of account mode
+stops microphone access and requires a new sign-in. Computer mode keeps a separate
+local history scope. See [history synchronization](../docs/history-sync.md).
 
 Version **0.8.1 (30)** distinguishes unrecognized speech, transcription failures,
 allowance limits and service capacity. The keyboard shows the cause within its

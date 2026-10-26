@@ -366,7 +366,8 @@ final class LocalLibrary {
       }
     }
   }
-  func history(before: String = "", limit: Int = 50, scope: String? = nil) throws -> HistoryPage {
+  func history(before: String = "", limit: Int = 50, scope: String? = nil, includeLocal: Bool = true) throws -> HistoryPage {
+    if !includeLocal, scope == nil { return HistoryPage(entries: [], nextCursor: nil) }
     let limit = max(1, min(50, limit))
     var boundary: HistoryCursor?
     if !before.isEmpty {
@@ -374,11 +375,11 @@ final class LocalLibrary {
         parsed.scope == (scope ?? ""), parsed.time.isFinite, parsed.sequence > 0 else { throw failure() }
       boundary = parsed
     }
-    let value = try statement("SELECT sequence,payload,owner FROM history WHERE (owner='' OR owner=?) AND (?=1 OR created_at<? OR (created_at=? AND sequence<?)) ORDER BY created_at DESC,sequence DESC LIMIT ?")
+    let value = try statement("SELECT sequence,payload,owner FROM history WHERE ((owner='' AND ?=1) OR owner=?) AND (?=1 OR created_at<? OR (created_at=? AND sequence<?)) ORDER BY created_at DESC,sequence DESC LIMIT ?")
     defer { sqlite3_finalize(value) }
-    sqlite3_bind_text(value, 1, scope ?? "", -1, transient); sqlite3_bind_int(value, 2, boundary == nil ? 1 : 0)
-    sqlite3_bind_double(value, 3, boundary?.time ?? 0); sqlite3_bind_double(value, 4, boundary?.time ?? 0)
-    sqlite3_bind_int64(value, 5, boundary?.sequence ?? 0); sqlite3_bind_int(value, 6, Int32(limit + 1))
+    sqlite3_bind_int(value, 1, includeLocal ? 1 : 0); sqlite3_bind_text(value, 2, scope ?? "", -1, transient); sqlite3_bind_int(value, 3, boundary == nil ? 1 : 0)
+    sqlite3_bind_double(value, 4, boundary?.time ?? 0); sqlite3_bind_double(value, 5, boundary?.time ?? 0)
+    sqlite3_bind_int64(value, 6, boundary?.sequence ?? 0); sqlite3_bind_int(value, 7, Int32(limit + 1))
     var entries: [HistoryEntry] = []; var cursor: String?; var localEntries: [Bool] = []
     while true {
       switch sqlite3_step(value) {
@@ -406,9 +407,9 @@ final class LocalLibrary {
       if scope != nil { try change("INSERT INTO history_outbox(owner,operation_id,kind) VALUES(?,?,'delete') ON CONFLICT(owner,operation_id) DO UPDATE SET kind='delete'", [owner, id]) }
     }
   }
-  func clearHistory(scope: String? = nil) throws {
+  func clearHistory(scope: String? = nil, includeLocal: Bool = true) throws {
     try transaction {
-      try change("DELETE FROM history WHERE owner=''", [])
+      if includeLocal { try change("DELETE FROM history WHERE owner=''", []) }
       guard let scope else { return }
       try change("INSERT INTO history_deleted(owner,operation_id) SELECT owner,operation_id FROM history WHERE owner=? ON CONFLICT DO NOTHING", [scope])
       try change("DELETE FROM history WHERE owner=?", [scope])

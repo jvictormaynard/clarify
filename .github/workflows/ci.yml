@@ -58,6 +58,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_delivery_policy.py -v
           python -m unittest discover -s tests -p test_release_delivery.py -v
+          python -m unittest discover -s tests -p test_testflight_candidate.py -v
 
   server:
     name: Server validation
@@ -114,6 +115,7 @@ jobs:
     timeout-minutes: 15
     env:
       QT_QPA_PLATFORM: offscreen
+      QT_QUICK_CONTROLS_STYLE: Basic
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -150,6 +152,7 @@ jobs:
             lock_file: requirements-lock-windows.txt
     env:
       QT_QPA_PLATFORM: offscreen
+      QT_QUICK_CONTROLS_STYLE: Basic
       PYTHONFAULTHANDLER: "1"
     steps:
       - name: Check out repository

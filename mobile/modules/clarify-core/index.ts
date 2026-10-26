@@ -9,6 +9,8 @@ export interface Snapshot {
   text?: string;
   message?: string;
   configured: boolean;
+  computerMode?: boolean;
+  processingContext?: string;
   libraryRevision?: number;
 }
 
@@ -31,7 +33,9 @@ export interface HistoryEntry {
 }
 export interface HistoryPage { entries: HistoryEntry[]; nextCursor?: string; context: string }
 export interface MicrophoneActivation { active: boolean; message?: string }
+export interface ComputerSnapshot { paired: boolean; computerID: string; computerName: string; status: string; ready: boolean; busy: boolean }
 export interface AccountSnapshot {
+  mode?: 'hosted' | 'computer'; processingConfigured?: boolean; computer?: ComputerSnapshot;
   endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
   hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
   dictionaryConflict?: boolean;
@@ -44,6 +48,7 @@ export interface AccountSnapshot {
 export default requireNativeModule<{
   readonly uiLanguage: string;
   readonly keyboardDiagnosticAvailable: boolean;
+  newOperationID(): string;
   openKeyboardDiagnostic(): Promise<void>;
   onboardingRequired(): Promise<boolean>;
   markOnboardingPresented(): Promise<void>;
@@ -51,10 +56,12 @@ export default requireNativeModule<{
   getSnapshot(): Promise<Snapshot>;
   getAccount(): Promise<AccountSnapshot>;
   accountCommand(action: string, value: string): Promise<AccountSnapshot>;
+  computerCommand(action: 'computer' | 'hosted' | 'scan' | 'refresh' | 'disconnect'): Promise<AccountSnapshot>;
+  processComputerText(action: 'rewrite' | 'translate', text: string, language: string, context: string): Promise<void>;
   activate(): Promise<MicrophoneActivation>;
   deactivate(): Promise<void>;
   returnToSource(token: string): Promise<boolean>;
-  command(action: RecordingAction, operationID: string): Promise<void>;
+  command(action: RecordingAction, operationID: string, context: string): Promise<void>;
   copyResult(): Promise<void>;
   copyText(text: string): Promise<void>;
   getHistory(before: string): Promise<HistoryPage>;

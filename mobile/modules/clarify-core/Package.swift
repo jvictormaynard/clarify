@@ -5,8 +5,8 @@ let package = Package(
   products: [.library(name: "ClarifyContracts", targets: ["ClarifyContracts"])],
   targets: [
     .target(name: "ClarifyContracts", path: "ios",
-      exclude: ["AudioSession.swift", "MicrophoneFailure.swift", "ClarifyCoreModule.swift", "ClarifyCore.podspec", "HapticFeedback.swift", "LiveActivity.swift", "ClarifyActivityAttributes.swift", "ClarifyMark.swift", "ClarifyReturnBridge.h", "ClarifyReturnBridge.m", "KeyboardOpeningDiagnostic.swift"],
-      sources: ["SharedState.swift", "SessionDeadline.swift", "KeyboardVocabulary.swift", "KeyStore.swift", "GroqClient.swift", "RewritePrompt.swift", "KeyboardState.swift", "TypingCorrection.swift", "LocalLibrary.swift", "Snippets.swift", "ActivationRequest.swift", "CloudAccount.swift", "SocialAuthentication.swift", "AccountCredential.swift", "Onboarding.swift", "Localization.swift", "AudioClipWriter.swift"], linkerSettings: [.linkedLibrary("sqlite3")]),
+      exclude: ["ComputerScanner.swift", "AudioSession.swift", "MicrophoneFailure.swift", "ClarifyCoreModule.swift", "ClarifyCore.podspec", "HapticFeedback.swift", "LiveActivity.swift", "ClarifyActivityAttributes.swift", "ClarifyMark.swift", "ClarifyReturnBridge.h", "ClarifyReturnBridge.m", "KeyboardOpeningDiagnostic.swift"],
+      sources: ["ComputerProtocol.swift", "ComputerCredential.swift", "ComputerTransport.swift", "ComputerWAV.swift", "ComputerAudio.swift", "ComputerConnection.swift", "ProcessingDestination.swift", "SharedState.swift", "SessionDeadline.swift", "KeyboardVocabulary.swift", "KeyStore.swift", "GroqClient.swift", "RewritePrompt.swift", "KeyboardState.swift", "TypingCorrection.swift", "LocalLibrary.swift", "Snippets.swift", "ActivationRequest.swift", "CloudAccount.swift", "SocialAuthentication.swift", "AccountCredential.swift", "Onboarding.swift", "Localization.swift", "AudioClipWriter.swift"], linkerSettings: [.linkedLibrary("sqlite3")]),
     .testTarget(name: "ClarifyContractsTests", dependencies: ["ClarifyContracts"], path: "tests")
   ]
 )

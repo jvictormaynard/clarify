@@ -95,6 +95,9 @@ final class KeyboardUITests: XCTestCase {
       expired.phase = .idle; expired.message = nil
       try store.write(expired, to: "state.json"); keyboard.refreshFromStore(); keyboard.view.layoutIfNeeded()
       XCTAssertEqual(status.text, L("Entre no Clarify"), "An unconfigured keyboard must lead to account sign-in")
+      expired.computerMode = true
+      try store.write(expired, to: "state.json"); keyboard.refreshFromStore()
+      XCTAssertEqual(status.text, L("Conecte seu computador"), "Computer mode must not request a hosted account")
     }
   }
   func testOwnTypingCapitalizesTheNextSentenceWithoutAHostNotification() async throws {
@@ -1029,6 +1032,60 @@ final class KeyboardUITests: XCTestCase {
       assistant.insert(" ", into: field); XCTAssertEqual(field.before, "obrigaddo ")
       field.autocorrectionType = .yes; field.before = "victor@obrigaddo"
       assistant.insert(" ", into: field); XCTAssertEqual(field.before, "victor@obrigaddo ")
+    }
+  }
+  func testInsertionRejectsAResultClearedByAnotherDestinationBeforeTheNextPoll() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer { window.isHidden = true; try? FileManager.default.removeItem(at: store.root) }
+      let id = try self.beginProcessing(in: keyboard, store: store)
+      var state = store.snapshot(); state.phase = .error; state.text = "Former result"; state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      XCTAssertNotEqual(store.receipt(), id)
+      state.processingContext = "other-destination"; state.operationID = nil; state.text = nil; state.phase = .idle
+      try store.write(state, to: "state.json")
+      self.attemptExplicitInsertion(keyboard)
+      XCTAssertFalse(keyboard.field.before.contains("Former result")); XCTAssertNotEqual(store.receipt(), id)
+    }
+  }
+  func testComputerTextSelectionReusesCommandsAndRejectsChangedDocument() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer { window.isHidden = true; try? FileManager.default.removeItem(at: store.root) }
+      var state = store.snapshot(); state.computerMode = true; state.processingContext = "computer-fixture"
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      keyboard.field.selectedText = "Selected text with several words"
+      keyboard.selectionDidChange(nil)
+      let button = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }.first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" })
+      XCTAssertFalse(button.isHidden); XCTAssertTrue(button.showsMenuAsPrimaryAction); XCTAssertNotNil(button.menu)
+      keyboard.processSelection("translate", language: "es")
+      let command = try XCTUnwrap(store.commands().last?.1)
+      XCTAssertEqual(command.action, "translate"); XCTAssertEqual(command.language, "es")
+      XCTAssertEqual(command.text, "Selected text with several words"); XCTAssertEqual(command.context, "computer-fixture")
+      state.operationID = command.operationID; state.textOperation = true; state.phase = .rewriting
+      state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      keyboard.field.documentIdentifier = UUID(); keyboard.selectionDidChange(nil)
+      XCTAssertTrue(store.isCancelled(command.operationID))
+      state.phase = .ready; state.text = "Old translation"; state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore(); self.attemptExplicitInsertion(keyboard)
+      XCTAssertFalse(keyboard.field.before.contains("Old translation"))
+    }
+  }
+  func testComputerTextResultInsertsOnlyIntoOriginalSelection() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer { window.isHidden = true; try? FileManager.default.removeItem(at: store.root) }
+      var state = store.snapshot(); state.computerMode = true; state.processingContext = "computer-fixture"
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      keyboard.field.selectedText = "Original"
+      keyboard.processSelection("rewrite", language: "pt")
+      let command = try XCTUnwrap(store.commands().last?.1)
+      state.operationID = command.operationID; state.textOperation = true; state.phase = .ready
+      state.text = "Revised"; state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      XCTAssertEqual(keyboard.field.before, "Revised"); XCTAssertEqual(store.receipt(), command.operationID)
+      self.attemptExplicitInsertion(keyboard); XCTAssertEqual(keyboard.field.before, "Revised")
     }
   }
   func testKeyboardLayoutAndPressPreviewInBothAppearances() async {

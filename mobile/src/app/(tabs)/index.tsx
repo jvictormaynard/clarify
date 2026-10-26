@@ -12,6 +12,9 @@ import { ClarifyLogo } from '../../components/clarify-logo';
 
 import { groupHistory, historyDayTitle, historyTime } from '../../history';
 
+import { ComputerText } from '../../components/computer-text';
+import { RecordButton } from '../../components/record-button';
+
 const timestamp = (value: number) => new Date(value * 1000).toLocaleString(uiLanguage, { dateStyle: 'medium', timeStyle: 'short' });
 
 export default function Home() {
@@ -89,6 +92,7 @@ export default function Home() {
         <ClarifyLogo size={28} />
         <ScreenHeader title={t('Início')} />
         <MicrophoneSwitch />
+        {account?.mode === 'computer' && <><RecordButton /><ComputerText /></>}
         <Text style={[ui.small, { color: c.muted, marginTop: -8 }]}>{state.sessionActive ? t('O Clarify está ativo para receber ditados do teclado.') : t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>
         {state.phase === 'error' && state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(state.message)}</Text>}
       </View>}

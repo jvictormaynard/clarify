@@ -24,7 +24,7 @@ class SecretStoreContractTests(unittest.TestCase):
             first = DpapiSecretStore(path)
             expected = {
                 provider: f"non-production-{provider}-credential"
-                for provider in ("gemini", "openai", "groq")
+                for provider in ("gemini", "openai", "groq", "clarify_computer")
             }
             for provider, value in expected.items():
                 first.set(provider, value)
@@ -76,11 +76,16 @@ class SecretStoreContractTests(unittest.TestCase):
     def test_corrupted_entry_raises_only_a_sanitized_error(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "secrets.dpapi.json"
-            path.write_text(json.dumps({
-                "version": 1,
-                "backend": "windows-dpapi",
-                "entries": {"groq": "not valid base64!"},
-            }), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "backend": "windows-dpapi",
+                        "entries": {"groq": "not valid base64!"},
+                    }
+                ),
+                encoding="utf-8",
+            )
             store = DpapiSecretStore(path, lambda value: value, lambda value: value)
 
             with self.assertRaises(SecretStoreCorruptedError) as raised:
@@ -91,11 +96,16 @@ class SecretStoreContractTests(unittest.TestCase):
     def test_empty_decrypted_entry_is_corrupted(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "secrets.dpapi.json"
-            path.write_text(json.dumps({
-                "version": 1,
-                "backend": "windows-dpapi",
-                "entries": {"openai": "AA=="},
-            }), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "backend": "windows-dpapi",
+                        "entries": {"openai": "AA=="},
+                    }
+                ),
+                encoding="utf-8",
+            )
             store = DpapiSecretStore(path, lambda value: value, lambda _value: b"")
 
             with self.assertRaises(SecretStoreCorruptedError):
@@ -156,8 +166,7 @@ class SecretStoreContractTests(unittest.TestCase):
         self.assertEqual(result, 0)
         payload = json.loads(output.getvalue())
         self.assertTrue(payload["ok"])
-        self.assertEqual(
-            payload["providers"], ["gemini", "openai", "groq"])
+        self.assertEqual(payload["providers"], ["gemini", "openai", "groq"])
         self.assertFalse(payload["config_contains_provider_keys"])
         self.assertTrue(payload["restart_read"])
         self.assertTrue(payload["provider_connections_ready"])
@@ -171,9 +180,13 @@ class SecretStoreContractTests(unittest.TestCase):
             result_file = Path(directory) / "result.json"
             output = StringIO()
             with redirect_stdout(output):
-                result = app._run_cli([
-                    "secret-store-self-test", "--result-file", str(result_file),
-                ])
+                result = app._run_cli(
+                    [
+                        "secret-store-self-test",
+                        "--result-file",
+                        str(result_file),
+                    ]
+                )
 
             self.assertEqual(result, 0)
             self.assertEqual(output.getvalue(), "")
@@ -183,8 +196,9 @@ class SecretStoreContractTests(unittest.TestCase):
             self.assertTrue(payload["restart_read"])
             self.assertTrue(payload["provider_connections_ready"])
             self.assertTrue(payload["delete_verified"])
-            self.assertNotIn("clarify-self-test", result_file.read_text(
-                encoding="utf-8"))
+            self.assertNotIn(
+                "clarify-self-test", result_file.read_text(encoding="utf-8")
+            )
 
     def test_secret_store_cli_succeeds_without_stdout(self):
         import app
@@ -206,8 +220,7 @@ class SecretStoreContractTests(unittest.TestCase):
             self.assertIsNone(store.get("openai"))
             if os.name == "nt":
                 store.set("openai", "test-openai-credential")
-                self.assertEqual(
-                    store.get("openai"), "test-openai-credential")
+                self.assertEqual(store.get("openai"), "test-openai-credential")
             else:
                 with self.assertRaises(SecretStoreUnavailableError):
                     store.set("openai", "test-openai-credential")
