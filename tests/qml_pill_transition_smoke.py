@@ -205,6 +205,12 @@ def main():
     bridge.setLanguage("en")
     service.publish(WorkflowPhase.CANCELLED, operation_id=6, can_undo=True)
     QTest.qWait(350)
+    # Let the translated text layout settle after the width animation, including
+    # on a busy offscreen runner. Keep text and clipping assertions below.
+    for _ in range(100):
+        if not label.property("truncated"):
+            break
+        QTest.qWait(10)
     assert label.property("text") == "Transcript cancelled"
     assert not label.property("truncated")
     shot("07-cancelled-en")

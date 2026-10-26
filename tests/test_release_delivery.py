@@ -185,6 +185,8 @@ class ReleaseDeliveryTests(unittest.TestCase):
                 "Tests (ubuntu-latest)",
                 "Tests (windows-latest)",
                 "Package Windows executable",
+                "CI required",
+                "Mobile checks",
                 "iOS validation / Native tests and unsigned build",
             )
         ]
@@ -295,6 +297,123 @@ class ReleaseDeliveryTests(unittest.TestCase):
                 },
             ),
         )
+
+    def test_mobile_promotion_and_publication_need_no_desktop_jobs(self):
+        self.mobile()
+        desktop_jobs = {
+            "Tests (ubuntu-latest)",
+            "Tests (windows-latest)",
+            "Package Windows executable",
+        }
+        original_jobs = deepcopy(self.jobs)
+        self.routes["/actions/runs/999/jobs"] = {
+            "jobs": [{"name": "release_gate", "conclusion": "success"}]
+        }
+        for desktop_conclusion in (None, "skipped"):
+            with self.subTest(desktop_conclusion=desktop_conclusion):
+                self.jobs[:] = [
+                    dict(job, conclusion=desktop_conclusion)
+                    if job["name"] in desktop_jobs
+                    else job
+                    for job in deepcopy(original_jobs)
+                    if desktop_conclusion is not None or job["name"] not in desktop_jobs
+                ]
+                self.tag = None
+                self.publication_runs = []
+                self.calls.clear()
+                self.assertEqual(self.promote(), "dispatched")
+                self.assertEqual(
+                    self.mutations()[-1][0],
+                    "/actions/workflows/ios-testflight.yml/dispatches",
+                )
+                self.calls.clear()
+                self.assertEqual(
+                    delivery.verify_publication(
+                        self.api, "mobile", SOURCE, "ios/v0.9.2-build33", 999
+                    ),
+                    "publish",
+                )
+                self.assertEqual(self.mutations(), [])
+
+    def test_final_ci_gate_must_be_unique_completed_and_successful(self):
+        original_jobs = deepcopy(self.jobs)
+        for component, tag in (
+            ("desktop", "v1.2.4"),
+            ("mobile", "ios/v0.9.2-build33"),
+        ):
+            if component == "mobile":
+                self.mobile()
+            self.tag = SOURCE
+            for outcome in (
+                "absent",
+                "skipped",
+                "failure",
+                "cancelled",
+                "pending",
+                "duplicate",
+            ):
+                with self.subTest(component=component, outcome=outcome):
+                    self.jobs[:] = deepcopy(original_jobs)
+                    self.publication_runs = []
+                    gate = next(
+                        job for job in self.jobs if job["name"] == "CI required"
+                    )
+                    if outcome == "absent":
+                        self.jobs.remove(gate)
+                    elif outcome == "duplicate":
+                        self.jobs.append(dict(gate))
+                    elif outcome == "pending":
+                        gate.update(status="in_progress", conclusion=None)
+                    else:
+                        gate["conclusion"] = outcome
+                    self.calls.clear()
+                    with self.assertRaisesRegex(delivery.ReleaseError, "CI required"):
+                        self.promote()
+                    with self.assertRaisesRegex(delivery.ReleaseError, "CI required"):
+                        delivery.verify_publication(
+                            self.api, component, SOURCE, tag, 900
+                        )
+                    self.assertEqual(self.mutations(), [])
+
+    def test_component_ci_jobs_are_required_before_promotion_or_publication(self):
+        original_jobs = deepcopy(self.jobs)
+        for component, tag, names in (
+            (
+                "desktop",
+                "v1.2.4",
+                (
+                    "Tests (ubuntu-latest)",
+                    "Tests (windows-latest)",
+                    "Package Windows executable",
+                ),
+            ),
+            (
+                "mobile",
+                "ios/v0.9.2-build33",
+                ("Mobile checks", "iOS validation / Native tests and unsigned build"),
+            ),
+        ):
+            if component == "mobile":
+                self.mobile()
+            self.tag = SOURCE
+            for name in names:
+                for outcome in ("absent", "skipped", "failure", "cancelled"):
+                    with self.subTest(component=component, job=name, outcome=outcome):
+                        self.jobs[:] = deepcopy(original_jobs)
+                        self.publication_runs = []
+                        job = next(job for job in self.jobs if job["name"] == name)
+                        if outcome == "absent":
+                            self.jobs.remove(job)
+                        else:
+                            job["conclusion"] = outcome
+                        self.calls.clear()
+                        with self.assertRaises(delivery.ReleaseError):
+                            self.promote()
+                        with self.assertRaises(delivery.ReleaseError):
+                            delivery.verify_publication(
+                                self.api, component, SOURCE, tag, 900
+                            )
+                        self.assertEqual(self.mutations(), [])
 
     def test_code_push_without_release_intent_has_no_release_effect(self):
         self.files.pop((".github/release-intent.json", SOURCE))

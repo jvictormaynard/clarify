@@ -486,13 +486,15 @@ class RepositorySafetyTests(unittest.TestCase):
             self.assertNotIn("pip-compile --check", workflow)
             self.assertRegex(workflow, r"uses: actions/[^@]+@[0-9a-f]{40}")
             if workflow_name == "ci.yml":
-                self.assertEqual(
-                    workflow.count("run: python scripts/dependency_audit.py"), 1
+                audit = (ROOT / ".github/workflows/dependency-audit.yml").read_text(
+                    encoding="utf-8"
                 )
-                self.assertNotIn(
-                    "if: matrix.os == 'ubuntu-latest'\n        run: python scripts/dependency_audit.py",
-                    workflow,
+                self.assertIn(
+                    "uses: ./.github/workflows/dependency-audit.yml", workflow
                 )
+                self.assertIn("requirements-lock-linux.txt", audit)
+                self.assertIn("requirements-lock-windows.txt", audit)
+                self.assertIn("run: python scripts/dependency_audit.py", audit)
 
     def test_release_quality_gates_are_fail_fast_steps(self):
         workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(

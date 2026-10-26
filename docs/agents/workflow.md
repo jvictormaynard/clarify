@@ -147,15 +147,17 @@ checks. Do not duplicate their complete command lists in each skill.
 | --- | --- |
 | Instructions, docs, or skill metadata | Skill validator, references, attribution, `git diff --check`; no new product test for wording alone |
 | Python behavior or internal refactor | Focused behavior/contract tests during work; final Python suite and relevant compile/lint/type checks |
-| Qt/QML visual or interaction behavior | Relevant Python and QML smoke checks; real Windows executable checks for focus, hotkeys, tray, geometry, transparency, and affected DPI |
-| Settings or Python-to-Settings bridge | Relevant Python tests, frontend build/type check, isolated Playwright fixture, and native Windows acceptance for integration behavior |
+| Qt/QML visual or interaction behavior | Python and QML checks for the affected contract; screenshots or a recording; Windows acceptance for native interaction and before publication |
+| Settings or Python-to-Settings bridge | Frontend build/type check and isolated Playwright fixture; Python suite for Python changes; native build for Rust, dependencies or packaging; Windows acceptance for native integration and before publication |
 | Persistence, credentials, provider routing, workflow concurrency, clipboard, audio, or ASR lifecycle | Regression evidence for affected failure/cancellation/compatibility paths, full Python suite, relevant Settings/Windows checks, and focused architecture review |
 | Dependencies, CI, or packaging | Applicable Python/Settings checks, pinned lock and audit rules, Windows build and embedded-payload checks when build inputs changed |
 | Desktop publication | Existing `clarify-release` contract, exact source/tag/CI alignment, track-specific assets, downloaded hashes and provenance |
 | iOS/TestFlight publication | Existing mobile guide and iOS workflow, exact source/version/build identity, native tests, verified signed IPA, successful upload, Apple processing and target-group availability |
 
-The repository agent guide requires the Python suite after repository changes.
-Run relevant Settings tests when their behavior or bridge is affected. A CI-only
+Run the Python suite when Python behavior or its contracts change. Prose and
+Settings-only design changes do not require that suite. Run Settings tests when
+their behavior or bridge is affected. CI selects jobs from the complete change
+range; see [CI selection](../ci-delivery.md). A CI-only
 skills-check step does not change product build inputs and does not itself require
 a local Windows rebuild. Release and platform acceptance gates still apply to
 the product changes they cover.
@@ -266,7 +268,7 @@ check, pending CI job, incomplete build, or unverified publication as complete.
 The [skill audit](skill-audit.md) records every upstream decision and its pinned
 source. Update adapted skills deliberately; never run an unattended upstream
 overwrite. Use `python scripts/check_agent_skills.py` and the creator's validator
-when available. CI checks local integrity on Linux and Windows.
+when available. The repository checks job validates local integrity on Linux.
 
 The validator checks packaging and provenance, not architectural judgment. Walk
 through realistic tasks after a behavior-changing skill edit and measure actual

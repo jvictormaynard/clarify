@@ -2,12 +2,6 @@ name: iOS audio contracts
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main, 'codex/**']
-    paths:
-      - mobile/modules/clarify-core/ios/AudioClipWriter.swift
-      - mobile/modules/clarify-core/tests/AudioClipTests.swift
-      - .github/workflows/ios-audio-contracts.yml
 
 permissions:
   contents: read

@@ -141,8 +141,10 @@ state, without downloading PR or CI artifacts. It requires:
   source branch, its expected title and a maintainer merge;
 - metadata-only changes from the accepted base, matching packaged versions and
   the component's release evidence;
-- successful `Tests (ubuntu-latest)`, `Tests (windows-latest)` and
-  `Package Windows executable` jobs; mobile additionally requires `iOS validation / Native tests and unsigned build`.
+- successful `CI required` for either platform; desktop additionally requires
+  `Tests (ubuntu-latest)`, `Tests (windows-latest)` and
+  `Package Windows executable`; mobile requires `Mobile checks` and
+  `iOS validation / Native tests and unsigned build`, without Desktop jobs.
 
 An ordinary code or documentation merge with an old intent is inactive. An
 existing tag must resolve to the exact source. A completed desktop release is

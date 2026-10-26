@@ -2,22 +2,17 @@ name: CI
 
 on:
   pull_request:
-    branches:
-      - main
-      - master
+    branches: [main, master]
   push:
-    branches:
-      - main
-      - master
-      - "codex/**"
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  # Railway Wait for CI can ignore a cancelled run if another workflow passed.
-  # Give each main push its own group, including queued runs.
+  # Railway ignores some cancellations when another workflow passed.
+  # Every main push must retain its own required validation.
   group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_id || github.ref }}
   cancel-in-progress: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
@@ -25,10 +20,16 @@ jobs:
   components:
     name: Select component validation
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
-      server: ${{ steps.components.outputs.server }}
-      ios: ${{ steps.components.outputs.ios }}
       desktop: ${{ steps.components.outputs.desktop }}
+      settings: ${{ steps.components.outputs.settings }}
+      package: ${{ steps.components.outputs.package }}
+      installer: ${{ steps.components.outputs.installer }}
+      server: ${{ steps.components.outputs.server }}
+      mobile: ${{ steps.components.outputs.mobile }}
+      ios: ${{ steps.components.outputs.ios }}
+      audit: ${{ steps.components.outputs.audit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -39,6 +40,24 @@ jobs:
           python-version: '3.12'
       - id: components
         run: python scripts/delivery_policy.py
+
+  repository:
+    name: Repository checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Check project agent skills
+        run: python scripts/check_agent_skills.py
+      - name: Test validation and release policies
+        run: |
+          python -m unittest discover -s tests -p test_delivery_policy.py -v
+          python -m unittest discover -s tests -p test_release_delivery.py -v
 
   server:
     name: Server validation
@@ -52,9 +71,75 @@ jobs:
     if: needs.components.outputs.ios == 'true'
     uses: ./.github/workflows/ios-validation.yml
 
+  audit:
+    name: Dependency audits
+    needs: components
+    if: needs.components.outputs.audit == 'true'
+    uses: ./.github/workflows/dependency-audit.yml
+
+  mobile:
+    name: Mobile checks
+    needs: components
+    if: needs.components.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci --no-fund
+      - run: npm run check
+      - name: Build the iOS JavaScript bundle
+        run: npx --no-install expo export --platform ios --max-workers 2 --output-dir "$RUNNER_TEMP/clarify-mobile-export"
+
+  settings:
+    name: Settings web and bridge
+    needs: components
+    if: needs.components.outputs.settings == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libopengl0 libxkbcommon0 fonts-dejavu-core libportaudio2
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-lock-linux.txt
+      - run: python scripts/install_bootstrap_tools.py --lock-file requirements-lock-linux.txt
+      - run: python -m pip install --disable-pip-version-check -r requirements-dev.txt -c requirements-lock-linux.txt
+      - uses: ./.github/actions/settings-build
+        with:
+          python: ${{ env.pythonLocation }}/bin/python
+          native: 'false'
+
   test:
     name: Tests (${{ matrix.os }})
+    needs: components
+    if: needs.components.outputs.desktop == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -69,6 +154,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install Linux Qt runtime libraries
         if: matrix.os == 'ubuntu-latest'
@@ -146,14 +233,8 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: mypy desktop_state.py windows_hotkeys.py
 
-      - name: Audit dependencies
-        run: python scripts/dependency_audit.py
-
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
-
-      - name: Check project agent skills
-        run: python scripts/check_agent_skills.py
 
       - name: Compile Python sources
         run: >-
@@ -176,11 +257,15 @@ jobs:
 
   package:
     name: Package Windows executable
-    needs: test
+    needs: components
+    if: needs.components.outputs.package == 'true'
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -202,37 +287,28 @@ jobs:
         uses: ./.github/actions/settings-build
         with:
           python: ${{ env.pythonLocation }}/python.exe
+          test: 'false'
 
       - name: Build portable executable
         shell: pwsh
+        run: .\scripts\build.ps1 -SettingsExecutable dist\clarify-settings.exe
+
+      - name: Build installer baseline only when required
+        if: needs.components.outputs.installer == 'true'
+        shell: pwsh
         run: |
-          .\scripts\build.ps1 -SettingsExecutable dist\clarify-settings.exe
           .\scripts\build.ps1 `
             -SettingsExecutable dist\clarify-settings.exe `
             -OutputDirectory dist\baseline `
             -PayloadIdentity baseline-msi-0.1.1
-
-          $baselinePayload = "dist\baseline\Clarify.exe"
-          $currentPayload = "dist\Clarify.exe"
-          $baselineHash = (Get-FileHash $baselinePayload -Algorithm SHA256).Hash
-          $currentHash = (Get-FileHash $currentPayload -Algorithm SHA256).Hash
+          $baselineHash = (Get-FileHash dist\baseline\Clarify.exe -Algorithm SHA256).Hash
+          $currentHash = (Get-FileHash dist\Clarify.exe -Algorithm SHA256).Hash
           if ($baselineHash -eq $currentHash) {
-            throw "Baseline and current executable payloads must be byte-distinct."
+            throw 'Baseline and current executable payloads must be byte-distinct.'
           }
 
       - name: Verify frozen portable replacement and recovery
         run: python scripts/test_portable_update.py
-
-      - name: Build baseline and current installers
-        shell: pwsh
-        run: |
-          .\scripts\build-installer.ps1 `
-            -Version 0.1.1 `
-            -SourceExe dist\baseline\Clarify.exe `
-            -OutputPath dist\Clarify-windows-x64-baseline.msi
-          .\scripts\build-installer.ps1 `
-            -SourceExe dist\Clarify.exe `
-            -OutputPath dist\Clarify-windows-x64.msi
 
       - name: Smoke-test packaged QML entrypoint
         shell: pwsh
@@ -244,7 +320,7 @@ jobs:
           $env:CLARIFY_DATA_DIR = $smokeDataDirectory
           try {
             $process = Start-Process -FilePath $executable `
-              -ArgumentList @('--hidden') -PassThru
+              -ArgumentList @('--hidden') -WindowStyle Hidden -PassThru
             try {
               Start-Sleep -Seconds 5
               if ($process.HasExited) {
@@ -267,6 +343,49 @@ jobs:
         run: >-
           python -c "import sys; sys.argv = ['app.py', 'secret-store-self-test']; import app; raise SystemExit(app._run_cli(['secret-store-self-test']))"
 
+      - name: Upload smoke-test build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: Clarify-windows-${{ github.sha }}
+          path: |
+            dist/Clarify.exe
+            dist/baseline/Clarify.exe
+            dist/Clarify-qt-sources.zip
+            dist/Clarify-qt-NOTICES.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  installer:
+    name: Windows installer lifecycle
+    needs: [components, package]
+    if: needs.components.outputs.installer == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install locked manifest dependencies
+        run: python -m pip install --disable-pip-version-check requests -c requirements-lock-windows.txt
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: Clarify-windows-${{ github.sha }}
+          path: dist
+
+      - name: Build baseline and current installers
+        shell: pwsh
+        run: |
+          .\scripts\build-installer.ps1 `
+            -Version 0.1.1 `
+            -SourceExe dist\baseline\Clarify.exe `
+            -OutputPath dist\Clarify-windows-x64-baseline.msi
+          .\scripts\build-installer.ps1 `
+            -SourceExe dist\Clarify.exe `
+            -OutputPath dist\Clarify-windows-x64.msi
+
       - name: Test install, upgrade, repair, rollback, and uninstall
         shell: pwsh
         run: |
@@ -288,15 +407,20 @@ jobs:
             -Manifest dist\release-manifest.json `
             -OutputPath dist\Clarify-release-manifest.cab
 
-      - name: Upload smoke-test build
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+  required:
+    name: CI required
+    if: always()
+    needs: [components, repository, test, settings, package, installer, server, mobile, ios, audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          name: Clarify-windows-${{ github.sha }}
-          path: |
-            dist/Clarify.exe
-            dist/Clarify-windows-x64.msi
-            dist/Clarify-release-manifest.cab
-            dist/Clarify-qt-sources.zip
-            dist/Clarify-qt-NOTICES.txt
-          if-no-files-found: error
-          retention-days: 7
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Require every selected check to pass
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python scripts/delivery_policy.py --check-results

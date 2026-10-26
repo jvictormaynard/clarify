@@ -8,12 +8,14 @@
 
 ## Validation
 
-- [ ] `python -m unittest discover -s tests -v`
-- [ ] `python -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py repositories.py workflow_config.py workflow_settings.py voice_translation.py dictionary_snippets.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests`
-- [ ] Confirmed `clarify/desktop/qml/Main.qml` and the complete QML asset directory are present
-- [ ] Built `Clarify.exe` when packaging or Windows integration changed
-- [ ] Tested the real Windows UI when visuals, focus, hotkeys, audio, or tray behavior changed
-- [ ] Added screenshots or a short recording for visual changes
+<!-- List commands and results. Mark unavailable or irrelevant native checks
+     below. Small design PRs do not need Rust, an EXE, MSI or an Apple account.
+     CI selects checks from the changed files; see CONTRIBUTING.md. -->
+
+- Checks run:
+- Results:
+- Screenshots or recording for visual changes:
+- Native checks performed, not applicable, or left for maintainer acceptance:
 
 ## Safety and privacy
 
