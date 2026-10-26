@@ -138,6 +138,10 @@ class TranscriptionResult:
     timings_ms: dict[str, float] = field(default_factory=dict, compare=False)
     # Content-free signal: optional refinement failed, but ASR text is usable.
     refinement_failed: bool = False
+    # Requested policy is distinct from the successful processing step. None
+    # marks legacy clients/routes. These fields never contain transcript text.
+    cleanup_level_requested: str | None = None
+    cleanup_level_applied: str | None = None
 
 
 @dataclass(frozen=True)
