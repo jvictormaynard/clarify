@@ -52,6 +52,51 @@ def _upload_state(api, run_id, attempt):
     return outcome == "success"
 
 
+def _app_identity(app):
+    ios = app["ios"]
+    bundle = ios["bundleIdentifier"]
+    require(isinstance(bundle, str) and bool(bundle), "Missing iOS app identity")
+    version(app["version"])
+    build_number(ios["buildNumber"])
+    return bundle, app["version"], ios["buildNumber"]
+
+
+def _prior_uploads(api, source, current, run_id, run_attempt):
+    identity = _app_identity(current)
+    identities = {source: identity}
+    uploaded = False
+    # Apple identifies a build by app/version/build, independently of Git refs.
+    # Include old push-triggered uploads as well as manual candidate runs.
+    runs = api.pages("/actions/workflows/ios-testflight.yml/runs", "workflow_runs")
+    for run in runs:
+        if int(run["id"]) == int(run_id):
+            continue
+        previous_source = sha(run["head_sha"])
+        if previous_source not in identities:
+            identities[previous_source] = _app_identity(
+                decode(api.file("mobile/app.json", previous_source))["expo"]
+            )
+        if identities[previous_source] != identity:
+            continue
+        attempts = int(run.get("run_attempt", 1))
+        require(1 <= attempts <= 100, "Publication retry limit exceeded")
+        if run.get("status") == "queued" and attempts == 1:
+            continue
+        require(
+            run.get("status") == "completed", "Another candidate publication is active"
+        )
+        for attempt in range(1, attempts + 1):
+            previous_uploaded = _upload_state(api, run["id"], attempt)
+            require(
+                not previous_uploaded or previous_source == source,
+                "This app/version/build was uploaded from another source; reserve a new build",
+            )
+            uploaded = previous_uploaded or uploaded
+    for attempt in range(1, int(run_attempt)):
+        uploaded = _upload_state(api, run_id, attempt) or uploaded
+    return uploaded
+
+
 def _check_pr(api, number, source):
     pr = api.request("GET", f"/pulls/{number}")
     require(
@@ -164,24 +209,7 @@ def verify_candidate(api, *, source, tag, pr_number, actor, run_id, run_attempt=
     )
     require(tag_source(api, tag) == source, "Candidate tag does not match source")
     _check_ci(api, source, pr_number, main)
-    uploaded = False
-    runs = api.pages(
-        f"/actions/workflows/ios-testflight.yml/runs?head_sha={source}", "workflow_runs"
-    )
-    for run in runs:
-        if int(run["id"]) == int(run_id):
-            continue
-        if run.get("event") != "workflow_dispatch" or run.get("head_sha") != source:
-            continue
-        if run.get("status") == "queued" and int(run.get("run_attempt", 1)) == 1:
-            continue
-        require(
-            run.get("status") == "completed", "Another candidate publication is active"
-        )
-        for attempt in range(1, int(run.get("run_attempt", 1)) + 1):
-            uploaded = _upload_state(api, run["id"], attempt) or uploaded
-    for attempt in range(1, int(run_attempt)):
-        uploaded = _upload_state(api, run_id, attempt) or uploaded
+    uploaded = _prior_uploads(api, source, current, run_id, run_attempt)
     # Recheck both mutable references immediately before the caller can sign.
     _check_pr(api, pr_number, source)
     require(

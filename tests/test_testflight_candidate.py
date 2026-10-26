@@ -53,6 +53,7 @@ class CandidateAPI:
         ]
         self.old_runs = []
         self.upload_jobs = {}
+        self.source_apps = {}
         self.edits = []
         self.reservation = {
             "schema": 1,
@@ -91,11 +92,16 @@ class CandidateAPI:
         if path == ".github/testflight-candidate.json":
             return json.dumps(self.reservation)
         if path == "mobile/app.json":
+            if ref in self.source_apps:
+                return json.dumps({"expo": self.source_apps[ref]})
             return json.dumps(
                 {
                     "expo": {
                         "version": "0.11.0" if ref == BASE else "0.12.0",
-                        "ios": {"buildNumber": "39" if ref == BASE else "40"},
+                        "ios": {
+                            "buildNumber": "39" if ref == BASE else "40",
+                            "bundleIdentifier": "com.jvictormaynard.clarify",
+                        },
                     }
                 }
             )
@@ -104,7 +110,14 @@ class CandidateAPI:
     def pages(self, path, key=None):
         if path.startswith("/actions/workflows/ci.yml/runs?"):
             return [deepcopy(self.run)]
-        if path.startswith("/actions/workflows/ios-testflight.yml/runs?"):
+        if path.startswith("/actions/workflows/ios-testflight.yml/runs"):
+            if "head_sha=" in path:
+                requested = path.split("head_sha=", 1)[1].split("&", 1)[0]
+                return [
+                    deepcopy(run)
+                    for run in self.old_runs
+                    if run.get("head_sha") == requested
+                ]
             return deepcopy(self.old_runs)
         if path.startswith("/actions/runs/10/jobs?"):
             return deepcopy(self.jobs)
@@ -235,6 +248,65 @@ class CandidateTests(unittest.TestCase):
                 self.prior_upload(conclusion)
                 with self.assertRaises(ReleaseError):
                     self.verify()
+
+    def test_same_identity_uploaded_from_another_sha_blocks_current_candidate(self):
+        self.prior_upload("success")
+        self.api.old_runs[0]["head_sha"] = "c" * 40
+        with self.assertRaises(ReleaseError):
+            self.verify()
+
+    def test_uncertain_upload_from_another_sha_blocks_current_candidate(self):
+        self.prior_upload("cancelled")
+        self.api.old_runs[0]["head_sha"] = "c" * 40
+        with self.assertRaises(ReleaseError):
+            self.verify()
+
+    def test_other_build_or_app_does_not_block_this_identity(self):
+        for ios in [
+            {"buildNumber": "39", "bundleIdentifier": "com.jvictormaynard.clarify"},
+            {"buildNumber": "40", "bundleIdentifier": "com.example.other"},
+        ]:
+            with self.subTest(ios=ios):
+                self.api = CandidateAPI()
+                self.prior_upload("cancelled")
+                self.api.old_runs[0]["head_sha"] = "c" * 40
+                self.api.source_apps["c" * 40] = {"version": "0.12.0", "ios": ios}
+                self.assertEqual(self.verify(), "publish")
+
+    def test_old_push_upload_of_same_identity_also_blocks_new_source(self):
+        self.prior_upload("success")
+        self.api.old_runs[0].update(head_sha="c" * 40, event="push")
+        with self.assertRaises(ReleaseError):
+            self.verify()
+
+    def test_active_same_identity_from_other_sha_blocks_publication(self):
+        self.prior_upload("skipped")
+        self.api.old_runs[0].update(head_sha="c" * 40, status="in_progress")
+        with self.assertRaises(ReleaseError):
+            self.verify()
+
+    def test_skipped_other_sha_upload_allows_new_candidate(self):
+        self.prior_upload("skipped")
+        self.api.old_runs[0]["head_sha"] = "c" * 40
+        self.assertEqual(self.verify(), "publish")
+
+    def test_latest_skipped_attempt_does_not_hide_earlier_foreign_sha_upload(self):
+        self.prior_upload("success")
+        self.api.old_runs[0].update(head_sha="c" * 40, run_attempt=2)
+        self.api.upload_jobs["/actions/runs/29/attempts/2/jobs"] = [
+            {
+                "name": "Test, sign and upload iOS",
+                "status": "completed",
+                "steps": [
+                    {
+                        "name": "Upload directly to App Store Connect",
+                        "conclusion": "skipped",
+                    }
+                ],
+            }
+        ]
+        with self.assertRaises(ReleaseError):
+            self.verify()
 
     def test_known_skipped_upload_can_be_retried(self):
         self.prior_upload("skipped")
