@@ -114,6 +114,9 @@ class QmlWorkflowBridge(QObject):
         "provider_invalid_request": "The service rejected the request. Check the model settings.",
         "provider_invalid_response": "The service returned an invalid response. Try again.",
         "provider_cancelled": "Operation cancelled.",
+        "provider_chatgpt_plan_limit": "Your ChatGPT plan or app limit was reached. Manage usage in ChatGPT settings.",
+        "provider_chatgpt_plan_ineligible": "This ChatGPT account or workspace cannot use its plan here.",
+        "provider_chatgpt_plan_permission": "Allow this app to use your ChatGPT plan, then connect again.",
     }
     _ERROR_MESSAGES_PT = {
         "error": "Não foi possível concluir a operação. Tente novamente.",
@@ -133,6 +136,9 @@ class QmlWorkflowBridge(QObject):
         "provider_invalid_request": "O serviço recusou a solicitação. Verifique a configuração do modelo.",
         "provider_invalid_response": "O serviço retornou uma resposta inválida. Tente novamente.",
         "provider_cancelled": "Operação cancelada.",
+        "provider_chatgpt_plan_limit": "O limite do plano ChatGPT ou do aplicativo foi atingido. Gerencie o uso nas configurações do ChatGPT.",
+        "provider_chatgpt_plan_ineligible": "Esta conta ou workspace do ChatGPT não pode usar o plano aqui.",
+        "provider_chatgpt_plan_permission": "Autorize o aplicativo a usar seu plano ChatGPT e conecte novamente.",
     }
     _ERROR_PHASES = frozenset(
         {

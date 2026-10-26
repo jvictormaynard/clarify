@@ -319,6 +319,25 @@ class WorkflowServiceTests(unittest.TestCase):
         self.assertFalse(self.service.state.can_retry)
         self.assertEqual(self.statistics.rewrites, [])
 
+    def test_chatgpt_plan_limit_is_actionable_without_retry_or_publication(self):
+        from provider_http import ChatGPTUsageLimitError
+
+        attempts = []
+
+        def fail():
+            attempts.append(True)
+            raise ChatGPTUsageLimitError(
+                provider="chatgpt", operation="text_generation"
+            )
+
+        self.provider.on_rewrite = fail
+        self.service.dispatch(StartRewrite())
+        self.assertEqual(self.service.state.phase, WorkflowPhase.FAILED)
+        self.assertEqual(self.service.state.status_key, "provider_chatgpt_plan_limit")
+        self.assertFalse(self.service.state.can_retry)
+        self.assertEqual(attempts, [True])
+        self.assertEqual(self.statistics.rewrites, [])
+
     def test_network_failure_retries_same_audio_only_after_explicit_command(self):
         requests = []
 

@@ -255,7 +255,7 @@ class ProviderRegistryContractTests(unittest.TestCase):
         registry = build_provider_registry(http)
 
         self.assertEqual(
-            registry.provider_ids, ("gemini", "openai", "groq", "local_asr")
+            registry.provider_ids, ("gemini", "openai", "groq", "local_asr", "chatgpt")
         )
         self.assertEqual(registry.describe("openai").display_name, "OpenAI")
         self.assertEqual(registry.describe("groq").audio_model_key, "groq_audio_model")

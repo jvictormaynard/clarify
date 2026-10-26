@@ -146,6 +146,57 @@ class NetworkError(ProviderError):
     code = "network"
 
 
+class ChatGPTUsageLimitError(QuotaError):
+    code = "chatgpt_plan_limit"
+
+
+class ChatGPTIneligibleError(AuthenticationError):
+    code = "chatgpt_plan_ineligible"
+
+
+class ChatGPTPermissionError(AuthenticationError):
+    code = "chatgpt_plan_permission"
+
+
+def chatgpt_response_error(
+    code: str,
+    *,
+    operation: str,
+    status_code: int | None = None,
+    operation_id: str | None = None,
+    request_id: str | None = None,
+) -> ProviderError:
+    """Classify subscription errors without copying provider content to UI/logs."""
+    if not isinstance(code, str) or not re.fullmatch(r"[a-z0-9_]{1,128}", code):
+        code = ""
+    error_type = {
+        "subscription_sharing_usage_limit_exceeded": ChatGPTUsageLimitError,
+        "subscription_sharing_user_not_eligible": ChatGPTIneligibleError,
+        "chatpass_v2_scope_not_authorized": ChatGPTPermissionError,
+        "chatpass_v2_invalid_authorization_context": ChatGPTPermissionError,
+        "subscription_sharing_usage_unavailable": ServiceUnavailableError,
+        "subscription_sharing_user_unavailable": ServiceUnavailableError,
+        "subscription_sharing_unsupported_capability": InvalidRequestError,
+        "subscription_sharing_route_not_supported": InvalidRequestError,
+        "subscription_sharing_invalid_user": AuthenticationError,
+    }.get(code, InvalidResponseError)
+    error = error_type(
+        provider="chatgpt",
+        operation=operation,
+        status_code=status_code,
+        operation_id=operation_id,
+    )
+    # Keep only bounded machine identifiers. Never retain arbitrary messages.
+    error.response_code = code
+    error.request_id = (
+        request_id
+        if isinstance(request_id, str)
+        and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", request_id)
+        else None
+    )
+    return error
+
+
 _MESSAGES = {
     "en": {
         "authentication": "Check the API key and provider permissions.",
@@ -213,6 +264,46 @@ _MESSAGES = {
         "provider_error": "Запрос к провайдеру завершился ошибкой.",
     },
 }
+
+
+_CHATGPT_MESSAGES = {
+    "en": (
+        "Your ChatGPT plan or app limit was reached. Manage usage in ChatGPT settings.",
+        "This ChatGPT account or workspace cannot use its plan here.",
+        "Allow this app to use your ChatGPT plan, then connect again.",
+    ),
+    "pt": (
+        "O limite do plano ChatGPT ou do aplicativo foi atingido. Gerencie o uso nas configurações do ChatGPT.",
+        "Esta conta ou workspace do ChatGPT não pode usar o plano aqui.",
+        "Autorize o aplicativo a usar seu plano ChatGPT e conecte novamente.",
+    ),
+    "es": (
+        "Se alcanzó el límite del plan ChatGPT o de la aplicación. Gestiona el uso en ChatGPT.",
+        "Esta cuenta o espacio de trabajo de ChatGPT no puede usar el plan aquí.",
+        "Autoriza el uso de tu plan ChatGPT y vuelve a conectar.",
+    ),
+    "de": (
+        "Das ChatGPT- oder App-Limit wurde erreicht. Verwalten Sie die Nutzung in ChatGPT.",
+        "Dieses ChatGPT-Konto oder dieser Arbeitsbereich kann den Plan hier nicht nutzen.",
+        "Erlauben Sie dieser App die Nutzung Ihres ChatGPT-Plans und verbinden Sie sich erneut.",
+    ),
+    "ru": (
+        "Достигнут лимит плана ChatGPT или приложения. Управляйте использованием в настройках ChatGPT.",
+        "Этот аккаунт или рабочее пространство ChatGPT не может использовать план здесь.",
+        "Разрешите приложению использовать план ChatGPT и подключитесь снова.",
+    ),
+}
+for _language, _messages in _CHATGPT_MESSAGES.items():
+    _MESSAGES[_language].update(
+        zip(
+            (
+                "chatgpt_plan_limit",
+                "chatgpt_plan_ineligible",
+                "chatgpt_plan_permission",
+            ),
+            _messages,
+        )
+    )
 
 
 def localized_error_message(error: ProviderError, language: str = "en") -> str:
@@ -398,6 +489,17 @@ def _http_error(
 ) -> ProviderError:
     status = int(response.status_code)
     error_code = _response_error_code(response)
+    if provider == "chatgpt" and error_code.startswith(
+        ("subscription_sharing_", "chatpass_v2_")
+    ):
+        headers = getattr(response, "headers", {}) or {}
+        return chatgpt_response_error(
+            error_code,
+            operation=operation,
+            status_code=status,
+            operation_id=operation_id,
+            request_id=headers.get("x-request-id") or headers.get("openai-request-id"),
+        )
     error_status = _response_error_status(response)
     try:
         classification_text = str(getattr(response, "text", ""))[:2000].casefold()
