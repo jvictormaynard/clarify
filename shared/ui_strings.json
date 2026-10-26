@@ -35,6 +35,68 @@
   "Exemplo possível: ‘O prazo, o prazo termina amanhã.’ vira ‘O prazo termina amanhã.’": {"pt": "Exemplo possível: ‘O prazo, o prazo termina amanhã.’ vira ‘O prazo termina amanhã.’", "en": "Possible example: ‘The deadline, the deadline is tomorrow.’ becomes ‘The deadline is tomorrow.’", "es": "Ejemplo posible: ‘El plazo, el plazo termina mañana.’ pasa a ‘El plazo termina mañana.’"},
   "Revisão indisponível nesta rota. As palavras serão preservadas. Ative a revisão nas opções de Texto para aplicar clareza.": {"pt": "Revisão indisponível nesta rota. As palavras serão preservadas. Ative a revisão nas opções de Texto para aplicar clareza.", "en": "Editing is unavailable on this route. Words will be preserved. Enable editing in Text settings to improve clarity.", "es": "La revisión no está disponible en esta ruta. Se conservarán las palabras. Activa la revisión en las opciones de Texto para mejorar la claridad."},
   "Snippets isolados inserem o texto salvo exatamente. Outros snippets são expandidos uma vez antes da revisão.": {"pt": "Snippets isolados inserem o texto salvo exatamente. Outros snippets são expandidos uma vez antes da revisão.", "en": "Standalone snippets insert the exact saved text. Other snippets expand once before editing.", "es": "Los snippets aislados insertan el texto guardado exacto. Los demás se expanden una vez antes de la revisión."},
+  "practice_title": {
+    "pt": "Pratique seu primeiro ditado",
+    "en": "Practice your first dictation",
+    "es": "Practica tu primer dictado"
+  },
+  "practice_waiting": {
+    "pt": "Aguardando o fim da tentativa anterior…",
+    "en": "Waiting for the previous attempt to finish…",
+    "es": "Esperando a que termine el intento anterior…"
+  },
+  "practice_optional": {
+    "pt": "A prática é opcional. Comece quando estiver pronto.",
+    "en": "Practice is optional. Start when you are ready.",
+    "es": "La práctica es opcional. Empieza cuando estés listo."
+  },
+  "practice_repeat_hint": {
+    "pt": "Confira o microfone, use seu atalho e veja o texto aqui. Suas configurações são mantidas.",
+    "en": "Check the microphone, use your shortcut and see the text here. Your settings are kept.",
+    "es": "Comprueba el micrófono, usa tu atajo y ve el texto aquí. Se conservan tus ajustes."
+  },
+  "practice_open": { "pt": "Praticar ditado", "en": "Practice dictation", "es": "Practicar dictado" },
+  "practice_destination": {
+    "pt": "O texto aparece nesta tela, sem cópia ou inserção automática. A prática usa sua configuração atual. O processamento da conta pode consumir cota e salvar o ditado no histórico da conta.",
+    "en": "The text appears on this screen, with no automatic copy or insertion. Practice uses your current settings. Account processing can use quota and save dictation in account history.",
+    "es": "El texto aparece en esta pantalla, sin copia ni inserción automática. La práctica usa tus ajustes actuales. El procesamiento de la cuenta puede consumir cuota y guardar el dictado en el historial de la cuenta."
+  },
+  "practice_level": { "pt": "Nível do microfone", "en": "Microphone level", "es": "Nivel del micrófono" },
+  "practice_hold": {
+    "pt": "Segure {shortcut} para ditar. Solte para conferir o texto. Você também pode usar o botão abaixo.",
+    "en": "Hold {shortcut} to dictate. Release it to check the text. You can also use the button below.",
+    "es": "Mantén {shortcut} para dictar. Suéltalo para comprobar el texto. También puedes usar el botón de abajo."
+  },
+  "practice_toggle": {
+    "pt": "Use {shortcut} para começar e novamente para parar. Você também pode usar o botão abaixo.",
+    "en": "Use {shortcut} to start and again to stop. You can also use the button below.",
+    "es": "Usa {shortcut} para empezar y de nuevo para parar. También puedes usar el botón de abajo."
+  },
+  "practice_button_hint": { "pt": "Use o botão abaixo para começar e parar.", "en": "Use the button below to start and stop.", "es": "Usa el botón de abajo para empezar y parar." },
+  "practice_phrase": {
+    "pt": "Diga, por exemplo: Hoje vou escrever uma mensagem com o Clarify.",
+    "en": "For example, say: Today I will write a message with Clarify.",
+    "es": "Di, por ejemplo: Hoy voy a escribir un mensaje con Clarify."
+  },
+  "practice_busy": { "pt": "Aguarde a operação atual ou pare o teste de microfone para ditar.", "en": "Wait for the current operation or stop the microphone test before dictating.", "es": "Espera a que termine la operación actual o detén la prueba del micrófono antes de dictar." },
+  "practice_configuration": { "pt": "Conclua e salve a configuração de transcrição antes de ditar.", "en": "Complete and save transcription settings before dictating.", "es": "Completa y guarda los ajustes de transcripción antes de dictar." },
+  "practice_model": { "pt": "O modelo local ainda não está pronto. Conclua o download e a configuração em Modelos e serviços.", "en": "The local model is not ready. Complete the download and setup in Models and services.", "es": "El modelo local aún no está listo. Completa la descarga y la configuración en Modelos y servicios." },
+  "practice_session": { "pt": "Confira sua conta e entre novamente antes de repetir a prática.", "en": "Check your account and sign in again before repeating practice.", "es": "Comprueba tu cuenta e inicia sesión de nuevo antes de repetir la práctica." },
+  "practice_quota": { "pt": "Não há cota disponível. Confira o saldo e a próxima renovação na sua conta.", "en": "No quota is available. Check your balance and next reset in your account.", "es": "No hay cuota disponible. Consulta tu saldo y la próxima renovación en tu cuenta." },
+  "practice_microphone": { "pt": "Não foi possível usar o microfone. Confira a conexão e a permissão de microfone no Windows.", "en": "The microphone could not be used. Check its connection and microphone permission in Windows.", "es": "No se pudo usar el micrófono. Comprueba su conexión y el permiso del micrófono en Windows." },
+  "practice_no_audio": { "pt": "Nenhuma fala foi capturada. Confira o microfone e grave uma nova frase.", "en": "No speech was captured. Check the microphone and record a new sentence.", "es": "No se capturó voz. Comprueba el micrófono y graba una nueva frase." },
+  "practice_review_failed": { "pt": "A revisão falhou. A transcrição está disponível abaixo.", "en": "Review failed. The transcript is available below.", "es": "La revisión falló. La transcripción está disponible abajo." },
+  "practice_failed": { "pt": "Não foi possível concluir o ditado. Confira sua configuração e conexão antes de gravar novamente.", "en": "Dictation could not be completed. Check your settings and connection before recording again.", "es": "No se pudo completar el dictado. Comprueba tus ajustes y conexión antes de grabar de nuevo." },
+  "practice_recording": { "pt": "Gravando. Diga uma frase e pare a gravação.", "en": "Recording. Say a sentence, then stop recording.", "es": "Grabando. Di una frase y detén la grabación." },
+  "practice_processing": { "pt": "Processando o ditado…", "en": "Processing dictation…", "es": "Procesando el dictado…" },
+  "practice_result": { "pt": "Texto do seu ditado", "en": "Your dictation text", "es": "Texto de tu dictado" },
+  "practice_result_hint": { "pt": "Confira se o texto corresponde ao que você disse. Você pode gravar outra frase ou concluir a prática.", "en": "Check that the text matches what you said. You can record another sentence or finish practice.", "es": "Comprueba que el texto corresponde a lo que dijiste. Puedes grabar otra frase o terminar la práctica." },
+  "practice_start": { "pt": "Começar ditado", "en": "Start dictation", "es": "Empezar dictado" },
+  "practice_stop": { "pt": "Parar e conferir texto", "en": "Stop and check text", "es": "Parar y comprobar texto" },
+  "practice_again": { "pt": "Ditar outra frase", "en": "Dictate another sentence", "es": "Dictar otra frase" },
+  "practice_configure": { "pt": "Conferir configuração", "en": "Check settings", "es": "Comprobar ajustes" },
+  "practice_done": { "pt": "Concluir prática", "en": "Finish practice", "es": "Terminar práctica" },
+  "practice_skip": { "pt": "Pular prática", "en": "Skip practice", "es": "Omitir práctica" },
   "email_subject": {
     "pt": "Seu código de acesso",
     "en": "Your access code",

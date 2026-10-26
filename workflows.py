@@ -23,11 +23,23 @@ from provider_types import (
     TranscriptionResult,
     TranslationResult,
 )
+from clarify_account import AccountError
 
 
 def _failure_status(error: Exception, fallback: str) -> str:
     """Expose only known error categories, never provider error messages."""
     code = getattr(error, "code", None)
+    if (
+        isinstance(error, AccountError)
+        and isinstance(code, str)
+        and code
+        in {
+            "allowance_exhausted",
+            "allocation_waiting",
+            "authentication_required",
+        }
+    ):
+        return f"account_{code}"
     if isinstance(error, ProviderError) and code in {
         "authentication",
         "quota",
@@ -432,6 +444,29 @@ class WorkflowService:
             ):
                 return False
             if not session.publication_finished or session.cancel_capture_pending:
+                session.finish_requested = True
+                return True
+            session.retry_audio = None
+            self._session = None
+            self._state = WorkflowState()
+        self._scheduler.call_soon(lambda: self._deliver_ready())
+        return True
+
+    def discard_completed(self, operation_id: int) -> bool:
+        """Discard unaccepted output without cancelling a completed recorder.
+
+        Publication uses the same lock. Once accepted, it retains ownership
+        until output and once-only accounting finish; an earlier discard
+        invalidates its queued callbacks and performs neither effect.
+        """
+        with self._lock:
+            if (
+                not self._is_current_locked(operation_id)
+                or self._state.phase is not WorkflowPhase.COMPLETED
+            ):
+                return False
+            session = self._session
+            if session.publication_claimed and not session.publication_finished:
                 session.finish_requested = True
                 return True
             session.retry_audio = None

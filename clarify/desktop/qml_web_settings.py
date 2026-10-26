@@ -19,6 +19,7 @@ MAX_SETTINGS_MESSAGE_BYTES = 64 * 1024 * 1024
 PROPERTIES = (
     "uiLanguage",
     "onboardingRequired",
+    "practiceState",
     "accountState",
     "historyState",
     "dirty",
@@ -96,6 +97,7 @@ PROPERTIES = (
 METHODS = frozenset(
     (
         "completeOnboarding",
+        "practiceCommand",
         "beginHotkeyCapture",
         "cancelHotkeyCapture",
         "accountCommand",
@@ -235,6 +237,12 @@ class SettingsProtocol:
                     raise ValueError()
                 result = self.settings.copyHistoryText(*args)
             elif method in METHODS:
+                if method == "practiceCommand" and (
+                    len(args) != 1
+                    or type(args[0]) is not str
+                    or args[0] not in {"open", "close", "start", "stop", "cancel"}
+                ):
+                    raise ValueError()
                 if method in {"setDictionaryEntries", "setSnippets"} and (
                     len(args)
                     not in ({1, 2, 3} if method == "setDictionaryEntries" else {2, 3})
@@ -355,6 +363,7 @@ class WebSettingsProcess(QObject):
         return True
 
     def hide(self):
+        self.settings.practiceCommand("close")
         if self._visible:
             self._visible = False
             self.settings.stopMicrophoneTest()
@@ -382,6 +391,7 @@ class WebSettingsProcess(QObject):
             self.process.write((json.dumps(reply, ensure_ascii=False) + "\n").encode())
 
     def _failed(self, error):
+        self.settings.practiceCommand("close")
         self.startup_timer.stop()
         self.failed = True
         if self.process.state() != QProcess.ProcessState.NotRunning:
@@ -390,6 +400,7 @@ class WebSettingsProcess(QObject):
             self.fallback()
 
     def _finished(self, code, status):
+        self.settings.practiceCommand("close")
         self.startup_timer.stop()
         self._visible = False
         self.settings.stopMicrophoneTest()
@@ -404,6 +415,7 @@ class WebSettingsProcess(QObject):
             self.bridge.closeSettings()
 
     def shutdown(self):
+        self.settings.practiceCommand("close")
         self._shutting_down = True
         self.startup_timer.stop()
         if self.process.state() != QProcess.ProcessState.NotRunning:

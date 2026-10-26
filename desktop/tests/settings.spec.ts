@@ -502,7 +502,8 @@ test.beforeEach(async ({ page }, testInfo) => {
     });
   };
   const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.includes("social cancellation") ? ["--social-wait"] : []), ...(testInfo.title.includes("sync-import") ? ["--library-sync"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("review tools") ? ["--history-review"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : []), ...["legacy", "malformed", "waiting", "unfunded", "inactive", "paused", "exhausted"].filter(mode => testInfo.title.includes(`quota ${mode}`)).map(mode => `--usage-${mode}`)], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
+  const practiceArgs = testInfo.title.includes("practice account error") ? ["--practice-account-error"] : testInfo.title.includes("practice BYOK auth error") ? ["--practice-auth-error"] : testInfo.title.includes("practice BYOK quota") ? ["--practice-provider-quota"] : [];
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...practiceArgs, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.includes("social cancellation") ? ["--social-wait"] : []), ...(testInfo.title.includes("sync-import") ? ["--library-sync"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("review tools") ? ["--history-review"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : []), ...["legacy", "malformed", "waiting", "unfunded", "inactive", "paused", "exhausted"].filter(mode => testInfo.title.includes(`quota ${mode}`)).map(mode => `--usage-${mode}`)], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);
@@ -792,10 +793,101 @@ test("onboarding: first run shows email and a local link before Settings", async
   await expect(page.getByRole("alert")).toContainText("chave válida");
   await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
   await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Configurações" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
+});
+
+test("onboarding: practice is explicit, keeps its result here and can be repeated", async ({ page }) => {
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
+  await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
+  await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
+  await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await expect(page.getByText(/Use Alt\+L para começar/)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Testar microfone", exact: true }).click();
+  await expect(page.getByRole("meter", { name: "Nível do microfone" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Parar teste", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toBeEnabled();
+  await page.screenshot({ path: "test-results/practice-ready.png" });
+  await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
+  await expect(page.getByText("Gravando. Diga uma frase e pare a gravação.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveValue("Hoje vou escrever com o Clarify.");
+  await page.screenshot({ path: "test-results/practice-result.png" });
+  await page.setViewportSize({ width: 640, height: 520 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.getByRole("button", { name: "Concluir prática", exact: true }).click();
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
+});
+
+test("quota: quota exhausted practice shows the next account action before capture", async ({ page }) => {
+  await releaseUsage();
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  await expect(page.getByText("Não há cota disponível. Confira o saldo e a próxima renovação na sua conta.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Conta Clarify", exact: true })).toBeVisible();
+});
+
+test("practice preserves drafts and permits the window close confirmation", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Keep this draft through practice.");
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Fechar configurações", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Alterações não salvas", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Continuar editando", exact: true }).click();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep this draft through practice.");
+});
+
+test("onboarding: practice BYOK auth error links to personal configuration", async ({ page }) => {
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
+  await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
+  await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
+  await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+  await expect(page.getByText("Conclua e salve a configuração de transcrição antes de ditar.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
+});
+
+test("onboarding: practice BYOK quota points to the provider balance or plan", async ({ page }) => {
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
+  await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
+  await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
+  await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+  await expect(page.getByText("Limite do provedor atingido. Verifique seu saldo ou plano.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
+});
+
+test("quota: practice account error shows the quota action after processing", async ({ page }) => {
+  await releaseUsage();
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+  await expect(page.getByText("Não há cota disponível. Confira o saldo e a próxima renovação na sua conta.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Conta Clarify", exact: true })).toBeVisible();
 });
 
 test("onboarding: email confirmation activates account processing immediately", async ({ page }) => {
@@ -813,6 +905,8 @@ test("onboarding: email confirmation activates account processing immediately", 
   await expect(page.getByRole("navigation")).toBeHidden();
   await expect(page.getByRole("button", { name: "Ativar processamento do Clarify" })).toHaveCount(0);
   await page.getByRole("button", { name: "Começar", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await expect(page.getByRole("navigation")).toBeVisible();
   await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: "Texto", exact: true })).toBeHidden();
@@ -857,6 +951,7 @@ for (const provider of ["Google", "Microsoft", "GitHub"]) {
     await expect(page.getByRole("heading", { name: "Sua conta está pronta" })).toBeVisible();
     await expect(page.getByText(`${provider.toLowerCase()}@example.test`, { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Começar", exact: true }).click();
+    await page.getByRole("button", { name: "Pular prática", exact: true }).click();
     await expect(page.getByRole("navigation")).toBeVisible();
   });
 }
@@ -875,6 +970,7 @@ test("onboarding: social cancellation stays enabled while the browser login is p
 test("onboarding: account social cancellation restores provider actions after local setup", async ({ page }) => {
   await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
   await page.getByText("Servidor próprio", { exact: true }).click();
   const server = page.getByRole("textbox", { name: "Endereço do servidor", exact: true });
@@ -1028,6 +1124,8 @@ test("cancelled shortcut capture rejects retained keyboard and mouse events", as
 test("onboarding: local choice leads to model setup without a login", async ({ page }) => {
   await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Modelo local", exact: true })).toBeVisible();
 });

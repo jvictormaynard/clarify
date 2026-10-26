@@ -1275,6 +1275,14 @@ class QtRecordingAudioGateway:
         self._active: QtRecordingSession | None = None
         self._lock = threading.Lock()
 
+    @property
+    def busy(self) -> bool:
+        """Keep capture reserved until its recording and provider workers exit."""
+        with self._lock:
+            return (
+                self._active is not None and not self._active.shutdown_complete.is_set()
+            )
+
     def microphone_available(self) -> bool | None:
         return bool(self.recorder.sox)
 
@@ -1743,6 +1751,7 @@ class QtWorkflowRuntime:
         audio_batch_service: AudioFileBatchService | None = None,
         dictionary_service: DictionarySnippetService | None = None,
         account=None,
+        practice_workflow=None,
     ) -> None:
         self.workflow_service = workflow_service
         self.recording_audio = recording_audio
@@ -1754,6 +1763,7 @@ class QtWorkflowRuntime:
         self.audio_batch_service = audio_batch_service
         self.dictionary_service = dictionary_service
         self.account = account
+        self.practice_workflow = practice_workflow
         self._shutdown = False
         self._history_timer = None
         if (
@@ -1858,6 +1868,8 @@ class QtWorkflowRuntime:
         self.scheduler.wait_for_dispatches(max(0.0, deadline - time.monotonic()))
         self.workflow_service.cancel_active()
         self.provider_registry.cancel()
+        if self.practice_workflow is not None:
+            self.practice_workflow.cancel_active()
         self.scheduler.wait_for_dispatches(max(0.0, deadline - time.monotonic()))
         self.workflow_service.cancel_active()
         self.recording_audio.wait_for_shutdown(max(0.0, deadline - time.monotonic()))
@@ -1908,6 +1920,18 @@ def create_real_workflow_runtime(
         operation_started=history_recorder.capture_operation,
     )
     service.subscribe(history_recorder.on_state)
+    try:
+        from .dictation_practice import PracticeDestination
+    except ImportError:
+        from dictation_practice import PracticeDestination
+    practice_workflow = WorkflowService(
+        provider,
+        recording_audio,
+        PracticeDestination(),
+        config,
+        QtStatisticsGateway(active),
+        scheduler,
+    )
     return QtWorkflowRuntime(
         service,
         recording_audio,
@@ -1918,6 +1942,7 @@ def create_real_workflow_runtime(
         audio_batch_service=audio_batch_service,
         dictionary_service=dictionary_service,
         account=account,
+        practice_workflow=practice_workflow,
     )
 
 
