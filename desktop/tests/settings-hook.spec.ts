@@ -217,6 +217,12 @@ test('clean close waits for a preference accepted behind a poll', async () => {
  gate.release();await Promise.all([poll,writing]);await flush();assert.equal(h.persisted.language,'pt');assert.equal(h.nativeCloses,1);
 });
 
+for (const action of ['confirm','undo']) test(`clean close waits for history correction ${action} accepted behind a poll`, async () => {
+ const h=setup();let c=h.render();const gate=h.pause('poll');const poll=h.poll();await gate.started;
+ const writing=c.runHistoryCorrection(action,{token:'isolated-token'});assert.equal(h.close(),true);c=h.render();await flush();assert.equal(h.nativeCloses,0);
+ gate.release();await Promise.all([poll,writing]);await flush();assert.equal(h.records.filter(x=>x.method==='historyCorrection').length,1);assert.equal(h.nativeCloses,1);
+});
+
 test('failed accepted preference keeps close open until acknowledged', async () => {
  const h=setup();let c=h.render();const gate=h.pause('savePreference');h.fail('savePreference',new Error('write failed'));const writing=c.run('setLanguage','pt');await gate.started;
  c.setClosing(true);c=h.render();await flush();assert.equal(h.nativeCloses,0);gate.release();await writing;await flush();c=h.render();

@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { t } from "../i18n";
 import { Button, Field } from "./ui";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogPopup, DialogTitle } from "./primitives/dialog";
-import { historyCorrection, type HistoryCorrectionReply, type HistoryEntry, type HistoryScope } from "../settings/bridge";
+import { type HistoryCorrectionReply, type HistoryEntry, type HistoryScope } from "../settings/bridge";
 import type { SettingsPageProps } from "../settings/use-settings";
 
 export function HistoryCorrectionAction({ entry, scope, controller }: {
   entry: HistoryEntry; scope: HistoryScope; controller: SettingsPageProps["controller"];
 }) {
   const { state } = controller;
+  const historyCorrection = controller.runHistoryCorrection;
   const [open, setOpen] = useState(false);
   const [heard, setHeard] = useState("");
   const [corrected, setCorrected] = useState("");

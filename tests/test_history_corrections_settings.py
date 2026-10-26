@@ -190,6 +190,37 @@ class HistoryCorrectionSettingsTests(unittest.TestCase):
             ["Clarify"],
         )
 
+    def test_new_session_gets_its_own_window_while_old_timer_is_active(self):
+        self.signed_in()
+        self.call("confirm", {"token": self.preview()["token"]})
+        old_identity = self.settings._history_correction_sync_context
+        self.account._generation += 2
+        self.call("confirm", {"token": self.preview("Second Term")["token"]})
+        self.assertEqual(self.timer.starts, [5000, 5000])
+        self.assertNotEqual(
+            self.settings._history_correction_sync_context, old_identity
+        )
+        with patch.object(self.settings, "_sync_library_preferences") as sync:
+            self.settings._finish_history_correction_window()
+            sync.assert_called_once_with()
+
+    def test_combined_draft_limit_is_checked_before_persistence(self):
+        self.dictionary.replace(
+            {"dictionary": [{"term": str(i)} for i in range(511)], "snippets": []}
+        )
+        self.settings._dictionary_draft = self.dictionary.state
+        self.settings._dictionary_baseline = self.dictionary.state
+        self.settings.setDictionaryEntries(
+            [*self.settings.dictionaryEntries, DictionaryEntry("unsaved").to_mapping()]
+        )
+        proposal = self.preview()
+        before = self.dictionary.repository.path.read_bytes()
+        result = self.call("confirm", {"token": proposal["token"]})
+        self.assertIn("alterações pendentes", result["error"])
+        self.assertEqual(self.dictionary.repository.path.read_bytes(), before)
+        self.assertEqual(len(self.settings.dictionaryEntries), 512)
+        self.assertFalse(self.timer.active)
+
     def test_shutdown_preserves_scoped_pending_addition_and_stops_window(self):
         self.signed_in()
         self.call("confirm", {"token": self.preview()["token"]})

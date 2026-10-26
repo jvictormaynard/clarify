@@ -144,6 +144,14 @@ class HistoryCorrectionTests(unittest.TestCase):
         proposal = self.preview("clarify", "Clarify")
         self.assertEqual(proposal.entry.aliases, ())
 
+    def test_edge_spaces_are_normalized_before_preview_and_existing_term_check(self):
+        proposal = self.preview("  clear if eye  ", "  Clarify  ")
+        self.assertEqual(proposal.heard, "clear if eye")
+        self.assertEqual(proposal.entry.term, "Clarify")
+        self.service.confirm(proposal.token)
+        self.assertTrue(self.preview(corrected=" Clarify ").already_exists)
+        self.assertEqual(len(self.repository.load().dictionary), 1)
+
     def test_invalid_missing_or_unchanged_terms_do_not_write(self):
         before = self.repository.path.read_bytes()
         for heard, corrected, code in (

@@ -5843,5 +5843,10 @@
     "pt": "Revisar correção",
     "en": "Review correction",
     "es": "Revisar corrección"
+  },
+  "Salve ou descarte as alterações pendentes do dicionário antes desta correção.": {
+    "pt": "Salve ou descarte as alterações pendentes do dicionário antes desta correção.",
+    "en": "Save or discard the pending dictionary changes before this correction.",
+    "es": "Guarda o descarta los cambios pendientes del diccionario antes de esta corrección."
   }
 }

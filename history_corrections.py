@@ -195,12 +195,15 @@ class HistoryDictionaryCorrectionService:
 
     def preview(self, source, context, heard, corrected):
         try:
-            alias = DictionaryEntry(heard).term
+            if not isinstance(heard, str) or not isinstance(corrected, str):
+                raise ValueError()
+            if any(char in value for value in (heard, corrected) for char in "\r\n"):
+                raise ValueError()
+            alias = DictionaryEntry(heard.strip()).term
+            correct = DictionaryEntry(corrected.strip()).term
             entry = DictionaryEntry(
-                corrected,
-                aliases=()
-                if alias.casefold() == str(corrected).casefold()
-                else (alias,),
+                correct,
+                aliases=() if alias.casefold() == correct.casefold() else (alias,),
             )
         except (ValueError, TypeError):
             raise CorrectionError("invalid_term") from None
@@ -230,7 +233,7 @@ class HistoryDictionaryCorrectionService:
             token = self._remember(self._proposals, proposal)
             return replace(preview, token=token)
 
-    def confirm(self, token):
+    def confirm(self, token, *, validate=None):
         with self._guard(), self._lock:
             proposal = self._get(self._proposals, token)
             self._proposals.pop(token)
@@ -249,12 +252,14 @@ class HistoryDictionaryCorrectionService:
                     != revision
                 ):
                     raise CorrectionError("library_changed")
+                candidate = replace(
+                    current, dictionary=(*current.dictionary, proposal.preview.entry)
+                )
+                if validate is not None:
+                    validate(candidate)
                 try:
                     _, published = self.dictionary.replace_with_revision(
-                        replace(
-                            current,
-                            dictionary=(*current.dictionary, proposal.preview.entry),
-                        ),
+                        candidate,
                         expected_context=proposal.identity.context,
                     )
                 except Exception:
@@ -286,7 +291,7 @@ class HistoryDictionaryCorrectionService:
                 self._receipts.pop(token, None)
             return False
 
-    def undo(self, token):
+    def undo(self, token, *, validate=None):
         with self._guard(), self._lock:
             if not self.can_undo(token):
                 return CorrectionResult("undo_unavailable")
@@ -305,9 +310,12 @@ class HistoryDictionaryCorrectionService:
                 if len(entries) != len(current.dictionary) - 1:
                     self._receipts.pop(token)
                     return CorrectionResult("undo_unavailable")
+                candidate = replace(current, dictionary=entries)
+                if validate is not None:
+                    validate(candidate)
                 try:
                     self.dictionary.replace(
-                        replace(current, dictionary=entries),
+                        candidate,
                         expected_context=receipt.identity.context,
                     )
                 except Exception:

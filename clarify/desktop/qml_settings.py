@@ -1085,9 +1085,14 @@ class QmlSettingsController(QObject):
         persisted = (
             persisted if persisted is not None else self._dictionary_service.state
         )
+        self._dictionary_draft = self._reconciled_library_draft(persisted)
+        self._dictionary_baseline = persisted
+
+    def _reconciled_library_draft(self, persisted):
+        """Validate a merged draft without changing it before persistence."""
         before = self._dictionary_baseline
         draft = self._dictionary_draft
-        reconciled = replace(
+        return replace(
             draft,
             dictionary=_merge_library_draft(
                 before.dictionary, draft.dictionary, persisted.dictionary, "term"
@@ -1096,8 +1101,6 @@ class QmlSettingsController(QObject):
                 before.snippets, draft.snippets, persisted.snippets, "trigger"
             ),
         )
-        self._dictionary_draft = reconciled
-        self._dictionary_baseline = persisted
 
     def _require_expected_library_entries(self, library, expected):
         """Compare the captured persisted rows under the staging owner guard."""
@@ -2515,6 +2518,7 @@ class QmlSettingsController(QObject):
             "source_too_large": "Este original excede o limite de leitura para correção.",
             "expired": "Esta correção expirou. Revise os termos novamente.",
             "persistence_failed": "Não foi possível salvar a correção. Tente novamente.",
+            "draft_conflict": "Salve ou descarte as alterações pendentes do dicionário antes desta correção.",
         }
         try:
             if type(action) is not str or type(payload) is not dict:
@@ -2561,7 +2565,16 @@ class QmlSettingsController(QObject):
                 raise CorrectionError("expired")
             with self._history_correction_guard:
                 self._require_library_context(self.snippetContext)
-                result = getattr(self._history_corrections, action)(token)
+
+                def validate(candidate):
+                    try:
+                        self._reconciled_library_draft(candidate)
+                    except ValueError:
+                        raise CorrectionError("draft_conflict") from None
+
+                result = getattr(self._history_corrections, action)(
+                    token, validate=validate
+                )
                 if result.status in {"saved", "saved_without_undo", "undone"}:
                     self._reconcile_library_draft(self._dictionary_service.state)
                     self.dirtyChanged.emit()
@@ -2572,10 +2585,13 @@ class QmlSettingsController(QObject):
                         self._sync_library_preferences()
                     elif self._account.scope:
                         # One bounded window. Polling never restarts it.
-                        if not self._history_correction_sync.isActive():
-                            self._history_correction_sync_context = (
-                                self._history_correction_identity()
-                            )
+                        identity = self._history_correction_identity()
+                        if (
+                            not self._history_correction_sync.isActive()
+                            or self._history_correction_sync_context != identity
+                        ):
+                            self._history_correction_sync.stop()
+                            self._history_correction_sync_context = identity
                             self._history_correction_sync.start(5000)
                 return {
                     "status": result.status,

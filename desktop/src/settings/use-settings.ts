@@ -4,7 +4,7 @@ import {
   type KeyboardEvent, type MouseEvent, type SetStateAction,
 } from "react";
 import {
-  call, pollSettings, preferenceMethods, settingsTransaction,
+  call, pollSettings, preferenceMethods, settingsTransaction, historyCorrection,
   type DictionaryEntry, type Snippet, type Settings, type SettingsArguments,
   type SettingsMethod, type SettingsCall, type PreferenceMethod,
 } from "./bridge";
@@ -262,7 +262,7 @@ export function useSettings() {
     text: routeDirty(scope), general: retentionDirty, models: providerDirty,
     dictionary: dictionaryDirty, snippets: snippetsDirty,
   } as Partial<Record<PageId, boolean>>)[page] === true;
-  const acceptedOperations = useRef(new Set<Promise<Settings | false>>());
+  const acceptedOperations = useRef(new Set<Promise<unknown>>());
   const failedOperation = useRef(false);
   const awaitAcceptedOperations = useCallback(async (isCurrent: () => boolean) => {
     // New writes can arrive while a previous batch drains. Keep inputs live and
@@ -273,6 +273,20 @@ export function useSettings() {
     return succeeded;
   }, []);
   const { closing, setClosing, closeWindow, closeRequest } = useSettingsWindow(dirtyRef, setError, awaitAcceptedOperations);
+  const runHistoryCorrection = useCallback((...args: Parameters<typeof historyCorrection>) => {
+    const result = historyCorrection(...args);
+    if (args[0] === "confirm" || args[0] === "undo") {
+      acceptedOperations.current.add(result);
+      void result.then(value => {
+        if (value?.error) failedOperation.current = true;
+        acceptedOperations.current.delete(result);
+      }, () => {
+        failedOperation.current = true;
+        acceptedOperations.current.delete(result);
+      });
+    }
+    return result;
+  }, []);
 
   // The bridge reserves the pipe for an entire operation, including accepting
   // its snapshot. Local navigation and input events never wait for that queue.
@@ -773,7 +787,7 @@ export function useSettings() {
     prompt, setPrompt, retention, setRetention, apiKey, setApiKey, endpoint, setEndpoint,
     recording, setRecording, routeOverride, setRouteOverride,
     closing, setClosing, discarding, setDiscarding, capture, setCapture,
-    confirmAction, setConfirmAction, setError, run, save, navigate,
+    confirmAction, setConfirmAction, setError, run, runHistoryCorrection, save, navigate,
     cancelDiscard, discardAndClose, saveAndClose, confirmMutation,
     captureHotkey, captureMouseHotkey, selectProvider, validateProvider,
     selectRouteProvider, setTextRouteEnabled, useLocalModel,
