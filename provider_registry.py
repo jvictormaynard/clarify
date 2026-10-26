@@ -62,6 +62,15 @@ class ProviderRegistry:
             raise ValueError(f"provider '{provider_id}' is already registered")
         self._adapters[provider_id] = adapter
 
+    def with_chatgpt_session(self, session) -> ProviderRegistry:
+        """Bind one profile's OAuth session; retain existing provider resources."""
+        registry = ProviderRegistry()
+        for provider_id, adapter in self._adapters.items():
+            registry.register(
+                adapter.with_session(session) if provider_id == "chatgpt" else adapter
+            )
+        return registry
+
     def register_openai_compatible(
         self,
         metadata: ProviderMetadata,

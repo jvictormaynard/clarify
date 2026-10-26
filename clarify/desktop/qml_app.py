@@ -562,6 +562,7 @@ def main(argv: list[str] | None = None) -> int:
             and not settings.localAsrBusy
             and not settings.localBenchmarkBusy
             and not settings.providerBusy
+            and not getattr(settings, "chatgptState", {}).get("busy", False)
             and not settings.dirty
             and not settings.providerDirty
             and not web_settings.blocks_update()

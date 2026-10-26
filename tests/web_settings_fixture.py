@@ -284,7 +284,6 @@ def main():
         fixtures = ExitStack()
         if "--chatgpt" in sys.argv:
             from test_chatgpt_settings import (
-                ChatGPTUIConfigRepository,
                 FakeChatGPTAdapter,
                 FakeChatGPTSession,
             )
@@ -309,9 +308,6 @@ def main():
                 )
             )
             fixtures.enter_context(patch("webbrowser.open", return_value=True))
-            repositories = replace(
-                repositories, config=ChatGPTUIConfigRepository(repositories.config)
-            )
         onboarding = "--onboarding" in sys.argv
         if not onboarding:
             repositories.config.apply(

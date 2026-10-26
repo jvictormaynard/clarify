@@ -5,7 +5,6 @@ import sys
 import threading
 import time
 import unittest
-from dataclasses import dataclass, field, fields, replace
 from types import SimpleNamespace
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
@@ -17,7 +16,6 @@ from clarify.desktop.qml_web_settings import SettingsProtocol
 from local_asr_product import LocalASRProductState
 from provider_registry import PROVIDER_REGISTRY
 from provider_types import ProviderCapability, ProviderMetadata
-from repositories import AppConfig, ProviderConfig
 from shared.localization import translate
 
 try:
@@ -88,33 +86,6 @@ class FakeChatGPTSession:
         self.state["planNoticeSeen"] = True
 
 
-@dataclass(frozen=True)
-class _UIConfig(AppConfig):
-    chatgpt: ProviderConfig = field(
-        default_factory=lambda: ProviderConfig(
-            base_url="https://api.openai.com/v1", text_model=""
-        )
-    )
-
-
-class ChatGPTUIConfigRepository:
-    """In-memory core seam; the coordinator validates actual core persistence."""
-
-    def __init__(self, repository):
-        self.path = repository.path
-        config = repository.load()
-        self.config = _UIConfig(
-            **{f.name: getattr(config, f.name) for f in fields(AppConfig)}
-        )
-
-    def load(self):
-        return self.config
-
-    def apply(self, config):
-        self.config = config
-        return config
-
-
 class FakeChatGPTAdapter:
     metadata = ProviderMetadata(
         provider_id="chatgpt",
@@ -127,11 +98,19 @@ class FakeChatGPTAdapter:
         text_model_key="",
         default_audio_model="",
         default_text_model="",
+        authentication="oauth",
     )
 
     def __init__(self, session):
         self.session = session
         self.calls = []
+
+    def with_session(self, session):
+        if self.session is session:
+            return self
+        adapter = FakeChatGPTAdapter(session)
+        adapter.calls = self.calls
+        return adapter
 
     def discover_models(self, connection, cancel_token=None):
         self.calls.append(connection)
@@ -230,13 +209,7 @@ class ChatGPTSettingsTests(unittest.TestCase):
         patcher = patch.dict(PROVIDER_REGISTRY._adapters, chatgpt=self.adapter)
         patcher.start()
         self.addCleanup(patcher.stop)
-        repositories = self.settings.repositories
-        repository = ChatGPTUIConfigRepository(repositories.config)
-        # ApplicationRepositories is immutable; only this controller's isolated seam changes.
-        self.settings.repositories = replace(repositories, config=repository)
-        self.settings._config_repository = repository
-        self.settings._config = repository.load()
-        return repository
+        return self.settings.repositories.config
 
     def wait_models(self):
         deadline = time.monotonic() + 3

@@ -2235,6 +2235,12 @@ class QmlSettingsController(QObject):
         self._model_error_key = None
         self.modelCatalogChanged.emit()
 
+        discovery_registry = (
+            PROVIDER_REGISTRY.with_chatgpt_session(self._get_chatgpt_session())
+            if key[0] == "chatgpt"
+            else PROVIDER_REGISTRY
+        )
+
         def discover() -> None:
             try:
                 if key[0] == LOCAL_ASR_PROVIDER_ID:
@@ -2247,7 +2253,7 @@ class QmlSettingsController(QObject):
                             installed.append(model)
                     catalog = ModelCatalog(audio_models=tuple(installed))
                 else:
-                    catalog = PROVIDER_REGISTRY.discover_models(
+                    catalog = discovery_registry.discover_models(
                         key[0],
                         ProviderConnection("", "https://api.openai.com/v1")
                         if key[0] == "chatgpt"
@@ -2619,9 +2625,15 @@ class QmlSettingsController(QObject):
         self._set_error(None)
         self.providerStateChanged.emit()
 
+        discovery_registry = (
+            PROVIDER_REGISTRY.with_chatgpt_session(self._get_chatgpt_session())
+            if provider_id == "chatgpt"
+            else PROVIDER_REGISTRY
+        )
+
         def validate() -> None:
             try:
-                catalog = PROVIDER_REGISTRY.discover_models(
+                catalog = discovery_registry.discover_models(
                     provider_id,
                     ProviderConnection(api_key, base_url),
                     token,

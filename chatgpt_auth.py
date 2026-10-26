@@ -1077,7 +1077,9 @@ _SESSIONS_LOCK = threading.Lock()
 
 def get_chatgpt_session(data_directory: Path | None = None) -> ChatGPTPlanSession:
     if data_directory is None:
-        if os.name == "nt":
+        if os.environ.get("CLARIFY_DATA_DIR"):
+            data_directory = Path(os.environ["CLARIFY_DATA_DIR"])
+        elif os.name == "nt":
             data_directory = (
                 Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
                 / "Clarify"

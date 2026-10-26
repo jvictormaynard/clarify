@@ -5,6 +5,7 @@ import unittest
 from dataclasses import replace
 from types import SimpleNamespace
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 from provider_http import (
@@ -25,7 +26,8 @@ from provider_types import (
     TranscriptionResult,
     UnsupportedCapabilityError,
 )
-from repositories import AppConfig
+from repositories import AppConfig, LocalConfigRepository
+from secret_store import MemorySecretStore
 from workflow_config import (
     WorkflowConfigurationError,
     WorkflowRoute,
@@ -340,6 +342,45 @@ class ChatGPTProviderTests(unittest.TestCase):
 
 
 class ChatGPTWorkflowIntegrationTests(unittest.TestCase):
+    def test_pending_model_selection_persists_and_cannot_start_inference(self):
+        with TemporaryDirectory() as directory:
+            repository = LocalConfigRepository(
+                Path(directory) / "config.json",
+                environment={},
+                secret_store=MemorySecretStore(),
+            )
+            config = repository.load()
+            config = replace(
+                config,
+                workflows=config.workflows.with_route(
+                    "rewrite",
+                    WorkflowRoute("chatgpt", ""),
+                ),
+            )
+            repository.apply(config)
+            loaded = repository.load()
+            self.assertEqual(loaded.workflow("rewrite").model_id, "")
+            http = Http()
+            service = WorkflowProviderService(
+                SimpleNamespace(current=lambda: loaded, workflow=loaded.workflow),
+                SimpleNamespace(),
+                registry=build_provider_registry(http, chatgpt_session=Session()),
+            )
+            with self.assertRaisesRegex(RuntimeError, "No model configured"):
+                service.rewrite("Keep this text.")
+            self.assertEqual(http.calls, [])
+
+    def test_profile_registry_reuses_existing_adapters_without_replacing_global_session(
+        self,
+    ):
+        session_a, session_b = Session(), Session()
+        registry = build_provider_registry(Http(), chatgpt_session=session_a)
+        scoped = registry.with_chatgpt_session(session_b)
+        self.assertIs(scoped.adapter("chatgpt").session, session_b)
+        self.assertIs(registry.adapter("chatgpt").session, session_a)
+        self.assertIs(scoped.adapter("local_asr"), registry.adapter("local_asr"))
+        self.assertIs(scoped.adapter("openai"), registry.adapter("openai"))
+
     def test_local_transcript_refines_with_plan_and_preserves_original(self):
         raw = "Olá, use 42 unidades."
         config = AppConfig.from_mapping(

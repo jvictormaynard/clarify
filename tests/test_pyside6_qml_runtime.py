@@ -2290,6 +2290,28 @@ class QtWorkflowRuntimeTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional spike dependency")
 class QmlRuntimeFactoryTests(unittest.TestCase):
+    def test_chatgpt_uses_the_active_repository_profile_and_existing_provider_resources(
+        self,
+    ):
+        from chatgpt_auth import get_chatgpt_session
+        from provider_registry import PROVIDER_REGISTRY
+
+        with TemporaryDirectory() as directory:
+            with patch.dict(os.environ, {"CLARIFY_DATA_DIR": directory}):
+                runtime = create_real_workflow_runtime(object())
+            registry = runtime.workflow_service._provider.registry
+            self.assertIs(
+                registry.adapter("chatgpt").session,
+                get_chatgpt_session(Path(runtime.repositories.config.path).parent),
+            )
+            self.assertIs(runtime.provider_registry, registry)
+            self.assertIs(
+                registry.adapter("local_asr"), PROVIDER_REGISTRY.adapter("local_asr")
+            )
+            self.assertIs(
+                registry.adapter("openai"), PROVIDER_REGISTRY.adapter("openai")
+            )
+
     def test_factory_composes_ui_free_runtime_without_importing_legacy_app(self):
         missing = object()
         legacy_app_before = sys.modules.get("app", missing)

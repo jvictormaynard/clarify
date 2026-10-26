@@ -66,6 +66,11 @@ class ChatGPTPlanAdapter(ProviderAdapter):
 
         return get_chatgpt_session()
 
+    def with_session(self, session):
+        if self._session is session:
+            return self
+        return ChatGPTPlanAdapter(self.http, session=session)
+
     def _require_connection(self, connection):
         if connection.base_url.rstrip("/") != CHATGPT_BASE_URL:
             raise ProviderConfigurationError(
