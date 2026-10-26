@@ -491,6 +491,87 @@ for (const library of ["dictionary", "snippets"] as const) {
   });
 }
 
+test("history: correction requires review and supports owned undo", async ({ page }, testInfo) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  const row = page.locator(".history-row").filter({ hasText: "Isolated revised desktop history." });
+  await row.getByRole("button", { name: "Corrigir termo", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Corrigir termo", exact: true });
+  await dialog.getByRole("textbox", { name: "Termo ouvido", exact: true }).fill("desktop");
+  await dialog.getByRole("textbox", { name: "Termo correto", exact: true }).fill("Desktop Term");
+  await dialog.getByRole("button", { name: "Revisar correção", exact: true }).click();
+  await expect(dialog.getByRole("textbox", { name: "Termo ouvido", exact: true })).toHaveValue("desktop");
+  await expect(dialog.getByRole("textbox", { name: "Termo correto", exact: true })).toBeDisabled();
+  const snapshot = () => page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  expect((await snapshot()).dictionaryEntries).toEqual([]);
+  await page.setViewportSize({ width: 640, height: 760 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.screenshot({ path: testInfo.outputPath("correction-review-640.png") });
+  await dialog.getByRole("button", { name: "Salvar no dicionário", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(row.getByRole("button", { name: "Desfazer adição", exact: true })).toBeEnabled();
+  expect((await snapshot()).dictionaryEntries).toEqual([{ term: "Desktop Term", pronunciation: "", aliases: ["desktop"], enabled: true }]);
+  await row.getByRole("button", { name: "Desfazer adição", exact: true }).click();
+  await expect(row.getByText("Adição desfeita.", { exact: true })).toBeVisible();
+  expect((await snapshot()).dictionaryEntries).toEqual([]);
+  await row.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await expect(row.getByRole("region", { name: "Original", exact: true })).toContainText("Isolated desktop history.");
+});
+
+test("history: correction cancel has no effect and external edits disable undo", async ({ page }) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  const row = page.locator(".history-row").filter({ hasText: "Isolated revised desktop history." });
+  const dialog = page.getByRole("dialog", { name: "Corrigir termo", exact: true });
+  const review = async () => {
+    await row.getByRole("button", { name: "Corrigir termo", exact: true }).click();
+    await dialog.getByRole("textbox", { name: "Termo ouvido", exact: true }).fill("desktop");
+    await dialog.getByRole("textbox", { name: "Termo correto", exact: true }).fill("Desktop Term");
+    await dialog.getByRole("button", { name: "Revisar correção", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: "Salvar no dicionário", exact: true })).toBeVisible();
+  };
+  await review();
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  const before = await page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  expect(before.dictionaryEntries).toEqual([]);
+  await review();
+  await dialog.getByRole("button", { name: "Salvar no dicionário", exact: true }).click();
+  await expect(row.getByRole("button", { name: "Desfazer adição", exact: true })).toBeEnabled();
+  await page.evaluate(async () => {
+    const invoke = (method: string, args: unknown[]) => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method, args });
+    const state = await invoke("snapshot", []);
+    await invoke("setDictionaryEntries", [[{ ...state.dictionaryEntries[0], pronunciation: "Later edit" }], state.snippetContext]);
+    await invoke("save", [state.snippetContext]);
+  });
+  await expect(row.getByRole("button", { name: "Desfazer adição", exact: true })).toBeDisabled();
+  await expect(row.getByText("Desfazer indisponível: o dicionário ou a sessão mudou.", { exact: true })).toBeVisible();
+});
+
+for (const [localTerm, correctedTerm] of [["Desktop Term", "Desktop Term"], ["Straße", "STRASSE"]]) test(`history: correction reuses unsaved ${localTerm}/${correctedTerm} and keeps pending metadata`, async ({ page }) => {
+  await page.getByRole("button", { name: "Dicionário", exact: true }).click();
+  await page.getByRole("textbox", { name: "Novo termo", exact: true }).fill(localTerm);
+  await page.getByRole("button", { name: "Adicionar termo", exact: true }).click();
+  await page.getByText("Pronúncia e variações", { exact: true }).click();
+  await page.getByRole("textbox", { name: "Pronúncia do termo 1", exact: true }).fill("Pending pronunciation");
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  const row = page.locator(".history-row").filter({ hasText: "Isolated revised desktop history." });
+  await row.getByRole("button", { name: "Corrigir termo", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Corrigir termo", exact: true });
+  await dialog.getByRole("textbox", { name: "Termo ouvido", exact: true }).fill("desktop");
+  await dialog.getByRole("textbox", { name: "Termo correto", exact: true }).fill(correctedTerm);
+  await dialog.getByRole("button", { name: "Revisar correção", exact: true }).click();
+  await dialog.getByRole("button", { name: "Salvar no dicionário", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole("button", { name: "Dicionário", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Termo 1", exact: true })).toHaveValue(localTerm);
+  await expect(page.getByRole("textbox", { name: "Termo 2", exact: true })).toHaveCount(0);
+  await page.getByText("Pronúncia e variações", { exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Pronúncia do termo 1", exact: true })).toHaveValue("Pending pronunciation");
+  await expect(page.getByRole("textbox", { name: "Variações do termo 1", exact: true })).toHaveValue("desktop");
+  await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
+  const saved = await page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  expect(saved.dictionaryEntries).toEqual([{ term: localTerm, pronunciation: "Pending pronunciation", aliases: ["desktop"], enabled: true }]);
+});
+
 test.beforeEach(async ({ page }, testInfo) => {
   if (!process.env.CLARIFY_TEST_PYTHON || !process.env.CLARIFY_TEST_FIXTURE) throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
   const onboarding = testInfo.title.startsWith("onboarding:");

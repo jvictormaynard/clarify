@@ -236,6 +236,14 @@ class SettingsProtocol:
                 if len(args) != 4 or any(type(value) is not str for value in args):
                     raise ValueError()
                 result = self.settings.copyHistoryText(*args)
+            elif method == "historyCorrection":
+                if (
+                    len(args) != 2
+                    or type(args[0]) is not str
+                    or type(args[1]) is not dict
+                ):
+                    raise ValueError()
+                result = self.settings.historyCorrection(*args)
             elif method in METHODS:
                 if method == "practiceCommand" and (
                     len(args) != 1

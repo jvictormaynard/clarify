@@ -194,6 +194,14 @@ export function settingsTransaction<T>(operation: (call: SettingsCall) => Promis
 }
 export const getHistoryPage = (context: string, cursor = "", query = "") => queuedCall<HistoryPageResult>("getHistoryPage", [context, cursor, query]);
 export const getHistoryTextPart = (context: string, id: string, offset: number, field: HistoryTextField = "text") => queuedCall<HistoryTextPart>("getHistoryTextPart", [context, id, offset, field]);
+export type HistoryCorrectionReply = {
+  status?: "preview" | "already_exists" | "saved" | "saved_without_undo" | "undone" | "undo_unavailable" | "cancelled";
+  token?: string; heard?: string; entry?: DictionaryEntry; receipt?: string; canUndo?: boolean; error?: string;
+};
+export const historyCorrection = (action: "preview" | "confirm" | "undo" | "status" | "cancel", payload: Record<string, string>, isCurrent: () => boolean = () => true) => enqueue(async () => {
+  if (!isCurrent()) return null;
+  return invoke<HistoryCorrectionReply>("settings_call", { method: "historyCorrection", args: [action, payload] });
+});
 export const copyHistoryText = (scope: HistoryScope, id: string, field: HistoryTextField, isCurrent: () => boolean) => enqueue(async () => {
   // Navigation/search cancellation can happen while waiting for the pipe.
   if (!isCurrent()) return null;

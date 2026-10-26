@@ -6151,5 +6151,130 @@
     "pt": "Não foi possível exportar a reunião. Escolha um arquivo local.",
     "en": "Could not export the meeting. Select a local file.",
     "es": "No se pudo exportar la reunión. Selecciona un archivo local."
+  },
+  "Use um termo de até 256 caracteres, sem quebras de linha.": {
+    "pt": "Use um termo de até 256 caracteres, sem quebras de linha.",
+    "en": "Use a term of up to 256 characters, without line breaks.",
+    "es": "Usa un término de hasta 256 caracteres, sin saltos de línea."
+  },
+  "Informe uma grafia diferente para o termo correto.": {
+    "pt": "Informe uma grafia diferente para o termo correto.",
+    "en": "Enter a different spelling for the correct term.",
+    "es": "Introduce una grafía distinta para el término correcto."
+  },
+  "O termo ouvido não foi encontrado no original.": {
+    "pt": "O termo ouvido não foi encontrado no original.",
+    "en": "The heard term was not found in the original.",
+    "es": "El término oído no se encontró en el original."
+  },
+  "O registro e o dicionário devem pertencer à mesma conta ou ao modo local.": {
+    "pt": "O registro e o dicionário devem pertencer à mesma conta ou ao modo local.",
+    "en": "The record and dictionary must belong to the same account or local mode.",
+    "es": "El registro y el diccionario deben pertenecer a la misma cuenta o al modo local."
+  },
+  "A conta mudou. Abra a correção novamente.": {
+    "pt": "A conta mudou. Abra a correção novamente.",
+    "en": "The account changed. Open the correction again.",
+    "es": "La cuenta cambió. Abre la corrección de nuevo."
+  },
+  "O dicionário mudou. Revise a correção novamente.": {
+    "pt": "O dicionário mudou. Revise a correção novamente.",
+    "en": "The dictionary changed. Review the correction again.",
+    "es": "El diccionario cambió. Revisa la corrección de nuevo."
+  },
+  "Não foi possível ler o dicionário. A correção não foi salva.": {
+    "pt": "Não foi possível ler o dicionário. A correção não foi salva.",
+    "en": "The dictionary could not be read. The correction was not saved.",
+    "es": "No se pudo leer el diccionario. La corrección no se guardó."
+  },
+  "O dicionário atingiu o limite de 512 termos.": {
+    "pt": "O dicionário atingiu o limite de 512 termos.",
+    "en": "The dictionary reached the limit of 512 terms.",
+    "es": "El diccionario alcanzó el límite de 512 términos."
+  },
+  "Este original excede o limite de leitura para correção.": {
+    "pt": "Este original excede o limite de leitura para correção.",
+    "en": "This original exceeds the correction reading limit.",
+    "es": "Este original supera el límite de lectura para la corrección."
+  },
+  "Esta correção expirou. Revise os termos novamente.": {
+    "pt": "Esta correção expirou. Revise os termos novamente.",
+    "en": "This correction expired. Review the terms again.",
+    "es": "Esta corrección caducó. Revisa los términos de nuevo."
+  },
+  "Não foi possível salvar a correção. Tente novamente.": {
+    "pt": "Não foi possível salvar a correção. Tente novamente.",
+    "en": "The correction could not be saved. Try again.",
+    "es": "No se pudo guardar la corrección. Inténtalo de nuevo."
+  },
+  "Termo salvo no dicionário.": {
+    "pt": "Termo salvo no dicionário.",
+    "en": "Term saved in the dictionary.",
+    "es": "Término guardado en el diccionario."
+  },
+  "Adição desfeita.": {
+    "pt": "Adição desfeita.",
+    "en": "Addition undone.",
+    "es": "Adición deshecha."
+  },
+  "Desfazer indisponível: o dicionário ou a sessão mudou.": {
+    "pt": "Desfazer indisponível: o dicionário ou a sessão mudou.",
+    "en": "Undo unavailable: the dictionary or session changed.",
+    "es": "No se puede deshacer: el diccionario o la sesión cambió."
+  },
+  "Corrigir termo": {
+    "pt": "Corrigir termo",
+    "en": "Correct term",
+    "es": "Corregir término"
+  },
+  "Desfazer adição": {
+    "pt": "Desfazer adição",
+    "en": "Undo addition",
+    "es": "Deshacer adición"
+  },
+  "Revise o termo ouvido e a grafia correta antes de salvar. O original permanece igual.": {
+    "pt": "Revise o termo ouvido e a grafia correta antes de salvar. O original permanece igual.",
+    "en": "Review the heard term and correct spelling before saving. The original stays unchanged.",
+    "es": "Revisa el término oído y la grafía correcta antes de guardar. El original no cambia."
+  },
+  "Termo ouvido": {
+    "pt": "Termo ouvido",
+    "en": "Heard term",
+    "es": "Término oído"
+  },
+  "Termo correto": {
+    "pt": "Termo correto",
+    "en": "Correct term",
+    "es": "Término correcto"
+  },
+  "Este termo já existe. Os dados existentes foram mantidos.": {
+    "pt": "Este termo já existe. Os dados existentes foram mantidos.",
+    "en": "This term already exists. The existing data was kept.",
+    "es": "Este término ya existe. Se conservaron los datos existentes."
+  },
+  "O termo ouvido será salvo como alias. Aliases são dicas para futuras transcrições.": {
+    "pt": "O termo ouvido será salvo como alias. Aliases são dicas para futuras transcrições.",
+    "en": "The heard term will be saved as an alias. Aliases are hints for future transcriptions.",
+    "es": "El término oído se guardará como alias. Los alias son pistas para futuras transcripciones."
+  },
+  "A sincronização começa em 5 segundos após salvar. Você pode desfazer enquanto o dicionário não mudar.": {
+    "pt": "A sincronização começa em 5 segundos após salvar. Você pode desfazer enquanto o dicionário não mudar.",
+    "en": "Sync starts 5 seconds after saving. You can undo while the dictionary stays unchanged.",
+    "es": "La sincronización empieza 5 segundos después de guardar. Puedes deshacer mientras el diccionario no cambie."
+  },
+  "Salvar no dicionário": {
+    "pt": "Salvar no dicionário",
+    "en": "Save to dictionary",
+    "es": "Guardar en el diccionario"
+  },
+  "Revisar correção": {
+    "pt": "Revisar correção",
+    "en": "Review correction",
+    "es": "Revisar corrección"
+  },
+  "Salve ou descarte as alterações pendentes do dicionário antes desta correção.": {
+    "pt": "Salve ou descarte as alterações pendentes do dicionário antes desta correção.",
+    "en": "Save or discard the pending dictionary changes before this correction.",
+    "es": "Guarda o descarta los cambios pendientes del diccionario antes de esta corrección."
   }
 }
