@@ -15,6 +15,7 @@ import platform
 import subprocess
 import sys
 import threading
+import weakref
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -516,11 +517,26 @@ class QmlSettingsController(QObject):
         self._history_correction_guard = getattr(
             self._account, "_lock", threading.RLock()
         )
+        # A strong callback cycle can let worker GC destroy this QObject.
+        history_owner = weakref.ref(self)
+
+        def read_history_part(context, token, offset, field):
+            owner = history_owner()
+            if owner is None:
+                raise CorrectionError("context_changed")
+            return owner.getHistoryTextPart(context, token, offset, field)
+
+        def history_identity():
+            owner = history_owner()
+            if owner is None:
+                raise CorrectionError("context_changed")
+            return owner._history_correction_identity()
+
         self._history_corrections = HistoryDictionaryCorrectionService(
             self._dictionary_service,
-            read_part=self.getHistoryTextPart,
-            identity=self._history_correction_identity,
-            guard=lambda: self._history_correction_guard,
+            read_part=read_history_part,
+            identity=history_identity,
+            guard=lambda lock=self._history_correction_guard: lock,
         )
         self._history_correction_sync = QTimer(self)
         self._history_correction_sync.setSingleShot(True)
