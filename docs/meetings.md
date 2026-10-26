@@ -41,7 +41,8 @@ Provider credentials remain with the existing configuration and secret owners.
 
 Language and provider/model metadata are saved with each meeting. Jobs take a
 connection snapshot. Retrying a chunk after restart keeps its original language
-and route. An uncertain hosted request keeps the same operation UUID. A confirmed
+and route. Local Whisper also keeps the selected execution device. An uncertain
+hosted request keeps the same operation UUID. A confirmed
 terminal response can allow a new operation only on an explicit retry; that new
 attempt can consume allowance again.
 

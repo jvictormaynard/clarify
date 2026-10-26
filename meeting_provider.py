@@ -11,6 +11,7 @@ from shared.meeting_contract import (
     MeetingError,
 )
 from local_asr import PROVIDER_ID as LOCAL_ASR_PROVIDER_ID
+from local_asr_catalog import normalize_device
 from provider_types import RewriteRequest, TranscriptionRequest
 from workflow_config import WorkflowRoute, WorkflowScope, validate_workflow_route
 
@@ -22,6 +23,7 @@ class MeetingRoutes:
     notes: WorkflowRoute
     notes_connection: object
     managed: bool = False
+    execution_device: str = "auto"
 
     def persisted(self):
         from dataclasses import asdict
@@ -30,6 +32,7 @@ class MeetingRoutes:
             "transcription": asdict(self.transcription),
             "notes": asdict(self.notes),
             "managed": self.managed,
+            "execution_device": self.execution_device,
         }
 
 
@@ -73,6 +76,7 @@ class MeetingProviderService:
                 ),
                 None,
                 True,
+                "server",
             )
         route = (
             WorkflowRoute.from_mapping(persisted["transcription"])
@@ -86,6 +90,7 @@ class MeetingProviderService:
         )
         note_route = note_route or WorkflowRoute(enabled=False)
         connection = note_connection = None
+        device = normalize_device((persisted or {}).get("execution_device", "auto"))
         if action != "summary":
             route = validate_workflow_route(
                 route, WorkflowScope.TRANSCRIPTION, registry=self.workflows.registry
@@ -93,6 +98,10 @@ class MeetingProviderService:
             connection = self.workflows._connection(route)
             if route.provider_id != LOCAL_ASR_PROVIDER_ID and not connection.api_key:
                 raise MeetingError("meeting.configure_asr")
+            if route.provider_id == LOCAL_ASR_PROVIDER_ID and not persisted:
+                device = normalize_device(
+                    self.workflows.config.current().local_asr_device
+                )
         if action == "summary":
             if not note_route.enabled:
                 raise MeetingError("meeting.notes_disabled")
@@ -102,7 +111,9 @@ class MeetingProviderService:
             note_connection = self.workflows._connection(note_route)
             if not note_connection.api_key:
                 raise MeetingError("meeting.configure_notes")
-        return MeetingRoutes(route, connection, note_route, note_connection)
+        return MeetingRoutes(
+            route, connection, note_route, note_connection, execution_device=device
+        )
 
     def transcribe(self, expected, routes, chunk, path, language, cancel):
         self.validate(expected)
@@ -118,6 +129,7 @@ class MeetingProviderService:
             instruction="Transcribe only the speech in the audio. Preserve its language. Return only the transcript.",
             prompt="Transcribe only the speech. Do not rewrite, summarize, or identify speakers.",
             temperature=0,
+            execution_device=routes.execution_device,
         )
         result = self.workflows.registry.transcribe(
             route.provider_id,

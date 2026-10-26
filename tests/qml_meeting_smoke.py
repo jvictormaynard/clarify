@@ -3,14 +3,18 @@
 import os
 import sys
 import tempfile
+import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from PySide6.QtCore import QUrl, QTimer  # noqa: E402
+from PySide6.QtCore import QUrl, QTimer, QPointF, Qt  # noqa: E402
+from PySide6.QtQuick import QQuickItem  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 from PySide6.QtQuickControls2 import QQuickStyle  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
@@ -44,9 +48,32 @@ def main():
             "Resumo do teste.\n\nDecisoes: testar a recuperacao.\n\nTarefas: validar as duas fontes.",
         )
         store.end("guest", mid)
+        if "--pages" in sys.argv:
+            created = store.get("guest", mid)["created"]
+            with store._connection() as db:
+                db.executemany(
+                    "INSERT INTO meetings(id,owner,title,created,state) VALUES(?,?,?,?,?)",
+                    [
+                        (
+                            str(uuid.uuid4()),
+                            "guest",
+                            f"Fixture {n}",
+                            created + n + 1,
+                            "stopped",
+                        )
+                        for n in range(200)
+                    ],
+                )
         provider = Mock()
         provider.identity.return_value = MeetingIdentity("guest", 0, False)
-        provider.workflows.registry.metadata = ()
+        provider.workflows.registry.metadata = (
+            SimpleNamespace(
+                provider_id="openai",
+                display_name="OpenAI",
+                default_text_model="gpt-4o-mini",
+                supports=lambda capability: True,
+            ),
+        )
         workflow = MeetingWorkflow(store, provider, source_factory=Mock())
         workflow.selected = mid
         controller = QmlMeetingController(workflow)
@@ -85,18 +112,37 @@ def main():
         window.show()
         window.requestActivate()
         output = Path(sys.argv[1]) if len(sys.argv) > 1 else None
+        failures = []
 
         def verify():
-            if output:
-                output.parent.mkdir(parents=True, exist_ok=True)
-                window.grabWindow().save(str(output))
-            controller.shutdown()
-            app.quit()
+            try:
+                if "--pages" in sys.argv:
+                    button = window.findChild(QQuickItem, "meetingNextPage")
+                    assert button is not None and button.isEnabled()
+                    point = button.mapToScene(
+                        QPointF(button.width() / 2, button.height() / 2)
+                    ).toPoint()
+                    QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, point)
+                    app.processEvents()
+                    assert controller.state["page"] == 1
+                    assert controller.state["selected"]["id"] == mid
+                if output:
+                    output.parent.mkdir(parents=True, exist_ok=True)
+                    window.grabWindow().save(str(output))
+                window.close()
+                app.processEvents()
+                assert not window.isVisible()
+                assert not workflow._cancel.cancelled
+            except Exception as error:
+                failures.append(repr(error))
+            finally:
+                controller.shutdown()
+                app.quit()
 
         QTimer.singleShot(500, verify)
         app.exec()
-        if messages:
-            print("\n".join(messages))
+        if messages or failures:
+            print("\n".join(messages + failures))
             return 1
         return 0
 

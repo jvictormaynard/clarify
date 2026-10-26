@@ -191,8 +191,8 @@ ApplicationWindow {
                     id: pagination
                     anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 8
                     visible: view.page > 0 || view.hasNext
-                    MeetingButton { text: qsTr("meeting.previous"); implicitWidth: 88; enabled: !view.active && view.page > 0; onClicked: { if (root.saveNotes()) meetings.changePage(-1) } }
-                    MeetingButton { text: qsTr("meeting.next"); implicitWidth: 88; enabled: !view.active && view.hasNext; onClicked: { if (root.saveNotes()) meetings.changePage(1) } }
+                    MeetingButton { objectName: "meetingPreviousPage"; text: qsTr("meeting.previous"); implicitWidth: 88; enabled: !view.active && view.page > 0; onClicked: { if (root.saveNotes()) meetings.changePage(-1) } }
+                    MeetingButton { objectName: "meetingNextPage"; text: qsTr("meeting.next"); implicitWidth: 88; enabled: !view.active && view.hasNext; onClicked: { if (root.saveNotes()) meetings.changePage(1) } }
                 }
             }
             ColumnLayout {

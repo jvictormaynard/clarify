@@ -331,6 +331,7 @@ class MeetingProviderTests(unittest.TestCase):
         service._route.return_value = route
         connection = ProviderConnection(api_key="", base_url="")
         service._connection.return_value = connection
+        service.config.current.return_value = SimpleNamespace(local_asr_device="cpu")
         service.registry.canonical_audio_model.side_effect = lambda provider, model: (
             model
         )
@@ -341,12 +342,17 @@ class MeetingProviderTests(unittest.TestCase):
         service._route.return_value = WorkflowRoute(
             provider_id="groq", model_id="changed"
         )
+        service.config.current.return_value = SimpleNamespace(local_asr_device="cuda")
         service.registry.transcribe.return_value = SimpleNamespace(text="speech")
         provider.transcribe(expected, routes, {}, Path("fixture.wav"), "pt", Mock())
         self.assertEqual(service.registry.transcribe.call_args.args[0], "local_asr")
         self.assertEqual(
             service.registry.transcribe.call_args.args[1].model, "ggml-base"
         )
+        self.assertEqual(
+            service.registry.transcribe.call_args.args[1].execution_device, "cpu"
+        )
+        self.assertEqual(routes.persisted()["execution_device"], "cpu")
         self.assertEqual(service._connection.call_count, 1)
         with self.assertRaises(MeetingError):
             provider.summarize(expected, routes, "op", "source", "pt", Mock())
