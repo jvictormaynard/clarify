@@ -45,11 +45,20 @@ and route. An uncertain hosted request keeps the same operation UUID. A confirme
 terminal response can allow a new operation only on an explicit retry; that new
 attempt can consume allowance again.
 
+Managed records include the fixed v1 ASR and summary model IDs. The server and
+desktop share those policy constants. Meetings blocks new work and note edits
+while an update prepares its restart.
+
 Meeting records stay in `meetings/meetings.sqlite3` under the desktop data
 directory. The database uses transactions, foreign keys and schema version 1.
 Owner scopes are guest or a hash of account endpoint and user ID. Guest meetings
 are never assigned to an account or uploaded at sign-in. Meetings do not use
 dictation history or its synchronization protocol.
+
+The list has previous and next pages. Recovery checks the complete owner scope,
+including meetings outside the current page. Deletion first saves a persistent
+deletion marker, then removes the audio, then removes the database rows. If audio
+removal fails, the marker remains for startup recovery or an explicit retry.
 
 Audio stays in `meetings/audio/<meeting-id>/<chunk-id>.wav`. A committed transcript
 permits removal of its audio file. Failed, cancelled and interrupted chunks stay

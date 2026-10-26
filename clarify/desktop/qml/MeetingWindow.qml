@@ -70,7 +70,7 @@ ApplicationWindow {
         notesLoading = false
     }
     onCurrentChanged: loadNotes()
-    onClosing: function(close) { if (!saveNotes()) close.accepted = false }
+    onClosing: function(close) { close.accepted = false; if (saveNotes()) root.hide() }
     Connections {
         target: meetings
         function onOpenRequested() { root.show(); root.raise(); root.requestActivate() }
@@ -100,6 +100,7 @@ ApplicationWindow {
         anchors.fill: parent
         anchors.margins: 24
         spacing: 14
+        enabled: view.editingAllowed
         RowLayout {
             Label { text: qsTr("meeting.title"); color: theme.text; font.pixelSize: 24; Layout.fillWidth: true }
             Label { text: qsTr("meeting." + view.phase) + (view.active ? " · " + view.duration + "s" : ""); color: theme.secondaryText; Accessible.role: Accessible.StatusBar }
@@ -135,6 +136,11 @@ ApplicationWindow {
         }
         Label { visible: view.error !== ""; text: qsTr(view.error); color: theme.text; wrapMode: Text.WordWrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
         RowLayout {
+            visible: view.cleanupPending
+            Label { text: qsTr("meeting.delete_pending"); color: theme.text; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+            MeetingButton { text: qsTr("meeting.retry_cleanup"); enabled: !view.active; onClicked: meetings.retryCleanup() }
+        }
+        RowLayout {
             visible: notesDirty && notesContext !== view.context
             Label { text: qsTr("meeting.draft_recovery"); color: theme.text; wrapMode: Text.WordWrap; Layout.fillWidth: true }
             MeetingButton {
@@ -160,6 +166,7 @@ ApplicationWindow {
                 ScrollView {
                     id: meetingList
                     anchors.fill: parent; anchors.margins: 8
+                    anchors.bottomMargin: pagination.visible ? 50 : 8
                     clip: true
                     contentWidth: availableWidth
                     ColumnLayout {
@@ -179,6 +186,13 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
+                RowLayout {
+                    id: pagination
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 8
+                    visible: view.page > 0 || view.hasNext
+                    MeetingButton { text: qsTr("meeting.previous"); implicitWidth: 88; enabled: !view.active && view.page > 0; onClicked: { if (root.saveNotes()) meetings.changePage(-1) } }
+                    MeetingButton { text: qsTr("meeting.next"); implicitWidth: 88; enabled: !view.active && view.hasNext; onClicked: { if (root.saveNotes()) meetings.changePage(1) } }
                 }
             }
             ColumnLayout {

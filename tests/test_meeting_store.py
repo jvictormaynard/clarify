@@ -3,6 +3,7 @@ from contextlib import closing
 import tempfile
 import unittest
 import wave
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -122,3 +123,42 @@ class MeetingStoreTests(unittest.TestCase):
                 with self.assertRaises(MeetingError):
                     MeetingStore(directory)
                 self.assertEqual(path.read_bytes(), original)
+
+    def test_incompatible_early_candidate_schema_is_preserved_and_refused(self):
+        with closing(sqlite3.connect(self.store.path)) as db, db:
+            db.execute("ALTER TABLE meetings DROP COLUMN language")
+        original = self.store.path.read_bytes()
+        with self.assertRaises(MeetingError):
+            MeetingStore(self.temp.name)
+        self.assertEqual(self.store.path.read_bytes(), original)
+
+    def test_failed_audio_delete_is_durable_and_retried_after_restart(self):
+        cid, path = self.chunk()
+        with patch.object(Path, "unlink", side_effect=PermissionError("fixture")):
+            with self.assertRaises((OSError, MeetingError)):
+                self.store.delete("guest", self.mid)
+        self.assertTrue(path.exists())
+        self.assertEqual(self.store.get("guest", self.mid)["state"], "deleting")
+        restarted = MeetingStore(self.temp.name)
+        restarted.recover("guest")
+        self.assertFalse(path.exists())
+        with self.assertRaises(MeetingError):
+            restarted.get("guest", self.mid)
+
+    def test_oldest_of_201_meetings_is_paged_and_recovered(self):
+        cid, path = self.chunk()
+        with closing(sqlite3.connect(self.store.path)) as db, db:
+            db.execute("UPDATE chunks SET state='capturing' WHERE id=?", (cid,))
+            db.executemany(
+                "INSERT INTO meetings(id,owner,title,created,state) VALUES(?,?,?,?,?)",
+                [
+                    (str(uuid.uuid4()), "guest", str(i), i + 1000, "stopped")
+                    for i in range(200)
+                ],
+            )
+        self.assertNotIn(self.mid, {row["id"] for row in self.store.list("guest")})
+        self.store.recover("guest")
+        self.assertEqual(
+            self.store.get("guest", self.mid)["chunks"][0]["state"], "pending"
+        )
+        self.assertEqual(self.store.list("guest", offset=200)[0]["id"], self.mid)

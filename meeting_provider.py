@@ -4,7 +4,12 @@ from account_meetings import identity, validate
 from dataclasses import dataclass
 from contextlib import contextmanager
 
-from shared.meeting_contract import SUMMARY_INSTRUCTION, MeetingError
+from shared.meeting_contract import (
+    SUMMARY_INSTRUCTION,
+    MANAGED_ASR_MODEL,
+    MANAGED_NOTES_MODEL,
+    MeetingError,
+)
 from local_asr import PROVIDER_ID as LOCAL_ASR_PROVIDER_ID
 from provider_types import RewriteRequest, TranscriptionRequest
 from workflow_config import WorkflowRoute, WorkflowScope, validate_workflow_route
@@ -16,6 +21,7 @@ class MeetingRoutes:
     transcription_connection: object
     notes: WorkflowRoute
     notes_connection: object
+    managed: bool = False
 
     def persisted(self):
         from dataclasses import asdict
@@ -23,6 +29,7 @@ class MeetingRoutes:
         return {
             "transcription": asdict(self.transcription),
             "notes": asdict(self.notes),
+            "managed": self.managed,
         }
 
 
@@ -54,7 +61,19 @@ class MeetingProviderService:
     def snapshot(self, expected, persisted=None, notes=None, *, action="record"):
         self.validate(expected)
         if expected.managed:
-            return None
+            return MeetingRoutes(
+                WorkflowRoute(
+                    provider_id="clarify", model_id=MANAGED_ASR_MODEL, independent=True
+                ),
+                None,
+                WorkflowRoute(
+                    provider_id="clarify",
+                    model_id=MANAGED_NOTES_MODEL,
+                    independent=True,
+                ),
+                None,
+                True,
+            )
         route = (
             WorkflowRoute.from_mapping(persisted["transcription"])
             if persisted

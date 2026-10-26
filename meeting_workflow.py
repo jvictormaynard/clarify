@@ -44,6 +44,9 @@ class MeetingWorkflow:
         self._routes = None
         self._capture_mid = ""
         self._job_id = ""
+        self._page = 0
+        self._page_owner = ""
+        self._cleanup_pending = {}
 
     @property
     def active(self):
@@ -57,10 +60,16 @@ class MeetingWorkflow:
     def snapshot(self):
         identity = self.provider.identity()
         with self._lock:
+            if self._page_owner != identity.owner:
+                self._page_owner, self._page = identity.owner, 0
             if not self.active and identity.owner not in self._recovered:
-                self.store.recover(identity.owner)
+                self._cleanup_pending[identity.owner] = bool(
+                    self.store.recover(identity.owner)
+                )
                 self._recovered.add(identity.owner)
-            meetings = self.store.list(identity.owner)
+            count = self.store.count(identity.owner)
+            self._page = min(self._page, max(0, (count - 1) // 200))
+            meetings = self.store.list(identity.owner, offset=self._page * 200)
             visible_ids = {row["id"] for row in meetings}
             if not self.active and self.selected not in visible_ids:
                 self.selected = meetings[0]["id"] if meetings else ""
@@ -94,6 +103,9 @@ class MeetingWorkflow:
                 "managed": identity.managed,
                 "context": identity.owner + ":" + str(identity.generation),
                 "notesRoute": self.store.notes_route(identity.owner).__dict__,
+                "page": self._page,
+                "hasNext": (self._page + 1) * 200 < count,
+                "cleanupPending": self._cleanup_pending.get(identity.owner, False),
             }
 
     def select(self, meeting_id):
@@ -105,6 +117,19 @@ class MeetingWorkflow:
             self.error = ""
             return True
 
+    def change_page(self, delta):
+        with self._lock:
+            if self.active:
+                raise MeetingError("meeting.busy")
+            self._page = max(0, self._page + delta)
+            self.selected = ""
+
+    def retry_cleanup(self):
+        if self.active:
+            raise MeetingError("meeting.busy")
+        owner = self.provider.identity().owner
+        self._cleanup_pending[owner] = bool(self.store.recover(owner))
+
     def _launch(self, action, meeting_id=None):
         with self._lock:
             if self.active or self._closed or not self.can_start():
@@ -115,6 +140,8 @@ class MeetingWorkflow:
                 persisted = None
                 if meeting_id:
                     meeting = self.store.get(expected.owner, meeting_id)
+                    if meeting["state"] == "deleting":
+                        raise MeetingError("meeting.delete_pending")
                     persisted = json.loads(meeting["routes"])
                     self.language = meeting["language"]
                     self.selected = meeting_id
@@ -133,6 +160,7 @@ class MeetingWorkflow:
                 if action == "record":
                     self.selected = ""
                     self._capture = None
+                    self._page = 0
                 self._thread = threading.Thread(
                     target=self._run,
                     args=(action, expected),
@@ -338,7 +366,13 @@ class MeetingWorkflow:
     def delete(self):
         if self.active:
             raise MeetingError("meeting.busy")
-        self.store.delete(self.provider.identity().owner, self.selected)
+        owner = self.provider.identity().owner
+        try:
+            self.store.delete(owner, self.selected)
+        except MeetingError as error:
+            if error.code == "meeting.delete_pending":
+                self._cleanup_pending[owner] = True
+            raise
         self.selected = ""
 
     def export(self):

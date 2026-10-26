@@ -6,6 +6,8 @@ from shared.meeting_contract import (
     SUMMARY_INSTRUCTION,
     MAX_SOURCE_BYTES,
     MAX_TRANSCRIPT_BYTES,
+    MANAGED_ASR_MODEL,
+    MANAGED_NOTES_MODEL,
 )
 from . import groq, ledger
 from .funding import money
@@ -15,7 +17,7 @@ def transcribe(path, duration_ms, language, operation):
     cost = ledger.asr_cost(duration_ms)
     ledger.authorize(operation, cost)
     fields = {
-        "model": "whisper-large-v3-turbo",
+        "model": MANAGED_ASR_MODEL,
         "response_format": "json",
         "temperature": "0",
     }
@@ -53,7 +55,7 @@ def summarize(source, language, operation):
     answer = groq.perform(
         "chat/completions",
         json={
-            "model": "openai/gpt-oss-20b",
+            "model": MANAGED_NOTES_MODEL,
             "temperature": 0.1,
             "max_completion_tokens": outgoing_bound,
             "reasoning_effort": "low",

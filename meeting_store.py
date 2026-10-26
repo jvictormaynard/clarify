@@ -58,8 +58,15 @@ class MeetingStore:
                     ).fetchone():
                         raise MeetingError("meeting.store_error")
                     db.executescript("BEGIN IMMEDIATE;" + SCHEMA + "COMMIT;")
-                db.execute("SELECT id, owner, revision FROM meetings LIMIT 0")
-                db.execute("SELECT id, meeting_id, transcript FROM chunks LIMIT 0")
+                # Refuse a structurally different early candidate instead of
+                # treating its version marker as permission to write new data.
+                db.execute(
+                    "SELECT id,owner,title,created,ended,state,language,routes,notes,revision,summary,summary_revision,summary_operation,pending_revision FROM meetings LIMIT 0"
+                )
+                db.execute(
+                    "SELECT id,meeting_id,source,start_ms,duration_ms,state,transcript,error,operation_id,retry_operation FROM chunks LIMIT 0"
+                )
+                db.execute("SELECT owner,notes_route FROM preferences LIMIT 0")
         except sqlite3.Error:
             raise MeetingError("meeting.store_error") from None
 
@@ -106,15 +113,22 @@ class MeetingStore:
             )
         return self.get(owner, meeting_id)
 
-    def list(self, owner):
+    def list(self, owner, *, offset=0):
         with self._connection() as db:
             return [
                 dict(row)
                 for row in db.execute(
-                    "SELECT * FROM meetings WHERE owner=? ORDER BY created DESC LIMIT 200",
-                    (owner,),
+                    "SELECT * FROM meetings WHERE owner=? AND state!='deleting' ORDER BY created DESC,id DESC LIMIT 200 OFFSET ?",
+                    (owner, max(0, int(offset))),
                 )
             ]
+
+    def count(self, owner):
+        with self._connection() as db:
+            return db.execute(
+                "SELECT COUNT(*) FROM meetings WHERE owner=? AND state!='deleting'",
+                (owner,),
+            ).fetchone()[0]
 
     def get(self, owner, meeting_id):
         with self._connection() as db:
@@ -233,7 +247,8 @@ class MeetingStore:
     def save_notes(self, owner, meeting_id, notes):
         bounded(notes, MAX_NOTES_BYTES)
         with self._connection() as db:
-            self._owned(db, owner, meeting_id)
+            if self._owned(db, owner, meeting_id)["state"] == "deleting":
+                raise MeetingError("meeting.delete_pending")
             db.execute(
                 "UPDATE meetings SET notes=?,revision=revision+1 WHERE id=? AND notes!=?",
                 (notes, meeting_id, notes),
@@ -287,7 +302,21 @@ class MeetingStore:
 
     def recover(self, owner):
         """Recover this scope only; never upload or reassign local records."""
-        for meeting in self.list(owner):
+        cleanup_pending = False
+        with self._connection() as db:
+            meetings = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT id,state FROM meetings WHERE owner=?", (owner,)
+                )
+            ]
+        for meeting in meetings:
+            if meeting["state"] == "deleting":
+                try:
+                    self.delete(owner, meeting["id"])
+                except (OSError, MeetingError):
+                    cleanup_pending = True
+                continue
             if meeting["state"] == "recording":
                 self.end(owner, meeting["id"], "interrupted")
             for chunk in self.get(owner, meeting["id"])["chunks"]:
@@ -305,11 +334,20 @@ class MeetingStore:
                         self.chunk_failed(
                             owner, meeting["id"], chunk["id"], "meeting.audio_damaged"
                         )
+        return cleanup_pending
 
     def delete(self, owner, meeting_id):
         meeting = self.get(owner, meeting_id)
         with self._connection() as db:
             self._owned(db, owner, meeting_id)
-            db.execute("DELETE FROM meetings WHERE id=?", (meeting_id,))
-        for chunk in meeting["chunks"]:
-            self.audio_path(meeting_id, chunk["id"]).unlink(missing_ok=True)
+            db.execute("UPDATE meetings SET state='deleting' WHERE id=?", (meeting_id,))
+        try:
+            for chunk in meeting["chunks"]:
+                self.audio_path(meeting_id, chunk["id"]).unlink(missing_ok=True)
+        except OSError:
+            raise MeetingError("meeting.delete_pending") from None
+        with self._connection() as db:
+            self._owned(db, owner, meeting_id)
+            db.execute(
+                "DELETE FROM meetings WHERE id=? AND state='deleting'", (meeting_id,)
+            )

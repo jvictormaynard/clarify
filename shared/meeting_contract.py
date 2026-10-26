@@ -8,6 +8,8 @@ MAX_MEETING_SECONDS = 4 * 60 * 60
 MAX_NOTES_BYTES = 16000
 MAX_SOURCE_BYTES = 64000
 MAX_TRANSCRIPT_BYTES = 32000
+MANAGED_ASR_MODEL = "whisper-large-v3-turbo"
+MANAGED_NOTES_MODEL = "openai/gpt-oss-20b"
 LANGUAGES = frozenset({"auto", "pt", "en", "es", "de", "ru"})
 SUMMARY_INSTRUCTION = (
     "Create meeting notes from the supplied transcript and personal notes only. "

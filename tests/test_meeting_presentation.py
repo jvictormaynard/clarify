@@ -34,8 +34,12 @@ class MeetingPresentationTests(unittest.TestCase):
                 copy_result=Mock(),
                 scheduler=SimpleNamespace(run_dispatch=lambda cb: cb()),
             )
+            updating = [False]
             controller = create_qml_meetings(
-                runtime, can_start=lambda: True, workflow_config=Mock()
+                runtime,
+                can_start=lambda: True,
+                workflow_config=Mock(),
+                editing_allowed=lambda: not updating[0],
             )
             self.addCleanup(controller.shutdown)
             self.assertIsNotNone(controller.workflow)
@@ -56,6 +60,17 @@ class MeetingPresentationTests(unittest.TestCase):
                 controller.exportFile(QUrl.fromLocalFile(str(output)).toString())
             )
             self.assertIn("Personal fixture", output.read_text(encoding="utf-8"))
+            updating[0] = True
+            controller.refresh()
+            self.assertFalse(controller.state["editingAllowed"])
+            self.assertFalse(
+                controller.saveNotes(mid, controller.state["context"], "late edit")
+            )
+            self.assertEqual(
+                controller.workflow.store.get("guest", mid)["notes"], "Personal fixture"
+            )
+            updating[0] = False
+            controller.refresh()
             controller.setNotesPending(True)
             self.assertTrue(controller.blocks_processing)
             controller.setNotesPending(False)
@@ -145,12 +160,16 @@ class MeetingPresentationTests(unittest.TestCase):
                 state=SimpleNamespace(phase=SimpleNamespace(value="ready"))
             ),
             runtime=SimpleNamespace(recording_audio=SimpleNamespace(busy=False)),
+            updates=SimpleNamespace(installing=False),
         )
         exec(
             compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"),
             environment,
         )
         self.assertTrue(environment["meetings_can_start"]())
+        environment["updates"].installing = True
+        self.assertFalse(environment["meetings_can_start"]())
+        environment["updates"].installing = False
         for owner, field in (
             ("practice", "blocks_processing"),
             ("voice_translation", "active"),

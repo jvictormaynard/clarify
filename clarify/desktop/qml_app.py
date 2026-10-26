@@ -487,6 +487,7 @@ def main(argv: list[str] | None = None) -> int:
     audio_batch = None
     bridge = None
     meetings = None
+    updates = None
 
     def settings_work_busy() -> bool:
         return settings is not None and (
@@ -523,6 +524,7 @@ def main(argv: list[str] | None = None) -> int:
             capture_idle()
             and not settings_work_busy()
             and (practice is None or not practice.blocks_processing)
+            and (updates is None or not updates.installing)
         )
 
     try:
@@ -534,6 +536,7 @@ def main(argv: list[str] | None = None) -> int:
         runtime,
         can_start=meetings_can_start,
         workflow_config=QtWorkflowConfig(repositories, runtime.account),
+        editing_allowed=lambda: updates is None or not updates.installing,
         parent=app,
     )
 
@@ -687,6 +690,7 @@ def main(argv: list[str] | None = None) -> int:
         parent=app,
     )
     settings.bindUpdates(updates)
+    updates.changed.connect(meetings.refresh)
 
     def sync_updates():
         updates.setAutomatic(repositories.config.load().automatic_updates)

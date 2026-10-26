@@ -1,4 +1,5 @@
 import tempfile
+import json
 import threading
 import time
 import unittest
@@ -273,6 +274,36 @@ class MeetingWorkflowTests(unittest.TestCase):
 
 
 class MeetingProviderTests(unittest.TestCase):
+    def test_managed_snapshot_records_fixed_models_without_credentials(self):
+        service = Mock()
+        provider = MeetingProviderService(service, Mock())
+        provider.validate = Mock()
+        routes = provider.snapshot(MeetingIdentity("account:" + "a" * 64, 3, True))
+        persisted = routes.persisted()
+        self.assertEqual(persisted["transcription"]["provider_id"], "clarify")
+        self.assertEqual(
+            persisted["transcription"]["model_id"], "whisper-large-v3-turbo"
+        )
+        self.assertEqual(persisted["notes"]["model_id"], "openai/gpt-oss-20b")
+        self.assertNotIn("api_key", str(persisted))
+        service._connection.assert_not_called()
+        with tempfile.TemporaryDirectory() as directory:
+            store = MeetingStore(directory)
+            fake = FakeProvider()
+            fake.current = MeetingIdentity("account:" + "a" * 64, 3, True)
+            fake.snapshot.return_value = routes
+            workflow = MeetingWorkflow(
+                store, fake, source_factory=Mock(), capture_factory=FakeCapture
+            )
+            self.addCleanup(workflow.shutdown)
+            workflow.start(language="es")
+            wait_for(lambda: workflow.phase == "recording")
+            workflow.stop()
+            wait_for(lambda: not workflow.active)
+            saved = store.get(fake.current.owner, workflow.selected)
+            self.assertEqual(json.loads(saved["routes"]), persisted)
+            self.assertEqual(saved["language"], "es")
+
     def test_summary_resolves_only_its_own_connection(self):
         service = Mock()
         provider = MeetingProviderService(service, Mock())

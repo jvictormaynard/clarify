@@ -38,6 +38,7 @@ class QmlMeetingController(QObject):
         dispatch=lambda callback: callback(),
         error="",
         activate=True,
+        editing_allowed=lambda: True,
         parent=None,
     ):
         super().__init__(parent)
@@ -46,6 +47,7 @@ class QmlMeetingController(QObject):
         self._error = error
         self._notes_pending = False
         self._enabled = False
+        self._editing_allowed = editing_allowed
         self._note_contexts = {}
         self._state = {
             "active": False,
@@ -58,6 +60,10 @@ class QmlMeetingController(QObject):
             "managed": False,
             "context": "",
             "notesRoute": {},
+            "editingAllowed": bool(editing_allowed()),
+            "page": 0,
+            "hasNext": False,
+            "cleanupPending": False,
         }
         self._timer = QTimer(self)
         self._timer.setInterval(250)
@@ -110,6 +116,7 @@ class QmlMeetingController(QObject):
             return
         try:
             state = self.workflow.snapshot()
+            state["editingAllowed"] = bool(self._editing_allowed())
             if state.get("selected"):
                 self._note_contexts[(state["context"], state["selected"]["id"])] = (
                     state["context"].rsplit(":", 1)[0]
@@ -128,11 +135,13 @@ class QmlMeetingController(QObject):
             }
             self.stateChanged.emit()
 
-    def _run(self, action):
+    def _run(self, action, *, editing=False):
         try:
             if self.workflow is None:
                 raise MeetingError(self._error or "meeting.store_error")
             if not self._enabled:
+                raise MeetingError("meeting.busy")
+            if editing and not self._editing_allowed():
                 raise MeetingError("meeting.busy")
             self._error = ""
             action()
@@ -155,7 +164,9 @@ class QmlMeetingController(QObject):
 
     @Slot(str, result=bool)
     def start(self, title=""):
-        return self._run(lambda: self.workflow.start(title, self._language()))
+        return self._run(
+            lambda: self.workflow.start(title, self._language()), editing=True
+        )
 
     @Slot()
     def stop(self):
@@ -167,11 +178,11 @@ class QmlMeetingController(QObject):
 
     @Slot(result=bool)
     def retry(self):
-        return self._run(self.workflow.retry)
+        return self._run(self.workflow.retry, editing=True)
 
     @Slot(result=bool)
     def summarize(self):
-        return self._run(self.workflow.summarize)
+        return self._run(self.workflow.summarize, editing=True)
 
     @Slot(str, result=bool)
     def select(self, meeting_id):
@@ -179,7 +190,9 @@ class QmlMeetingController(QObject):
 
     @Slot(str, str, str, result=bool)
     def saveNotes(self, meeting_id, context, text):
-        return self._run(lambda: self.workflow.save_notes(meeting_id, context, text))
+        return self._run(
+            lambda: self.workflow.save_notes(meeting_id, context, text), editing=True
+        )
 
     @Slot(str, str, str, result=bool)
     def preserveDraft(self, meeting_id, context, text):
@@ -191,7 +204,7 @@ class QmlMeetingController(QObject):
             # was shown before expiry. It cannot assign it to the new session.
             self.workflow.store.save_notes(owner, meeting_id, text)
 
-        return self._run(save)
+        return self._run(save, editing=True)
 
     @Slot(str, str, str, bool, result=bool)
     def saveNotesRoute(self, context, provider, model, enabled):
@@ -218,7 +231,15 @@ class QmlMeetingController(QObject):
                 self.workflow.provider.identity().owner, route
             )
 
-        return self._run(save)
+        return self._run(save, editing=True)
+
+    @Slot(int, result=bool)
+    def changePage(self, delta):
+        return self._run(lambda: self.workflow.change_page(delta), editing=True)
+
+    @Slot(result=bool)
+    def retryCleanup(self):
+        return self._run(self.workflow.retry_cleanup, editing=True)
 
     def markdown(self):
         data = self.workflow.export()
@@ -248,7 +269,7 @@ class QmlMeetingController(QObject):
                 text = self.markdown()
                 self._dispatch(lambda: self._copy(text))
 
-        return self._run(copy)
+        return self._run(copy, editing=True)
 
     @Slot(str, result=bool)
     def exportFile(self, url):
@@ -265,11 +286,11 @@ class QmlMeetingController(QObject):
             ):
                 raise MeetingError("meeting.export_error")
 
-        return self._run(save)
+        return self._run(save, editing=True)
 
     @Slot(result=bool)
     def delete(self):
-        return self._run(self.workflow.delete)
+        return self._run(self.workflow.delete, editing=True)
 
     def shutdown(self):
         self.flushNotesRequested.emit()
@@ -278,7 +299,9 @@ class QmlMeetingController(QObject):
             self.workflow.shutdown()
 
 
-def create_qml_meetings(runtime, *, can_start, workflow_config, parent=None):
+def create_qml_meetings(
+    runtime, *, can_start, workflow_config, editing_allowed=lambda: True, parent=None
+):
     try:
         workflows = WorkflowProviderService(
             workflow_config,
@@ -297,7 +320,13 @@ def create_qml_meetings(runtime, *, can_start, workflow_config, parent=None):
             copy_runner=runtime.copy_result,
             dispatch=runtime.scheduler.run_dispatch,
             activate=False,
+            editing_allowed=editing_allowed,
             parent=parent,
         )
     except MeetingError as error:
-        return QmlMeetingController(error=error.code, activate=False, parent=parent)
+        return QmlMeetingController(
+            error=error.code,
+            activate=False,
+            editing_allowed=editing_allowed,
+            parent=parent,
+        )

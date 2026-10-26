@@ -5996,6 +5996,26 @@
     "en": "Discard draft",
     "es": "Descartar borrador"
   },
+  "meeting.delete_pending": {
+    "pt": "A exclusão de áudio está pendente. Os registros de exclusão foram mantidos para nova tentativa.",
+    "en": "Audio deletion is pending. Deletion records were kept for retry.",
+    "es": "La eliminación de audio está pendiente. Los registros de eliminación se conservaron para reintentar."
+  },
+  "meeting.retry_cleanup": {
+    "pt": "Tentar exclusão novamente",
+    "en": "Retry deletion",
+    "es": "Reintentar eliminación"
+  },
+  "meeting.previous": {
+    "pt": "Anterior",
+    "en": "Previous",
+    "es": "Anterior"
+  },
+  "meeting.next": {
+    "pt": "Próxima",
+    "en": "Next",
+    "es": "Siguiente"
+  },
   "meeting.export_error": {
     "pt": "Não foi possível exportar a reunião. Escolha um arquivo local.",
     "en": "Could not export the meeting. Select a local file.",
