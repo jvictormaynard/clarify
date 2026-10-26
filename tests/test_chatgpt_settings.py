@@ -326,6 +326,59 @@ class ChatGPTSettingsTests(unittest.TestCase):
             service.rewrite("Keep all facts.")
         http.request.assert_not_called()
 
+    def test_model_selection_never_binds_a_previous_catalog_to_a_new_account(self):
+        from provider_types import ModelCatalog
+
+        repository = self.install_fake_provider()
+        self.settings.selectWorkflow("rewrite")
+        self.settings.savePreference("setRouteProviderId", ["chatgpt"])
+        self.command("sign_in")
+        self.wait_idle()
+        self.wait_models()
+        for persisted in (False, True):
+            for switch_after in (1, 2):
+                with self.subTest(persisted=persisted, switch_after=switch_after):
+                    self.session.select_account("personal")
+                    self.settings._read_chatgpt_snapshot()
+                    key = self.settings._model_connection_key()
+                    self.settings._model_catalogs[key] = ModelCatalog(
+                        text_models=("shared-model",)
+                    )
+                    snapshot = self.session.snapshot
+                    reads = 0
+
+                    def change_after_snapshot():
+                        nonlocal reads
+                        value = snapshot()
+                        reads += 1
+                        if reads == switch_after:
+                            self.session.select_account("external-during-selection")
+                        return value
+
+                    with patch.object(
+                        self.session, "snapshot", side_effect=change_after_snapshot
+                    ):
+                        accepted = (
+                            self.settings.savePreference(
+                                "setRouteModelId", ["shared-model"]
+                            )
+                            if persisted
+                            else self.settings.setRouteModelId("shared-model")
+                        )
+                    self.assertEqual(
+                        self.session.state["accountId"], "external-during-selection"
+                    )
+                    route = (
+                        repository.load() if persisted else self.settings._config
+                    ).workflow("rewrite")
+                    if accepted:
+                        self.assertEqual(route.model_id, "shared-model")
+                        self.assertEqual(route.account_id, "personal")
+                    else:
+                        self.assertNotEqual(
+                            route.account_id, "external-during-selection"
+                        )
+
     def test_identity_without_plan_permission_has_no_catalog_and_provider_tests_block_mutation(
         self,
     ):

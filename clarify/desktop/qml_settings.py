@@ -838,6 +838,23 @@ class QmlSettingsController(QObject):
             ],
         }
 
+    def _chatgpt_model_account(self, model):
+        if not model:
+            return ""
+        catalog = self.chatgptTextCatalog
+        state = self.chatgptState
+        if (
+            not catalog.get("accountId")
+            or catalog.get("accountId") != state["accountId"]
+            or catalog.get("generation") != state["generation"]
+            or state["busy"]
+            or not state["connected"]
+            or not state["planEnabled"]
+            or model not in {item["id"] for item in catalog.get("models", [])}
+        ):
+            raise ValueError("Selecione um modelo disponível nesta conta ChatGPT.")
+        return catalog["accountId"]
+
     @Slot(str, str, result=bool)
     def chatgptCommand(self, action, value=""):
         actions = {
@@ -2639,24 +2656,21 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setRouteModelId(self, value: str) -> bool:
-        if (
-            self.routeProviderId == "chatgpt"
-            and value
-            and value not in {option["id"] for option in self.routeModelOptions}
-        ):
-            self._set_error(
-                ValueError("Selecione um modelo disponível nesta conta ChatGPT.")
+        model = str(value or "").strip()
+        try:
+            account_id = (
+                self._chatgpt_model_account(model)
+                if self.routeProviderId == "chatgpt"
+                else ""
             )
+        except ValueError as error:
+            self._set_error(error)
             return False
         return self._update_selected_route(
             lambda route: replace(
                 route,
-                model_id=str(value or "").strip(),
-                account_id=(
-                    self.chatgptState["accountId"]
-                    if route.provider_id == "chatgpt" and str(value or "").strip()
-                    else ""
-                ),
+                model_id=model,
+                account_id=account_id if route.provider_id == "chatgpt" else "",
             )
         )
 
@@ -3716,20 +3730,14 @@ class QmlSettingsController(QObject):
             model = args[0].strip() or (
                 metadata.default_audio_model if audio else metadata.default_text_model
             )
-            if (
-                old_route.provider_id == "chatgpt"
-                and model
-                and model not in {option["id"] for option in self.routeModelOptions}
-            ):
-                raise ValueError("Selecione um modelo disponível nesta conta ChatGPT.")
             fields["model_id"] = (
                 PROVIDER_REGISTRY.canonical_audio_model(old_route.provider_id, model)
                 if audio
                 else model
             )
             fields["account_id"] = (
-                self.chatgptState["accountId"]
-                if old_route.provider_id == "chatgpt" and model
+                self._chatgpt_model_account(model)
+                if old_route.provider_id == "chatgpt"
                 else ""
             )
         elif method == "setRouteEnabled":
