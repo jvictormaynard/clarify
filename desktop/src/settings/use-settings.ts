@@ -12,6 +12,7 @@ import { recordingDraft, recordingValue, type RecordingDraft } from "./recording
 import type { PageId } from "./navigation";
 import { useSettingsWindow } from "./use-settings-window";
 import { mergeSettings, settingsValuesEqual } from "./state";
+import { dictionaryIdentity } from "./dictionary-identity";
 
 type RouteOverride = { model?: string; endpoint?: string };
 type RouteDraft = { prompt?: string; override?: RouteOverride };
@@ -95,7 +96,7 @@ function reconcileLibrary<T extends DictionaryEntry | Snippet>(
   identify: (entry: T, identity?: LibraryIdentity<T>) => LibraryIdentity<T>,
 ): LibraryDraft<T> | null {
   if (!draft || draft.context !== context) return draft;
-  const key = (entry: T) => ("term" in entry ? entry.term : entry.trigger).trim().normalize("NFC").toLowerCase();
+  const key = (entry: T) => "term" in entry ? dictionaryIdentity(entry.term) : entry.trigger.trim().normalize("NFC").toLowerCase();
   const originals = new Map(draft.baseline.map(row => [row.identity, row.entry]));
   const byKey = new Map(draft.baseline.flatMap(row => {
     const saved = row.identity.persisted ?? row.entry;

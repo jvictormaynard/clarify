@@ -64,7 +64,7 @@ function setup() {
     useRef:value=>{const slot=index++;if(!(slot in slots))slots[slot]={current:value};return slots[slot];},
     useMemo:fn=>fn(),useCallback:(fn,deps)=>{const slot=index++;const previous=slots[slot];if(!previous || deps.some((x,i)=>!Object.is(x,previous.deps[i])))slots[slot]={fn,deps};return slots[slot].fn;},useEffect:()=>{},
   });
-  for(const file of ['bridge.ts','state.ts','use-settings-window.ts','use-settings.ts']){
+  for(const file of ['bridge.ts','state.ts','dictionary-identity.ts','use-settings-window.ts','use-settings.ts']){
     const sourceRoot = root;
     let source=readFileSync(`${sourceRoot}/desktop/src/settings/${file}`,'utf8').replace(/^import\b[\s\S]*?;\s*/gm,'').replace(/^export /gm,'');
     if(file==='use-settings-window.ts') source=source.replace(/\buseEffect\(/g,'windowEffect(');
@@ -323,12 +323,12 @@ for(const library of ['dictionary','snippets']) test(`${library} stale-account d
  assert.equal((library==='dictionary'?c.dictionary:c.snippets)[0][library==='dictionary'?'term':'replacement'],'private guest draft');assert.equal(await c.save(),false);assert.equal(h.persisted[key][0][library==='dictionary'?'term':'trigger'],'other account');
 });
 
-test('dictionary correction adopts a matching unsaved row and keeps pending metadata', async () => {
+for (const [localTerm,correctedTerm] of [['Clarify','Clarify'],['Straße','STRASSE'],['STRASSE','Straße']]) test(`dictionary correction adopts ${localTerm}/${correctedTerm} and keeps pending metadata`, async () => {
  const h=setup();let c=h.render();await c.navigate('dictionary');c=h.render();
- const added={term:'Clarify',pronunciation:'',aliases:[],enabled:true};
+ const added={term:localTerm,pronunciation:'',aliases:[],enabled:true};
  c.setDictionary([...c.state.dictionaryEntries,added]);c=h.render();
  c.setDictionary(c.dictionary.map((entry,i)=>i===1?{...entry,pronunciation:'pending pronunciation'}:entry));c=h.render();
- const saved={...added,aliases:['clear if eye']};h.replaceLibrary('dictionary',[c.state.dictionaryEntries[0],saved]);await c.run('snapshot');c=h.render();
+ const saved={...added,term:correctedTerm,aliases:['clear if eye']};h.replaceLibrary('dictionary',[c.state.dictionaryEntries[0],saved]);await c.run('snapshot');c=h.render();
  assert.equal(c.dictionary.length,2);assert.equal(c.dictionary[1].pronunciation,'pending pronunciation');assert.deepEqual(clone(c.dictionary[1].aliases),['clear if eye']);
  assert.equal(await c.save(),true);c=h.render();assert.equal(c.error,'');assert.equal(h.persisted.dictionaryEntries.length,2);assert.equal(h.persisted.dictionaryEntries[1].pronunciation,'pending pronunciation');assert.deepEqual(clone(h.persisted.dictionaryEntries[1].aliases),['clear if eye']);
 });

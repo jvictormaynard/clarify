@@ -209,6 +209,7 @@ foreach ($backendModule in @(
     "dictionary_settings.py",
     "dictionary_snippets.py",
     "experimental_audio_history.py",
+    "history_corrections.py",
     "history_store.py",
     "hotkey_config.py",
     "local_asr.py",
