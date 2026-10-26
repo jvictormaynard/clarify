@@ -5,6 +5,21 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-27
+
+### Added
+
+- Connect an eligible ChatGPT subscription in personal desktop mode without a Clarify account or an OpenAI API key. Use the selected account's models for rewriting, translation, and optional Local Whisper transcript refinement within the plan's existing limits.
+- Manage saved ChatGPT accounts, reconnect, review plan usage, and select account-specific text models in Settings. Text requests go directly to OpenAI; credentials stay in protected local storage.
+
+### Fixed
+
+- Accept completed ChatGPT replies when the final stream event omits the generated text. Preserve cancellation and session checks before returning a result.
+
+### Security
+
+- Keep rotating ChatGPT tokens in a separate protected store. Reject stale account/model selections and bound model-list, error-body, and streamed response reads.
+
 ## [0.12.0] - 2026-10-26
 
 ### Changed
@@ -420,7 +435,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/jvictormaynard/clarify/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/jvictormaynard/clarify/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/jvictormaynard/clarify/compare/v0.9.0...v0.11.0
 [0.9.0]: https://github.com/jvictormaynard/clarify/compare/v0.8.0...v0.9.0
