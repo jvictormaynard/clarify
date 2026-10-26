@@ -612,24 +612,64 @@ test("history: review tools compare preserved texts and recover from clipboard f
 
 test("history: large history search reaches older originals and never reports partial scan as empty", async ({ page }) => {
   await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  const queries = ["ISOLATED DESKTOP HISTORY.", "no such text"];
+  // Hold each completed RPC before React receives it. This forces the pending
+  // continuation state, including the final reply that removes the button.
+  await page.evaluate(queries => {
+    const runtime = (window as any).__TAURI_INTERNALS__;
+    const invoke = runtime.invoke;
+    runtime.invoke = async (command: string, request: any) => {
+      const result = await invoke(command, request);
+      if (request.method === "getHistoryPage" && queries.includes(request.args[2])) {
+        await new Promise<void>(resolve => {
+          (window as any).__historyScan = { query: request.args[2], cursor: request.args[1], release: resolve };
+        });
+      }
+      return result;
+    };
+  }, queries);
+  const more = page.getByRole("button", { name: "Continuar busca", exact: true });
+  const empty = page.getByText("Nenhum resultado encontrado.", { exact: true });
+  const scan = async (action: () => Promise<unknown>, query: string, cursor = "") => {
+    const response = page.waitForResponse(response => {
+      if (!response.url().endsWith("/__test_rpc")) return false;
+      const request = response.request().postDataJSON();
+      return request.method === "getHistoryPage" && request.args[1] === cursor && request.args[2] === query;
+    });
+    await action();
+    const reply = await (await response).json();
+    expect(reply.error).toBeUndefined();
+    await page.waitForFunction(({ query, cursor }) => {
+      const held = (window as any).__historyScan;
+      return held?.query === query && held?.cursor === cursor;
+    }, { query, cursor });
+    if (cursor) await expect(more).toBeDisabled();
+    await expect(empty).toHaveCount(0);
+    await page.evaluate(() => {
+      const held = (window as any).__historyScan;
+      delete (window as any).__historyScan;
+      held.release();
+    });
+    // Decide the next action only after this exact cursor's reply has rendered.
+    if (reply.result.hasMore) await expect(more).toBeEnabled();
+    else await expect(more).toHaveCount(0);
+    await expect(page.getByRole("status", { name: "Carregando…", exact: true })).toHaveCount(0);
+    return reply.result as { entries: unknown[]; cursor: string; hasMore: boolean };
+  };
   const search = page.getByRole("searchbox", { name: "Buscar no histórico", exact: true });
-  await search.fill("ISOLATED DESKTOP HISTORY.");
-  await page.getByRole("button", { name: "Buscar", exact: true }).click();
-  for (let i = 0; i < 20; i++) {
-    await expect(page.getByRole("button", { name: "Continuar busca", exact: true }).or(page.getByText("Isolated revised desktop history.", { exact: true }))).toBeVisible();
-    if (await page.getByText("Isolated revised desktop history.", { exact: true }).count()) break;
-    await expect(page.getByText("Nenhum resultado encontrado.", { exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Continuar busca", exact: true }).click();
+  await search.fill(queries[0]);
+  let result = await scan(() => page.getByRole("button", { name: "Buscar", exact: true }).click(), queries[0]);
+  for (let i = 0; i < 20 && result.hasMore && !result.entries.length; i++) {
+    result = await scan(() => more.click(), queries[0], result.cursor);
   }
+  await expect(page.getByText("Isolated revised desktop history.", { exact: true })).toBeVisible();
   await expect(page.getByRole("listitem")).toHaveCount(1);
-  await search.fill("no such text"); await page.getByRole("button", { name: "Buscar", exact: true }).click();
-  for (let i = 0; i < 20; i++) {
-    const more = page.getByRole("button", { name: "Continuar busca", exact: true });
-    await expect(more.or(page.getByText("Nenhum resultado encontrado.", { exact: true }))).toBeVisible();
-    if (!await more.count()) break;
-    await more.click();
+  await search.fill(queries[1]);
+  result = await scan(() => page.getByRole("button", { name: "Buscar", exact: true }).click(), queries[1]);
+  for (let i = 0; i < 20 && result.hasMore; i++) {
+    result = await scan(() => more.click(), queries[1], result.cursor);
   }
-  await expect(page.getByText("Nenhum resultado encontrado.", { exact: true })).toBeVisible();
+  await expect(empty).toBeVisible();
 });
 
 test("history: cancelled expansion ignores late text and context change closes comparison", async ({ page }) => {
