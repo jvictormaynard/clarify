@@ -654,6 +654,7 @@ def main(argv: list[str] | None = None) -> int:
     web_settings = WebSettingsProcess(
         settings, bridge, lambda: settings_window_visibility.show_native(), app
     )
+    quick_paste.excluded_executable = web_settings.process.program
     settings_window_visibility = _SettingsWindowVisibility(
         bridge, settings_window, web_settings
     )

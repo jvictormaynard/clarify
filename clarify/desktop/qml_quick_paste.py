@@ -1,6 +1,7 @@
 """Focus-safe, explicitly requested paste from the compact quick menu."""
 
 from PySide6.QtCore import QObject, QTimer
+from writing_styles import windows_executable_key
 
 
 class QuickPasteController(QObject):
@@ -10,6 +11,7 @@ class QuickPasteController(QObject):
         self.dispatch = dispatch
         self.windows = windows
         self.hide = hide
+        self.excluded_executable = lambda: ""
         self.target = None
         self.timer = QTimer(self)
         self.timer.setInterval(150)
@@ -26,6 +28,13 @@ class QuickPasteController(QObject):
         if any(window.isActive() for window in windows):
             return self.target
         target = self.clipboard.capture_target()
+        excluded = windows_executable_key(self.excluded_executable())
+        if (
+            target is not None
+            and excluded is not None
+            and windows_executable_key(target.executable) == excluded
+        ):
+            return self.target
         if target is not None and target.window not in {
             int(window.winId()) for window in windows
         }:

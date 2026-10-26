@@ -16,6 +16,30 @@ from workflows import WorkflowState, WorkflowPhase, WorkflowKind
 
 
 class ApplicationStyleSettingsTests(unittest.TestCase):
+    def test_native_settings_outside_qt_windows_preserves_external_app(self):
+        from unittest.mock import Mock
+        from clarify.desktop.qml_quick_paste import QuickPasteController
+        from workflows import SelectionTarget
+
+        window = Mock()
+        window.isActive.return_value = False
+        window.winId.return_value = 1
+        clipboard = Mock()
+        editor = SelectionTarget(2, r"C:\Apps\Editor.exe")
+        clipboard.capture_target.return_value = editor
+        controller = QuickPasteController(
+            clipboard, lambda callback: callback(), lambda: [window], lambda: None
+        )
+        controller.excluded_executable = lambda: r"C:\Clarify\clarify-settings.exe"
+        try:
+            clipboard.capture_target.return_value = SelectionTarget(
+                3, "c:/CLARIFY/CLARIFY-SETTINGS.EXE"
+            )
+            self.assertEqual(controller.capture_target(), editor)
+            self.assertEqual(controller.target, editor)
+        finally:
+            controller.timer.stop()
+
     def test_unavailable_foreground_defaults_without_losing_capsule_target(self):
         from unittest.mock import Mock
         from clarify.desktop.qml_quick_paste import QuickPasteController
