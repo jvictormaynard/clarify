@@ -64,6 +64,7 @@ final class KeyboardUITests: XCTestCase {
       let status = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UILabel }.first { $0.accessibilityIdentifier == "clarify.keyboard.status" })
       let messages = ["Nenhuma fala foi reconhecida. Tente falar novamente.", "Não foi possível transcrever o áudio. Tente novamente.",
         "O processamento do Clarify está indisponível no momento.", "Esta solicitação não pode ser repetida. Inicie uma nova ação.",
+        "O computador atingiu o limite. No computador, revogue o acesso de um celular que não usa mais ou deste iPhone. Depois, leia um novo QR.",
         "A reescrita falhou. Você pode inserir a transcrição original."]
       for language in ["pt", "en", "es"] {
         for message in messages {
@@ -1070,6 +1071,33 @@ final class KeyboardUITests: XCTestCase {
       state.phase = .ready; state.text = "Old translation"; state.heartbeat = Date().timeIntervalSince1970
       try store.write(state, to: "state.json"); keyboard.refreshFromStore(); self.attemptExplicitInsertion(keyboard)
       XCTAssertFalse(keyboard.field.before.contains("Old translation"))
+    }
+  }
+  func testCommandKeepsTheKeyboardContextWhenTheAppChangesDestinationBeforeSend() async throws {
+    try await MainActor.run {
+      for action in ["start", "rewrite"] {
+        let (keyboard, store, window) = try self.makeDictationFixture()
+        defer {
+          keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+          window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+        }
+        var state = store.snapshot(); state.computerMode = true; state.processingContext = "computer-A"
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+        keyboard.field.selectedText = "Text authorized for computer A"
+        // The containing app publishes B before the extension's next timer poll.
+        state.processingContext = "computer-B"
+        try store.write(state, to: "state.json")
+        if action == "rewrite" { keyboard.processSelection(action, language: "pt") }
+        else {
+          let mic = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
+          XCTAssertTrue(mic.accessibilityActivate())
+        }
+        let command = try XCTUnwrap(store.commands().last?.1)
+        XCTAssertEqual(command.action, action)
+        XCTAssertEqual(command.text, action == "rewrite" ? "Text authorized for computer A" : nil)
+        XCTAssertEqual(command.context, "computer-A", "Delivery must retain the destination that authorized the action")
+        XCTAssertNotEqual(command.context, store.snapshot().processingContext, "The app must see this command as stale")
+      }
     }
   }
   func testComputerTextResultInsertsOnlyIntoOriginalSelection() async throws {

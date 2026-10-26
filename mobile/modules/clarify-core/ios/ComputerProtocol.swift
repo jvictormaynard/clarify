@@ -156,12 +156,13 @@ struct ComputerInvitation: Decodable {
 }
 
 enum ComputerFailure: Error, LocalizedError, Equatable {
-  case invalidQR, expiredQR, offline, authentication, invalidResponse, notReady, cancelled, cameraDenied, cameraUnavailable, busy, invalidAudio
+  case invalidQR, expiredQR, deviceLimit, offline, authentication, invalidResponse, notReady, cancelled, cameraDenied, cameraUnavailable, busy, invalidAudio
   var errorDescription: String? { L(message) }
   var message: String {
     switch self {
     case .invalidQR: return "O QR do computador é inválido. Gere outro QR no Clarify."
     case .expiredQR: return "O QR expirou. Gere outro QR no computador."
+    case .deviceLimit: return "O computador atingiu o limite de celulares. No computador, revogue o acesso de um celular pareado antes de gerar um novo QR."
     case .authentication: return "A conexão foi revogada. Leia outro QR no computador."
     case .invalidResponse: return "O computador retornou uma resposta inválida."
     case .notReady: return "Configure o processamento no Clarify do computador."

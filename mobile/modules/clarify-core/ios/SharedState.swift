@@ -77,8 +77,10 @@ struct SharedState {
     try JSONEncoder().encode(value).write(to: root.appendingPathComponent(name), options: .atomic)
   }
   func snapshot() -> DictationSnapshot { read("state.json", as: DictationSnapshot.self) ?? DictationSnapshot() }
-  func send(_ action: String, operationID: String, text: String? = nil, language: String? = nil) throws {
-    let command = DictationCommand(action, operationID: operationID, text: text, language: language, context: snapshot().processingContext)
+  func send(_ action: String, operationID: String, context: String?, text: String? = nil, language: String? = nil) throws {
+    // The caller supplies the context that authorized this action. Reading a
+    // newer snapshot here could retarget text to another processing owner.
+    let command = DictationCommand(action, operationID: operationID, text: text, language: language, context: context)
     // Persist intent before command delivery. App acknowledgement, command
     // expiry and controller replacement must not restore a cancelled result.
     if action == "cancel" {

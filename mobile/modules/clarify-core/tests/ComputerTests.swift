@@ -97,6 +97,7 @@ final class ComputerTests: XCTestCase {
     var onProcessing: (() -> Void)?
     var invalidations = 0
     var failure: Error?
+    var pairingData: Data?
     var processingData: Data?
     var processingError: String?
     var resultOperationID: String?
@@ -109,6 +110,9 @@ final class ComputerTests: XCTestCase {
       var json: [String: Any] = [:]
       if path.hasSuffix("/pair") {
         XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        if let data = self.pairingData {
+          return (data, HTTPURLResponse(url: request.url!, statusCode: self.status, httpVersion: nil, headerFields: nil)!)
+        }
         json = ["schema_version": 1, "computer_id": self.replyComputer.uuidString, "computer_name": "Fixture PC",
           "device_id": ComputerTests.device.uuidString, "session_token": ComputerTests.token]
       } else {
@@ -163,6 +167,52 @@ final class ComputerTests: XCTestCase {
     let other = Fixture(); other.replyComputer = UUID()
     do { try await other.connection.refresh(); XCTFail("Wrong identity accepted") } catch {}
     XCTAssertFalse(other.connection.ready)
+  }
+  @MainActor func testPairDeviceLimitPreservesExistingTrustWithoutRetryOrRevocation() async throws {
+    let f = Fixture(); try await f.connection.refresh()
+    f.connection.setInvalidationHandler { f.invalidations += 1 }
+    let generation = f.connection.generation
+    var invitation = Self.invitation
+    invitation["routes"] = [
+      ["url": Self.route.url, "certificate_sha256": Self.route.certificateSHA256!],
+      ["url": "https://computer.example.com", "certificate_sha256": NSNull()]] as [[String: Any]]
+    f.status = 429; f.pairingData = Data(#"{"error":"device_limit"}"#.utf8)
+    do { try await f.connection.pair(Self.qr(invitation), deviceName: "Fixture iPhone", now: Self.now); XCTFail("Capacity error accepted") }
+    catch {
+      XCTAssertEqual(error as? ComputerFailure, .deviceLimit)
+      XCTAssertEqual(error.localizedDescription, L("O computador atingiu o limite de celulares. No computador, revogue o acesso de um celular pareado antes de gerar um novo QR."))
+    }
+    await Task.yield()
+    XCTAssertEqual(f.saved, Self.credential); XCTAssertEqual(f.connection.credential, Self.credential)
+    XCTAssertEqual(f.connection.generation, generation); XCTAssertEqual(f.invalidations, 0)
+    XCTAssertTrue(f.connection.configured); XCTAssertTrue(f.connection.ready); XCTAssertFalse(f.connection.busy)
+    XCTAssertEqual(f.requests.map { $0.httpMethod }, ["GET", "POST"])
+    XCTAssertEqual(f.requests.map { $0.url?.path }, ["/v1/computer/status", "/v1/computer/pair"])
+    let request = try XCTUnwrap(f.requests.last)
+    let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: String])
+    XCTAssertEqual(body, ["pairing_token": Self.invitation["pairing_token"] as! String, "device_name": "Fixture iPhone"])
+  }
+  @MainActor func testPairRequiresExactDeviceLimitStatusAndValidErrorBody() async throws {
+    let replies = [
+      (409, #"{"error":"device_limit"}"#),
+      (429, #"{"error":"busy"}"#),
+      (429, #"{"message":"device_limit"}"#),
+      (429, #"{"error":429}"#),
+      (429, #"{"error":["device_limit"]}"#),
+      (429, #"[{"error":"device_limit"}]"#),
+      (429, #"{"error":"device_limit""#)]
+    for (status, body) in replies {
+      let f = Fixture(); try await f.connection.refresh()
+      let generation = f.connection.generation
+      f.status = status; f.pairingData = Data(body.utf8)
+      do { try await f.connection.pair(Self.qr(Self.invitation), deviceName: "Fixture iPhone", now: Self.now); XCTFail("Invalid capacity reply accepted") }
+      catch { XCTAssertEqual(error as? ComputerFailure, .invalidResponse, body) }
+      await Task.yield()
+      XCTAssertEqual(f.saved, Self.credential); XCTAssertEqual(f.connection.credential, Self.credential)
+      XCTAssertEqual(f.connection.generation, generation); XCTAssertTrue(f.connection.ready)
+      XCTAssertFalse(f.connection.busy)
+      XCTAssertEqual(f.requests.map { $0.httpMethod }, ["GET", "POST"])
+    }
   }
   @MainActor func testSwitchRejectsLateResultAndCancelsOriginalOperation() async throws {
     let f = Fixture(); try await f.connection.refresh()
@@ -272,7 +322,7 @@ final class ComputerTests: XCTestCase {
       ("operation_in_future", 400, "Verifique a data e a hora do iPhone e do computador. Depois, inicie uma nova ação."),
       ("result_unavailable", 409, "Esta solicitação não pode ser repetida. Inicie uma nova ação."),
       ("operation_limit", 429, "O computador atingiu o limite temporário de solicitações. Aguarde e inicie uma nova ação."),
-      ("operation_history_full", 409, "O computador atingiu o limite. Nele, revogue o acesso dos celulares que não usa mais e tente novamente.")]
+      ("operation_history_full", 409, "O computador atingiu o limite. No computador, revogue o acesso de um celular que não usa mais ou deste iPhone. Depois, leia um novo QR.")]
     for (code, status, message) in errors {
       let f = Fixture(); try await f.connection.refresh()
       f.processingError = code; f.status = status

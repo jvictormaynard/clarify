@@ -231,6 +231,7 @@ class Dispatcher(QObject):
             elif action == "expire":
                 controller._expires = 1
             elif action == "offline":
+                controller._host.enabled = False
                 controller._host.ready = False
                 controller.refresh()
             print(json.dumps({"id": request.get("id"), "result": True}), flush=True)
@@ -419,14 +420,17 @@ class FixtureComputerHost:
     """Offline mobile host. Its QR and devices are synthetic test data."""
 
     def __init__(self):
+        self.enabled = False
         self.ready = False
         self.devices = []
         self.sequence = 0
 
     def start(self):
-        self.ready = True
+        # Pairing is available before processing has been configured.
+        self.enabled = True
 
     def stop(self):
+        self.enabled = False
         self.ready = False
 
     def create_pairing(self):
@@ -439,7 +443,11 @@ class FixtureComputerHost:
         }
 
     def snapshot(self):
-        return {"ready": self.ready, "devices": list(self.devices)}
+        return {
+            "enabled": self.enabled,
+            "ready": self.ready,
+            "devices": list(self.devices),
+        }
 
     def revoke_device(self, device_id):
         self.devices = [

@@ -27,7 +27,8 @@ except ImportError:
 
 class FakeHost:
     def __init__(self):
-        self.ready = False
+        self.enabled = False
+        self.processing_ready = True
         self.sequence = 0
         self.devices = [
             {
@@ -38,15 +39,21 @@ class FakeHost:
         ]
         self.calls = []
 
+    @property
+    def ready(self):
+        return self.enabled and self.processing_ready
+
     def start(self):
         self.calls.append(("start", threading.get_ident()))
-        self.ready = True
+        self.enabled = True
 
     def stop(self):
         self.calls.append(("stop", threading.get_ident()))
-        self.ready = False
+        self.enabled = False
 
     def create_pairing(self):
+        if not self.enabled:
+            raise ValueError("Host is stopped")
         self.sequence += 1
         return {
             "pairing_url": f"clarify://computer?data=fixture-{self.sequence}",
@@ -54,7 +61,11 @@ class FakeHost:
         }
 
     def snapshot(self):
-        return {"ready": self.ready, "devices": self.devices}
+        return {
+            "enabled": self.enabled,
+            "ready": self.ready,
+            "devices": self.devices,
+        }
 
     def revoke_device(self, device_id):
         self.devices = [
@@ -94,10 +105,13 @@ class ComputerControllerTests(unittest.TestCase):
     def wait(self, controller=None):
         controller = controller or self.controller
         deadline = time.monotonic() + 3
-        while controller.snapshot()["busy"] and time.monotonic() < deadline:
+        while (
+            controller.snapshot()["busy"] or controller._refreshing
+        ) and time.monotonic() < deadline:
             self.app.processEvents()
             time.sleep(0.005)
         self.assertFalse(controller.snapshot()["busy"])
+        self.assertFalse(controller._refreshing)
 
     def enable(self):
         self.assertTrue(self.controller.command("enable"))
@@ -231,6 +245,69 @@ class ComputerControllerTests(unittest.TestCase):
         self.controller.command("revoke", "phone-1")
         self.wait()
         self.assertEqual(self.controller.snapshot()["devices"], [])
+
+    def test_listening_host_can_pair_before_processing_is_configured(self):
+        self.host.processing_ready = False
+        self.assertTrue(self.controller.command("enable"))
+        self.wait()
+        self.assertTrue(self.host.enabled)
+        self.assertFalse(self.host.ready)
+        self.assertTrue(self.controller.command("pair"))
+        self.wait()
+        self.assertTrue(self.controller.snapshot()["running"])
+        first = self.controller.pairing()["image"]
+        self.assertTrue(self.controller.command("pair"))
+        self.wait()
+        self.assertNotEqual(first, self.controller.pairing()["image"])
+
+    def test_readiness_changes_keep_refresh_and_pairing_available(self):
+        self.enable()
+        self.assertTrue(self.controller.command("pair"))
+        self.wait()
+        image = self.controller.pairing()["image"]
+        for index, ready in enumerate((False, True, False, True)):
+            with self.subTest(ready=ready, transition=index):
+                self.host.processing_ready = ready
+                self.host.devices[0]["device_name"] = f"Refresh {index}"
+                self.controller.refresh()
+                self.wait()
+                self.assertEqual(
+                    self.controller.snapshot()["devices"],
+                    [{"id": "phone-1", "name": f"Refresh {index}"}],
+                )
+                self.assertTrue(self.controller.snapshot()["running"])
+                self.assertEqual(image, self.controller.pairing()["image"])
+                self.assertTrue(self.controller.command("pair"))
+                self.wait()
+                replacement = self.controller.pairing()["image"]
+                self.assertNotEqual(image, replacement)
+                image = replacement
+
+    def test_explicit_listener_stop_blocks_pairing_and_keeps_status_refreshing(self):
+        self.enable()
+        # Explicit listener state takes precedence even over stale readiness.
+        status = {"enabled": False, "ready": True, "devices": []}
+        self.host.snapshot = Mock(return_value=status)
+        self.controller.refresh()
+        self.wait()
+        self.assertTrue(self.controller.snapshot()["enabled"])
+        self.assertFalse(self.controller.snapshot()["running"])
+        self.assertFalse(self.controller.command("pair"))
+        self.assertEqual(self.host.sequence, 0)
+        status["devices"] = [{"device_id": "phone-2", "device_name": "Stopped"}]
+        self.controller.refresh()
+        self.wait()
+        self.assertEqual(
+            self.controller.snapshot()["devices"],
+            [{"id": "phone-2", "name": "Stopped"}],
+        )
+        self.assertFalse(self.controller.snapshot()["running"])
+        self.assertFalse(self.controller.command("pair"))
+        self.assertEqual(self.host.sequence, 0)
+        self.assertTrue(self.controller.command("stop"))
+        self.wait()
+        self.assertFalse(self.host.enabled)
+        self.assertFalse(self.controller.command("pair"))
 
     def test_close_and_shutdown_reject_a_late_pairing(self):
         self.enable()
@@ -421,7 +498,7 @@ class ComputerControllerTests(unittest.TestCase):
         def snapshot():
             entered.set()
             release.wait(2)
-            return {"ready": True, "devices": []}
+            return {"enabled": True, "ready": True, "devices": []}
 
         self.host.snapshot = snapshot
         self.controller.refresh()

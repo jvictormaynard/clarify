@@ -71,7 +71,7 @@ export default function Home() {
   // The native library revision invalidates the focused page, including keyboard dictations.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, state.libraryRevision, account?.historyContext]));
-  const remove = (entry: HistoryEntry) => Alert.alert(t("Excluir transcrição?"), entry.localOnly ? t("Este texto será removido do histórico deste iPhone.") : t("Este texto será removido do histórico da sua conta em todos os dispositivos."), [
+  const remove = (entry: HistoryEntry) => Alert.alert(t("Excluir transcrição?"), account?.mode === 'computer' || entry.localOnly ? t("Este texto será removido do histórico deste iPhone.") : t("Este texto será removido do histórico da sua conta em todos os dispositivos."), [
     { text: t("Cancelar"), style: 'cancel' }, { text: t("Excluir"), style: 'destructive', onPress: () => {
       setAction('delete');
       void Core.deleteHistory(entry.id, entry.localOnly, entry.context).then(async () => { setSelected(null); await refresh(); await load(); }).catch(report).finally(() => setAction(null));

@@ -5948,5 +5948,15 @@
     "pt": "Verifique a data e a hora do iPhone e do computador. Depois, inicie uma nova ação.",
     "en": "Check the date and time on your iPhone and computer. Then start a new action.",
     "es": "Comprueba la fecha y la hora del iPhone y del ordenador. Después, inicia una nueva acción."
+  },
+  "O computador atingiu o limite. No computador, revogue o acesso de um celular que não usa mais ou deste iPhone. Depois, leia um novo QR.": {
+    "pt": "O computador atingiu o limite. No computador, revogue o acesso de um celular que não usa mais ou deste iPhone. Depois, leia um novo QR.",
+    "en": "The computer has reached its limit. On the computer, revoke access for a phone you no longer use or for this iPhone. Then scan a new QR code.",
+    "es": "El ordenador ha alcanzado el límite. En el ordenador, revoca el acceso de un móvil que ya no usas o de este iPhone. Después, escanea un nuevo QR."
+  },
+  "O computador atingiu o limite de celulares. No computador, revogue o acesso de um celular pareado antes de gerar um novo QR.": {
+    "pt": "O computador atingiu o limite de celulares. No computador, revogue o acesso de um celular pareado antes de gerar um novo QR.",
+    "en": "The computer has reached its phone limit. On the computer, revoke access for a paired phone before generating a new QR code.",
+    "es": "El ordenador ha alcanzado el límite de móviles. En el ordenador, revoca el acceso de un móvil emparejado antes de generar un nuevo QR."
   }
 }

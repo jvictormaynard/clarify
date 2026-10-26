@@ -69,6 +69,8 @@ final class ComputerConnection {
         let (data, code) = try await send("POST", path: "/v1/computer/pair", route: route,
           json: ["pairing_token": invitation.pairingToken, "device_name": deviceName])
         guard generation == owner else { throw CancellationError() }
+        if code == 429, let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+          reply["error"] as? String == "device_limit" { throw ComputerFailure.deviceLimit }
         guard code == 200 || code == 201 else { throw [401, 403, 410].contains(code) ? ComputerFailure.expiredQR : ComputerFailure.invalidResponse }
         struct Reply: Decodable {
           let schema_version: Int; let computer_id: UUID; let computer_name: String; let device_id: UUID; let session_token: String
@@ -176,7 +178,7 @@ final class ComputerConnection {
           "operation_expired": "Esta solicitação não pode ser repetida. Inicie uma nova ação.",
           "operation_in_future": "Verifique a data e a hora do iPhone e do computador. Depois, inicie uma nova ação.",
           "operation_limit": "O computador atingiu o limite temporário de solicitações. Aguarde e inicie uma nova ação.",
-          "operation_history_full": "O computador atingiu o limite. Nele, revogue o acesso dos celulares que não usa mais e tente novamente.",
+          "operation_history_full": "O computador atingiu o limite. No computador, revogue o acesso de um celular que não usa mais ou deste iPhone. Depois, leia um novo QR.",
           "result_unavailable": "Esta solicitação não pode ser repetida. Inicie uma nova ação."]
         let message = (raw?["error"] as? String).flatMap { messages[$0] } ?? (code == 429 ? "Muitas solicitações. Aguarde um momento." : "Não foi possível concluir o processamento. Tente novamente.")
         throw ClarifyError(message, code: "computer_processing_failed", phase: action == nil ? "transcribing" : "rewriting", operationID: operationID, status: code)

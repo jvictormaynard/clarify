@@ -413,7 +413,7 @@ class KeyboardViewController: UIInputViewController {
       dictationEdit = nil; recordingError = nil
       operationID = id; documentID = textDocumentProxy.documentIdentifier
     }
-    do { try store.send(action, operationID: id); feedback.record(action) }
+    do { try store.send(action, operationID: id, context: state.processingContext); feedback.record(action) }
     catch { recordingRequest.reset(); recordingError = L("Abra o Clarify para configurar o teclado.") }
     refreshFromStore()
   }
@@ -430,7 +430,7 @@ class KeyboardViewController: UIInputViewController {
     let id = UUID().uuidString
     guard recordingRequest.submit("start", operationID: id, now: Date().timeIntervalSince1970) else { return }
     do {
-      try store.send(action, operationID: id, text: selection.text, language: language)
+      try store.send(action, operationID: id, context: state.processingContext, text: selection.text, language: language)
       operationID = id; documentID = selection.document
       textOperationID = id; textSelection = selection; dictationEdit = nil
       feedback.type()

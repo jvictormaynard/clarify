@@ -302,7 +302,7 @@ class QmlComputerController(QObject):
             return
         if blocked and self._enabled:
             self.command("stop")
-        elif self._running:
+        elif self._enabled:
             self._submit("refresh")
 
     def prepare_account_change(self):
@@ -432,7 +432,7 @@ class QmlComputerController(QObject):
         self._durable = result.get("durable", self._durable)
         if "status" in result:
             status = result["status"]
-            self._running = bool(status.get("ready", status.get("running", False)))
+            self._running = bool(status.get("enabled", False))
             self._devices = [
                 {
                     "id": str(device.get("device_id", device.get("id", ""))),
