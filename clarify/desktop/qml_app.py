@@ -667,6 +667,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     settings.bindPractice(practice)
+    meetings.bindModelCatalog(settings)
     app.applicationStateChanged.connect(
         lambda state: (
             runtime.request_history_sync()

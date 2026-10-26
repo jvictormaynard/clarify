@@ -1,6 +1,7 @@
 """Dedicated meeting presentation; workers never retain a QObject callback."""
 
 from pathlib import Path
+import weakref
 
 from PySide6.QtCore import (
     QObject,
@@ -49,6 +50,7 @@ class QmlMeetingController(QObject):
         self._enabled = False
         self._editing_allowed = editing_allowed
         self._note_contexts = {}
+        self._model_catalog_owner = lambda: None
         self._state = {
             "active": False,
             "phase": "idle",
@@ -60,6 +62,7 @@ class QmlMeetingController(QObject):
             "managed": False,
             "context": "",
             "notesRoute": {},
+            "notesModels": {},
             "editingAllowed": bool(editing_allowed()),
             "page": 0,
             "hasNext": False,
@@ -76,6 +79,13 @@ class QmlMeetingController(QObject):
         self._enabled = True
         self._timer.start()
         self.refresh()
+
+    def bindModelCatalog(self, settings):
+        self._model_catalog_owner = weakref.ref(settings)
+
+    def _notes_model_catalog(self):
+        owner = self._model_catalog_owner()
+        return owner.chatgptTextCatalog if owner is not None else {}
 
     @Property("QVariantMap", notify=stateChanged)
     def state(self):
@@ -105,6 +115,7 @@ class QmlMeetingController(QObject):
                 "id": item.provider_id,
                 "label": item.display_name,
                 "model": item.default_text_model,
+                "catalogOnly": getattr(item, "authentication", "api_key") == "oauth",
             }
             for item in registry.metadata
             if item.supports(ProviderCapability.TEXT_GENERATION)
@@ -116,6 +127,7 @@ class QmlMeetingController(QObject):
             return
         try:
             state = self.workflow.snapshot()
+            state["notesModels"] = self._notes_model_catalog()
             state["editingAllowed"] = bool(self._editing_allowed())
             if state.get("selected"):
                 self._note_contexts[(state["context"], state["selected"]["id"])] = (
@@ -213,7 +225,7 @@ class QmlMeetingController(QObject):
                 raise MeetingError("meeting.busy")
             registry = self.workflow.provider.workflows.registry
             adapter = registry.adapter(provider, ProviderCapability.TEXT_GENERATION)
-            if not model.strip() or len(model) > 256:
+            if (enabled and not model.strip()) or len(model) > 256:
                 raise MeetingError("meeting.configure_notes")
             account_id = ""
             if adapter.metadata.authentication == "oauth":
@@ -225,6 +237,14 @@ class QmlMeetingController(QObject):
                 ):
                     raise MeetingError("meeting.configure_notes")
                 account_id = str(state.get("accountId") or "")
+                catalog = self._notes_model_catalog()
+                if enabled and (
+                    catalog.get("accountId") != account_id
+                    or catalog.get("generation") != state.get("generation")
+                    or model.strip()
+                    not in {item["id"] for item in catalog.get("models", [])}
+                ):
+                    raise MeetingError("meeting.configure_notes")
             route = WorkflowRoute(
                 provider_id=provider,
                 model_id=model.strip(),

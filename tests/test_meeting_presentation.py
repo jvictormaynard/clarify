@@ -28,6 +28,7 @@ class MeetingPresentationTests(unittest.TestCase):
             "connected": True,
             "planEnabled": True,
             "accountId": "selected-account",
+            "generation": 1,
         }
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -46,6 +47,13 @@ class MeetingPresentationTests(unittest.TestCase):
                 runtime, can_start=lambda: True, workflow_config=Mock()
             )
             self.addCleanup(controller.shutdown)
+            catalog = Mock()
+            catalog.chatgptTextCatalog = {
+                "accountId": "selected-account",
+                "generation": 1,
+                "models": [{"id": "fixture-model", "label": "Available model"}],
+            }
+            controller.bindModelCatalog(catalog)
             controller.activate()
             context = controller.state["context"]
             self.assertTrue(
@@ -53,11 +61,24 @@ class MeetingPresentationTests(unittest.TestCase):
             )
             saved = controller.workflow.store.notes_route("guest")
             self.assertEqual(saved.account_id, "selected-account")
+            self.assertFalse(
+                controller.saveNotesRoute(context, "chatgpt", "invented-model", True)
+            )
+            catalog.chatgptTextCatalog = {
+                **catalog.chatgptTextCatalog,
+                "generation": 0,
+            }
+            self.assertFalse(
+                controller.saveNotesRoute(context, "chatgpt", "fixture-model", True)
+            )
+            self.assertEqual(controller.workflow.store.notes_route("guest"), saved)
             session.snapshot.return_value = {"connected": False}
             self.assertFalse(
                 controller.saveNotesRoute(context, "chatgpt", "other-model", True)
             )
             self.assertEqual(controller.workflow.store.notes_route("guest"), saved)
+            self.assertTrue(controller.saveNotesRoute(context, "chatgpt", "", False))
+            self.assertFalse(controller.workflow.store.notes_route("guest").enabled)
 
     def test_factory_and_copy_export_use_only_fixture_storage(self):
         with tempfile.TemporaryDirectory() as directory:

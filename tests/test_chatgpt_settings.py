@@ -97,8 +97,8 @@ class FakeChatGPTAdapter:
             {ProviderCapability.TEXT_GENERATION, ProviderCapability.MODEL_DISCOVERY}
         ),
         default_base_url="https://api.openai.com/v1",
-        audio_model_key="",
-        text_model_key="",
+        audio_model_key="chatgpt_audio_model",
+        text_model_key="chatgpt_text_model",
         default_audio_model="",
         default_text_model="",
         authentication="oauth",
@@ -237,6 +237,10 @@ class ChatGPTSettingsTests(unittest.TestCase):
                 {"id": "personal-a", "label": "Second account model"},
             ],
         )
+        catalog = self.settings.chatgptTextCatalog
+        self.assertEqual(catalog["accountId"], "personal")
+        self.assertEqual(catalog["generation"], self.session.state["generation"])
+        self.assertEqual(catalog["models"], self.settings.routeModelOptions)
         self.assertTrue(self.settings.savePreference("setRouteModelId", ["personal-a"]))
         self.assertEqual(repository.load().workflow("rewrite").model_id, "personal-a")
         self.assertEqual(repository.load().workflow("rewrite").account_id, "personal")
@@ -248,6 +252,7 @@ class ChatGPTSettingsTests(unittest.TestCase):
         self.wait_idle()
         self.wait_models()
         self.assertEqual(self.settings.routeModelId, "")
+        self.assertEqual(self.settings.chatgptTextCatalog["accountId"], "second")
         self.assertEqual(repository.load().workflow("rewrite").model_id, "")
         self.assertFalse(
             self.settings.savePreference("setRouteModelId", ["personal-a"])
@@ -260,6 +265,7 @@ class ChatGPTSettingsTests(unittest.TestCase):
         self.command("sign_out")
         self.wait_idle()
         self.assertEqual(self.settings.routeModelOptions, [])
+        self.assertEqual(self.settings.chatgptTextCatalog, {})
         self.assertEqual(self.settings.routeModelStatus, "not_configured")
         self.assertEqual(repository.load().workflow("rewrite").model_id, "")
         self.assertFalse(self.settings.dirty)

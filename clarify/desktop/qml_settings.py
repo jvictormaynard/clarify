@@ -819,6 +819,25 @@ class QmlSettingsController(QObject):
         state = self.chatgptState
         return state["connected"] and state["planEnabled"] and not state["busy"]
 
+    @Property("QVariantMap", notify=modelCatalogChanged)
+    def chatgptTextCatalog(self):
+        """Share only the verified catalog for the current OAuth registration."""
+        state = self.chatgptState
+        if not state["connected"] or not state["planEnabled"] or state["busy"]:
+            return {}
+        key = ("chatgpt", state["accountId"], str(state["generation"]))
+        catalog = self._model_catalogs.get(key)
+        if catalog is None:
+            return {}
+        return {
+            "accountId": state["accountId"],
+            "generation": state["generation"],
+            "models": [
+                {"id": model, "label": catalog.display_names.get(model, model)}
+                for model in dict.fromkeys(catalog.text_models)
+            ],
+        }
+
     @Slot(str, str, result=bool)
     def chatgptCommand(self, action, value=""):
         actions = {

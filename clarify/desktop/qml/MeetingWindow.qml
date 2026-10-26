@@ -38,6 +38,7 @@ ApplicationWindow {
     palette.placeholderText: theme.subtleText
     readonly property var view: meetings.state
     readonly property var current: view.selected
+    readonly property bool notesUseCatalog: noteProvider.currentIndex >= 0 && noteProvider.model[noteProvider.currentIndex].catalogOnly === true
     property string notesId: ""
     property string notesContext: ""
     property bool notesLoading: false
@@ -310,8 +311,19 @@ ApplicationWindow {
                 currentIndex: Math.max(0, indexOfValue(view.notesRoute.provider_id || "openai"))
                 onActivated: noteModel.text = model[currentIndex].model
             }
-            TextField { id: noteModel; text: view.notesRoute.model_id || ""; placeholderText: qsTr("meeting.model"); Accessible.name: placeholderText; Layout.fillWidth: true; maximumLength: 256 }
-            MeetingButton { text: qsTr("meeting.save_route"); onClicked: meetings.saveNotesRoute(view.context, noteProvider.currentValue, noteModel.text, notesEnabled.checked) }
+            TextField { id: noteModel; visible: !root.notesUseCatalog; text: view.notesRoute.model_id || ""; placeholderText: qsTr("meeting.model"); Accessible.name: placeholderText; Layout.fillWidth: true; maximumLength: 256 }
+            ComboBox {
+                id: noteModelPicker
+                objectName: "meetingNoteModelPicker"
+                visible: root.notesUseCatalog
+                Layout.fillWidth: true
+                model: view.notesModels ? view.notesModels.models || [] : []
+                textRole: "label"
+                valueRole: "id"
+                currentIndex: indexOfValue(view.notesRoute.model_id || "")
+                Accessible.name: qsTr("meeting.model")
+            }
+            MeetingButton { text: qsTr("meeting.save_route"); enabled: !notesEnabled.checked || !root.notesUseCatalog || noteModelPicker.currentIndex >= 0; onClicked: meetings.saveNotesRoute(view.context, noteProvider.currentValue, root.notesUseCatalog ? noteModelPicker.currentValue || "" : noteModel.text, notesEnabled.checked) }
         }
     }
 }

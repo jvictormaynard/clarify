@@ -87,7 +87,41 @@ def main():
         )
         workflow = MeetingWorkflow(store, provider, source_factory=Mock())
         workflow.selected = mid
+        if "--chatgpt" in sys.argv:
+            from provider_registry import build_provider_registry
+            from provider_types import ProviderConnection
+            from workflow_config import WorkflowRoute
+
+            session = Mock()
+            session.snapshot.return_value = {
+                "connected": True,
+                "planEnabled": True,
+                "accountId": "fixture-account",
+                "generation": 1,
+            }
+            provider.workflows.registry = build_provider_registry(
+                chatgpt_session=session
+            )
+            provider.workflows._connection.side_effect = lambda route: (
+                ProviderConnection("", "https://api.openai.com/v1", route.account_id)
+            )
+            store.save_notes_route(
+                "guest",
+                WorkflowRoute("chatgpt", "fixture-z", account_id="fixture-account"),
+            )
         controller = QmlMeetingController(workflow)
+        if "--chatgpt" in sys.argv:
+            catalog = Mock()
+            catalog.chatgptTextCatalog = {
+                "accountId": "fixture-account",
+                "generation": 1,
+                "models": [
+                    {"id": "fixture-z", "label": "First account model"},
+                    {"id": "fixture-a", "label": "Second account model"},
+                ],
+            }
+            controller.bindModelCatalog(catalog)
+            controller.refresh()
         if "--recording" in sys.argv:
             controller._timer.stop()
             workflow._thread = Mock()
@@ -127,6 +161,22 @@ def main():
 
         def verify():
             try:
+                if "--chatgpt" in sys.argv:
+                    QMetaObject.invokeMethod(window, "saveNotes")
+                    picker = window.findChild(QObject, "meetingNoteModelPicker")
+                    assert picker is not None and picker.property("visible")
+                    assert picker.property("count") == 2
+                    assert picker.property("currentValue") == "fixture-z"
+                    picker.setProperty("currentIndex", 1)
+                    assert picker.property("currentValue") == "fixture-a"
+                    assert controller.saveNotesRoute(
+                        controller.state["context"],
+                        "chatgpt",
+                        picker.property("currentValue"),
+                        True,
+                    ), controller.state["error"]
+                    assert store.notes_route("guest").model_id == "fixture-a"
+                    assert store.notes_route("guest").account_id == "fixture-account"
                 if "--export" in sys.argv:
                     controller._timer.stop()
                     QMetaObject.invokeMethod(window, "saveNotes")
