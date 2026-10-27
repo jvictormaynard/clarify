@@ -68,7 +68,10 @@ existentes mantêm sua configuração. O [aplicativo iOS](../mobile/README.md)
 pode ser hospedado por você. As chaves de produção e os dados dos usuários são privados.
 
 > [!IMPORTANT]
-> O acesso direto a provedores cloud exige sua própria chave de API. O ditado
+> O acesso pessoal à nuvem usa sua chave de API ou um plano ChatGPT elegível.
+> No Windows, o plano permite reescrita, tradução e refinamento de texto sem
+> conta Clarify. Ele usa os limites existentes do ChatGPT e não inclui
+> transcrição de áudio. O ditado
 > pela conta Clarify usa o servidor do Clarify e a Groq, sujeito à cota semanal
 > e aos fundos disponíveis após a reserva dos custos operacionais. O
 > Local Whisper pode transcrever sem chave e baixa seus assets somente após uma
@@ -200,6 +203,24 @@ workflow usa esse serviço: provedor, modelo, endpoint, ativação e prompt. Os
 providers são configurados em **Configurações → Modelos e serviços**; as rotas ficam em
 **Configurações → Ditado** e **Configurações → Texto**. O Local Whisper
 usa um sidecar local e não exige chave para transcrição.
+
+Para usar uma assinatura ChatGPT no Windows, selecione **Continuar sem conta**.
+Essa conexão não exige conta Clarify nem chave de API.
+
+1. Abra **Configurações → Modelos e serviços** e selecione **ChatGPT (assinatura)**.
+2. Selecione **Continuar com ChatGPT**, conclua a entrada no navegador e permita
+   o uso do seu plano.
+3. Selecione **Atualizar modelos ChatGPT** e abra **Configurações → Texto**. Para
+   cada fluxo de texto, selecione ChatGPT e um modelo disponível para a conta conectada.
+   A entrada não altera as rotas existentes.
+
+O ChatGPT permite reescrita, tradução e refinamento opcional na nuvem de
+transcrições do Local Whisper. Ele não transcreve áudio. As solicitações usam a
+cota e os limites existentes do seu plano ChatGPT, sem cota adicional. A DPAPI
+do Windows protege os tokens localmente, e as solicitações de texto vão direto
+à OpenAI por um endpoint fixo. O modo com conta Clarify mantém o processamento
+gerenciado no desktop e no aplicativo móvel. Consulte
+[configuração e limites do ChatGPT](chatgpt-plan.md).
 
 ## Snippets por voz
 
