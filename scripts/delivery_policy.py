@@ -10,8 +10,10 @@ import sys
 
 if __package__:
     from .release_delivery import validate_intent
+    from .sync_locales import CATALOG_PATH, DESKTOP_KEYS_PATH, native_catalog
 else:
     from release_delivery import validate_intent
+    from sync_locales import CATALOG_PATH, DESKTOP_KEYS_PATH, native_catalog
 
 
 COMPONENTS = (
@@ -34,7 +36,6 @@ FULL_INPUTS = {
     ".github/workflows/repository-validation.yml",
 }
 SHARED_INPUTS = {
-    "workflow_provider.py",
     "scripts/sync_locales.py",
     "mobile/scripts/sync-prompts.py",
     "mobile/modules/clarify-core/ios/RewritePrompt.swift",
@@ -173,6 +174,12 @@ def path_components(path: str) -> set[str]:
         or path.startswith(".github/ISSUE_TEMPLATE/")
     ):
         return set()
+    if path == "scripts/release_delivery.py":
+        # Repository checks exercise publication policy; this is not app input.
+        return set()
+    if path == "workflow_provider.py":
+        # Mobile checks verify the generated prompts before native code is built.
+        return DESKTOP_BUILD | {"server", "mobile"}
     if path.startswith("shared/") or path in SHARED_INPUTS:
         return SHARED_CONSUMERS.copy()
     if path in IOS_INPUTS:
@@ -332,11 +339,49 @@ def event_components(
     else:
         raise ValueError("Unsupported validation event")
     paths = changed_paths(repo, base, head)
-    selected = affected_components([path for path in paths if path != RELEASE_INTENT])
+    selected = affected_components(
+        [path for path in paths if path not in {RELEASE_INTENT, CATALOG_PATH}]
+    )
+    if CATALOG_PATH in paths:
+        consumers = path_components(CATALOG_PATH)
+        if native_catalog_unchanged(repo, base, head):
+            consumers.discard("ios")
+        for component in consumers:
+            selected[component] = True
     if RELEASE_INTENT in paths:
         for component in release_components(repo, head):
             selected[component] = True
     return selected
+
+
+def native_catalog_unchanged(repo: Path, base: str, head: str) -> bool:
+    """Compare reviewed native inputs from Git; uncertainty retains native CI."""
+
+    def read_json(revision: str, path: str):
+        tree = subprocess.run(
+            ["git", "-C", str(repo), "ls-tree", revision, "--", path],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        ).stdout
+        if not tree.startswith((b"100644 blob ", b"100755 blob ")):
+            raise ValueError("Catalog inputs must be regular Git blobs")
+        source = subprocess.run(
+            ["git", "-C", str(repo), "show", f"{revision}:{path}"],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        ).stdout
+        return json.loads(source, object_pairs_hook=json_object)
+
+    try:
+        return native_catalog(
+            read_json(base, CATALOG_PATH), read_json(base, DESKTOP_KEYS_PATH)
+        ) == native_catalog(
+            read_json(head, CATALOG_PATH), read_json(head, DESKTOP_KEYS_PATH)
+        )
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError, RecursionError):
+        return False
 
 
 def validate_ci_results(needs: dict) -> None:
