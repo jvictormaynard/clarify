@@ -1,3 +1,4 @@
+import { ComputerLibraryNotice } from './computer-connection';
 import { t } from '../i18n';
 import { useEffect, useState } from 'react';
 import { useIsFocused } from 'expo-router';
@@ -13,7 +14,7 @@ export function SnippetsLibrary() {
   const reducedMotion = useReducedMotion();
   const focused = useIsFocused();
   const { state, account, refresh, accountBusy } = useClarify();
-  const scope = account?.signedIn ? `${account.endpoint}/${account.email}` : 'guest';
+  const scope = account?.historyContext ?? 'guest';
   const [entries, setEntries] = useState<Snippet[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState('');
@@ -44,6 +45,7 @@ export function SnippetsLibrary() {
   }
   const visible = entries.map((entry, index) => ({ entry, index })).filter(({ entry }) =>
     `${entry.trigger} ${entry.replacement}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+  if (account?.mode === 'computer') return <View style={[ui.content, { flex: 1, backgroundColor: c.background }]}><ScreenHeader title={t('Snippets')} /><ComputerLibraryNotice /></View>;
   return <>
     <FlatList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[ui.content, { gap: 0 }]} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
       data={visible} keyExtractor={({ index }) => String(index)}

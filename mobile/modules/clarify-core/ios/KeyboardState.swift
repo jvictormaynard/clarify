@@ -1,5 +1,14 @@
 import Foundation
 
+// The extension retains selected text only while its operation owns the same
+// document and surrounding context. No document ID is sent to the computer.
+struct TextSelectionOwner: Equatable {
+  let document: UUID
+  let text: String
+  let before: String?
+  let after: String?
+}
+
 // Pure keyboard state. Typed text stays in the document proxy, never in storage.
 struct KeyboardState {
   enum Page { case letters, numbers, symbols }

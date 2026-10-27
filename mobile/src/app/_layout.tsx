@@ -5,6 +5,8 @@ import { StatusBar } from 'expo-status-bar';
 import { Button, usePalette, useReducedMotion } from '../components/ui';
 import { ClarifyProvider, report, useClarify } from '../state/clarify';
 
+import { processingAvailable } from '../processing';
+
 function Navigation() {
   const c = usePalette();
   const reducedMotion = useReducedMotion();
@@ -14,11 +16,11 @@ function Navigation() {
     {(setupError || !account) && <Button onPress={() => { void refreshOnboarding(); void refreshAccount().catch(report); }}>{t("Tentar carregar novamente")}</Button>}
   </View>;
   const showOnboarding = onboardingRequired;
-  const showSignIn = !showOnboarding && !account.signedIn;
+  const showSignIn = !showOnboarding && !processingAvailable(account);
   return <Stack screenOptions={{ headerShown: false, animation: reducedMotion ? 'none' : 'fade', headerBackButtonDisplayMode: 'minimal' }}>
     <Stack.Protected guard={showOnboarding}><Stack.Screen name="onboarding" /></Stack.Protected>
     <Stack.Protected guard={showSignIn}><Stack.Screen name="sign-in" options={{ animation: reducedMotion ? 'none' : 'fade' }} /></Stack.Protected>
-    <Stack.Protected guard={!showOnboarding && account.signedIn}>
+    <Stack.Protected guard={!showOnboarding && processingAvailable(account)}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="settings" options={{ headerShown: true, title: t("Ajustes"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="guide" options={{ headerShown: true, title: t("Como usar"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />

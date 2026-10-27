@@ -22,6 +22,7 @@ PROPERTIES = (
     "practiceState",
     "accountState",
     "chatgptState",
+    "computerState",
     "historyState",
     "dirty",
     "dictionaryEntries",
@@ -103,6 +104,7 @@ METHODS = frozenset(
         "cancelHotkeyCapture",
         "accountCommand",
         "chatgptCommand",
+        "computerCommand",
         "deleteHistoryEntry",
         "clearHistory",
         "setLanguage",
@@ -220,6 +222,11 @@ class SettingsProtocol:
                 result = self._client_snapshot()
             elif method == "poll" and not args:
                 result = self.poll()
+            elif method == "getComputerPairing":
+                if args:
+                    raise ValueError()
+                # This response is never retained in a general snapshot or poll.
+                result = self.settings.getComputerPairing()
             elif method == "getHistoryPage":
                 if len(args) not in (2, 3) or any(
                     type(value) is not str for value in args
@@ -253,7 +260,7 @@ class SettingsProtocol:
                     or args[0] not in {"open", "close", "start", "stop", "cancel"}
                 ):
                     raise ValueError()
-                if method == "chatgptCommand" and (
+                if method in {"chatgptCommand", "computerCommand"} and (
                     len(args) != 2 or any(type(value) is not str for value in args)
                 ):
                     raise ValueError()
@@ -381,6 +388,7 @@ class WebSettingsProcess(QObject):
         self.settings.cancelChatGPT()
         if self._visible:
             self._visible = False
+            self.settings.closeComputerPairing()
             self.settings.stopMicrophoneTest()
             self.settings.cancelHotkeyCapture()
             self._window_command("hide")
@@ -420,6 +428,7 @@ class WebSettingsProcess(QObject):
         self.settings.cancelChatGPT()
         self.startup_timer.stop()
         self._visible = False
+        self.settings.closeComputerPairing()
         self.settings.stopMicrophoneTest()
         if self._shutting_down:
             return
