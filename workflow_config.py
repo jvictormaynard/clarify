@@ -59,14 +59,26 @@ DEFAULT_WORKFLOW_PROMPTS = {
         "Rewrite the local transcript clearly while preserving its meaning."
     ),
 }
-_SENSITIVE_ENDPOINT_QUERY_KEYS = frozenset({
-    "api-key", "api_key", "apikey", "access_token", "auth", "authorization",
-    "client_secret", "credential", "password", "passwd", "secret",
-    "key", "sig", "signature", "token",
-})
-_HOST_LABEL_RE = re.compile(
-    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+_SENSITIVE_ENDPOINT_QUERY_KEYS = frozenset(
+    {
+        "api-key",
+        "api_key",
+        "apikey",
+        "access_token",
+        "auth",
+        "authorization",
+        "client_secret",
+        "credential",
+        "password",
+        "passwd",
+        "secret",
+        "key",
+        "sig",
+        "signature",
+        "token",
+    }
 )
+_HOST_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
 
 
 def normalize_workflow_scope(scope: WorkflowScope | str) -> str:
@@ -101,10 +113,7 @@ def _valid_endpoint_hostname(hostname: str) -> bool:
     # inconsistently as a DNS name.
     if len(labels) == 4 and all(label.isdigit() for label in labels):
         return False
-    return all(
-        len(label) <= 63 and _HOST_LABEL_RE.fullmatch(label)
-        for label in labels
-    )
+    return all(len(label) <= 63 and _HOST_LABEL_RE.fullmatch(label) for label in labels)
 
 
 def _safe_endpoint_for_diagnostics(endpoint: str) -> str:
@@ -115,8 +124,10 @@ def _safe_endpoint_for_diagnostics(endpoint: str) -> str:
     try:
         parts = urlsplit(value)
         hostname = parts.hostname
-        if (parts.scheme.lower() not in ("http", "https")
-                or not _valid_endpoint_hostname(hostname)):
+        if parts.scheme.lower() not in (
+            "http",
+            "https",
+        ) or not _valid_endpoint_hostname(hostname):
             return ""
         if ":" in hostname and not hostname.startswith("["):
             hostname = f"[{hostname}]"
@@ -159,6 +170,8 @@ class WorkflowRoute:
     # from a legacy flat selector.  An explicitly authored scoped route
     # remains authoritative even when its values equal another route.
     independent: bool = False
+    # OAuth model selections belong to one local account registration.
+    account_id: str = ""
 
     @property
     def provider(self) -> str:
@@ -201,9 +214,12 @@ class WorkflowRoute:
         if not isinstance(independent, bool):
             independent = fallback.independent
         return cls(
-            provider_id=(text(
-                "provider_id", "provider", fallback_value=fallback.provider_id
-            ).lower() or fallback.provider_id),
+            provider_id=(
+                text(
+                    "provider_id", "provider", fallback_value=fallback.provider_id
+                ).lower()
+                or fallback.provider_id
+            ),
             # Preserve an explicitly blank model so validation can select the
             # new provider's default instead of inheriting the old route's
             # model after a provider switch.  An omitted field still uses the
@@ -211,15 +227,18 @@ class WorkflowRoute:
             model_id=text("model_id", "model", fallback_value=fallback.model_id),
             prompt=text("prompt", fallback_value=fallback.prompt),
             custom_endpoint=text(
-                "custom_endpoint", "endpoint", "base_url",
+                "custom_endpoint",
+                "endpoint",
+                "base_url",
                 fallback_value=fallback.custom_endpoint,
             ),
             enabled=enabled,
             independent=independent,
+            account_id=text("account_id", fallback_value=fallback.account_id),
         )
 
     def to_mapping(self) -> dict[str, Any]:
-        return {
+        values = {
             "provider_id": self.provider_id,
             "model_id": self.model_id,
             "prompt": self.prompt,
@@ -227,14 +246,17 @@ class WorkflowRoute:
             "enabled": self.enabled,
             "independent": self.independent,
         }
+        if self.account_id:
+            values["account_id"] = self.account_id
+        return values
 
     def without_prompt(self) -> dict[str, Any]:
         """Safe route summary for diagnostics and usage metadata."""
         values = self.to_mapping()
         values.pop("prompt", None)
         values.pop("independent", None)
-        values["custom_endpoint"] = _safe_endpoint_for_diagnostics(
-            self.custom_endpoint)
+        values.pop("account_id", None)
+        values["custom_endpoint"] = _safe_endpoint_for_diagnostics(self.custom_endpoint)
         return values
 
 
@@ -242,24 +264,31 @@ class WorkflowRoute:
 class WorkflowConfig(Mapping[str, WorkflowRoute]):
     """Typed routes for transcription, refinement, rewrite and translation."""
 
-    transcription: WorkflowRoute = field(default_factory=lambda: WorkflowRoute(
-        provider_id="gemini", model_id="gemini-2.5-flash",
-        prompt=DEFAULT_WORKFLOW_PROMPTS[WorkflowScope.TRANSCRIPTION.value],
-    ))
-    refinement: WorkflowRoute = field(default_factory=lambda: WorkflowRoute(
-        prompt=DEFAULT_WORKFLOW_PROMPTS[WorkflowScope.REFINEMENT.value],
-    ))
-    rewrite: WorkflowRoute = field(default_factory=lambda: WorkflowRoute(
-        prompt=DEFAULT_WORKFLOW_PROMPTS[WorkflowScope.REWRITE.value],
-    ))
-    translation: WorkflowRoute = field(default_factory=lambda: WorkflowRoute(
-        prompt=DEFAULT_WORKFLOW_PROMPTS[WorkflowScope.TRANSLATION.value],
-    ))
+    transcription: WorkflowRoute = field(
+        default_factory=lambda: WorkflowRoute(
+            provider_id="gemini",
+            model_id="gemini-2.5-flash",
+            prompt=DEFAULT_WORKFLOW_PROMPTS[WorkflowScope.TRANSCRIPTION.value],
+        )
+    )
+    refinement: WorkflowRoute = field(
+        default_factory=lambda: WorkflowRoute(
+            prompt=DEFAULT_WORKFLOW_PROMPTS[WorkflowScope.REFINEMENT.value],
+        )
+    )
+    rewrite: WorkflowRoute = field(
+        default_factory=lambda: WorkflowRoute(
+            prompt=DEFAULT_WORKFLOW_PROMPTS[WorkflowScope.REWRITE.value],
+        )
+    )
+    translation: WorkflowRoute = field(
+        default_factory=lambda: WorkflowRoute(
+            prompt=DEFAULT_WORKFLOW_PROMPTS[WorkflowScope.TRANSLATION.value],
+        )
+    )
     local_asr_refinement: WorkflowRoute = field(
         default_factory=lambda: WorkflowRoute(
-            prompt=DEFAULT_WORKFLOW_PROMPTS[
-                WorkflowScope.LOCAL_ASR_REFINEMENT.value
-            ],
+            prompt=DEFAULT_WORKFLOW_PROMPTS[WorkflowScope.LOCAL_ASR_REFINEMENT.value],
             enabled=False,
         )
     )
@@ -286,10 +315,14 @@ class WorkflowConfig(Mapping[str, WorkflowRoute]):
             if normalized not in WORKFLOW_SCOPES:
                 continue
             raw_value = (
-                raw_scope.value
-                if isinstance(raw_scope, WorkflowScope)
-                else str(raw_scope or "")
-            ).strip().lower()
+                (
+                    raw_scope.value
+                    if isinstance(raw_scope, WorkflowScope)
+                    else str(raw_scope or "")
+                )
+                .strip()
+                .lower()
+            )
             if raw_value == normalized:
                 canonical_values[normalized] = route
             else:
@@ -305,11 +338,15 @@ class WorkflowConfig(Mapping[str, WorkflowRoute]):
             # represent authored scoped routes.  Primary routes historically
             # came from the flat selectors, so their marker remains false
             # unless the scoped settings controller writes it explicitly.
-            if (scope in (
+            if (
+                scope
+                in (
                     WorkflowScope.REWRITE.value,
                     WorkflowScope.TRANSLATION.value,
-                ) and isinstance(raw_route, Mapping)
-                    and "independent" not in raw_route):
+                )
+                and isinstance(raw_route, Mapping)
+                and "independent" not in raw_route
+            ):
                 route = replace(route, independent=True)
             routes[scope] = route
         return cls(**routes)
@@ -386,16 +423,21 @@ def validate_workflow_route(
     capability = WORKFLOW_CAPABILITIES.get(normalized_scope)
     if capability is None:
         raise WorkflowConfigurationError(
-            normalized_scope, f"Unknown workflow scope: {normalized_scope}",
+            normalized_scope,
+            f"Unknown workflow scope: {normalized_scope}",
             field="scope",
         )
     if not isinstance(route, WorkflowRoute):
-        route = WorkflowRoute.from_mapping(route if isinstance(route, Mapping) else None)
+        route = WorkflowRoute.from_mapping(
+            route if isinstance(route, Mapping) else None
+        )
     provider = str(route.provider_id or "").strip().lower()
     if not provider:
         raise WorkflowConfigurationError(
-            normalized_scope, "A provider is required for this workflow.",
-            capability=capability, field="provider_id",
+            normalized_scope,
+            "A provider is required for this workflow.",
+            capability=capability,
+            field="provider_id",
         )
     try:
         metadata = registry.describe(provider)
@@ -403,38 +445,50 @@ def validate_workflow_route(
         raise WorkflowConfigurationError(
             normalized_scope,
             f"Unknown provider '{provider}'. Choose a registered provider.",
-            provider_id=provider, capability=capability, field="provider_id",
+            provider_id=provider,
+            capability=capability,
+            field="provider_id",
         ) from error
     if not metadata.supports(capability):
         raise WorkflowConfigurationError(
             normalized_scope,
             f"{metadata.display_name} does not support "
             f"{capability.value.replace('_', ' ')} for this workflow.",
-            provider_id=provider, capability=capability, field="provider_id",
+            provider_id=provider,
+            capability=capability,
+            field="provider_id",
         )
     model = str(route.model_id or "").strip()
     if not model:
         model = _default_model_for_scope(metadata, normalized_scope)
-    if not model:
+    if not model and getattr(metadata, "authentication", "api_key") != "oauth":
         raise WorkflowConfigurationError(
             normalized_scope,
             f"{metadata.display_name} has no default model for this workflow.",
-            provider_id=provider, capability=capability, field="model_id",
+            provider_id=provider,
+            capability=capability,
+            field="model_id",
         )
     if capability is ProviderCapability.AUDIO_TRANSCRIPTION:
         try:
             model = registry.canonical_audio_model(provider, model)
         except (ProviderError, ValueError) as error:
             raise WorkflowConfigurationError(
-                normalized_scope, "The audio model is not valid for this provider.",
-                provider_id=provider, capability=capability, field="model_id",
+                normalized_scope,
+                "The audio model is not valid for this provider.",
+                provider_id=provider,
+                capability=capability,
+                field="model_id",
             ) from error
         from local_asr_catalog import MODELS
+
         if provider == "local_asr" and model not in MODELS:
             raise WorkflowConfigurationError(
                 normalized_scope,
                 "Local Whisper requires a model from the pinned profile catalog.",
-                provider_id=provider, capability=capability, field="model_id",
+                provider_id=provider,
+                capability=capability,
+                field="model_id",
             )
     endpoint = str(route.custom_endpoint or "").strip().rstrip("/")
     if endpoint:
@@ -448,15 +502,18 @@ def validate_workflow_route(
             )
         if not endpoint.startswith(("https://", "http://")):
             raise WorkflowConfigurationError(
-                normalized_scope, "Custom endpoint must be an HTTP(S) URL.",
-                provider_id=provider, field="custom_endpoint",
+                normalized_scope,
+                "Custom endpoint must be an HTTP(S) URL.",
+                provider_id=provider,
+                field="custom_endpoint",
             )
         try:
             endpoint_parts = urlsplit(endpoint)
             query_keys = {
                 key.strip().lower().replace("-", "_")
                 for key, _value in parse_qsl(
-                        endpoint_parts.query, keep_blank_values=True)
+                    endpoint_parts.query, keep_blank_values=True
+                )
             }
             has_sensitive_query = any(
                 key in _SENSITIVE_ENDPOINT_QUERY_KEYS
@@ -464,8 +521,13 @@ def validate_workflow_route(
                 or any(
                     marker in key
                     for marker in (
-                        "apikey", "auth", "credential", "password",
-                        "secret", "signature", "token",
+                        "apikey",
+                        "auth",
+                        "credential",
+                        "password",
+                        "secret",
+                        "signature",
+                        "token",
                     )
                 )
                 for key in query_keys
@@ -477,34 +539,45 @@ def validate_workflow_route(
                 raise WorkflowConfigurationError(
                     normalized_scope,
                     "Custom endpoint port must be between 1 and 65535.",
-                    provider_id=provider, field="custom_endpoint",
+                    provider_id=provider,
+                    field="custom_endpoint",
                 )
             # Provider adapters append operation paths to the configured
             # endpoint.  Keeping a query or fragment here would either put
             # that path inside the query (``...?region=eu/v1``) or discard it
             # at the HTTP layer.  Reject both until a URL composer can carry
             # parsed components through every adapter safely.
-            if (endpoint_parts.query or endpoint_parts.fragment
-                    or endpoint.endswith(("?", "#"))):
+            if (
+                endpoint_parts.query
+                or endpoint_parts.fragment
+                or endpoint.endswith(("?", "#"))
+            ):
                 raise WorkflowConfigurationError(
                     normalized_scope,
                     "Custom endpoint must not contain a query or fragment.",
-                    provider_id=provider, field="custom_endpoint",
+                    provider_id=provider,
+                    field="custom_endpoint",
                 )
-            if (not _valid_endpoint_hostname(endpoint_parts.hostname)
-                    or endpoint_parts.username or endpoint_parts.password
-                    or has_sensitive_query):
+            if (
+                not _valid_endpoint_hostname(endpoint_parts.hostname)
+                or endpoint_parts.username
+                or endpoint_parts.password
+                or has_sensitive_query
+            ):
                 raise WorkflowConfigurationError(
                     normalized_scope,
                     "Custom endpoint must not contain URL credentials or tokens.",
-                    provider_id=provider, field="custom_endpoint",
+                    provider_id=provider,
+                    field="custom_endpoint",
                 )
         except WorkflowConfigurationError:
             raise
         except ValueError as error:
             raise WorkflowConfigurationError(
-                normalized_scope, "Custom endpoint must be an HTTP(S) URL.",
-                provider_id=provider, field="custom_endpoint",
+                normalized_scope,
+                "Custom endpoint must be an HTTP(S) URL.",
+                provider_id=provider,
+                field="custom_endpoint",
             ) from error
     prompt = str(route.prompt or "").strip()
     if not prompt:
@@ -516,6 +589,11 @@ def validate_workflow_route(
         custom_endpoint=endpoint,
         enabled=bool(route.enabled),
         independent=bool(route.independent),
+        account_id=(
+            str(route.account_id or "").strip()
+            if getattr(metadata, "authentication", "api_key") == "oauth" and model
+            else ""
+        ),
     )
 
 
@@ -550,7 +628,8 @@ def test_workflow_configuration(
         workflows = WorkflowConfig.from_mapping(workflows)
     if normalized_scope is not None:
         route = validate_workflow_route(
-            workflows[normalized_scope], normalized_scope, registry=registry)
+            workflows[normalized_scope], normalized_scope, registry=registry
+        )
         validated = workflows.with_route(normalized_scope, route)
         scopes = (normalized_scope,)
     else:
@@ -564,8 +643,9 @@ def test_workflow_configuration(
             capability=WORKFLOW_CAPABILITIES[current].value,
             endpoint=_safe_endpoint_for_diagnostics(
                 validated[current].custom_endpoint
-                or str(registry.describe(
-                    validated[current].provider_id).default_base_url)
+                or str(
+                    registry.describe(validated[current].provider_id).default_base_url
+                )
             ),
             enabled=validated[current].enabled,
         )

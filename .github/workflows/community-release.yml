@@ -82,6 +82,12 @@ jobs:
             requirements-lock-windows.txt
             requirements-lock-runtime-windows.txt
 
+      - name: Prepare release notes from the tagged changelog
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_NOTES_FILE: ${{ runner.temp }}/clarify-release-notes.md
+        run: python scripts/release_delivery.py notes --tag "$env:RELEASE_TAG" --output "$env:RELEASE_NOTES_FILE"
+
       - name: Install pinned bootstrap tools
         run: python scripts/install_bootstrap_tools.py --lock-file requirements-lock-windows.txt
 
@@ -216,16 +222,8 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES_FILE: ${{ runner.temp }}/clarify-release-notes.md
         run: |
-          $notes = @"
-          This is an unsigned community portable release.
-
-          Windows SmartScreen may show a warning because the executable does not have a paid Authenticode publisher signature. Verify Clarify.exe with Clarify.exe.sha256 before launching it.
-
-          This portable release includes Ed25519-authenticated update metadata. Starting with v0.5.0, Clarify checks for newer stable releases and can install them automatically when enabled in Settings. Updates wait until work is complete and Settings are closed, then restart the app. If startup fails, the previous executable is restored.
-
-          The Windows executable is still unsigned. The sponsored Authenticode MSI and its separate signed-CAB update channel remain disabled.
-          "@
           gh release create "${{ github.ref_name }}" `
             dist\Clarify-portable-update.json `
             dist\Clarify-portable-update.json.sig `
@@ -236,5 +234,5 @@ jobs:
             dist\sox-14.4.2-source.tar.gz `
             dist\Clarify-qt-sources.zip `
             --verify-tag `
-            --notes $notes `
+            --notes-file "$env:RELEASE_NOTES_FILE" `
             --title "Clarify ${{ github.ref_name }}"

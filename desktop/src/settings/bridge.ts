@@ -12,7 +12,14 @@ export type HistoryEntry = { id: string; timestamp: number; text: string; trunca
 type HistoryPageResult = { context: string; revision: string; entries: HistoryEntry[]; cursor: string; hasMore: boolean };
 type HistoryTextPart = { context: string; id: string; text: string; nextOffset: number; hasMore: boolean };
 export type Snippet = { trigger: string; replacement: string; enabled: boolean; case_sensitive: boolean };
+export type ChatGPTAction = "sign_in" | "add_account" | "select_account" | "sign_out" | "cancel" | "manage_usage" | "dismiss_notice";
+export type ChatGPTState = {
+  connected: boolean; planEnabled: boolean; email: string; accountId: string;
+  accounts: Option[]; generation: number; planNoticeSeen: boolean;
+  busy: boolean; error: string;
+};
 export interface Settings {
+  chatgptState?: ChatGPTState;
   snippets: Snippet[];
   snippetContext: string;
   historyState?: { context: string; revision: string };
@@ -97,6 +104,7 @@ export interface Settings {
 export type SettingsArguments = {
   completeOnboarding: [mode: "account" | "byok" | "local", key: string];
   accountCommand: [action: string, value: string];
+  chatgptCommand: [action: ChatGPTAction, value: string];
   deleteHistoryEntry: [id: string, context: string];
   clearHistory: [context: string];
   snapshot: [];

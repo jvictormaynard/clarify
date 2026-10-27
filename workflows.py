@@ -39,6 +39,10 @@ def _failure_status(error: Exception, fallback: str) -> str:
         "invalid_request",
         "invalid_response",
         "cancelled",
+        "chatgpt_plan_limit",
+        "chatgpt_plan_ineligible",
+        "chatgpt_plan_permission",
+        "chatgpt_identity",
     }:
         return f"provider_{code}"
     return fallback

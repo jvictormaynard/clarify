@@ -29,8 +29,12 @@ translate selected text without opening a separate editor.
 
 > [!IMPORTANT]
 > Clarify supports bring-your-own-key cloud providers and optional hosted
-> dictation through a Clarify account. Direct provider access requires your own
-> API key. The optional Local Whisper provider
+> dictation through a Clarify account. Personal cloud access uses your own
+> API key or an eligible ChatGPT plan. On Windows, subscribers can connect their plan
+> for text rewriting, translation, and refinement without a Clarify account.
+> This uses the existing ChatGPT plan limits and sends text directly to OpenAI;
+> it does not include audio transcription. See [ChatGPT plan setup](docs/chatgpt-plan.md).
+> The optional Local Whisper provider
 > does not require an API key for local transcription; it downloads its
 > runtime/model only after an explicit action, and its packaged Windows/offline
 > acceptance is still pending. Keys and local usage statistics stay on your
@@ -266,7 +270,25 @@ separately with Windows Data Protection API (DPAPI).
 | Gemini | Multimodal audio | Same Gemini model | `generativelanguage.googleapis.com/v1beta` |
 | OpenAI | Audio transcription API | OpenAI-compatible text model | `api.openai.com/v1` |
 | Groq | Whisper-compatible audio API | OpenAI-compatible text model | `api.groq.com/openai/v1` |
+| ChatGPT plan | Not supported | Responses API with the connected account's available models | `api.openai.com/v1` |
 | Local Whisper | Local CPU or compatible NVIDIA GPU sidecar (optional download) | None by default; cloud refinement requires explicit opt-in | Local loopback only |
+
+To use a ChatGPT subscription on Windows, select **Continue without an account**.
+You do not need a Clarify account or an API key for this connection.
+
+1. Open **Settings → Models and services** and select **ChatGPT (subscription)**.
+2. Select **Continue with ChatGPT**, finish sign-in in your browser, and grant
+   permission to use your plan.
+3. Select **Refresh ChatGPT models**, then open **Settings → Text**. For each
+   text workflow, select ChatGPT and an available model for the connected account.
+   Sign-in does not change existing routes.
+
+ChatGPT supports rewriting, translation, and optional cloud refinement of Local
+Whisper transcripts. It does not transcribe audio. Requests use your existing
+ChatGPT allowance and limits, with no additional quota. Windows DPAPI protects
+tokens locally, and text requests go directly to OpenAI through a fixed endpoint.
+Clarify account mode keeps managed processing on desktop and mobile. See
+[ChatGPT setup and limits](docs/chatgpt-plan.md).
 
 Custom endpoints must implement the corresponding provider-compatible routes.
 Unknown custom models work, but their cost is intentionally shown as unpriced
@@ -311,14 +333,15 @@ See [matching, sync and limits](docs/dictionary-snippets.md).
 
 ## Privacy and local data
 
-Clarify has no project-owned server. Cloud provider requests go from your
-computer to the endpoint you select; Local Whisper sends audio only to its own
-randomized loopback sidecar. The app stores:
+In personal mode, cloud requests go directly to the selected provider. ChatGPT
+plan requests send text directly to OpenAI. Local Whisper sends audio only to its
+own randomized loopback sidecar. Account processing uses the optional Clarify
+service; see the [privacy notice](PRIVACY.md). The app stores:
 
 - provider settings in `%APPDATA%\Clarify\config.json`;
-- DPAPI-encrypted provider keys in
-  `%APPDATA%\Clarify\secrets.dpapi.json`, decryptable only by the same
-  Windows user on the same machine;
+- DPAPI-encrypted provider keys in `%APPDATA%\Clarify\secrets.dpapi.json`
+  and ChatGPT OAuth credentials in `%APPDATA%\Clarify\chatgpt-secrets.dpapi.json`,
+  decryptable only by the same Windows user on the same machine;
 - anonymous usage counters in `%APPDATA%\Clarify\usage_stats.json`;
 - optional Local ASR assets below `%LOCALAPPDATA%\Clarify\local-asr` after
   an explicit download; the runtime and model are not bundled in the executable;

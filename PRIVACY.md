@@ -1,6 +1,6 @@
 # Clarify privacy notice
 
-Effective date: 25 October 2026.
+Effective date: 26 October 2026.
 
 Clarify is an open-source app maintained by João Victor Maynard Mota. This
 notice describes the optional hosted beta at `clarify-api.victormaynard.com`
@@ -13,6 +13,11 @@ operators and policies.
   to the selected provider. The Clarify account service does not receive them.
 - Desktop local inference processes audio on the device. It does not silently
   switch to a cloud provider. Local inference is not available on iOS.
+- Without a Clarify account, desktop users can connect an eligible ChatGPT plan
+  for rewriting, translation, and text refinement. These requests send source
+  text, instructions, and any applied vocabulary or snippets directly to OpenAI.
+  This connection does not send audio or grant access to ChatGPT conversations
+  or memories. Local transcription can be combined with this cloud text step.
 - When you sign in, account processing is active automatically. The Clarify
   service receives audio and the vocabulary needed for that request. It sends
   audio to Groq for transcription,
@@ -47,6 +52,16 @@ contacts. Provider access tokens are not stored. The Clarify session stays in
 the client's credential store; it does not appear in browser callback URLs.
 An email address that the provider has not verified requires an email code.
 Accounts with the same email address are not linked automatically.
+
+The separate ChatGPT plan connection stores the verified OpenAI account
+identifier, email, client registration, host identifier, and OAuth credentials
+in a separate `chatgpt-secrets` desktop credential store. Windows protects this
+record with current-user DPAPI. Experimental Linux and macOS source runs use the owner-restricted
+file backend. Tokens are not sent to the Clarify account service or Settings web
+interface. Signing out clears the selected connection's tokens and attempts to
+revoke its renewable session. If revocation cannot be confirmed, disconnect the
+app in ChatGPT settings. Retained account registrations allow later sign-in;
+signing out does not delete the OpenAI account.
 
 To prevent abuse, the service stores hashes derived from IP addresses or account
 IDs, plus request counters and expiry times for rate-limit windows. These IP and
@@ -120,6 +135,10 @@ Social sign-in also follows the selected provider's privacy policy:
 [Microsoft](https://privacy.microsoft.com/privacystatement), or
 [GitHub](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 Personal-key providers and custom endpoints have their own terms.
+ChatGPT plan processing follows the connected account's OpenAI terms and
+settings. Requests set `store: false`; this does not promise that OpenAI retains
+no connection or usage data. Review the
+[ChatGPT plan integration guide](https://developers.openai.com/siwc/token-sharing-open-source).
 
 For privacy requests, contact the maintainer through the links on
 [the maintainer's profile](https://github.com/jvictormaynard). Establish a
