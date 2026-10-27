@@ -7,10 +7,6 @@ on:
         description: Exact reviewed source SHA (required for signed upload on an ios/v tag)
         type: string
         default: ''
-      candidate_pr:
-        description: Open canonical PR for an explicitly requested internal candidate (requires an ios/pr-N tag)
-        type: string
-        default: ''
       tests_only:
         description: Run checks without signing or upload
         type: boolean
@@ -68,13 +64,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SOURCE: ${{ inputs.source_sha }}
           RELEASE_TAG: ${{ github.ref_name }}
-          CANDIDATE_PR: ${{ inputs.candidate_pr }}
-        run: |
-          if [ -n "$CANDIDATE_PR" ]; then
-            python -m scripts.testflight_candidate --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG" --pr "$CANDIDATE_PR"
-          else
-            python scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
-          fi
+        run: python scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
 
   availability:
     name: Verify the uploaded TestFlight build
@@ -142,13 +132,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SOURCE: ${{ inputs.source_sha }}
           RELEASE_TAG: ${{ github.ref_name }}
-          CANDIDATE_PR: ${{ inputs.candidate_pr }}
-        run: |
-          if [ -n "$CANDIDATE_PR" ]; then
-            python3 -m scripts.testflight_candidate --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG" --pr "$CANDIDATE_PR"
-          else
-            python3 scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
-          fi
+        run: python3 scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
       - name: Verify Xcode
         run: xcodebuild -version
       - name: Install locked dependencies
@@ -238,18 +222,6 @@ jobs:
       - name: Verify signed app and both extensions
         if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
         run: python3 scripts/verify-ios-ipa.py "$RUNNER_TEMP/clarify-export/Clarify.ipa"
-      - name: Recheck the open candidate before upload
-        if: ${{ !inputs.tests_only && inputs.candidate_pr != '' && steps.resume.outputs.result == 'publish' }}
-        working-directory: .
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_SOURCE: ${{ inputs.source_sha }}
-          RELEASE_TAG: ${{ github.ref_name }}
-          CANDIDATE_PR: ${{ inputs.candidate_pr }}
-        run: |
-          set -euo pipefail
-          result="$(python3 -m scripts.testflight_candidate --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG" --pr "$CANDIDATE_PR")"
-          test "$result" = 'publish'
       - name: Upload directly to App Store Connect
         if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
         env:
