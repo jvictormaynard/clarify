@@ -1,12 +1,14 @@
 {
   "schema": 1,
-  "component": "desktop",
-  "version": "0.13.0",
-  "base_sha": "22732be818742f6c0128635c6c2542c6926a4b78",
-  "notes": "## ChatGPT subscription for desktop text\n\nConnect your ChatGPT account and use its available models for rewriting, translation, and optional refinement of Local Whisper transcripts. This works in personal desktop mode without a Clarify account or an OpenAI API key.\n\n1. Continue without a Clarify account.\n2. Open **Settings → Models and services**, select **ChatGPT (subscription)**, then **Continue with ChatGPT**. Finish sign-in and allow plan use in your browser.\n3. Open **Text**, choose a workflow, then select ChatGPT and an available model.\n\nModel choices come from the selected ChatGPT account. Text requests go directly from your computer to OpenAI. Credentials stay in protected local storage.\n\nUsage consumes your existing eligible ChatGPT plan allowance and remains subject to OpenAI's limits. Connecting does not add a separate allowance. Audio transcription still needs a provider such as Local Whisper. Clarify account processing and iOS processing keep their existing routes.\n\nThe update also handles streamed replies whose final event does not repeat the generated text. A result becomes available only after the response completes.\n\nSee the [ChatGPT setup guide](https://github.com/jvictormaynard/clarify/blob/v0.13.0/docs/chatgpt-plan.md) for account switching, reconnection, usage, and self-hosting limits.\n\n## Windows download\n\nDownload **Clarify.exe** or **Clarify-windows-x64.zip** below. Check the executable against **Clarify.exe.sha256** before first use. The ZIP includes the executable, checksum, dependency inventory, and license notices.\n\nPortable updates use authenticated Ed25519 metadata. The executable has no Authenticode signature, so Windows SmartScreen can show a warning. The MSI and its separate update channel remain disabled.\n\n## Current limits\n\n- This ChatGPT connection is for personal Windows desktop text workflows. It does not add ChatGPT audio transcription or an iOS sign-in flow.\n- The ChatGPT authorization page currently shows a generic agent icon for this integration. The Clarify logo is not configured on that page.\n- Clarify does not provide a credential export/import tool for self-hosted VMs. Do not copy Windows DPAPI credential files to another machine.\n\nFull changes: [v0.12.0…v0.13.0](https://github.com/jvictormaynard/clarify/compare/v0.12.0...v0.13.0).\n",
+  "component": "mobile",
+  "version": "0.11.1",
+  "base_sha": "2153320a25ebd8286db431b846a09187e2589ffe",
+  "notes": "Corrige Cancelar no teclado quando o heartbeat em cache expira. O cancelamento continua vinculado à operação iniciada pelo controlador. Start e Concluir mantêm a exigência de sessão ativa.\n\nTeste no iPhone: cancele um ditado durante o processamento, feche e reabra o teclado e confirme que o texto cancelado não aparece. Depois faça outro ditado e confirme uma única inserção.\n\nA correção passou nos contratos e testes UIKit do CI. A aceitação em iPhone continua pendente. Este build não inclui as novas funções Windows do PR #181 e não altera o servidor. A abertura do teclado mantém os limites já documentados; não há nova correção de geometria.",
   "evidence": {
-    "tested_sha": "22732be818742f6c0128635c6c2542c6926a4b78",
-    "windows_accepted": true,
-    "report_url": "https://github.com/jvictormaynard/clarify/pull/180#issuecomment-6430150665"
+    "build": "40",
+    "highest_build": "39",
+    "pending_builds_checked": true,
+    "checked_at": "2026-10-27T03:04:15Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/40442060904"
   }
 }
