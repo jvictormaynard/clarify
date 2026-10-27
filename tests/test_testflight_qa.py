@@ -1633,7 +1633,10 @@ class DeviceArchiveGlueTests(unittest.TestCase):
     """Caller effects use stubs; archive inspection remains in its own suite."""
 
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
+        # Keep real path guards active without inheriting /tmp's sticky bit.
+        self.temporary = tempfile.TemporaryDirectory(
+            dir=Path(__file__).resolve().parent
+        )
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.inputs = dict(source_sha=SOURCE, base_sha=BASE, trusted_sha=BASE)

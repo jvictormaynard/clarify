@@ -7,6 +7,8 @@ pip-audit>=2.9,<3
 cyclonedx-bom>=7,<8
 # Security floor for pip-audit's cache locking dependency.
 filelock>=4.2.1,<5
+# Security floor for pip-audit's MessagePack cache serializer.
+msgpack>=1.2.3,<2
 pip-tools>=7.6.1,<8
 # Keep the bootstrap toolchain compatible with the pinned pip-tools release.
 pip>=26.2,<26.3

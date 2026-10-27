@@ -444,7 +444,11 @@ class FakeRunner:
 
 class ArchiveBoundaryTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
+        # The path guard checks ancestors, including the OS temp directory's
+        # sticky bit. Use a canonical checkout parent for this private fixture.
+        self.temporary = tempfile.TemporaryDirectory(
+            dir=Path(__file__).resolve().parent
+        )
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.runner_temp, self.trusted = self.root / "runner", self.root / "trusted"
@@ -595,7 +599,7 @@ class ArchiveBoundaryTests(unittest.TestCase):
             qa.inspect_macho(macho(7), primary=True)
 
     def test_zip_escape_is_rejected_before_extraction(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=self.root) as directory:
             archive = Path(directory) / "bad.zip"
             with zipfile.ZipFile(archive, "w") as output:
                 output.writestr("../escaped", b"untrusted")

@@ -27,7 +27,7 @@ const originalNotes: Record<string, string> = {
 };
 
 function fixture(t: { after: (callback: () => void) => void }) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-qa-helper-'));
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-qa-helper-')));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const qa = path.join(directory, 'clarify-ios-qa');
   fs.mkdirSync(path.join(qa, 'output'), { recursive: true });
