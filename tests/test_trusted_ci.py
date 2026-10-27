@@ -285,6 +285,35 @@ class InputBoundaryTests(unittest.TestCase):
 
 class NativeProjectionTests(unittest.TestCase):
     def inputs(self):
+        if "CLARIFY_TRUSTED_CI_TEST_ROOT" not in os.environ:
+            # Normal CI can run in a product tree that already has the projection.
+            # These independent legacy inputs exercise the strict MAIN transform;
+            # the trusted executor still reads its complete real MAIN oracles below.
+            manifest = b"""exclude: ["AudioSession.swift"],
+sources: ["SharedState.swift", "SessionDeadline.swift", "KeyboardVocabulary.swift", "KeyStore.swift", "GroqClient.swift", "RewritePrompt.swift", "KeyboardState.swift", "TypingCorrection.swift", "LocalLibrary.swift", "Snippets.swift", "ActivationRequest.swift", "CloudAccount.swift", "SocialAuthentication.swift", "AccountCredential.swift", "Onboarding.swift", "Localization.swift", "AudioClipWriter.swift"]"""
+            oracles = {
+                "ContractsTests.swift": b"""  func testAtomicBridgeKeepsCommandsReceiptsAndStateSeparate() {
+    try store.send("start", operationID: "second")
+    try store.send("lock", operationID: "second")
+    try store.send("finish", operationID: "second")
+    XCTAssertEqual(store.commands().map { $0.1.action }, ["start", "lock", "finish"])
+    XCTAssertTrue(store.commands().allSatisfy { $0.1.operationID == "second" })
+  }
+""",
+                "RecordingTests.swift": b"""  func testCancelledReadyResultCannotClaimAReceiptAfterStoreRecreation() {
+    try store.send("cancel", operationID: "cancelled")
+    XCTAssertFalse(request.canInsertResult)
+  }
+  func testCancellationMarkersPreserveOtherCancellationsAndLegacySharedData() {
+    try first.send("cancel", operationID: "../cancelled/a\xc3\xa7\xc3\xa3o")
+    try first.send("cancel", operationID: "aaa")
+    try second.send("cancel", operationID: "another")
+    XCTAssertThrowsError(try recreated.acknowledge("../cancelled/a\xc3\xa7\xc3\xa3o"))
+    XCTAssertTrue(recreated.isCancelled("another"))
+  }
+""",
+            }
+            return manifest, oracles
         return (
             (CONTROL_ROOT / CORE / "Package.swift").read_bytes(),
             {
