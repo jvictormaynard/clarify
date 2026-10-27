@@ -5,6 +5,11 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+
+- Pair an iPhone with a personal Clarify computer by QR code. Use the computer's dictation, rewrite, translation, dictionary and snippets without a Clarify account. Revoke paired phones or stop access from desktop Settings.
+- Add an optional shared TLS byte relay for connections across networks. Desktop and iOS builds share its public configuration; the relay stays disabled until a service and domain are configured. Audio, text and device credentials remain encrypted between the phone and computer.
+
 ## [0.13.0] - 2026-10-27
 
 ### Added
