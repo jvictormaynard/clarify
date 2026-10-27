@@ -37,7 +37,41 @@ def main() -> None:
     verify_qt_payload(args.executable)
     verify_update_payload(args.executable, args.settings.parent)
     verify_localization_payload(args.executable)
+    verify_computer_payload(args.executable)
     print("Packaged Settings payload matches the build input.")
+
+
+def verify_computer_payload(executable: Path) -> None:
+    from PyInstaller.archive.readers import CArchiveReader
+
+    archive = CArchiveReader(str(executable))
+    names = [name for name in archive.toc if name.lower().endswith(".pyz")]
+    if len(names) != 1:
+        raise ValueError("The portable build has no unique Python module archive")
+    modules = archive.open_embedded_archive(names[0]).toc
+    required = {
+        "computer_host",
+        "computer_processing",
+        "computer_relay_client",
+        "computer_relay_protocol",
+        "shared.computer_connect",
+        "qrcode",
+        "qrcode.image.svg",
+    }
+    if required - modules.keys():
+        raise ValueError("The portable build is missing computer connection modules")
+    config = "shared/computer_connect.json"
+    matches = [entry for entry in archive.toc if entry.replace("\\", "/") == config]
+    expected = (Path(__file__).resolve().parents[1] / config).read_bytes()
+    if len(matches) != 1 or archive.extract(matches[0]) != expected:
+        raise ValueError(
+            "Packaged computer relay configuration differs from the build input"
+        )
+    name = "licenses/qrcode-BSD.txt"
+    matches = [entry for entry in archive.toc if entry.replace("\\", "/") == name]
+    expected = (Path(__file__).resolve().parents[1] / name).read_bytes()
+    if len(matches) != 1 or archive.extract(matches[0]) != expected:
+        raise ValueError("Packaged QR notices differ from the source notice")
 
 
 def verify_qt_notices(executable: Path, inputs: Path) -> None:

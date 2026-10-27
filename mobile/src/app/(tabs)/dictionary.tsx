@@ -1,3 +1,4 @@
+import { ComputerLibraryNotice } from '../../components/computer-connection';
 import { t } from "../../i18n";
 import { useEffect, useState } from 'react';
 import { useIsFocused } from 'expo-router';
@@ -11,7 +12,7 @@ const empty = (): VocabularyEntry => ({ term: '', pronunciation: '', aliases: []
 export default function Dictionary() {
   const c = usePalette();
   const { account } = useClarify();
-  const scope = account?.signedIn ? `${account.endpoint}/${account.email}` : 'guest';
+  const scope = account?.historyContext ?? 'guest';
   return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
     <Words key={scope} />
   </SafeAreaView>;
@@ -55,6 +56,7 @@ function Words() {
   const visibleEntries = entries.map((entry, index) => ({ entry, index })).filter(({ entry }) =>
     [entry.term, entry.pronunciation, ...entry.aliases].join(' ').toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   const field = (label: string, value: string, change: (value: string) => void, placeholder: string) => <View style={{ gap: 8 }}><Text style={[ui.body, { color: c.text }]}>{label}</Text><TextInput selectionColor={c.text} accessibilityLabel={label} value={value} onChangeText={change} editable={!busy} autoCorrect={false} placeholder={placeholder} placeholderTextColor={c.muted} maxLength={label === t("Variações") ? 8192 : 256} style={[ui.input, { color: c.text, borderColor: c.controlBorder }]} /></View>;
+  if (account?.mode === 'computer') return <View style={[ui.content, { flex: 1, backgroundColor: c.background }]}><ScreenHeader title={t('Dicionário')} /><ComputerLibraryNotice /></View>;
   return <>
     <FlatList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[ui.content, { gap: 0 }]} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
       data={visibleEntries}

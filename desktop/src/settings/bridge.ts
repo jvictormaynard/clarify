@@ -23,8 +23,15 @@ export type ChatGPTState = {
   accounts: Option[]; generation: number; planNoticeSeen: boolean;
   busy: boolean; error: string;
 };
+export type ComputerState = {
+  enabled: boolean; running: boolean; durable: boolean; busy: boolean; blocked: boolean;
+  relayConfigured?: boolean; relayConnected?: boolean;
+  error: string; devices: { id: string; name: string }[];
+  pairingReady: boolean; pairingExpiresAt: number;
+};
 export interface Settings {
   chatgptState?: ChatGPTState;
+  computerState?: ComputerState;
   snippets: Snippet[];
   snippetContext: string;
   historyState?: { context: string; revision: string };
@@ -116,6 +123,7 @@ export interface Settings {
 // Argument tuples keep every frontend call checked without changing the pipe protocol.
 export type SettingsArguments = {
   practiceCommand: [action: "open" | "close" | "start" | "stop" | "cancel"];
+  computerCommand: [action: "enable" | "pair" | "stop" | "revoke" | "durable" | "close", value: string];
   completeOnboarding: [mode: "account" | "byok" | "local", key: string];
   accountCommand: [action: string, value: string];
   chatgptCommand: [action: ChatGPTAction, value: string];
@@ -217,6 +225,8 @@ export const copyHistoryText = (scope: HistoryScope, id: string, field: HistoryT
 });
 // Only periodic polls advance the Python baseline. Commands still return full state.
 export const pollSettings = () => queuedCall<Partial<Settings>>("poll", []);
+// Pairing images contain a bootstrap credential. Keep them out of Settings state.
+export const getComputerPairing = () => queuedCall<{ image?: string; expiresAt?: number }>("getComputerPairing", []);
 export function call<M extends SettingsMethod>(
   method: M,
   ...args: SettingsArguments[M]
