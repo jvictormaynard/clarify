@@ -46,25 +46,35 @@ final class KeyboardOpeningDiagnosticTests: XCTestCase {
   @MainActor
   func testDiagnosticCompletesTenRealPresentationsAndKeepsEachOpeningTrace() async throws {
     continueAfterFailure = false
+    func stage(_ name: String) {
+      NSLog("KEYBOARD_DIAGNOSTIC_STAGE %@ %.3f", name, ProcessInfo.processInfo.systemUptime)
+    }
+    stage("window-start")
     let window = UIWindow(frame: UIScreen.main.bounds)
     let screen = KeyboardOpeningDiagnostic()
     window.rootViewController = screen; window.makeKeyAndVisible()
+    stage("window-visible")
     defer { screen.view.endEditing(true); window.isHidden = true }
     func descendants(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(descendants) }
     let field = try XCTUnwrap(descendants(screen.view).compactMap { $0 as? UITextField }.first)
     let shown = expectation(forNotification: UIResponder.keyboardDidShowNotification, object: nil)
+    stage("first-responder-start")
     XCTAssertTrue(field.becomeFirstResponder())
+    stage("first-responder-returned")
     // The first system-keyboard service launch took over twenty seconds on a
     // cold CI simulator. Wait for its actual notification, without a fixed sleep.
     await fulfillment(of: [shown], timeout: 30)
+    stage("keyboard-shown")
     screen.view.layoutIfNeeded()
     let run = try XCTUnwrap(descendants(screen.view).compactMap { $0 as? UIButton }.first {
       $0.title(for: .normal) == L("Testar dez aberturas")
     })
     run.sendActions(for: .touchUpInside)
+    stage("ten-openings-started")
     XCTAssertNotNil(screen.report)
     let done = expectation(for: NSPredicate { _, _ in screen.report?.outcome != "running" }, evaluatedWith: nil)
     await fulfillment(of: [done], timeout: 35)
+    stage("ten-openings-finished")
     let report = try XCTUnwrap(screen.report)
     XCTAssertEqual(report.outcome, "completed")
     XCTAssertEqual(report.openings.map(\.index), Array(1...10))

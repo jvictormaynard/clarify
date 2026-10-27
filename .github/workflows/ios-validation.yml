@@ -2,13 +2,14 @@ name: iOS validation
 
 on:
   workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Native tests and unsigned build
+  native:
+    name: Native keyboard and library tests
     runs-on: macos-26
     timeout-minutes: 60
     defaults:
@@ -30,13 +31,58 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
       - run: npm run check
+      - name: Restore native test build cache
+        id: native-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            mobile/modules/clarify-core/.build
+            ${{ runner.temp }}/ClarifyKeyboardUI
+            ${{ runner.temp }}/ClarifyKeyboardUIFixture
+          key: ios-tests-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-${{ hashFiles('mobile/package-lock.json', 'mobile/modules/clarify-core/Package.swift', 'mobile/modules/clarify-core/Package.resolved', 'mobile/modules/clarify-core/ios/**/*.swift', 'mobile/modules/clarify-core/tests/**/*.swift', 'mobile/native/keyboard/**', 'mobile/native/tests/**', 'mobile/scripts/test-keyboard-ui.cjs') }}
+          restore-keys: |
+            ios-tests-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-
       - run: npm run test:native
       - name: Test native keyboard and library integration
         env:
           CLARIFY_NATIVE_TESTS: '1'
+          CLARIFY_IOS_UI_DERIVED_DATA: ${{ runner.temp }}/ClarifyKeyboardUI
+          CLARIFY_IOS_UI_FIXTURE_ROOT: ${{ runner.temp }}/ClarifyKeyboardUIFixture
         run: node scripts/test-keyboard-ui.cjs
+      - name: Retain native test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-native-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: mobile/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  build:
+    name: Unsigned app and extensions build
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      CLARIFY_IOS_RUNTIME: iOS-26-5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
       - run: npx expo prebuild --clean --platform ios --no-install
       - name: Restore CocoaPods downloads and native build cache
+        id: build-cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
@@ -53,4 +99,30 @@ jobs:
           set -euo pipefail
           xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
             -configuration Debug -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/ClarifyAccount" CODE_SIGNING_ALLOWED=NO build | xcbeautify
+            -derivedDataPath "$RUNNER_TEMP/ClarifyAccount" -showBuildTimingSummary \
+            CODE_SIGNING_ALLOWED=NO build | tee "$RUNNER_TEMP/ios-build.log" | xcbeautify
+      - name: Retain native build timing
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-build-timing-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ios-build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  validate:
+    name: Native tests and unsigned build
+    needs: [native, build]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require native tests and unsigned compilation
+        shell: bash
+        env:
+          NATIVE_RESULT: ${{ needs.native.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          set -euo pipefail
+          test "$NATIVE_RESULT" = success
+          test "$BUILD_RESULT" = success

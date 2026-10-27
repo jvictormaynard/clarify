@@ -32,6 +32,22 @@ build. A few changed lines can still affect a native contract; selection uses
 the input paths, not line count, PR labels, contributor identity, or an AI risk
 score. A manual CI run validates all components, including the MSI path.
 
+Python workflow changes select Desktop, server and mobile checks. Mobile checks
+verify that the generated native prompts still match their source. A changed
+native prompt or other Swift input also selects the native iOS jobs. Publication
+policy changes in `scripts/release_delivery.py` run the existing repository policy
+tests; that script is not an application build input.
+
+The UI catalog keeps one translation source. `shared/desktop_ui_keys.json` marks
+reviewed text that mobile does not use. New, unclassified text remains in the
+native catalog. The locale check scans mobile source for exact desktop key text.
+See [localization scope](development.md#interface-localization) for its coverage
+limits.
+For a catalog change, CI compares the native projections in the base and tested
+Git commits. It omits native iOS only when those projections match and no other
+changed input selects iOS. Missing, invalid or nonregular catalog inputs retain
+native validation. Changing the scope file itself also selects native validation.
+
 Release-preparation intent selects its platform. Desktop preparation forces its
 tests, Settings, portable build and audit. Mobile preparation forces mobile,
 native iOS checks without Desktop builds or audits. Malformed or unknown
@@ -71,6 +87,25 @@ and compilation outputs use OS, architecture, compiler and lock-based caches.
 iOS caches CocoaPods downloads and Xcode build outputs. Builds still run and
 validate restored inputs; a cache hit is not proof of successful validation.
 Do not put profiles, secrets, recordings or signing materials in caches.
+
+Native iOS tests and unsigned compilation run in separate parallel jobs. Each
+keeps a 60-minute limit, so test setup does not consume the compilation budget.
+The existing `Native tests and unsigned build` check requires both jobs to
+succeed. Failure, cancellation or skipping either job blocks that check and
+client publication. These validation jobs do not sign or upload an app.
+
+Native tests restore Swift package and UIKit build caches before running. UIKit
+uses a stable, isolated fixture and DerivedData directory. The harness records
+fixture preparation, simulator boot and test/build durations, and retains its
+result bundle. The app build emits the Xcode build timing summary. CI uploads
+the available evidence after success or failure. Cache keys include the runner,
+toolchain and source inputs; restored builds and all assertions still run.
+
+The `iOS validation` workflow also accepts a manual run on a contribution branch.
+It runs the same unsigned validation and aggregate gate. For a cache measurement,
+compare runs of the same source and toolchain, including cache restore/save cost.
+The command is `gh workflow run ios-validation.yml --ref <branch>`. A cache hit
+alone is not evidence of a successful or faster build.
 
 The existing Desktop dependency audits run when their dependency inputs change
 and daily at 04:23 UTC on the default branch. Desktop release builds retain
