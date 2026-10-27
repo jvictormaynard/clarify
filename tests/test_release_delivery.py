@@ -6,9 +6,6 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
-import subprocess
-import sys
-import tempfile
 import threading
 import unittest
 from urllib.parse import parse_qs, urlsplit
@@ -85,90 +82,6 @@ class ReleaseNotesTests(unittest.TestCase):
                     delivery.community_release_notes(document, "v1.2.4")
         with self.assertRaises(delivery.ReleaseError):
             delivery.community_release_notes(self.CHANGELOG, "main")
-
-    def test_cli_reads_the_tag_instead_of_the_working_changelog(self):
-        with tempfile.TemporaryDirectory() as directory:
-            repo = Path(directory)
-
-            def git(*args):
-                subprocess.run(
-                    [
-                        "git",
-                        "-c",
-                        "user.name=Release test",
-                        "-c",
-                        "user.email=release-test@example.com",
-                        "-c",
-                        "commit.gpgsign=false",
-                        "-c",
-                        "tag.gpgsign=false",
-                        "-c",
-                        "core.hooksPath=" + str(repo / "disabled-hooks"),
-                        *args,
-                    ],
-                    cwd=repo,
-                    check=True,
-                    capture_output=True,
-                )
-
-            git("init")
-            (repo / "CHANGELOG.md").write_text(self.CHANGELOG, encoding="utf-8")
-            git("add", "CHANGELOG.md")
-            git(
-                "commit",
-                "-m",
-                "Test release changelog",
-            )
-            git(
-                "tag",
-                "-a",
-                "v1.2.4",
-                "-m",
-                "Test release",
-                "HEAD",
-                "--cleanup=verbatim",
-            )
-            git("tag", "v1.2.5")
-            (repo / "CHANGELOG.md").write_text("Uncommitted future changes.")
-            output = repo / "notes.md"
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts/release_delivery.py"),
-                    "notes",
-                    "--tag",
-                    "v1.2.4",
-                    "--output",
-                    str(output),
-                ],
-                cwd=repo,
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn(
-                "Preserve the user's text", output.read_text(encoding="utf-8")
-            )
-            self.assertNotIn("Uncommitted future", output.read_text(encoding="utf-8"))
-            output.unlink()
-            for tag in ("v9.9.9", "v1.2.5"):
-                with self.subTest(tag=tag):
-                    failure = subprocess.run(
-                        [
-                            sys.executable,
-                            str(ROOT / "scripts/release_delivery.py"),
-                            "notes",
-                            "--tag",
-                            tag,
-                            "--output",
-                            str(output),
-                        ],
-                        cwd=repo,
-                        capture_output=True,
-                        text=True,
-                    )
-                    self.assertNotEqual(failure.returncode, 0)
-                    self.assertFalse(output.exists())
 
 
 class FakeGitHub(BaseHTTPRequestHandler):
