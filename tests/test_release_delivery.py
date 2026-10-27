@@ -19,6 +19,71 @@ REPOSITORY = "jvictormaynard/clarify"
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class ReleaseNotesTests(unittest.TestCase):
+    CHANGELOG = """# Changelog
+
+## [Unreleased]
+
+### Added
+
+- A future feature.
+
+## [1.2.4] - 2026-10-25
+
+### Fixed
+
+- Preserve the user's text, including `code` and [links](https://example.com).
+
+## [1.2.3] - 2026-10-20
+
+### Added
+
+- An older feature.
+
+[Unreleased]: https://example.com/compare/v1.2.4...HEAD
+[1.2.4]: https://example.com/compare/v1.2.3...v1.2.4
+"""
+
+    def test_notes_include_only_the_requested_version_before_distribution(self):
+        notes = delivery.community_release_notes(self.CHANGELOG, "v1.2.4")
+        self.assertTrue(
+            notes.startswith(
+                "### Fixed\n\n- Preserve the user's text, including `code` and "
+                "[links](https://example.com).\n"
+            )
+        )
+        self.assertIn(
+            "https://github.com/jvictormaynard/clarify/blob/v1.2.4/CHANGELOG.md",
+            notes,
+        )
+        self.assertIn("Windows SmartScreen", notes)
+        self.assertEqual(
+            delivery.community_release_notes(
+                self.CHANGELOG.replace("\n", "\r\n"), "v1.2.4"
+            ),
+            notes,
+        )
+        self.assertNotIn("A future feature", notes)
+        self.assertNotIn("An older feature", notes)
+        self.assertNotIn("[Unreleased]:", notes)
+        oldest = delivery.changelog_section(self.CHANGELOG, "1.2.3")
+        self.assertEqual(oldest, "### Added\n\n- An older feature.")
+
+    def test_missing_duplicate_undated_and_empty_sections_are_rejected(self):
+        documents = [
+            "## [Unreleased]\n\n- A future feature.\n",
+            self.CHANGELOG + "\n## [1.2.4] - 2026-10-25\n\n- Duplicate.\n",
+            "## [1.2.4]\n\n- Missing date.\n",
+            "## [1.2.4] - 2026-10-25\n\n### Fixed\n\n<!-- No changes yet. -->\n",
+        ]
+        for document in documents:
+            with self.subTest(document=document):
+                with self.assertRaises(delivery.ReleaseError):
+                    delivery.community_release_notes(document, "v1.2.4")
+        with self.assertRaises(delivery.ReleaseError):
+            delivery.community_release_notes(self.CHANGELOG, "main")
+
+
 class FakeGitHub(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass
