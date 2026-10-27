@@ -12,6 +12,9 @@ import { ClarifyLogo } from '../../components/clarify-logo';
 
 import { groupHistory, historyDayTitle, historyTime } from '../../history';
 
+import { ComputerText } from '../../components/computer-text';
+import { RecordButton } from '../../components/record-button';
+
 const timestamp = (value: number) => new Date(value * 1000).toLocaleString(uiLanguage, { dateStyle: 'medium', timeStyle: 'short' });
 
 export default function Home() {
@@ -68,7 +71,7 @@ export default function Home() {
   // The native library revision invalidates the focused page, including keyboard dictations.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, state.libraryRevision, account?.historyContext]));
-  const remove = (entry: HistoryEntry) => Alert.alert(t("Excluir transcrição?"), entry.localOnly ? t("Este texto será removido do histórico deste iPhone.") : t("Este texto será removido do histórico da sua conta em todos os dispositivos."), [
+  const remove = (entry: HistoryEntry) => Alert.alert(t("Excluir transcrição?"), account?.mode === 'computer' || entry.localOnly ? t("Este texto será removido do histórico deste iPhone.") : t("Este texto será removido do histórico da sua conta em todos os dispositivos."), [
     { text: t("Cancelar"), style: 'cancel' }, { text: t("Excluir"), style: 'destructive', onPress: () => {
       setAction('delete');
       void Core.deleteHistory(entry.id, entry.localOnly, entry.context).then(async () => { setSelected(null); await refresh(); await load(); }).catch(report).finally(() => setAction(null));
@@ -89,6 +92,7 @@ export default function Home() {
         <ClarifyLogo size={28} />
         <ScreenHeader title={t('Início')} />
         <MicrophoneSwitch />
+        {account?.mode === 'computer' && <><RecordButton /><ComputerText /></>}
         <Text style={[ui.small, { color: c.muted, marginTop: -8 }]}>{state.sessionActive ? t('O Clarify está ativo para receber ditados do teclado.') : t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>
         {state.phase === 'error' && state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(state.message)}</Text>}
       </View>}
