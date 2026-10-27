@@ -64,16 +64,61 @@ final class KeyboardOpeningDiagnosticTests: XCTestCase {
     run.sendActions(for: .touchUpInside)
     XCTAssertNotNil(screen.report)
     let done = expectation(for: NSPredicate { _, _ in screen.report?.outcome != "running" }, evaluatedWith: nil)
-    await fulfillment(of: [done], timeout: 35)
+    // Inspect the wait result only after preserving evidence. An assertion can
+    // stop this test immediately because continueAfterFailure is false.
+    let waitResult = await XCTWaiter.fulfillment(of: [done], timeout: 35)
     let report = try XCTUnwrap(screen.report)
-    XCTAssertEqual(report.outcome, "completed")
+    let last = report.frames.last
+    let phaseFrames = report.frames.filter { $0.opening == last?.opening && $0.phase == last?.phase }
+    let gaps = zip(report.frames, report.frames.dropFirst()).map { $1.elapsed - $0.elapsed }
+    let state: [String: Any] = [
+      "outcome": report.outcome,
+      "waitResult": waitResult.rawValue,
+      "completedOpenings": report.openings.count,
+      "lastOpening": last?.opening ?? -1,
+      "lastPhase": last?.phase ?? "none",
+      "lastGuideHeight": last?.guideHeight ?? -1,
+      "lastComposerHeight": last?.composerHeight ?? -1,
+      "elapsed": last?.elapsed ?? -1,
+      "sampleCount": report.frames.count,
+      "firstSampleElapsed": report.frames.first?.elapsed ?? -1,
+      "phaseSampleCount": phaseFrames.count,
+      "phaseSampleSpan": (last?.elapsed ?? 0) - (phaseFrames.first?.elapsed ?? 0),
+      "maxSampleGap": gaps.max() ?? 0,
+      "lastSampleGap": gaps.last ?? 0,
+      "requestedFPS": report.requestedFPS,
+      "appState": UIApplication.shared.applicationState.rawValue,
+      "sceneState": window.windowScene?.activationState.rawValue ?? -1,
+      "windowIsKey": window.isKeyWindow,
+      "windowIsHidden": window.isHidden,
+      "viewIsInWindow": screen.view.window === window,
+      "fieldIsInWindow": field.window === window,
+      "fieldIsFirstResponder": field.isFirstResponder,
+      "safeAreaBottom": Double(screen.view.safeAreaInsets.bottom),
+    ]
+    let summary = String(decoding: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), as: UTF8.self)
+    let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    let traceData = try encoder.encode(report)
+    // Finish this activity before any assertion can terminate the test runner.
+    // Only synthetic geometry, timing, and UI state are retained.
+    XCTContext.runActivity(named: "Keyboard opening diagnostic evidence") { activity in
+      let trace = XCTAttachment(data: traceData, uniformTypeIdentifier: "public.json")
+      trace.name = "keyboard-opening-report.json"; trace.lifetime = .keepAlways
+      activity.add(trace)
+      let snapshot = XCTAttachment(string: summary)
+      snapshot.name = "keyboard-opening-state.json"; snapshot.lifetime = .keepAlways
+      activity.add(snapshot)
+    }
+    print("Keyboard opening diagnostic: \(summary)")
+    XCTAssertEqual(waitResult, .completed, summary)
+    XCTAssertEqual(report.outcome, "completed", summary)
     XCTAssertEqual(report.openings.map(\.index), Array(1...10))
     XCTAssertTrue(report.frames.contains { $0.phase == "closing" })
     for opening in 1...10 {
       XCTAssertGreaterThan(report.frames.filter { $0.opening == opening && $0.phase == "opening" }.count, 12)
     }
     XCTAssertTrue(report.frames.allSatisfy { $0.displayElapsed != nil && $0.targetElapsed != nil })
-    screen.viewWillDisappear(false)
+    screen.beginAppearanceTransition(false, animated: false); screen.endAppearanceTransition()
     XCTAssertEqual(screen.report?.outcome, "completed", "Leaving the screen must preserve the completed report")
   }
 }
