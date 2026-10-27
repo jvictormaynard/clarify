@@ -100,3 +100,9 @@ SHA, platform-specific evidence, immutable tags and separate publication
 credentials. Windows interaction acceptance and physical iPhone/TestFlight
 acceptance remain required where applicable. Browser tests do not prove native
 focus, hotkeys, tray behavior, microphone routing or keyboard insertion.
+
+An explicitly requested internal TestFlight candidate can keep its implementation
+PR open. Its separate [candidate gate](release-automation.md#explicit-internal-candidates-from-an-open-pr)
+requires current canonical source, completed PR and native CI, a checked build
+reservation and an immutable PR-specific tag. This path does not publish a
+stable client or change the normal preparation and promotion gates.

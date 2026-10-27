@@ -76,6 +76,12 @@ final class AppFlowUITests: XCTestCase {
     app.terminate(); app.launch()
     XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 20))
     XCTAssertFalse(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.exists)
+    press("processing.computer")
+    XCTAssertTrue(app.buttons["computer.scan"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.textFields["account.email"].exists, "Computer pairing does not require hosted sign-in")
+    XCTAssertFalse(app.tabBars.firstMatch.exists, "Choosing a mode alone does not authorize processing")
+    press("processing.hosted")
+    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 10))
     for provider in ["Google", "Microsoft", "GitHub"] {
       XCTAssertTrue(app.buttons["Continuar com \(provider)"].exists, "Social sign-in remains available")
     }

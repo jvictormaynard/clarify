@@ -6,6 +6,8 @@ import { Button, Card, ui, usePalette } from './ui';
 import { isBusy, report, useClarify } from '../state/clarify';
 import { formatUsageReset, usageProgress } from '../usage';
 
+import { ProcessingChoice, ComputerConnectionCard } from './computer-connection';
+
 export function AccountCard({ children }: { children?: ReactNode }) {
   const c = usePalette();
   const { state, account, accountBusy, accountCommand } = useClarify();
@@ -14,6 +16,7 @@ export function AccountCard({ children }: { children?: ReactNode }) {
   const command = (action: string, value = '') => { setAction(action); void accountCommand(action, value).catch(report).finally(() => setAction('')); };
   if (!account) return null;
   const error = account.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.text }]}>{t(account.error)}</Text>;
+  if (account.mode === 'computer') return <View style={{ gap: 20 }}><ProcessingChoice /><ComputerConnectionCard />{children}</View>;
   if (!account.signedIn) return <Card>
       <Text style={[ui.section, { color: c.text }]}>{t("Conta Clarify")}</Text>
       <Text style={[ui.body, { color: c.muted }]}>{t("Entre para ditar sem chave de API e compartilhar seu dicionário com o computador.")}</Text>
@@ -39,6 +42,7 @@ export function AccountCard({ children }: { children?: ReactNode }) {
       {action === name && <ActivityIndicator size="small" color={destructive ? c.danger : c.accent} />}
     </Pressable>;
   return <View style={{ gap: 20 }}>
+    <ProcessingChoice />
     <Card style={{ gap: 8 }}>
       <Text style={[ui.small, { color: c.muted }]}>{t("Conta Clarify")}</Text>
       <Text selectable style={{ fontSize: 18, fontWeight: '600', color: c.text }}>{account.email}</Text>

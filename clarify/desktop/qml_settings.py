@@ -486,6 +486,7 @@ class QmlSettingsController(QObject):
 
     configChanged = Signal()
     updatesChanged = Signal()
+    computerStateChanged = Signal()
     routeChanged = Signal()
     selectedScopeChanged = Signal()
     dirtyChanged = Signal()
@@ -526,6 +527,7 @@ class QmlSettingsController(QObject):
         self._background_timer.setInterval(25)
         self._background_timer.timeout.connect(self._drain_background_publications)
         self._updates = None
+        self._computer = None
         self.repositories = repositories
         self._account = account_service or AccountService(
             Path(repositories.config.path).parent,
@@ -2848,6 +2850,48 @@ class QmlSettingsController(QObject):
             "error": self._account_error,
         }
 
+    def bindComputer(self, controller):
+        self._computer = controller
+        controller.changed.connect(self.computerStateChanged)
+        self.accountStateChanged.connect(controller.refresh)
+        self.computerStateChanged.emit()
+
+    @Property("QVariantMap", notify=computerStateChanged)
+    def computerState(self):
+        if self._computer is not None:
+            return self._computer.snapshot()
+        return {
+            "enabled": False,
+            "running": False,
+            "durable": False,
+            "busy": False,
+            "blocked": True,
+            "error": "unavailable",
+            "devices": [],
+            "pairingReady": False,
+            "pairingExpiresAt": 0,
+        }
+
+    @Property(str, notify=computerStateChanged)
+    def computerPairingImage(self):
+        return self._computer.pairingImage if self._computer is not None else ""
+
+    @Slot(str, str, result=bool)
+    def computerCommand(self, action, value=""):
+        if self._computer is None or not self._computer.command(action, value):
+            self._set_error(ValueError("Não foi possível alterar o acesso do celular."))
+            return False
+        self._set_error(None)
+        return True
+
+    def getComputerPairing(self):
+        return self._computer.pairing() if self._computer is not None else {}
+
+    @Slot()
+    def closeComputerPairing(self):
+        if self._computer is not None:
+            self._computer.command("close")
+
     @Property("QVariantMap", notify=accountStateChanged)
     def historyState(self):
         return (
@@ -3022,6 +3066,13 @@ class QmlSettingsController(QObject):
             return False
         if not self._account.begin_change():
             return False
+        computer_barrier = (
+            self._computer.prepare_account_change()
+            if self._computer is not None
+            and action
+            in {"configure", "login", "signup", "confirm", "social", "logout", "delete"}
+            else None
+        )
         self._account_busy, self._account_error = True, ""
         self._account_social = action == "social"
         self._account_cancel.clear()
@@ -3030,6 +3081,10 @@ class QmlSettingsController(QObject):
         def perform():
             error = ""
             try:
+                if computer_barrier is not None and computer_barrier.result().get(
+                    "error"
+                ):
+                    raise ValueError("Não foi possível alterar o acesso do celular.")
                 if action == "configure":
                     self._account.configure(value)
                 elif action == "social":
@@ -3078,6 +3133,8 @@ class QmlSettingsController(QObject):
 
     @Slot(object)
     def _finish_account(self, error):
+        if self._computer is not None:
+            self._computer.finish_account_change()
         self._account_social = False
         self._account_error = error
         try:

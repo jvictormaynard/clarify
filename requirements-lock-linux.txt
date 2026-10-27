@@ -131,6 +131,8 @@ pyside6-essentials==6.11.2
     # via -r requirements.txt
 python-dateutil==2.9.0.post0
     # via arrow
+qrcode==8.2
+    # via -r requirements.txt
 referencing==0.37.0
     # via
     #   cyclonedx-python-lib
