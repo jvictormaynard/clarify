@@ -151,7 +151,9 @@ SettingsGroup {
             required property var modelData
             Layout.fillWidth: true
             Label {
+                objectName: "computerDeviceName"
                 text: modelData.name || qsTr("Celular")
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: root.visualTheme.secondaryText

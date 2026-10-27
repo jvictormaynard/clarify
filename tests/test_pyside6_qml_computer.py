@@ -365,8 +365,8 @@ class ComputerControllerTests(unittest.TestCase):
         self.assertFalse(self.controller.snapshot()["running"])
         self.assertEqual(self.controller.snapshot()["error"], "failed")
 
-    def test_account_restriction_notifies_native_panel_without_recursive_close(self):
-        from PySide6.QtCore import QObject, QUrl
+    def native_panel(self):
+        from PySide6.QtCore import QUrl
         from PySide6.QtQml import QQmlApplicationEngine
 
         with patch("clarify.desktop.qml_settings._is_windows", return_value=False):
@@ -376,10 +376,6 @@ class ComputerControllerTests(unittest.TestCase):
             )
         self.addCleanup(settings.shutdown)
         settings.bindComputer(self.controller)
-        notifications = []
-        self.controller.changed.connect(lambda: notifications.append(True))
-        self.controller.command("close")
-        self.assertEqual(notifications, [])
         engine = QQmlApplicationEngine()
         warnings = []
         engine.warnings.connect(
@@ -392,6 +388,45 @@ class ComputerControllerTests(unittest.TestCase):
             QUrl.fromLocalFile(str(qml_root / "computer-test.qml")),
         )
         self.assertTrue(engine.rootObjects(), warnings)
+        return settings, engine, warnings
+
+    def test_paired_device_name_is_plain_text_in_native_panel(self):
+        from PySide6.QtQml import QQmlEngine, QQmlExpression
+        from PySide6.QtQuick import QQuickItem
+
+        name = "<b>Fixture iPhone</b>"
+        self.host.devices[0]["device_name"] = name
+        self.enable()
+        settings, engine, warnings = self.native_panel()
+        self.app.processEvents()
+        items = [engine.rootObjects()[0]]
+        labels = []
+        while items:
+            item = items.pop()
+            if item.objectName() == "computerDeviceName":
+                labels.append(item)
+            if isinstance(item, QQuickItem):
+                items.extend(item.childItems())
+        self.assertEqual(len(labels), 1)
+        label = labels[0]
+        self.assertEqual(label.property("text"), name)
+        expression = QQmlExpression(
+            QQmlEngine.contextForObject(label), label, "textFormat === Text.PlainText"
+        )
+        plain, undefined = expression.evaluate()
+        self.assertFalse(expression.hasError(), expression.error().toString())
+        self.assertFalse(undefined)
+        self.assertTrue(plain)
+        self.assertEqual(warnings, [])
+
+    def test_account_restriction_notifies_native_panel_without_recursive_close(self):
+        from PySide6.QtCore import QObject
+
+        notifications = []
+        self.controller.changed.connect(lambda: notifications.append(True))
+        self.controller.command("close")
+        self.assertEqual(notifications, [])
+        settings, engine, warnings = self.native_panel()
         root = engine.rootObjects()[0]
         button = root.findChild(QObject, "computerConnectButton")
         self.assertTrue(button.property("enabled"))
