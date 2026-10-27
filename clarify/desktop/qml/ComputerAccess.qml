@@ -12,7 +12,7 @@ SettingsGroup {
     title: qsTr("Acesso pelo celular")
     description: access.blocked
         ? qsTr("Saia da conta Clarify para conectar o celular aos seus modelos e serviços pessoais.")
-        : qsTr("Use seus modelos e serviços deste computador no iPhone. Mantenha o computador ligado e na mesma rede Wi-Fi.")
+        : qsTr("Use seus modelos e serviços deste computador no iPhone. Mantenha o computador ligado e conectado à rede.")
 
     function closePairing() {
         panelOpen = false
@@ -48,6 +48,16 @@ SettingsGroup {
         color: root.visualTheme.secondaryText
         text: root.access.running ? qsTr("Acesso ativo neste computador.")
             : qsTr("O computador está offline. Pare o acesso e tente novamente.")
+    }
+    Label {
+        visible: root.access.running
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        color: root.visualTheme.secondaryText
+        text: root.access.relayConfigured
+            ? (root.access.relayConnected ? qsTr("Acesso pela internet ativo.")
+                : qsTr("A conexão pela internet está indisponível. O acesso na mesma rede continua ativo."))
+            : qsTr("Acesso disponível na mesma rede Wi-Fi.")
     }
     SettingsSwitch {
         visible: root.access.enabled

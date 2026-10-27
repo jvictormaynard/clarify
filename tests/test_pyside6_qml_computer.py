@@ -29,6 +29,8 @@ class FakeHost:
     def __init__(self):
         self.enabled = False
         self.processing_ready = True
+        self.relay_configured = False
+        self.relay_connected = False
         self.sequence = 0
         self.devices = [
             {
@@ -64,6 +66,8 @@ class FakeHost:
         return {
             "enabled": self.enabled,
             "ready": self.ready,
+            "relay_configured": self.relay_configured,
+            "relay_connected": self.relay_connected,
             "devices": self.devices,
         }
 
@@ -218,6 +222,26 @@ class ComputerControllerTests(unittest.TestCase):
             all(thread != threading.get_ident() for _, thread in self.host.calls)
         )
 
+    def test_relay_availability_refreshes_without_disabling_local_access(self):
+        self.host.relay_configured = True
+        self.enable()
+        self.assertTrue(self.controller.snapshot()["relayConfigured"])
+        self.assertFalse(self.controller.snapshot()["relayConnected"])
+        self.host.relay_connected = True
+        self.controller.refresh()
+        self.wait()
+        self.assertTrue(self.controller.snapshot()["relayConnected"])
+        self.host.relay_connected = False
+        self.controller.refresh()
+        self.wait()
+        state = self.controller.snapshot()
+        self.assertFalse(state["relayConnected"])
+        self.assertTrue(state["running"])
+        self.assertNotIn("relay_host", state)
+        self.assertTrue(self.controller.command("pair"))
+        self.wait()
+        self.assertTrue(self.controller.snapshot()["pairingReady"])
+
     def test_stop_before_first_enable_does_not_create_identity_metadata(self):
         self.controller.command("stop")
         self.wait()
@@ -353,6 +377,23 @@ class ComputerControllerTests(unittest.TestCase):
         self.assertFalse(state["enabled"])
         self.assertNotIn("private", json.dumps(state))
         self.assertEqual(self.host.calls[0][0], "stop")
+
+    def test_failed_activation_retains_host_until_account_barrier_confirms_drain(self):
+        self.host.start = Mock(side_effect=RuntimeError("private-start-detail"))
+        self.host.stop = Mock(side_effect=RuntimeError("private-stop-detail"))
+        self.controller.command("enable")
+        self.wait()
+        self.assertIs(self.controller._host, self.host)
+        self.assertTrue(self.controller.snapshot()["enabled"])
+        self.assertFalse(self.controller.snapshot()["running"])
+        barrier = self.controller.prepare_account_change().result(timeout=3)
+        self.assertEqual(barrier.get("error"), "failed")
+        self.assertIs(self.controller._host, self.host)
+        self.assertNotIn("private", json.dumps(barrier))
+        self.host.stop.side_effect = None
+        barrier = self.controller.prepare_account_change().result(timeout=3)
+        self.assertNotIn("error", barrier)
+        self.assertIsNone(self.controller._host)
 
     def test_stop_closes_listener_even_if_persisting_consent_fails(self):
         self.enable()

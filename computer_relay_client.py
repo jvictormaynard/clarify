@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from collections import deque
 import ipaddress
 import random
 import socket
@@ -258,10 +259,10 @@ class ComputerRelayClient:
             await asyncio.sleep(self.limits.heartbeat_interval)
             await control.write(encode_frame({"v": 1, "kind": "ping"}))
 
-    async def _attach(self, pending):
+    async def _attach(self, pending, deadline):
         data = local = None
         try:
-            async with asyncio.timeout(self.limits.setup_timeout):
+            async with asyncio.timeout_at(deadline):
                 data = await self._dial()
                 nonce = await self._hello(data)
                 proof = self.identity.proof(
@@ -300,6 +301,37 @@ class ComputerRelayClient:
     async def _session(self):
         control = None
         heartbeat = None
+        admission = None
+        pending = deque()
+        changed = asyncio.Event()
+        loop = asyncio.get_running_loop()
+
+        def child_done(child):
+            self._children.discard(child)
+            changed.set()
+
+        async def admit():
+            while True:
+                changed.clear()
+                while pending:
+                    pending_id, deadline = pending[0]
+                    if deadline <= loop.time():
+                        pending.popleft()
+                        continue
+                    if len(self._children) >= self.limits.streams_per_host:
+                        break
+                    pending.popleft()
+                    child = asyncio.create_task(self._attach(pending_id, deadline))
+                    self._children.add(child)
+                    child.add_done_callback(child_done)
+                # Expire waiting IDs even if every old child remains in close.
+                # No socket or attachment task is allocated for a waiting ID.
+                try:
+                    async with asyncio.timeout_at(pending[0][1] if pending else None):
+                        await changed.wait()
+                except TimeoutError:
+                    continue
+
         try:
             async with asyncio.timeout(self.limits.setup_timeout):
                 control = await self._dial()
@@ -326,6 +358,7 @@ class ComputerRelayClient:
                     raise RelayError("invalid_registration_ack")
             self._state("connected", True)
             heartbeat = asyncio.create_task(self._heartbeat(control))
+            admission = asyncio.create_task(admit())
             seen = set()
             while True:
                 message = await asyncio.wait_for(
@@ -334,33 +367,45 @@ class ComputerRelayClient:
                 )
                 if heartbeat.done():
                     heartbeat.result()
+                if admission.done():
+                    admission.result()
                 if message["kind"] == "pong":
                     continue
                 if message["kind"] != "open":
                     raise RelayError("invalid_control")
-                if (
-                    message["pending"] in seen
-                    or len(self._children) >= self.limits.streams_per_host
-                ):
+                if message["pending"] in seen:
                     raise RelayError("invalid_open")
                 # Replay memory is bounded by a control-session lifetime. Rotate
                 # the session after 4096 streams rather than forgetting old IDs.
                 if len(seen) >= 4096:
                     raise RelayError("session_rotation")
                 seen.add(message["pending"])
-                child = asyncio.create_task(self._attach(message["pending"]))
-                self._children.add(child)
-                child.add_done_callback(self._children.discard)
+                # The server can release its slot before the old desktop child
+                # finishes close. Bound that lag without resetting other streams.
+                # Overflow and expiry leave only the new server request to time out.
+                if len(pending) < min(
+                    self.limits.streams_per_host, self.limits.max_pending
+                ):
+                    pending.append(
+                        (message["pending"], loop.time() + self.limits.setup_timeout)
+                    )
+                    changed.set()
         finally:
             self._state("retrying")
             if heartbeat:
                 heartbeat.cancel()
+            if admission:
+                admission.cancel()
             children = tuple(self._children)
             for child in children:
                 child.cancel()
             await asyncio.gather(
-                *children, *([heartbeat] if heartbeat else []), return_exceptions=True
+                *children,
+                *([heartbeat] if heartbeat else []),
+                *([admission] if admission else []),
+                return_exceptions=True,
             )
+            pending.clear()
             self._children.clear()
             if control:
                 control.close()

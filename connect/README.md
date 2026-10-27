@@ -1,9 +1,10 @@
 # Shared computer byte relay primitives
 
-This is a local implementation candidate. It does not activate a public service,
-modify the desktop Host, or add a mobile route. The coordinator owns integration
-and the public deployment decision. No domain, hosting plan or certificate is
-selected by these files.
+This candidate includes a desktop connector, Host lifecycle integration and
+QR-pinned iOS routes. It does not activate a public service. No domain, hosting
+plan or certificate has been selected. The shared public build configuration
+in `shared/computer_connect.json` keeps the relay disabled until deployment is
+reviewed. Direct LAN access remains available.
 
 ## Transport and identity
 
@@ -119,9 +120,16 @@ connections and 60 admissions per minute. Global admissions are capped at 600
 per minute; admission records have 1,024 IP slots and expire after one minute.
 These limits can constrain multiple desktops behind one NAT.
 
-Handshake, setup and inactivity deadlines default to 5, 10 and 60 seconds.
-Traffic in either direction refreshes the tunnel inactivity deadline; a blocked
-write still has its own deadline.
+Handshake and setup deadlines default to five and ten seconds. Control inactivity
+has a 60-second limit. Tunnel inactivity has a separate 120-second limit on both
+ends, covering the mobile client's 100-second processing request. Traffic in
+either direction refreshes this tunnel deadline; blocked writes remain bounded.
+
+When a server slot is reused while an older desktop child is still closing,
+the client queues at most `min(streams_per_host, max_pending)` pending IDs.
+Waiting and attachment share one setup deadline. Queue overflow or persistent
+local capacity lag times out the new request without closing control or other
+tunnels. Shutdown cancels queued admission and closing children.
 Control heartbeat runs every 15 seconds. A control session rotates after 4,096
 stream IDs instead of forgetting replay state. Invalid or excess opens close
 the control session. Every path is bounded; there is no unbounded payload queue
@@ -161,10 +169,15 @@ Budget refusal closes remote paths and never enables hosted processing.
 
 Use Python 3.12 and the existing pinned `cryptography` dependency. The service
 requirements install only cryptography and its dependencies, constrained by the
-root Linux lock. The Dockerfile reuses `python:3.12-slim` from `server/Dockerfile`.
-That tag is mutable. No verified base-image digest was present there, so this
-template does not invent one. Select and verify an immutable image before a
-production deployment. No desktop package or release identity changes here.
+root Linux lock. The Dockerfile pins the official `python:3.12-slim` OCI index
+by digest. The index body matched the registry digest and included Linux amd64
+when checked on 2026-10-27. A container build is still pending because Docker is
+not available in this environment. The desktop package includes the client, protocol and
+shared build configuration. It does not include the relay server.
+Linux CI builds the relay image and runs its non-listening `--help` entrypoint.
+The Dockerfile-specific context allowlist includes only its build files, the
+Linux lock and the two relay server modules. It excludes local build outputs,
+profiles, credentials and recordings.
 
 The operator must supply root and wildcard DNS routing to the same listener,
 a public CA certificate/key for the root relay hostname, certificate renewal,
@@ -182,11 +195,20 @@ and `privkey.pem`, readable by UID 10001. Build from the repository root with
 connect/compose.yaml config` before any explicit start. No live key is bundled.
 No public listener was started for this candidate.
 
-There is no Host/QML/mobile integration yet. Route limits, QR schema 1, exact
-desktop pins, no redirects, cancellation and provider selection remain owned by
-their existing modules. iOS ATS for a self-signed leaf under a relay DNS hostname
-still needs a narrowly scoped build-time exception and native acceptance; a
-global arbitrary-load exception is forbidden. Loopback tests do not prove
+The Host starts local HTTPS before its outgoing connector. Its automatic QR has
+at most three priority LAN routes and one configured remote route. It can issue
+a remote-only QR without LAN discovery and while the connector reconnects.
+Explicit LAN route overrides preserve the previous contract. A failed or
+unconfirmed connector stop closes and drains local processing, retains the
+connector, and blocks restart and account changes until drain is confirmed.
+Qt shows local and remote availability separately and retains failed startup
+candidates through cleanup. No private key or relay URI enters a Settings snapshot.
+
+Route limits, QR schema 1, exact desktop pins, no redirects, cancellation and
+provider selection remain owned by their existing modules. The iOS build plugin
+adds a scoped ATS exception only for the configured relay domain and its
+subdomains. Global arbitrary-load exceptions are forbidden. Native ATS acceptance
+is still pending. Loopback tests do not prove
 Internet/4G/5G reachability, iPhone trust, production capacity, provider cost,
 Windows package behavior, native builds or TestFlight availability.
 

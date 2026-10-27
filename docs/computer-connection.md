@@ -41,6 +41,33 @@ Only the explicitly supplied routes can receive a pairing or device credential.
 Redirects are refused. A LAN route requires the exact scanned certificate hash.
 A route with a null hash requires normal system TLS trust.
 
+An optional shared byte relay adds a remote route. Its public build configuration
+is `shared/computer_connect.json`: `relay_host` is a lowercase public DNS name or
+null, and `relay_port` is the public TCP port. Desktop and iOS builds use this
+same file. A null host preserves direct LAN access and does not contact a relay.
+The candidate has no public relay domain or deployment configured.
+
+The remote route is `https://<namespace>.<relay-host>[:port]`. The namespace is
+lowercase, unpadded Base32 of the 32-byte SHA-256 digest of the desktop leaf DER
+certificate. The route carries that same exact certificate pin. It identifies
+the computer independently of its current LAN addresses. The relay owns neither
+the desktop TLS private key nor a processing credential. The phone's inner TLS
+session ends at the desktop. The relay forwards encrypted bytes over the
+desktop's outgoing, CA-validated TLS connection.
+
+The native client probes trusted routes serially before selecting one. A private
+LAN probe has a 1.5-second deadline; a public DNS probe has a five-second deadline.
+Pairing probes status without a token, then submits one pairing POST. An uncertain
+pairing or processing reply cannot trigger another POST through a different route.
+Cancellation and destination changes invalidate stale discovery results.
+
+iOS applies a scoped ATS exception only to the configured relay domain and its
+subdomains. Native requests still require HTTPS, TLS 1.2 or later and the exact
+desktop certificate. The parser rejects the relay apex, nested namespaces,
+incorrect pins and CA-only routes in that scope. See
+[native trust and acceptance](../mobile/README.md#optional-relay-build-configuration-and-trust)
+and [relay operation and limits](../connect/README.md).
+
 Pairing returns a separate revocable credential for each device. The app keeps it
 in its private Keychain. The computer persists token hashes and bounded operation
 state in its own SQLite store. Its private TLS identity uses the desktop secret

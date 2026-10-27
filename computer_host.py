@@ -40,6 +40,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
+from computer_relay_client import ComputerRelayClient
+from computer_relay_protocol import RelayIdentity, dns_name, namespace, port_number
 from provider_http import CancellationToken, ProviderCancelledError
 from secret_store import SecretStore, SecretStoreCorruptedError
 
@@ -60,6 +62,17 @@ _PREFIX = "/v1/computer/"
 _LAN_NETWORKS = tuple(
     ipaddress.IPv4Network(value)
     for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
+_RELAY_STATUSES = frozenset(
+    (
+        "stopped",
+        "connecting",
+        "connected",
+        "retrying",
+        "stopping",
+        "stop_failed",
+        "relay_unavailable",
+    )
 )
 
 
@@ -83,6 +96,29 @@ class ComputerProcessing(Protocol):
     def process_text(
         self, action: str, text: str, language: str, cancel_token: CancellationToken
     ) -> dict: ...
+
+
+class _RelayClient(Protocol):
+    @property
+    def connected(self) -> bool: ...
+
+    @property
+    def status(self) -> str: ...
+
+    def start(self) -> None: ...
+
+    def stop(self, timeout: float = 5.0) -> bool: ...
+
+
+class _RelayClientFactory(Protocol):
+    def __call__(
+        self,
+        relay_host: str,
+        identity: RelayIdentity,
+        target_port: int,
+        *,
+        relay_port: int,
+    ) -> _RelayClient: ...
 
 
 class _APIError(Exception):
@@ -437,9 +473,10 @@ class ComputerHost:
     """An explicit start enables TLS; stop revokes the current pairing code.
 
     port=0 is supported for loopback tests. Production should keep the default
-    stable port. create_pairing accepts up to four RFC1918 IPv4 LAN URLs or
-    route dicts; omitted routes use the bound address or discovered LAN IPv4s.
-    A loopback-bound test host can also advertise loopback addresses.
+    stable port. Explicit pairing routes accept up to four RFC1918 IPv4 LAN
+    URLs or route dicts. Automatic routes reserve one of four slots for a
+    configured relay, including during reconnect. Loopback tests can advertise
+    loopback addresses. The relay client always targets IPv4 loopback.
     """
 
     def __init__(
@@ -453,6 +490,9 @@ class ComputerHost:
         port=47653,
         clock: Callable[[], float] = time.time,
         address_provider: Callable[[], list[str]] | None = None,
+        relay_host: str | None = None,
+        relay_port: int = 443,
+        relay_client_factory: _RelayClientFactory | None = None,
         max_handlers=8,
         max_concurrent_operations=2,
         read_timeout=10.0,
@@ -474,6 +514,19 @@ class ComputerHost:
         if not 0.1 <= read_timeout <= 60:
             raise ValueError("Invalid computer host timeout")
         self.port, self.clock = port, clock
+        self._relay_host = dns_name(relay_host) if relay_host is not None else None
+        self._relay_port = port_number(relay_port)
+        if self._relay_host is not None and self.host not in ("0.0.0.0", "127.0.0.1"):
+            raise ValueError("Computer relay requires an IPv4 loopback listener")
+        if relay_client_factory is not None and not callable(relay_client_factory):
+            raise ValueError("Invalid computer relay factory")
+        self._relay_factory = (
+            relay_client_factory
+            if relay_client_factory is not None
+            else ComputerRelayClient
+        )
+        self._relay: _RelayClient | None = None
+        self._relay_stop_failed = False
         self.address_provider = address_provider or _local_addresses
         self._max_handlers, self._read_timeout = max_handlers, read_timeout
         self._capacity = threading.BoundedSemaphore(max_concurrent_operations)
@@ -624,6 +677,10 @@ class ComputerHost:
     def start(self):
         with self._lifecycle:
             with self._lock:
+                if self._relay is not None and (
+                    self._relay_stop_failed or self._server is None
+                ):
+                    raise RuntimeError("Computer relay drain not confirmed")
                 if self._server is not None:
                     return
                 self._identity = self._load_identity()
@@ -666,13 +723,47 @@ class ComputerHost:
                     server.server_close()
                     db.close()
                     raise
+            if self._relay_host is not None:
+                try:
+                    self._start_relay()
+                except Exception:
+                    try:
+                        self._stop()
+                    except Exception:
+                        pass
+                    raise RuntimeError("Computer relay start failed") from None
+
+    def _start_relay(self):
+        certificate = x509.load_pem_x509_certificate(
+            self._identity["certificate"].encode()
+        )
+        key = serialization.load_pem_private_key(
+            self._identity["private_key"].encode(), password=None
+        )
+        if not isinstance(key, ec.EllipticCurvePrivateKey) or not isinstance(
+            key.curve, ec.SECP256R1
+        ):
+            raise ValueError("Invalid computer relay identity")
+        identity = RelayIdentity(
+            certificate.public_bytes(serialization.Encoding.DER),
+            lambda message: key.sign(message, ec.ECDSA(hashes.SHA256())),
+        )
+        # The factory has no target-host argument. The connector owns loopback.
+        relay = self._relay_factory(
+            self._relay_host, identity, self.port, relay_port=self._relay_port
+        )
+        with self._lock:
+            self._relay = relay
+        relay.start()
 
     def stop(self):
         with self._lifecycle:
-            with self._lock:
-                server, thread = self._server, self._thread
-                if server is None:
-                    return
+            self._stop()
+
+    def _stop(self):
+        with self._lock:
+            server, thread = self._server, self._thread
+            if server is not None:
                 self._server = self._thread = None
                 self._generation = object()
                 self._pairing = None
@@ -692,10 +783,27 @@ class ComputerHost:
                 self._db = None
                 self._results.clear()
                 self._result_bytes = 0
-            server.close_connections()
-            server.shutdown()
-            server.server_close()
-            thread.join()
+        try:
+            if server is not None:
+                server.close_connections()
+                server.shutdown()
+                server.server_close()
+                thread.join()
+        finally:
+            # Drain local workers even when the relay cannot confirm shutdown.
+            # Keep an uncertain client so a later stop can retry without a server.
+            relay = self._relay
+            if relay is not None:
+                try:
+                    drained = relay.stop(timeout=5.0) is True
+                except Exception:
+                    drained = False
+                with self._lock:
+                    self._relay_stop_failed = not drained
+                    if drained:
+                        self._relay = None
+                if not drained:
+                    raise RuntimeError("Computer relay drain not confirmed") from None
 
     def _require_started(self):
         if self._server is None:
@@ -705,6 +813,7 @@ class ComputerHost:
         with self._lock:
             self._require_started()
             loopback = ipaddress.IPv4Address(self.host).is_loopback
+            automatic_relay = routes is None and self._relay_host is not None
             if routes is None:
                 addresses = (
                     [self.host] if self.host != "0.0.0.0" else self.address_provider()
@@ -721,9 +830,12 @@ class ComputerHost:
                         and url not in routes
                     ):
                         routes.append(url)
-                        if len(routes) == 4:
+                        if len(routes) == (3 if automatic_relay else 4):
                             break
-            if not isinstance(routes, (list, tuple)) or not 1 <= len(routes) <= 4:
+            if (
+                not isinstance(routes, (list, tuple))
+                or not (0 if automatic_relay else 1) <= len(routes) <= 4
+            ):
                 raise ValueError("One to four computer LAN routes are required")
             canonical = []
             for route in routes:
@@ -750,6 +862,16 @@ class ComputerHost:
                 canonical.append(
                     {
                         "url": f"https://{address}:{self.port}",
+                        "certificate_sha256": self._identity["certificate_sha256"],
+                    }
+                )
+            if automatic_relay:
+                der = x509.load_pem_x509_certificate(
+                    self._identity["certificate"].encode()
+                ).public_bytes(serialization.Encoding.DER)
+                canonical.append(
+                    {
+                        "url": f"https://{namespace(der)}.{self._relay_host}:{self._relay_port}",
                         "certificate_sha256": self._identity["certificate_sha256"],
                     }
                 )
@@ -830,6 +952,23 @@ class ComputerHost:
             finally:
                 if owned:
                     db.close()
+            relay_status, relay_connected = "stopped", False
+            if self._relay_host is None:
+                relay_status = "disabled"
+            elif self._relay_stop_failed:
+                relay_status = "stop_failed"
+            elif self._relay is not None:
+                try:
+                    status = self._relay.status
+                    if isinstance(status, str) and status in _RELAY_STATUSES:
+                        relay_status = status
+                        relay_connected = (
+                            self._server is not None and self._relay.connected is True
+                        )
+                    else:
+                        relay_status = "relay_unavailable"
+                except Exception:
+                    relay_status = "relay_unavailable"
             return {
                 "schema_version": 1,
                 "enabled": self._server is not None,
@@ -840,6 +979,9 @@ class ComputerHost:
                 "port": self.port,
                 "devices": devices,
                 "active_operations": len(self._running),
+                "relay_configured": self._relay_host is not None,
+                "relay_connected": relay_connected,
+                "relay_status": relay_status,
             }
 
     def _pair(self, body):

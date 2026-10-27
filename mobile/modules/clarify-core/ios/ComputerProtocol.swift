@@ -91,36 +91,84 @@ private struct ComputerJSONKeys {
   }
 }
 
+enum ComputerRelayConfiguration {
+  static func host() throws -> String? { try validate(Bundle.main.object(forInfoDictionaryKey: "ClarifyConnectRelayHost")) }
+  static func validate(_ value: Any?) throws -> String? {
+    guard let value else { return nil }
+    // A namespace needs 52 ASCII bytes plus a dot within DNS's 253 byte limit.
+    guard let host = value as? String, host.utf8.count <= 200, ComputerRoute.validDNSHost(host) else { throw ComputerFailure.invalidQR }
+    return host
+  }
+  static func namespace(pin: String) -> String? {
+    guard ComputerRoute.validPin(pin) else { return nil }
+    let hex = Array(pin.utf8)
+    func nibble(_ value: UInt8) -> UInt8 { value <= 57 ? value - 48 : (value | 32) - 97 + 10 }
+    let alphabet = Array("abcdefghijklmnopqrstuvwxyz234567".utf8)
+    var result = [UInt8](), buffer: UInt16 = 0, bits = 0
+    for index in stride(from: 0, to: hex.count, by: 2) {
+      buffer = (buffer << 8) | UInt16(nibble(hex[index]) << 4 | nibble(hex[index + 1])); bits += 8
+      while bits >= 5 { bits -= 5; result.append(alphabet[Int((buffer >> bits) & 31)]) }
+    }
+    if bits > 0 { result.append(alphabet[Int((buffer << (5 - bits)) & 31)]) }
+    return String(decoding: result, as: UTF8.self)
+  }
+}
+
 struct ComputerRoute: Codable, Equatable {
   let url: String
   let certificateSHA256: String?
   enum CodingKeys: String, CodingKey { case url; case certificateSHA256 = "certificate_sha256" }
 
-  func validated() throws -> Self {
+  static func validPin(_ pin: String) -> Bool {
+    pin.utf8.count == 64 && pin.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) || (65...70).contains($0) }
+  }
+  static func validDNSHost(_ host: String) -> Bool {
+    let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+    return labels.count >= 2 && host.utf8.count <= 253 &&
+      !["local", "localhost", "internal", "test", "invalid"].contains(String(labels.last!)) &&
+      labels.last!.utf8.contains(where: { (97...122).contains($0) }) &&
+      labels.allSatisfy { label in
+        !label.isEmpty && label.utf8.count <= 63 && label.first != "-" && label.last != "-" &&
+          label.utf8.allSatisfy { (97...122).contains($0) || (48...57).contains($0) || $0 == 45 }
+      }
+  }
+  var statusTimeout: TimeInterval {
+    // Sequential discovery stays short on cellular even with three LAN routes.
+    // Only validated pinned RFC1918 literals can contain a numeric final label.
+    (URLComponents(string: url)?.host?.split(separator: ".").last?.allSatisfy(\.isNumber) == true) ? 1.5 : 5
+  }
+  func validated() throws -> Self { try validated(relayHost: ComputerRelayConfiguration.host()) }
+  func validated(relayHost: String?) throws -> Self {
+    let relayHost = try ComputerRelayConfiguration.validate(relayHost)
     guard url.utf8.count <= 512, let parts = URLComponents(string: url), parts.scheme == "https",
       let host = parts.host, parts.user == nil, parts.password == nil, parts.path.isEmpty,
       parts.query == nil, parts.fragment == nil, !url.contains("%"),
       parts.port == nil || (1...65535).contains(parts.port!), parts.string == url else { throw ComputerFailure.invalidQR }
+    // Preserve valid explicit ports exactly, including existing zero padding.
+    // Reject empty/nondecimal ports and any change to the scanned authority.
+    let authority = "https://" + host
+    let suffix = url.dropFirst(authority.count)
+    guard url.hasPrefix(authority), suffix.isEmpty ? parts.port == nil :
+      suffix.first == ":" && parts.port != nil && !suffix.dropFirst().isEmpty &&
+        suffix.dropFirst().utf8.allSatisfy({ (48...57).contains($0) }) else { throw ComputerFailure.invalidQR }
     let octets = host.split(separator: ".", omittingEmptySubsequences: false)
     let ipv4 = octets.count == 4 && octets.allSatisfy { part in
       guard let number = Int(part), (0...255).contains(number) else { return false }
       return String(number) == part
     }
-    if let pin = certificateSHA256 {
-      guard pin.count == 64, pin.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) || (65...70).contains($0) }), ipv4 else { throw ComputerFailure.invalidQR }
+    if let pin = certificateSHA256, !Self.validPin(pin) { throw ComputerFailure.invalidQR }
+    if ipv4 {
+      guard certificateSHA256 != nil else { throw ComputerFailure.invalidQR }
       let ip = octets.map { Int($0)! }
       guard ip[0] == 10 || (ip[0] == 172 && (16...31).contains(ip[1])) || (ip[0] == 192 && ip[1] == 168) else { throw ComputerFailure.invalidQR }
     } else {
-      // Managed routes use public CA validation. IP literals, local names and
-      // ambiguous numeric hosts cannot opt out of the LAN certificate pin.
-      let labels = host.split(separator: ".", omittingEmptySubsequences: false)
-      guard !ipv4, labels.count >= 2, host == host.lowercased(), host.count <= 253,
-        !["local", "localhost", "internal", "test", "invalid"].contains(String(labels.last!)),
-        labels.last!.contains(where: { $0.isASCII && $0.isLetter }),
-        labels.allSatisfy({ label in
-          !label.isEmpty && label.count <= 63 && label.first != "-" && label.last != "-" &&
-            label.utf8.allSatisfy { (97...122).contains($0) || (48...57).contains($0) || $0 == 45 }
-        }) else { throw ComputerFailure.invalidQR }
+      guard Self.validDNSHost(host) else { throw ComputerFailure.invalidQR }
+      if let relayHost, host == relayHost || host.hasSuffix("." + relayHost) {
+        // One lowercase RFC4648 label, bound to the QR's exact leaf DER pin.
+        // This also forbids CA-only routes anywhere in the ATS exception scope.
+        guard let pin = certificateSHA256, let namespace = ComputerRelayConfiguration.namespace(pin: pin),
+          host == namespace + "." + relayHost else { throw ComputerFailure.invalidQR }
+      }
     }
     return self
   }
@@ -188,7 +236,7 @@ enum ComputerFailure: Error, LocalizedError, Equatable {
     case .cameraUnavailable: return "A câmera está indisponível. Tente novamente."
     case .busy: return "Aguarde a conexão com o computador."
     case .invalidAudio: return "Grave um áudio válido de até 5 minutos."
-    case .offline: return "Não foi possível acessar o computador. Verifique se ele está ligado e na mesma rede Wi-Fi."
+    case .offline: return "Não foi possível acessar o computador. Verifique se ele está ligado e conectado à rede."
     }
   }
 }

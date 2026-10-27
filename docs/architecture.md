@@ -8,6 +8,15 @@ enable mobile processing.
 Hosted dictation requires an authenticated account and
 uses a server-owned Groq key; personal keys never pass through that service.
 
+`computer_host.py` owns the opt-in personal HTTPS listener, pairing, device
+revocation and operation admission. `computer_processing.py` uses the desktop's
+existing provider and dictionary contracts. The optional `computer_relay_client.py`
+and `computer_relay_server.py` share a bounded TLS byte-forwarding protocol.
+The operator image is in `connect/`; desktop and iOS use the public configuration
+in `shared/computer_connect.json`. Processing stays on the paired computer.
+See the [computer connection contract](computer-connection.md) for trust,
+discovery, cancellation and ownership.
+
 All product source remains in this public MIT repository. Production credentials,
 user data, backups and administrator access stay private in the hosting platform.
 There is no separate closed backend or local/cloud product fork.

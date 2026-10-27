@@ -185,6 +185,8 @@ class Limits:
     setup_timeout: float = 10.0
     idle_timeout: float = 60.0
     heartbeat_interval: float = 15.0
+    # Mobile processing permits 100 seconds with no response bytes.
+    tunnel_idle_timeout: float = 120.0
 
     def __post_init__(self):
         for name, value in vars(self).items():
@@ -341,12 +343,12 @@ async def bridge(left, right, limits: Limits) -> None:
             if not data:
                 return
             last_activity = loop.time()
-            await asyncio.wait_for(destination.write(data), limits.idle_timeout)
+            await asyncio.wait_for(destination.write(data), limits.tunnel_idle_timeout)
             last_activity = loop.time()
 
     async def idle_watchdog():
         while True:
-            remaining = limits.idle_timeout - (loop.time() - last_activity)
+            remaining = limits.tunnel_idle_timeout - (loop.time() - last_activity)
             if remaining <= 0:
                 raise TimeoutError
             await asyncio.sleep(remaining)

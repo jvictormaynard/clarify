@@ -3,7 +3,7 @@ import Security
 import CryptoKit
 
 // One ephemeral session per request and exact route. Its delegate cannot apply
-// a LAN trust exception, cookies or a credential to another destination.
+// a certificate trust exception, cookies or a credential to another destination.
 final class ComputerHTTPS: NSObject, URLSessionDataDelegate, @unchecked Sendable {
   private let route: ComputerRoute
   private let expectedURL: URL
@@ -19,9 +19,25 @@ final class ComputerHTTPS: NSObject, URLSessionDataDelegate, @unchecked Sendable
     let fingerprint = SHA256.hash(data: der).map { String(format: "%02x", $0) }.joined()
     return fingerprint == pin.lowercased()
   }
-  static func send(_ request: URLRequest, route: ComputerRoute) async throws -> (Data, HTTPURLResponse) {
+  static func validatedURL(_ request: URLRequest, route: ComputerRoute) throws -> URL {
     _ = try route.validated()
-    guard let url = request.url, url.absoluteString.hasPrefix(route.url + "/v1/computer/") else { throw ComputerFailure.invalidResponse }
+    guard let base = URL(string: route.url), let url = request.url, url.scheme == "https",
+      url.host == base.host, url.port == base.port, url.user == nil, url.password == nil,
+      url.query == nil, url.fragment == nil,
+      url.absoluteString.hasPrefix(route.url + "/v1/computer/") else { throw ComputerFailure.invalidResponse }
+    return url
+  }
+  static func configuration(for request: URLRequest) -> URLSessionConfiguration {
+    let config = URLSessionConfiguration.ephemeral
+    config.httpCookieStorage = nil; config.httpShouldSetCookies = false; config.urlCache = nil
+    config.urlCredentialStorage = nil; config.requestCachePolicy = .reloadIgnoringLocalCacheData
+    // The resource limit bounds the complete discovery, including a slow body.
+    config.timeoutIntervalForResource = request.timeoutInterval
+    config.tlsMinimumSupportedProtocolVersion = .TLSv12
+    return config
+  }
+  static func send(_ request: URLRequest, route: ComputerRoute) async throws -> (Data, HTTPURLResponse) {
+    let url = try validatedURL(request, route: route)
     let transport = ComputerHTTPS(route: route, url: url)
     return try await withTaskCancellationHandler(operation: {
       try await withCheckedThrowingContinuation { continuation in transport.start(request, continuation: continuation) }
@@ -31,11 +47,7 @@ final class ComputerHTTPS: NSObject, URLSessionDataDelegate, @unchecked Sendable
     lock.lock(); defer { lock.unlock() }
     guard !cancelled else { continuation.resume(throwing: CancellationError()); return }
     self.continuation = continuation
-    let config = URLSessionConfiguration.ephemeral
-    config.httpCookieStorage = nil; config.httpShouldSetCookies = false; config.urlCache = nil
-    config.urlCredentialStorage = nil; config.requestCachePolicy = .reloadIgnoringLocalCacheData
-    config.timeoutIntervalForResource = request.timeoutInterval + 5
-    config.tlsMinimumSupportedProtocolVersion = .TLSv12
+    let config = Self.configuration(for: request)
     let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
     self.session = session
     session.dataTask(with: request).resume()
@@ -47,7 +59,8 @@ final class ComputerHTTPS: NSObject, URLSessionDataDelegate, @unchecked Sendable
   func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
     let space = challenge.protectionSpace
-    guard space.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+    guard (try? Self.validatedURL(URLRequest(url: expectedURL), route: route)) == expectedURL,
+      space.authenticationMethod == NSURLAuthenticationMethodServerTrust, !space.isProxy(), challenge.previousFailureCount == 0,
       space.host == expectedURL.host, space.port == (expectedURL.port ?? 443), space.protocol == "https" else {
       completionHandler(.cancelAuthenticationChallenge, nil); return
     }

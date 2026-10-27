@@ -39,7 +39,7 @@ final class ComputerConnection {
   func isReady(for action: String) -> Bool { actionReadiness.allows(action) }
   func accepts(_ owner: UInt64) -> Bool { generation == owner && configured }
   @MainActor private func send(_ method: String, path: String, route: ComputerRoute, token: String? = nil,
-    json: [String: Any]? = nil, timeout: TimeInterval = 15) async throws -> (Data, Int) {
+    json: [String: Any]? = nil, timeout: TimeInterval = 15, owner: UInt64? = nil) async throws -> (Data, Int) {
     _ = try route.validated()
     guard path.hasPrefix("/v1/computer/"), let url = URL(string: route.url + path) else { throw ComputerFailure.invalidResponse }
     var request = URLRequest(url: url); request.httpMethod = method; request.timeoutInterval = timeout
@@ -56,8 +56,13 @@ final class ComputerConnection {
     let data: Data, response: HTTPURLResponse
     do { (data, response) = try await transport(request, route) }
     catch is CancellationError { throw CancellationError() }
-    catch { throw ComputerFailure.offline }
+    catch {
+      try Task.checkCancellation()
+      if let owner, generation != owner { throw CancellationError() }
+      throw ComputerFailure.offline
+    }
     try Task.checkCancellation()
+    if let owner, generation != owner { throw CancellationError() }
     guard response.url == url, data.count <= ComputerProtocolLimits.maximumResponseBytes, !(300...399).contains(response.statusCode) else { throw ComputerFailure.invalidResponse }
     return (data, response.statusCode)
   }
@@ -67,33 +72,44 @@ final class ComputerConnection {
     guard ComputerInvitation.validName(deviceName) else { throw ComputerFailure.invalidResponse }
     busy = true; let owner = generation; let previous = credential
     defer { busy = false }
+    var selected: ComputerRoute?
     for route in invitation.routes {
+      try Task.checkCancellation()
+      guard generation == owner else { throw CancellationError() }
       do {
-        let (data, code) = try await send("POST", path: "/v1/computer/pair", route: route,
-          json: ["pairing_token": invitation.pairingToken, "device_name": deviceName])
+        // Only connectivity discovery may try another QR-trusted route. No
+        // bootstrap token is sent until a route has completed its TLS check.
+        let (_, code) = try await send("GET", path: "/v1/computer/status", route: route, timeout: route.statusTimeout, owner: owner)
         guard generation == owner else { throw CancellationError() }
-        if code == 429, let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-          reply["error"] as? String == "device_limit" { throw ComputerFailure.deviceLimit }
-        guard code == 200 || code == 201 else { throw [401, 403, 410].contains(code) ? ComputerFailure.expiredQR : ComputerFailure.invalidResponse }
-        struct Reply: Decodable {
-          let schema_version: Int; let computer_id: UUID; let computer_name: String; let device_id: UUID; let session_token: String
-        }
-        guard let reply = try? JSONDecoder().decode(Reply.self, from: data), reply.schema_version == 1,
-          reply.computer_id == invitation.computerID else { throw ComputerFailure.invalidResponse }
-        let credential = ComputerCredential(computerID: reply.computer_id, computerName: reply.computer_name,
-          deviceID: reply.device_id, sessionToken: reply.session_token, routes: invitation.routes)
-        try credential.validate(); try save(credential)
-        self.credential = credential; generation &+= 1; activeRoute = route; ready = false; status = "offline"
-        actionReadiness = .unavailable
-        if let previous, let previousRoute = previous.routes.first {
-          Task { @MainActor in _ = try? await self.send("DELETE", path: "/v1/computer/session", route: previousRoute, token: previous.sessionToken, timeout: 2) }
-        }
-        // Readiness is separate from successful pairing. A configured host can
-        // be offline immediately after it issued the device credential.
-        return
-      } catch ComputerFailure.offline { continue }
+        guard [200, 401, 403].contains(code) else { throw ComputerFailure.invalidResponse }
+        selected = route; break
+      } catch ComputerFailure.offline {
+        try Task.checkCancellation()
+        guard generation == owner else { throw CancellationError() }
+      }
     }
-    throw ComputerFailure.offline
+    guard let route = selected else { throw ComputerFailure.offline }
+    let (data, code) = try await send("POST", path: "/v1/computer/pair", route: route,
+      json: ["pairing_token": invitation.pairingToken, "device_name": deviceName], owner: owner)
+    guard generation == owner else { throw CancellationError() }
+    if code == 429, let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+      reply["error"] as? String == "device_limit" { throw ComputerFailure.deviceLimit }
+    guard code == 200 || code == 201 else { throw [401, 403, 410].contains(code) ? ComputerFailure.expiredQR : ComputerFailure.invalidResponse }
+    struct Reply: Decodable {
+      let schema_version: Int; let computer_id: UUID; let computer_name: String; let device_id: UUID; let session_token: String
+    }
+    guard let reply = try? JSONDecoder().decode(Reply.self, from: data), reply.schema_version == 1,
+      reply.computer_id == invitation.computerID else { throw ComputerFailure.invalidResponse }
+    let credential = ComputerCredential(computerID: reply.computer_id, computerName: reply.computer_name,
+      deviceID: reply.device_id, sessionToken: reply.session_token, routes: invitation.routes)
+    try credential.validate(); try save(credential)
+    self.credential = credential; generation &+= 1; activeRoute = route; ready = false; status = "offline"
+    actionReadiness = .unavailable
+    if let previous, let previousRoute = previous.routes.first {
+      Task { @MainActor in _ = try? await self.send("DELETE", path: "/v1/computer/session", route: previousRoute, token: previous.sessionToken, timeout: 2) }
+    }
+    // Readiness is separate from successful pairing. A configured host can be
+    // offline immediately after it issued the device credential.
   }
   @MainActor func refresh() async throws {
     guard let credential else { throw ComputerFailure.authentication }
@@ -102,8 +118,10 @@ final class ComputerConnection {
     actionReadiness = .unavailable
     defer { busy = false }
     for route in credential.routes {
+      try Task.checkCancellation()
+      guard accepts(owner) else { throw CancellationError() }
       do {
-        let (data, code) = try await send("GET", path: "/v1/computer/status", route: route, token: credential.sessionToken, timeout: 5)
+        let (data, code) = try await send("GET", path: "/v1/computer/status", route: route, token: credential.sessionToken, timeout: route.statusTimeout, owner: owner)
         guard accepts(owner) else { throw CancellationError() }
         if [401, 403].contains(code) { try invalidate(); throw ComputerFailure.authentication }
         guard code == 200 else { throw ComputerFailure.invalidResponse }
@@ -117,7 +135,10 @@ final class ComputerConnection {
         // Older hosts advertise only dictation. Text needs an explicit capability.
         actionReadiness = reply.action_readiness ?? ComputerActionReadiness(dictate: reply.ready, rewrite: false, translate: false)
         activeRoute = route; ready = reply.ready; status = actionReadiness.available ? "ready" : "not_ready"; return
-      } catch ComputerFailure.offline { continue }
+      } catch ComputerFailure.offline {
+        try Task.checkCancellation()
+        guard accepts(owner) else { throw CancellationError() }
+      }
     }
     guard accepts(owner) else { throw CancellationError() }
     ready = false; status = "offline"; throw ComputerFailure.offline

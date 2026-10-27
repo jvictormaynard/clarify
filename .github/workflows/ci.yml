@@ -202,6 +202,8 @@ jobs:
           clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
           workflow_provider.py tests/test_workflow_provider.py
           computer_host.py computer_processing.py clarify/desktop/qml_computer.py
+          computer_relay_protocol.py computer_relay_client.py computer_relay_server.py shared/computer_connect.py
+          tests/test_computer_relay.py tests/test_computer_connect.py
           tests/test_computer_host.py tests/test_computer_processing.py tests/test_pyside6_qml_computer.py
           clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
           clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
@@ -224,6 +226,8 @@ jobs:
           clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
           workflow_provider.py tests/test_workflow_provider.py
           computer_host.py computer_processing.py clarify/desktop/qml_computer.py
+          computer_relay_protocol.py computer_relay_client.py computer_relay_server.py shared/computer_connect.py
+          tests/test_computer_relay.py tests/test_computer_connect.py
           tests/test_computer_host.py tests/test_computer_processing.py tests/test_pyside6_qml_computer.py
           clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
           clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
@@ -245,6 +249,12 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
+      - name: Build and validate the computer relay image
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          docker build --file connect/Dockerfile --tag clarify-connect:ci .
+          docker run --rm clarify-connect:ci --help
+
       - name: Compile Python sources
         run: >-
           python -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py
@@ -258,7 +268,8 @@ jobs:
           provider_registry.py workflow_provider.py scripts/format_staged.py scripts/create_release_manifest.py tests
           local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py
           scripts/delivery_policy.py scripts/release_delivery.py
-          computer_host.py computer_processing.py clarify/desktop/qml_computer.py scripts/testflight_candidate.py
+          computer_host.py computer_processing.py computer_relay_protocol.py computer_relay_client.py computer_relay_server.py
+          shared/computer_connect.py clarify/desktop/qml_computer.py scripts/testflight_candidate.py
 
       - name: Validate QML assets
         run: >-

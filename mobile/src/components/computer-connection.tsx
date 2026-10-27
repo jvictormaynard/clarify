@@ -26,7 +26,7 @@ export function ComputerConnectionCard() {
     <Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t('Meu computador')}</Text>
     {!!computer?.computerName && <Text selectable style={[ui.body, { color: c.text }]}>{computer.computerName}</Text>}
     <Text testID="computer.status" accessibilityLiveRegion="polite" style={[ui.body, { color: c.muted }]}>{t(computerStatus(computer?.status))}</Text>
-    <Text style={[ui.small, { color: c.muted }]}>{t('No Clarify do computador, abra a conexão com o iPhone e gere um QR. Mantenha os dois dispositivos na mesma rede Wi-Fi.')}</Text>
+    <Text style={[ui.small, { color: c.muted }]}>{t('No Clarify do computador, abra a conexão com o iPhone e gere um QR. Mantenha o computador ligado e conectado à rede.')}</Text>
     <Text style={[ui.small, { color: c.muted }]}>{t('O computador processa seus ditados e textos com a configuração dele. Não é preciso entrar em uma conta Clarify.')}</Text>
     <Button primary testID="computer.scan" disabled={busy} onPress={() => void computerCommand('scan').catch(report)}>{t(computer?.paired ? 'Conectar outro computador' : 'Ler QR do computador')}</Button>
     {computer?.paired && <>

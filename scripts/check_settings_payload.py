@@ -49,9 +49,24 @@ def verify_computer_payload(executable: Path) -> None:
     if len(names) != 1:
         raise ValueError("The portable build has no unique Python module archive")
     modules = archive.open_embedded_archive(names[0]).toc
-    required = {"computer_host", "computer_processing", "qrcode", "qrcode.image.svg"}
+    required = {
+        "computer_host",
+        "computer_processing",
+        "computer_relay_client",
+        "computer_relay_protocol",
+        "shared.computer_connect",
+        "qrcode",
+        "qrcode.image.svg",
+    }
     if required - modules.keys():
         raise ValueError("The portable build is missing computer connection modules")
+    config = "shared/computer_connect.json"
+    matches = [entry for entry in archive.toc if entry.replace("\\", "/") == config]
+    expected = (Path(__file__).resolve().parents[1] / config).read_bytes()
+    if len(matches) != 1 or archive.extract(matches[0]) != expected:
+        raise ValueError(
+            "Packaged computer relay configuration differs from the build input"
+        )
     name = "licenses/qrcode-BSD.txt"
     matches = [entry for entry in archive.toc if entry.replace("\\", "/") == name]
     expected = (Path(__file__).resolve().parents[1] / name).read_bytes()

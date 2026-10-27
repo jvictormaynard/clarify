@@ -20,6 +20,7 @@ export type ChatGPTState = {
 };
 export type ComputerState = {
   enabled: boolean; running: boolean; durable: boolean; busy: boolean; blocked: boolean;
+  relayConfigured?: boolean; relayConnected?: boolean;
   error: string; devices: { id: string; name: string }[];
   pairingReady: boolean; pairingExpiresAt: number;
 };

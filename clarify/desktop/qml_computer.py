@@ -156,6 +156,8 @@ class QmlComputerController(QObject):
         self._enabled = False
         self._durable = False
         self._running = False
+        self._relay_configured = False
+        self._relay_connected = False
         self._devices: list[dict[str, str]] = []
         self._error = ""
         self._image = ""
@@ -213,6 +215,8 @@ class QmlComputerController(QObject):
         return dict(
             enabled=self._enabled,
             running=self._running,
+            relayConfigured=self._relay_configured,
+            relayConnected=self._relay_connected,
             durable=self._durable,
             busy=self._busy,
             blocked=blocked,
@@ -312,9 +316,9 @@ class QmlComputerController(QObject):
         self._clear_pairing()
         self._last_blocked = True
         self.changed.emit()
-        if self._enabled or self._pending or self._running:
-            return self._submit("stop")
-        return self._worker.submit(lambda: {})
+        # A failed activation can retain a host whose drain is not confirmed.
+        # Always put the barrier on its owning worker before changing accounts.
+        return self._submit("stop")
 
     def finish_account_change(self):
         self._account_transition = False
@@ -386,6 +390,14 @@ class QmlComputerController(QObject):
             except Exception:
                 # Host exceptions can contain network credentials. Never publish them.
                 result["error"] = "failed"
+                if self._host is not None:
+                    # Keep Stop visible while this controller still owns a host
+                    # whose cleanup has not confirmed that access is stopped.
+                    result["enabled"] = True
+                    try:
+                        result["status"] = self._host.snapshot()
+                    except Exception:
+                        result["status"] = {}
             self._results.put(result)
             return result
 
@@ -395,19 +407,21 @@ class QmlComputerController(QObject):
         if not self._authorized.is_set():
             return False
         if self._host is None:
-            candidate = self._factory()
-            try:
-                if not self._authorized.is_set():
-                    candidate.stop()
-                    return False
+            self._host = self._factory()
+        candidate = self._host
+        try:
+            if self._authorized.is_set():
                 candidate.start()
-                if not self._authorized.is_set():
-                    candidate.stop()
-                    return False
-            except Exception:
-                candidate.stop()
-                raise
-            self._host = candidate
+        except Exception:
+            # Keep ownership when stop raises. The account barrier and shutdown
+            # must still drain this candidate before shared providers can close.
+            candidate.stop()
+            self._host = None
+            raise
+        if not self._authorized.is_set():
+            candidate.stop()
+            self._host = None
+            return False
         return True
 
     def _drain(self):
@@ -433,6 +447,8 @@ class QmlComputerController(QObject):
         if "status" in result:
             status = result["status"]
             self._running = bool(status.get("enabled", False))
+            self._relay_configured = bool(status.get("relay_configured", False))
+            self._relay_connected = bool(status.get("relay_connected", False))
             self._devices = [
                 {
                     "id": str(device.get("device_id", device.get("id", ""))),
@@ -498,6 +514,7 @@ def create_computer_controller(runtime, parent=None):
     def factory():
         from computer_host import ComputerHost as Host
         from computer_processing import ComputerProcessor
+        from shared.computer_connect import relay_configuration
 
         try:
             from .qml_runtime import QtWorkflowConfig
@@ -514,6 +531,7 @@ def create_computer_controller(runtime, parent=None):
             runtime.repositories.config.secret_store,
             state_path,
             address_provider=computer_addresses,
+            **relay_configuration(),
         )
 
     return QmlComputerController(

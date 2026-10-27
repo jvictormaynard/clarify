@@ -6002,5 +6002,11 @@
     "pt": "O computador atingiu o limite de celulares. No computador, revogue o acesso de um celular pareado antes de gerar um novo QR.",
     "en": "The computer has reached its phone limit. On the computer, revoke access for a paired phone before generating a new QR code.",
     "es": "El ordenador ha alcanzado el límite de móviles. En el ordenador, revoca el acceso de un móvil emparejado antes de generar un nuevo QR."
-  }
+  },
+  "Use seus modelos e serviços deste computador no iPhone. Mantenha o computador ligado e conectado à rede.": {"pt": "Use seus modelos e serviços deste computador no iPhone. Mantenha o computador ligado e conectado à rede.", "en": "Use this computer's models and services on your iPhone. Keep the computer on and connected to the network.", "es": "Usa los modelos y servicios de este equipo en el iPhone. Mantén el equipo encendido y conectado a la red."},
+  "No Clarify do computador, abra a conexão com o iPhone e gere um QR. Mantenha o computador ligado e conectado à rede.": {"pt": "No Clarify do computador, abra a conexão com o iPhone e gere um QR. Mantenha o computador ligado e conectado à rede.", "en": "In Clarify on your computer, open the iPhone connection and generate a QR code. Keep the computer on and connected to the network.", "es": "En Clarify del equipo, abre la conexión con el iPhone y genera un QR. Mantén el equipo encendido y conectado a la red."},
+  "Não foi possível acessar o computador. Verifique se ele está ligado e conectado à rede.": {"pt": "Não foi possível acessar o computador. Verifique se ele está ligado e conectado à rede.", "en": "Could not reach the computer. Check that it is on and connected to the network.", "es": "No se pudo acceder al equipo. Comprueba que esté encendido y conectado a la red."},
+  "Acesso pela internet ativo.": {"pt": "Acesso pela internet ativo.", "en": "Internet access is active.", "es": "El acceso por internet está activo."},
+  "A conexão pela internet está indisponível. O acesso na mesma rede continua ativo.": {"pt": "A conexão pela internet está indisponível. O acesso na mesma rede continua ativo.", "en": "The internet connection is unavailable. Access on the same network is still active.", "es": "La conexión por internet no está disponible. El acceso en la misma red sigue activo."},
+  "Acesso disponível na mesma rede Wi-Fi.": {"pt": "Acesso disponível na mesma rede Wi-Fi.", "en": "Access is available on the same Wi-Fi network.", "es": "El acceso está disponible en la misma red Wi-Fi."}
 }

@@ -79,7 +79,7 @@ export function ComputerAccess({ controller }: SettingsPageProps) {
   return <Section title={t("Acesso pelo celular")}>
     <Row title={t("Conectar celular")}
       hint={managed ? t("Saia da conta Clarify para conectar o celular aos seus modelos e serviços pessoais.")
-        : t("Use seus modelos e serviços deste computador no iPhone. Mantenha o computador ligado e na mesma rede Wi-Fi.")}>
+        : t("Use seus modelos e serviços deste computador no iPhone. Mantenha o computador ligado e conectado à rede.")}>
       <Button disabled={managed || !access || access.error === "unavailable" || access.blocked || busy}
         onClick={() => { setOpen(true); if (access?.running) pair(); }}>
         <Smartphone size={16} />{t("Conectar celular")}
@@ -87,6 +87,10 @@ export function ComputerAccess({ controller }: SettingsPageProps) {
     </Row>
     {access?.enabled && <>
       <p className="hint" role="status">{access.running ? t("Acesso ativo neste computador.") : t("O computador está offline. Pare o acesso e tente novamente.")}</p>
+      {access.running && <p className="hint" role="status">{access.relayConfigured
+        ? access.relayConnected ? t("Acesso pela internet ativo.")
+          : t("A conexão pela internet está indisponível. O acesso na mesma rede continua ativo.")
+        : t("Acesso disponível na mesma rede Wi-Fi.")}</p>}
       <Row title={t("Manter acesso ao iniciar o Clarify")}
         hint={t("Ative apenas se quiser aceitar conexões após reiniciar o aplicativo.")}>
         <Switch label={t("Manter acesso ao iniciar o Clarify")} checked={access.durable} disabled={busy}

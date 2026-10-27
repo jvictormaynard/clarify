@@ -1,4 +1,5 @@
 import AVFoundation
+import Security
 import XCTest
 @testable import ClarifyContracts
 
@@ -8,6 +9,7 @@ final class ComputerTests: XCTestCase {
   private static let device = UUID(uuidString: "E9C7D24E-9E4F-416B-98AC-F065B69B79E3")!
   private static let token = String(repeating: "x", count: 43)
   private static let route = ComputerRoute(url: "https://192.168.1.12:47653", certificateSHA256: String(repeating: "a", count: 64))
+  private static let dnsRoute = ComputerRoute(url: "https://pc.example.com:47653", certificateSHA256: String(repeating: "a", count: 64))
   private static var invitation: [String: Any] {
     ["schema_version": 1, "computer_id": computer.uuidString, "computer_name": "Fixture PC",
       "routes": [["url": route.url, "certificate_sha256": route.certificateSHA256!]],
@@ -88,6 +90,160 @@ final class ComputerTests: XCTestCase {
     XCTAssertEqual(callbacks, 1)
   }
 
+  func testPinnedDNSPreservesExactRouteAndRejectsNoncanonicalAuthorities() throws {
+    XCTAssertEqual(try Self.dnsRoute.validated(), Self.dnsRoute)
+    for pin in [Self.dnsRoute.certificateSHA256, nil] {
+      for url in ["http://pc.example.com:443", "https://PC.example.com:443", "https://pc.example.com.",
+        "https://pc.example.com:", "https://pc.example.com:0", "https://pc.example.com:65536", "https://pc.example.com:+443",
+        "https://user:pass@pc.example.com", "https://pc.example.com/", "https://pc.example.com?", "https://pc.example.com#",
+        "https://pc%2eexample.com", "https://pc.local", "https://pc.localhost", "https://pc.internal", "https://pc.test",
+        "https://pc.invalid", "https://pc.123", "https://2130706433", "https://0x7f000001", "https://[2001:db8::1]"] {
+        XCTAssertThrowsError(try ComputerRoute(url: url, certificateSHA256: pin).validated(), url)
+      }
+      let padded = ComputerRoute(url: "https://pc.example.com:00443", certificateSHA256: pin)
+      XCTAssertEqual(try padded.validated(), padded)
+    }
+    for pin in ["", String(repeating: "g", count: 64), String(repeating: "0", count: 63), String(repeating: "0", count: 65)] {
+      XCTAssertThrowsError(try ComputerRoute(url: Self.dnsRoute.url, certificateSHA256: pin).validated())
+    }
+    // Persisted schema and history scope remain unchanged when a route is added.
+    let credential = ComputerCredential(computerID: Self.computer, computerName: "Fixture PC", deviceID: Self.device,
+      sessionToken: Self.token, routes: [Self.route, Self.dnsRoute])
+    try credential.validate()
+    XCTAssertEqual(try JSONDecoder().decode(ComputerCredential.self, from: JSONEncoder().encode(credential)), credential)
+    XCTAssertEqual(credential.scope, Self.credential.scope)
+    var invitation = Self.invitation
+    invitation["routes"] = credential.routes.map { ["url": $0.url, "certificate_sha256": $0.certificateSHA256!] }
+    XCTAssertEqual(try ComputerInvitation.parse(Self.qr(invitation), now: Self.now).routes, credential.routes)
+    invitation["routes"] = Array(repeating: ["url": Self.dnsRoute.url, "certificate_sha256": Self.dnsRoute.certificateSHA256!], count: 2)
+    XCTAssertThrowsError(try ComputerInvitation.parse(Self.qr(invitation), now: Self.now))
+    invitation["routes"] = (1...5).map { ["url": "https://pc\($0).example.com", "certificate_sha256": Self.dnsRoute.certificateSHA256!] }
+    XCTAssertThrowsError(try ComputerInvitation.parse(Self.qr(invitation), now: Self.now))
+  }
+
+  func testConfiguredRelayRequiresOneExactBase32CertificateNamespaceAndNeverCATrust() throws {
+    let root = "relay.example.com"
+    // Independent RFC 4648 vector: base32 of SHA256("abc"), not a second hash.
+    let pin = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    let namespace = "xj4bnp4pahh6uqkbidpf3lrceoyagyndsylxvhfucd7wd4qacwwq"
+    let valid = ComputerRoute(url: "https://\(namespace).\(root):443", certificateSHA256: pin)
+    XCTAssertEqual(try valid.validated(relayHost: root), valid)
+    XCTAssertNoThrow(try ComputerRoute(url: valid.url, certificateSHA256: pin.uppercased()).validated(relayHost: root))
+    for name in [root, "pc." + root, namespace.uppercased() + "." + root, "a." + namespace + "." + root,
+      String(namespace.dropLast()) + "." + root, namespace + "a." + root,
+      String(repeating: "0", count: 52) + "." + root, String(repeating: "a", count: 52) + "." + root] {
+      XCTAssertThrowsError(try ComputerRoute(url: "https://" + name, certificateSHA256: pin).validated(relayHost: root), name)
+    }
+    for wrongPin in [nil, String(repeating: "0", count: 64)] {
+      XCTAssertThrowsError(try ComputerRoute(url: valid.url, certificateSHA256: wrongPin).validated(relayHost: root))
+    }
+    XCTAssertNoThrow(try ComputerRoute(url: "https://other.example.com", certificateSHA256: nil).validated(relayHost: root))
+    XCTAssertNoThrow(try ComputerRoute(url: "https://pc.notrelay.example.com", certificateSHA256: nil).validated(relayHost: root))
+    XCTAssertNoThrow(try Self.route.validated(relayHost: root))
+    XCTAssertNoThrow(try Self.dnsRoute.validated(relayHost: nil))
+    XCTAssertEqual(try ComputerRelayConfiguration.validate(nil), nil)
+    XCTAssertEqual(try ComputerRelayConfiguration.validate(root), root)
+    for raw in [true, 42, "", "relay.example.com.", "RELAY.example.com", "*.example.com", "https://relay.example.com", "relay.example.com:443",
+      "10.0.0.1", "localhost", "relay.local", "relay.123", " relay.example.com", String(repeating: "a", count: 201)] as [Any] {
+      XCTAssertThrowsError(try ComputerRelayConfiguration.validate(raw))
+    }
+    XCTAssertThrowsError(try Self.dnsRoute.validated(relayHost: "*.example.com"))
+    let maximum = [String(repeating: "a", count: 63), String(repeating: "b", count: 63),
+      String(repeating: "c", count: 60), String(repeating: "d", count: 11)].joined(separator: ".")
+    XCTAssertEqual(maximum.utf8.count, 200)
+    XCTAssertEqual(try ComputerRelayConfiguration.validate(maximum), maximum)
+    XCTAssertThrowsError(try ComputerRelayConfiguration.validate(maximum + "d"))
+    XCTAssertNoThrow(try ComputerRoute(url: "https://\(namespace).\(maximum)", certificateSHA256: pin).validated(relayHost: maximum))
+    // Full zero/one digest vectors cover Base32's final four padding bits.
+    for (digest, label) in [(String(repeating: "0", count: 64), String(repeating: "a", count: 52)),
+      (String(repeating: "f", count: 64), String(repeating: "7", count: 51) + "q")] {
+      XCTAssertNoThrow(try ComputerRoute(url: "https://\(label).\(root)", certificateSHA256: digest).validated(relayHost: root))
+    }
+  }
+
+  func testNativeRequestBoundaryAndEphemeralPolicyKeepExactHTTPSIdentity() throws {
+    let url = URL(string: Self.dnsRoute.url + "/v1/computer/status")!
+    var request = URLRequest(url: url); request.timeoutInterval = 1.5
+    XCTAssertEqual(try ComputerHTTPS.validatedURL(request, route: Self.dnsRoute), url)
+    for value in ["http://pc.example.com:47653/v1/computer/status", "https://pc.example.com:443/v1/computer/status",
+      "https://other.example.com:47653/v1/computer/status", "https://user@pc.example.com:47653/v1/computer/status",
+      url.absoluteString + "?token=fixture", url.absoluteString + "#fragment", Self.dnsRoute.url + "/other"] {
+      XCTAssertThrowsError(try ComputerHTTPS.validatedURL(URLRequest(url: URL(string: value)!), route: Self.dnsRoute), value)
+    }
+    let config = ComputerHTTPS.configuration(for: request)
+    XCTAssertNil(config.httpCookieStorage); XCTAssertFalse(config.httpShouldSetCookies)
+    XCTAssertNil(config.urlCache); XCTAssertNil(config.urlCredentialStorage)
+    XCTAssertEqual(config.requestCachePolicy, .reloadIgnoringLocalCacheData)
+    XCTAssertEqual(config.tlsMinimumSupportedProtocolVersion, .TLSv12)
+    XCTAssertEqual(config.timeoutIntervalForResource, 1.5)
+  }
+
+  private final class ChallengeSender: NSObject, URLAuthenticationChallengeSender {
+    func use(_ credential: URLCredential, for challenge: URLAuthenticationChallenge) {}
+    func continueWithoutCredential(for challenge: URLAuthenticationChallenge) {}
+    func cancel(_ challenge: URLAuthenticationChallenge) {}
+    func performDefaultHandling(for challenge: URLAuthenticationChallenge) {}
+    func rejectProtectionSpaceAndContinue(with challenge: URLAuthenticationChallenge) {}
+  }
+  private final class TrustSpace: URLProtectionSpace, @unchecked Sendable {
+    let fixtureTrust: SecTrust
+    override var serverTrust: SecTrust? { fixtureTrust }
+    init(host: String, port: Int, trust: SecTrust) {
+      fixtureTrust = trust
+      super.init(host: host, port: port, protocol: "https", realm: nil, authenticationMethod: NSURLAuthenticationMethodServerTrust)
+    }
+    required init?(coder: NSCoder) { fatalError("Not used by isolated fixture") }
+  }
+  func testNativeChallengesRequireExactLeafHostPortAndRejectAllHTTPAuthentication() throws {
+    // Public self-signed fixture only. Its temporary private key was discarded.
+    let der = try XCTUnwrap(Data(base64Encoded: "MIIBpjCCAU2gAwIBAgIUNnUlOfpvqxCn5GTE5rXFOBSwbGwwCgYIKoZIzj0EAwIwKTEnMCUGA1UEAwweQ2xhcmlmeSBpc29sYXRlZCByZWxheSBmaXh0dXJlMB4XDTI2MTAyNzAxMTAyMFoXDTM2MTAyNDAxMTAyMFowKTEnMCUGA1UEAwweQ2xhcmlmeSBpc29sYXRlZCByZWxheSBmaXh0dXJlMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2baBadL4JcGIdwsJdxg6Zf5Cq5I1RqNpnIxsgpDqwvsqTHTWjCOihMy+Aj6khy85lt4xGuHcZZ8Qk5QOg/JGfaNTMFEwHQYDVR0OBBYEFLObek76psC+HiI0zhsaphu710PcMB8GA1UdIwQYMBaAFLObek76psC+HiI0zhsaphu710PcMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDRwAwRAIgTA9vZClB+IvAXBpQP/GhlWxtRxlv4uTP0dKs1uc6EjYCIBD1F+AJqY0qm96dNmqgnkWQXUXyTexrhaTEa3X9qPcN"))
+    let cert = try XCTUnwrap(SecCertificateCreateWithData(nil, der as CFData))
+    var trust: SecTrust?
+    XCTAssertEqual(SecTrustCreateWithCertificates(cert, SecPolicyCreateBasicX509(), &trust), errSecSuccess)
+    let serverTrust = try XCTUnwrap(trust)
+    let pin = "75daad16d537407888a500bfc21e681b333720aca1b346756d0bdb12425ede04"
+    let route = ComputerRoute(url: Self.dnsRoute.url, certificateSHA256: pin)
+    let url = URL(string: route.url + "/v1/computer/status")!
+    let session = URLSession(configuration: .ephemeral)
+    defer { session.invalidateAndCancel() }
+    let task = session.dataTask(with: url)
+    let sender = ChallengeSender()
+    let exact = TrustSpace(host: "pc.example.com", port: 47653, trust: serverTrust)
+    for (candidate, space, expected) in [
+      (route, exact, URLSession.AuthChallengeDisposition.useCredential),
+      (Self.dnsRoute, exact, .cancelAuthenticationChallenge),
+      (route, TrustSpace(host: "other.example.com", port: 47653, trust: serverTrust), .cancelAuthenticationChallenge),
+      (route, TrustSpace(host: "pc.example.com", port: 443, trust: serverTrust), .cancelAuthenticationChallenge),
+      (ComputerRoute(url: route.url, certificateSHA256: nil), exact, .performDefaultHandling),
+    ] {
+      let delegate = ComputerHTTPS(route: candidate, url: url)
+      let challenge = URLAuthenticationChallenge(protectionSpace: space, proposedCredential: nil, previousFailureCount: 0,
+        failureResponse: nil, error: nil, sender: sender)
+      var callbacks = 0
+      delegate.urlSession(session, didReceive: challenge) { disposition, credential in
+        callbacks += 1
+        XCTAssertEqual(disposition, expected)
+        XCTAssertEqual(credential != nil, expected == .useCredential)
+      }
+      XCTAssertEqual(callbacks, 1)
+    }
+    let delegate = ComputerHTTPS(route: route, url: url)
+    for method in [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodClientCertificate] {
+      let spaces = [URLProtectionSpace(host: "pc.example.com", port: 47653, protocol: "https", realm: nil, authenticationMethod: method),
+        URLProtectionSpace(proxyHost: "pc.example.com", port: 47653, type: NSURLProtectionSpaceHTTPSProxy, realm: nil, authenticationMethod: method)]
+      for space in spaces {
+        let challenge = URLAuthenticationChallenge(protectionSpace: space, proposedCredential: URLCredential(user: "fixture", password: "unused", persistence: .none),
+          previousFailureCount: 0, failureResponse: nil, error: nil, sender: sender)
+        delegate.urlSession(session, didReceive: challenge) { disposition, credential in
+          XCTAssertEqual(disposition, .cancelAuthenticationChallenge); XCTAssertNil(credential)
+        }
+        delegate.urlSession(session, task: task, didReceive: challenge) { disposition, credential in
+          XCTAssertEqual(disposition, .cancelAuthenticationChallenge); XCTAssertNil(credential)
+        }
+      }
+    }
+  }
+
   @MainActor private final class Fixture {
     var saved: ComputerCredential?
     var requests: [URLRequest] = []
@@ -98,6 +254,9 @@ final class ComputerTests: XCTestCase {
     var invalidations = 0
     var failure: Error?
     var pairingData: Data?
+    var pairingFailure: Error?
+    var pausePair = false
+    var onPair: (() -> Void)?
     var processingData: Data?
     var processingError: String?
     var resultOperationID: String?
@@ -106,23 +265,32 @@ final class ComputerTests: XCTestCase {
     var actionReadiness: [String: Any]? = ["dictate": true, "rewrite": true, "translate": true]
     var pauseStatus = false
     var onStatus: (() -> Void)?
+    var offlineHosts = Set<String>()
+    var failureAfterStatusPause: Error?
     lazy var connection = ComputerConnection(read: { self.saved }, save: { self.saved = $0 }, transport: { request, route in
       XCTAssertEqual(request.url?.host, URL(string: route.url)?.host)
       self.requests.append(request)
+      if self.offlineHosts.contains(request.url!.host!) { throw ComputerFailure.offline }
       if let failure = self.failure { throw failure }
       let path = request.url!.path
       var json: [String: Any] = [:]
       if path.hasSuffix("/pair") {
         XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        if self.pausePair { await withCheckedContinuation { self.suspended = $0; self.onPair?() } }
+        if let failure = self.pairingFailure { throw failure }
         if let data = self.pairingData {
           return (data, HTTPURLResponse(url: request.url!, statusCode: self.status, httpVersion: nil, headerFields: nil)!)
         }
         json = ["schema_version": 1, "computer_id": self.replyComputer.uuidString, "computer_name": "Fixture PC",
           "device_id": ComputerTests.device.uuidString, "session_token": ComputerTests.token]
       } else {
+        if path.hasSuffix("/status"), request.value(forHTTPHeaderField: "Authorization") == nil {
+          return (Data(#"{"error":"unauthorized"}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!)
+        }
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer " + ComputerTests.token)
         if path.hasSuffix("/status") {
           if self.pauseStatus { await withCheckedContinuation { self.suspended = $0; self.onStatus?() } }
+          if let failure = self.failureAfterStatusPause { throw failure }
           json = ["schema_version": 1, "computer_id": self.replyComputer.uuidString, "computer_name": "Fixture PC", "ready": self.dictationReady]
           if let actions = self.actionReadiness { json["action_readiness"] = actions }
         } else if request.httpMethod == "POST" {
@@ -140,7 +308,10 @@ final class ComputerTests: XCTestCase {
       self.idsCreated += 1
       return try ComputerOperationID.make(now: ComputerTests.now)
     })
-    init(paired: Bool = true) { saved = paired ? ComputerTests.credential : nil }
+    init(paired: Bool = true, routes: [ComputerRoute]? = nil) {
+      saved = paired ? ComputerCredential(computerID: ComputerTests.computer, computerName: "Fixture PC", deviceID: ComputerTests.device,
+        sessionToken: ComputerTests.token, routes: routes ?? [ComputerTests.route]) : nil
+    }
     func resume() { suspended?.resume(); suspended = nil }
     func postedIDs() throws -> [String] {
       try requests.filter { $0.httpMethod == "POST" }.map {
@@ -161,6 +332,39 @@ final class ComputerTests: XCTestCase {
     do { try await other.connection.pair(Self.qr(Self.invitation), deviceName: "Fixture", now: Self.now); XCTFail("Wrong computer accepted") }
     catch { XCTAssertNil(other.saved) }
   }
+  @MainActor func testPairDiscoversDNSWithoutBootstrapAndNeverRepeatsAnUncertainPairPOST() async throws {
+    var invitation = Self.invitation
+    invitation["routes"] = [Self.route, Self.dnsRoute].map { ["url": $0.url, "certificate_sha256": $0.certificateSHA256!] }
+    for uncertain in [false, true] {
+      let f = Fixture(paired: false); f.offlineHosts = [URL(string: Self.route.url)!.host!]
+      if uncertain { f.pairingFailure = ComputerFailure.offline }
+      do {
+        try await f.connection.pair(Self.qr(invitation), deviceName: "Fixture iPhone", now: Self.now)
+        XCTAssertFalse(uncertain)
+      } catch { XCTAssertTrue(uncertain); XCTAssertEqual(error as? ComputerFailure, .offline) }
+      XCTAssertEqual(f.requests.map { $0.httpMethod }, ["GET", "GET", "POST"])
+      XCTAssertEqual(f.requests.map { $0.url!.absoluteString }, [Self.route.url + "/v1/computer/status", Self.dnsRoute.url + "/v1/computer/status", Self.dnsRoute.url + "/v1/computer/pair"])
+      XCTAssertTrue(f.requests.prefix(2).allSatisfy { $0.httpBody == nil && $0.value(forHTTPHeaderField: "Authorization") == nil })
+      XCTAssertEqual(f.requests.prefix(2).map(\.timeoutInterval), [1.5, 5])
+      XCTAssertEqual(f.connection.configured, !uncertain); XCTAssertFalse(f.connection.ready)
+      XCTAssertEqual(f.idsCreated, 0)
+    }
+  }
+  @MainActor func testLatePairSuccessOrFailureCannotRestoreAnInvalidatedConnection() async throws {
+    for fails in [true, false] {
+      let f = Fixture(paired: false); f.pausePair = true
+      if fails { f.pairingFailure = ComputerFailure.offline }
+      let waiting = expectation(description: "pair POST suspended")
+      f.onPair = { waiting.fulfill() }
+      let task = Task { try await f.connection.pair(Self.qr(Self.invitation), deviceName: "Fixture iPhone", now: Self.now) }
+      await fulfillment(of: [waiting], timeout: 2)
+      f.connection.suspend(); f.resume()
+      do { try await task.value; XCTFail("Late pair response escaped") }
+      catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+      XCTAssertNil(f.saved); XCTAssertFalse(f.connection.configured); XCTAssertFalse(f.connection.busy)
+      XCTAssertEqual(f.requests.map { $0.httpMethod }, ["GET", "POST"])
+    }
+  }
   @MainActor func testStatusExpiryInvalidatesWithoutHostedFallbackAndWrongIdentityIsRejected() async throws {
     let f = Fixture()
     f.connection.setInvalidationHandler { f.invalidations += 1 }
@@ -173,6 +377,112 @@ final class ComputerTests: XCTestCase {
     let other = Fixture(); other.replyComputer = UUID()
     do { try await other.connection.refresh(); XCTFail("Wrong identity accepted") } catch {}
     XCTAssertFalse(other.connection.ready)
+  }
+  @MainActor func testSerialStatusDiscoveryBoundsThreeLANProbesAndSelectsOnlyTrustedDNS() async throws {
+    let routes = [Self.route,
+      ComputerRoute(url: "https://10.0.0.255:47653", certificateSHA256: Self.route.certificateSHA256),
+      ComputerRoute(url: "https://172.16.1.0:47653", certificateSHA256: Self.route.certificateSHA256), Self.dnsRoute]
+    let f = Fixture(routes: routes)
+    f.offlineHosts = Set(routes.dropLast().map { URL(string: $0.url)!.host! })
+    f.dictationReady = false; f.actionReadiness = ["dictate": false, "rewrite": true, "translate": false]
+    try await f.connection.refresh()
+    XCTAssertEqual(f.requests.map { $0.url!.absoluteString }, routes.map { $0.url + "/v1/computer/status" })
+    XCTAssertEqual(f.requests.map(\.timeoutInterval), [1.5, 1.5, 1.5, 5])
+    XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" && $0.httpBody == nil })
+    XCTAssertEqual(f.connection.scope, Self.credential.scope); XCTAssertFalse(f.connection.ready)
+    XCTAssertTrue(f.connection.isReady(for: "rewrite")); XCTAssertFalse(f.connection.isReady(for: "translate"))
+    f.onProcessing = { f.resume() }
+    _ = try await f.connection.process(UUID().uuidString, action: "rewrite", text: "Original")
+    XCTAssertEqual(f.requests.last?.url?.absoluteString, Self.dnsRoute.url + "/v1/computer/text")
+    XCTAssertEqual(f.idsCreated, 1)
+  }
+
+  @MainActor func testRevocationOrWrongComputerOnAlternateRouteStopsDiscovery() async throws {
+    for revoked in [true, false] {
+      let routes = [Self.route, Self.dnsRoute, ComputerRoute(url: "https://managed.example.com", certificateSHA256: nil)]
+      let f = Fixture(routes: routes); f.offlineHosts = [URL(string: Self.route.url)!.host!]
+      f.connection.setInvalidationHandler { f.invalidations += 1 }
+      if revoked { f.status = 403 } else { f.replyComputer = UUID() }
+      do { try await f.connection.refresh(); XCTFail("Untrusted status accepted") }
+      catch { XCTAssertEqual(error as? ComputerFailure, revoked ? .authentication : .invalidResponse) }
+      XCTAssertEqual(f.requests.filter { $0.httpMethod == "GET" }.count, 2)
+      XCTAssertFalse(f.connection.ready); XCTAssertEqual(f.idsCreated, 0)
+      XCTAssertEqual(f.invalidations, revoked ? 1 : 0)
+      XCTAssertEqual(f.connection.configured, !revoked)
+      if revoked { XCTAssertNil(f.saved); XCTAssertEqual(f.connection.status, "revoked") }
+    }
+  }
+
+  @MainActor func testCancelledOrInvalidatedFailedLANProbeCannotContactAnotherRoute() async throws {
+    for change in ["cancel", "suspend", "disconnect"] {
+      let f = Fixture(routes: [Self.route, Self.dnsRoute])
+      f.pauseStatus = true; f.failureAfterStatusPause = ComputerFailure.offline
+      let waiting = expectation(description: "LAN status suspended")
+      f.onStatus = { waiting.fulfill() }
+      let task = Task { try await f.connection.refresh() }
+      await fulfillment(of: [waiting], timeout: 2)
+      switch change {
+      case "cancel": task.cancel()
+      case "suspend": f.connection.suspend()
+      default: f.connection.disconnect()
+      }
+      f.resume()
+      do { try await task.value; XCTFail("Old discovery continued") }
+      catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+      XCTAssertEqual(f.requests.filter { $0.httpMethod == "GET" }.map { $0.url!.host! }, [URL(string: Self.route.url)!.host!])
+      XCTAssertFalse(f.connection.ready); XCTAssertEqual(f.connection.actionReadiness, .unavailable)
+      XCTAssertFalse(f.connection.busy); XCTAssertEqual(f.idsCreated, 0)
+    }
+  }
+
+  @MainActor func testInvalidatedRedirectResponseCannotPublishAnOldFailureOrProbeDNS() async throws {
+    let f = Fixture(routes: [Self.route, Self.dnsRoute]); f.pauseStatus = true; f.status = 307
+    let waiting = expectation(description: "status redirect suspended")
+    f.onStatus = { waiting.fulfill() }
+    let task = Task { try await f.connection.refresh() }
+    await fulfillment(of: [waiting], timeout: 2)
+    f.connection.suspend(); f.resume()
+    do { try await task.value; XCTFail("Old response escaped") }
+    catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+    XCTAssertEqual(f.requests.count, 1); XCTAssertFalse(f.connection.ready)
+    XCTAssertEqual(f.connection.actionReadiness, .unavailable)
+  }
+
+  @MainActor func testRemoteProcessingUncertaintyCannotRetryOrMintAnotherOperationAfterRouteRefresh() async throws {
+    let f = Fixture(routes: [Self.route, Self.dnsRoute])
+    f.offlineHosts = [URL(string: Self.route.url)!.host!]
+    try await f.connection.refresh()
+    let id = UUID().uuidString
+    f.failure = ComputerFailure.offline
+    do { _ = try await f.connection.process(id, action: "rewrite", text: "Original"); XCTFail("Uncertain processing succeeded") }
+    catch { XCTAssertEqual(error as? ComputerFailure, .offline) }
+    f.failure = nil; f.offlineHosts = []
+    try await f.connection.refresh()
+    do { _ = try await f.connection.process(id, action: "rewrite", text: "Original"); XCTFail("Route refresh retried processing") }
+    catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+    XCTAssertEqual(f.idsCreated, 1)
+    XCTAssertEqual(f.requests.filter { $0.httpMethod == "POST" }.map { $0.url!.absoluteString }, [Self.dnsRoute.url + "/v1/computer/text"])
+    XCTAssertEqual(f.connection.scope, Self.credential.scope)
+  }
+
+  @MainActor func testCancelAfterRouteRefreshKeepsOriginalRemoteOperationAndRoute() async throws {
+    let f = Fixture(routes: [Self.route, Self.dnsRoute])
+    f.offlineHosts = [URL(string: Self.route.url)!.host!]
+    try await f.connection.refresh()
+    let started = expectation(description: "remote processing started")
+    f.onProcessing = { started.fulfill() }
+    let id = UUID().uuidString
+    let task = Task { try await f.connection.process(id, action: "rewrite", text: "Original") }
+    await fulfillment(of: [started], timeout: 2)
+    let wireID = try XCTUnwrap(f.postedIDs().first)
+    f.offlineHosts = []; try await f.connection.refresh()
+    f.connection.cancelOperation(id); f.resume()
+    do { _ = try await task.value; XCTFail("Cancelled result escaped") }
+    catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+    await Task.yield()
+    XCTAssertEqual(f.requests.filter { $0.httpMethod == "DELETE" }.map { $0.url!.absoluteString },
+      [Self.dnsRoute.url + "/v1/computer/operations/" + wireID])
+    XCTAssertEqual(f.idsCreated, 1); XCTAssertEqual(try f.postedIDs(), [wireID])
   }
   @MainActor func testIndependentTextCapabilitiesAdmitOnlyRequestedActionWithDictationUnavailable() async throws {
     for action in ["rewrite", "translate"] {
@@ -296,8 +606,8 @@ final class ComputerTests: XCTestCase {
     XCTAssertEqual(f.saved, Self.credential); XCTAssertEqual(f.connection.credential, Self.credential)
     XCTAssertEqual(f.connection.generation, generation); XCTAssertEqual(f.invalidations, 0)
     XCTAssertTrue(f.connection.configured); XCTAssertTrue(f.connection.ready); XCTAssertFalse(f.connection.busy)
-    XCTAssertEqual(f.requests.map { $0.httpMethod }, ["GET", "POST"])
-    XCTAssertEqual(f.requests.map { $0.url?.path }, ["/v1/computer/status", "/v1/computer/pair"])
+    XCTAssertEqual(f.requests.map { $0.httpMethod }, ["GET", "GET", "POST"])
+    XCTAssertEqual(f.requests.map { $0.url?.path }, ["/v1/computer/status", "/v1/computer/status", "/v1/computer/pair"])
     let request = try XCTUnwrap(f.requests.last)
     let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: String])
     XCTAssertEqual(body, ["pairing_token": Self.invitation["pairing_token"] as! String, "device_name": "Fixture iPhone"])
@@ -321,7 +631,7 @@ final class ComputerTests: XCTestCase {
       XCTAssertEqual(f.saved, Self.credential); XCTAssertEqual(f.connection.credential, Self.credential)
       XCTAssertEqual(f.connection.generation, generation); XCTAssertTrue(f.connection.ready)
       XCTAssertFalse(f.connection.busy)
-      XCTAssertEqual(f.requests.map { $0.httpMethod }, ["GET", "POST"])
+      XCTAssertEqual(f.requests.map { $0.httpMethod }, ["GET", "GET", "POST"])
     }
   }
   @MainActor func testSwitchRejectsLateResultAndCancelsOriginalOperation() async throws {

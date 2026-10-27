@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -28,12 +29,14 @@ from computer_relay_protocol import (
     RelayError,
     RelayIdentity,
     Stream,
+    bridge,
     challenge,
     decode_frame,
     dns_name,
     encode_frame,
     namespace,
     read_frame,
+    token,
     untoken,
 )
 from computer_relay_server import ComputerRelayServer, EgressBudget, _TLS
@@ -266,6 +269,168 @@ class BudgetTests(unittest.TestCase):
             self.assertEqual(empty.read_bytes(), b"")
 
 
+class ClientAdmissionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_queue_overflow_is_bounded_and_replayed_overflow_id_is_rejected(self):
+        key, cert = make_certificate("pc.test")
+        pc = identity(key, cert)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        client = ComputerRelayClient(
+            HOST,
+            pc,
+            1,
+            ssl_context=context,
+            limits=Limits(streams_per_host=2, max_pending=1),
+        )
+        reader = asyncio.StreamReader()
+        control = mock.Mock(read=reader.read, write=mock.AsyncMock())
+        started, barrier = asyncio.Queue(), asyncio.Event()
+        releases = {}
+
+        async def attach(pending, deadline):
+            self.assertGreater(deadline, asyncio.get_running_loop().time())
+            releases[pending] = asyncio.Event()
+            started.put_nowait(pending)
+            await releases[pending].wait()
+
+        async def observed_read(stream, maximum):
+            message = await read_frame(stream, maximum)
+            if message["kind"] == "pong":
+                barrier.set()
+            return message
+
+        def send(message):
+            reader.feed_data(encode_frame({"v": 1, **message}))
+
+        async def read_barrier():
+            barrier.clear()
+            send({"kind": "pong"})
+            await asyncio.wait_for(barrier.wait(), 2)
+
+        send({"kind": "challenge", "nonce": token(b"n" * 32)})
+        send({"kind": "registered", "namespace": pc.namespace})
+        ids = [token(bytes([index]) * 32) for index in range(8)]
+        with (
+            mock.patch.object(client, "_dial", mock.AsyncMock(return_value=control)),
+            mock.patch.object(client, "_attach", attach),
+            mock.patch("computer_relay_client.read_frame", observed_read),
+        ):
+            session = asyncio.create_task(client._session())
+            try:
+                for pending in ids[:2]:
+                    send({"kind": "open", "pending": pending})
+                    self.assertEqual(await asyncio.wait_for(started.get(), 2), pending)
+                for pending in ids[2:]:
+                    send({"kind": "open", "pending": pending})
+                await read_barrier()
+                self.assertTrue(client.connected)
+                self.assertFalse(session.done())
+                self.assertEqual(len(client._children), 2)
+                releases[ids[0]].set()
+                self.assertEqual(await asyncio.wait_for(started.get(), 2), ids[2])
+                releases[ids[1]].set()
+                await eventually(lambda: len(client._children) == 1)
+                self.assertTrue(started.empty())
+                # An ID rejected for capacity still belongs to replay memory.
+                send({"kind": "open", "pending": ids[3]})
+                with self.assertRaisesRegex(RelayError, "invalid_open"):
+                    await asyncio.wait_for(session, 2)
+                self.assertEqual(client._children, set())
+                control.close.assert_called_once()
+            finally:
+                session.cancel()
+                await asyncio.gather(session, return_exceptions=True)
+
+
+class BridgeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_silent_backend_covers_mobile_deadline_on_both_relay_ends(self):
+        class MemoryStream:
+            def __init__(self):
+                self.reader = asyncio.StreamReader()
+
+            async def read(self, size):
+                return await self.reader.read(size)
+
+            async def write(self, data):
+                self.peer.reader.feed_data(data)
+
+            async def finish(self):
+                self.peer.reader.feed_eof()
+
+        def pair():
+            left, right = MemoryStream(), MemoryStream()
+            left.peer, right.peer = right, left
+            return left, right
+
+        phone, server_phone = pair()
+        server_data, desktop_data = pair()
+        desktop_local, backend = pair()
+        now, sleepers, checkpoints = [0.0], [], asyncio.Queue()
+
+        async def clock_sleep(delay):
+            future = asyncio.get_running_loop().create_future()
+            sleepers.append(future)
+            checkpoints.put_nowait((now[0], delay))
+            await future
+
+        controlled = mock.Mock(wraps=asyncio)
+        controlled.FIRST_COMPLETED = asyncio.FIRST_COMPLETED
+        controlled.get_running_loop.return_value = SimpleNamespace(time=lambda: now[0])
+        controlled.sleep.side_effect = clock_sleep
+        with mock.patch("computer_relay_protocol.asyncio", controlled):
+            tasks = [
+                asyncio.create_task(bridge(server_phone, server_data, Limits())),
+                asyncio.create_task(bridge(desktop_data, desktop_local, Limits())),
+            ]
+            checked = None
+            try:
+                await phone.write(b"uploaded request")
+                self.assertEqual(
+                    await asyncio.wait_for(backend.read(16384), 2), b"uploaded request"
+                )
+                await asyncio.wait_for(checkpoints.get(), 2)
+                await asyncio.wait_for(checkpoints.get(), 2)
+                # The backend is silent for the mobile's full 100 seconds plus
+                # five seconds of transit. Wake both watchdogs on that clock.
+                now[0] = 105.0
+                for future in sleepers:
+                    future.set_result(None)
+                sleepers.clear()
+
+                async def both_checked():
+                    for _ in tasks:
+                        when, remaining = await checkpoints.get()
+                        self.assertEqual(when, 105.0)
+                        self.assertGreater(remaining, 0)
+
+                checked = asyncio.create_task(both_checked())
+                done, _ = await asyncio.wait(
+                    [*tasks, checked], timeout=2, return_when=asyncio.FIRST_COMPLETED
+                )
+                for task in done:
+                    task.result()
+                self.assertIn(checked, done)
+                await backend.write(b"processed response")
+                self.assertEqual(
+                    await asyncio.wait_for(phone.read(16384), 2), b"processed response"
+                )
+                # Silence still has a finite bound on each relay end.
+                now[0] = 226.0
+                for future in sleepers:
+                    future.set_result(None)
+                done, waiting = await asyncio.wait(tasks, timeout=2)
+                self.assertFalse(waiting)
+                for task in tasks:
+                    with self.assertRaises(TimeoutError):
+                        task.result()
+            finally:
+                for task in [*tasks, *([checked] if checked else [])]:
+                    task.cancel()
+                await asyncio.gather(
+                    *tasks, *([checked] if checked else []), return_exceptions=True
+                )
+
+
 class LoopbackTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -349,6 +514,10 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
                         self.pc_bytes += 16384
                 elif b"/hold " in request:
                     await reader.read()
+                elif b"/echo " in request:
+                    while data := await reader.read(16384):
+                        writer.write(data)
+                        await writer.drain()
                 elif b"/pulse " in request:
                     writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\n\r\n")
                     for value in b"01234567":
@@ -773,7 +942,9 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.server.status["tunnels"], 0)
 
     async def test_one_way_activity_keeps_tunnel_alive_past_idle_period(self):
-        self.limits = replace(self.limits, idle_timeout=1.0, heartbeat_interval=0.1)
+        self.limits = replace(
+            self.limits, tunnel_idle_timeout=1.0, heartbeat_interval=0.1
+        )
         await self.start_relay(limits=self.limits)
         pc, cert, port = await self.pc()
         client = self.connector(pc, port)
@@ -785,6 +956,100 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
             while chunk := await phone.read(16384):
                 response.extend(chunk)
         self.assertTrue(response.endswith(b"01234567"), response)
+
+    async def _closing_child_capacity_case(self, *, release_before_deadline):
+        # Observe reads from session start, including the read already waiting
+        # when the server releases and reuses its slot.
+        open_received = asyncio.Event()
+        loop = asyncio.get_running_loop()
+
+        async def observe_open(stream, maximum):
+            message = await read_frame(stream, maximum)
+            if message["kind"] == "open":
+                loop.call_soon_threadsafe(open_received.set)
+            return message
+
+        patcher = mock.patch("computer_relay_client.read_frame", observe_open)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        pc, cert, port = await self.pc()
+        client = self.connector(pc, port)
+        await eventually(lambda: client.connected)
+        owner = self.server.owners[pc.namespace]
+        phones = [await self.phone(pc, cert) for _ in range(4)]
+
+        async def echo(phone):
+            await phone.write(b"still-active")
+            self.assertEqual(
+                await asyncio.wait_for(phone.reader.readexactly(12), 2), b"still-active"
+            )
+
+        for phone in phones:
+            await phone.write(b"GET /echo HTTP/1.1\r\n\r\n")
+            await echo(phone)
+        open_received.clear()
+        entered = asyncio.Event()
+        release = None
+        held_loop = None
+        finish = Stream.finish
+
+        async def hold_one_finish(stream):
+            nonlocal release, held_loop
+            if asyncio.get_running_loop() is client._loop and release is None:
+                held_loop = asyncio.get_running_loop()
+                release = asyncio.Event()
+                loop.call_soon_threadsafe(entered.set)
+                await release.wait()
+            await finish(stream)
+
+        replacement = None
+        with mock.patch.object(Stream, "finish", hold_one_finish):
+            try:
+                phones[0].close()
+                await asyncio.wait_for(entered.wait(), 2)
+                await eventually(lambda: owner.streams == 3)
+                self.assertEqual(len(client._children), 4)
+                replacement = asyncio.create_task(self.phone(pc, cert))
+                await asyncio.wait_for(open_received.wait(), 2)
+                if release_before_deadline:
+                    held_loop.call_soon_threadsafe(release.set)
+                    phone = await asyncio.wait_for(replacement, 3)
+                    await phone.write(b"GET /echo HTTP/1.1\r\n\r\n")
+                    await echo(phone)
+                else:
+                    with self.assertRaises(OSError):
+                        await asyncio.wait_for(replacement, 3)
+                self.assertIs(self.server.owners.get(pc.namespace), owner)
+                self.assertTrue(client.connected)
+                self.assertLessEqual(len(client._children), 4)
+                for phone in phones[1:]:
+                    await echo(phone)
+                if not release_before_deadline:
+                    open_received.clear()
+                    replacement = asyncio.create_task(self.phone(pc, cert))
+                    await asyncio.wait_for(open_received.wait(), 2)
+                    # Shutdown must cancel the held close and a fresh queued ID.
+                    self.assertTrue(await asyncio.to_thread(client.stop, 2))
+                    with self.assertRaises(OSError):
+                        await asyncio.wait_for(replacement, 2)
+                    self.assertEqual(client._children, set())
+                    self.assertEqual(client._streams, set())
+            finally:
+                if release is not None and held_loop.is_running():
+                    held_loop.call_soon_threadsafe(release.set)
+                if replacement:
+                    replacement.cancel()
+                    await asyncio.gather(replacement, return_exceptions=True)
+
+    async def test_server_slot_reuse_waits_for_closing_child_without_dropping_others(
+        self,
+    ):
+        await self._closing_child_capacity_case(release_before_deadline=True)
+
+    async def test_persistent_local_capacity_lag_expires_only_new_request_and_can_stop(
+        self,
+    ):
+        await self._closing_child_capacity_case(release_before_deadline=False)
 
     async def test_accept_cancelled_before_first_task_step_releases_admission(self):
         create_task = asyncio.create_task

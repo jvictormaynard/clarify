@@ -1,9 +1,10 @@
 """Wire/security tests use loopback TLS and an isolated SQLite store."""
 
+import asyncio
 import base64
 from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing, redirect_stderr
+from contextlib import closing, redirect_stderr, suppress
 import hashlib
 import http.client
 import io
@@ -22,7 +23,12 @@ from urllib.parse import urlsplit, parse_qs
 from uuid import UUID, uuid4
 import wave
 
+from cryptography import x509
+
 from computer_host import ComputerHost
+from computer_relay_client import ComputerRelayClient
+from computer_relay_protocol import RelayError, challenge, verify, certificate_key
+from computer_relay_server import ComputerRelayServer
 from computer_processing import ComputerProcessor
 from dictionary_snippets import (
     DictionarySnippets,
@@ -81,6 +87,202 @@ class Processor:
             "rewritten": False,
             "successful": True,
         }
+
+
+class RelayClient:
+    """Controlled relay lifecycle; no resolver, socket or profile access."""
+
+    connected = False
+    status = "retrying"
+
+    def __init__(self):
+        self.start = Mock()
+        self.stop = Mock(return_value=True)
+
+
+class HostRelayLoopbackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_real_relay_pins_host_and_preserves_once_only_cancel_and_revocation(
+        self,
+    ):
+        try:
+            from .test_computer_relay import (
+                HOST,
+                client_context,
+                eventually,
+                make_certificate,
+                server_context,
+            )
+        except ImportError:
+            from test_computer_relay import (
+                HOST,
+                client_context,
+                eventually,
+                make_certificate,
+                server_context,
+            )
+
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        ca_key, ca = make_certificate("test CA", is_ca=True)
+        key, cert = make_certificate(HOST, ca=ca, ca_key=ca_key)
+        server = ComputerRelayServer(
+            "127.0.0.1",
+            0,
+            HOST,
+            server_context(root, "relay", key, cert),
+            root / "budget.db",
+            1_000_000,
+        )
+        await server.start()
+        self.addAsyncCleanup(server.stop)
+        clients = []
+
+        def factory(relay_host, identity, target_port, *, relay_port):
+            client = ComputerRelayClient(
+                relay_host,
+                identity,
+                target_port,
+                relay_port=relay_port,
+                fixture_address="127.0.0.1",
+                fixture_ssl_context=client_context(ca),
+                reconnect_initial=0.05,
+                reconnect_max=0.1,
+            )
+            clients.append(client)
+            return client
+
+        processor = Processor()
+        host = ComputerHost(
+            processor,
+            MemorySecretStore(),
+            root / "computer.sqlite3",
+            host="127.0.0.1",
+            port=0,
+            relay_host=HOST,
+            relay_port=server.address[1],
+            relay_client_factory=factory,
+            address_provider=lambda: [],
+        )
+
+        async def stop_host():
+            processor.release.set()
+            await asyncio.to_thread(host.stop)
+
+        self.addAsyncCleanup(stop_host)
+        # Every dial uses a literal loopback fixture. No public DNS is allowed.
+        with patch("socket.getaddrinfo", side_effect=AssertionError("DNS forbidden")):
+            host.start()
+            await eventually(lambda: host.snapshot()["relay_connected"])
+            self.assertEqual(clients[0].target_port, host.port)
+            with patch.object(host, "host", "0.0.0.0"):
+                pairing = host.create_pairing()
+            encoded = parse_qs(urlsplit(pairing["pairing_url"]).query)["data"][0]
+            qr = json.loads(
+                base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+            )
+            self.assertEqual(len(qr["routes"]), 1)
+            route = qr["routes"][0]
+            pc_cert = x509.load_der_x509_certificate(
+                clients[0].identity.certificate_der
+            )
+
+            async def request(method, path, payload=None, token=None):
+                reader, writer = await asyncio.open_connection(
+                    "127.0.0.1",
+                    server.address[1],
+                    ssl=client_context(pc_cert, check_hostname=False),
+                    server_hostname=urlsplit(route["url"]).hostname,
+                    ssl_handshake_timeout=3,
+                )
+                try:
+                    der = writer.get_extra_info("ssl_object").getpeercert(
+                        binary_form=True
+                    )
+                    self.assertEqual(
+                        hashlib.sha256(der).hexdigest(), route["certificate_sha256"]
+                    )
+                    body = json.dumps(payload).encode() if payload is not None else b""
+                    headers = f"{method} /v1/computer/{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\nConnection: close\r\n"
+                    if token:
+                        headers += f"Authorization: Bearer {token}\r\n"
+                    writer.write(headers.encode() + b"\r\n" + body)
+                    await writer.drain()
+                    head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 4)
+                    status = int(head.split(b" ", 2)[1])
+                    size = next(
+                        int(line.split(b":", 1)[1])
+                        for line in head.split(b"\r\n")
+                        if line.lower().startswith(b"content-length:")
+                    )
+                    return status, json.loads(
+                        await asyncio.wait_for(reader.readexactly(size), 4)
+                    )
+                finally:
+                    writer.close()
+                    with suppress(OSError, TimeoutError):
+                        await asyncio.wait_for(writer.wait_closed(), 1)
+
+            status, session = await request(
+                "POST",
+                "pair",
+                {
+                    "pairing_token": qr["pairing_token"],
+                    "device_name": "Fixture phone",
+                },
+            )
+            self.assertEqual(status, 200)
+            token = session["session_token"]
+
+            def text():
+                data = bytearray(
+                    int(time.time() * 1000).to_bytes(6, "big") + uuid4().bytes[6:]
+                )
+                data[6], data[8] = 0x70 | data[6] & 0x0F, 0x80 | data[8] & 0x3F
+                return {
+                    "operation_id": str(UUID(bytes=bytes(data))),
+                    "action": "rewrite",
+                    "text": "Original",
+                    "language": "pt",
+                }
+
+            first = text()
+            result = await request("POST", "text", first, token)
+            self.assertEqual(result[0], 200)
+            self.assertEqual(result[1]["text"], "Processed.")
+            self.assertEqual(await request("POST", "text", first, token), result)
+            self.assertEqual(len(processor.calls), 1)
+            processor.block = True
+            processor.entered.clear()
+            second = text()
+            pending = asyncio.create_task(request("POST", "text", second, token))
+            try:
+                await eventually(processor.entered.is_set)
+                self.assertEqual(
+                    (
+                        await request(
+                            "DELETE",
+                            "operations/" + second["operation_id"],
+                            token=token,
+                        )
+                    )[0],
+                    200,
+                )
+                self.assertTrue(processor.calls[-1][-1].cancelled)
+            finally:
+                processor.release.set()
+            self.assertEqual(await pending, (409, {"error": "operation_cancelled"}))
+            self.assertEqual(
+                await request("POST", "text", second, token),
+                (409, {"error": "operation_cancelled"}),
+            )
+            self.assertEqual(len(processor.calls), 2)
+            host.revoke_device(session["device_id"])
+            self.assertEqual((await request("GET", "status", token=token))[0], 401)
+            await asyncio.to_thread(host.stop)
+            self.assertFalse(clients[0]._thread.is_alive())
+            await eventually(lambda: not server.status["tasks"])
+            self.assertEqual(server.status["hosts"], 0)
 
 
 class ComputerHostTests(unittest.TestCase):
@@ -174,6 +376,304 @@ class ComputerHostTests(unittest.TestCase):
         self.assertFalse(other_path.parent.exists())
         self.assertEqual(store.values, {})
         other.stop()
+
+    def relay_host(self, client=None, **options):
+        self.host.stop()
+        client = client or RelayClient()
+        factory = Mock(return_value=client)
+        self.host = self.new_host(
+            relay_host="relay.test", relay_client_factory=factory, **options
+        )
+        self.host.start()
+        return client, factory
+
+    def test_relay_configuration_is_validated_without_startup_effects(self):
+        path = Path(self.temp.name) / "unused" / "state.sqlite3"
+        store, factory = MemorySecretStore(), Mock()
+        with patch("computer_host.socket.getaddrinfo") as resolver:
+            host = ComputerHost(
+                self.processor,
+                store,
+                path,
+                relay_host="relay.test",
+                relay_client_factory=factory,
+            )
+            self.assertFalse(host.ready)
+            host.stop()
+            resolver.assert_not_called()
+        factory.assert_not_called()
+        self.assertEqual(store.values, {})
+        self.assertFalse(path.parent.exists())
+        for bind in ("127.0.0.2", "192.168.1.2"):
+            with (
+                self.subTest(bind=bind),
+                self.assertRaisesRegex(
+                    ValueError, "^Computer relay requires an IPv4 loopback listener$"
+                ),
+            ):
+                ComputerHost(
+                    self.processor, store, path, host=bind, relay_host="relay.test"
+                )
+        for options in (
+            {"relay_host": "https://user:secret@relay.test"},
+            {"relay_host": "127.0.0.1"},
+            {"relay_host": "Relay.test"},
+            {"relay_host": ""},
+            {"relay_port": True},
+            {"relay_port": 0},
+            {"relay_port": 65536},
+        ):
+            with self.subTest(options=options), self.assertRaises(RelayError):
+                self.new_host(**options)
+
+    def test_relay_automatic_routes_reserve_last_slot_and_pin_persisted_identity(self):
+        client, factory = self.relay_host(
+            address_provider=lambda: [
+                "invalid",
+                "8.8.8.8",
+                "10.0.0.2",
+                "10.0.0.2",
+                "192.168.1.255",
+                "172.16.0.0",
+                "10.0.0.3",
+            ]
+        )
+        relay_identity = factory.call_args.args[1]
+        der = relay_identity.certificate_der
+        namespace = (
+            base64.b32encode(hashlib.sha256(der).digest()).decode().lower().rstrip("=")
+        )
+        self.assertEqual(len(namespace), 52)
+        self.assertEqual(relay_identity.namespace, namespace)
+        with patch.object(self.host, "host", "0.0.0.0"):
+            qr = self.pairing()
+            again = self.pairing()
+        self.assertEqual(qr["routes"], again["routes"])
+        self.assertEqual(
+            [route["url"] for route in qr["routes"]],
+            [
+                f"https://{ip}:{self.host.port}"
+                for ip in ("10.0.0.2", "192.168.1.255", "172.16.0.0")
+            ]
+            + [f"https://{namespace}.relay.test:443"],
+        )
+        self.assertEqual(
+            {route["certificate_sha256"] for route in qr["routes"]},
+            {hashlib.sha256(der).hexdigest()},
+        )
+        with socket.create_connection(("127.0.0.1", self.host.port), timeout=2) as raw:
+            with ssl._create_unverified_context().wrap_socket(
+                raw, server_hostname="localhost"
+            ) as tls:
+                self.assertEqual(tls.getpeercert(binary_form=True), der)
+        message = challenge("register", "relay.test", b"n" * 32)
+        verify(
+            certificate_key(der),
+            relay_identity.proof("register", "relay.test", b"n" * 32),
+            message,
+        )
+        factory.assert_called_once_with(
+            "relay.test", relay_identity, self.host.port, relay_port=443
+        )
+        client.start.assert_called_once()
+        saved = self.secrets.get("clarify_computer")
+        first_route = qr["routes"][-1]
+        self.host.stop()
+        self.host = self.new_host(relay_host="relay.test", relay_client_factory=factory)
+        self.host.start()
+        self.assertEqual(self.pairing()["routes"][-1], first_route)
+        self.assertEqual(self.secrets.get("clarify_computer"), saved)
+
+    def test_relay_remote_only_qr_and_explicit_lan_override(self):
+        client, _ = self.relay_host(relay_port=8443, address_provider=lambda: [])
+        with patch.object(self.host, "host", "0.0.0.0"):
+            remote = self.pairing()
+        self.assertEqual(len(remote["routes"]), 1)
+        self.assertTrue(remote["routes"][0]["url"].endswith(".relay.test:8443"))
+        self.assertFalse(client.connected)
+        urls = [f"https://10.0.0.{index}:{self.host.port}" for index in range(1, 5)]
+        self.assertEqual([route["url"] for route in self.pairing(urls)["routes"]], urls)
+        for invalid in ([], ["https://other.test:443"], urls + urls[:1]):
+            with self.assertRaises(ValueError):
+                self.host.create_pairing(invalid)
+        qr = self.pairing(urls)
+        with (
+            patch.object(self.host, "host", "0.0.0.0"),
+            patch.object(
+                self.host, "address_provider", side_effect=OSError("discovery failed")
+            ),
+        ):
+            with self.assertRaises(OSError):
+                self.host.create_pairing()
+        self.assertEqual(
+            self.request(
+                "POST",
+                "/v1/computer/pair",
+                {
+                    "pairing_token": qr["pairing_token"],
+                    "device_name": "Phone",
+                },
+            )[0],
+            200,
+        )
+
+    def test_relay_snapshot_reports_only_safe_states_and_unset_compatibility(self):
+        state = self.host.snapshot()
+        self.assertEqual(
+            [
+                state[key]
+                for key in ("relay_configured", "relay_connected", "relay_status")
+            ],
+            [False, False, "disabled"],
+        )
+        with patch("computer_host.ComputerRelayClient") as factory:
+            self.host.stop()
+            self.host.start()
+            factory.assert_not_called()
+        client, _ = self.relay_host()
+        for status, connected in (
+            ("retrying", False),
+            ("connected", True),
+            ("private token URI", True),
+        ):
+            client.status, client.connected = status, connected
+            state = self.host.snapshot()
+            self.assertTrue(state["relay_configured"])
+            self.assertEqual(
+                state["relay_status"],
+                "relay_unavailable" if status == "private token URI" else status,
+            )
+            self.assertEqual(
+                state["relay_connected"], connected and status != "private token URI"
+            )
+            for private in (
+                "relay.test",
+                "private token URI",
+                "private_key",
+                "pairing_token",
+            ):
+                self.assertNotIn(private, json.dumps(state))
+        self.host.stop()
+        self.assertEqual(self.host.snapshot()["relay_status"], "stopped")
+
+    def test_relay_start_failure_unwinds_listener_and_keeps_unknown_drain_for_retry(
+        self,
+    ):
+        self.host.stop()
+        client = RelayClient()
+        local_threads = []
+
+        def fail_after_local_https_starts():
+            with socket.create_connection(
+                ("127.0.0.1", self.host.port), timeout=2
+            ) as raw:
+                with ssl._create_unverified_context().wrap_socket(
+                    raw, server_hostname="localhost"
+                ):
+                    local_threads.append(self.host._thread)
+            raise RuntimeError("private token/key")
+
+        client.start.side_effect = fail_after_local_https_starts
+        client.stop.return_value = False
+        self.host = self.new_host(
+            relay_host="relay.test", relay_client_factory=Mock(return_value=client)
+        )
+        with self.assertRaisesRegex(RuntimeError, "^Computer relay start failed$"):
+            self.host.start()
+        port = self.host.port
+        self.assertEqual(len(local_threads), 1)
+        self.assertFalse(local_threads[0].is_alive())
+        self.assertFalse(self.host.ready)
+        self.assertIsNone(self.host._db)
+        with self.assertRaises(OSError):
+            socket.create_connection(("127.0.0.1", port), timeout=0.2)
+        with self.assertRaisesRegex(
+            RuntimeError, "^Computer relay drain not confirmed$"
+        ):
+            self.host.start()
+        self.assertEqual(client.start.call_count, 1)
+        client.stop.return_value = True
+        self.host.stop()
+        self.assertEqual(client.stop.call_count, 2)
+        client.start.side_effect = None
+        self.host.start()
+
+    def test_relay_failed_stop_drains_local_workers_refuses_restart_and_retries(self):
+        for failure in (False, RuntimeError("private credentials")):
+            with self.subTest(failure=type(failure).__name__):
+                client, factory = self.relay_host()
+                _, session = self.pair()
+                port, thread, server = (
+                    self.host.port,
+                    self.host._thread,
+                    self.host._server,
+                )
+                entered, unwound, cancelled = (threading.Event() for _ in range(3))
+                workers = []
+
+                def process(action, text, language, cancel_token):
+                    workers.append(threading.current_thread())
+                    entered.set()
+                    try:
+                        self.assertTrue(cancel_token.wait(3))
+                        cancelled.set()
+                        raise ProviderCancelledError()
+                    finally:
+                        unwound.set()
+
+                client.stop.side_effect = (
+                    failure if isinstance(failure, Exception) else None
+                )
+                client.stop.return_value = failure
+                request = self.text()
+                with (
+                    patch.object(
+                        self.processor, "process_text", side_effect=process
+                    ) as call,
+                    ThreadPoolExecutor(1) as executor,
+                ):
+                    pending = executor.submit(
+                        self.request,
+                        "POST",
+                        "/v1/computer/text",
+                        request,
+                        session["session_token"],
+                    )
+                    self.assertTrue(entered.wait(3))
+                    with self.assertRaisesRegex(
+                        RuntimeError, "^Computer relay drain not confirmed$"
+                    ):
+                        self.host.stop()
+                    self.assertTrue(unwound.is_set())
+                    self.assertTrue(cancelled.is_set())
+                    self.assertFalse(thread.is_alive())
+                    self.assertTrue(all(not worker.is_alive() for worker in workers))
+                    self.assertEqual(server.connections, {})
+                    self.assertIsNone(self.host._db)
+                    try:
+                        pending.result(timeout=3)
+                    except (OSError, http.client.HTTPException):
+                        pass
+                    call.assert_called_once()
+                with self.assertRaises(OSError):
+                    socket.create_connection(("127.0.0.1", port), timeout=0.2)
+                self.assertEqual(self.host.snapshot()["relay_status"], "stop_failed")
+                self.assertFalse(self.host.snapshot()["relay_connected"])
+                with self.assertRaisesRegex(
+                    RuntimeError, "^Computer relay drain not confirmed$"
+                ):
+                    self.host.start()
+                factory.assert_called_once()
+                client.stop.side_effect, client.stop.return_value = None, True
+                self.host.stop()
+                self.assertEqual(client.stop.call_count, 2)
+                self.host.start()
+                self.assertEqual(
+                    self.request(
+                        "POST", "/v1/computer/text", request, session["session_token"]
+                    ),
+                    (409, {"error": "operation_cancelled"}),
+                )
 
     def test_not_ready_rejects_processing_before_provider_call(self):
         _, session = self.pair()

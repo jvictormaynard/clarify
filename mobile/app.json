@@ -51,6 +51,7 @@
       "./plugins/with-clarify-keyboard.cjs",
       "./plugins/with-clarify-activity.cjs",
       "./plugins/with-computer-link-privacy.cjs",
+      "./plugins/with-computer-relay.cjs",
       "expo-router",
       "expo-font"
     ],
