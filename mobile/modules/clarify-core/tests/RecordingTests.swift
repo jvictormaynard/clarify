@@ -168,7 +168,7 @@ final class RecordingTests: XCTestCase {
       try store.write(state, to: "state.json"); try store.acknowledge("previous")
       var request = RecordingRequest()
       XCTAssertTrue(request.submit("cancel", operationID: "cancelled", now: now))
-      try store.send("cancel", operationID: "cancelled")
+      try store.send("cancel", operationID: "cancelled", context: state.processingContext)
       if delivery == "acknowledged" { state.heartbeat = now + 0.1 }
       if delivery == "expired" { state.heartbeat = now - 4 }
       request.observe(state, now: delivery == "timeout" ? now + 6 : now + 0.2)
@@ -197,9 +197,9 @@ final class RecordingTests: XCTestCase {
     try legacy.write(to: root.appendingPathComponent("state.json"), options: .atomic)
     let first = SharedState(root: root), second = SharedState(root: root)
     try first.acknowledge("previous")
-    try first.send("cancel", operationID: "../cancelled/ação")
-    try first.send("cancel", operationID: "aaa")
-    try second.send("cancel", operationID: "another")
+    try first.send("cancel", operationID: "../cancelled/ação", context: nil)
+    try first.send("cancel", operationID: "aaa", context: nil)
+    try second.send("cancel", operationID: "another", context: nil)
     for (url, _) in first.commands() { try FileManager.default.removeItem(at: url) }
     let recreated = SharedState(root: root)
     XCTAssertThrowsError(try recreated.acknowledge("../cancelled/ação"))

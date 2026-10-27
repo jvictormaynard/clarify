@@ -1,6 +1,7 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Field, Picker, Row, Section, Toggle } from "../components/ui";
+import { ComputerAccess } from "../components/computer-access";
 const languageNames: Record<string, string> = {
   en: "English",
   pt: "Portuguese",
@@ -32,6 +33,7 @@ export function GeneralPage({ controller }: SettingsPageProps) {
           onChange={(v) => void run("setAutostart", v)}
         />
       </Section>
+      <ComputerAccess controller={controller} />
       {state.applicationVersion && (
         <Section title={t("Atualizações")}>
           <Toggle

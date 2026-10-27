@@ -1,0 +1,9 @@
+**
+!connect/
+!connect/Dockerfile
+!connect/Dockerfile.dockerignore
+!connect/requirements.txt
+!requirements-lock-linux.txt
+!LICENSE
+!computer_relay_protocol.py
+!computer_relay_server.py

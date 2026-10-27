@@ -333,8 +333,8 @@ final class LocalLibrary {
     try saveCloudSnippets(snapshot, scope: scope)
   }
   private func insertHistory(_ entry: HistoryEntry, scope: String) throws {
-    let old = try statement("SELECT payload FROM history WHERE owner=? AND operation_id=?"); defer { sqlite3_finalize(old) }
-    sqlite3_bind_text(old, 1, scope, -1, transient); sqlite3_bind_text(old, 2, entry.id, -1, transient)
+    let old = try statement("SELECT payload FROM history WHERE \(historyOwnerPredicate(at: 1)) AND operation_id=?3"); defer { sqlite3_finalize(old) }
+    bindHistoryOwner(scope, to: old, at: 1); sqlite3_bind_text(old, 3, entry.id, -1, transient)
     switch sqlite3_step(old) {
     case SQLITE_ROW:
       guard try JSONDecoder().decode(HistoryEntry.self, from: data(old, at: 0)) == entry else { throw failure() }
@@ -349,24 +349,44 @@ final class LocalLibrary {
     try bind(JSONEncoder().encode(entry), to: value, at: 4)
     guard sqlite3_step(value) == SQLITE_DONE else { throw failure() }
   }
+  // Read old route-scoped rows in place. Reads need no migration write, and a
+  // failed mutation rolls back both the old rows and their deletion markers.
+  // The trailing separator excludes every other computer, account and guest.
+  private func historyOwner(_ scope: String) -> (scope: String, legacyPrefix: String) {
+    let parts = scope.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false)
+    guard parts.count >= 2, parts[0] == "computer", let computer = UUID(uuidString: String(parts[1])) else { return (scope, "") }
+    let stable = "computer|" + computer.uuidString.lowercased()
+    return (stable, stable + "|")
+  }
+  private func historyOwnerPredicate(at index: Int) -> String {
+    "(owner=?\(index) OR (?\(index + 1)<>'' AND substr(owner,1,length(?\(index + 1)))=?\(index + 1)))"
+  }
+  private func bindHistoryOwner(_ scope: String, to row: OpaquePointer, at index: Int32) {
+    let owner = historyOwner(scope)
+    sqlite3_bind_text(row, index, owner.scope, -1, transient)
+    sqlite3_bind_text(row, index + 1, owner.legacyPrefix, -1, transient)
+  }
   private func wasDeleted(_ id: String, scope: String) throws -> Bool {
-    let row = try statement("SELECT 1 FROM history_deleted WHERE owner=? AND operation_id=?"); defer { sqlite3_finalize(row) }
-    sqlite3_bind_text(row, 1, scope, -1, transient); sqlite3_bind_text(row, 2, id, -1, transient)
+    let row = try statement("SELECT 1 FROM history_deleted WHERE \(historyOwnerPredicate(at: 1)) AND operation_id=?3"); defer { sqlite3_finalize(row) }
+    bindHistoryOwner(scope, to: row, at: 1); sqlite3_bind_text(row, 3, id, -1, transient)
     switch sqlite3_step(row) { case SQLITE_ROW: return true; case SQLITE_DONE: return false; default: throw failure() }
   }
   func record(_ entry: HistoryEntry, scope: String? = nil) throws {
     guard !entry.id.isEmpty, !entry.transcript.isEmpty, !entry.text.isEmpty else { return }
     if scope != nil { try entry.validateForSync() }
     try transaction {
-      let owner = scope ?? ""
-      guard try !wasDeleted(entry.id, scope: owner) else { return }
-      try insertHistory(entry, scope: owner)
-      if scope != nil {
-        try change("INSERT INTO history_outbox(owner,operation_id,kind) VALUES(?,?,'upsert') ON CONFLICT(owner,operation_id) DO NOTHING", [owner, entry.id])
+      let owner = historyOwner(scope ?? "")
+      guard try !wasDeleted(entry.id, scope: owner.scope) else { return }
+      try insertHistory(entry, scope: owner.scope)
+      // Computer records have no cloud synchronization owner. In particular,
+      // a compatible old row must not create an outbox item without a payload.
+      if scope != nil, owner.legacyPrefix.isEmpty {
+        try change("INSERT INTO history_outbox(owner,operation_id,kind) VALUES(?,?,'upsert') ON CONFLICT(owner,operation_id) DO NOTHING", [owner.scope, entry.id])
       }
     }
   }
-  func history(before: String = "", limit: Int = 50, scope: String? = nil) throws -> HistoryPage {
+  func history(before: String = "", limit: Int = 50, scope: String? = nil, includeLocal: Bool = true) throws -> HistoryPage {
+    if !includeLocal, scope == nil { return HistoryPage(entries: [], nextCursor: nil) }
     let limit = max(1, min(50, limit))
     var boundary: HistoryCursor?
     if !before.isEmpty {
@@ -374,11 +394,12 @@ final class LocalLibrary {
         parsed.scope == (scope ?? ""), parsed.time.isFinite, parsed.sequence > 0 else { throw failure() }
       boundary = parsed
     }
-    let value = try statement("SELECT sequence,payload,owner FROM history WHERE (owner='' OR owner=?) AND (?=1 OR created_at<? OR (created_at=? AND sequence<?)) ORDER BY created_at DESC,sequence DESC LIMIT ?")
+    let value = try statement("SELECT sequence,payload,owner FROM history WHERE ((owner='' AND ?1=1) OR \(historyOwnerPredicate(at: 2))) AND (?4=1 OR created_at<?5 OR (created_at=?6 AND sequence<?7)) ORDER BY created_at DESC,sequence DESC LIMIT ?8")
     defer { sqlite3_finalize(value) }
-    sqlite3_bind_text(value, 1, scope ?? "", -1, transient); sqlite3_bind_int(value, 2, boundary == nil ? 1 : 0)
-    sqlite3_bind_double(value, 3, boundary?.time ?? 0); sqlite3_bind_double(value, 4, boundary?.time ?? 0)
-    sqlite3_bind_int64(value, 5, boundary?.sequence ?? 0); sqlite3_bind_int(value, 6, Int32(limit + 1))
+    sqlite3_bind_int(value, 1, includeLocal ? 1 : 0); bindHistoryOwner(scope ?? "", to: value, at: 2)
+    sqlite3_bind_int(value, 4, boundary == nil ? 1 : 0)
+    sqlite3_bind_double(value, 5, boundary?.time ?? 0); sqlite3_bind_double(value, 6, boundary?.time ?? 0)
+    sqlite3_bind_int64(value, 7, boundary?.sequence ?? 0); sqlite3_bind_int(value, 8, Int32(limit + 1))
     var entries: [HistoryEntry] = []; var cursor: String?; var localEntries: [Bool] = []
     while true {
       switch sqlite3_step(value) {
@@ -395,25 +416,29 @@ final class LocalLibrary {
     }
   }
   private func tombstone(_ id: String, scope: String) throws {
-    try change("INSERT INTO history_deleted(owner,operation_id) VALUES(?,?) ON CONFLICT DO NOTHING", [scope, id])
-    try change("DELETE FROM history WHERE owner=? AND operation_id=?", [scope, id])
+    let owner = historyOwner(scope)
+    try change("INSERT INTO history_deleted(owner,operation_id) VALUES(?,?) ON CONFLICT DO NOTHING", [owner.scope, id])
+    try change("DELETE FROM history WHERE \(historyOwnerPredicate(at: 1)) AND operation_id=?3", [owner.scope, owner.legacyPrefix, id])
   }
   func deleteHistory(_ id: String, scope: String? = nil) throws {
     guard scope == nil || HistoryEntry.validID(id) else { throw failure() }
     try transaction {
-      let owner = scope ?? ""
-      try tombstone(id, scope: owner)
-      if scope != nil { try change("INSERT INTO history_outbox(owner,operation_id,kind) VALUES(?,?,'delete') ON CONFLICT(owner,operation_id) DO UPDATE SET kind='delete'", [owner, id]) }
+      let owner = historyOwner(scope ?? "")
+      try tombstone(id, scope: owner.scope)
+      if scope != nil, owner.legacyPrefix.isEmpty { try change("INSERT INTO history_outbox(owner,operation_id,kind) VALUES(?,?,'delete') ON CONFLICT(owner,operation_id) DO UPDATE SET kind='delete'", [owner.scope, id]) }
     }
   }
-  func clearHistory(scope: String? = nil) throws {
+  func clearHistory(scope: String? = nil, includeLocal: Bool = true) throws {
     try transaction {
-      try change("DELETE FROM history WHERE owner=''", [])
+      if includeLocal { try change("DELETE FROM history WHERE owner=''", []) }
       guard let scope else { return }
-      try change("INSERT INTO history_deleted(owner,operation_id) SELECT owner,operation_id FROM history WHERE owner=? ON CONFLICT DO NOTHING", [scope])
-      try change("DELETE FROM history WHERE owner=?", [scope])
-      try change("DELETE FROM history_outbox WHERE owner=?", [scope])
-      try change("INSERT INTO history_sync(owner,clear_id) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET clear_id=excluded.clear_id", [scope, UUID().uuidString])
+      let owner = historyOwner(scope), owners = [owner.scope, owner.legacyPrefix]
+      try change("INSERT INTO history_deleted(owner,operation_id) SELECT owner,operation_id FROM history WHERE \(historyOwnerPredicate(at: 1)) ON CONFLICT DO NOTHING", owners)
+      try change("DELETE FROM history WHERE \(historyOwnerPredicate(at: 1))", owners)
+      try change("DELETE FROM history_outbox WHERE \(historyOwnerPredicate(at: 1))", owners)
+      if owner.legacyPrefix.isEmpty {
+        try change("INSERT INTO history_sync(owner,clear_id) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET clear_id=excluded.clear_id", [owner.scope, UUID().uuidString])
+      }
     }
   }
   func deleteCloudHistory(_ scope: String) throws {
