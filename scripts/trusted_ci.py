@@ -1431,6 +1431,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer lifecycle failed' }
                 "cloud.settings",
             ],
             cwd=root / "server",
+            extra_env={"PYTHONPATH": str(root)},
         )
         # Candidate settings cannot substitute their own test runner/selector.
         self.command(
@@ -1440,6 +1441,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer lifecycle failed' }
                 "import os; os.environ['DJANGO_SETTINGS_MODULE']='cloud.settings'; import django; django.setup(); from django.test.runner import DiscoverRunner; raise SystemExit(bool(DiscoverRunner(interactive=False).run_tests(['cloud.service.tests'])))",
             ],
             cwd=root / "server",
+            extra_env={"PYTHONPATH": str(root)},
         )
         self.command([self.python, "mobile/scripts/sync-prompts.py", "--check"])
         self.command(
