@@ -1453,7 +1453,7 @@ test("draft prompt survives navigation; invalid retention cannot save", async ({
   await page.getByRole("switch", { name: "Salvar histórico" }).click();
   await page.getByRole("spinbutton", { name: "Retenção do histórico" }).fill("-1");
   await page.getByRole("button", { name: "Salvar alterações" }).click();
-  await expect(page.getByRole("alert")).toContainText("3650");
+  await expect(page.locator(".settings-error[role=alert]")).toContainText("3650");
   await page.getByRole("spinbutton", { name: "Retenção do histórico" }).fill("31");
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
