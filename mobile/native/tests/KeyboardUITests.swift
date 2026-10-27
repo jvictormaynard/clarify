@@ -36,6 +36,9 @@ private final class SelectionKeyboard: KeyboardViewController {
   var fullAccess = true
   override var textDocumentProxy: UITextDocumentProxy { field }
   override var hasFullAccess: Bool { fullAccess }
+  // This ordinary child-controller fixture has no system input-mode host.
+  // The real InputField and opening diagnostic retain UIKit's host query.
+  override var needsInputModeSwitchKey: Bool { false }
 }
 
 @MainActor
@@ -250,10 +253,39 @@ final class KeyboardUITests: XCTestCase {
   @MainActor
   private func beginProcessing(in keyboard: SelectionKeyboard, store: SharedState) throws -> String {
     var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970
-    try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+    try store.write(state, to: "state.json")
+    let beforeRefresh = Date().timeIntervalSince1970
+    keyboard.refreshFromStore()
+    let afterRefresh = Date().timeIntervalSince1970
     let mic = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
+    let beforeActivation = Date().timeIntervalSince1970
+    let microphoneEnabled = mic.isEnabled; let microphoneHidden = mic.isHidden
     XCTAssertTrue(mic.accessibilityActivate())
-    let start = try XCTUnwrap(store.commands().last?.1)
+    let commands = store.commands()
+    if commands.isEmpty {
+      // Keep metadata only. A true accessibility return does not prove that
+      // the controller accepted Start or that its command file was readable.
+      var report = [
+        "heartbeatAgeBeforeRefresh=\(beforeRefresh - state.heartbeat)",
+        "heartbeatAgeAfterRefresh=\(afterRefresh - state.heartbeat)",
+        "heartbeatAgeBeforeActivation=\(beforeActivation - state.heartbeat)",
+        "microphoneEnabled=\(microphoneEnabled), microphoneHidden=\(microphoneHidden)",
+        "sessionActive=\(state.sessionActive), configured=\(state.configured), phase=\(state.phase.rawValue)"
+      ]
+      do {
+        _ = try JSONDecoder().decode(DictationSnapshot.self, from: Data(contentsOf: store.root.appendingPathComponent("state.json")))
+        let files = try FileManager.default.contentsOfDirectory(at: store.root, includingPropertiesForKeys: nil)
+          .filter { $0.lastPathComponent.hasPrefix("command-") && $0.pathExtension == "json" }
+        report.append("commandFiles=\(files.count)")
+        for file in files.prefix(8) {
+          do { _ = try JSONDecoder().decode(DictationCommand.self, from: Data(contentsOf: file)); report.append("commandDecode=ok") }
+          catch { report.append("commandDecode=\(String(reflecting: type(of: error)))") }
+        }
+      } catch { report.append("fixtureRead=\(String(reflecting: type(of: error)))") }
+      let attachment = XCTAttachment(string: report.joined(separator: "\n"))
+      attachment.name = "dictation-start-fixture"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+    let start = try XCTUnwrap(commands.last?.1, "Start command missing; see dictation-start-fixture attachment")
     XCTAssertEqual(start.action, "start")
     state.operationID = start.operationID; state.phase = .recording; state.text = nil
     state.heartbeat = Date().timeIntervalSince1970
