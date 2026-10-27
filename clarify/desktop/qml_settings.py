@@ -1759,7 +1759,7 @@ class QmlSettingsController(QObject):
             self._library_sync_expected_identity = None
             self._library_sync_timer.stop()
             return
-        # The processing guard can acquire workflow/meeting locks. Consult it
+        # The processing guard can acquire workflow locks. Consult it
         # before reserving the account, never while holding its lock.
         blocked = self._account_busy or not self._account_can_change()
         if not blocked:

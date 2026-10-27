@@ -20,7 +20,6 @@ from dictionary_snippets import (
 )
 from history_store import HistoryRecord
 from local_asr_product import LocalASRProductState
-from meeting_workflow import MeetingWorkflow
 from microphone_controls import MicrophoneInventory
 from secret_store import PlaintextFileSecretStore
 from test_pyside6_qml_settings import _repositories
@@ -159,19 +158,19 @@ class HistoryCorrectionSettingsTests(unittest.TestCase):
         self.assertFalse(self.timer.active)
         self.assertFalse(self.guest.path.exists())
 
-    def test_undo_releases_account_guard_before_meeting_processing_preflight(self):
+    def test_undo_releases_account_guard_before_processing_preflight(self):
         self.signed_in()
         result = self.call("confirm", {"token": self.preview()["token"]})
-        meeting = MeetingWorkflow(Mock(), Mock(), source_factory=Mock())
-        meeting_locked = threading.Event()
+        processing_lock = threading.RLock()
+        processing_locked = threading.Event()
         preflight_entered = threading.Event()
         publication_acquired = []
 
         def publish():
-            # Match the meeting publication order, with a bounded probe so the
-            # old UI/account -> meeting cycle fails without hanging the suite.
-            with meeting._lock:
-                meeting_locked.set()
+            # A processing callback can hold its own lock before taking the
+            # account guard. The bounded probe detects an inverse lock order.
+            with processing_lock:
+                processing_locked.set()
                 if not preflight_entered.wait(3):
                     return
                 acquired = self.account._lock.acquire(timeout=1)
@@ -181,12 +180,12 @@ class HistoryCorrectionSettingsTests(unittest.TestCase):
 
         def can_change():
             preflight_entered.set()
-            meeting.active  # The real getter acquires the meeting lock.
-            return False  # A running meeting defers library synchronization.
+            with processing_lock:
+                return False  # Active processing defers library synchronization.
 
         worker = threading.Thread(target=publish, daemon=True)
         worker.start()
-        self.assertTrue(meeting_locked.wait(3))
+        self.assertTrue(processing_locked.wait(3))
         self.settings._account_can_change = can_change
         try:
             undone = self.call("undo", {"token": result["receipt"]})
@@ -198,7 +197,7 @@ class HistoryCorrectionSettingsTests(unittest.TestCase):
         self.assertEqual(
             publication_acquired,
             [True],
-            "Meeting publication must acquire the account guard during preflight",
+            "Publication must acquire the account guard during preflight",
         )
         self.request.assert_not_called()
 
@@ -217,21 +216,21 @@ class HistoryCorrectionSettingsTests(unittest.TestCase):
         begin.assert_not_called()
         self.request.assert_not_called()
 
-    def test_normal_save_releases_account_guard_before_meeting_preflight(self):
+    def test_normal_save_releases_account_guard_before_processing_preflight(self):
         self.signed_in()
         context = self.settings.snippetContext
         self.settings.setDictionaryEntries([DictionaryEntry("Saved term").to_mapping()])
         self.settings.setSnippets(
             [Snippet("saved", "Saved text").to_mapping()], context
         )
-        meeting = MeetingWorkflow(Mock(), Mock(), source_factory=Mock())
-        meeting_locked = threading.Event()
+        processing_lock = threading.RLock()
+        processing_locked = threading.Event()
         preflight_entered = threading.Event()
         publication_acquired = []
 
         def publish():
-            with meeting._lock:
-                meeting_locked.set()
+            with processing_lock:
+                processing_locked.set()
                 if not preflight_entered.wait(3):
                     return
                 acquired = self.account._lock.acquire(timeout=1)
@@ -241,12 +240,12 @@ class HistoryCorrectionSettingsTests(unittest.TestCase):
 
         def can_change():
             preflight_entered.set()
-            meeting.active
-            return False
+            with processing_lock:
+                return False
 
         worker = threading.Thread(target=publish, daemon=True)
         worker.start()
-        self.assertTrue(meeting_locked.wait(3))
+        self.assertTrue(processing_locked.wait(3))
         self.settings._account_can_change = can_change
         try:
             saved = self.settings.save(context)
@@ -287,15 +286,15 @@ class HistoryCorrectionSettingsTests(unittest.TestCase):
         updates = QmlUpdateController(supported=False, automatic=True)
         self.addCleanup(updates.shutdown)
         updates._phase = "downloading"  # No transport or download worker is started.
-        meeting = MeetingWorkflow(Mock(), Mock(), source_factory=Mock())
-        meeting_locked = threading.Event()
+        processing_lock = threading.RLock()
+        processing_locked = threading.Event()
         notification_entered = threading.Event()
         publication_acquired = []
         config = self.settings.repositories.config
 
         def publish():
-            with meeting._lock:
-                meeting_locked.set()
+            with processing_lock:
+                processing_locked.set()
                 if not notification_entered.wait(3):
                     return
                 acquired = self.account._lock.acquire(timeout=1)
@@ -303,25 +302,26 @@ class HistoryCorrectionSettingsTests(unittest.TestCase):
                 if acquired:
                     self.account._lock.release()
 
-        def refresh_meeting():
+        def refresh_processing():
             notification_entered.set()
-            meeting.active
+            with processing_lock:
+                pass
 
         def sync_updates():
             updates.setAutomatic(config.load().automatic_updates)
 
-        updates.changed.connect(refresh_meeting)
+        updates.changed.connect(refresh_processing)
         self.settings.saved.connect(sync_updates)
         worker = threading.Thread(target=publish, daemon=True)
         worker.start()
-        self.assertTrue(meeting_locked.wait(3))
+        self.assertTrue(processing_locked.wait(3))
         try:
             saved = self.settings.savePreference("setAutomaticUpdates", [False])
         finally:
             notification_entered.set()
             worker.join(3)
             self.settings.saved.disconnect(sync_updates)
-            updates.changed.disconnect(refresh_meeting)
+            updates.changed.disconnect(refresh_processing)
         self.assertTrue(saved)
         self.assertFalse(worker.is_alive())
         self.assertTrue(updates._cancel.is_set())
