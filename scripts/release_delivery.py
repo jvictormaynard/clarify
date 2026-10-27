@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -41,6 +42,13 @@ COMPONENT_CHECKS = {
     },
     "mobile": {"Mobile checks", "iOS validation / Native tests and unsigned build"},
 }
+COMMUNITY_NOTICE = """This is an unsigned community portable release.
+
+Windows SmartScreen may show a warning because the executable does not have a paid Authenticode publisher signature. Verify Clarify.exe with Clarify.exe.sha256 before launching it.
+
+This portable release includes Ed25519-authenticated update metadata. Starting with v0.5.0, Clarify checks for newer stable releases and can install them automatically when enabled in Settings. Updates wait until work is complete and Settings are closed, then restart the app. If startup fails, the previous executable is restored.
+
+The Windows executable is still unsigned. The sponsored Authenticode MSI and its separate signed-CAB update channel remain disabled."""
 
 
 class ReleaseError(ValueError):
@@ -70,6 +78,67 @@ def version(value):
         all(part <= 65535 for part in parts), "Version exceeds Windows version limits"
     )
     return parts
+
+
+def changelog_section(changelog, target):
+    """Return one dated release section without adjacent versions or link indexes."""
+    version(target)
+    text = changelog.replace("\r\n", "\n")
+    headings = list(
+        re.finditer(r"^## \[" + re.escape(target) + r"\][^\n]*$", text, re.MULTILINE)
+    )
+    require(len(headings) == 1, "Changelog must contain exactly one release section")
+    heading = headings[0]
+    require(
+        re.fullmatch(
+            r"## \[" + re.escape(target) + r"\] - \d{4}-\d{2}-\d{2}",
+            heading.group(),
+        ),
+        "Changelog release section must have a date",
+    )
+    remainder = text[heading.end() :]
+    boundary = re.search(r"^## |^\[[^\]\n]+\]:", remainder, re.MULTILINE)
+    section = remainder[: boundary.start() if boundary else len(remainder)].strip()
+    visible = re.sub(r"<!--.*?-->", "", section, flags=re.DOTALL)
+    require(
+        any(
+            line.strip().strip("-*+ ")
+            for line in visible.splitlines()
+            if not line.lstrip().startswith("#")
+        ),
+        "Changelog release section must describe changes",
+    )
+    return section
+
+
+def community_release_notes(changelog, tag):
+    require(isinstance(tag, str) and tag.startswith("v"), "Use a stable vX.Y.Z tag")
+    section = changelog_section(changelog, tag[1:])
+    return (
+        section
+        + f"\n\n[Full changelog](https://github.com/{REPOSITORY}/blob/{tag}/CHANGELOG.md)"
+        + "\n\n### Distribution\n\nThe downloads on this page are for Windows.\n\n"
+        + COMMUNITY_NOTICE
+        + "\n"
+    )
+
+
+def write_release_notes(tag, output):
+    require(isinstance(tag, str) and tag.startswith("v"), "Use a stable vX.Y.Z tag")
+    version(tag[1:])
+    require(output, "Release notes need an output file")
+    try:
+        changelog = subprocess.run(
+            ["git", "show", f"refs/tags/{tag}:CHANGELOG.md"],
+            check=True,
+            capture_output=True,
+            encoding="utf-8",
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ReleaseError("Cannot read CHANGELOG.md from the release tag") from error
+    Path(output).write_text(
+        community_release_notes(changelog, tag), encoding="utf-8", newline="\n"
+    )
 
 
 def sha(value):
@@ -768,14 +837,18 @@ def prepare(api, component, target, evidence, notes, now=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["prepare", "promote", "verify"])
+    parser.add_argument("command", choices=["prepare", "promote", "verify", "notes"])
     parser.add_argument("--component", choices=list(WORKFLOWS))
     parser.add_argument("--version")
     parser.add_argument("--build", default="")
     parser.add_argument("--source-sha")
     parser.add_argument("--tag")
+    parser.add_argument("--output")
     args = parser.parse_args()
     try:
+        if args.command == "notes":
+            write_release_notes(args.tag, args.output)
+            return 0
         require(
             os.environ.get("GITHUB_REPOSITORY") == REPOSITORY,
             "Use the canonical repository",
@@ -835,7 +908,7 @@ def main():
         if os.environ.get("GITHUB_OUTPUT"):
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                 output.write("result=" + result + "\n")
-    except (ReleaseError, KeyError, TypeError, ValueError) as error:
+    except (ReleaseError, KeyError, TypeError, ValueError, OSError) as error:
         # Source documents and HTTP bodies may contain credentials. Do not echo them.
         print(
             "Release gate failed. Check source, intent, CI, token permissions and evidence.",
