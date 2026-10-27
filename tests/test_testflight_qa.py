@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 import contextlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.message import Message
 from functools import lru_cache
 import hashlib
@@ -1908,6 +1908,7 @@ class DeviceArchiveGlueTests(unittest.TestCase):
             patch.object(qa, "ArchiveGitHub", return_value=self.api),
             patch.object(qa, "observe_archive_toolchain", return_value=self.toolchain),
             patch.object(qa, "archive_policy", return_value="MAIN policy") as policy,
+            patch.object(qa, "_proof_binding", return_value={"fixed": "tuple"}),
             patch.object(
                 qa.device_archive,
                 "sign_export",
@@ -1923,7 +1924,8 @@ class DeviceArchiveGlueTests(unittest.TestCase):
                 json.loads(
                     (self.root / "archive-proof/archive-receipt.json").read_bytes()
                 ),
-                receipt,
+                receipt
+                | {"qa_binding": {"fixed": "tuple"}, "native_export_observed": True},
             )
             export.reset_mock()
             policy.side_effect = ReleaseError("Wrong validation source/run/attempt")
@@ -2114,6 +2116,1104 @@ class DeviceExecutableDataTests(unittest.TestCase):
         for data in malformed:
             with self.subTest(length=len(data)), self.assertRaises(ReleaseError):
                 qa.inspect_unsigned_device_executable(data)
+
+
+class PublicationDeltaTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(
+            dir=Path(__file__).resolve().parent
+        )
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name).resolve()
+        self.api = Mock()
+        self.ctx = context() | dict(mode="upload")
+        workflow_bytes = b"MAIN workflow bytes"
+        self.policy = Mock(
+            context=dict(
+                source_sha=SOURCE,
+                source_tree="1" * 40,
+                base_sha=BASE,
+                base_tree="2" * 40,
+                trusted_sha=BASE,
+                version="0.12.0",
+                build="41",
+                tag="ios/pr-179/v0.12.0-build41",
+                producer=dict(run_id=80, run_attempt=1, job_key="archive"),
+                workflow=dict(
+                    id=99,
+                    path=QA_PATH,
+                    blob_sha=qa.device_archive.git_blob(workflow_bytes),
+                ),
+            )
+        )
+        self.inputs = dict(
+            source_sha=SOURCE,
+            base_sha=BASE,
+            trusted_sha=BASE,
+            validation_run_id=70,
+            validation_run_attempt=1,
+            producer_run_id=80,
+            producer_run_attempt=1,
+            archive_artifact_id=101,
+            proof_run_id=81,
+            proof_run_attempt=1,
+            proof_artifact_id=102,
+            inventory_run_id=82,
+            inventory_run_attempt=1,
+        )
+        self.api.control.return_value = workflow_bytes
+        self.steps = [
+            dict(name=name, number=n + 1, status="completed", conclusion="success")
+            for n, name in enumerate(qa.PROOF_STEPS)
+        ]
+        self.job = dict(
+            id=501,
+            run_id=81,
+            head_sha=BASE,
+            status="completed",
+            conclusion="success",
+            steps=self.steps,
+        )
+        self.run = dict(
+            id=81,
+            run_attempt=1,
+            head_sha=BASE,
+            workflow_id=99,
+            path=QA_PATH,
+            event="workflow_dispatch",
+            head_branch="main",
+            repository=dict(full_name=REPO),
+            status="completed",
+            conclusion="success",
+        )
+        self.api.run.return_value = self.run
+        self.api.pages.return_value = [self.job | dict(name=qa.ARCHIVE_SIGN_JOB_NAME)]
+        self.api.workflow_document.return_value = dict(
+            jobs=dict(
+                sign_export_proof=dict(
+                    name=qa.ARCHIVE_SIGN_JOB_NAME,
+                    steps=[
+                        dict(name=qa.PROOF_STEPS[-2], uses=qa.UPLOAD_ACTION, with_={}),
+                        dict(
+                            name=qa.PROOF_STEPS[-1],
+                            run="python -m scripts.testflight_qa proof-record",
+                        ),
+                    ],
+                )
+            )
+        )
+        uploader = self.api.workflow_document.return_value["jobs"]["sign_export_proof"][
+            "steps"
+        ][0]
+        uploader["with"] = dict(
+            overwrite=False,
+            name="clarify-ios-qa-export-proof-${{ github.run_id }}-${{ github.run_attempt }}",
+        )
+
+    def artifact(self, receipt, *, entries=None):
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, "w") as zipped:
+            for name, value in entries or [
+                ("archive-receipt.json", json.dumps(receipt).encode())
+            ]:
+                zipped.writestr(name, value)
+        raw = stream.getvalue()
+        digest = hashlib.sha256(raw).hexdigest()
+        log = qa.phase_artifact_record(
+            "proof", run_id=81, run_attempt=1, artifact_id=102, artifact_digest=digest
+        ).encode()
+        self.api.binary.side_effect = lambda path, **kw: (
+            log if path.endswith("/logs") else raw
+        )
+        self.api.artifact.return_value = dict(
+            id=102,
+            name="clarify-ios-qa-export-proof-81-1",
+            digest="sha256:" + digest,
+            expired=False,
+            size_in_bytes=len(raw),
+            workflow_run=dict(id=81, head_sha=BASE),
+        )
+        return log, raw
+
+    def test_proof_transport_checks_main_job_steps_record_api_zip_and_tuple(self):
+        receipt = dict(
+            qa_binding=qa._proof_binding(self.policy, self.inputs),
+            native_export_observed=True,
+            delivery_eligible=False,
+            workflowArtifactProvenanceVerified=False,
+            artifact=dict(id=101),
+        )
+        self.artifact(receipt)
+        self.assertEqual(
+            qa.require_export_proof(self.api, self.policy, self.inputs)["artifact_id"],
+            102,
+        )
+        for name, value in [
+            ("qa_binding", {}),
+            ("native_export_observed", False),
+            ("delivery_eligible", True),
+        ]:
+            with self.subTest(name=name):
+                self.artifact(receipt | {name: value})
+                with self.assertRaisesRegex(
+                    ReleaseError, "Native export proof differs"
+                ):
+                    qa.require_export_proof(self.api, self.policy, self.inputs)
+
+    def test_phase_transport_rejects_unknown_workflow_failed_duplicate_step_and_wrong_attempt(
+        self,
+    ):
+        self.artifact({})
+        for change in [
+            dict(head_sha=OLD),
+            dict(run_attempt=2),
+            dict(conclusion="failure"),
+        ]:
+            with self.subTest(change=change):
+                self.api.run.return_value = self.run | change
+                with self.assertRaises(ReleaseError):
+                    qa.consume_phase_receipt(self.api, self.policy, "proof", 81, 1, 102)
+        self.api.run.return_value = self.run
+        self.steps[1]["conclusion"] = "skipped"
+        with self.assertRaisesRegex(ReleaseError, "required step"):
+            qa.consume_phase_receipt(self.api, self.policy, "proof", 81, 1, 102)
+        self.steps[1]["conclusion"] = "success"
+        self.steps.append(self.steps[-1].copy())
+        with self.assertRaisesRegex(ReleaseError, "step order"):
+            qa.consume_phase_receipt(self.api, self.policy, "proof", 81, 1, 102)
+
+    def test_phase_records_reject_spoof_duplicates_oversize_and_outer_hash(self):
+        log, raw = self.artifact({})
+        for data in [
+            log + b"\n" + log,
+            b"echo " + log,
+            b"x" * (1024**2 + 1),
+            log.replace(b'"artifact_id":102', b'"artifact_id":true'),
+        ]:
+            with self.subTest(size=len(data)), self.assertRaises(ReleaseError):
+                qa.parse_phase_artifact_record(data, "proof", run_id=81, run_attempt=1)
+        self.api.binary.side_effect = lambda path, **kw: (
+            log if path.endswith("/logs") else raw + b"x"
+        )
+        with self.assertRaisesRegex(ReleaseError, "bytes differ"):
+            qa.consume_phase_receipt(self.api, self.policy, "proof", 81, 1, 102)
+        self.artifact({}, entries=[("../escape", b"{}")])
+        with self.assertRaisesRegex(ReleaseError, "artifact files"):
+            qa.consume_phase_receipt(self.api, self.policy, "proof", 81, 1, 102)
+
+    def test_publication_zip_preserves_the_workflow_common_ancestor(self):
+        job = self.job | dict(name=qa.PUBLICATION_JOB_NAME)
+        self.api.pages.return_value = [job]
+        values = {
+            "context.json": {"identity": "bound"},
+            "output/verification.json": {"verified": True},
+            "output/upload-receipt.json": {"status": "confirmed"},
+        }
+
+        def artifact(entries):
+            stream = io.BytesIO()
+            with zipfile.ZipFile(stream, "w") as zipped:
+                for name, value in entries.items():
+                    zipped.writestr(name, json.dumps(value).encode())
+            raw = stream.getvalue()
+            digest = hashlib.sha256(raw).hexdigest()
+            log = qa.phase_artifact_record(
+                "publication",
+                run_id=81,
+                run_attempt=1,
+                artifact_id=102,
+                artifact_digest=digest,
+            ).encode()
+            self.api.binary.side_effect = lambda path, **kw: (
+                log if path.endswith("/logs") else raw
+            )
+            self.api.artifact.return_value = dict(
+                id=102,
+                name="clarify-ios-qa-publication-81-1",
+                digest="sha256:" + digest,
+                expired=False,
+                size_in_bytes=len(raw),
+                workflow_run=dict(id=81, head_sha=BASE),
+            )
+
+        with patch.object(qa, "_phase_job", return_value=job):
+            artifact(values)
+            result = qa.consume_phase_receipt(
+                self.api, self.policy, "publication", 81, 1, 102
+            )
+            self.assertEqual(
+                result["files"],
+                {Path(name).name: value for name, value in values.items()},
+            )
+            for invalid in (
+                {Path(name).name: value for name, value in values.items()},
+                values | {"output/private.ipa": {"unexpected": True}},
+            ):
+                with self.subTest(names=list(invalid)):
+                    artifact(invalid)
+                    with self.assertRaisesRegex(ReleaseError, "artifact files"):
+                        qa.consume_phase_receipt(
+                            self.api, self.policy, "publication", 81, 1, 102
+                        )
+
+    def test_upload_gates_run_before_signing_and_altool_and_reject_consumed_identity(
+        self,
+    ):
+        # All external facts are isolated; the effect must remain unreachable on a gate failure.
+        with (
+            patch.object(qa, "ArchiveGitHub", return_value=self.api),
+            patch.object(qa, "archive_policy", return_value=self.policy),
+            patch.object(qa, "observe_archive_toolchain", return_value={}),
+            patch.dict(os.environ, dict(RUNNER_TEMP=str(self.root))),
+            patch.object(
+                qa, "_publication_gates", side_effect=ReleaseError("stale inventory")
+            ),
+            patch.object(qa.device_archive, "sign_export") as export,
+            patch.object(qa.device_archive, "upload_qa_context") as upload,
+        ):
+            for command in [
+                "publication-gate",
+                "publication-export",
+                "publication-upload",
+            ]:
+                with self.assertRaisesRegex(ReleaseError, "stale inventory"):
+                    qa.run_publication_command(command, self.inputs, self.ctx)
+            export.assert_not_called()
+            upload.assert_not_called()
+        with (
+            patch.object(qa, "require_export_proof"),
+            patch.object(qa, "check_ci"),
+            patch.object(
+                qa,
+                "reconcile_preview_history",
+                create=True,
+                return_value=dict(decision="availability-required"),
+            ),
+        ):
+            with self.assertRaisesRegex(ReleaseError, "already attempted"):
+                qa._publication_gates(self.api, self.policy, self.inputs, self.ctx)
+
+    def test_publication_runtime_requires_separate_proof_and_fresh_inventory_and_no_extra_inputs(
+        self,
+    ):
+        event = self.root / "event.json"
+        candidate = metadata()
+        candidate.pop("reservation")
+        values = {k: str(v) for k, v in self.inputs.items()} | dict(
+            mode="upload", candidate=json.dumps(candidate)
+        )
+        with patch.dict(os.environ, dict(GITHUB_EVENT_PATH=str(event))):
+            event.write_text(json.dumps(dict(inputs=values)))
+            parsed = qa._runtime_archive_inputs(self.ctx, "publication-gate")
+            self.assertEqual(parsed["proof_run_id"], 81)
+            for delta in [
+                dict(inventory_run_id=""),
+                dict(proof_run_attempt="101"),
+                dict(publication_run_id="91"),
+                dict(extra="code"),
+            ]:
+                event.write_text(json.dumps(dict(inputs=values | delta)))
+                with self.subTest(delta=delta), self.assertRaises(ReleaseError):
+                    qa._runtime_archive_inputs(self.ctx, "publication-gate")
+
+    def test_receipt_requires_coherent_verification_identity_and_api_upload_outcome(
+        self,
+    ):
+        value = self.policy.context | dict(
+            run_id=90,
+            run_attempt=1,
+            artifact=dict(id=101, run_id=80, run_attempt=1),
+            ipa=dict(sha256="d" * 64, bytes=123),
+        )
+        value.pop("producer")
+        original = dict(
+            schema=1,
+            status="uncertain",
+            qa=value,
+            delivery_eligible=False,
+            workflowArtifactProvenanceVerified=False,
+        )
+        verification = dict(
+            qa=value,
+            sha256="d" * 64,
+            bytes=123,
+            artifactDigestVerified=True,
+            ipaDigestVerified=True,
+            bundleDigestsVerified=True,
+            workflowArtifactProvenanceVerified=False,
+        )
+        files = {
+            "context.json": value,
+            "verification.json": verification,
+            "upload-receipt.json": original,
+        }
+        result = dict(
+            files=files,
+            artifact={"artifact_id": 105},
+            job=dict(steps=[dict(name=qa.PUBLICATION_STEPS[2], conclusion="failure")]),
+        )
+        with (
+            patch.object(qa, "consume_phase_receipt", return_value=result),
+            patch.object(qa.device_archive, "_qa_verifier", return_value=Mock()),
+        ):
+            self.assertEqual(
+                qa.publication_receipt(self.api, self.policy, 90, 1)["state"],
+                "uncertain",
+            )
+            for delta in [
+                dict(status="confirmed"),
+                dict(qa=value | dict(source_sha=OLD)),
+                dict(delivery_eligible=True),
+                dict(status="retry"),
+            ]:
+                files["upload-receipt.json"] = original | delta
+                with self.subTest(delta=delta), self.assertRaises(ReleaseError):
+                    qa.publication_receipt(self.api, self.policy, 90, 1)
+            files["upload-receipt.json"] = original
+            files["verification.json"] = verification | dict(
+                bundleDigestsVerified=False
+            )
+            with self.assertRaisesRegex(ReleaseError, "verification differs"):
+                qa.publication_receipt(self.api, self.policy, 90, 1)
+
+    def test_upload_effect_follows_the_immediate_gate_and_uses_only_staged_context(
+        self,
+    ):
+        order = []
+        prepared = {"context": "staged"}
+        with (
+            patch.object(qa, "ArchiveGitHub", return_value=self.api),
+            patch.object(qa, "archive_policy", return_value=self.policy),
+            patch.object(qa, "observe_archive_toolchain", return_value={}),
+            patch.dict(os.environ, dict(RUNNER_TEMP=str(self.root))),
+            patch.object(
+                qa, "_publication_gates", side_effect=lambda *a: order.append("gate")
+            ),
+            patch.object(qa, "_prepared_publication", return_value=prepared),
+            patch.object(qa.device_archive, "sign_export") as export,
+            patch.object(
+                qa.device_archive,
+                "upload_qa_context",
+                side_effect=lambda *a, **k: order.append("upload"),
+            ) as upload,
+        ):
+            qa.run_publication_command("publication-upload", self.inputs, self.ctx)
+            self.assertEqual(order, ["gate", "upload"])
+            self.assertIs(upload.call_args.args[0], prepared)
+            export.assert_not_called()
+        with (
+            patch.object(qa, "require_export_proof"),
+            patch.object(qa, "check_ci"),
+            patch.object(
+                qa,
+                "reconcile_preview_history",
+                return_value=dict(
+                    decision="publish",
+                    inventory=dict(finished_at="2000-01-01T00:00:00Z"),
+                ),
+            ),
+            patch.object(qa, "_validation_current_source") as current,
+        ):
+            with self.assertRaisesRegex(ReleaseError, "expired while authenticating"):
+                qa._publication_gates(self.api, self.policy, self.inputs, self.ctx)
+            current.assert_not_called()
+
+    def test_availability_never_invokes_signing_or_upload(self):
+        qa_context = self.policy.context | dict(
+            artifact=dict(id=101), run_id=90, run_attempt=1
+        )
+        # Preserve the real dispatch branch and effect arguments, replace only transport/helper work.
+        trusted = self.root / "trusted"
+        (trusted / "mobile/scripts").mkdir(parents=True)
+        helper = trusted / "mobile/scripts/publish-testflight.cjs"
+        helper.write_bytes(b"MAIN helper")
+        self.policy.context["controls"] = {
+            "mobile/scripts/publish-testflight.cjs": qa.device_archive.git_blob(
+                helper.read_bytes()
+            )
+        }
+        inputs = self.inputs | dict(
+            publication_run_id=90,
+            publication_run_attempt=1,
+            publication_artifact_id=105,
+        )
+        with (
+            patch.object(qa, "ROOT", trusted),
+            patch.object(qa, "ArchiveGitHub", return_value=self.api),
+            patch.object(qa, "archive_policy", return_value=self.policy),
+            patch.object(qa, "observe_archive_toolchain", return_value={}),
+            patch.object(qa, "require_export_proof"),
+            patch.object(
+                qa,
+                "publication_receipt",
+                return_value=dict(qa=qa_context, state="uncertain"),
+            ),
+            patch.object(qa.shutil, "which", return_value="fixed-node"),
+            patch.object(qa.subprocess, "run", return_value=Mock(returncode=0)) as run,
+            patch.dict(os.environ, dict(RUNNER_TEMP=str(self.root))),
+            patch.object(qa.device_archive, "sign_export") as export,
+            patch.object(qa.device_archive, "upload_qa_context") as upload,
+        ):
+            qa.run_publication_command("availability", inputs, self.ctx)
+            export.assert_not_called()
+            upload.assert_not_called()
+            args = run.call_args.args[0]
+            self.assertEqual(args[:3], ["fixed-node", str(helper), "--qa-context"])
+            self.assertEqual(
+                json.loads((self.root / "clarify-ios-qa/context.json").read_text())[
+                    "run_id"
+                ],
+                self.ctx["run_id"],
+            )
+
+
+class PreviewHistoryReconciliationTests(unittest.TestCase):
+    """Exercise the GET-only gate with authenticated synthetic artifact bytes."""
+
+    def setUp(self):
+        a = qa.device_archive
+        self.now = datetime(2026, 10, 27, 20, 0, tzinfo=timezone.utc)
+        self.fixed = deepcopy(qa.PREVIEW_HISTORY_BASELINE)
+        self.fixed["retained_runs"] = 3
+        self.patch = patch.object(qa, "PREVIEW_HISTORY_BASELINE", self.fixed)
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+        self.controls = {
+            QA_PATH: b"name: MAIN publication\n",
+            a.MODULE: b"MAIN archive",
+            a.SIGNING_HELPER: b"MAIN signer",
+        }
+        self.controls.update(
+            {
+                p: b"inert MAIN control"
+                for p in qa.PREVIEW_UNSIGNED_QA_CONTROLS
+                if p not in self.controls
+            }
+        )
+        q = dict(
+            schema=1,
+            kind="clarify-ios-qa-unsigned-archive",
+            trust_model=qa.VALIDATION_TRUST_MODEL,
+            repository=REPO,
+            pr=179,
+            source_sha=SOURCE,
+            source_tree="1" * 40,
+            base_sha=BASE,
+            base_tree="2" * 40,
+            trusted_sha=BASE,
+            app_id=qa.APP_ID,
+            bundle_id=qa.BUNDLE,
+            version="0.12.0",
+            build="41",
+            tag="ios/pr-179/v0.12.0-build41",
+            relay_host=None,
+            workflow=dict(
+                id=99, path=QA_PATH, blob_sha=a.git_blob(self.controls[QA_PATH])
+            ),
+            producer=dict(run_id=80, run_attempt=1, job_key="archive"),
+            controls={p: a.git_blob(data) for p, data in self.controls.items()},
+            recipe=dict(
+                id="device-release-v1",
+                configuration="Release",
+                sdk="iphoneos",
+                destination="generic/platform=iOS",
+                architectures=["arm64"],
+                code_signing_allowed=False,
+                xcode_build="26F123",
+                sdk_version="26.6",
+            ),
+            entitlements_policy=deepcopy(a.ENTITLEMENTS_POLICY),
+        )
+        self.policy = a.ArchivePolicy(
+            q,
+            "https://example.invalid",
+            "a" * 64,
+            "archive",
+            ("upload",),
+            "final",
+            ("record",),
+            "upload",
+            "record",
+            qa.UPLOAD_ACTION,
+        )
+        self.ctx = context() | dict(mode="publish-internal")
+        self.fresh_id = 40570000000
+        self.current = dict(
+            id=90,
+            run_attempt=1,
+            path=QA_PATH,
+            head_sha=BASE,
+            repository=dict(full_name=REPO),
+            status="in_progress",
+            conclusion=None,
+            created_at="2026-10-27T19:59:00Z",
+            updated_at="2026-10-27T19:59:59Z",
+        )
+        self.runs = [self.current]
+        self.responses, self.binaries, self.reports = {}, {}, {}
+        self.job = dict(
+            id=999,
+            run_id=90,
+            head_sha=BASE,
+            name=qa.PREVIEW_PUBLICATION_JOB,
+            status="in_progress",
+            conclusion=None,
+            steps=[
+                dict(name=n, status="pending", conclusion=None)
+                for n in qa.PREVIEW_PUBLICATION_STEPS
+            ],
+        )
+        self.responses["/actions/runs/90/attempts/1/jobs"] = ("jobs", [self.job])
+        for run_id, time in (
+            (self.fixed["run_id"], self.fixed["finished_at"]),
+            (self.fresh_id, "2026-10-27T19:59:00Z"),
+        ):
+            self.make_inventory(run_id, time)
+        self.api = Mock(spec=qa.ArchiveGitHub)
+        self.api.request.side_effect = self.request
+        self.api.file.side_effect = self.file
+        self.api.control.side_effect = lambda revision, path: self.controls[path]
+        self.api.binary.side_effect = lambda path, **kw: self.binaries[path]
+        self.api.workflow_document.return_value = dict(name="synthetic MAIN workflow")
+        self.reader = Mock()
+
+    def make_inventory(self, run_id, time):
+        branch = "diagnostics/apple-next-build-check-20261026"
+        run = dict(
+            id=run_id,
+            run_attempt=1,
+            workflow_id=self.fixed["workflow_id"],
+            path=STABLE,
+            head_sha=self.fixed["source_sha"],
+            head_branch=branch,
+            event="workflow_dispatch",
+            status="completed",
+            conclusion="success",
+            repository=dict(full_name=REPO),
+            head_repository=dict(full_name=REPO),
+            created_at=time,
+            updated_at=time,
+        )
+        self.runs.append(run)
+        self.responses[f"/actions/runs/{run_id}/attempts/1"] = run
+        job = dict(
+            id=run_id + 1,
+            run_id=run_id,
+            head_sha=self.fixed["source_sha"],
+            name="apple_status",
+            status="completed",
+            conclusion="success",
+            steps=[
+                dict(
+                    name=n,
+                    status="completed",
+                    conclusion="success",
+                    started_at=time,
+                    completed_at=time,
+                )
+                for n in ("Set up job", *qa.PREVIEW_INVENTORY_STEPS, "Complete job")
+            ],
+        )
+        self.responses[f"/actions/runs/{run_id}/attempts/1/jobs"] = ("jobs", [job])
+        self.responses[f"/actions/workflows/{self.fixed['workflow_id']}"] = dict(
+            id=self.fixed["workflow_id"], path=STABLE
+        )
+        collection = dict(complete=True, pages=1, data=[], included=[], totals=[0])
+        self.reports[run_id] = dict(
+            app=qa.APP_ID,
+            method="GET",
+            source_sha=self.fixed["source_sha"],
+            source_ref="refs/heads/" + branch,
+            run_id=str(run_id),
+            errors=[],
+            apple_queries_complete=True,
+            started_at=time,
+            finished_at=time,
+            queries=[
+                dict(
+                    url="https://api.appstoreconnect.apple.com/v1/builds",
+                    method="GET",
+                    status=200,
+                    checked_at=time,
+                )
+            ]
+            * 5,
+            collections={
+                k: deepcopy(collection)
+                for k in (
+                    "builds",
+                    "uploads",
+                    "appStoreVersions",
+                    "reviewSubmissions",
+                    "groups",
+                )
+            },
+            appStoreVersionBuilds=[],
+        )
+        self.refresh_report(run_id)
+
+    def refresh_report(self, run_id, *, entries=None):
+        report = json.dumps(self.reports[run_id]).encode()
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name, data in entries or [("apple-reservation-report.json", report)]:
+                archive.writestr(name, data)
+        raw = stream.getvalue()
+        baseline = run_id == self.fixed["run_id"]
+        identifier = self.fixed["artifact_id"] if baseline else run_id + 100
+        self.binaries[f"/actions/artifacts/{identifier}/zip"] = raw
+        artifact = dict(
+            id=identifier,
+            name=f"apple-next-build-check-{run_id}",
+            expired=False,
+            size_in_bytes=len(raw),
+            digest="sha256:" + hashlib.sha256(raw).hexdigest(),
+            created_at=self.reports[run_id]["finished_at"],
+            workflow_run=dict(
+                id=run_id,
+                head_sha=self.fixed["source_sha"],
+                head_branch="diagnostics/apple-next-build-check-20261026",
+            ),
+        )
+        self.responses[f"/actions/runs/{run_id}/artifacts"] = ("artifacts", [artifact])
+        if baseline:
+            self.fixed.update(
+                workflow_sha256=hashlib.sha256(b"fixed GET-only control").hexdigest(),
+                artifact_sha256=hashlib.sha256(raw).hexdigest(),
+                report_sha256=hashlib.sha256(report).hexdigest(),
+            )
+
+    def file(self, path, source):
+        if path == STABLE and source == self.fixed["source_sha"]:
+            return "fixed GET-only control"
+        return self.controls[path].decode()
+
+    def request(self, method, path):
+        self.assertEqual(method, "GET")
+        base, _, query = path.partition("?")
+        value = (
+            ("workflow_runs", self.runs)
+            if base == "/actions/runs"
+            else self.responses[base]
+        )
+        if isinstance(value, tuple):
+            key, items = value
+            page = int(query.split("page=")[-1])
+            return dict(
+                total_count=len(items), **{key: items[(page - 1) * 100 : page * 100]}
+            )
+        return value
+
+    def reconcile(self):
+        return qa.reconcile_preview_history(
+            self.api,
+            self.policy,
+            self.ctx,
+            inventory_run_id=self.fresh_id,
+            inventory_run_attempt=1,
+            now=self.now,
+            publication_receipt_reader=self.reader,
+        )
+
+    def historical_upload(self, conclusion="success"):
+        run = self.current | dict(id=91, status="completed", conclusion="success")
+        self.runs.append(run)
+        job = self.job | dict(
+            id=1000,
+            run_id=91,
+            status="completed",
+            conclusion="success",
+            steps=[
+                dict(
+                    name=n,
+                    status="completed",
+                    conclusion=(
+                        conclusion
+                        if n == qa.PREVIEW_PUBLICATION_STEPS[2]
+                        else "success"
+                    ),
+                )
+                for n in qa.PREVIEW_PUBLICATION_STEPS
+            ],
+        )
+        self.responses["/actions/runs/91/attempts/1/jobs"] = ("jobs", [job])
+        original = {
+            k: deepcopy(self.policy.context[k])
+            for k in (
+                "schema",
+                "repository",
+                "pr",
+                "source_sha",
+                "source_tree",
+                "base_sha",
+                "base_tree",
+                "trusted_sha",
+                "workflow",
+                "version",
+                "build",
+                "tag",
+            )
+        }
+        original.update(
+            source_sha=OLD,
+            source_tree="4" * 40,
+            run_id=91,
+            run_attempt=1,
+            artifact=dict(
+                id=101,
+                name="clarify-ios-qa-unsigned-" + OLD,
+                run_id=80,
+                run_attempt=1,
+                sha256="d" * 64,
+                bytes=123,
+            ),
+            ipa=dict(sha256="e" * 64, bytes=456),
+            bundles=[],
+        )
+        self.reader.return_value = dict(
+            qa=original,
+            state="confirmed",
+            receipt_artifact=dict(
+                artifact_id=77,
+                artifact_name="publication-receipt",
+                artifact_digest="sha256:" + "c" * 64,
+                run_id=91,
+                run_attempt=1,
+            ),
+        )
+
+    def test_managed_dependabot_origin_is_api_bound_and_not_a_bot_name_exception(self):
+        actor = dict(id=49699333, login="dependabot[bot]", type="Bot")
+        repo = dict(id=1135801455, full_name=REPO)
+        run = dict(
+            id=92,
+            path="dynamic/dependabot/dependabot-updates",
+            workflow_id=316003284,
+            event="dynamic",
+            actor=actor,
+            triggering_actor=actor,
+            repository=repo,
+            head_repository=repo,
+            head_branch="main",
+            head_sha=BASE,
+            run_attempt=1,
+            status="completed",
+            conclusion="failure",
+        )
+        job = dict(
+            id=1002,
+            name="Dependabot",
+            run_id=92,
+            head_sha=BASE,
+            run_attempt=1,
+            status="completed",
+            conclusion="failure",
+            runner_id=123,
+            runner_name="GitHub Actions 123",
+            runner_group_name="GitHub Actions",
+            labels=["ubuntu-latest"],
+            steps=[
+                dict(
+                    name=name,
+                    number=n,
+                    status="completed",
+                    conclusion="failure" if n == 3 else "success",
+                )
+                for name, n in [
+                    ("Set up job", 1),
+                    ("Create job directory", 2),
+                    ("Run Dependabot", 3),
+                    ("Post Run Dependabot", 6),
+                    ("Complete job", 7),
+                ]
+            ],
+        )
+        self.responses["/actions/runs/92/attempts/1"] = deepcopy(run)
+        self.responses["/actions/workflows/316003284"] = dict(
+            id=316003284, path=run["path"]
+        )
+        self.responses["/actions/runs/92/attempts/1/jobs"] = ("jobs", [job])
+        qa._preview_managed_dependabot(self.api, run)
+        for delta in [
+            dict(path=qa.CI_PATH, event="pull_request"),
+            dict(workflow_id=1),
+            dict(repository=repo | dict(id=1)),
+            dict(head_repository=repo | dict(full_name="other/repo")),
+            dict(actor=actor | dict(type="User")),
+            dict(triggering_actor=actor | dict(id=1)),
+            dict(run_attempt=2),
+            dict(status="in_progress", conclusion=None),
+            dict(head_branch="feature"),
+        ]:
+            with self.subTest(delta=delta), self.assertRaises(ReleaseError):
+                qa._preview_managed_dependabot(self.api, run | delta)
+        original = deepcopy(job["steps"])
+        for steps in [
+            original[:-1],
+            original + [original[-1]],
+            list(reversed(original)),
+        ]:
+            job["steps"] = steps
+            with self.assertRaisesRegex(ReleaseError, "step sequence"):
+                qa._preview_managed_dependabot(self.api, run)
+        job["steps"] = original
+        job["labels"] = ["self-hosted", "ubuntu-latest"]
+        with self.assertRaisesRegex(ReleaseError, "hosted job"):
+            qa._preview_managed_dependabot(self.api, run)
+        job["labels"] = ["ubuntu-latest"]
+        self.responses["/actions/workflows/316003284"]["path"] = "dynamic/another"
+        with self.assertRaisesRegex(ReleaseError, "workflow differs"):
+            qa._preview_managed_dependabot(self.api, run)
+
+    def test_reviewed_feature_ci_bytes_do_not_allow_unknown_or_transitive_changes(self):
+        self.controls[qa.CI_PATH] = b"MAIN CI"
+        candidate = b"reviewed feature CI"
+        self.api.file.side_effect = lambda path, source: (
+            candidate.decode() if path == qa.CI_PATH else self.file(path, source)
+        )
+        self.api.workflow_document.return_value = {
+            "jobs": {"job": {"uses": "./.github/workflows/ios-validation.yml"}}
+        }
+        self.controls[".github/workflows/ios-validation.yml"] = b"MAIN native"
+        with patch.object(
+            qa, "PREVIEW_FEATURE_CI_SHA256", hashlib.sha256(candidate).hexdigest()
+        ):
+            # The recursive document is empty after its first control.
+            self.api.workflow_document.side_effect = [
+                self.api.workflow_document.return_value,
+                {},
+            ]
+            qa._preview_history_graph(self.api, qa.CI_PATH, OLD, BASE, set())
+            self.api.workflow_document.side_effect = None
+            self.api.workflow_document.return_value = {}
+            self.api.file.side_effect = lambda path, source: "unknown CI"
+            with self.assertRaisesRegex(ReleaseError, "implementation"):
+                qa._preview_history_graph(self.api, qa.CI_PATH, OLD, BASE, set())
+            self.api.file.side_effect = lambda path, source: (
+                candidate.decode() if path == qa.CI_PATH else "changed native"
+            )
+            self.api.workflow_document.return_value = {
+                "jobs": {"job": {"uses": "./.github/workflows/ios-validation.yml"}}
+            }
+            with self.assertRaisesRegex(ReleaseError, "implementation"):
+                qa._preview_history_graph(self.api, qa.CI_PATH, OLD, BASE, set())
+
+    def test_publish_requires_both_authenticated_reports_and_complete_history(self):
+        result = self.reconcile()
+        self.assertEqual(result["decision"], "publish")
+        self.assertEqual(result["inventory"]["run_id"], self.fresh_id)
+        self.assertEqual(
+            result["baseline"]["report_sha256"], self.fixed["report_sha256"]
+        )
+        self.assertFalse(result["history"]["deleted_attempts_proven"])
+        self.reader.assert_not_called()
+        self.make_inventory(self.fresh_id - 1, "2026-10-27T18:00:00Z")
+        self.assertEqual(self.reconcile()["decision"], "publish")
+        self.job["steps"][2]["status"] = "in_progress"
+        self.assertEqual(self.reconcile()["decision"], "publish")
+        self.historical_upload()
+        with self.assertRaisesRegex(ReleaseError, "separate availability job"):
+            self.reconcile()
+
+    def test_control_and_producer_authentication_precedes_report_interpretation(self):
+        targets = [
+            (self.fixed, "report_sha256", "0" * 64),
+            (
+                self.responses[f"/actions/runs/{self.fresh_id}/attempts/1"],
+                "head_sha",
+                OLD,
+            ),
+            (
+                self.responses[f"/actions/workflows/{self.fixed['workflow_id']}"],
+                "path",
+                QA_PATH,
+            ),
+            (
+                self.responses[f"/actions/runs/{self.fresh_id}/attempts/1/jobs"][1][0],
+                "conclusion",
+                "failure",
+            ),
+            (
+                self.responses[f"/actions/runs/{self.fresh_id}/artifacts"][1][0],
+                "digest",
+                "sha256:" + "0" * 64,
+            ),
+            (
+                self.responses[f"/actions/runs/{self.fresh_id}/artifacts"][1][0],
+                "expired",
+                True,
+            ),
+            (
+                self.responses[f"/actions/runs/{self.fixed['run_id']}/artifacts"][1][0],
+                "id",
+                777,
+            ),
+        ]
+        for target, key, bad in targets:
+            old = target[key]
+            with self.subTest(key=key), self.assertRaises(ReleaseError):
+                target[key] = bad
+                self.reconcile()
+            target[key] = old
+        with patch.object(self.api, "file", return_value="altered fixed control"):
+            with self.assertRaisesRegex(ReleaseError, "workflow differs"):
+                self.reconcile()
+
+    def test_inventory_report_accepts_only_its_api_completion_second(self):
+        self.reports[self.fresh_id]["finished_at"] = "2026-10-27T19:59:00.101Z"
+        self.refresh_report(self.fresh_id)
+        self.responses[f"/actions/runs/{self.fresh_id}/attempts/1/jobs"][1][0]["steps"][
+            2
+        ]["completed_at"] = "2026-10-27T19:59:01Z"
+        for run_id, baseline in ((self.fixed["run_id"], True), (self.fresh_id, False)):
+            with self.subTest(run_id=run_id):
+                job = self.responses[f"/actions/runs/{run_id}/attempts/1/jobs"][1][0]
+                original = job["steps"][1]["completed_at"]
+                completion = qa._preview_time(original).replace(microsecond=0)
+                job["steps"][1]["completed_at"] = completion.isoformat().replace(
+                    "+00:00", "Z"
+                )
+                qa._preview_inventory(
+                    self.api, run_id, 1, now=self.now, baseline=baseline
+                )
+                job["steps"][1]["completed_at"] = (
+                    (completion - timedelta(seconds=1))
+                    .isoformat()
+                    .replace("+00:00", "Z")
+                )
+                with self.assertRaisesRegex(ReleaseError, "Stale or future"):
+                    qa._preview_inventory(
+                        self.api, run_id, 1, now=self.now, baseline=baseline
+                    )
+                job["steps"][1]["completed_at"] = original
+        job = self.responses[f"/actions/runs/{self.fresh_id}/attempts/1/jobs"][1][0]
+        report = self.reports[self.fresh_id]
+        report["finished_at"] = "2026-10-27T20:00:00.101Z"
+        self.refresh_report(self.fresh_id)
+        job["steps"][1]["completed_at"] = "2026-10-27T20:00:00Z"
+        job["steps"][2]["completed_at"] = "2026-10-27T20:00:01Z"
+        with self.assertRaisesRegex(ReleaseError, "Stale or future"):
+            qa._preview_inventory(self.api, self.fresh_id, 1, now=self.now)
+
+    def test_incomplete_stale_future_and_wrong_tuple_reports_block(self):
+        original = deepcopy(self.reports[self.fresh_id])
+        for key, value in (
+            ("apple_queries_complete", False),
+            ("run_id", "99"),
+            ("app", "another-app"),
+            ("finished_at", "2026-10-27T20:00:01Z"),
+            ("started_at", "2026-10-27T19:44:59Z"),
+        ):
+            with self.subTest(key=key), self.assertRaises(ReleaseError):
+                self.reports[self.fresh_id] = original | {key: value}
+                self.refresh_report(self.fresh_id)
+                self.reconcile()
+        self.reports[self.fresh_id] = original
+        self.refresh_report(
+            self.fresh_id, entries=[("../apple-reservation-report.json", b"{}")]
+        )
+        with self.assertRaises(ReleaseError):
+            self.reconcile()
+
+    def test_unknown_skipped_implementation_and_missing_history_fail_closed(self):
+        self.historical_upload("skipped")
+        self.api.file.side_effect = lambda path, source: (
+            "changed implementation" if path == QA_PATH else self.file(path, source)
+        )
+        with self.assertRaisesRegex(ReleaseError, "implementation"):
+            self.reconcile()
+        self.api.file.side_effect = self.file
+        self.runs[-1]["path"] = STABLE
+        self.controls[STABLE] = b"MAIN stable upload implementation"
+        self.api.file.side_effect = lambda path, source: (
+            "legacy other upload name"
+            if path == STABLE and source == BASE
+            else self.file(path, source)
+        )
+        with self.assertRaisesRegex(ReleaseError, "implementation"):
+            self.reconcile()
+        self.api.file.side_effect = self.file
+        self.runs[-1]["path"] = QA_PATH
+        self.runs.remove(self.current)
+        with self.assertRaisesRegex(ReleaseError, "current publication run is missing"):
+            self.reconcile()
+
+    def test_old_created_run_updated_after_baseline_and_cancelled_upload_are_checked(
+        self,
+    ):
+        self.historical_upload("cancelled")
+        self.runs[-1]["created_at"] = "2026-10-26T00:00:00Z"
+        self.reader.side_effect = ReleaseError("No authenticated receipt")
+        with self.assertRaisesRegex(ReleaseError, "receipt"):
+            self.reconcile()
+        self.reader.assert_called_once_with(91, 1)
+
+    def test_confirmed_or_uncertain_upload_from_another_sha_only_allows_availability(
+        self,
+    ):
+        self.historical_upload()
+        for state, conclusion in (
+            ("confirmed", "success"),
+            ("uncertain", "failure"),
+            ("uncertain", "cancelled"),
+        ):
+            with self.subTest(state=state, conclusion=conclusion):
+                self.reader.return_value["state"] = state
+                job = self.responses["/actions/runs/91/attempts/1/jobs"][1][0]
+                job["steps"][2]["conclusion"] = conclusion
+                result = self.reconcile()
+                self.assertEqual(result["decision"], "availability-required")
+                self.assertEqual(result["existing_uploads"][0]["qa"]["source_sha"], OLD)
+        self.responses["/actions/runs/91/attempts/1/jobs"][1][0]["steps"][3][
+            "conclusion"
+        ] = "failure"
+        self.reader.reset_mock()
+        with self.assertRaisesRegex(ReleaseError, "retention did not succeed"):
+            self.reconcile()
+        self.reader.assert_not_called()
+        self.responses["/actions/runs/91/attempts/1/jobs"][1][0]["steps"][3][
+            "conclusion"
+        ] = "success"
+        self.reader.return_value["qa"]["build"] = "40"
+        with self.assertRaises((ReleaseError, qa.device_archive.ArchiveError)):
+            self.reconcile()
+
+    def test_fresh_apple_identity_does_not_authorize_upload_or_replace_receipt(self):
+        c = self.reports[self.fresh_id]["collections"]["uploads"]
+        c["data"] = [
+            dict(
+                type="buildUploads",
+                id="candidate",
+                attributes=dict(
+                    cfBundleVersion="41",
+                    cfBundleShortVersionString="0.12.0",
+                    state="PROCESSING",
+                ),
+            )
+        ]
+        c["totals"] = [1]
+        self.refresh_report(self.fresh_id)
+        with self.assertRaisesRegex(ReleaseError, "no authenticated upload source"):
+            self.reconcile()
+        self.historical_upload()
+        self.assertEqual(self.reconcile()["decision"], "availability-required")
+        c["data"][0]["attributes"]["cfBundleVersion"] = "40"
+        self.refresh_report(self.fresh_id)
+        with self.assertRaisesRegex(ReleaseError, "identity is pending"):
+            self.reconcile()
+
+    def test_pagination_missing_pages_and_unrelated_active_publication_block(self):
+        self.historical_upload("skipped")
+        self.runs[-1]["status"] = "in_progress"
+        with self.assertRaisesRegex(ReleaseError, "Another Apple-capable"):
+            self.reconcile()
+        self.api.request.side_effect = lambda method, path: (
+            dict(total_count=5, workflow_runs=self.runs)
+            if path.startswith("/actions/runs?per_page=")
+            else self.request(method, path)
+        )
+        with self.assertRaisesRegex(ReleaseError, "Missing preview history page"):
+            self.reconcile()
 
 
 if __name__ == "__main__":

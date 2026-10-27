@@ -2,7 +2,9 @@
 
 from copy import deepcopy
 import hashlib
+import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import plistlib
@@ -1124,6 +1126,369 @@ class ArchiveBoundaryTests(unittest.TestCase):
         with patch("sys.stderr", new_callable=io.StringIO) as output:
             self.assertEqual(qa.main(["sign-export"]), 1)
         self.assertNotIn("https://", output.getvalue())
+
+    def publication_result(self):
+        self.policy.context.update(pr=179, tag="ios/pr-179/v1.2.3-build8")
+        (self.trusted / "mobile/app.json").parent.mkdir(parents=True, exist_ok=True)
+        (self.trusted / "mobile/app.json").write_text(
+            json.dumps({"expo": {"ios": {"infoPlist": {"ClarifyCloudURL": CLOUD}}}}),
+            encoding="utf-8",
+        )
+        license_path = self.trusted / "mobile/third-party/KeyboardHostBundleID/LICENSE"
+        license_path.parent.mkdir(parents=True, exist_ok=True)
+        license_path.write_bytes(LICENSE)
+        for name in (
+            "mobile/scripts/verify-ios-ipa.py",
+            "mobile/scripts/publish-testflight.cjs",
+        ):
+            data = (Path(__file__).resolve().parents[1] / name).read_bytes()
+            self.controls[name] = data
+            (self.trusted / name).write_bytes(data)
+            self.policy.context["controls"][name] = qa.git_blob(data)
+        self.entries[qa.APP_PATH + "/caf\u00e9.txt"] = (
+            b"non-ASCII manifest path",
+            stat.S_IFREG | 0o644,
+        )
+        self.entries[qa.APP_PATH + "/empty/"] = b"", stat.S_IFDIR | 0o755
+        self.refresh()
+        return self.sign(FakeRunner(self))
+
+    def publication_env(self):
+        return {
+            "GITHUB_RUN_ID": "91",
+            "GITHUB_RUN_ATTEMPT": "3",
+            "CLARIFY_ASC_KEY_ID": "ABC123DE45",
+            "CLARIFY_ASC_ISSUER_ID": "12345678-1234-1234-1234-1234567890ab",
+            "CLARIFY_ASC_KEY_P8": "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----",
+            "CLARIFY_IOS_CERTIFICATE_PASSWORD": "certificate-secret",
+            "UNRELATED_SECRET": "unrelated-secret",
+        }
+
+    def publication_runner(self, calls, *, fail=None, mutate_verification=None):
+        def run(command, *, cwd, env):
+            calls.append(command)
+            self.assertFalse(
+                any(
+                    "SECRET" in key or key.startswith(("CLARIFY_ASC_", "CLARIFY_IOS_"))
+                    for key in env
+                )
+            )
+            if "--qa-context" in command:
+                self.assertEqual(cwd, self.trusted / "mobile")
+                self.assertEqual(
+                    command[1:3],
+                    ("-I", str(self.trusted / "mobile/scripts/verify-ios-ipa.py")),
+                )
+                self.assertEqual(command[-2], "--qa-context")
+                # Run the real trusted R6 verifier with synthetic git/signature
+                # responses. It must read the fixed inner ZIP and write its sidecar.
+                spec = importlib.util.spec_from_file_location("qa_r6_test", command[2])
+                helper = importlib.util.module_from_spec(spec)
+                exec(
+                    compile(Path(command[2]).read_bytes(), command[2], "exec"),
+                    helper.__dict__,
+                )
+
+                def native(argv, **kwargs):
+                    if argv[0] == "git":
+                        value = {
+                            "HEAD": "c" * 40,
+                            "c" * 40 + "^{tree}": "d" * 40,
+                            "c" * 40 + ":" + qa.WORKFLOW: self.policy.context[
+                                "workflow"
+                            ]["blob_sha"],
+                        }.get(argv[-1], "")
+                        return SimpleNamespace(stdout=value, returncode=0)
+                    self.assertEqual(argv[0], "codesign")
+                    suffix = {
+                        "Clarify.app": "",
+                        "ClarifyKeyboard.appex": ".keyboard",
+                        "ClarifyActivity.appex": ".activity",
+                    }[Path(argv[-1]).name]
+                    entitlements = {
+                        "application-identifier": qa.TEAM + "." + qa.BUNDLE + suffix,
+                        "com.apple.developer.team-identifier": qa.TEAM,
+                        "com.apple.security.application-groups": ["group." + qa.BUNDLE],
+                    }
+                    return SimpleNamespace(
+                        stdout=plistlib.dumps(entitlements), returncode=0
+                    )
+
+                with (
+                    patch.dict(os.environ, env, clear=True),
+                    patch.object(helper.subprocess, "run", side_effect=native),
+                ):
+                    verification = helper.verify_ipa(command[3], qa_context=command[5])
+                if mutate_verification:
+                    mutate_verification(verification)
+                    Path(command[3]).with_name("verification.json").write_text(
+                        json.dumps(verification), encoding="utf-8"
+                    )
+                return SimpleNamespace(
+                    returncode=1 if fail == "verify" else 0,
+                    stdout=b"secret",
+                    stderr=b"secret",
+                )
+            self.assertEqual(
+                command[:7],
+                (
+                    "/usr/bin/xcrun",
+                    "altool",
+                    "--upload-app",
+                    "--type",
+                    "ios",
+                    "--file",
+                    str(self.runner_temp / "clarify-ios-qa/output/Clarify.ipa"),
+                ),
+            )
+            self.assertEqual(
+                command[7:],
+                (
+                    "--apiKey",
+                    "ABC123DE45",
+                    "--apiIssuer",
+                    "12345678-1234-1234-1234-1234567890ab",
+                ),
+            )
+            receipt = qa.decode(
+                (
+                    self.runner_temp / "clarify-ios-qa/output/upload-receipt.json"
+                ).read_bytes()
+            )
+            self.assertEqual(receipt["status"], "started")
+            key = Path(env["API_PRIVATE_KEYS_DIR"]) / "AuthKey_ABC123DE45.p8"
+            self.assertEqual(
+                key.read_text(), self.publication_env()["CLARIFY_ASC_KEY_P8"]
+            )
+            if os.name != "nt":
+                self.assertEqual(key.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(key.parent.stat().st_mode & 0o777, 0o700)
+            if fail == "timeout":
+                raise qa.subprocess.TimeoutExpired(command, 1, output=b"secret")
+            return SimpleNamespace(
+                returncode=1 if fail == "upload" else 0,
+                stdout=b"secret",
+                stderr=b"secret",
+            )
+
+        return run
+
+    def prepare_publication(self, result, runner):
+        return qa.prepare_qa_context(
+            result,
+            self.policy,
+            runner_temp=self.runner_temp,
+            trusted_root=self.trusted,
+            run_id=91,
+            run_attempt=3,
+            runner=runner,
+        )
+
+    def upload_publication(self, prepared, runner):
+        with patch.dict(os.environ, self.publication_env(), clear=True):
+            return qa.upload_qa_context(
+                prepared,
+                self.policy,
+                runner_temp=self.runner_temp,
+                trusted_root=self.trusted,
+                runner=runner,
+            )
+
+    def test_publication_stages_real_export_with_r6_hashes_then_uploads_once(self):
+        result, calls = self.publication_result(), []
+        runner = self.publication_runner(calls)
+        with patch.dict(os.environ, self.publication_env(), clear=True):
+            prepared = self.prepare_publication(result, runner)
+        context = prepared["context"]
+        self.assertEqual(
+            set(prepared),
+            {
+                "context",
+                "context_path",
+                "ipa_path",
+                "verification_path",
+                "receipt_path",
+            },
+        )
+        self.assertEqual(
+            prepared["verification_path"],
+            self.runner_temp / "clarify-ios-qa/output/verification.json",
+        )
+        self.assertEqual(
+            context["artifact"]["sha256"], result["receipt"]["archive"]["sha256"]
+        )
+        self.assertNotEqual(
+            context["artifact"]["sha256"], result["receipt"]["artifact"]["sha256"]
+        )
+        self.assertEqual((context["run_id"], context["run_attempt"]), (91, 3))
+        self.assertEqual(
+            (context["artifact"]["run_id"], context["artifact"]["run_attempt"]), (71, 2)
+        )
+        app = result["workspace"] / "signed-inspection/Payload/Clarify.app"
+        records = [
+            {
+                "path": path.relative_to(app).as_posix(),
+                "bytes": path.stat().st_size,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
+            for path in app.rglob("*")
+            if path.is_file()
+        ]
+        records.sort(key=lambda item: item["path"])
+        expected = hashlib.sha256(
+            json.dumps(records, ensure_ascii=False, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+        self.assertEqual(context["bundles"][0]["sha256"], expected)
+        self.assertNotEqual(expected, result["receipt"]["ipa"]["bundles"][0]["sha256"])
+        self.assertEqual(prepared["context_path"].read_bytes(), qa.canonical(context))
+        self.assertLessEqual(prepared["context_path"].stat().st_size, 8192)
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(prepared["receipt_path"].exists())
+        receipt = self.upload_publication(prepared, runner)
+        self.assertEqual(receipt["status"], "confirmed")
+        self.assertEqual(receipt["qa"], context)
+        self.assertIs(receipt["delivery_eligible"], False)
+        self.assertIs(receipt["workflowArtifactProvenanceVerified"], False)
+        self.assertEqual(qa.decode(prepared["receipt_path"].read_bytes()), receipt)
+        self.assertFalse((self.runner_temp / "clarify-upload").exists())
+        with self.assertRaises(qa.ArchiveError):
+            self.upload_publication(prepared, runner)
+        self.assertEqual(len(calls), 2)
+
+    def test_publication_rejects_changed_data_policy_run_and_verification_before_upload(
+        self,
+    ):
+        result, calls = self.publication_result(), []
+        runner = self.publication_runner(calls)
+        prepared = self.prepare_publication(result, runner)
+        for key in ("ipa_path", "context_path", "verification_path"):
+            path, original = prepared[key], prepared[key].read_bytes()
+            path.write_bytes(b"changed")
+            with self.subTest(path=key), self.assertRaises(qa.ArchiveError):
+                self.upload_publication(prepared, runner)
+            path.write_bytes(original)
+        archive = self.runner_temp / "clarify-ios-qa/input" / qa.ARCHIVE_NAME
+        original = archive.read_bytes()
+        archive.write_bytes(b"changed")
+        with self.assertRaises(qa.ArchiveError):
+            self.upload_publication(prepared, runner)
+        archive.write_bytes(original)
+        substituted = {**prepared, "ipa_path": result["ipa_path"]}
+        with self.assertRaises(qa.ArchiveError):
+            self.upload_publication(substituted, runner)
+        verification = qa.decode(prepared["verification_path"].read_bytes())
+        verification["workflowArtifactProvenanceVerified"] = True
+        prepared["verification_path"].write_bytes(qa.canonical(verification))
+        with self.assertRaises(qa.ArchiveError):
+            self.upload_publication(prepared, runner)
+        verification["workflowArtifactProvenanceVerified"] = False
+        prepared["verification_path"].write_bytes(qa.canonical(verification))
+        self.policy.context["source_tree"] = "e" * 40
+        with self.assertRaises(qa.ArchiveError):
+            self.upload_publication(prepared, runner)
+        self.policy.context["source_tree"] = "b" * 40
+        with patch.dict(
+            os.environ,
+            {**self.publication_env(), "GITHUB_RUN_ATTEMPT": "4"},
+            clear=True,
+        ):
+            with self.assertRaises(qa.ArchiveError):
+                qa.upload_qa_context(
+                    prepared,
+                    self.policy,
+                    runner_temp=self.runner_temp,
+                    trusted_root=self.trusted,
+                    runner=runner,
+                )
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(prepared["receipt_path"].exists())
+
+    def test_publication_uncertain_upload_blocks_retry_and_always_removes_keys(self):
+        original_runner = self.runner_temp
+        for failure in ("upload", "timeout"):
+            with self.subTest(failure=failure):
+                self.runner_temp = original_runner / failure
+                self.runner_temp.mkdir()
+                result, calls = self.publication_result(), []
+                runner = self.publication_runner(calls, fail=failure)
+                prepared = self.prepare_publication(result, runner)
+                with (
+                    patch("sys.stdout", new_callable=io.StringIO) as out,
+                    patch("sys.stderr", new_callable=io.StringIO) as err,
+                ):
+                    with self.assertRaises(qa.ArchiveError) as error:
+                        self.upload_publication(prepared, runner)
+                self.assertNotIn("secret", str(error.exception))
+                self.assertEqual(out.getvalue() + err.getvalue(), "")
+                self.assertEqual(
+                    qa.decode(prepared["receipt_path"].read_bytes())["status"],
+                    "uncertain",
+                )
+                self.assertFalse((self.runner_temp / "clarify-upload").exists())
+                with self.assertRaises(qa.ArchiveError):
+                    self.upload_publication(prepared, runner)
+                self.assertEqual(len(calls), 2)
+
+    def test_publication_rejects_reused_stage_and_changed_trusted_helper(self):
+        result, calls = self.publication_result(), []
+        runner = self.publication_runner(calls)
+        helper = self.trusted / "mobile/scripts/publish-testflight.cjs"
+        original = helper.read_bytes()
+        helper.write_bytes(b"changed")
+        with self.assertRaises(qa.ArchiveError):
+            self.prepare_publication(result, runner)
+        self.assertEqual(calls, [])
+        helper.write_bytes(original)
+        self.prepare_publication(result, runner)
+        with self.assertRaises(qa.ArchiveError):
+            self.prepare_publication(result, runner)
+        self.assertEqual(len(calls), 1)
+
+    def test_publication_rejects_verifier_failure_or_dishonest_sidecar(self):
+        original_runner = self.runner_temp
+        for failure in ("verify", "sidecar", "signed"):
+            with self.subTest(failure=failure):
+                self.runner_temp = original_runner / failure
+                self.runner_temp.mkdir()
+                result, calls = self.publication_result(), []
+                if failure == "signed":
+                    (
+                        result["workspace"]
+                        / "signed-inspection/Payload/Clarify.app/Clarify"
+                    ).write_bytes(b"changed")
+                runner = self.publication_runner(
+                    calls,
+                    fail=failure,
+                    mutate_verification=(
+                        lambda value: value.update(bundleDigestsVerified=False)
+                    )
+                    if failure == "sidecar"
+                    else None,
+                )
+                with self.assertRaises(qa.ArchiveError):
+                    self.prepare_publication(result, runner)
+                self.assertEqual(len(calls), 1)
+                self.assertFalse((self.runner_temp / "clarify-upload").exists())
+
+    def test_publication_key_write_failure_cleans_without_upload(self):
+        result, calls = self.publication_result(), []
+        runner = self.publication_runner(calls)
+        prepared = self.prepare_publication(result, runner)
+        original_open = Path.open
+
+        def fail_key(path, *args, **kwargs):
+            if path.suffix == ".p8":
+                raise OSError("Synthetic key-file failure")
+            return original_open(path, *args, **kwargs)
+
+        with patch.object(Path, "open", fail_key):
+            with self.assertRaises(OSError):
+                self.upload_publication(prepared, runner)
+        self.assertEqual(len(calls), 1)
+        self.assertFalse((self.runner_temp / "clarify-upload").exists())
+        self.assertFalse(prepared["receipt_path"].exists())
 
 
 if __name__ == "__main__":

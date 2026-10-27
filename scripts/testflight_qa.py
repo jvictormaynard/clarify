@@ -65,6 +65,34 @@ ARCHIVE_STEPS = (
 )
 ARCHIVE_FINAL_STEPS = (ARCHIVE_RECORD_STEP,)
 ARCHIVE_JOB_NAMES = {ARCHIVE_JOB_NAME, ARCHIVE_FINAL_JOB_NAME, ARCHIVE_SIGN_JOB_NAME}
+PUBLICATION_JOB_NAME = "Upload verified internal preview"
+AVAILABILITY_JOB_NAME = "Complete internal preview availability"
+PROOF_STEPS = (
+    "Authenticate completed archive and run experimental export proof",
+    "Retain experimental export receipt",
+    "Record experimental export proof",
+)
+PUBLICATION_STEPS = (
+    "Authenticate publication gates",
+    "Export and verify internal preview",
+    "Upload exactly once to Apple",
+    "Retain internal publication receipts",
+    "Record internal publication artifact",
+)
+PHASE_ARTIFACTS = {
+    "proof": ("CLARIFY_QA_EXPORT_PROOF_ARTIFACT ", "clarify-ios-qa-export-proof"),
+    "publication": ("CLARIFY_QA_PUBLICATION_ARTIFACT ", "clarify-ios-qa-publication"),
+}
+PUBLICATION_INPUTS = {
+    "proof_run_id",
+    "proof_run_attempt",
+    "proof_artifact_id",
+    "publication_run_id",
+    "publication_run_attempt",
+    "publication_artifact_id",
+    "inventory_run_id",
+    "inventory_run_attempt",
+}
 UPLOAD_ACTION = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 DEVELOPER_DIR = "/Applications/Xcode_26.6.app/Contents/Developer"
 ARCHIVE_LOCKS = {
@@ -175,6 +203,813 @@ STABLE_APPLE_HELPERS = (
     "mobile/scripts/publish-testflight.cjs",
     "scripts/release_delivery.py",
 )
+
+
+# PR 179, 0.12.0 (41) only. These are audited observations, not per-attempt
+# provenance for deleted history and not authority for another reservation.
+PREVIEW_HISTORY_BASELINE = {
+    "run_id": 40551997834,
+    "run_attempt": 1,
+    "artifact_id": 12755640916,
+    "source_sha": "7573268d54f28b4d5d45e5bc46527ee1df673885",
+    "workflow_id": 380816838,
+    "workflow_sha256": "d37f241c152e7de1a493eba41ffa1366e166296f208745add6125cc589cd36ad",
+    "artifact_sha256": "c5b4b3fc7f5dfcf46118edf8dbbbdce05e108b9ac9220ca7dc1322752b0a2a45",
+    "report_sha256": "9c5125eadfbe8071c83058454b2f965082e06237feae951b610f85203d155064",
+    "finished_at": "2026-10-27T17:35:26.101Z",
+    "history_boundary": "2026-10-27T17:35:29Z",
+    "retained_runs": 2000,
+    "apple_runs": 226,
+    "app_config_sources": 185,
+    "max_historical_app_build": 40,
+    "snapshot_sha256": "a2bd411c6ba39027144ec1e899a5d5e0cdd28ce19526c06e16bdf419c8a4d11b",
+    "identity_audit_sha256": "1bf6e9471d040279f21cf50da68425489e1512f322ba10ad40db7c4a61798ac9",
+}
+PREVIEW_PROTECTED_STABLE_SOURCE = "678772aadda5d5eec78bd8f2b818635a7657ba90"
+PREVIEW_PUBLICATION_JOB = "Upload verified internal preview"
+PREVIEW_PUBLICATION_STEPS = (
+    "Authenticate publication gates",
+    "Export and verify internal preview",
+    "Upload exactly once to Apple",
+    "Retain internal publication receipts",
+    "Record internal publication artifact",
+)
+PREVIEW_AVAILABILITY_JOB = "Complete internal preview availability"
+PREVIEW_INVENTORY_STEPS = (
+    "Read complete App Store Connect reservation state (GET only)",
+    "Preserve read-only Apple reservation evidence",
+)
+# The supplied MAIN 22a91ec has validation/archive/export proof, with no Apple
+# uploader. Pin its executable controls to recognize earlier post-baseline QA.
+PREVIEW_UNSIGNED_QA_CONTROLS = {
+    QA_PATH: "124fad215b36786614003a4956ee1f36d9265ec60f7cdf96eb2bbdf9c619a6e5",
+    "scripts/testflight_qa.py": "a2145d524c98ba93cb5d25ea3201e0fb3519253d9f253a7519d4ad6dd702f4cd",
+    "scripts/qa_device_archive.py": "a56413bfcfabca692f38a3d8a5fd456ef6fa2932acda88738fb68bc6a0785873",
+    "scripts/trusted_ci.py": "237b0a7f7ab0c139091f9d6ac6c7fb0b570858cbaed3820b185731f153d35aa9",
+    "scripts/release_delivery.py": "2584beb28f7c542c804780768f75f5a5279d179cf0fcf813791bf958d5a4544a",
+    "scripts/delivery_policy.py": "18c4aa0421c69ca360a70065f948af9c3832b9d46f7221d79eca444aba40248b",
+    "mobile/scripts/ios-signing.py": "b62b76ffaaf3cd463327d4b6ad9bc7d66a154162afa97aa9058cab66d140c322",
+}
+# Finite reviewed control variants: MAIN1b before189, MAIN17b/22a after189,
+# and the four normal-only PR179 CI blocks accepted in a51/7a/89.
+PREVIEW_OLD_ADAPTER_SHA256 = (
+    "e7a233fb13c1447eb49067529b1c3815b7ec00fbbc27e00be5f08e98d31c749f"
+)
+PREVIEW_FEATURE_CI_SHA256 = (
+    "df7479fdb2829f33135747f99166dda621677cc6d9c0af2180a71e210f338844"
+)
+
+
+def _preview_time(value):
+    require(type(value) is str and value.endswith("Z"), "Missing UTC history time")
+    try:
+        result = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        raise ReleaseError("Invalid UTC history time") from None
+    require(result.utcoffset().total_seconds() == 0, "Invalid UTC history time")
+    return result
+
+
+def _preview_pages(api, path, key):
+    """Check declared totals, including the 2,000 retained baseline runs."""
+    rows, total = [], None
+    for page in range(1, 102):
+        result = api.request("GET", f"{path}?per_page=100&page={page}")
+        count = result.get("total_count")
+        items = result.get(key)
+        require(
+            type(count) is int
+            and 0 <= count <= 10000
+            and (total is None or count == total)
+            and type(items) is list
+            and len(items) <= 100,
+            "Incomplete or changing preview history pagination",
+        )
+        total = count
+        rows.extend(items)
+        require(len(rows) <= total, "Preview history count differs")
+        if len(items) < 100:
+            require(len(rows) == total, "Missing preview history page")
+            ids = [positive(row.get("id"), "history item") for row in rows]
+            require(len(set(ids)) == len(ids), "Duplicate preview history item")
+            return rows
+    raise ReleaseError("Preview history pagination limit exceeded")
+
+
+def _preview_inventory(api, run_id, attempt, *, now, baseline=False):
+    """Authenticate the fixed GET-only producer before decoding its report."""
+    fixed = PREVIEW_HISTORY_BASELINE
+    positive(run_id, "inventory run")
+    require(type(attempt) is int and 1 <= attempt <= 100, "Invalid inventory attempt")
+    run = api.request("GET", f"/actions/runs/{run_id}/attempts/{attempt}")
+    branch = "diagnostics/apple-next-build-check-20261026"
+    require(
+        run.get("id") == run_id
+        and run.get("run_attempt") == attempt
+        and run.get("repository", {}).get("full_name") == REPOSITORY
+        and run.get("head_repository", {}).get("full_name") == REPOSITORY
+        and run.get("workflow_id") == fixed["workflow_id"]
+        and run.get("path") == STABLE_PATH
+        and run.get("head_sha") == fixed["source_sha"]
+        and run.get("head_branch") == branch
+        and run.get("event") == "workflow_dispatch"
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success",
+        "Unauthenticated Apple inventory producer",
+    )
+    workflow = api.request("GET", f"/actions/workflows/{fixed['workflow_id']}")
+    require(
+        workflow.get("id") == fixed["workflow_id"]
+        and workflow.get("path") == STABLE_PATH,
+        "Apple inventory workflow identity differs",
+    )
+    data = api.file(STABLE_PATH, fixed["source_sha"]).encode("utf-8")
+    require(
+        hashlib.sha256(data).hexdigest() == fixed["workflow_sha256"],
+        "Apple inventory Git workflow differs",
+    )
+    jobs = _preview_pages(
+        api, f"/actions/runs/{run_id}/attempts/{attempt}/jobs", "jobs"
+    )
+    require(len(jobs) == 1, "Ambiguous Apple inventory job")
+    job = jobs[0]
+    require(
+        job.get("name") == "apple_status"
+        and job.get("run_id") == run_id
+        and job.get("head_sha") == fixed["source_sha"]
+        and job.get("status") == "completed"
+        and job.get("conclusion") == "success",
+        "Apple inventory job differs",
+    )
+    steps = job.get("steps", [])
+    require(
+        [s.get("name") for s in steps]
+        == ["Set up job", *PREVIEW_INVENTORY_STEPS, "Complete job"]
+        and all(
+            s.get("status") == "completed" and s.get("conclusion") == "success"
+            for s in steps
+        ),
+        "Apple inventory producer or uploader did not succeed",
+    )
+    artifacts = _preview_pages(api, f"/actions/runs/{run_id}/artifacts", "artifacts")
+    require(len(artifacts) == 1, "Ambiguous Apple inventory artifact")
+    artifact = artifacts[0]
+    require(
+        not baseline or artifact.get("id") == fixed["artifact_id"],
+        "Audited Apple baseline artifact differs",
+    )
+    created = _preview_time(artifact.get("created_at"))
+    require(
+        artifact.get("name") == f"apple-next-build-check-{run_id}"
+        and artifact.get("expired") is False
+        and artifact.get("workflow_run", {}).get("id") == run_id
+        and artifact["workflow_run"].get("head_sha") == fixed["source_sha"]
+        and artifact["workflow_run"].get("head_branch") == branch
+        and type(artifact.get("size_in_bytes")) is int
+        and 0 < artifact["size_in_bytes"] <= 4 * 1024**2
+        and _preview_time(steps[2].get("started_at"))
+        <= created
+        <= _preview_time(steps[2].get("completed_at")),
+        "Apple inventory artifact producer/attempt differs",
+    )
+    raw = api.binary(f"/actions/artifacts/{artifact['id']}/zip", limit=4 * 1024**2)
+    digest = hashlib.sha256(raw).hexdigest()
+    require(
+        len(raw) == artifact["size_in_bytes"]
+        and artifact.get("digest") == "sha256:" + digest,
+        "Apple inventory artifact digest differs",
+    )
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            entries = archive.infolist()
+            require(len(entries) == 1, "Apple inventory ZIP must contain one report")
+            item = entries[0]
+            mode = item.external_attr >> 16
+            require(
+                item.filename == "apple-reservation-report.json"
+                and not item.flag_bits & 1
+                and not item.is_dir()
+                and stat.S_IFMT(mode) in {0, stat.S_IFREG}
+                and item.compress_type in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+                and 0 < item.file_size <= 2 * 1024**2,
+                "Unsafe Apple inventory report ZIP",
+            )
+            report_bytes = archive.read(item)
+    except (zipfile.BadZipFile, OSError, RuntimeError, NotImplementedError):
+        raise ReleaseError("Invalid Apple inventory ZIP") from None
+    report_digest = hashlib.sha256(report_bytes).hexdigest()
+    if baseline:
+        require(
+            (run_id, attempt, artifact["id"], digest, report_digest)
+            == (
+                fixed["run_id"],
+                fixed["run_attempt"],
+                fixed["artifact_id"],
+                fixed["artifact_sha256"],
+                fixed["report_sha256"],
+            ),
+            "Audited Apple baseline differs",
+        )
+    report = decode(report_bytes)
+    require(type(report) is dict, "Invalid Apple inventory report")
+    require(
+        report.get("app") == APP_ID
+        and report.get("method") == "GET"
+        and report.get("source_sha") == fixed["source_sha"]
+        and report.get("source_ref") == "refs/heads/" + branch
+        and report.get("run_id") == str(run_id)
+        and report.get("errors") == []
+        and report.get("apple_queries_complete") is True,
+        "Incomplete or unbound Apple inventory report",
+    )
+    start, finish = (
+        _preview_time(report.get("started_at")),
+        _preview_time(report.get("finished_at")),
+    )
+    # GitHub step completion timestamps have whole-second precision. Preserve
+    # exact report times for chronology and the 900-second freshness limit.
+    require(
+        _preview_time(steps[1].get("started_at")) <= start <= finish <= now
+        and finish.replace(microsecond=0)
+        <= _preview_time(steps[1].get("completed_at")).replace(microsecond=0)
+        <= now
+        and (baseline or 0 <= (now - start).total_seconds() <= 900),
+        "Stale or future Apple inventory report",
+    )
+    if baseline:
+        require(
+            report["finished_at"] == fixed["finished_at"], "Apple baseline time differs"
+        )
+    collections, queries = report.get("collections"), report.get("queries")
+    require(
+        type(collections) is dict
+        and {"builds", "uploads", "appStoreVersions", "reviewSubmissions", "groups"}
+        <= collections.keys()
+        and type(queries) is list
+        and queries,
+        "Missing Apple inventory collections",
+    )
+    for collection in collections.values():
+        require(
+            collection.get("complete") is True
+            and type(collection.get("pages")) is int
+            and collection["pages"] > 0
+            and type(collection.get("data")) is list
+            and type(collection.get("included")) is list
+            and type(collection.get("totals")) is list
+            and all(
+                type(n) is int and n == len(collection["data"])
+                for n in collection["totals"]
+            ),
+            "Incomplete Apple inventory collection",
+        )
+    for query in queries:
+        url = urlsplit(query.get("url", ""))
+        require(
+            query.get("method") == "GET"
+            and query.get("status") == 200
+            and url.scheme == "https"
+            and url.netloc == "api.appstoreconnect.apple.com"
+            and url.path.startswith("/v1/")
+            and start <= _preview_time(query.get("checked_at")) <= finish,
+            "Invalid Apple inventory query",
+        )
+    binding = dict(
+        run_id=run_id,
+        run_attempt=attempt,
+        artifact_id=artifact["id"],
+        source_sha=fixed["source_sha"],
+        workflow_sha256=fixed["workflow_sha256"],
+        artifact_sha256=digest,
+        report_sha256=report_digest,
+        finished_at=report["finished_at"],
+    )
+    return report, binding
+
+
+def _preview_history_graph(api, path, source, trusted, authenticated):
+    """Compare MAIN workflow graphs, without treating CI product payloads as controls."""
+    key = path, source
+    if key in authenticated:
+        return
+    require(len(authenticated) < 1000, "Preview workflow graph limit")
+    expected = api.control(trusted, path)
+    observed = api.file(path, source).encode("utf-8")
+    require(
+        observed == expected
+        or (
+            path == CI_PATH
+            and hashlib.sha256(observed).hexdigest() == PREVIEW_FEATURE_CI_SHA256
+        ),
+        "Unknown post-baseline workflow implementation",
+    )
+    authenticated.add(key)
+    document = api.workflow_document(observed)
+    require(type(document) is dict, "Missing MAIN workflow graph")
+    pending = [document]
+    local_uses = set()
+    while pending:
+        node = pending.pop()
+        if type(node) is dict:
+            local = node.get("uses")
+            if type(local) is str and local.startswith("./"):
+                local_uses.add(local)
+            pending.extend(node.values())
+        elif type(node) is list:
+            pending.extend(node)
+    for local in sorted(local_uses):
+        child = local[2:]
+        if child.startswith("trusted/.github/"):
+            child = child[len("trusted/") :]
+        require(
+            ".." not in child.split("/")
+            and child.startswith((".github/workflows/", ".github/actions/")),
+            "Unknown local preview workflow control",
+        )
+        if not child.endswith((".yml", ".yaml")):
+            child += "/action.yml"
+        _preview_history_graph(api, child, source, trusted, authenticated)
+
+
+def _preview_managed_dependabot(api, row):
+    """Authenticate only GitHub's managed updater type; no YAML blob exists."""
+    path = "dynamic/dependabot/dependabot-updates"
+    identifier = positive(row.get("id"), "managed updater run")
+    attempt = api.request("GET", f"/actions/runs/{identifier}/attempts/1")
+    workflow = api.request("GET", "/actions/workflows/316003284")
+    terminal = {"success", "failure", "cancelled", "timed_out"}
+    for run in (row, attempt):
+        require(
+            run.get("id") == identifier
+            and run.get("path") == path
+            and run.get("workflow_id") == 316003284
+            and run.get("event") == "dynamic"
+            and run.get("head_branch") == "main"
+            and run.get("run_attempt") == 1
+            and run.get("status") == "completed"
+            and run.get("conclusion") in terminal
+            and run.get("head_sha") == row.get("head_sha"),
+            "Unknown managed updater execution",
+        )
+        sha(run.get("head_sha"))
+        for key in ("repository", "head_repository"):
+            repo = run.get(key, {})
+            require(
+                repo.get("id") == 1135801455 and repo.get("full_name") == REPOSITORY,
+                "Managed updater repository differs",
+            )
+        for key in ("actor", "triggering_actor"):
+            actor = run.get(key, {})
+            require(
+                actor.get("id") == 49699333
+                and actor.get("login") == "dependabot[bot]"
+                and actor.get("type") == "Bot",
+                "Managed updater actor differs",
+            )
+    require(
+        workflow.get("id") == 316003284 and workflow.get("path") == path,
+        "Managed updater workflow differs",
+    )
+    jobs = _preview_pages(api, f"/actions/runs/{identifier}/attempts/1/jobs", "jobs")
+    require(len(jobs) == 1, "Managed updater job count differs")
+    job = jobs[0]
+    runner = positive(job.get("runner_id"), "managed updater runner")
+    require(
+        job.get("name") == "Dependabot"
+        and job.get("run_id") == identifier
+        and job.get("head_sha") == row["head_sha"]
+        and job.get("run_attempt") == 1
+        and job.get("status") == "completed"
+        and job.get("conclusion") in terminal
+        and job.get("labels") == ["ubuntu-latest"]
+        and job.get("runner_group_name") == "GitHub Actions"
+        and job.get("runner_name") == f"GitHub Actions {runner}",
+        "Managed updater is not the expected hosted job",
+    )
+    steps = job.get("steps", [])
+    require(
+        [(item.get("name"), item.get("number")) for item in steps]
+        == [
+            ("Set up job", 1),
+            ("Create job directory", 2),
+            ("Run Dependabot", 3),
+            ("Post Run Dependabot", 6),
+            ("Complete job", 7),
+        ]
+        and all(
+            item.get("status") == "completed" and item.get("conclusion") in terminal
+            for item in steps
+        ),
+        "Managed updater step sequence differs",
+    )
+
+
+def reconcile_preview_history(
+    api,
+    policy,
+    context,
+    *,
+    inventory_run_id,
+    inventory_run_attempt,
+    now,
+    publication_receipt_reader=None,
+):
+    """Reconcile the audited build-41 reservation; never perform an Apple write.
+
+    The caller owns receipt authentication. A receipt for this identity always
+    selects availability, including an uncertain upload or another source SHA.
+    """
+    policy.validate()
+    q = policy.context
+    trusted = validate_context(context | {"mode": "preflight"})
+    require(
+        q["trusted_sha"] == trusted
+        and q["pr"] == 179
+        and set(PREVIEW_UNSIGNED_QA_CONTROLS) <= q["controls"].keys()
+        and (q["app_id"], q["bundle_id"], q["version"], q["build"], q["tag"])
+        == (APP_ID, BUNDLE, "0.12.0", "41", "ios/pr-179/v0.12.0-build41")
+        and q["source_sha"] != PREVIEW_PROTECTED_STABLE_SOURCE
+        and isinstance(now, datetime)
+        and now.tzinfo is not None,
+        "History reconciliation is limited to PR 179 build 41",
+    )
+    fixed = PREVIEW_HISTORY_BASELINE
+    baseline, baseline_binding = _preview_inventory(
+        api, fixed["run_id"], fixed["run_attempt"], now=now, baseline=True
+    )
+    require(
+        inventory_run_id != fixed["run_id"], "A fresh Apple inventory run is required"
+    )
+    fresh, fresh_binding = _preview_inventory(
+        api, inventory_run_id, inventory_run_attempt, now=now
+    )
+    runs = _preview_pages(api, "/actions/runs", "workflow_runs")
+    require(len(runs) >= fixed["retained_runs"], "Retained baseline history is missing")
+    seen, authenticated, receipts, checked = set(), set(), [], 0
+    current_upload_active = False
+    boundary = _preview_time(fixed["history_boundary"])
+    for run in runs:
+        identifier = positive(run.get("id"), "historical run")
+        seen.add(identifier)
+        require(
+            run.get("repository", {}).get("full_name") == REPOSITORY,
+            "Unknown historical repository",
+        )
+        created, updated = (
+            _preview_time(run.get("created_at")),
+            _preview_time(run.get("updated_at")),
+        )
+        # The active current job can update after the inventory check began.
+        observed_now = (
+            datetime.now(timezone.utc) if identifier == context["run_id"] else now
+        )
+        require(created <= updated <= observed_now, "Invalid historical run times")
+        if (
+            identifier <= fixed["run_id"]
+            and created <= boundary
+            and updated <= boundary
+        ):
+            # The audit records app identities <=40, not deleted upload attempts.
+            continue
+        path, source = run.get("path"), sha(run.get("head_sha"))
+        attempts = positive(run.get("run_attempt"), "historical attempt")
+        require(attempts <= 100, "Historical attempt limit")
+        if path == STABLE_PATH and source == fixed["source_sha"]:
+            if identifier not in {fixed["run_id"], inventory_run_id}:
+                # Earlier successful reads from this same fixed GET-only
+                # control are not additional publishers. Authenticate their
+                # full producer/report at their recorded completion time.
+                for attempt in range(1, attempts + 1):
+                    _preview_inventory(api, identifier, attempt, now=updated)
+            continue
+        if path == "dynamic/dependabot/dependabot-updates":
+            _preview_managed_dependabot(api, run)
+            continue
+        require(
+            path in NON_APPLE_WORKFLOWS | {QA_PATH, STABLE_PATH},
+            "Unknown post-baseline workflow",
+        )
+        unsigned_qa = (
+            path == QA_PATH
+            and hashlib.sha256(api.file(path, source).encode("utf-8")).hexdigest()
+            == PREVIEW_UNSIGNED_QA_CONTROLS[QA_PATH]
+        )
+        if unsigned_qa:
+            require(
+                all(
+                    hashlib.sha256(api.file(p, source).encode("utf-8")).hexdigest()
+                    in (
+                        {digest, PREVIEW_OLD_ADAPTER_SHA256}
+                        if p == "scripts/trusted_ci.py"
+                        else {digest}
+                    )
+                    for p, digest in PREVIEW_UNSIGNED_QA_CONTROLS.items()
+                ),
+                "Unknown unsigned QA executable controls",
+            )
+            # Reusable validation graphs still use the current MAIN authority.
+            _preview_history_graph(api, CI_PATH, source, trusted, authenticated)
+        else:
+            _preview_history_graph(api, path, source, trusted, authenticated)
+        if path in NON_APPLE_WORKFLOWS:
+            continue
+        # Apple-capable implementations must be authenticated even if skipped.
+        for helper in (
+            ()
+            if unsigned_qa
+            else STABLE_APPLE_HELPERS
+            if path == STABLE_PATH
+            else (
+                p
+                for p in q["controls"]
+                if p.startswith(("scripts/", "mobile/scripts/"))
+            )
+        ):
+            require(
+                api.file(helper, source).encode("utf-8")
+                == api.control(trusted, helper),
+                "Unknown post-baseline Apple implementation",
+            )
+        current = identifier == context["run_id"]
+        require(
+            not current
+            or (
+                path == QA_PATH
+                and source == trusted
+                and attempts == context["run_attempt"]
+            ),
+            "Current publication identity differs",
+        )
+        require(
+            current or run.get("status") == "completed",
+            "Another Apple-capable run is active",
+        )
+        for attempt in range(1, attempts + 1):
+            jobs = _preview_pages(
+                api, f"/actions/runs/{identifier}/attempts/{attempt}/jobs", "jobs"
+            )
+            require(jobs, "Missing historical attempt jobs")
+            require(
+                all(
+                    j.get("run_id") == identifier and j.get("head_sha") == source
+                    for j in jobs
+                ),
+                "Historical attempt job binding differs",
+            )
+            checked += 1
+            allowed = {c["job_name"] for c in trusted_ci.CHECKS.values()} | {
+                "Internal QA preflight",
+                "Authenticate trusted validation dispatch",
+                "Trusted validation",
+                FINAL_JOB_NAME,
+                ARCHIVE_JOB_NAME,
+                ARCHIVE_FINAL_JOB_NAME,
+                ARCHIVE_SIGN_JOB_NAME,
+                PREVIEW_PUBLICATION_JOB,
+                PREVIEW_AVAILABILITY_JOB,
+            }
+            if path == QA_PATH:
+                require(
+                    all(j.get("name") in allowed for j in jobs),
+                    "Unknown historical QA job",
+                )
+            if unsigned_qa:
+                require(
+                    not current and all(j.get("status") == "completed" for j in jobs),
+                    "Unsigned historical QA is still active",
+                )
+                require(
+                    not any(
+                        j.get("name")
+                        in {PREVIEW_PUBLICATION_JOB, PREVIEW_AVAILABILITY_JOB}
+                        for j in jobs
+                    ),
+                    "Unsigned QA contains a publication job",
+                )
+                continue
+            publication = [j for j in jobs if j.get("name") == PREVIEW_PUBLICATION_JOB]
+            if path == STABLE_PATH:
+                require(
+                    not upload_state(jobs),
+                    "Legacy Apple upload requires manual reconciliation",
+                )
+                continue
+            require(len(publication) == 1, "Missing or ambiguous QA publication job")
+            job = publication[0]
+            if current and attempt == context["run_attempt"]:
+                require(
+                    job.get("status") == "in_progress",
+                    "Current publication job is not active",
+                )
+                upload = [
+                    s
+                    for s in job.get("steps", [])
+                    if s.get("name") == PREVIEW_PUBLICATION_STEPS[2]
+                ]
+                require(
+                    len(upload) == 1
+                    and upload[0].get("status") in {"pending", "in_progress"}
+                    and upload[0].get("conclusion") is None,
+                    "Current upload has a terminal or ambiguous result",
+                )
+                current_upload_active = upload[0]["status"] == "in_progress"
+                continue
+            require(
+                job.get("status") == "completed", "Historical publication is active"
+            )
+            if job.get("conclusion") == "skipped":
+                continue
+            upload = [
+                s
+                for s in job.get("steps", [])
+                if s.get("name") == PREVIEW_PUBLICATION_STEPS[2]
+            ]
+            require(
+                len(upload) == 1 and upload[0].get("status") == "completed",
+                "Ambiguous historical upload",
+            )
+            if upload[0].get("conclusion") == "skipped":
+                continue
+            require(
+                upload[0].get("conclusion") in {"success", "failure", "cancelled"}
+                and all(
+                    sum(
+                        s.get("name") == name
+                        and s.get("status") == "completed"
+                        and s.get("conclusion") == "success"
+                        for s in job.get("steps", [])
+                    )
+                    == 1
+                    for name in PREVIEW_PUBLICATION_STEPS
+                    if name != PREVIEW_PUBLICATION_STEPS[2]
+                ),
+                "Historical publication gates or receipt retention did not succeed",
+            )
+            require(
+                callable(publication_receipt_reader),
+                "Authenticated publication receipt is required",
+            )
+            receipt = publication_receipt_reader(identifier, attempt)
+            require(
+                type(receipt) is dict
+                and receipt.get("state") in {"confirmed", "uncertain"},
+                "Missing authenticated publication receipt",
+            )
+            original = receipt.get("qa")
+            # The authenticated reader returns the R6 post-sign context, not
+            # the different unsigned-archive envelope context.
+            exact_keys(
+                original,
+                {
+                    "schema",
+                    "repository",
+                    "pr",
+                    "source_sha",
+                    "source_tree",
+                    "base_sha",
+                    "base_tree",
+                    "trusted_sha",
+                    "workflow",
+                    "version",
+                    "build",
+                    "tag",
+                    "run_id",
+                    "run_attempt",
+                    "artifact",
+                    "ipa",
+                    "bundles",
+                },
+            )
+            sha(original["source_sha"])
+            require(
+                all(
+                    original[k] == q[k]
+                    for k in (
+                        "repository",
+                        "pr",
+                        "version",
+                        "build",
+                        "tag",
+                    )
+                )
+                and original["source_sha"] != PREVIEW_PROTECTED_STABLE_SOURCE,
+                "Historical receipt has another Apple identity",
+            )
+            artifact = receipt.get("receipt_artifact")
+            exact_keys(
+                artifact,
+                {
+                    "artifact_id",
+                    "artifact_name",
+                    "artifact_digest",
+                    "run_id",
+                    "run_attempt",
+                },
+            )
+            positive(artifact["artifact_id"], "publication receipt artifact")
+            require(
+                artifact["run_id"] == identifier
+                and artifact["run_attempt"] == attempt
+                and type(artifact["artifact_name"]) is str
+                and bool(artifact["artifact_name"])
+                and re.fullmatch(r"sha256:[0-9a-f]{64}", artifact["artifact_digest"])
+                is not None,
+                "Publication receipt artifact binding differs",
+            )
+            receipts.append(
+                dict(run_id=identifier, run_attempt=attempt, **deepcopy(receipt))
+            )
+    require(
+        {fixed["run_id"], inventory_run_id, context["run_id"]} <= seen,
+        "Baseline, fresh inventory or current publication run is missing",
+    )
+    require(len(receipts) <= 1, "Multiple uploads require manual reconciliation")
+    require(
+        not (current_upload_active and receipts),
+        "An existing upload requires the separate availability job",
+    )
+    # Reviews and public-version state are outside this internal preview. Any
+    # change to those audited collections needs explicit reconciliation.
+    for name, collection in baseline["collections"].items():
+        if name not in {"builds", "uploads"} and not name.startswith(
+            ("groupBuilds:", "groupTesters:", "betaReviews:")
+        ):
+            require(
+                name in fresh["collections"]
+                and fresh["collections"][name]["data"] == collection["data"],
+                "Apple review or public-version state changed",
+            )
+    observed = False
+    resources = [
+        item
+        for c in fresh["collections"].values()
+        for item in c["data"] + c["included"]
+    ]
+    resources.extend(
+        v["build"]
+        for v in fresh.get("appStoreVersionBuilds", [])
+        if v.get("build") is not None
+    )
+    candidate_builds = {
+        item["id"]
+        for item in resources
+        if item.get("type") == "builds"
+        and item.get("attributes", {}).get("version") == "41"
+    }
+    versions = {
+        item["id"]: item.get("attributes", {})
+        for item in resources
+        if item.get("type") == "preReleaseVersions"
+    }
+    for item in resources:
+        attributes = item.get("attributes", {})
+        if item.get("type") == "betaAppReviewSubmissions":
+            linked = item.get("relationships", {}).get("build") or {}
+            require(
+                attributes.get("betaReviewState") in {"APPROVED", "REJECTED"}
+                or (receipts and linked.get("id") in candidate_builds),
+                "Another Apple beta review is pending",
+            )
+        if item.get("type") not in {"builds", "buildUploads"}:
+            continue
+        upload = item["type"] == "buildUploads"
+        number = build_number(
+            attributes.get("cfBundleVersion" if upload else "version")
+        )
+        require(number <= 41, "Another Apple build identity was observed")
+        if number == 41:
+            require(receipts, "Apple build 41 has no authenticated upload source")
+            require(
+                not upload or attributes.get("cfBundleShortVersionString") == "0.12.0",
+                "Apple upload version differs",
+            )
+            if not upload and item.get("relationships", {}).get("preReleaseVersion"):
+                linked = item["relationships"]["preReleaseVersion"]
+                require(
+                    versions.get(linked.get("id"), {}).get("version") == "0.12.0"
+                    and versions[linked["id"]].get("platform") == "IOS",
+                    "Apple build version differs",
+                )
+            observed = True
+        else:
+            require(
+                attributes.get("state" if upload else "processingState")
+                == ("COMPLETE" if upload else "VALID"),
+                "Another Apple identity is pending",
+            )
+    return dict(
+        decision="availability-required" if receipts else "publish",
+        qa=deepcopy(q),
+        baseline=baseline_binding,
+        inventory=fresh_binding,
+        existing_uploads=receipts,
+        apple_build41_observed=observed,
+        history=dict(
+            retained_runs=len(runs),
+            checked_attempts=checked,
+            deleted_attempts_proven=False,
+        ),
+    )
 
 
 def positive(value, label):
@@ -450,7 +1285,7 @@ def validation_manifest(plan, contract, jobs, *, workflow, run_id, run_attempt):
     )
 
 
-def _validation_artifact_record(data, *, run_id, run_attempt):
+def _validation_artifact_record(data, *, run_id, run_attempt, artifact_name=None):
     exact_keys(
         data,
         {"artifact_id", "artifact_name", "artifact_digest", "run_id", "run_attempt"},
@@ -469,7 +1304,8 @@ def _validation_artifact_record(data, *, run_id, run_attempt):
     require(
         data["run_id"] == run_id
         and data["run_attempt"] == run_attempt
-        and data["artifact_name"] == f"clarify-qa-validation-{run_id}-{run_attempt}",
+        and data["artifact_name"]
+        == (artifact_name or f"clarify-qa-validation-{run_id}-{run_attempt}"),
         "Validation artifact belongs to another execution",
     )
     require(
@@ -659,11 +1495,18 @@ def archive_controls(trusted_repo, trusted_sha):
     require(ARCHIVE_LOCKS <= tree.keys(), "Missing MAIN archive dependency locks")
     paths = set(trusted_ci.control_inventory(trusted_repo, trusted_sha)) | ARCHIVE_LOCKS
     paths.update(p for p in tree if p.endswith("/.npmrc") or p == ".npmrc")
+    # Historical classification also authenticates non-Apple MAIN workflows
+    # and their local actions. These bytes are inspected, never executed here.
+    paths.update(
+        p for p in tree if p.startswith((".github/workflows/", ".github/actions/"))
+    )
     require(
         {
             QA_PATH,
             device_archive.MODULE,
             device_archive.SIGNING_HELPER,
+            device_archive.QA_VERIFIER,
+            device_archive.QA_PUBLISHER,
             "scripts/testflight_qa.py",
             "scripts/release_delivery.py",
             "scripts/delivery_policy.py",
@@ -778,7 +1621,7 @@ class ArchiveGitHub(ValidationGitHub):
         jobs = self.pages(f"/actions/runs/{run_id}/attempts/{attempt}/jobs", "jobs")
         require(
             type(jobs) is list
-            and 1 <= len(jobs) <= 23
+            and 1 <= len(jobs) <= 32
             and all(
                 type(j) is dict and type(j.get("id")) is int and j["id"] > 0
                 for j in jobs
@@ -793,6 +1636,8 @@ class ArchiveGitHub(ValidationGitHub):
             "Trusted validation",
             "Authenticate trusted validation dispatch",
             ARCHIVE_SIGN_JOB_NAME,
+            PUBLICATION_JOB_NAME,
+            AVAILABILITY_JOB_NAME,
         }
         require(
             all(
@@ -1084,7 +1929,7 @@ def _validation_api_manifest(api, inputs, context, trusted_repo, *, completed):
         "jobs",
     )
     require(
-        isinstance(jobs, list) and 1 <= len(jobs) <= 23, "Invalid exact-attempt jobs"
+        isinstance(jobs, list) and 1 <= len(jobs) <= 32, "Invalid exact-attempt jobs"
     )
     require(
         all(
@@ -1108,6 +1953,7 @@ def _validation_api_manifest(api, inputs, context, trusted_repo, *, completed):
             and j.get("name")
             in names
             | ARCHIVE_JOB_NAMES
+            | {PUBLICATION_JOB_NAME, AVAILABILITY_JOB_NAME}
             | {
                 FINAL_JOB_NAME,
                 "Internal QA preflight",
@@ -1121,7 +1967,8 @@ def _validation_api_manifest(api, inputs, context, trusted_repo, *, completed):
         all(
             j.get("status") == "completed" and j.get("conclusion") == "skipped"
             for j in jobs
-            if j.get("name") in ARCHIVE_JOB_NAMES
+            if j.get("name")
+            in ARCHIVE_JOB_NAMES | {PUBLICATION_JOB_NAME, AVAILABILITY_JOB_NAME}
         ),
         "Archive jobs must be skipped in a validation run",
     )
@@ -1958,7 +2805,7 @@ def record_archive(api, policy, artifact_id, artifact_digest):
         response.get("run_id") == run_id
         and response.get("run_attempt") == attempt
         and type(response.get("jobs")) is list
-        and 1 <= len(response["jobs"]) <= 23,
+        and 1 <= len(response["jobs"]) <= 32,
         "Archive exact-attempt jobs differ",
     )
     job = device_archive._successful_job(
@@ -1995,12 +2842,540 @@ def record_archive(api, policy, artifact_id, artifact_digest):
     return line
 
 
+def _phase_name(kind, run_id, attempt):
+    require(kind in PHASE_ARTIFACTS, "Unknown receipt phase")
+    return f"{PHASE_ARTIFACTS[kind][1]}-{run_id}-{attempt}"
+
+
+def phase_artifact_record(kind, *, run_id, run_attempt, artifact_id, artifact_digest):
+    record = dict(
+        artifact_id=artifact_id,
+        artifact_name=_phase_name(kind, run_id, run_attempt),
+        artifact_digest="sha256:" + artifact_digest,
+        run_id=run_id,
+        run_attempt=run_attempt,
+    )
+    _validation_artifact_record(
+        record,
+        run_id=run_id,
+        run_attempt=run_attempt,
+        artifact_name=record["artifact_name"],
+    )
+    return PHASE_ARTIFACTS[kind][0] + canonical_validation_json(record).decode("ascii")
+
+
+def parse_phase_artifact_record(log, kind, *, run_id, run_attempt):
+    require(
+        kind in PHASE_ARTIFACTS and type(log) is bytes and len(log) <= 1024**2,
+        "Invalid receipt log",
+    )
+    prefix = PHASE_ARTIFACTS[kind][0]
+    lines = log.decode("utf-8", errors="strict").splitlines()
+    records = []
+    for line in lines:
+        line = re.sub(
+            r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z ",
+            "",
+            line,
+            count=1,
+        )
+        if line.startswith(prefix):
+            records.append(decode(line[len(prefix) :]))
+        else:
+            require(prefix not in line, "Unknown receipt log format")
+    require(len(records) == 1, "Missing or ambiguous receipt record")
+    return _validation_artifact_record(
+        records[0],
+        run_id=run_id,
+        run_attempt=run_attempt,
+        artifact_name=_phase_name(kind, run_id, run_attempt),
+    )
+
+
+def _phase_job(api, policy, kind, run_id, attempt, *, completed=True):
+    """Authenticate the MAIN implementation before interpreting steps or skips."""
+    ctx = policy.context
+    control = api.control(ctx["trusted_sha"], QA_PATH)
+    require(
+        device_archive.git_blob(control) == ctx["workflow"]["blob_sha"],
+        "Receipt MAIN workflow bytes differ",
+    )
+    document = api.workflow_document(control)
+    key = "sign_export_proof" if kind == "proof" else "upload"
+    name = ARCHIVE_SIGN_JOB_NAME if kind == "proof" else PUBLICATION_JOB_NAME
+    required = PROOF_STEPS if kind == "proof" else PUBLICATION_STEPS
+    definition = document.get("jobs", {}).get(key, {})
+    require(definition.get("name") == name, "Receipt MAIN job definition differs")
+    definitions = definition.get("steps", [])
+    upload = [s for s in definitions if s.get("name") == required[-2]]
+    recorder = [s for s in definitions if s.get("name") == required[-1]]
+    require(
+        len(upload) == len(recorder) == 1
+        and upload[0].get("uses") == UPLOAD_ACTION
+        and upload[0].get("with", {}).get("overwrite") is False
+        and upload[0]["with"].get("name")
+        == PHASE_ARTIFACTS[kind][1] + "-${{ github.run_id }}-${{ github.run_attempt }}"
+        and recorder[0].get("run")
+        == "python -m scripts.testflight_qa "
+        + ("proof-record" if kind == "proof" else "publication-record"),
+        "Receipt MAIN uploader/recorder differs",
+    )
+    run = api.run(run_id, attempt)
+    require(
+        run.get("id") == run_id
+        and run.get("run_attempt") == attempt
+        and run.get("head_sha") == ctx["trusted_sha"]
+        and run.get("workflow_sha", ctx["trusted_sha"]) == ctx["trusted_sha"]
+        and run.get("workflow_id") == ctx["workflow"]["id"]
+        and run.get("path") == QA_PATH
+        and run.get("event") == "workflow_dispatch"
+        and run.get("head_branch") == "main"
+        and run.get("repository", {}).get("full_name") == REPOSITORY,
+        "Receipt run is not the exact MAIN workflow/attempt",
+    )
+    allowed = {"success"} if kind == "proof" else {"success", "failure", "cancelled"}
+    if completed:
+        require(
+            run.get("status") == "completed" and run.get("conclusion") in allowed,
+            "Receipt run is not terminal",
+        )
+    jobs = api.pages(f"/actions/runs/{run_id}/attempts/{attempt}/jobs", "jobs")
+    require(
+        type(jobs) is list
+        and 1 <= len(jobs) <= 32
+        and len({j.get("id") for j in jobs}) == len(jobs)
+        and len({j.get("name") for j in jobs}) == len(jobs),
+        "Ambiguous receipt jobs",
+    )
+    known = (
+        {c["job_name"] for c in trusted_ci.CHECKS.values()}
+        | ARCHIVE_JOB_NAMES
+        | {
+            FINAL_JOB_NAME,
+            "Internal QA preflight",
+            "Trusted validation",
+            "Authenticate trusted validation dispatch",
+            PUBLICATION_JOB_NAME,
+            AVAILABILITY_JOB_NAME,
+        }
+    )
+    require(
+        all(
+            j.get("name") in known
+            and (
+                j.get("name") == name
+                or (j.get("status") == "completed" and j.get("conclusion") == "skipped")
+            )
+            for j in jobs
+        ),
+        "Unexpected active receipt job",
+    )
+    found = [j for j in jobs if j.get("name") == name]
+    require(len(found) == 1, "Missing receipt job")
+    job = found[0]
+    require(
+        type(job.get("id")) is int
+        and job["id"] > 0
+        and job.get("run_id") == run_id
+        and job.get("head_sha") == ctx["trusted_sha"]
+        and job.get("run_attempt", attempt) == attempt,
+        "Receipt job binding differs",
+    )
+    steps = job.get("steps", [])
+    numbers = [s.get("number") for s in steps]
+    require(
+        all(type(n) is int and n > 0 for n in numbers)
+        and numbers == sorted(set(numbers)),
+        "Ambiguous receipt step order",
+    )
+    positions = []
+    for step_name in required:
+        matches = [s for s in steps if s.get("name") == step_name]
+        require(len(matches) == 1, "Missing or duplicate receipt step")
+        item = matches[0]
+        positions.append(item["number"])
+        if not completed and step_name == required[-1]:
+            continue
+        conclusions = {"success"}
+        if kind == "publication" and step_name == PUBLICATION_STEPS[2]:
+            conclusions |= {"failure", "cancelled"}
+        require(
+            item.get("status") == "completed" and item.get("conclusion") in conclusions,
+            "Receipt required step did not complete",
+        )
+    require(positions == sorted(positions), "Receipt steps are out of order")
+    if completed:
+        require(
+            job.get("status") == "completed" and job.get("conclusion") in allowed,
+            "Receipt job did not complete",
+        )
+    return job
+
+
+def _phase_artifact(api, record, trusted):
+    artifact = api.artifact(record["artifact_id"])
+    require(
+        artifact.get("id") == record["artifact_id"]
+        and artifact.get("name") == record["artifact_name"]
+        and artifact.get("digest") == record["artifact_digest"]
+        and artifact.get("expired") is False
+        and type(artifact.get("size_in_bytes")) is int
+        and 0 < artifact["size_in_bytes"] <= 1024**2
+        and artifact.get("workflow_run", {}).get("id") == record["run_id"]
+        and artifact["workflow_run"].get("head_sha") == trusted,
+        "Receipt artifact API binding differs",
+    )
+    return artifact
+
+
+def consume_phase_receipt(api, policy, kind, run_id, attempt, artifact_id=None):
+    job = _phase_job(api, policy, kind, run_id, attempt)
+    raw = api.binary(f"/actions/jobs/{job['id']}/logs", limit=1024**2)
+    record = parse_phase_artifact_record(raw, kind, run_id=run_id, run_attempt=attempt)
+    require(
+        artifact_id is None or artifact_id == record["artifact_id"],
+        "Receipt artifact ID differs",
+    )
+    artifact = _phase_artifact(api, record, policy.context["trusted_sha"])
+    data = api.binary(f"/actions/artifacts/{record['artifact_id']}/zip", limit=1024**2)
+    require(
+        type(data) is bytes
+        and len(data) == artifact["size_in_bytes"]
+        and "sha256:" + hashlib.sha256(data).hexdigest() == record["artifact_digest"],
+        "Receipt artifact bytes differ",
+    )
+    # upload-artifact preserves paths below the inputs' common ancestor.
+    names = (
+        {"archive-receipt.json": "archive-receipt.json"}
+        if kind == "proof"
+        else {
+            "context.json": "context.json",
+            "output/verification.json": "verification.json",
+            "output/upload-receipt.json": "upload-receipt.json",
+        }
+    )
+    with zipfile.ZipFile(io.BytesIO(data)) as zipped:
+        entries = zipped.infolist()
+        require(
+            len(entries) == len(names) and {e.filename for e in entries} == set(names),
+            "Unexpected receipt artifact files",
+        )
+        files = {}
+        for entry in entries:
+            require(
+                entry.orig_filename == entry.filename
+                and not entry.is_dir()
+                and not entry.flag_bits & 1
+                and stat.S_IFMT(entry.external_attr >> 16) in {0, stat.S_IFREG}
+                and not (entry.external_attr >> 16) & 0o7000
+                and entry.compress_type in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+                and 0 < entry.file_size <= 512 * 1024
+                and entry.file_size <= max(1, entry.compress_size) * 1000,
+                "Unsafe receipt ZIP entry",
+            )
+            files[names[entry.filename]] = decode(
+                zipped.read(entry).decode("utf-8", errors="strict")
+            )
+    return dict(files=files, artifact=record, job=job)
+
+
+def _proof_binding(policy, inputs):
+    return {
+        key: policy.context[key]
+        for key in (
+            "source_sha",
+            "source_tree",
+            "base_sha",
+            "base_tree",
+            "trusted_sha",
+            "workflow",
+            "version",
+            "build",
+            "tag",
+            "producer",
+        )
+    } | {
+        "validation_run_id": inputs["validation_run_id"],
+        "validation_run_attempt": inputs["validation_run_attempt"],
+        "archive_artifact_id": inputs["archive_artifact_id"],
+    }
+
+
+def require_export_proof(api, policy, inputs):
+    result = consume_phase_receipt(
+        api,
+        policy,
+        "proof",
+        inputs["proof_run_id"],
+        inputs["proof_run_attempt"],
+        inputs["proof_artifact_id"],
+    )
+    receipt = result["files"]["archive-receipt.json"]
+    require(
+        receipt.get("qa_binding") == _proof_binding(policy, inputs)
+        and receipt.get("native_export_observed") is True
+        and receipt.get("delivery_eligible") is False
+        and receipt.get("workflowArtifactProvenanceVerified") is False
+        and receipt.get("artifact", {}).get("id") == inputs["archive_artifact_id"],
+        "Native export proof differs from this exact composition/archive",
+    )
+    require(
+        inputs["proof_run_id"]
+        not in {inputs["validation_run_id"], inputs["producer_run_id"]},
+        "Native proof requires a separate completed run",
+    )
+    return result["artifact"]
+
+
+def publication_receipt(api, policy, run_id, attempt, artifact_id=None):
+    result = consume_phase_receipt(
+        api, policy, "publication", run_id, attempt, artifact_id
+    )
+    files = result["files"]
+    qa = files["context.json"]
+    helper = device_archive._qa_verifier(ROOT, policy)
+    helper.validate_qa_context(qa)
+    expected = policy.context
+    require(
+        all(qa[key] == expected[key] for key in qa if key in expected)
+        and qa["run_id"] == run_id
+        and qa["run_attempt"] == attempt
+        and qa["artifact"]["run_id"] == expected["producer"]["run_id"]
+        and qa["artifact"]["run_attempt"] == expected["producer"]["run_attempt"],
+        "Published identity or archive differs",
+    )
+    receipt = files["upload-receipt.json"]
+    exact_keys(
+        receipt,
+        {
+            "schema",
+            "status",
+            "qa",
+            "delivery_eligible",
+            "workflowArtifactProvenanceVerified",
+        },
+    )
+    require(
+        receipt["schema"] == 1
+        and receipt["qa"] == qa
+        and receipt["status"] in {"confirmed", "uncertain", "started"}
+        and receipt["delivery_eligible"] is False
+        and receipt["workflowArtifactProvenanceVerified"] is False,
+        "Unknown upload outcome receipt",
+    )
+    verification = files["verification.json"]
+    require(
+        verification.get("qa") == qa
+        and all(
+            verification.get(k) is True
+            for k in (
+                "artifactDigestVerified",
+                "ipaDigestVerified",
+                "bundleDigestsVerified",
+            )
+        )
+        and verification.get("workflowArtifactProvenanceVerified") is False
+        and all(verification.get(k) == qa["ipa"][k] for k in ("sha256", "bytes")),
+        "Published IPA verification differs",
+    )
+    upload = next(
+        s for s in result["job"]["steps"] if s["name"] == PUBLICATION_STEPS[2]
+    )
+    require(
+        (receipt["status"] == "confirmed") == (upload["conclusion"] == "success"),
+        "Upload receipt contradicts API outcome",
+    )
+    return dict(
+        qa=qa,
+        state="confirmed" if receipt["status"] == "confirmed" else "uncertain",
+        receipt_artifact=result["artifact"],
+    )
+
+
+def _publication_gates(api, policy, inputs, context):
+    require(
+        (policy.context["version"], policy.context["build"], policy.context["tag"])
+        == ("0.12.0", "41", "ios/pr-179/v0.12.0-build41"),
+        "Only reserved preview 41 can publish",
+    )
+    require_export_proof(api, policy, inputs)
+    check_ci(
+        api,
+        policy.context["trusted_sha"],
+        policy.context["base_sha"],
+        pull_request=False,
+        selected={},
+    )
+    result = reconcile_preview_history(
+        api,
+        policy,
+        context,
+        inventory_run_id=inputs["inventory_run_id"],
+        inventory_run_attempt=inputs["inventory_run_attempt"],
+        now=datetime.now(timezone.utc),
+        publication_receipt_reader=lambda run_id, attempt: publication_receipt(
+            api, policy, run_id, attempt
+        ),
+    )
+    require(
+        result["decision"] == "publish",
+        "Upload already attempted; use authenticated availability only",
+    )
+    require(
+        0
+        <= (
+            datetime.now(timezone.utc)
+            - _preview_time(result["inventory"]["finished_at"])
+        ).total_seconds()
+        <= 900,
+        "Apple inventory expired while authenticating history",
+    )
+    _validation_current_source(api, inputs)
+    return result
+
+
+def _prepared_publication(policy, context):
+    temporary = device_archive.absolute_path(Path(os.environ["RUNNER_TEMP"]))
+    paths = device_archive._qa_paths(temporary)
+    qa = decode(device_archive.absolute_path(paths["context_path"]).read_bytes())
+    require(
+        qa["run_id"] == context["run_id"]
+        and qa["run_attempt"] == context["run_attempt"],
+        "Staged publication is from another run",
+    )
+    return dict(context=qa, **paths)
+
+
+def _publication_environment(qa):
+    return dict(
+        os.environ,
+        QA_WORKFLOW_SHA=qa["trusted_sha"],
+        QA_WORKFLOW_ID=str(qa["workflow"]["id"]),
+        QA_WORKFLOW_REF=REPOSITORY + "/" + QA_PATH + "@refs/heads/main",
+    )
+
+
+def run_publication_command(command, inputs, context):
+    api = ArchiveGitHub(os.environ.get("GH_TOKEN", ""))
+    policy = archive_policy(api, inputs, context, observe_archive_toolchain())
+    temporary = device_archive.absolute_path(Path(os.environ["RUNNER_TEMP"]))
+    if command in {"publication-gate", "publication-export", "publication-upload"}:
+        _publication_gates(api, policy, inputs, context)
+        if command == "publication-gate":
+            return
+        if command == "publication-export":
+            device_archive._qa_verifier(ROOT, policy)
+            result = device_archive.sign_export(
+                api=api,
+                policy=policy,
+                artifact_id=inputs["archive_artifact_id"],
+                runner_temp=temporary,
+                trusted_root=ROOT,
+            )
+            try:
+                device_archive.prepare_qa_context(
+                    result,
+                    policy,
+                    runner_temp=temporary,
+                    trusted_root=ROOT,
+                    run_id=context["run_id"],
+                    run_attempt=context["run_attempt"],
+                )
+            finally:
+                shutil.rmtree(result["workspace"])
+        else:
+            prepared = _prepared_publication(policy, context)
+            device_archive.upload_qa_context(
+                prepared, policy, runner_temp=temporary, trusted_root=ROOT
+            )
+    elif command == "availability":
+        require(
+            (policy.context["version"], policy.context["build"], policy.context["tag"])
+            == ("0.12.0", "41", "ios/pr-179/v0.12.0-build41"),
+            "Only reserved preview 41 has an availability route",
+        )
+        require_export_proof(api, policy, inputs)
+        previous = publication_receipt(
+            api,
+            policy,
+            inputs["publication_run_id"],
+            inputs["publication_run_attempt"],
+            inputs["publication_artifact_id"],
+        )
+        require(
+            previous["qa"]["artifact"]["id"] == inputs["archive_artifact_id"],
+            "Availability uses another unsigned archive",
+        )
+        root = device_archive.absolute_path(temporary / "clarify-ios-qa", exists=False)
+        require(not root.exists(), "Availability stage must be fresh")
+        root.mkdir(mode=0o700)
+        (root / "output").mkdir(mode=0o700)
+        qa = previous["qa"] | dict(
+            run_id=context["run_id"], run_attempt=context["run_attempt"]
+        )
+        (root / "context.json").write_bytes(canonical_validation_json(qa))
+        helper = ROOT / "mobile/scripts/publish-testflight.cjs"
+        require(
+            device_archive.git_blob(helper.read_bytes())
+            == policy.context["controls"]["mobile/scripts/publish-testflight.cjs"],
+            "MAIN availability helper differs",
+        )
+        node = shutil.which("node")
+        require(node is not None, "Pinned Node is unavailable")
+        result = subprocess.run(
+            [node, str(helper), "--qa-context", str(root / "context.json")],
+            cwd=ROOT / "mobile",
+            env=_publication_environment(qa),
+            capture_output=True,
+            timeout=3600,
+            check=False,
+        )
+        require(
+            result.returncode == 0,
+            "Apple processing/internal availability is still pending; do not upload again",
+        )
+    elif command in {"proof-record", "publication-record"}:
+        kind = "proof" if command == "proof-record" else "publication"
+        job = _phase_job(
+            api,
+            policy,
+            kind,
+            context["run_id"],
+            context["run_attempt"],
+            completed=False,
+        )
+        require(
+            job.get("status") in {"in_progress", "completed"}, "Recorder is not active"
+        )
+        identifier = os.environ["QA_UPLOAD_ARTIFACT_ID"]
+        require(
+            re.fullmatch(r"[1-9][0-9]{0,15}", identifier), "Invalid receipt uploader ID"
+        )
+        line = phase_artifact_record(
+            kind,
+            run_id=context["run_id"],
+            run_attempt=context["run_attempt"],
+            artifact_id=int(identifier),
+            artifact_digest=os.environ["QA_UPLOAD_ARTIFACT_DIGEST"],
+        )
+        record = parse_phase_artifact_record(
+            line.encode(),
+            kind,
+            run_id=context["run_id"],
+            run_attempt=context["run_attempt"],
+        )
+        _phase_artifact(api, record, policy.context["trusted_sha"])
+        print(line)
+    else:
+        raise ReleaseError("Unknown publication command")
+
+
 def _runtime_archive_inputs(context, command):
     event_path = Path(os.environ["GITHUB_EVENT_PATH"])
     require(event_path.stat().st_size <= 64 * 1024, "Dispatch event is too large")
     event = decode(event_path.read_text(encoding="utf-8"))
     inputs = event.get("inputs")
-    allowed = {
+    allowed = PUBLICATION_INPUTS | {
         "mode",
         "candidate",
         "source_sha",
@@ -2012,7 +3387,14 @@ def _runtime_archive_inputs(context, command):
         "producer_run_attempt",
         "archive_artifact_id",
     }
-    expected_mode = "sign-export-proof" if command == "sign-export-proof" else "archive"
+    if command in {"sign-export-proof", "proof-record"}:
+        expected_mode = "sign-export-proof"
+    elif command.startswith("publication-"):
+        expected_mode = "upload"
+    elif command == "availability":
+        expected_mode = "availability"
+    else:
+        expected_mode = "archive"
     require(
         type(inputs) is dict
         and inputs.keys() <= allowed
@@ -2032,7 +3414,7 @@ def _runtime_archive_inputs(context, command):
     )
     result["candidate"] = decode(raw)
     keys = ["validation_run_id", "validation_run_attempt"]
-    if expected_mode == "sign-export-proof":
+    if expected_mode in {"sign-export-proof", "upload", "availability"}:
         keys += ["producer_run_id", "producer_run_attempt", "archive_artifact_id"]
     else:
         require(
@@ -2050,6 +3432,20 @@ def _runtime_archive_inputs(context, command):
             producer_run_id=context["run_id"],
             producer_run_attempt=context["run_attempt"],
         )
+    if expected_mode in {"upload", "availability"}:
+        keys += ["proof_run_id", "proof_run_attempt", "proof_artifact_id"]
+    if expected_mode == "upload":
+        keys += ["inventory_run_id", "inventory_run_attempt"]
+    if expected_mode == "availability":
+        keys += [
+            "publication_run_id",
+            "publication_run_attempt",
+            "publication_artifact_id",
+        ]
+    require(
+        all(inputs.get(k, "") == "" for k in PUBLICATION_INPUTS - set(keys)),
+        "Unexpected publication inputs for this mode",
+    )
     for key in keys:
         value = inputs.get(key)
         require(
@@ -2066,7 +3462,7 @@ def _runtime_archive_inputs(context, command):
         not in {context["run_id"], result["producer_run_id"]},
         "Archive requires a separate completed validation run",
     )
-    if expected_mode == "sign-export-proof":
+    if expected_mode in {"sign-export-proof", "upload", "availability"}:
         require(
             result["producer_run_id"] != context["run_id"],
             "Export proof requires a later separate dispatch",
@@ -2120,7 +3516,13 @@ def run_archive_command(command, inputs, context):
             )
             output.mkdir()
             (output / "archive-receipt.json").write_bytes(
-                device_archive.canonical(result["receipt"])
+                device_archive.canonical(
+                    result["receipt"]
+                    | {
+                        "qa_binding": _proof_binding(policy, inputs),
+                        "native_export_observed": True,
+                    }
+                )
             )
             print('{"delivery_eligible":false,"upload_enabled":false}')
         finally:
@@ -2160,6 +3562,13 @@ def main(argv=None):
                 ["archive"],
                 ["archive-record"],
                 ["sign-export-proof"],
+                ["proof-record"],
+                ["publication-gate"],
+                ["publication-export"],
+                ["publication-upload"],
+                ["publication-record"],
+                ["availability"],
+                ["publication-cleanup"],
             ),
             "Unknown QA command",
         )
@@ -2190,6 +3599,26 @@ def main(argv=None):
             "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
             "mode": os.environ.get("QA_MODE", "preflight"),
         }
+        if command == "publication-cleanup":
+            validate_context(ctx | {"mode": "preflight"})
+            temporary = device_archive.absolute_path(Path(os.environ["RUNNER_TEMP"]))
+            path = device_archive.absolute_path(
+                temporary / "clarify-ios-qa", exists=False
+            )
+            if path.exists():
+                shutil.rmtree(path)
+            return 0
+        if command in {
+            "proof-record",
+            "publication-gate",
+            "publication-export",
+            "publication-upload",
+            "publication-record",
+            "availability",
+        }:
+            inputs = _runtime_archive_inputs(ctx, command)
+            run_publication_command(command, inputs, ctx)
+            return 0
         if command in {"archive", "archive-record", "sign-export-proof"}:
             inputs = _runtime_archive_inputs(ctx, command)
             run_archive_command(command, inputs, ctx)

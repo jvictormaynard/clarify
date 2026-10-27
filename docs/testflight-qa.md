@@ -1,17 +1,18 @@
 # Internal iOS QA preflight
 
-This workflow has three separate dispatch modes for reviewed PR 179 code.
+This workflow has separate dispatch modes for reviewed PR 179 code.
 `validate` calls MAIN's reusable CI and records the exact source/base/trusted
 composition. `archive` consumes that completed validation and produces an
 unsigned Device Release archive without secrets. A later `sign-export-proof`
 dispatch uses a new trusted runner for an experimental export. Its receipt
 always has `delivery_eligible=false`. `preflight` retains the legacy read-only
-checks. `upload` and `availability` fail closed.
+checks. `upload` and `availability` use the gates below; this implementation
+does not make a build available by itself.
 No workflow dispatch is authorized by this local implementation.
 
 The stable workflow and `scripts/release_delivery.py` remain unchanged. The
-feature coordinator must restore the stable workflow in PR 179 to its exact
-current main blob. The old candidate route is not used.
+feature composition retains the stable workflow from MAIN. The old candidate
+route is not used.
 
 ## Trust and source checks
 
@@ -435,8 +436,46 @@ will work. Manual `codesign --sign` and re-signing fallbacks are not permitted.
 
 No fallback may rebuild the candidate after keys are installed, run its build
 phases, obtain new credentials, use `allowProvisioningUpdates` or change archive
-metadata to force export. Upload and availability stay blocked pending native
-proof, global history reconciliation and the Apple coordinator's exact identity.
+metadata to force export.
+
+## Internal preview publication
+
+The publication route is restricted to PR 179, version `0.12.0` build `41`.
+After the native proof run succeeds, `upload` requires the same source, base,
+trusted MAIN, immutable tag, validation run and unsigned archive. Supply
+`proof_run_id`, `proof_run_attempt` and `proof_artifact_id`. The proof job records
+its receipt artifact through the existing trusted job-log channel. Its receipt
+binds the tuple and records observed export; its two provenance/eligibility
+flags remain false.
+
+Also supply `inventory_run_id` and `inventory_run_attempt` for a fresh complete
+GET-only Apple report from the audited control. The gate authenticates that
+producer and the preserved baseline, then reconciles repository runs after the
+baseline. Unknown implementations, missing history, another active publisher or
+an upload without an authenticated receipt block publication. The baseline is
+a limited build-41 reservation audit; it does not assert that deleted historical
+uploads have independent provenance.
+
+A fresh MAIN-only runner authenticates the gates, inspects the archive before
+keys, exports, and runs the unchanged IPA verifier with `--qa-context`. It checks
+the gates again immediately before one `altool` call. A local receipt is created
+exclusively before that call. An existing receipt prevents another call;
+failure, cancellation or an unknown outcome never authorizes a resend. The
+workflow retains context, verification and upload receipts, without the IPA or
+credentials, then removes private staging. Authentication failure before this
+receipt remains a blocked operation.
+
+Use the separate `availability` mode with `publication_run_id`,
+`publication_run_attempt` and `publication_artifact_id`. It authenticates the
+original MAIN job, recorder, artifact and context, then calls the unchanged R6
+helper for the exact identity and existing `Clarify Interno` group. It can recover
+confirmed or uncertain uploads. It never signs, exports or uploads an IPA.
+There are no invitations, external beta or App Store submission operations.
+
+The Apple coordinator owns dispatch, the final fresh Apple read and delivery.
+Native export, upload, processing and group availability still need actual
+execution. Neither the hashes nor these receipts provide independent assertion
+attestation under model A.
 
 ## Cost and validation limits
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -36,6 +37,8 @@ APP_ID = "6820869157"
 REPOSITORY = "jvictormaynard/clarify"
 WORKFLOW = ".github/workflows/ios-qa.yml"
 SIGNING_HELPER = "mobile/scripts/ios-signing.py"
+QA_VERIFIER = "mobile/scripts/verify-ios-ipa.py"
+QA_PUBLISHER = "mobile/scripts/publish-testflight.cjs"
 MODULE = "scripts/qa_device_archive.py"
 ARCHIVE_ROOT = "Clarify.xcarchive"
 ARCHIVE_NAME = "unsigned.xcarchive.zip"
@@ -1597,7 +1600,12 @@ def authenticate(api, policy, artifact_id, destination):
 
 
 def _system_runner(command, *, cwd, env):
-    return subprocess.run(command, cwd=cwd, env=env, capture_output=True, check=False)
+    options = (
+        {"timeout": 1800} if tuple(command[:2]) == ("/usr/bin/xcrun", "altool") else {}
+    )
+    return subprocess.run(
+        command, cwd=cwd, env=env, capture_output=True, check=False, **options
+    )
 
 
 def _execute(runner, command, workspace, env, error):
@@ -1938,6 +1946,370 @@ def sign_export(
         finally:
             if not succeeded:
                 shutil.rmtree(workspace)
+
+
+def _qa_paths(temporary):
+    root = temporary / "clarify-ios-qa"
+    return {
+        "context_path": root / "context.json",
+        "ipa_path": root / "output/Clarify.ipa",
+        "verification_path": root / "output/verification.json",
+        "receipt_path": root / "output/upload-receipt.json",
+    }
+
+
+def _qa_verifier(trusted, policy):
+    """Load only the reviewed MAIN bytes; do not create a helper bytecode cache."""
+    policy.validate()
+    verifier_bytes = None
+    for name in (SIGNING_HELPER, QA_VERIFIER, QA_PUBLISHER):
+        path = absolute_path(trusted / name)
+        file_digest(path, 8 * 1024**2)
+        data = path.read_bytes()
+        require(
+            git_blob(data) == policy.context["controls"].get(name),
+            "Local MAIN QA helper bytes differ",
+        )
+        if name == QA_VERIFIER:
+            verifier_bytes = data
+    spec = importlib.util.spec_from_file_location(
+        "clarify_trusted_qa", trusted / QA_VERIFIER
+    )
+    helper = importlib.util.module_from_spec(spec)
+    exec(compile(verifier_bytes, str(trusted / QA_VERIFIER), "exec"), helper.__dict__)
+    return helper
+
+
+def _check_qa_prepared(prepared, policy, temporary, helper):
+    paths = _qa_paths(temporary)
+    exact(prepared, {"context", *paths}, "prepared QA")
+    require(
+        all(prepared[key] == path for key, path in paths.items()), "QA paths differ"
+    )
+    context_path = absolute_path(paths["context_path"])
+    file_digest(context_path, 8192)
+    data = context_path.read_bytes()
+    context = decode(data, maximum=8192)
+    require(data == canonical(context), "QA context must be canonical")
+    try:
+        helper.validate_qa_context(context)
+    except (ValueError, TypeError, KeyError, OverflowError):
+        raise ArchiveError("Invalid R6 QA context") from None
+    require(
+        canonical(context) == canonical(prepared["context"])
+        and all(
+            context[key] == policy.context[key]
+            for key in context
+            if key in policy.context
+        )
+        and all(
+            context["artifact"][key] == policy.context["producer"][key]
+            for key in ("run_id", "run_attempt")
+        ),
+        "QA policy/context differs",
+    )
+    for path, expected in (
+        (context_path.parent / "input" / ARCHIVE_NAME, context["artifact"]),
+        (paths["ipa_path"], context["ipa"]),
+    ):
+        require(
+            file_digest(absolute_path(path), LIMITS.zip_bytes)
+            == {key: expected[key] for key in ("sha256", "bytes")},
+            "Staged QA digest/size differs",
+        )
+    sidecar = absolute_path(paths["verification_path"])
+    file_digest(sidecar, MAX_ENVELOPE)
+    verification = decode(sidecar.read_bytes())
+    expected = {
+        **context["ipa"],
+        "qa": context,
+        "appId": APP_ID,
+        "team": TEAM,
+        "bundles": [
+            {
+                "bundleId": item["id"],
+                "version": context["version"],
+                "build": context["build"],
+            }
+            for item in sorted(context["bundles"], key=lambda item: item["path"])
+        ],
+        "artifactDigestVerified": True,
+        "ipaDigestVerified": True,
+        "bundleDigestsVerified": True,
+        "workflowArtifactProvenanceVerified": False,
+    }
+    require(
+        canonical(verification) == canonical(expected), "R6 QA verification differs"
+    )
+    return context
+
+
+def prepare_qa_context(
+    result,
+    policy,
+    *,
+    runner_temp,
+    trusted_root,
+    run_id,
+    run_attempt,
+    runner=_system_runner,
+):
+    """Stage a real sign_export result and run the existing trusted R6 verifier.
+
+    The returned paths belong to the caller. This operation does not upload or
+    establish native compatibility, provenance, or publication authorization.
+    """
+    require(
+        runner is not _system_runner or sys.platform == "darwin",
+        "QA verification requires trusted macOS",
+    )
+    policy = ArchivePolicy(
+        **{**policy.__dict__, "context": decode(canonical(policy.context))}
+    )
+    temporary, trusted = absolute_path(runner_temp), absolute_path(trusted_root)
+    require(
+        temporary.is_dir() and trusted.is_dir(),
+        "Expected runner and trusted directories",
+    )
+    helper = _qa_verifier(trusted, policy)
+    require(
+        positive(run_id) and positive(run_attempt) and run_attempt <= 100,
+        "Invalid QA upload run",
+    )
+    exact(result, {"workspace", "ipa_path", "receipt"}, "export result")
+    workspace = absolute_path(result["workspace"])
+    require(
+        workspace.parent == temporary
+        and workspace.name.startswith("clarify-device-archive-"),
+        "Unexpected export workspace",
+    )
+    ipa = absolute_path(result["ipa_path"])
+    require(ipa == workspace / "output/Clarify.ipa", "Unexpected export IPA path")
+    receipt = decode(canonical(result["receipt"]))
+    require(
+        receipt.get("delivery_eligible") is False
+        and receipt.get("workflowArtifactProvenanceVerified") is False,
+        "Expected an unapproved export receipt",
+    )
+    archive = absolute_path(workspace / "input" / ARCHIVE_NAME)
+    for path, expected in ((archive, receipt["archive"]), (ipa, receipt["ipa"])):
+        require(
+            file_digest(path, LIMITS.zip_bytes)
+            == {key: expected[key] for key in ("bytes", "sha256")},
+            "Export digest/size differs",
+        )
+    # R6 uses files only, NFC paths and insertion-ordered path/bytes/sha256
+    # records. The archive module's manifest digest has a different contract.
+    bundles = []
+    for identifier, archive_path, executable, _ in BUNDLE_LAYOUT:
+        relative = archive_path.replace(APP_PATH, "Payload/Clarify.app")
+        bundle = absolute_path(workspace / "signed-inspection" / relative)
+        for path in bundle.rglob("*"):
+            _node(path)
+        binary = file_digest(absolute_path(bundle / executable))
+        bundles.append(
+            {
+                "id": identifier,
+                "path": relative,
+                "executable": executable,
+                "sha256": helper.bundle_digest(bundle),
+                "executable_sha256": binary["sha256"],
+                "executable_bytes": binary["bytes"],
+            }
+        )
+    context = {
+        key: policy.context[key]
+        for key in (
+            "schema",
+            "repository",
+            "pr",
+            "source_sha",
+            "source_tree",
+            "base_sha",
+            "base_tree",
+            "trusted_sha",
+            "workflow",
+            "version",
+            "build",
+            "tag",
+        )
+    }
+    context.update(
+        run_id=run_id,
+        run_attempt=run_attempt,
+        artifact={
+            **{
+                key: receipt["artifact"][key]
+                for key in ("id", "name", "run_id", "run_attempt")
+            },
+            **{key: receipt["archive"][key] for key in ("sha256", "bytes")},
+        },
+        ipa={key: receipt["ipa"][key] for key in ("sha256", "bytes")},
+        bundles=bundles,
+    )
+    try:
+        helper.validate_qa_context(context)
+    except (ValueError, TypeError, KeyError, OverflowError):
+        raise ArchiveError("Invalid R6 QA context") from None
+    data = canonical(context)
+    require(len(data) <= 8192, "QA context size limit exceeded")
+    paths = _qa_paths(temporary)
+    root = absolute_path(paths["context_path"].parent, exists=False)
+    require(not root.exists(), "QA stage must be fresh")
+    root.mkdir(mode=0o700)
+    try:
+        (root / "input").mkdir(mode=0o700)
+        (root / "output").mkdir(mode=0o700)
+        shutil.copyfile(archive, root / "input" / ARCHIVE_NAME)
+        shutil.copyfile(ipa, paths["ipa_path"])
+        for path in (root / "input" / ARCHIVE_NAME, paths["ipa_path"]):
+            path.chmod(0o600)
+        paths["context_path"].write_bytes(data)
+        paths["context_path"].chmod(0o600)
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key in {"HOME", "USER", "LOGNAME", "TMPDIR", "DEVELOPER_DIR", "SDKROOT"}
+        }
+        env.update(
+            RUNNER_TEMP=str(temporary),
+            PATH="/usr/bin:/bin:/usr/sbin:/sbin",
+            PYTHONNOUSERSITE="1",
+            PYTHONDONTWRITEBYTECODE="1",
+            GITHUB_REPOSITORY=REPOSITORY,
+            GITHUB_EVENT_NAME="workflow_dispatch",
+            GITHUB_REF="refs/heads/main",
+            GITHUB_SHA=context["trusted_sha"],
+            QA_WORKFLOW_SHA=context["trusted_sha"],
+            QA_WORKFLOW_ID=str(context["workflow"]["id"]),
+            QA_WORKFLOW_REF=REPOSITORY + "/" + WORKFLOW + "@refs/heads/main",
+            GITHUB_RUN_ID=str(run_id),
+            GITHUB_RUN_ATTEMPT=str(run_attempt),
+        )
+        _execute(
+            runner,
+            (
+                Path(sys.executable).absolute(),
+                "-I",
+                trusted / QA_VERIFIER,
+                paths["ipa_path"],
+                "--qa-context",
+                paths["context_path"],
+            ),
+            trusted / "mobile",
+            env,
+            "R6 QA verification failed",
+        )
+        prepared = {"context": context, **paths}
+        _check_qa_prepared(prepared, policy, temporary, helper)
+        return prepared
+    except BaseException:
+        shutil.rmtree(root)
+        raise
+
+
+def upload_qa_context(
+    prepared, policy, *, runner_temp, trusted_root, runner=_system_runner
+):
+    """Upload once after the trusted caller's immediate authorization checks.
+
+    The caller owns validation/proof/history and fresh Apple inventory gates.
+    This receipt records this attempt only; confirmation is not availability.
+    """
+    require(
+        runner is not _system_runner or sys.platform == "darwin",
+        "QA upload requires trusted macOS",
+    )
+    policy = ArchivePolicy(
+        **{**policy.__dict__, "context": decode(canonical(policy.context))}
+    )
+    temporary, trusted = absolute_path(runner_temp), absolute_path(trusted_root)
+    require(
+        temporary.is_dir() and trusted.is_dir(),
+        "Expected runner and trusted directories",
+    )
+    helper = _qa_verifier(trusted, policy)
+    context = _check_qa_prepared(prepared, policy, temporary, helper)
+    require(
+        all(
+            os.environ.get("GITHUB_" + key.upper()) == str(context[key])
+            for key in ("run_id", "run_attempt")
+        ),
+        "QA upload run differs",
+    )
+    receipt_path = absolute_path(_qa_paths(temporary)["receipt_path"], exists=False)
+    require(not receipt_path.exists(), "QA upload receipt already exists; do not retry")
+    key_id = os.environ.get("CLARIFY_ASC_KEY_ID", "")
+    issuer = os.environ.get("CLARIFY_ASC_ISSUER_ID", "")
+    key = os.environ.get("CLARIFY_ASC_KEY_P8", "")
+    require(
+        matches(key_id, r"[A-Z0-9]{10}")
+        and matches(issuer, r"[A-Fa-f0-9]{8}(?:-[A-Fa-f0-9]{4}){3}-[A-Fa-f0-9]{12}")
+        and len(key) <= 16384
+        and key.startswith("-----BEGIN PRIVATE KEY-----\n")
+        and key.rstrip().endswith("-----END PRIVATE KEY-----"),
+        "Invalid App Store Connect credentials",
+    )
+    upload = absolute_path(temporary / "clarify-upload", exists=False)
+    require(not upload.exists(), "QA upload key directory must be fresh")
+    upload.mkdir(mode=0o700)
+    try:
+        keys = upload / "private_keys"
+        keys.mkdir(mode=0o700)
+        key_path = keys / ("AuthKey_" + key_id + ".p8")
+        with key_path.open("xb") as outgoing:
+            key_path.chmod(0o600)
+            outgoing.write(key.encode("utf-8"))
+        env = {
+            name: value
+            for name, value in os.environ.items()
+            if name in {"HOME", "USER", "LOGNAME", "TMPDIR", "DEVELOPER_DIR", "SDKROOT"}
+        }
+        env.update(
+            RUNNER_TEMP=str(temporary),
+            PATH="/usr/bin:/bin:/usr/sbin:/sbin",
+            API_PRIVATE_KEYS_DIR=str(keys),
+        )
+        receipt = {
+            "schema": 1,
+            "status": "started",
+            "qa": context,
+            "delivery_eligible": False,
+            "workflowArtifactProvenanceVerified": False,
+        }
+        # Exclusive creation is the once-only boundary, including concurrent calls.
+        with receipt_path.open("xb") as outgoing:
+            receipt_path.chmod(0o600)
+            outgoing.write(canonical(receipt))
+        try:
+            _execute(
+                runner,
+                (
+                    "/usr/bin/xcrun",
+                    "altool",
+                    "--upload-app",
+                    "--type",
+                    "ios",
+                    "--file",
+                    prepared["ipa_path"],
+                    "--apiKey",
+                    key_id,
+                    "--apiIssuer",
+                    issuer,
+                ),
+                trusted / "mobile",
+                env,
+                "QA upload outcome is uncertain; do not retry",
+            )
+        except BaseException:
+            receipt["status"] = "uncertain"
+            absolute_path(receipt_path).write_bytes(canonical(receipt))
+            raise ArchiveError("QA upload outcome is uncertain; do not retry") from None
+        receipt["status"] = "confirmed"
+        absolute_path(receipt_path).write_bytes(canonical(receipt))
+        return receipt
+    finally:
+        shutil.rmtree(upload)
 
 
 def _cli_policy(path):
