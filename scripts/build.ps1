@@ -3,7 +3,8 @@ param(
     [string]$OutputDirectory,
     [ValidatePattern('^[a-z0-9][a-z0-9.-]{0,63}$')]
     [string]$PayloadIdentity,
-    [string]$SettingsExecutable
+    [string]$SettingsExecutable,
+    [switch]$SkipGitHooks
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,7 +26,7 @@ if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repoRoot $OutputDirectory
 }
 
-& (Join-Path $PSScriptRoot "setup.ps1") -Dev
+& (Join-Path $PSScriptRoot "setup.ps1") -Dev -SkipGitHooks:$SkipGitHooks
 if (-not (Test-Path (Join-Path $repoRoot ".venv\Scripts\python.exe"))) {
     throw "Could not prepare the build environment."
 }

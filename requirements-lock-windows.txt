@@ -78,8 +78,10 @@ markdown-it-py==4.2.0
     # via rich
 mdurl==0.1.2
     # via markdown-it-py
-msgpack==1.2.1
-    # via cachecontrol
+msgpack==1.2.3
+    # via
+    #   -r requirements-dev.txt
+    #   cachecontrol
 mypy==2.3.0
     # via -r requirements-dev.txt
 mypy-extensions==1.1.0

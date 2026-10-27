@@ -24,9 +24,9 @@ function contains(parent, child) {
   return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
-function fixtureFiles(root) {
+function fixtureFiles(root, testRoot = root) {
   const files = new Map();
-  const copy = (source, destination) => files.set(destination, fs.readFileSync(path.join(root, source)));
+  const copy = (source, destination, sourceRoot = root) => files.set(destination, fs.readFileSync(path.join(sourceRoot, source)));
   for (const name of ['KeyboardViewController.swift', 'DictationEdit.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift']) {
     copy(`native/keyboard/${name}`, `Sources/KeyboardUI/${name}`);
   }
@@ -34,10 +34,10 @@ function fixtureFiles(root) {
     copy(`modules/clarify-core/ios/${name}`, `Sources/KeyboardUI/${name}`);
   }
   for (const name of ['KeyboardUITests.swift', 'MicrophoneFailureTests.swift', 'KeyboardOpeningDiagnosticTests.swift']) {
-    copy(`native/tests/${name}`, `Tests/KeyboardUITests/${name}`);
+    copy(`native/tests/${name}`, `Tests/KeyboardUITests/${name}`, testRoot);
   }
   for (const name of ['AudioClipTests.swift', 'LibraryTests.swift']) {
-    files.set(`Tests/KeyboardUITests/${name}`, Buffer.from(fs.readFileSync(path.join(root, 'modules/clarify-core/tests', name), 'utf8')
+    files.set(`Tests/KeyboardUITests/${name}`, Buffer.from(fs.readFileSync(path.join(testRoot, 'modules/clarify-core/tests', name), 'utf8')
       .replace('@testable import ClarifyContracts', '@testable import KeyboardUI')));
   }
   for (const name of ['KBHostArbiterHook', 'KeyboardHeightSync']) {
@@ -138,15 +138,29 @@ function main() {
   }
   try {
     const fixture = measure('fixture', () => {
+      const sourceRoot = absoluteSetting('CLARIFY_KEYBOARD_UI_SOURCE_ROOT');
+      const testRoot = absoluteSetting('CLARIFY_KEYBOARD_UI_TEST_ROOT');
+      if (Boolean(sourceRoot) !== Boolean(testRoot)
+          || (sourceRoot && (contains(sourceRoot, testRoot) || contains(testRoot, sourceRoot)))) {
+        throw new Error('Explicit UIKit product and test roots must both be set and separate.');
+      }
+      for (const input of [sourceRoot, testRoot].filter(Boolean)) {
+        if (fs.lstatSync(input).isSymbolicLink() || !fs.lstatSync(input).isDirectory()) {
+          throw new Error('UIKit input roots must be regular directories.');
+        }
+      }
       const stable = absoluteSetting('CLARIFY_IOS_UI_FIXTURE_ROOT');
       const derived = absoluteSetting('CLARIFY_IOS_UI_DERIVED_DATA');
       const directory = stable ?? fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-keyboard-ui-'));
-      if (contains(directory, root) || (derived && (contains(directory, derived) || contains(derived, directory)))) {
+      if (contains(directory, root)
+          || [sourceRoot, testRoot].filter(Boolean).some(input => contains(directory, input) || contains(input, directory))
+          || (derived && (contains(directory, derived) || contains(derived, directory)))) {
         throw new Error('The UIKit fixture must be separate from the source root and DerivedData.');
       }
       evidence.fixtureRoot = directory;
       evidence.derivedDataPath = derived ?? null;
-      synchronizeFixture(directory, fixtureFiles(root));
+      if (sourceRoot) { evidence.sourceRoot = sourceRoot; evidence.testRoot = testRoot; }
+      synchronizeFixture(directory, fixtureFiles(sourceRoot ?? root, testRoot ?? root));
       return directory;
     });
     const device = measure('simulator-selection', () => {

@@ -1,12 +1,22 @@
 name: iOS validation
-
 on:
   workflow_call:
-  workflow_dispatch:
-
+    inputs:
+      trusted_qa:
+        type: boolean
+        default: false
+      source_sha:
+        type: string
+        default: ""
+      base_sha:
+        type: string
+        default: ""
+      trusted_sha:
+        type: string
+        default: ""
+  workflow_dispatch: null
 permissions:
   contents: read
-
 jobs:
   native:
     name: Native keyboard and library tests
@@ -16,24 +26,69 @@ jobs:
       run:
         working-directory: mobile
     env:
-      CI: '1'
-      EXPO_NO_TELEMETRY: '1'
+      CI: "1"
+      EXPO_NO_TELEMETRY: "1"
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       CLARIFY_IOS_RUNTIME: iOS-26-5
+      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      QA_BASE_SHA: ${{ inputs.base_sha }}
+      QA_TRUSTED_SHA: ${{ inputs.trusted_sha }}
+      QA_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      QA_COMPONENT_KEY: ios_native
+      QA_TRUSTED_MODE: ${{ inputs.trusted_qa }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check out trusted MAIN controls
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the exact candidate source
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up QA controller Python
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Set up pinned QA Node
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+      - name: Authenticate trusted controls
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py authenticate
+      - name: Verify source checkout
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py prepare
+        id: qa_source
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+        if: ${{ !inputs.trusted_qa }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22.21.1
           cache: npm
           cache-dependency-path: mobile/package-lock.json
+        if: ${{ !inputs.trusted_qa }}
       - run: npm ci
+        if: ${{ !inputs.trusted_qa }}
       - run: npm run check
+        if: ${{ !inputs.trusted_qa }}
       - name: Restore native test build cache
         id: native-cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
         with:
           path: |
             mobile/modules/clarify-core/.build
@@ -42,22 +97,56 @@ jobs:
           key: ios-tests-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-${{ hashFiles('mobile/package-lock.json', 'mobile/modules/clarify-core/Package.swift', 'mobile/modules/clarify-core/Package.resolved', 'mobile/modules/clarify-core/ios/**/*.swift', 'mobile/modules/clarify-core/tests/**/*.swift', 'mobile/native/keyboard/**', 'mobile/native/tests/**', 'mobile/scripts/test-keyboard-ui.cjs') }}
           restore-keys: |
             ios-tests-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-
+        if: ${{ !inputs.trusted_qa }}
       - run: npm run test:native
+        if: ${{ !inputs.trusted_qa }}
       - name: Test native keyboard and library integration
         env:
-          CLARIFY_NATIVE_TESTS: '1'
+          CLARIFY_NATIVE_TESTS: "1"
           CLARIFY_IOS_UI_DERIVED_DATA: ${{ runner.temp }}/ClarifyKeyboardUI
           CLARIFY_IOS_UI_FIXTURE_ROOT: ${{ runner.temp }}/ClarifyKeyboardUIFixture
         run: node scripts/test-keyboard-ui.cjs
+        if: ${{ !inputs.trusted_qa }}
       - name: Retain native test results
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: ${{ !inputs.trusted_qa && (always()) }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: ios-native-tests-${{ github.run_id }}-${{ github.run_attempt }}
           path: mobile/test-results/
           if-no-files-found: ignore
           retention-days: 7
-
+      - name: Run trusted mobile checks
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py run --recipe mobile
+      - name: Run native contracts with trusted harness
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py run --recipe native-contracts
+      - name: Run UIKit integration with trusted harness
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py run --recipe native-uikit
+      - name: Verify source checkout after execution
+        if: ${{ always() && inputs.trusted_qa && steps.qa_source.outcome == 'success' }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py verify-source
+      - name: Verify trusted controls after execution
+        if: ${{ always() && inputs.trusted_qa && steps.qa_source.outcome == 'success' }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py verify-controls
+      - name: Retain QA observations and inert diagnostic logs
+        if: ${{ always() && inputs.trusted_qa }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: trusted-ci-observations-${{ env.QA_COMPONENT_KEY }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |-
+            ${{ runner.temp }}/clarify-trusted-ci/
+            execution/mobile/test-results/
+            execution/desktop/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+          overwrite: false
   build:
     name: Unsigned app and extensions build
     runs-on: macos-26
@@ -66,24 +155,69 @@ jobs:
       run:
         working-directory: mobile
     env:
-      CI: '1'
-      EXPO_NO_TELEMETRY: '1'
+      CI: "1"
+      EXPO_NO_TELEMETRY: "1"
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       CLARIFY_IOS_RUNTIME: iOS-26-5
+      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      QA_BASE_SHA: ${{ inputs.base_sha }}
+      QA_TRUSTED_SHA: ${{ inputs.trusted_sha }}
+      QA_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      QA_COMPONENT_KEY: ios_build
+      QA_TRUSTED_MODE: ${{ inputs.trusted_qa }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check out trusted MAIN controls
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the exact candidate source
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up QA controller Python
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Set up pinned QA Node
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+      - name: Authenticate trusted controls
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py authenticate
+      - name: Verify source checkout
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py prepare
+        id: qa_source
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+        if: ${{ !inputs.trusted_qa }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22.21.1
           cache: npm
           cache-dependency-path: mobile/package-lock.json
+        if: ${{ !inputs.trusted_qa }}
       - run: npm ci
+        if: ${{ !inputs.trusted_qa }}
       - run: npx expo prebuild --clean --platform ios --no-install
+        if: ${{ !inputs.trusted_qa }}
       - name: Restore CocoaPods downloads and native build cache
         id: build-cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
         with:
           path: |
             ~/Library/Caches/CocoaPods
@@ -92,7 +226,9 @@ jobs:
           key: ios-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-${{ hashFiles('mobile/package-lock.json', 'mobile/app.json', 'mobile/plugins/**') }}-${{ hashFiles('mobile/native/**', 'mobile/modules/**') }}
           restore-keys: |
             ios-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-${{ hashFiles('mobile/package-lock.json', 'mobile/app.json', 'mobile/plugins/**') }}-
+        if: ${{ !inputs.trusted_qa }}
       - run: pod install --project-directory=ios
+        if: ${{ !inputs.trusted_qa }}
       - name: Compile app and extensions without signing or upload
         shell: bash
         run: |
@@ -101,28 +237,99 @@ jobs:
             -configuration Debug -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/ClarifyAccount" -showBuildTimingSummary \
             CODE_SIGNING_ALLOWED=NO build | tee "$RUNNER_TEMP/ios-build.log" | xcbeautify
+        if: ${{ !inputs.trusted_qa }}
       - name: Retain native build timing
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: ${{ !inputs.trusted_qa && (always()) }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: ios-build-timing-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ios-build.log
           if-no-files-found: ignore
           retention-days: 7
-
+      - name: Generate native project with trusted controls
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py run --recipe ios-project
+      - name: Install native dependencies with trusted controls
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py run --recipe ios-pods
+      - name: Build unsigned candidate app and extensions
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py run --recipe ios-build
+      - name: Verify source checkout after execution
+        if: ${{ always() && inputs.trusted_qa && steps.qa_source.outcome == 'success' }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py verify-source
+      - name: Verify trusted controls after execution
+        if: ${{ always() && inputs.trusted_qa && steps.qa_source.outcome == 'success' }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py verify-controls
+      - name: Retain QA observations and inert diagnostic logs
+        if: ${{ always() && inputs.trusted_qa }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: trusted-ci-observations-${{ env.QA_COMPONENT_KEY }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |-
+            ${{ runner.temp }}/clarify-trusted-ci/
+            execution/mobile/test-results/
+            execution/desktop/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+          overwrite: false
   validate:
     name: Native tests and unsigned build
-    needs: [native, build]
+    needs:
+      - native
+      - build
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Check out trusted MAIN controls
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the exact candidate source
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up QA controller Python
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Authenticate trusted workflow and controls
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py authenticate
       - name: Require native tests and unsigned compilation
         shell: bash
         env:
           NATIVE_RESULT: ${{ needs.native.result }}
           BUILD_RESULT: ${{ needs.build.result }}
         run: |
-          set -euo pipefail
-          test "$NATIVE_RESULT" = success
-          test "$BUILD_RESULT" = success
+          if [ "$QA_TRUSTED_MODE" = true ]; then
+            python trusted/scripts/trusted_ci.py ios-gate
+          else
+            set -euo pipefail
+            test "$NATIVE_RESULT" = success
+            test "$BUILD_RESULT" = success
+
+          fi
+    env:
+      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      QA_BASE_SHA: ${{ inputs.base_sha }}
+      QA_TRUSTED_SHA: ${{ inputs.trusted_sha }}
+      QA_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      QA_COMPONENT_KEY: ios_aggregate
+      QA_TRUSTED_MODE: ${{ inputs.trusted_qa }}
