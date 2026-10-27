@@ -56,6 +56,15 @@ computer does not silently switch processing to the hosted service. Temporary
 audio is removed after normal processing; a crash or forced shutdown can leave
 files until they are removed. Deleting the executable does not delete the profile.
 
+When a remote relay is configured, it forwards encrypted traffic between the
+iPhone and computer. The TLS session ends at the computer. The relay receives no
+audio, text or device credential in plaintext. Its operator can see network
+addresses, the computer's public certificate and route, connection times and
+traffic volume. The included relay saves aggregate monthly byte-budget counters;
+it does not save device credentials, desktop certificates, audio or text.
+Remote access does not require a Clarify account. It remains disabled in builds
+without a configured relay service.
+
 ## Account information and security
 
 The service stores the email address, verified account status, sessions,
