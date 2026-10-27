@@ -72,6 +72,12 @@ iOS caches CocoaPods downloads and Xcode build outputs. Builds still run and
 validate restored inputs; a cache hit is not proof of successful validation.
 Do not put profiles, secrets, recordings or signing materials in caches.
 
+Native iOS tests and unsigned compilation run in separate parallel jobs. Each
+keeps a 60-minute limit, so test setup does not consume the compilation budget.
+The existing `Native tests and unsigned build` check requires both jobs to
+succeed. Failure, cancellation or skipping either job blocks that check and
+client publication. These validation jobs do not sign or upload an app.
+
 The existing Desktop dependency audits run when their dependency inputs change
 and daily at 04:23 UTC on the default branch. Desktop release builds retain
 fresh audits. Mobile and server checks validate their own locked inputs; this
