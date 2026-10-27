@@ -29,8 +29,8 @@ translate selected text without opening a separate editor.
 
 > [!IMPORTANT]
 > Clarify supports bring-your-own-key cloud providers and optional hosted
-> dictation through a Clarify account. Personal cloud providers use your own
-> API key. On desktop, eligible ChatGPT subscribers can also connect their plan
+> dictation through a Clarify account. Personal cloud access uses your own
+> API key or an eligible ChatGPT plan. On Windows, subscribers can connect their plan
 > for text rewriting, translation, and refinement without a Clarify account.
 > This uses the existing ChatGPT plan limits and sends text directly to OpenAI;
 > it does not include audio transcription. See [ChatGPT plan setup](docs/chatgpt-plan.md).
@@ -275,9 +275,22 @@ separately with Windows Data Protection API (DPAPI).
 | ChatGPT plan | Not supported | Responses API with the connected account's available models | `api.openai.com/v1` |
 | Local Whisper | Local CPU or compatible NVIDIA GPU sidecar (optional download) | None by default; cloud refinement requires explicit opt-in | Local loopback only |
 
-ChatGPT plan access uses **Continue with ChatGPT** instead of an API key. It
-supports text workflows and requires separate consent to use the plan. Its
-endpoint is fixed. See [setup, limits, and self-hosted use](docs/chatgpt-plan.md).
+To use a ChatGPT subscription on Windows, select **Continue without an account**.
+You do not need a Clarify account or an API key for this connection.
+
+1. Open **Settings → Models and services** and select **ChatGPT (subscription)**.
+2. Select **Continue with ChatGPT**, finish sign-in in your browser, and grant
+   permission to use your plan.
+3. Select **Refresh ChatGPT models**, then open **Settings → Text**. For each
+   text workflow, select ChatGPT and an available model for the connected account.
+   Sign-in does not change existing routes.
+
+ChatGPT supports rewriting, translation, and optional cloud refinement of Local
+Whisper transcripts. It does not transcribe audio. Requests use your existing
+ChatGPT allowance and limits, with no additional quota. Windows DPAPI protects
+tokens locally, and text requests go directly to OpenAI through a fixed endpoint.
+Clarify account mode keeps managed processing on desktop and mobile. See
+[ChatGPT setup and limits](docs/chatgpt-plan.md).
 
 Custom endpoints must implement the corresponding provider-compatible routes.
 Unknown custom models work, but their cost is intentionally shown as unpriced
