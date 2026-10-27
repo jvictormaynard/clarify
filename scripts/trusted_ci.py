@@ -1106,6 +1106,50 @@ class Job:
                 self.metadata / "mobile-export",
             )
 
+    def _settings_playwright_modules(self):
+        """Bind config/spec imports to the physical modules used by the MAIN CLI."""
+        modules = self.execution / "desktop/node_modules"
+        trusted_modules = self.trusted / "desktop/node_modules"
+        if not modules.resolve().is_relative_to(
+            self.execution.resolve()
+        ) or not trusted_modules.resolve().is_relative_to(self.trusted.resolve()):
+            raise ValueError("Playwright dependency root escapes its checkout")
+        lock = json.loads(
+            (self.trusted / "desktop/package-lock.json").read_text(encoding="utf-8")
+        )
+        bindings = []
+        for name in ("@playwright/test", "playwright", "playwright-core"):
+            origin = (trusted_modules / name).resolve(strict=True)
+            if not origin.is_relative_to(trusted_modules.resolve()):
+                raise ValueError("Playwright dependency escapes MAIN tools")
+            package = json.loads((origin / "package.json").read_text(encoding="utf-8"))
+            version = lock["packages"]["node_modules/" + name]["version"]
+            if (
+                not isinstance(version, str)
+                or not version
+                or package.get("name") != name
+                or package.get("version") != version
+            ):
+                raise ValueError("Playwright dependency differs from the MAIN lock")
+            target = modules / name
+            if not target.parent.resolve().is_relative_to(modules.resolve()):
+                raise ValueError("Playwright import parent escapes execution")
+            if target.is_symlink():
+                if target.resolve() == origin:
+                    continue
+                raise ValueError("Unknown Playwright import link")
+            if target.exists() and (
+                not target.is_dir()
+                or not target.resolve().is_relative_to(modules.resolve())
+            ):
+                raise ValueError("Unsafe Playwright import target")
+            bindings.append((target, origin))
+        for target, origin in bindings:
+            if target.exists():
+                shutil.rmtree(target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to(origin, target_is_directory=True)
+
     def settings(self, native=False, test=True):
         python = self.runtime_python()
         root = self.execution / "desktop"
@@ -1114,6 +1158,7 @@ class Job:
         self.node_tool("desktop", "typescript/bin/tsc", "--noEmit")
         self.node_tool("desktop", "vite/bin/vite.js", "build")
         if test:
+            self._settings_playwright_modules()
             self.node_tool(
                 "desktop", "playwright/cli.js", "install", "--with-deps", "chromium"
             )
@@ -1386,6 +1431,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer lifecycle failed' }
                 "cloud.settings",
             ],
             cwd=root / "server",
+            extra_env={"PYTHONPATH": str(root)},
         )
         # Candidate settings cannot substitute their own test runner/selector.
         self.command(
@@ -1395,6 +1441,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer lifecycle failed' }
                 "import os; os.environ['DJANGO_SETTINGS_MODULE']='cloud.settings'; import django; django.setup(); from django.test.runner import DiscoverRunner; raise SystemExit(bool(DiscoverRunner(interactive=False).run_tests(['cloud.service.tests'])))",
             ],
             cwd=root / "server",
+            extra_env={"PYTHONPATH": str(root)},
         )
         self.command([self.python, "mobile/scripts/sync-prompts.py", "--check"])
         self.command(
