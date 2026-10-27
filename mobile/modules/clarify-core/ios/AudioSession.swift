@@ -239,7 +239,9 @@ final class ClarifyAudioSession: NSObject {
     if ProcessingDestination.shared.computerMode, ComputerConnection.shared.busy { throw ComputerFailure.busy }
     guard ProcessingDestination.shared.configured else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
     guard !ProcessingDestination.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
-    if ProcessingDestination.shared.computerMode, !ComputerConnection.shared.ready { throw ComputerFailure.offline }
+    if ProcessingDestination.shared.computerMode, !ComputerConnection.shared.isReady(for: "dictate") {
+      throw ComputerConnection.shared.status == "offline" ? ComputerFailure.offline : ComputerFailure.notReady
+    }
     try? importKeyboardVocabulary()
     clipHistory = ProcessingDestination.shared.captureHistory()
     let format = engine.inputNode.outputFormat(forBus: 0)
@@ -346,9 +348,9 @@ final class ClarifyAudioSession: NSObject {
       ["rewrite", "translate"].contains(action), UUID(uuidString: id) != nil,
       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 32_768 else { return }
     let owner = ProcessingDestination.shared.captureHistory()
-    if !ComputerConnection.shared.ready {
+    if !ComputerConnection.shared.isReady(for: action) {
       state.operationID = id; state.textOperation = true; state.text = nil
-      fail(ComputerFailure.offline.localizedDescription); return
+      fail(ComputerFailure.notReady.localizedDescription); return
     }
     state.operationID = id; state.textOperation = true; state.text = nil; state.message = nil; state.phase = .rewriting; publish()
     task = Task { @MainActor [weak self] in

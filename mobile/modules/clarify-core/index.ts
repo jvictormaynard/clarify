@@ -33,7 +33,8 @@ export interface HistoryEntry {
 }
 export interface HistoryPage { entries: HistoryEntry[]; nextCursor?: string; context: string }
 export interface MicrophoneActivation { active: boolean; message?: string }
-export interface ComputerSnapshot { paired: boolean; computerID: string; computerName: string; status: string; ready: boolean; busy: boolean }
+export interface ComputerActionReadiness { dictate: boolean; rewrite: boolean; translate: boolean }
+export interface ComputerSnapshot { paired: boolean; computerID: string; computerName: string; status: string; ready: boolean; busy: boolean; actionReadiness?: ComputerActionReadiness }
 export interface AccountSnapshot {
   mode?: 'hosted' | 'computer'; processingConfigured?: boolean; computer?: ComputerSnapshot;
   endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;

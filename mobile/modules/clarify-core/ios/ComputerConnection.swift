@@ -10,6 +10,7 @@ final class ComputerConnection {
   private(set) var generation: UInt64 = 0
   private(set) var busy = false
   private(set) var ready = false
+  private(set) var actionReadiness = ComputerActionReadiness.unavailable
   private(set) var status = "unpaired"
   private var activeRoute: ComputerRoute?
   private var invalidated: (() -> Void)?
@@ -32,8 +33,10 @@ final class ComputerConnection {
   func setInvalidationHandler(_ handler: @escaping () -> Void) { invalidated = handler }
   func snapshot() -> [String: Any] {
     ["paired": configured, "computerID": credential?.computerID.uuidString ?? "",
-      "computerName": credential?.computerName ?? "", "status": status, "ready": ready, "busy": busy]
+      "computerName": credential?.computerName ?? "", "status": status, "ready": ready, "busy": busy,
+      "actionReadiness": actionReadiness.snapshot]
   }
+  func isReady(for action: String) -> Bool { actionReadiness.allows(action) }
   func accepts(_ owner: UInt64) -> Bool { generation == owner && configured }
   @MainActor private func send(_ method: String, path: String, route: ComputerRoute, token: String? = nil,
     json: [String: Any]? = nil, timeout: TimeInterval = 15) async throws -> (Data, Int) {
@@ -81,6 +84,7 @@ final class ComputerConnection {
           deviceID: reply.device_id, sessionToken: reply.session_token, routes: invitation.routes)
         try credential.validate(); try save(credential)
         self.credential = credential; generation &+= 1; activeRoute = route; ready = false; status = "offline"
+        actionReadiness = .unavailable
         if let previous, let previousRoute = previous.routes.first {
           Task { @MainActor in _ = try? await self.send("DELETE", path: "/v1/computer/session", route: previousRoute, token: previous.sessionToken, timeout: 2) }
         }
@@ -95,6 +99,7 @@ final class ComputerConnection {
     guard let credential else { throw ComputerFailure.authentication }
     guard !busy else { throw ComputerFailure.busy }
     let owner = generation; busy = true; ready = false; activeRoute = nil; status = "offline"
+    actionReadiness = .unavailable
     defer { busy = false }
     for route in credential.routes {
       do {
@@ -102,10 +107,16 @@ final class ComputerConnection {
         guard accepts(owner) else { throw CancellationError() }
         if [401, 403].contains(code) { try invalidate(); throw ComputerFailure.authentication }
         guard code == 200 else { throw ComputerFailure.invalidResponse }
-        struct Reply: Decodable { let schema_version: Int; let computer_id: UUID; let computer_name: String; let ready: Bool }
+        struct Reply: Decodable {
+          let schema_version: Int; let computer_id: UUID; let computer_name: String; let ready: Bool
+          let action_readiness: ComputerActionReadiness?
+        }
         guard let reply = try? JSONDecoder().decode(Reply.self, from: data), reply.schema_version == 1,
-          reply.computer_id == credential.computerID, ComputerInvitation.validName(reply.computer_name) else { throw ComputerFailure.invalidResponse }
-        activeRoute = route; ready = reply.ready; status = ready ? "ready" : "not_ready"; return
+          reply.computer_id == credential.computerID, ComputerInvitation.validName(reply.computer_name),
+          reply.action_readiness == nil || reply.action_readiness?.dictate == reply.ready else { throw ComputerFailure.invalidResponse }
+        // Older hosts advertise only dictation. Text needs an explicit capability.
+        actionReadiness = reply.action_readiness ?? ComputerActionReadiness(dictate: reply.ready, rewrite: false, translate: false)
+        activeRoute = route; ready = reply.ready; status = actionReadiness.available ? "ready" : "not_ready"; return
       } catch ComputerFailure.offline { continue }
     }
     guard accepts(owner) else { throw CancellationError() }
@@ -115,6 +126,7 @@ final class ComputerConnection {
     // Clear in-memory authority even if Keychain deletion fails. The mode stays
     // computer, so expiry never enables hosted processing.
     credential = nil; activeRoute = nil; ready = false; status = "revoked"; generation &+= 1
+    actionReadiness = .unavailable
     invalidated?()
     try save(nil)
   }
@@ -129,6 +141,7 @@ final class ComputerConnection {
   @MainActor func suspend() {
     for id in Array(operations.keys) { cancelOperation(id) }
     generation &+= 1; ready = false; activeRoute = nil
+    actionReadiness = .unavailable
     if configured { status = "offline" }
   }
   @MainActor func cancelOperation(_ id: String) {
@@ -144,7 +157,7 @@ final class ComputerConnection {
     guard let localID = UUID(uuidString: operationID) else { throw ComputerFailure.notReady }
     let key = localID.uuidString
     guard !retiredOperations.contains(key) else { throw CancellationError() }
-    guard let credential, let route = activeRoute, ready else { throw ComputerFailure.notReady }
+    guard let credential, let route = activeRoute, isReady(for: action ?? "dictate") else { throw ComputerFailure.notReady }
     guard !language.isEmpty, language.utf8.count <= 32,
       language.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || $0 == 45 }) else { throw ComputerFailure.invalidResponse }
     guard operations[key] == nil else { throw ComputerFailure.busy }
@@ -189,7 +202,7 @@ final class ComputerConnection {
     } catch {
       if Task.isCancelled { cancelOperation(operationID); throw CancellationError() }
       guard accepts(owner), operations[key]?.wireID == wireID else { throw CancellationError() }
-      if error as? ComputerFailure == .offline { ready = false; status = "offline" }
+      if error as? ComputerFailure == .offline { ready = false; actionReadiness = .unavailable; status = "offline" }
       throw error
     }
   }

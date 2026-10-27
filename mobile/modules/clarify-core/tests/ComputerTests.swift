@@ -102,6 +102,10 @@ final class ComputerTests: XCTestCase {
     var processingError: String?
     var resultOperationID: String?
     var idsCreated = 0
+    var dictationReady = true
+    var actionReadiness: [String: Any]? = ["dictate": true, "rewrite": true, "translate": true]
+    var pauseStatus = false
+    var onStatus: (() -> Void)?
     lazy var connection = ComputerConnection(read: { self.saved }, save: { self.saved = $0 }, transport: { request, route in
       XCTAssertEqual(request.url?.host, URL(string: route.url)?.host)
       self.requests.append(request)
@@ -118,7 +122,9 @@ final class ComputerTests: XCTestCase {
       } else {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer " + ComputerTests.token)
         if path.hasSuffix("/status") {
-          json = ["schema_version": 1, "computer_id": self.replyComputer.uuidString, "computer_name": "Fixture PC", "ready": true]
+          if self.pauseStatus { await withCheckedContinuation { self.suspended = $0; self.onStatus?() } }
+          json = ["schema_version": 1, "computer_id": self.replyComputer.uuidString, "computer_name": "Fixture PC", "ready": self.dictationReady]
+          if let actions = self.actionReadiness { json["action_readiness"] = actions }
         } else if request.httpMethod == "POST" {
           let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
           await withCheckedContinuation { self.suspended = $0; self.onProcessing?() }
@@ -167,6 +173,110 @@ final class ComputerTests: XCTestCase {
     let other = Fixture(); other.replyComputer = UUID()
     do { try await other.connection.refresh(); XCTFail("Wrong identity accepted") } catch {}
     XCTAssertFalse(other.connection.ready)
+  }
+  @MainActor func testIndependentTextCapabilitiesAdmitOnlyRequestedActionWithDictationUnavailable() async throws {
+    for action in ["rewrite", "translate"] {
+      let f = Fixture(); f.dictationReady = false
+      f.actionReadiness = ["dictate": false, "rewrite": action == "rewrite", "translate": action == "translate"]
+      try await f.connection.refresh()
+      XCTAssertFalse(f.connection.ready); XCTAssertTrue(f.connection.isReady(for: action))
+      XCTAssertEqual(f.connection.status, "ready")
+      XCTAssertFalse(f.connection.isReady(for: "unknown"))
+      f.onProcessing = { f.resume() }
+      let result = try await f.connection.process(UUID().uuidString, action: action, text: "Original")
+      XCTAssertEqual(result.text, "Revised")
+      for rejected in ["dictate", action == "rewrite" ? "translate" : "rewrite", "unknown"] {
+        do {
+          _ = try await f.connection.process(UUID().uuidString, action: rejected, text: "Original")
+          XCTFail("Unready action uploaded")
+        } catch { XCTAssertEqual(error as? ComputerFailure, .notReady) }
+      }
+      XCTAssertEqual(f.idsCreated, 1); XCTAssertEqual(try f.postedIDs().count, 1)
+      f.connection.suspend()
+      XCTAssertFalse(f.connection.isReady(for: action))
+    }
+  }
+  @MainActor func testLegacyStatusKeepsDictationAndDoesNotInferTextCapabilities() async throws {
+    let f = Fixture(); f.actionReadiness = nil
+    try await f.connection.refresh()
+    XCTAssertTrue(f.connection.ready); XCTAssertTrue(f.connection.isReady(for: "dictate"))
+    for action in ["rewrite", "translate", "unknown"] {
+      XCTAssertFalse(f.connection.isReady(for: action))
+      do { _ = try await f.connection.process(UUID().uuidString, action: action, text: "Original"); XCTFail("Unadvertised text uploaded") }
+      catch { XCTAssertEqual(error as? ComputerFailure, .notReady) }
+    }
+    XCTAssertEqual(f.idsCreated, 0)
+    f.onProcessing = { f.resume() }
+    _ = try await f.connection.process(UUID().uuidString, wav: ComputerWAV.wrapPCM16(Data(repeating: 0, count: 320)))
+    XCTAssertEqual(f.requests.filter { $0.httpMethod == "POST" }.map { $0.url!.path }, ["/v1/computer/dictations"])
+    f.dictationReady = false; try await f.connection.refresh()
+    XCTAssertFalse(f.connection.isReady(for: "dictate"))
+    XCTAssertEqual(f.connection.status, "not_ready")
+  }
+  @MainActor func testInvalidOrPartialCapabilitiesClearPriorReadiness() async throws {
+    let cases: [[String: Any]] = [
+      ["dictate": true, "rewrite": true],
+      ["dictate": true, "rewrite": "true", "translate": true],
+      ["dictate": false, "rewrite": true, "translate": true],
+    ]
+    for actions in cases {
+      let f = Fixture(); try await f.connection.refresh()
+      f.actionReadiness = actions
+      do { try await f.connection.refresh(); XCTFail("Invalid capabilities accepted") }
+      catch { XCTAssertEqual(error as? ComputerFailure, .invalidResponse) }
+      XCTAssertFalse(f.connection.ready); XCTAssertEqual(f.connection.actionReadiness, .unavailable)
+    }
+  }
+  @MainActor func testTextStartRefreshesRequestedActionAndRejectsLostReadinessOrStaleOwner() async throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let f = Fixture()
+    let account = CloudAccount(defaults: defaults, transport: { _ in XCTFail("Hosted fallback"); throw ComputerFailure.offline }, readCredential: { nil }, saveCredential: { _ in })
+    let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
+    try destination.select("computer")
+    f.dictationReady = false; f.actionReadiness = ["dictate": false, "rewrite": true, "translate": false]
+    var started = 0
+    try await destination.withComputerText("rewrite", context: destination.historyContext) { started += 1 }
+    XCTAssertEqual(started, 1); XCTAssertFalse(f.connection.ready)
+    f.actionReadiness = ["dictate": false, "rewrite": false, "translate": true]
+    do { try await destination.withComputerText("rewrite", context: destination.historyContext) { started += 1 }; XCTFail("Stale readiness accepted") }
+    catch { XCTAssertEqual(error as? ComputerFailure, .notReady) }
+    let context = destination.historyContext
+    try destination.select("hosted"); try destination.select("computer")
+    let count = f.requests.count
+    do { try await destination.withComputerText("translate", context: context) { started += 1 }; XCTFail("Stale context accepted") } catch {}
+    XCTAssertEqual(f.requests.count, count)
+    f.pauseStatus = true
+    let waiting = expectation(description: "refresh suspended")
+    f.onStatus = { waiting.fulfill() }
+    let currentContext = destination.historyContext
+    let task = Task { try await destination.withComputerText("translate", context: currentContext) { started += 1 } }
+    await fulfillment(of: [waiting], timeout: 2)
+    f.connection.suspend(); f.resume()
+    do { try await task.value; XCTFail("Stale refresh started text") } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+    XCTAssertEqual(started, 1)
+    XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" })
+  }
+  @MainActor func testCancelledTextRefreshNeverStartsProcessing() async throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let f = Fixture()
+    let account = CloudAccount(defaults: defaults, transport: { _ in XCTFail("Hosted fallback"); throw ComputerFailure.offline }, readCredential: { nil }, saveCredential: { _ in })
+    let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
+    try destination.select("computer")
+    f.pauseStatus = true
+    let waiting = expectation(description: "refresh suspended")
+    f.onStatus = { waiting.fulfill() }
+    var started = false
+    let context = destination.historyContext
+    let task = Task { try await destination.withComputerText("rewrite", context: context) { started = true } }
+    await fulfillment(of: [waiting], timeout: 2)
+    task.cancel(); f.resume()
+    do { try await task.value; XCTFail("Cancelled refresh started text") } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+    XCTAssertFalse(started); XCTAssertEqual(f.idsCreated, 0)
+    XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" })
   }
   @MainActor func testPairDeviceLimitPreservesExistingTrustWithoutRetryOrRevocation() async throws {
     let f = Fixture(); try await f.connection.refresh()
@@ -392,6 +502,27 @@ final class ComputerTests: XCTestCase {
     XCTAssertTrue(try library.historyBatch(scope: "https://account.example.com|" + UUID().uuidString).upserts.isEmpty)
     try library.clearHistory(scope: scope, includeLocal: false)
     XCTAssertEqual(try library.history().entries, [guest])
+  }
+  @MainActor func testComputerKeyboardActivationAllowsTextWithoutEnablingDictation() async throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let f = Fixture(); f.dictationReady = false
+    f.actionReadiness = ["dictate": false, "rewrite": true, "translate": false]
+    let account = CloudAccount(defaults: defaults, transport: { _ in XCTFail("Hosted fallback"); throw ComputerFailure.offline }, readCredential: { nil }, saveCredential: { _ in })
+    let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
+    try destination.select("computer")
+    var prepared = 0, activated = 0
+    try await destination.withActivation(prepare: { prepared += 1 }, activate: { activated += 1 })
+    XCTAssertEqual(prepared, 1); XCTAssertEqual(activated, 1)
+    XCTAssertTrue(f.connection.isReady(for: "rewrite")); XCTAssertFalse(f.connection.isReady(for: "dictate"))
+    f.actionReadiness = ["dictate": false, "rewrite": false, "translate": false]
+    do {
+      try await destination.withActivation(prepare: { prepared += 1 }, activate: { activated += 1 })
+      XCTFail("Unavailable actions activated the session")
+    } catch { XCTAssertEqual(error as? ComputerFailure, .notReady) }
+    XCTAssertEqual(prepared, 1); XCTAssertEqual(activated, 1)
+    XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" })
   }
   @MainActor func testComputerActivationRejectsModeChangeDuringPermissionWait() async throws {
     let suite = "ClarifyTests.\(UUID().uuidString)"

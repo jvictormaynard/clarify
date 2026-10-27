@@ -56,15 +56,25 @@ final class ProcessingDestination {
     guard !computerMode else { return false }
     return await account.syncHistory(library, force: force)
   }
+  @MainActor func withComputerText(_ action: String, context: String, start: @MainActor () throws -> Void) async throws {
+    guard ["rewrite", "translate"].contains(action) else { throw ComputerFailure.invalidResponse }
+    guard computerMode, configured, context == historyContext else { throw ComputerFailure.notReady }
+    let capture = captureHistory()
+    try await computer.refresh()
+    try Task.checkCancellation()
+    guard computerMode, acceptsHistory(capture), context == historyContext else { throw CancellationError() }
+    guard computer.isReady(for: action) else { throw ComputerFailure.notReady }
+    try start()
+  }
   @MainActor func withActivation(prepare: @MainActor () async throws -> Void, activate: @MainActor () throws -> Void) async throws {
     let capture = captureHistory()
     if computerMode {
       guard configured else { throw ComputerFailure.authentication }
       try await computer.refresh()
-      guard computer.ready else { throw ComputerFailure.notReady }
+      guard computer.actionReadiness.available else { throw ComputerFailure.notReady }
       try await prepare()
       try Task.checkCancellation()
-      guard computerMode, acceptsHistory(capture), computer.ready else { throw CancellationError() }
+      guard computerMode, acceptsHistory(capture), computer.actionReadiness.available else { throw CancellationError() }
       try activate()
     } else {
       try await account.withActivationAccount(prepare: prepare, activate: {

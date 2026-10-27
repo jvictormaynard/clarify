@@ -1,6 +1,7 @@
 """Wire/security tests use loopback TLS and an isolated SQLite store."""
 
 import base64
+from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, redirect_stderr
 import hashlib
@@ -16,14 +17,24 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.parse import urlsplit, parse_qs
 from uuid import UUID, uuid4
 import wave
 
 from computer_host import ComputerHost
+from computer_processing import ComputerProcessor
+from dictionary_snippets import (
+    DictionarySnippets,
+    DictionarySnippetService,
+    InMemoryDictionarySnippetsRepository,
+)
 from provider_http import ProviderCancelledError
+from provider_registry import PROVIDER_REGISTRY, ProviderRegistry
+from provider_types import RewriteResult, TranslationResult
+from repositories import AppConfig, ProviderConfig
 from secret_store import MemorySecretStore
+from workflow_config import WorkflowConfig, WorkflowRoute
 
 
 def audio(channels=1, rate=16000, frames=160):
@@ -36,6 +47,10 @@ def audio(channels=1, rate=16000, frames=160):
 
 class Processor:
     ready = True
+
+    @property
+    def action_readiness(self):
+        return dict.fromkeys(("dictate", "rewrite", "translate"), self.ready)
 
     def __init__(self):
         self.calls = []
@@ -176,6 +191,114 @@ class ComputerHostTests(unittest.TestCase):
         )
         self.assertEqual(self.processor.calls, [])
 
+    def test_status_and_admission_use_each_requested_personal_workflow(self):
+        registry = Mock(spec=ProviderRegistry)
+        for name in (
+            "describe",
+            "supports",
+            "connection_for_route",
+            "canonical_audio_model",
+        ):
+            getattr(registry, name).side_effect = getattr(PROVIDER_REGISTRY, name)
+        registry.rewrite.return_value = RewriteResult("Edited.", "groq", "editor")
+        registry.translate.return_value = TranslationResult(
+            "Traduzido.", "openai", "translator", "pt"
+        )
+        config = AppConfig(
+            groq=ProviderConfig(api_key="fake-rewrite"),
+            openai=ProviderConfig(api_key="fake-translation"),
+            workflows=WorkflowConfig(
+                transcription=WorkflowRoute("openai", "whisper-1", enabled=False),
+                rewrite=WorkflowRoute("groq", "editor"),
+                translation=WorkflowRoute("openai", "translator", enabled=False),
+            ),
+        )
+        dictionary = DictionarySnippetService(
+            InMemoryDictionarySnippetsRepository(DictionarySnippets())
+        )
+        _, session = self.pair()
+        token = session["session_token"]
+        for enabled, transcription_enabled, audio_key in (
+            ("rewrite", False, "fake-translation"),
+            ("translate", False, "fake-translation"),
+            ("rewrite", True, ""),
+        ):
+            current = replace(
+                config,
+                openai=ProviderConfig(api_key=audio_key),
+                workflows=replace(
+                    config.workflows,
+                    transcription=replace(
+                        config.workflows.transcription, enabled=transcription_enabled
+                    ),
+                    rewrite=replace(
+                        config.workflows.rewrite, enabled=enabled == "rewrite"
+                    ),
+                    translation=replace(
+                        config.workflows.translation, enabled=enabled == "translate"
+                    ),
+                ),
+            )
+            self.host.processor = ComputerProcessor(
+                current, dictionary, registry=registry
+            )
+            status, snapshot = self.request("GET", "/v1/computer/status", token=token)
+            self.assertEqual(status, 200)
+            self.assertFalse(snapshot["ready"])
+            # Run the request before checking the new field: the old host
+            # reproduces the bug here with 503 despite a valid text route.
+            payload = self.text()
+            payload["action"] = enabled
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", payload, token)[0], 200
+            )
+            self.assertEqual(
+                snapshot["action_readiness"],
+                {
+                    "dictate": False,
+                    "rewrite": enabled == "rewrite",
+                    "translate": enabled == "translate",
+                },
+            )
+            payload = self.text()
+            payload["action"] = "translate" if enabled == "rewrite" else "rewrite"
+            self.assertEqual(
+                self.request("POST", "/v1/computer/text", payload, token),
+                (503, {"error": "not_ready"}),
+            )
+            self.assertEqual(
+                self.request(
+                    "POST",
+                    "/v1/computer/dictations",
+                    {
+                        "operation_id": self.operation(),
+                        "language": "pt",
+                        "audio_wav": audio(),
+                    },
+                    token,
+                ),
+                (503, {"error": "not_ready"}),
+            )
+        self.assertEqual(registry.rewrite.call_count, 2)
+        self.assertEqual(registry.translate.call_count, 1)
+        registry.transcribe.assert_not_called()
+        # A later settings change cannot use the readiness from a prior GET.
+        self.host.processor = ComputerProcessor(
+            replace(config, groq=ProviderConfig()), dictionary, registry=registry
+        )
+        self.assertEqual(
+            self.request("POST", "/v1/computer/text", self.text(), token),
+            (503, {"error": "not_ready"}),
+        )
+        self.assertFalse(
+            self.request("GET", "/v1/computer/status", token=token)[1][
+                "action_readiness"
+            ]["rewrite"]
+        )
+        self.assertEqual(registry.rewrite.call_count, 2)
+        registry.validate.assert_not_called()
+        registry.discover_models.assert_not_called()
+
     def test_qr_identity_and_live_certificate_fingerprint(self):
         qr = self.pairing()
         self.assertEqual(
@@ -268,6 +391,11 @@ class ComputerHostTests(unittest.TestCase):
                     "computer_id": session["computer_id"],
                     "computer_name": "Test PC",
                     "ready": True,
+                    "action_readiness": {
+                        "dictate": True,
+                        "rewrite": True,
+                        "translate": True,
+                    },
                 },
             ),
         )

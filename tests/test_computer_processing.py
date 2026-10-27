@@ -52,7 +52,12 @@ class ComputerProcessorTests(unittest.TestCase):
             InMemoryDictionarySnippetsRepository(DictionarySnippets())
         )
         self.registry = Mock(spec=ProviderRegistry)
-        for name in ("describe", "supports", "connection_for_route"):
+        for name in (
+            "describe",
+            "supports",
+            "connection_for_route",
+            "canonical_audio_model",
+        ):
             getattr(self.registry, name).side_effect = getattr(PROVIDER_REGISTRY, name)
         self.registry.transcribe.return_value = TranscriptionResult(
             "Recognized words.", "openai", "whisper-1"
@@ -67,6 +72,160 @@ class ComputerProcessorTests(unittest.TestCase):
             self.config, self.dictionary, registry=self.registry
         )
         self.token = CancellationToken()
+
+    def test_missing_action_key_is_rejected_before_provider_call(self):
+        self.assertTrue(self.processor.action_readiness["rewrite"])
+        self.current = replace(self.current, groq=ProviderConfig())
+        with self.assertRaises(RuntimeError):
+            self.processor.process_text("rewrite", "Source", "en", self.token)
+        self.registry.rewrite.assert_not_called()
+
+    def test_independent_action_readiness_and_admission(self):
+        for action, scope, provider_method in (
+            ("rewrite", "rewrite", self.registry.rewrite),
+            ("translate", "translation", self.registry.translate),
+        ):
+            with self.subTest(action=action):
+                self.current = replace(
+                    self.current,
+                    openai=ProviderConfig(api_key="fake"),
+                    groq=ProviderConfig(api_key="other"),
+                    workflows=replace(
+                        self.current.workflows,
+                        transcription=WorkflowRoute(
+                            "openai", "whisper-1", enabled=False
+                        ),
+                        rewrite=WorkflowRoute(
+                            "groq", "editor", enabled=scope == "rewrite"
+                        ),
+                        translation=WorkflowRoute(
+                            "openai", "translator", enabled=scope == "translation"
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    self.processor.action_readiness,
+                    {
+                        "dictate": False,
+                        "rewrite": action == "rewrite",
+                        "translate": action == "translate",
+                    },
+                )
+                self.assertFalse(self.processor.ready)
+                self.processor.process_text(action, "Source", "pt", self.token)
+                provider_method.assert_called()
+                with self.assertRaises(RuntimeError):
+                    self.processor.process_dictation(wav_bytes(), "en", self.token)
+                self.registry.transcribe.assert_not_called()
+
+    def test_readiness_rejects_missing_models_keys_and_invalid_routes_without_probes(
+        self,
+    ):
+        for route in (
+            WorkflowRoute("groq", "editor", enabled=False),
+            WorkflowRoute("groq", ""),
+            WorkflowRoute("local_asr", "ggml-base"),
+            WorkflowRoute("unknown", "editor"),
+            WorkflowRoute(
+                "groq", "editor", custom_endpoint="https://user:secret@bad.invalid"
+            ),
+        ):
+            with self.subTest(route=route):
+                self.current = replace(
+                    self.current,
+                    workflows=replace(self.current.workflows, rewrite=route),
+                )
+                self.assertFalse(self.processor.action_readiness["rewrite"])
+                with self.assertRaises(RuntimeError):
+                    self.processor.process_text("rewrite", "Source", "en", self.token)
+        self.current = replace(self.current, openai=ProviderConfig())
+        self.assertFalse(self.processor.action_readiness["dictate"])
+        self.assertFalse(self.processor.action_readiness["translate"])
+        self.registry.transcribe.assert_not_called()
+        self.registry.rewrite.assert_not_called()
+        self.registry.translate.assert_not_called()
+        self.registry.validate.assert_not_called()
+        self.registry.discover_models.assert_not_called()
+
+    def test_oauth_readiness_uses_bound_profile_and_selected_account_without_refresh(
+        self,
+    ):
+        session = Mock()
+        adapter = PROVIDER_REGISTRY.with_chatgpt_session(session).adapter("chatgpt")
+        self.registry.adapter.return_value = adapter
+        self.current = replace(
+            self.current,
+            workflows=replace(
+                self.current.workflows,
+                transcription=WorkflowRoute("openai", "whisper-1", enabled=False),
+                rewrite=WorkflowRoute(
+                    "chatgpt", "personal-model", account_id="profile-account"
+                ),
+                translation=WorkflowRoute(
+                    "chatgpt", "personal-model", account_id="profile-account"
+                ),
+            ),
+        )
+        for snapshot, expected in (
+            (
+                {
+                    "connected": True,
+                    "planEnabled": True,
+                    "accountId": "profile-account",
+                },
+                True,
+            ),
+            (
+                {
+                    "connected": False,
+                    "planEnabled": False,
+                    "accountId": "profile-account",
+                },
+                False,
+            ),
+            (
+                {
+                    "connected": True,
+                    "planEnabled": False,
+                    "accountId": "profile-account",
+                },
+                False,
+            ),
+            (
+                {"connected": True, "planEnabled": True, "accountId": "other-account"},
+                False,
+            ),
+        ):
+            session.snapshot.return_value = snapshot
+            for action, provider_method in (
+                ("rewrite", self.registry.rewrite),
+                ("translate", self.registry.translate),
+            ):
+                self.assertEqual(self.processor.action_readiness[action], expected)
+                if expected:
+                    self.processor.process_text(action, "Source", "en", self.token)
+                    connection = provider_method.call_args.args[2]
+                    self.assertEqual(provider_method.call_args.args[0], "chatgpt")
+                    self.assertEqual(connection.account_id, "profile-account")
+                    self.assertEqual(connection.api_key, "")
+                else:
+                    with self.assertRaises(RuntimeError):
+                        self.processor.process_text(action, "Source", "en", self.token)
+        session.credential.assert_not_called()
+        self.registry.validate.assert_not_called()
+        self.registry.discover_models.assert_not_called()
+
+    def test_local_asr_readiness_does_not_probe_installation(self):
+        self.current = replace(
+            self.current,
+            workflows=replace(
+                self.current.workflows,
+                transcription=WorkflowRoute("local_asr", "ggml-base"),
+            ),
+        )
+        self.assertTrue(self.processor.ready)
+        self.registry.transcribe.assert_not_called()
+        self.registry.adapter.assert_not_called()
 
     def test_dictation_uses_pc_route_language_and_cleans_temporary_audio(self):
         paths = []
@@ -145,7 +304,7 @@ class ComputerProcessorTests(unittest.TestCase):
             self.current,
             workflows=replace(
                 self.current.workflows,
-                transcription=WorkflowRoute("local_asr", "base"),
+                transcription=WorkflowRoute("local_asr", "ggml-base"),
                 local_asr_refinement=WorkflowRoute("openai", "cloud"),
             ),
         )

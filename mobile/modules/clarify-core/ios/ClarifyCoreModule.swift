@@ -77,9 +77,10 @@ public class ClarifyCoreModule: Module {
         do {
           guard context == ProcessingDestination.shared.historyContext,
             ProcessingDestination.shared.computerMode, !ClarifyAudioSession.shared.state.phase.busy else { throw ComputerFailure.busy }
-          try await ComputerConnection.shared.refresh()
-          guard ComputerConnection.shared.ready else { throw ComputerFailure.notReady }
-          ClarifyAudioSession.shared.handleText(action, id: UUID().uuidString, text: text, language: language)
+          try await ProcessingDestination.shared.withComputerText(action, context: context) {
+            guard !ClarifyAudioSession.shared.state.phase.busy else { throw ComputerFailure.busy }
+            ClarifyAudioSession.shared.handleText(action, id: UUID().uuidString, text: text, language: language)
+          }
           promise.resolve(nil)
         } catch { promise.reject("COMPUTER_ERROR", (error as? ComputerFailure)?.localizedDescription ?? ComputerFailure.offline.localizedDescription) }
       }

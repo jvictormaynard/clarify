@@ -73,6 +73,9 @@ class ComputerProcessing(Protocol):
     @property
     def ready(self) -> bool: ...
 
+    @property
+    def action_readiness(self) -> dict[str, bool]: ...
+
     def process_dictation(
         self, audio_wav: bytes, language: str, cancel_token: CancellationToken
     ) -> dict: ...
@@ -775,11 +778,13 @@ class ComputerHost:
     def _status(self):
         with self._lock:
             self._require_started()
+            actions = self.processor.action_readiness
             return {
                 "schema_version": 1,
                 "computer_id": self._identity["computer_id"],
                 "computer_name": self.computer_name,
-                "ready": self.ready,
+                "ready": actions["dictate"],
+                "action_readiness": actions,
             }
 
     def snapshot(self) -> dict:
@@ -1075,7 +1080,8 @@ class ComputerHost:
             self._check_operation_time(operation, row, window)
             if row:
                 return self._cached(key, row, content_hash)
-            if not self.ready:
+            action = "dictate" if route == "dictations" else body["action"]
+            if not self.processor.action_readiness.get(action, False):
                 raise _APIError(503, "not_ready")
             self._require_operation_capacity(window)
             if not self._capacity.acquire(blocking=False):

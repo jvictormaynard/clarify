@@ -1,5 +1,22 @@
 import Foundation
 
+struct ComputerActionReadiness: Decodable, Equatable {
+  let dictate: Bool
+  let rewrite: Bool
+  let translate: Bool
+  static let unavailable = Self(dictate: false, rewrite: false, translate: false)
+  var available: Bool { dictate || rewrite || translate }
+  func allows(_ action: String) -> Bool {
+    switch action {
+    case "dictate": return dictate
+    case "rewrite": return rewrite
+    case "translate": return translate
+    default: return false
+    }
+  }
+  var snapshot: [String: Bool] { ["dictate": dictate, "rewrite": rewrite, "translate": translate] }
+}
+
 enum ComputerProtocolLimits {
   static let maximumResponseBytes = 512 * 1024
 }

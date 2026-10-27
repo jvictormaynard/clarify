@@ -51,7 +51,7 @@ store. A Settings snapshot must not expose permanent device credentials.
 | Request | Body or result |
 | --- | --- |
 | `POST /v1/computer/pair` | `{pairing_token, device_name}`; returns `{schema_version, computer_id, computer_name, device_id, session_token}` |
-| `GET /v1/computer/status` | Returns `{schema_version, computer_id, computer_name, ready}` |
+| `GET /v1/computer/status` | Returns `{schema_version, computer_id, computer_name, ready, action_readiness}` |
 | `POST /v1/computer/dictations` | `{operation_id, language, audio_wav}` |
 | `POST /v1/computer/text` | `{operation_id, action, text, language}`; action is `rewrite` or `translate` |
 | `DELETE /v1/computer/operations/<UUID>` | Cancels the caller's operation |
@@ -61,6 +61,26 @@ All routes except pairing require `Authorization: Bearer <session_token>`.
 Dictation and text return
 `{operation_id, transcript, text, rewritten, successful}`. Errors return a bounded
 `{error}` code with a suitable HTTP status, without provider exception bodies.
+
+`ready` retains its version 1 meaning: dictation configuration readiness.
+The optional `action_readiness` object has three Boolean fields: `dictate`,
+`rewrite` and `translate`. Each checks its own enabled workflow, model,
+provider capability and personal credentials. A ChatGPT text route checks the
+bound profile's local session permission and selected account identity.
+These checks do not contact providers, discover models, refresh OAuth tokens,
+or check Local Whisper installation. Actual provider processing retains its
+credential and account checks. Text readiness does not depend on dictation.
+The mobile connection displays the computer as available when at least one
+action is ready. Explicit keyboard-session activation can support a text-only
+workflow. Starting a recording still requires dictation readiness.
+
+The host checks the requested action again at admission and against the frozen
+configuration used for processing. Unknown actions are rejected. A mobile client
+refreshes status before starting app text processing and checks the action at
+the processing boundary. It rejects stale destinations and cancelled calls.
+When an older host omits `action_readiness`, the mobile client uses `ready` for
+dictation and keeps text actions unavailable. Partial or invalid capability
+objects fail status validation; no hosted route is selected.
 
 Audio is base64-encoded PCM16 mono WAV at 16 kHz, with a maximum duration of
 300 seconds. The complete JSON request has a 16 MiB limit. The mobile converts

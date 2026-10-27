@@ -18,11 +18,18 @@ from dictionary_snippets import (
 )
 from provider_http import CancellationToken
 from provider_registry import PROVIDER_REGISTRY, ProviderRegistry
-from provider_types import ProviderCapability
+from provider_types import ProviderError
 from repositories import AppConfig
-from workflow_config import WorkflowScope
+from workflow_config import WorkflowScope, validate_workflow_route
 from workflow_provider import WorkflowProviderConfig, WorkflowProviderService
 from workflows import RecordingSnapshot
+
+
+_ACTION_SCOPES = {
+    "dictate": WorkflowScope.TRANSCRIPTION,
+    "rewrite": WorkflowScope.REWRITE,
+    "translate": WorkflowScope.TRANSLATION,
+}
 
 
 @dataclass(frozen=True)
@@ -93,27 +100,60 @@ class ComputerProcessor:
 
     @property
     def ready(self) -> bool:
-        """Configuration readiness only; this does not probe a provider."""
+        """Legacy dictation readiness; no provider or installation probe."""
         try:
-            current = self._current()
-            route = current.workflow(WorkflowScope.TRANSCRIPTION)
-            return bool(
-                route.enabled
-                and route.model_id
-                and self.registry.supports(
-                    route.provider_id, ProviderCapability.AUDIO_TRANSCRIPTION
-                )
-                and (
-                    route.provider_id == "local_asr"
-                    or getattr(current, route.provider_id).api_key
-                )
-            )
+            return self._ready_for(self._current(), "dictate")
         except (ValueError, TypeError, AttributeError):
             return False
 
-    def _service(self, token: CancellationToken) -> WorkflowProviderService:
+    @property
+    def action_readiness(self) -> dict[str, bool]:
+        """Check each personal workflow against one configuration snapshot."""
+        try:
+            current = self._current()
+        except (ValueError, TypeError, AttributeError):
+            return dict.fromkeys(_ACTION_SCOPES, False)
+        return {action: self._ready_for(current, action) for action in _ACTION_SCOPES}
+
+    def _ready_for(self, current: AppConfig, action: str) -> bool:
+        scope = _ACTION_SCOPES.get(action)
+        if scope is None:
+            return False
+        try:
+            route = current.workflow(scope)
+            if not route.enabled or not route.model_id.strip():
+                return False
+            validate_workflow_route(route, scope, registry=self.registry)
+            if route.provider_id == "local_asr":
+                return True
+            metadata = self.registry.describe(route.provider_id)
+            provider = getattr(current, route.provider_id)
+            if metadata.authentication == "oauth":
+                # Read only the bound profile's local session state. credential()
+                # can refresh tokens and belongs to actual provider processing.
+                snapshot = self.registry.adapter(route.provider_id).session.snapshot()
+                return bool(
+                    snapshot.get("connected") is True
+                    and snapshot.get("planEnabled") is True
+                    and route.account_id
+                    and route.account_id == snapshot.get("accountId")
+                    and (provider.base_url or metadata.default_base_url).rstrip("/")
+                    == metadata.default_base_url
+                )
+            return metadata.authentication == "api_key" and bool(
+                provider.api_key.strip()
+            )
+        except (ValueError, TypeError, AttributeError, RuntimeError, ProviderError):
+            return False
+
+    def _service(
+        self, token: CancellationToken, action: str
+    ) -> WorkflowProviderService:
         token.raise_if_cancelled()
         config = _ConfigSnapshot(self._current())
+        if not self._ready_for(config.value, action):
+            raise RuntimeError("Computer action is not configured")
+        token.raise_if_cancelled()
         dictionary = DictionarySnippetService(
             InMemoryDictionarySnippetsRepository(self.dictionary_service.state),
             max_expansion_chars=self.dictionary_service.max_expansion_chars,
@@ -128,13 +168,13 @@ class ComputerProcessor:
     def process_text(
         self, action: str, text: str, language: str, cancel_token: CancellationToken
     ) -> dict[str, Any]:
-        service = self._service(cancel_token)
+        if action not in ("rewrite", "translate"):
+            raise ValueError("Unsupported computer action")
+        service = self._service(cancel_token, action)
         if action == "rewrite":
             result = service.rewrite(text)
         elif action == "translate":
             result = service.translate(text, language)
-        else:
-            raise ValueError("Unsupported computer action")
         cancel_token.raise_if_cancelled()
         return {
             "transcript": text,
@@ -146,7 +186,7 @@ class ComputerProcessor:
     def process_dictation(
         self, audio_wav: bytes, language: str, cancel_token: CancellationToken
     ) -> dict[str, Any]:
-        service = self._service(cancel_token)
+        service = self._service(cancel_token, "dictate")
         # The adapter owns this file until the synchronous provider call ends.
         # The bytes snapshot also supports adapters that do not open the file.
         with tempfile.TemporaryDirectory(prefix="clarify-computer-") as directory:
