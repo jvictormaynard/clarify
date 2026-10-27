@@ -1,11 +1,21 @@
 name: Server validation
-
 on:
   workflow_call:
-
+    inputs:
+      trusted_qa:
+        type: boolean
+        default: false
+      source_sha:
+        type: string
+        default: ""
+      base_sha:
+        type: string
+        default: ""
+      trusted_sha:
+        type: string
+        default: ""
 permissions:
   contents: read
-
 jobs:
   server:
     name: Server tests and container
@@ -17,48 +27,92 @@ jobs:
         env:
           POSTGRES_PASSWORD: test-only
           POSTGRES_DB: clarify_test
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready --health-interval 5s
-          --health-timeout 5s --health-retries 10
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      CLARIFY_DEVELOPMENT: '1'
+      CLARIFY_DEVELOPMENT: "1"
       DATABASE_URL: postgresql://postgres:test-only@127.0.0.1:5432/clarify_test
-      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONDONTWRITEBYTECODE: "1"
+      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      QA_BASE_SHA: ${{ inputs.base_sha }}
+      QA_TRUSTED_SHA: ${{ inputs.trusted_sha }}
+      QA_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      QA_COMPONENT_KEY: server
+      QA_TRUSTED_MODE: ${{ inputs.trusted_qa }}
     steps:
+      - name: Check out trusted MAIN controls
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the exact candidate source
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up QA controller Python
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Set up pinned QA Node
+        if: ${{ inputs.trusted_qa }}
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+      - name: Authenticate trusted controls
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py authenticate
+      - name: Verify source checkout
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py prepare
+        id: qa_source
+      - name: Install QA runner libraries
+        if: ${{ inputs.trusted_qa && runner.os == 'Linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+        working-directory: ${{ github.workspace }}
       - name: Check out the caller's source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-
+        if: ${{ !inputs.trusted_qa }}
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
-          python-version: '3.12'
-
+          python-version: "3.12"
+        if: ${{ !inputs.trusted_qa }}
       - name: Test recovery image context tooling
         run: python -m unittest discover -s tests -p test_server_image_context.py -v
-
+        if: ${{ !inputs.trusted_qa }}
       - name: Install audio test tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-
+        if: ${{ !inputs.trusted_qa }}
       - name: Install hashed server dependencies
         run: python -m pip install --require-hashes -r server/requirements.txt
-
+        if: ${{ !inputs.trusted_qa }}
       - name: Check for missing migrations
         run: python server/manage.py makemigrations --check --dry-run
-
+        if: ${{ !inputs.trusted_qa }}
       - name: Test with isolated PostgreSQL
         run: python server/manage.py test cloud.service.tests --noinput
-
+        if: ${{ !inputs.trusted_qa }}
       - name: Check shared prompt synchronization
         run: python mobile/scripts/sync-prompts.py --check
-
+        if: ${{ !inputs.trusted_qa }}
       - name: Build the checked-out server
-        run: >-
-          docker build -f server/Dockerfile -t clarify-account-test
-          --label "org.opencontainers.image.revision=$GITHUB_SHA" .
-
+        run: docker build -f server/Dockerfile -t clarify-account-test --label "org.opencontainers.image.revision=$GITHUB_SHA" .
+        if: ${{ !inputs.trusted_qa }}
       - name: Check container startup, migrations, and database health
         shell: bash
         run: |
@@ -96,3 +150,28 @@ jobs:
               raise SystemExit("Unexpected server health response")
           PY
           docker exec clarify-account-smoke python server/manage.py migrate --check
+        if: ${{ !inputs.trusted_qa }}
+      - name: Validate candidate server with trusted controls
+        if: ${{ inputs.trusted_qa }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py run --recipe server
+      - name: Verify source checkout after execution
+        if: ${{ always() && inputs.trusted_qa && steps.qa_source.outcome == 'success' }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py verify-source
+      - name: Verify trusted controls after execution
+        if: ${{ always() && inputs.trusted_qa && steps.qa_source.outcome == 'success' }}
+        working-directory: ${{ github.workspace }}
+        run: python trusted/scripts/trusted_ci.py verify-controls
+      - name: Retain QA observations and inert diagnostic logs
+        if: ${{ always() && inputs.trusted_qa }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: trusted-ci-observations-${{ env.QA_COMPONENT_KEY }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |-
+            ${{ runner.temp }}/clarify-trusted-ci/
+            execution/mobile/test-results/
+            execution/desktop/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+          overwrite: false

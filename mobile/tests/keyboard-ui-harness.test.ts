@@ -255,3 +255,31 @@ test('default invocation retains temporary fixture isolation and the existing pl
   assert.equal(skipped.exitCode, 0);
   assert.equal(skipped.calls.length, 0);
 });
+
+test('explicit QA roots take product from source and assertions from MAIN', (t) => {
+  const w = workspace(t);
+  const oracle = path.join(w.temporary, 'trusted-mobile');
+  fs.cpSync(w.root, oracle, { recursive: true });
+  fs.appendFileSync(path.join(w.root, 'native/keyboard/KeyPreview.swift'), '\n// candidate product marker\n');
+  fs.writeFileSync(path.join(w.root, 'native/tests/KeyboardUITests.swift'), 'candidate assertion must not run');
+  const expected = fs.readFileSync(path.join(oracle, 'native/tests/KeyboardUITests.swift'));
+  const result = run(w.root, { env: { CLARIFY_KEYBOARD_UI_SOURCE_ROOT: w.root,
+    CLARIFY_KEYBOARD_UI_TEST_ROOT: oracle, CLARIFY_IOS_UI_FIXTURE_ROOT: w.fixture } });
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(fs.readFileSync(path.join(w.fixture, 'Tests/KeyboardUITests/KeyboardUITests.swift')), expected);
+  assert.ok(fs.readFileSync(path.join(w.fixture, 'Sources/KeyboardUI/KeyPreview.swift'), 'utf8').includes('candidate product marker'));
+});
+
+test('QA roots reject missing peers and overlapping roots before commands', (t) => {
+  const w = workspace(t);
+  const settings: Record<string, string>[] = [
+    { CLARIFY_KEYBOARD_UI_SOURCE_ROOT: w.root },
+    { CLARIFY_KEYBOARD_UI_SOURCE_ROOT: w.root, CLARIFY_KEYBOARD_UI_TEST_ROOT: w.root },
+  ];
+  for (const env of settings) {
+    const result = run(w.root, { env });
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.calls.length, 0);
+    fs.renameSync(path.join(w.root, 'test-results'), path.join(w.temporary, `evidence-${Math.random()}`));
+  }
+});

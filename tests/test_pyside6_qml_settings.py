@@ -705,12 +705,21 @@ class QmlSettingsControllerTests(unittest.TestCase):
         initial = qml_settings.LocalASRProductState("installed")
         latest = qml_settings.LocalASRProductState("installing", current=50, total=100)
         product = Mock(state=initial, busy=False)
-        with TemporaryDirectory() as directory:
+        with (
+            TemporaryDirectory() as directory,
+            patch(
+                "local_asr_catalog.devices",
+                return_value=[{"id": "cpu", "label": "CPU"}],
+            ) as devices,
+        ):
             controller = self._controller(
                 _repositories(directory), local_product=product
             )
             self._wait_for_inventory(controller)
             controller._local_inventory_thread.join(timeout=1)
+            self.assertFalse(controller._local_inventory_thread.is_alive())
+            devices.assert_called_once_with()
+            controller._drain_background_publications()
             self.qt_app.processEvents()
             changes = []
             controller.providerStateChanged.connect(
