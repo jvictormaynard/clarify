@@ -471,9 +471,12 @@ state IDs, prompts, user transcripts, email addresses or dictionary entries.
 
 Text used only by desktop can be listed in `shared/desktop_ui_keys.json`. This
 file contains source keys, not translations. The generator omits these keys from
-Swift and rejects keys referenced by mobile source. Remove a key from that list
-before using it in mobile. Unclassified keys remain shared. The Python and
-TypeScript catalogs retain every translation, including desktop text.
+Swift. The scope check searches for exact key text in supported mobile source
+files. It can flag comments and cannot resolve keys assembled from multiple
+strings or written with escape sequences. Review such uses explicitly. Remove a
+key from the scope list before using it in mobile. Unclassified keys remain
+shared. The Python and TypeScript catalogs retain every translation, including
+desktop text.
 
 The Windows Settings build stages `desktop/` and `shared/` together under
 `%TEMP%\clarify-settings-workspace`, with pinned dependencies in the staged

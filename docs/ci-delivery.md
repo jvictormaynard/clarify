@@ -40,7 +40,9 @@ tests; that script is not an application build input.
 
 The UI catalog keeps one translation source. `shared/desktop_ui_keys.json` marks
 reviewed text that mobile does not use. New, unclassified text remains in the
-native catalog. The locale check rejects a desktop key used by mobile source.
+native catalog. The locale check scans mobile source for exact desktop key text.
+See [localization scope](development.md#interface-localization) for its coverage
+limits.
 For a catalog change, CI compares the native projections in the base and tested
 Git commits. It omits native iOS only when those projections match and no other
 changed input selects iOS. Missing, invalid or nonregular catalog inputs retain
