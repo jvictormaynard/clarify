@@ -64,7 +64,7 @@ class QuickActionsTests(unittest.TestCase):
         )
 
     def test_menu_does_not_replace_external_target(self):
-        external = SelectionTarget(123, "editor.exe")
+        external = SelectionTarget(123, r"C:\Apps\Editor.exe")
         own_window = Mock()
         own_window.isActive.return_value = False
         own_window.winId.return_value = 456

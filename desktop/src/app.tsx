@@ -8,6 +8,7 @@ import { GeneralPage } from "./pages/general-page";
 import { AccountPage } from "./pages/account-page";
 import { HistoryPage } from "./pages/history-page";
 import { OnboardingPage } from "./pages/onboarding-page";
+import { DictationPractice, PracticeEntry } from "./components/dictation-practice";
 import { DictationPage } from "./pages/dictation-page";
 import { TextPage } from "./pages/text-page";
 import { SnippetsPage } from "./pages/snippets-page";
@@ -48,11 +49,11 @@ export function App() {
   return (
     <div className="settings-window">
       <Titlebar
-        pageLabel={state?.onboardingRequired ? undefined : info.label}
+        pageLabel={state?.onboardingRequired || state?.practiceState?.open ? undefined : info.label}
         onClose={() => controller.setClosing(true)}
         onError={controller.setError}
       />
-      {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} /> : <div className="app">
+      {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} /> : state?.practiceState?.open ? <DictationPractice controller={{ ...controller, state }} /> : <div className="app">
         <aside>
           <SettingsNavigation pages={visiblePages} activePage={activePage}
             version={state?.applicationVersion} onNavigate={controller.navigate} />
@@ -76,6 +77,7 @@ export function App() {
                 <div className="connection" role="status"><LoaderCircle className="spin" size={22} />{t("Carregando…")}</div>
               ) : (
                 <div className="page-content">
+                  {(activePage === "general" || activePage === "models") && <PracticeEntry controller={{ ...controller, state }} />}
                   <Page key={activePage === "snippets" || activePage === "dictionary"
                     ? `${activePage}:${state.snippetContext}` : activePage} controller={{ ...controller, state }} />
                 </div>
@@ -96,8 +98,8 @@ export function App() {
             {saved ? t("Alterações salvas") : ""}
           </span>
         </main>
-        <SettingsDialogs controller={controller} />
       </div>}
+      <SettingsDialogs controller={controller} />
     </div>
   );
 }

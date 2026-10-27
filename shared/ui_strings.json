@@ -1,4 +1,102 @@
 {
+  "Natural": {"pt":"Natural","en":"Natural","es":"Natural"},
+  "Informal": {"pt":"Informal","en":"Informal","es":"Informal"},
+  "Organizado": {"pt":"Organizado","en":"Organized","es":"Organizado"},
+  "Estilos por aplicativo": {"pt":"Estilos por aplicativo","en":"Application writing styles","es":"Estilos por aplicación"},
+  "Sem regra, usa Padrão e mantém suas instruções atuais. A regra vale para o próximo ditado.": {"pt":"Sem regra, usa Padrão e mantém suas instruções atuais. A regra vale para o próximo ditado.","en":"Without a rule, uses Default and keeps your current instructions. Rules apply to the next dictation.","es":"Sin regla, usa Predeterminado y conserva tus instrucciones actuales. Las reglas se aplican al siguiente dictado."},
+  "Caminho do aplicativo": {"pt":"Caminho do aplicativo","en":"Application path","es":"Ruta de la aplicación"},
+  "Informe o caminho completo do arquivo .exe. O arquivo não será aberto nem executado.": {"pt":"Informe o caminho completo do arquivo .exe. O arquivo não será aberto nem executado.","en":"Enter the full path to the .exe file. The file will not be opened or run.","es":"Introduce la ruta completa del archivo .exe. El archivo no se abrirá ni se ejecutará."},
+  "Usar último aplicativo": {"pt":"Usar último aplicativo","en":"Use last application","es":"Usar última aplicación"},
+  "Estilo de escrita": {"pt":"Estilo de escrita","en":"Writing style","es":"Estilo de escritura"},
+  "Mantém seu vocabulário e tom, com frases naturais.": {"pt":"Mantém seu vocabulário e tom, com frases naturais.","en":"Keeps your vocabulary and tone, with natural sentences.","es":"Conserva tu vocabulario y tono, con frases naturales."},
+  "Usa linguagem cotidiana, sem acrescentar gírias ou emojis.": {"pt":"Usa linguagem cotidiana, sem acrescentar gírias ou emojis.","en":"Uses everyday language without adding slang or emojis.","es":"Usa lenguaje cotidiano sin añadir jerga ni emojis."},
+  "Organiza os pontos em parágrafos e as enumerações em listas, sem acrescentar conteúdo.": {"pt":"Organiza os pontos em parágrafos e as enumerações em listas, sem acrescentar conteúdo.","en":"Groups points into paragraphs and explicit enumerations into lists without adding content.","es":"Agrupa los puntos en párrafos y las enumeraciones explícitas en listas sin añadir contenido."},
+  "Salvar regra": {"pt":"Salvar regra","en":"Save rule","es":"Guardar regla"},
+  "Remover regra": {"pt":"Remover regra","en":"Remove rule","es":"Eliminar regla"},
+  "Estilo não aplicado nesta rota. A regra não ativa revisão nem processamento na nuvem.": {"pt":"Estilo não aplicado nesta rota. A regra não ativa revisão nem processamento na nuvem.","en":"Style is not applied on this route. The rule does not enable editing or cloud processing.","es":"El estilo no se aplica en esta ruta. La regla no activa revisión ni procesamiento en la nube."},
+  "Padrão para todos os aplicativos.": {"pt":"Padrão para todos os aplicativos.","en":"Default for all applications.","es":"Predeterminado para todas las aplicaciones."},
+  "Estilo para {app}": {"pt":"Estilo para {app}","en":"Style for {app}","es":"Estilo para {app}"},
+  "Estilo: Padrão": {"pt":"Estilo: Padrão","en":"Style: Default","es":"Estilo: Predeterminado"},
+  "Estilo não aplicado": {"pt":"Estilo não aplicado","en":"Style not applied","es":"Estilo no aplicado"},
+  "Selecionado: {style}": {"pt":"Selecionado: {style}","en":"Selected: {style}","es":"Seleccionado: {style}"},
+  "Aplicado: {style}": {"pt":"Aplicado: {style}","en":"Applied: {style}","es":"Aplicado: {style}"},
+  "Revisão do ditado": {"pt": "Revisão do ditado", "en": "Dictation cleanup", "es": "Revisión del dictado"},
+  "Nível de revisão": {"pt": "Nível de revisão", "en": "Cleanup level", "es": "Nivel de revisión"},
+  "Padrão atual": {"pt": "Padrão atual", "en": "Current default", "es": "Configuración actual"},
+  "Preservar palavras": {"pt": "Preservar palavras", "en": "Preserve words", "es": "Conservar palabras"},
+  "Ajustes mínimos": {"pt": "Ajustes mínimos", "en": "Minimal changes", "es": "Ajustes mínimos"},
+  "Revisar clareza": {"pt": "Revisar clareza", "en": "Improve clarity", "es": "Mejorar claridad"},
+  "Mantém as opções atuais de revisão até você escolher um nível.": {"pt": "Mantém as opções atuais de revisão até você escolher um nível.", "en": "Keeps your current cleanup settings until you choose a level.", "es": "Mantiene tus opciones actuales de revisión hasta que elijas un nivel."},
+  "Mantém as palavras reconhecidas, sem revisão por IA. Dicionário e snippets continuam ativos.": {"pt": "Mantém as palavras reconhecidas, sem revisão por IA. Dicionário e snippets continuam ativos.", "en": "Keeps recognized words without AI editing. Dictionary and snippets stay active.", "es": "Conserva las palabras reconocidas sin revisión por IA. El diccionario y los snippets siguen activos."},
+  "Ajusta apenas espaços e tabulações. Mantém hesitações, repetições e autocorreções.": {"pt": "Ajusta apenas espaços e tabulações. Mantém hesitações, repetições e autocorreções.", "en": "Adjusts spaces and tabs only. Keeps hesitations, repetitions and self-corrections.", "es": "Ajusta solo espacios y tabulaciones. Conserva vacilaciones, repeticiones y autocorrecciones."},
+  "Usa a revisão configurada para melhorar a clareza. Se ela falhar, mantém a transcrição com os snippets.": {"pt": "Usa a revisão configurada para melhorar a clareza. Se ela falhar, mantém a transcrição com os snippets.", "en": "Uses the configured editor to improve clarity. If it fails, keeps the transcript with snippets.", "es": "Usa la revisión configurada para mejorar la claridad. Si falla, conserva la transcripción con los snippets."},
+  "Exemplo: ‘Talvez terça, quer dizer, sexta.’ mantém todas as palavras.": {"pt": "Exemplo: ‘Talvez terça, quer dizer, sexta.’ mantém todas as palavras.", "en": "Example: ‘Maybe Tuesday, I mean, Friday.’ keeps every word.", "es": "Ejemplo: ‘Quizás el martes, quiero decir, el viernes.’ conserva todas las palabras."},
+  "Exemplo: ‘Não  envie 42.’ vira ‘Não envie 42.’ Só os espaços mudam.": {"pt": "Exemplo: ‘Não  envie 42.’ vira ‘Não envie 42.’ Só os espaços mudam.", "en": "Example: ‘Do  not send 42.’ becomes ‘Do not send 42.’ Only spaces change.", "es": "Ejemplo: ‘No  envíes 42.’ pasa a ‘No envíes 42.’ Solo cambian los espacios."},
+  "Exemplo possível: ‘O prazo, o prazo termina amanhã.’ vira ‘O prazo termina amanhã.’": {"pt": "Exemplo possível: ‘O prazo, o prazo termina amanhã.’ vira ‘O prazo termina amanhã.’", "en": "Possible example: ‘The deadline, the deadline is tomorrow.’ becomes ‘The deadline is tomorrow.’", "es": "Ejemplo posible: ‘El plazo, el plazo termina mañana.’ pasa a ‘El plazo termina mañana.’"},
+  "Revisão indisponível nesta rota. As palavras serão preservadas. Ative a revisão nas opções de Texto para aplicar clareza.": {"pt": "Revisão indisponível nesta rota. As palavras serão preservadas. Ative a revisão nas opções de Texto para aplicar clareza.", "en": "Editing is unavailable on this route. Words will be preserved. Enable editing in Text settings to improve clarity.", "es": "La revisión no está disponible en esta ruta. Se conservarán las palabras. Activa la revisión en las opciones de Texto para mejorar la claridad."},
+  "Snippets isolados inserem o texto salvo exatamente. Outros snippets são expandidos uma vez antes da revisão.": {"pt": "Snippets isolados inserem o texto salvo exatamente. Outros snippets são expandidos uma vez antes da revisão.", "en": "Standalone snippets insert the exact saved text. Other snippets expand once before editing.", "es": "Los snippets aislados insertan el texto guardado exacto. Los demás se expanden una vez antes de la revisión."},
+  "practice_title": {
+    "pt": "Pratique seu primeiro ditado",
+    "en": "Practice your first dictation",
+    "es": "Practica tu primer dictado"
+  },
+  "practice_waiting": {
+    "pt": "Aguardando o fim da tentativa anterior…",
+    "en": "Waiting for the previous attempt to finish…",
+    "es": "Esperando a que termine el intento anterior…"
+  },
+  "practice_optional": {
+    "pt": "A prática é opcional. Comece quando estiver pronto.",
+    "en": "Practice is optional. Start when you are ready.",
+    "es": "La práctica es opcional. Empieza cuando estés listo."
+  },
+  "practice_repeat_hint": {
+    "pt": "Confira o microfone, use seu atalho e veja o texto aqui. Suas configurações são mantidas.",
+    "en": "Check the microphone, use your shortcut and see the text here. Your settings are kept.",
+    "es": "Comprueba el micrófono, usa tu atajo y ve el texto aquí. Se conservan tus ajustes."
+  },
+  "practice_open": { "pt": "Praticar ditado", "en": "Practice dictation", "es": "Practicar dictado" },
+  "practice_destination": {
+    "pt": "O texto aparece nesta tela, sem cópia ou inserção automática. A prática usa sua configuração atual. O processamento da conta pode consumir cota e salvar o ditado no histórico da conta.",
+    "en": "The text appears on this screen, with no automatic copy or insertion. Practice uses your current settings. Account processing can use quota and save dictation in account history.",
+    "es": "El texto aparece en esta pantalla, sin copia ni inserción automática. La práctica usa tus ajustes actuales. El procesamiento de la cuenta puede consumir cuota y guardar el dictado en el historial de la cuenta."
+  },
+  "practice_level": { "pt": "Nível do microfone", "en": "Microphone level", "es": "Nivel del micrófono" },
+  "practice_hold": {
+    "pt": "Segure {shortcut} para ditar. Solte para conferir o texto. Você também pode usar o botão abaixo.",
+    "en": "Hold {shortcut} to dictate. Release it to check the text. You can also use the button below.",
+    "es": "Mantén {shortcut} para dictar. Suéltalo para comprobar el texto. También puedes usar el botón de abajo."
+  },
+  "practice_toggle": {
+    "pt": "Use {shortcut} para começar e novamente para parar. Você também pode usar o botão abaixo.",
+    "en": "Use {shortcut} to start and again to stop. You can also use the button below.",
+    "es": "Usa {shortcut} para empezar y de nuevo para parar. También puedes usar el botón de abajo."
+  },
+  "practice_button_hint": { "pt": "Use o botão abaixo para começar e parar.", "en": "Use the button below to start and stop.", "es": "Usa el botón de abajo para empezar y parar." },
+  "practice_phrase": {
+    "pt": "Diga, por exemplo: Hoje vou escrever uma mensagem com o Clarify.",
+    "en": "For example, say: Today I will write a message with Clarify.",
+    "es": "Di, por ejemplo: Hoy voy a escribir un mensaje con Clarify."
+  },
+  "practice_busy": { "pt": "Aguarde a operação atual ou pare o teste de microfone para ditar.", "en": "Wait for the current operation or stop the microphone test before dictating.", "es": "Espera a que termine la operación actual o detén la prueba del micrófono antes de dictar." },
+  "practice_configuration": { "pt": "Conclua e salve a configuração de transcrição antes de ditar.", "en": "Complete and save transcription settings before dictating.", "es": "Completa y guarda los ajustes de transcripción antes de dictar." },
+  "practice_model": { "pt": "O modelo local ainda não está pronto. Conclua o download e a configuração em Modelos e serviços.", "en": "The local model is not ready. Complete the download and setup in Models and services.", "es": "El modelo local aún no está listo. Completa la descarga y la configuración en Modelos y servicios." },
+  "practice_session": { "pt": "Confira sua conta e entre novamente antes de repetir a prática.", "en": "Check your account and sign in again before repeating practice.", "es": "Comprueba tu cuenta e inicia sesión de nuevo antes de repetir la práctica." },
+  "practice_quota": { "pt": "Não há cota disponível. Confira o saldo e a próxima renovação na sua conta.", "en": "No quota is available. Check your balance and next reset in your account.", "es": "No hay cuota disponible. Consulta tu saldo y la próxima renovación en tu cuenta." },
+  "practice_microphone": { "pt": "Não foi possível usar o microfone. Confira a conexão e a permissão de microfone no Windows.", "en": "The microphone could not be used. Check its connection and microphone permission in Windows.", "es": "No se pudo usar el micrófono. Comprueba su conexión y el permiso del micrófono en Windows." },
+  "practice_no_audio": { "pt": "Nenhuma fala foi capturada. Confira o microfone e grave uma nova frase.", "en": "No speech was captured. Check the microphone and record a new sentence.", "es": "No se capturó voz. Comprueba el micrófono y graba una nueva frase." },
+  "practice_review_failed": { "pt": "A revisão falhou. A transcrição está disponível abaixo.", "en": "Review failed. The transcript is available below.", "es": "La revisión falló. La transcripción está disponible abajo." },
+  "practice_failed": { "pt": "Não foi possível concluir o ditado. Confira sua configuração e conexão antes de gravar novamente.", "en": "Dictation could not be completed. Check your settings and connection before recording again.", "es": "No se pudo completar el dictado. Comprueba tus ajustes y conexión antes de grabar de nuevo." },
+  "practice_recording": { "pt": "Gravando. Diga uma frase e pare a gravação.", "en": "Recording. Say a sentence, then stop recording.", "es": "Grabando. Di una frase y detén la grabación." },
+  "practice_processing": { "pt": "Processando o ditado…", "en": "Processing dictation…", "es": "Procesando el dictado…" },
+  "practice_result": { "pt": "Texto do seu ditado", "en": "Your dictation text", "es": "Texto de tu dictado" },
+  "practice_result_hint": { "pt": "Confira se o texto corresponde ao que você disse. Você pode gravar outra frase ou concluir a prática.", "en": "Check that the text matches what you said. You can record another sentence or finish practice.", "es": "Comprueba que el texto corresponde a lo que dijiste. Puedes grabar otra frase o terminar la práctica." },
+  "practice_start": { "pt": "Começar ditado", "en": "Start dictation", "es": "Empezar dictado" },
+  "practice_stop": { "pt": "Parar e conferir texto", "en": "Stop and check text", "es": "Parar y comprobar texto" },
+  "practice_again": { "pt": "Ditar outra frase", "en": "Dictate another sentence", "es": "Dictar otra frase" },
+  "practice_configure": { "pt": "Conferir configuração", "en": "Check settings", "es": "Comprobar ajustes" },
+  "practice_done": { "pt": "Concluir prática", "en": "Finish practice", "es": "Terminar práctica" },
+  "practice_skip": { "pt": "Pular prática", "en": "Skip practice", "es": "Omitir práctica" },
   "A conexão com o ChatGPT foi cancelada.": {"pt": "A conexão com o ChatGPT foi cancelada.", "en": "ChatGPT connection cancelled.", "es": "Se canceló la conexión con ChatGPT."},
   "O tempo para conectar ao ChatGPT terminou. Tente novamente.": {"pt": "O tempo para conectar ao ChatGPT terminou. Tente novamente.", "en": "ChatGPT connection timed out. Try again.", "es": "Se agotó el tiempo para conectar con ChatGPT. Inténtalo de nuevo."},
   "Não foi possível abrir o navegador. Verifique o navegador padrão e tente novamente.": {"pt": "Não foi possível abrir o navegador. Verifique o navegador padrão e tente novamente.", "en": "Could not open the browser. Check your default browser and try again.", "es": "No se pudo abrir el navegador. Comprueba tu navegador predeterminado e inténtalo de nuevo."},
@@ -5672,5 +5770,225 @@
     "pt": "Valor de configuração inválido",
     "en": "Invalid settings value",
     "es": "Valor de configuración no válido"
+  },
+  "Copiar resultado": {
+    "pt": "Copiar resultado",
+    "en": "Copy result",
+    "es": "Copiar resultado"
+  },
+  "Copiar original": {
+    "pt": "Copiar original",
+    "en": "Copy original",
+    "es": "Copiar original"
+  },
+  "Copiado.": {
+    "pt": "Copiado.",
+    "en": "Copied.",
+    "es": "Copiado."
+  },
+  "Não foi possível copiar. Tente novamente.": {
+    "pt": "Não foi possível copiar. Tente novamente.",
+    "en": "Could not copy. Try again.",
+    "es": "No se pudo copiar. Inténtalo de nuevo."
+  },
+  "Resultado": {
+    "pt": "Resultado",
+    "en": "Result",
+    "es": "Resultado"
+  },
+  "Original": {
+    "pt": "Original",
+    "en": "Original",
+    "es": "Original"
+  },
+  "Trecho anterior": {
+    "pt": "Trecho anterior",
+    "en": "Previous section",
+    "es": "Sección anterior"
+  },
+  "Próximo trecho": {
+    "pt": "Próximo trecho",
+    "en": "Next section",
+    "es": "Sección siguiente"
+  },
+  "O original não está disponível para este registro.": {
+    "pt": "O original não está disponível para este registro.",
+    "en": "The original is not available for this record.",
+    "es": "El original no está disponible para este registro."
+  },
+  "O original e o resultado são iguais.": {
+    "pt": "O original e o resultado são iguais.",
+    "en": "The original and the result are the same.",
+    "es": "El original y el resultado son iguales."
+  },
+  "Abrir textos": {
+    "pt": "Abrir textos",
+    "en": "Open texts",
+    "es": "Abrir textos"
+  },
+  "Fechar textos": {
+    "pt": "Fechar textos",
+    "en": "Close texts",
+    "es": "Cerrar textos"
+  },
+  "Buscar no histórico": {
+    "pt": "Buscar no histórico",
+    "en": "Search history",
+    "es": "Buscar en el historial"
+  },
+  "Buscar": {
+    "pt": "Buscar",
+    "en": "Search",
+    "es": "Buscar"
+  },
+  "Limpar busca": {
+    "pt": "Limpar busca",
+    "en": "Clear search",
+    "es": "Borrar búsqueda"
+  },
+  "Busca no original e no resultado, sem distinguir maiúsculas, nos registros disponíveis neste dispositivo.": {
+    "pt": "Busca no original e no resultado, sem distinguir maiúsculas, nos registros disponíveis neste dispositivo.",
+    "en": "Search the original and result, ignoring letter case, in records available on this device.",
+    "es": "Busca en el original y el resultado, sin distinguir mayúsculas, en los registros disponibles en este dispositivo."
+  },
+  "Continuar busca": {
+    "pt": "Continuar busca",
+    "en": "Continue search",
+    "es": "Continuar búsqueda"
+  },
+  "Ainda há registros para pesquisar.": {
+    "pt": "Ainda há registros para pesquisar.",
+    "en": "There are more records to search.",
+    "es": "Aún hay registros por buscar."
+  },
+  "Nenhum resultado encontrado.": {
+    "pt": "Nenhum resultado encontrado.",
+    "en": "No results found.",
+    "es": "No se encontraron resultados."
+  },
+  "Use um termo de até 256 caracteres, sem quebras de linha.": {
+    "pt": "Use um termo de até 256 caracteres, sem quebras de linha.",
+    "en": "Use a term of up to 256 characters, without line breaks.",
+    "es": "Usa un término de hasta 256 caracteres, sin saltos de línea."
+  },
+  "Informe uma grafia diferente para o termo correto.": {
+    "pt": "Informe uma grafia diferente para o termo correto.",
+    "en": "Enter a different spelling for the correct term.",
+    "es": "Introduce una grafía distinta para el término correcto."
+  },
+  "O termo ouvido não foi encontrado no original.": {
+    "pt": "O termo ouvido não foi encontrado no original.",
+    "en": "The heard term was not found in the original.",
+    "es": "El término oído no se encontró en el original."
+  },
+  "O registro e o dicionário devem pertencer à mesma conta ou ao modo local.": {
+    "pt": "O registro e o dicionário devem pertencer à mesma conta ou ao modo local.",
+    "en": "The record and dictionary must belong to the same account or local mode.",
+    "es": "El registro y el diccionario deben pertenecer a la misma cuenta o al modo local."
+  },
+  "A conta mudou. Abra a correção novamente.": {
+    "pt": "A conta mudou. Abra a correção novamente.",
+    "en": "The account changed. Open the correction again.",
+    "es": "La cuenta cambió. Abre la corrección de nuevo."
+  },
+  "O dicionário mudou. Revise a correção novamente.": {
+    "pt": "O dicionário mudou. Revise a correção novamente.",
+    "en": "The dictionary changed. Review the correction again.",
+    "es": "El diccionario cambió. Revisa la corrección de nuevo."
+  },
+  "Não foi possível ler o dicionário. A correção não foi salva.": {
+    "pt": "Não foi possível ler o dicionário. A correção não foi salva.",
+    "en": "The dictionary could not be read. The correction was not saved.",
+    "es": "No se pudo leer el diccionario. La corrección no se guardó."
+  },
+  "O dicionário atingiu o limite de 512 termos.": {
+    "pt": "O dicionário atingiu o limite de 512 termos.",
+    "en": "The dictionary reached the limit of 512 terms.",
+    "es": "El diccionario alcanzó el límite de 512 términos."
+  },
+  "Este original excede o limite de leitura para correção.": {
+    "pt": "Este original excede o limite de leitura para correção.",
+    "en": "This original exceeds the correction reading limit.",
+    "es": "Este original supera el límite de lectura para la corrección."
+  },
+  "Esta correção expirou. Revise os termos novamente.": {
+    "pt": "Esta correção expirou. Revise os termos novamente.",
+    "en": "This correction expired. Review the terms again.",
+    "es": "Esta corrección caducó. Revisa los términos de nuevo."
+  },
+  "Não foi possível salvar a correção. Tente novamente.": {
+    "pt": "Não foi possível salvar a correção. Tente novamente.",
+    "en": "The correction could not be saved. Try again.",
+    "es": "No se pudo guardar la corrección. Inténtalo de nuevo."
+  },
+  "Termo salvo no dicionário.": {
+    "pt": "Termo salvo no dicionário.",
+    "en": "Term saved in the dictionary.",
+    "es": "Término guardado en el diccionario."
+  },
+  "Adição desfeita.": {
+    "pt": "Adição desfeita.",
+    "en": "Addition undone.",
+    "es": "Adición deshecha."
+  },
+  "Desfazer indisponível: o dicionário ou a sessão mudou.": {
+    "pt": "Desfazer indisponível: o dicionário ou a sessão mudou.",
+    "en": "Undo unavailable: the dictionary or session changed.",
+    "es": "No se puede deshacer: el diccionario o la sesión cambió."
+  },
+  "Corrigir termo": {
+    "pt": "Corrigir termo",
+    "en": "Correct term",
+    "es": "Corregir término"
+  },
+  "Desfazer adição": {
+    "pt": "Desfazer adição",
+    "en": "Undo addition",
+    "es": "Deshacer adición"
+  },
+  "Revise o termo ouvido e a grafia correta antes de salvar. O original permanece igual.": {
+    "pt": "Revise o termo ouvido e a grafia correta antes de salvar. O original permanece igual.",
+    "en": "Review the heard term and correct spelling before saving. The original stays unchanged.",
+    "es": "Revisa el término oído y la grafía correcta antes de guardar. El original no cambia."
+  },
+  "Termo ouvido": {
+    "pt": "Termo ouvido",
+    "en": "Heard term",
+    "es": "Término oído"
+  },
+  "Termo correto": {
+    "pt": "Termo correto",
+    "en": "Correct term",
+    "es": "Término correcto"
+  },
+  "Este termo já existe. Os dados existentes foram mantidos.": {
+    "pt": "Este termo já existe. Os dados existentes foram mantidos.",
+    "en": "This term already exists. The existing data was kept.",
+    "es": "Este término ya existe. Se conservaron los datos existentes."
+  },
+  "O termo ouvido será salvo como alias. Aliases são dicas para futuras transcrições.": {
+    "pt": "O termo ouvido será salvo como alias. Aliases são dicas para futuras transcrições.",
+    "en": "The heard term will be saved as an alias. Aliases are hints for future transcriptions.",
+    "es": "El término oído se guardará como alias. Los alias son pistas para futuras transcripciones."
+  },
+  "A sincronização começa em 5 segundos após salvar. Você pode desfazer enquanto o dicionário não mudar.": {
+    "pt": "A sincronização começa em 5 segundos após salvar. Você pode desfazer enquanto o dicionário não mudar.",
+    "en": "Sync starts 5 seconds after saving. You can undo while the dictionary stays unchanged.",
+    "es": "La sincronización empieza 5 segundos después de guardar. Puedes deshacer mientras el diccionario no cambie."
+  },
+  "Salvar no dicionário": {
+    "pt": "Salvar no dicionário",
+    "en": "Save to dictionary",
+    "es": "Guardar en el diccionario"
+  },
+  "Revisar correção": {
+    "pt": "Revisar correção",
+    "en": "Review correction",
+    "es": "Revisar corrección"
+  },
+  "Salve ou descarte as alterações pendentes do dicionário antes desta correção.": {
+    "pt": "Salve ou descarte as alterações pendentes do dicionário antes desta correção.",
+    "en": "Save or discard the pending dictionary changes before this correction.",
+    "es": "Guarda o descarta los cambios pendientes del diccionario antes de esta corrección."
   }
 }

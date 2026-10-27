@@ -97,8 +97,8 @@ class FakeChatGPTAdapter:
             {ProviderCapability.TEXT_GENERATION, ProviderCapability.MODEL_DISCOVERY}
         ),
         default_base_url="https://api.openai.com/v1",
-        audio_model_key="",
-        text_model_key="",
+        audio_model_key="chatgpt_audio_model",
+        text_model_key="chatgpt_text_model",
         default_audio_model="",
         default_text_model="",
         authentication="oauth",
@@ -237,6 +237,10 @@ class ChatGPTSettingsTests(unittest.TestCase):
                 {"id": "personal-a", "label": "Second account model"},
             ],
         )
+        catalog = self.settings.chatgptTextCatalog
+        self.assertEqual(catalog["accountId"], "personal")
+        self.assertEqual(catalog["generation"], self.session.state["generation"])
+        self.assertEqual(catalog["models"], self.settings.routeModelOptions)
         self.assertTrue(self.settings.savePreference("setRouteModelId", ["personal-a"]))
         self.assertEqual(repository.load().workflow("rewrite").model_id, "personal-a")
         self.assertEqual(repository.load().workflow("rewrite").account_id, "personal")
@@ -248,6 +252,7 @@ class ChatGPTSettingsTests(unittest.TestCase):
         self.wait_idle()
         self.wait_models()
         self.assertEqual(self.settings.routeModelId, "")
+        self.assertEqual(self.settings.chatgptTextCatalog["accountId"], "second")
         self.assertEqual(repository.load().workflow("rewrite").model_id, "")
         self.assertFalse(
             self.settings.savePreference("setRouteModelId", ["personal-a"])
@@ -260,6 +265,7 @@ class ChatGPTSettingsTests(unittest.TestCase):
         self.command("sign_out")
         self.wait_idle()
         self.assertEqual(self.settings.routeModelOptions, [])
+        self.assertEqual(self.settings.chatgptTextCatalog, {})
         self.assertEqual(self.settings.routeModelStatus, "not_configured")
         self.assertEqual(repository.load().workflow("rewrite").model_id, "")
         self.assertFalse(self.settings.dirty)
@@ -319,6 +325,59 @@ class ChatGPTSettingsTests(unittest.TestCase):
         with self.assertRaises(InvalidModelError):
             service.rewrite("Keep all facts.")
         http.request.assert_not_called()
+
+    def test_model_selection_never_binds_a_previous_catalog_to_a_new_account(self):
+        from provider_types import ModelCatalog
+
+        repository = self.install_fake_provider()
+        self.settings.selectWorkflow("rewrite")
+        self.settings.savePreference("setRouteProviderId", ["chatgpt"])
+        self.command("sign_in")
+        self.wait_idle()
+        self.wait_models()
+        for persisted in (False, True):
+            for switch_after in (1, 2):
+                with self.subTest(persisted=persisted, switch_after=switch_after):
+                    self.session.select_account("personal")
+                    self.settings._read_chatgpt_snapshot()
+                    key = self.settings._model_connection_key()
+                    self.settings._model_catalogs[key] = ModelCatalog(
+                        text_models=("shared-model",)
+                    )
+                    snapshot = self.session.snapshot
+                    reads = 0
+
+                    def change_after_snapshot():
+                        nonlocal reads
+                        value = snapshot()
+                        reads += 1
+                        if reads == switch_after:
+                            self.session.select_account("external-during-selection")
+                        return value
+
+                    with patch.object(
+                        self.session, "snapshot", side_effect=change_after_snapshot
+                    ):
+                        accepted = (
+                            self.settings.savePreference(
+                                "setRouteModelId", ["shared-model"]
+                            )
+                            if persisted
+                            else self.settings.setRouteModelId("shared-model")
+                        )
+                    self.assertEqual(
+                        self.session.state["accountId"], "external-during-selection"
+                    )
+                    route = (
+                        repository.load() if persisted else self.settings._config
+                    ).workflow("rewrite")
+                    if accepted:
+                        self.assertEqual(route.model_id, "shared-model")
+                        self.assertEqual(route.account_id, "personal")
+                    else:
+                        self.assertNotEqual(
+                            route.account_id, "external-during-selection"
+                        )
 
     def test_identity_without_plan_permission_has_no_catalog_and_provider_tests_block_mutation(
         self,
@@ -421,6 +480,41 @@ class ChatGPTSettingsTests(unittest.TestCase):
                         time.sleep(0.01)
                 self.assertEqual(self.settings.routeModelOptions, [])
                 self.assertFalse(self.settings.providerBusy)
+
+        # A change after the first completion read must not relabel A's models
+        # with B's identity if completion reads the session again.
+        from provider_types import ModelCatalog
+
+        self.session.select_account("personal")
+        self.settings._read_chatgpt_snapshot()
+        generation = self.settings._provider_generations["chatgpt"]
+        snapshot = self.session.snapshot
+        reads = 0
+
+        def change_after_snapshot():
+            nonlocal reads
+            value = snapshot()
+            reads += 1
+            if reads == 1:
+                self.session.select_account("external-during-completion")
+            return value
+
+        with patch.object(self.session, "snapshot", side_effect=change_after_snapshot):
+            self.settings._finish_provider_validation(
+                "chatgpt",
+                generation,
+                True,
+                {
+                    "models": [],
+                    "text_models": ["personal-only-model"],
+                    "catalog": ModelCatalog(text_models=("personal-only-model",)),
+                },
+            )
+        self.assertEqual(self.settings.chatgptTextCatalog, {})
+        self.assertEqual(self.settings.routeModelOptions, [])
+        self.assertFalse(
+            self.settings.savePreference("setRouteModelId", ["personal-only-model"])
+        )
 
 
 if __name__ == "__main__":

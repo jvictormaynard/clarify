@@ -90,6 +90,10 @@ class OnboardingAccount:
     def signed_in(self):
         return self.state["signedIn"]
 
+    @property
+    def managed(self):
+        return self.state.get("managed", False)
+
     def refresh_if_due(self, service, *, force=False):
         if "--usage-error" in sys.argv:
             from clarify_account import AccountError
@@ -236,6 +240,17 @@ class Dispatcher(QObject):
             self.protocol.settings._account._generation += 1
             print(json.dumps({"id": request.get("id"), "result": True}), flush=True)
             return
+        if "--history" in sys.argv and request.get("method") == "testHistoryClipboard":
+            print(
+                json.dumps(
+                    {
+                        "id": request.get("id"),
+                        "result": self.protocol.settings._history_test_clipboard,
+                    }
+                ),
+                flush=True,
+            )
+            return
         print(json.dumps(self.protocol.dispatch(request)), flush=True)
 
 
@@ -322,6 +337,9 @@ def main():
             local_product=Mock(state=LocalASRProductState("installed"), busy=False),
             chatgpt_session=chatgpt,
         )
+        from practice_settings_fixture import bind_practice
+
+        bind_practice(settings, app)
         if "--history" in sys.argv:
             from history_store import HistoryRecord, HistoryStore
             from datetime import datetime, timezone
@@ -329,9 +347,13 @@ def main():
             store = HistoryStore(
                 settings._history.local.path, enabled=True, retention_days=None
             )
+            # Clipboard reads and writes stay inside this temporary fixture.
+            settings._history_test_clipboard = []
+            settings._write_history_clipboard = settings._history_test_clipboard.append
             store.append(
                 HistoryRecord(
                     raw_text="Isolated desktop history.",
+                    refined_text="Isolated revised desktop history.",
                     timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
                 )
             )
@@ -342,6 +364,14 @@ def main():
                     timestamp=datetime(2026, 10, 16, 13, tzinfo=timezone.utc),
                 )
             )
+            if "--history-review" in sys.argv:
+                store.append(
+                    HistoryRecord(
+                        raw_text=None,
+                        refined_text="Result without original.",
+                        timestamp=datetime(2026, 10, 16, 11, tzinfo=timezone.utc),
+                    )
+                )
             if "--history-large" in sys.argv:
                 from datetime import timedelta
 

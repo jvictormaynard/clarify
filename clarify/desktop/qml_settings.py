@@ -15,6 +15,7 @@ import platform
 import subprocess
 import sys
 import threading
+import weakref
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -34,6 +35,12 @@ from dictionary_snippets import (
     account_snippet_entries,
     DictionarySnippetService,
     LocalDictionarySnippetsRepository,
+)
+from history_corrections import (
+    CorrectionError,
+    CorrectionIdentity,
+    CorrectionSource,
+    HistoryDictionaryCorrectionService,
 )
 
 from hotkey_config import (
@@ -518,6 +525,8 @@ class QmlSettingsController(QObject):
         dictionary_service: DictionarySnippetService | None = None,
         account_service=None,
         account_can_change=None,
+        application_target=None,
+        processing_allowed: Callable[[], bool] = lambda: True,
         chatgpt_session=None,
     ) -> None:
         super().__init__(parent)
@@ -526,12 +535,15 @@ class QmlSettingsController(QObject):
         self._background_timer.setInterval(25)
         self._background_timer.timeout.connect(self._drain_background_publications)
         self._updates = None
+        self._practice = None
         self.repositories = repositories
         self._account = account_service or AccountService(
             Path(repositories.config.path).parent,
             default_endpoint=os.environ.get("CLARIFY_CLOUD_URL", DEFAULT_CLOUD_URL),
         )
         self._account_can_change = account_can_change or (lambda: True)
+        self._application_target = application_target
+        self._processing_allowed = processing_allowed
         self._history = getattr(self._account, "history", None)
         if self._history is None and isinstance(self._account, AccountService):
             self._history = AccountHistory(
@@ -564,11 +576,12 @@ class QmlSettingsController(QObject):
         self._chatgpt_account_reserved = False
         self._chatgpt_cancel = threading.Event()
         self._library_sync_pending = False
+        self._library_sync_expected_identity = None
         self._library_sync_context = None
         self._library_sync_timer = QTimer(self)
         self._library_sync_timer.setSingleShot(True)
         self._library_sync_timer.setInterval(1000)
-        self._library_sync_timer.timeout.connect(self._sync_library_preferences)
+        self._library_sync_timer.timeout.connect(self._retry_library_preference_sync)
         self._accountFinished.connect(
             self._finish_account, Qt.ConnectionType.QueuedConnection
         )
@@ -582,6 +595,36 @@ class QmlSettingsController(QObject):
             )
         )
         self._dictionary_draft = self._dictionary_service.state
+        self._history_correction_guard = getattr(
+            self._account, "_lock", threading.RLock()
+        )
+        # A strong callback cycle can let worker GC destroy this QObject.
+        history_owner = weakref.ref(self)
+
+        def read_history_part(context, token, offset, field):
+            owner = history_owner()
+            if owner is None:
+                raise CorrectionError("context_changed")
+            return owner.getHistoryTextPart(context, token, offset, field)
+
+        def history_identity():
+            owner = history_owner()
+            if owner is None:
+                raise CorrectionError("context_changed")
+            return owner._history_correction_identity()
+
+        self._history_corrections = HistoryDictionaryCorrectionService(
+            self._dictionary_service,
+            read_part=read_history_part,
+            identity=history_identity,
+            guard=lambda lock=self._history_correction_guard: lock,
+        )
+        self._history_correction_sync = QTimer(self)
+        self._history_correction_sync.setSingleShot(True)
+        self._history_correction_sync.timeout.connect(
+            self._finish_history_correction_window
+        )
+        self._history_correction_sync_context = None
         self._dictionary_baseline = self._dictionary_draft
         self._snippet_draft_context = self.snippetContext
         self._autostart_registry = registry
@@ -775,6 +818,42 @@ class QmlSettingsController(QObject):
     def _chatgpt_ready(self):
         state = self.chatgptState
         return state["connected"] and state["planEnabled"] and not state["busy"]
+
+    @Property("QVariantMap", notify=modelCatalogChanged)
+    def chatgptTextCatalog(self):
+        """Share only the verified catalog for the current OAuth registration."""
+        state = self.chatgptState
+        if not state["connected"] or not state["planEnabled"] or state["busy"]:
+            return {}
+        key = ("chatgpt", state["accountId"], str(state["generation"]))
+        catalog = self._model_catalogs.get(key)
+        if catalog is None:
+            return {}
+        return {
+            "accountId": state["accountId"],
+            "generation": state["generation"],
+            "models": [
+                {"id": model, "label": catalog.display_names.get(model, model)}
+                for model in dict.fromkeys(catalog.text_models)
+            ],
+        }
+
+    def _chatgpt_model_account(self, model):
+        if not model:
+            return ""
+        catalog = self.chatgptTextCatalog
+        state = self.chatgptState
+        if (
+            not catalog.get("accountId")
+            or catalog.get("accountId") != state["accountId"]
+            or catalog.get("generation") != state["generation"]
+            or state["busy"]
+            or not state["connected"]
+            or not state["planEnabled"]
+            or model not in {item["id"] for item in catalog.get("models", [])}
+        ):
+            raise ValueError("Selecione um modelo disponível nesta conta ChatGPT.")
+        return catalog["accountId"]
 
     @Slot(str, str, result=bool)
     def chatgptCommand(self, action, value=""):
@@ -1313,6 +1392,54 @@ class QmlSettingsController(QObject):
 
         return self._config.recording_controls.to_mapping()
 
+    @Property(str, notify=configChanged)
+    def dictationCleanupLevel(self) -> str:
+        level = self._config.dictation_cleanup_level
+        return level.value if level is not None else ""
+
+    @Property("QVariantList", notify=configChanged)
+    def applicationWritingStyles(self):
+        return self._config.application_writing_styles.to_mapping()["rules"]
+
+    @Property(bool, notify=configChanged)
+    def applicationStyleRefinementAllowed(self):
+        from shared.dictation_policy import DictationCleanupPolicy
+
+        permitted = self.dictationCleanupRefinementAllowed
+        route = self._config.workflow("transcription")
+        if (
+            getattr(self._account, "managed", False) is not True
+            and self._config.dictation_cleanup_level is None
+            and route.provider_id in PROVIDER_REGISTRY.provider_ids
+            and PROVIDER_REGISTRY.supports(
+                route.provider_id, ProviderCapability.MULTIMODAL_AUDIO
+            )
+            and not any(
+                item.enabled for item in self._dictionary_service.state.snippets
+            )
+        ):
+            permitted = route.enabled and bool(route.model_id)
+        return DictationCleanupPolicy(
+            self._config.dictation_cleanup_level
+        ).allows_refinement(permitted)
+
+    @Property(str, notify=configChanged)
+    def applicationStyleTarget(self):
+        from writing_styles import windows_executable_key
+
+        target = self._application_target() if self._application_target else None
+        return windows_executable_key(getattr(target, "executable", None)) or ""
+
+    @Property(bool, notify=configChanged)
+    def dictationCleanupRefinementAllowed(self) -> bool:
+        if getattr(self._account, "managed", False) is True:
+            return getattr(self._account, "signed_in", False) is True
+        local = self._config.workflow("transcription").provider_id == "local_asr"
+        scope = "local_asr_refinement" if local else "refinement"
+        return self._config.workflow(scope).enabled and (
+            not local or self._config.local_asr_cloud_refinement
+        )
+
     @Property(bool, notify=configChanged)
     def localAsrCloudRefinement(self) -> bool:
         return self._config.local_asr_cloud_refinement
@@ -1419,9 +1546,14 @@ class QmlSettingsController(QObject):
         persisted = (
             persisted if persisted is not None else self._dictionary_service.state
         )
+        self._dictionary_draft = self._reconciled_library_draft(persisted)
+        self._dictionary_baseline = persisted
+
+    def _reconciled_library_draft(self, persisted):
+        """Validate a merged draft without changing it before persistence."""
         before = self._dictionary_baseline
         draft = self._dictionary_draft
-        reconciled = replace(
+        return replace(
             draft,
             dictionary=_merge_library_draft(
                 before.dictionary, draft.dictionary, persisted.dictionary, "term"
@@ -1430,8 +1562,6 @@ class QmlSettingsController(QObject):
                 before.snippets, draft.snippets, persisted.snippets, "trigger"
             ),
         )
-        self._dictionary_draft = reconciled
-        self._dictionary_baseline = persisted
 
     def _require_expected_library_entries(self, library, expected):
         """Compare the captured persisted rows under the staging owner guard."""
@@ -1616,21 +1746,42 @@ class QmlSettingsController(QObject):
         self._sync_library_preferences()
         return True
 
-    def _sync_library_preferences(self):
+    def _retry_library_preference_sync(self):
+        if self._library_sync_pending:
+            self._sync_library_preferences(
+                expected_identity=self._library_sync_expected_identity
+            )
+
+    def _sync_library_preferences(self, *, expected_identity=None):
         """Use account sync without its draft-replacing sign-in completion path."""
         if not self._account.scope or self._account_shutdown:
             self._library_sync_pending = False
+            self._library_sync_expected_identity = None
             self._library_sync_timer.stop()
             return
-        if (
-            self._account_busy
-            or not self._account_can_change()
-            or not self._account.begin_change()
-        ):
+        # The processing guard can acquire workflow locks. Consult it
+        # before reserving the account, never while holding its lock.
+        blocked = self._account_busy or not self._account_can_change()
+        if not blocked:
+            with self._history_correction_guard:
+                if expected_identity is not None:
+                    try:
+                        current_identity = self._history_correction_identity()
+                    except CorrectionError:
+                        current_identity = None
+                    if current_identity != expected_identity:
+                        self._library_sync_pending = False
+                        self._library_sync_expected_identity = None
+                        self._library_sync_timer.stop()
+                        return
+                blocked = not self._account.begin_change()
+        if blocked:
             self._library_sync_pending = True
+            self._library_sync_expected_identity = expected_identity
             self._library_sync_timer.start()
             return
         self._library_sync_pending = False
+        self._library_sync_expected_identity = None
         self._library_sync_timer.stop()
         context = self._snippet_draft_context
         try:
@@ -1683,7 +1834,7 @@ class QmlSettingsController(QObject):
         self.accountStateChanged.emit()
         self.dirtyChanged.emit()
         if self._library_sync_pending:
-            self._sync_library_preferences()
+            self._retry_library_preference_sync()
 
     @Property(str, notify=errorChanged)
     def lastError(self) -> str:
@@ -2020,7 +2171,11 @@ class QmlSettingsController(QObject):
     def testMicrophone(self) -> bool:
         """Stream local input levels for up to 30 seconds off the GUI thread."""
 
-        if self._microphone_test_busy or self._microphone_inventory_busy:
+        if not self._processing_allowed() or (
+            self._microphone_test_busy
+            or self._microphone_inventory_busy
+            or (self._practice is not None and self._practice.busy)
+        ):
             return False
         selection = self._microphone_selection_for_test()
         if selection is None or not selection.can_record:
@@ -2226,6 +2381,8 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def refreshRouteModels(self) -> bool:
         """Discover models without saving credentials or changing the route."""
+        if not self._processing_allowed():
+            return False
         if getattr(self._account, "managed", False) is True:
             return False
         key = self._model_connection_key()
@@ -2348,7 +2505,11 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def measureLocalDevice(self):
-        if self.localAsrBusy or self._local_benchmark_busy:
+        if (
+            not self._processing_allowed()
+            or self.localAsrBusy
+            or self._local_benchmark_busy
+        ):
             return False
         from local_asr import default_manifest_path
         from local_asr_catalog import calibrate
@@ -2456,6 +2617,8 @@ class QmlSettingsController(QObject):
         return self._browse_local(self._local_profile, self._local_devices[index]["id"])
 
     def _browse_local(self, model, device):
+        if not self._processing_allowed():
+            return False
         try:
             from local_asr_catalog import ModelInstaller
 
@@ -2493,24 +2656,21 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setRouteModelId(self, value: str) -> bool:
-        if (
-            self.routeProviderId == "chatgpt"
-            and value
-            and value not in {option["id"] for option in self.routeModelOptions}
-        ):
-            self._set_error(
-                ValueError("Selecione um modelo disponível nesta conta ChatGPT.")
+        model = str(value or "").strip()
+        try:
+            account_id = (
+                self._chatgpt_model_account(model)
+                if self.routeProviderId == "chatgpt"
+                else ""
             )
+        except ValueError as error:
+            self._set_error(error)
             return False
         return self._update_selected_route(
             lambda route: replace(
                 route,
-                model_id=str(value or "").strip(),
-                account_id=(
-                    self.chatgptState["accountId"]
-                    if route.provider_id == "chatgpt" and str(value or "").strip()
-                    else ""
-                ),
+                model_id=model,
+                account_id=account_id if route.provider_id == "chatgpt" else "",
             )
         )
 
@@ -2595,6 +2755,8 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def validateProvider(self) -> bool:
         """Validate and persist the selected cloud provider without blocking QML."""
+        if not self._processing_allowed():
+            return False
         if getattr(self._account, "managed", False) is True:
             return False
 
@@ -2737,7 +2899,11 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def installLocalAsr(self) -> bool:
-        if self.localAsrBusy or self._local_benchmark_busy:
+        if (
+            not self._processing_allowed()
+            or self.localAsrBusy
+            or self._local_benchmark_busy
+        ):
             return False
         self._local_device = "auto"
         try:
@@ -2752,6 +2918,8 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def removeLocalAsr(self) -> bool:
+        if not self._processing_allowed():
+            return False
         try:
             self._local_product.remove_async()
         except Exception as error:
@@ -2769,14 +2937,20 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def refreshLocalAsr(self) -> bool:
+        if not self._processing_allowed():
+            return False
         return bool(self._local_product.refresh_async())
 
     @Slot()
     def shutdown(self) -> None:
+        if self._practice is not None:
+            self._practice.command("close")
         self.cancelChatGPT()
         self._release_chatgpt_change()
         self._chatgpt_generation += 1
         self._account_shutdown = True
+        self._history_correction_sync.stop()
+        self._history_corrections.clear()
         self._background_mailbox.close()
         self._background_timer.stop()
         self._microphone_inventory_shutdown = True
@@ -2856,7 +3030,7 @@ class QmlSettingsController(QObject):
             else {"context": "", "revision": ""}
         )
 
-    def getHistoryPage(self, context, cursor):
+    def getHistoryPage(self, context, cursor, query=""):
         if self._history_view is None and context == "" and cursor == "":
             return {
                 "context": "",
@@ -2867,12 +3041,164 @@ class QmlSettingsController(QObject):
             }
         if self._history_view is None:
             raise ValueError("Invalid history context")
-        return self._history_view.page(context, cursor)
+        return self._history_view.page(context, cursor, query)
 
     def getHistoryTextPart(self, context, token, offset, field):
         if self._history_view is None:
             raise ValueError("Invalid history context")
         return self._history_view.text_part(context, token, offset, field)
+
+    def _history_correction_identity(self):
+        if (
+            self._account_shutdown
+            or getattr(self._account, "_ending_session", False)
+            or (self._account.managed and not self._account.signed_in)
+        ):
+            raise CorrectionError("context_changed")
+        return CorrectionIdentity(
+            self.snippetContext,
+            getattr(self._account, "_generation", 0),
+            "account" if self._account.scope else "local",
+        )
+
+    def _finish_history_correction_window(self):
+        context = self._history_correction_sync_context
+        self._history_correction_sync_context = None
+        if not self._account_shutdown:
+            try:
+                if context == self._history_correction_identity():
+                    self._sync_library_preferences(expected_identity=context)
+            except CorrectionError:
+                pass
+        # The scoped library file is durable even after sign-out or quit.
+        # Existing library reconciliation will sync it on the next login.
+
+    def historyCorrection(self, action, payload):
+        """Explicit correction RPC. Tokens never contain transcript text."""
+        messages = {
+            "invalid_term": "Use um termo de até 256 caracteres, sem quebras de linha.",
+            "no_change": "Informe uma grafia diferente para o termo correto.",
+            "heard_not_found": "O termo ouvido não foi encontrado no original.",
+            "history_changed": "O histórico mudou. Atualize e tente novamente.",
+            "owner_mismatch": "O registro e o dicionário devem pertencer à mesma conta ou ao modo local.",
+            "context_changed": "A conta mudou. Abra a correção novamente.",
+            "library_changed": "O dicionário mudou. Revise a correção novamente.",
+            "library_unavailable": "Não foi possível ler o dicionário. A correção não foi salva.",
+            "library_full": "O dicionário atingiu o limite de 512 termos.",
+            "source_too_large": "Este original excede o limite de leitura para correção.",
+            "expired": "Esta correção expirou. Revise os termos novamente.",
+            "persistence_failed": "Não foi possível salvar a correção. Tente novamente.",
+            "draft_conflict": "Salve ou descarte as alterações pendentes do dicionário antes desta correção.",
+        }
+        try:
+            if type(action) is not str or type(payload) is not dict:
+                raise CorrectionError("invalid_term")
+            if action == "preview":
+                if set(payload) != {
+                    "context",
+                    "revision",
+                    "id",
+                    "libraryContext",
+                    "heard",
+                    "corrected",
+                } or any(type(value) is not str for value in payload.values()):
+                    raise CorrectionError("invalid_term")
+                with self._history_correction_guard:
+                    self._require_library_context(payload["libraryContext"])
+                    preview = self._history_corrections.preview(
+                        CorrectionSource(
+                            payload["context"], payload["revision"], payload["id"]
+                        ),
+                        payload["libraryContext"],
+                        payload["heard"],
+                        payload["corrected"],
+                    )
+                return {
+                    "status": "already_exists" if preview.already_exists else "preview",
+                    "token": preview.token,
+                    "heard": preview.heard,
+                    "entry": preview.entry.to_mapping(),
+                }
+            if (
+                set(payload) != {"token"}
+                or type(payload["token"]) is not str
+                or len(payload["token"]) > 128
+            ):
+                raise CorrectionError("expired")
+            token = payload["token"]
+            if action == "cancel":
+                self._history_corrections.cancel(token)
+                return {"status": "cancelled"}
+            if action == "status":
+                return {"canUndo": self._history_corrections.can_undo(token)}
+            if action not in {"confirm", "undo"}:
+                raise CorrectionError("expired")
+            sync_identity = None
+            with self._history_correction_guard:
+                self._require_library_context(self.snippetContext)
+
+                def validate(candidate):
+                    try:
+                        self._reconciled_library_draft(candidate)
+                    except ValueError:
+                        raise CorrectionError("draft_conflict") from None
+
+                result = getattr(self._history_corrections, action)(
+                    token, validate=validate
+                )
+                changed = result.status in {"saved", "saved_without_undo", "undone"}
+                if changed:
+                    self._reconcile_library_draft(self._dictionary_service.state)
+                    if action == "undo":
+                        self._history_correction_sync.stop()
+                        self._history_correction_sync_context = None
+                        sync_identity = self._history_correction_identity()
+                    elif self._account.scope:
+                        # One bounded window. Polling never restarts it.
+                        identity = self._history_correction_identity()
+                        if (
+                            not self._history_correction_sync.isActive()
+                            or self._history_correction_sync_context != identity
+                        ):
+                            self._history_correction_sync.stop()
+                            self._history_correction_sync_context = identity
+                            self._history_correction_sync.start(5000)
+                response = {
+                    "status": result.status,
+                    "receipt": result.receipt,
+                    "canUndo": bool(result.receipt)
+                    and self._history_corrections.can_undo(result.receipt),
+                }
+            if changed:
+                self.dirtyChanged.emit()
+                self.saved.emit()
+            if sync_identity is not None:
+                self._sync_library_preferences(expected_identity=sync_identity)
+            return response
+        except Exception as error:
+            code = (
+                error.code if isinstance(error, CorrectionError) else "context_changed"
+            )
+            return {"error": messages.get(code, messages["persistence_failed"])}
+
+    @staticmethod
+    def _write_history_clipboard(text):
+        from PySide6.QtGui import QGuiApplication
+
+        app = QGuiApplication.instance()
+        if not isinstance(app, QGuiApplication) or app.clipboard() is None:
+            raise OSError("Clipboard unavailable")
+        clipboard = app.clipboard()
+        clipboard.setText(text)
+        if clipboard.text() != text:
+            raise OSError("Clipboard write failed")
+
+    def copyHistoryText(self, context, token, field, revision):
+        if self._history_view is None:
+            raise ValueError("Invalid history context")
+        return self._history_view.copy_text(
+            context, token, field, revision, self._write_history_clipboard
+        )
 
     @Slot(str, str, result=bool)
     def deleteHistoryEntry(self, token, context):
@@ -2909,6 +3235,21 @@ class QmlSettingsController(QObject):
     @Property(bool, notify=configChanged)
     def onboardingRequired(self):
         return not self._config.onboarding_completed
+
+    def bindPractice(self, controller):
+        self._practice = controller
+
+    @Property("QVariantMap", notify=configChanged)
+    def practiceState(self):
+        return (
+            self._practice.snapshot() if self._practice is not None else {"open": False}
+        )
+
+    @Slot(str, result=bool)
+    def practiceCommand(self, action):
+        if self._practice is None:
+            return False
+        return self._practice.command(action)
 
     @Slot(str, str, result=bool)
     def completeOnboarding(self, mode, key=""):
@@ -2980,10 +3321,12 @@ class QmlSettingsController(QObject):
             self.selectProvider("groq")
         self._set_error(None)
         self.saved.emit()
+        if self._practice is not None:
+            self._practice.command("open")
         return True
 
     @Slot(str, str, result=bool)
-    def accountCommand(self, action, value=""):
+    def accountCommand(self, action, value="", *, expected_identity=None):
         if action == "cancel-social":
             if self._account_busy and self._account_social:
                 self._account_cancel.set()
@@ -3020,8 +3363,16 @@ class QmlSettingsController(QObject):
             "delete",
         }:
             return False
-        if not self._account.begin_change():
-            return False
+        with self._history_correction_guard:
+            if expected_identity is not None:
+                try:
+                    current_identity = self._history_correction_identity()
+                except CorrectionError:
+                    current_identity = None
+                if current_identity != expected_identity:
+                    return False
+            if not self._account.begin_change():
+                return False
         self._account_busy, self._account_error = True, ""
         self._account_social = action == "social"
         self._account_cancel.clear()
@@ -3101,20 +3452,33 @@ class QmlSettingsController(QObject):
             with self._dictionary_service.transaction(expected_context=context):
                 self._require_library_context(context)
                 self._reconcile_library_draft()
-                return self._save_owned_library(context)
+                sync_identity = (
+                    self._history_correction_identity()
+                    if self._account.scope and not self._account_busy
+                    else None
+                )
+                if not self._save_owned_library(context):
+                    return False
         except Exception as error:
             self._set_error(error)
             return False
+        self.saved.emit()
+        if sync_identity is not None:
+            self.accountCommand("sync", "", expected_identity=sync_identity)
+        return True
 
     @Slot(str, "QVariantList", result=bool)
     def savePreference(self, method: str, args: list) -> bool:
         """Persist one allowlisted control against current storage, never Save All."""
         try:
             with self._dictionary_service.transaction():
-                return self._save_preference(method, args)
+                if not self._save_preference(method, args):
+                    return False
         except Exception as error:
             self._set_error(error)
             return False
+        self.saved.emit()
+        return True
 
     def _save_preference(self, method: str, args: list) -> bool:
         before = None
@@ -3181,7 +3545,6 @@ class QmlSettingsController(QObject):
         if method == "useLocalAsr":
             self.selectWorkflow(WorkflowScope.TRANSCRIPTION.value)
         self._set_error(None)
-        self.saved.emit()
         return True
 
     def _preference_change(
@@ -3201,6 +3564,7 @@ class QmlSettingsController(QObject):
             "setRecordingVadEnabled",
         }
         text_methods = {
+            "setDictationCleanupLevel",
             "setMode",
             "setLanguage",
             "setRouteProviderId",
@@ -3222,6 +3586,8 @@ class QmlSettingsController(QObject):
                 and type(args[0]) is str
                 and isinstance(args[1], (str, dict))
             )
+        elif method == "setApplicationWritingStyle":
+            valid = len(args) == 2 and all(type(value) is str for value in args)
         else:
             valid = method in {"resetAllHotkeys", "useLocalAsr"} and not args
         if not valid:
@@ -3240,6 +3606,21 @@ class QmlSettingsController(QObject):
         ):
             raise ValueError("A conta Clarify gerencia as opções de processamento.")
 
+        if method == "setDictationCleanupLevel":
+            from shared.dictation_policy import cleanup_level
+
+            level = cleanup_level(args[0] or None)
+            return lambda config: replace(config, dictation_cleanup_level=level)
+        if method == "setApplicationWritingStyle":
+            from shared.writing_style_policy import writing_style
+
+            style = writing_style(args[1] or None)
+            return lambda config: replace(
+                config,
+                application_writing_styles=config.application_writing_styles.with_rule(
+                    args[0], style
+                ),
+            )
         if method in bool_fields:
             if method == "setLocalAsrCloudRefinement":
                 return lambda config: replace(
@@ -3349,20 +3730,14 @@ class QmlSettingsController(QObject):
             model = args[0].strip() or (
                 metadata.default_audio_model if audio else metadata.default_text_model
             )
-            if (
-                old_route.provider_id == "chatgpt"
-                and model
-                and model not in {option["id"] for option in self.routeModelOptions}
-            ):
-                raise ValueError("Selecione um modelo disponível nesta conta ChatGPT.")
             fields["model_id"] = (
                 PROVIDER_REGISTRY.canonical_audio_model(old_route.provider_id, model)
                 if audio
                 else model
             )
             fields["account_id"] = (
-                self.chatgptState["accountId"]
-                if old_route.provider_id == "chatgpt" and model
+                self._chatgpt_model_account(model)
+                if old_route.provider_id == "chatgpt"
                 else ""
             )
         elif method == "setRouteEnabled":
@@ -3476,9 +3851,6 @@ class QmlSettingsController(QObject):
         self._dictionary_baseline = self._dictionary_draft
         self._replace_loaded_config(persisted_config)
         self._set_error(None)
-        self.saved.emit()
-        if self._account.scope and not self._account_busy:
-            self.accountCommand("sync", "")
         return True
 
     @Slot(str, result=bool)
@@ -3625,7 +3997,7 @@ class QmlSettingsController(QObject):
         success: bool,
         payload: object,
     ) -> None:
-        self._read_chatgpt_snapshot()
+        chatgpt_state = self.chatgptState
         if self._account_shutdown or generation != self._provider_generations.get(
             provider_id
         ):
@@ -3669,9 +4041,12 @@ class QmlSettingsController(QObject):
             "busy": False,
         }
         if provider_id == "chatgpt":
-            state = self.chatgptState
             self._model_catalogs[
-                (provider_id, state["accountId"], str(state["generation"]))
+                (
+                    provider_id,
+                    chatgpt_state["accountId"],
+                    str(chatgpt_state["generation"]),
+                )
             ] = data["catalog"]
         if provider_id == self._selected_provider_id:
             self._provider_api_key_draft = ""

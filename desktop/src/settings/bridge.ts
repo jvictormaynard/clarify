@@ -2,15 +2,20 @@ import { invoke } from "@tauri-apps/api/core";
 import type { RecordingControls } from "./recording";
 
 export type Option = { id: string; label: string };
+export type DictationCleanupLevel = "preserve" | "light" | "clarity";
+export type WritingStyle = "natural" | "informal" | "organized";
+export type ApplicationWritingStyle = { executable: string; style: WritingStyle };
 export type DictionaryEntry = {
   term: string;
   pronunciation: string;
   aliases: string[];
   enabled: boolean;
 };
-export type HistoryEntry = { id: string; timestamp: number; text: string; truncated: boolean; sourceDevice: "desktop" | "mobile" };
+export type HistoryEntry = { id: string; timestamp: number; text: string; truncated: boolean; hasOriginal: boolean; originalDiffers: boolean; owner: "local" | "account"; sourceDevice: "desktop" | "mobile" };
+export type HistoryScope = Readonly<{ context: string; revision: string }>;
+export type HistoryTextField = "text" | "transcript";
 type HistoryPageResult = { context: string; revision: string; entries: HistoryEntry[]; cursor: string; hasMore: boolean };
-type HistoryTextPart = { context: string; id: string; text: string; nextOffset: number; hasMore: boolean };
+type HistoryTextPart = HistoryScope & { id: string; owner: "local" | "account"; text: string; nextOffset: number; hasMore: boolean };
 export type Snippet = { trigger: string; replacement: string; enabled: boolean; case_sensitive: boolean };
 export type ChatGPTAction = "sign_in" | "add_account" | "select_account" | "sign_out" | "cancel" | "manage_usage" | "dismiss_notice";
 export type ChatGPTState = {
@@ -25,6 +30,9 @@ export interface Settings {
   historyState?: { context: string; revision: string };
   uiLanguage?: string;
   onboardingRequired: boolean;
+  practiceState?: {
+    open: boolean; phase?: string; text?: string; source?: string; status?: string; blocked?: string;
+  };
   accountState?: {
     socialPending?: boolean;
     endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
@@ -56,6 +64,11 @@ export interface Settings {
   microphoneTestLevel: number;
   microphoneTestStatus: string;
   recordingControls: RecordingControls;
+  dictationCleanupLevel?: DictationCleanupLevel | "";
+  applicationWritingStyles?: ApplicationWritingStyle[];
+  applicationStyleTarget?: string;
+  applicationStyleRefinementAllowed?: boolean;
+  dictationCleanupRefinementAllowed?: boolean;
   selectedScope: string;
   routeProviderId: string;
   routeModelId: string;
@@ -102,6 +115,7 @@ export interface Settings {
 
 // Argument tuples keep every frontend call checked without changing the pipe protocol.
 export type SettingsArguments = {
+  practiceCommand: [action: "open" | "close" | "start" | "stop" | "cancel"];
   completeOnboarding: [mode: "account" | "byok" | "local", key: string];
   accountCommand: [action: string, value: string];
   chatgptCommand: [action: ChatGPTAction, value: string];
@@ -112,6 +126,8 @@ export type SettingsArguments = {
   setSnippets: [entries: Snippet[], context: string, expectedEntries?: Snippet[]];
   setDictionaryEntries: [entries: DictionaryEntry[], context?: string, expectedEntries?: DictionaryEntry[]];
   setMode: [value: string];
+  setDictationCleanupLevel: [value: DictationCleanupLevel | ""];
+  setApplicationWritingStyle: [executable: string, style: WritingStyle | ""];
   setAutostart: [value: boolean];
   setAutomaticUpdates: [value: boolean];
   checkForUpdates: [];
@@ -160,6 +176,8 @@ export type SettingsArguments = {
 export type SettingsMethod = keyof SettingsArguments;
 
 export const preferenceMethods = [
+  "setDictationCleanupLevel",
+  "setApplicationWritingStyle",
   "setMode", "setLanguage", "setAutostart", "setHistoryEnabled", "setAutomaticUpdates",
   "selectMicrophone", "setRouteProviderId", "setRouteModelId", "setRouteEnabled",
   "setLocalStreaming", "setLocalAsrCloudRefinement", "setHotkey", "setHotkeyActivationMode",
@@ -182,8 +200,21 @@ function queuedCall<T>(method: string, args: unknown[]): Promise<T> {
 export function settingsTransaction<T>(operation: (call: SettingsCall) => Promise<T>): Promise<T> {
   return enqueue(() => operation((method, ...args) => invoke<Settings>("settings_call", { method, args })));
 }
-export const getHistoryPage = (context: string, cursor = "") => queuedCall<HistoryPageResult>("getHistoryPage", [context, cursor]);
-export const getHistoryTextPart = (context: string, id: string, offset: number) => queuedCall<HistoryTextPart>("getHistoryTextPart", [context, id, offset, "text"]);
+export const getHistoryPage = (context: string, cursor = "", query = "") => queuedCall<HistoryPageResult>("getHistoryPage", [context, cursor, query]);
+export const getHistoryTextPart = (context: string, id: string, offset: number, field: HistoryTextField = "text") => queuedCall<HistoryTextPart>("getHistoryTextPart", [context, id, offset, field]);
+export type HistoryCorrectionReply = {
+  status?: "preview" | "already_exists" | "saved" | "saved_without_undo" | "undone" | "undo_unavailable" | "cancelled";
+  token?: string; heard?: string; entry?: DictionaryEntry; receipt?: string; canUndo?: boolean; error?: string;
+};
+export const historyCorrection = (action: "preview" | "confirm" | "undo" | "status" | "cancel", payload: Record<string, string>, isCurrent: () => boolean = () => true) => enqueue(async () => {
+  if (!isCurrent()) return null;
+  return invoke<HistoryCorrectionReply>("settings_call", { method: "historyCorrection", args: [action, payload] });
+});
+export const copyHistoryText = (scope: HistoryScope, id: string, field: HistoryTextField, isCurrent: () => boolean) => enqueue(async () => {
+  // Navigation/search cancellation can happen while waiting for the pipe.
+  if (!isCurrent()) return null;
+  return invoke<HistoryScope & { id: string }>("settings_call", { method: "copyHistoryText", args: [scope.context, id, field, scope.revision] });
+});
 // Only periodic polls advance the Python baseline. Commands still return full state.
 export const pollSettings = () => queuedCall<Partial<Settings>>("poll", []);
 export function call<M extends SettingsMethod>(

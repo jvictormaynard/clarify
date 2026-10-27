@@ -504,9 +504,18 @@ The production Qt runtime creates a profile-relative store and subscribes
 `QtHistoryRecorder` to terminal workflow states. The recorder queues writes
 outside the UI thread and records only when local history is enabled.
 React Settings and its QML controller expose
-the opt-in and retention controls. Production Settings do not yet expose a
-history browser, copy, export, delete-all, or retry controls; export and deletion
-are storage APIs, and the old widget history page is a legacy surface.
+the opt-in and retention controls. Production Settings expose paged history,
+search, comparison, copy and deletion through `HistoryView`. Search covers
+original and result text in records available on this device, including the
+account cache; it does not query unsynchronized server records. Each continuation
+scans at most 128 text blocks and returns at most 20 previews. Opaque cursors bind
+the query, session context and file revision. Text readers return 4,000-character
+sections. Clipboard writes resolve the original or result in Python under the
+account and history locks, with no paste or transcript in Settings snapshots.
+`HistoryEntryActions` and `HistoryComparison` own reusable presentation;
+`HistoryPage.renderEntryAction` accepts an entry and an immutable context/revision
+scope for later actions. Backend reads identify `local` or `account` ownership
+separately from the source device. Export remains a storage API.
 See [the history boundary](history.md) for privacy and acceptance limits.
 
 ### `desktop_state.py`

@@ -108,6 +108,202 @@ class WorkflowProviderTests(unittest.TestCase):
         self.audio = RecordingSnapshot(Path("not-read.wav"), b"fake-audio", self.token)
         self.logger = self.enterContext(patch("provider_registry.PROVIDER_HTTP.logger"))
 
+    def set_cleanup(self, level):
+        self.current = AppConfig.from_mapping(
+            {
+                **self.current.to_mapping(),
+                "dictation_cleanup_level": level,
+            }
+        )
+
+    def test_preserve_bypasses_review_but_keeps_expansion_and_original(self):
+        self.set_cleanup("preserve")
+        result = self.service.transcribe(self.audio, "prompt", "pt")
+        self.assertEqual(result.text, self.raw + " expanded")
+        self.assertEqual(result.raw_text, self.raw)
+        self.assertFalse(result.refinement_failed)
+        self.assertIsNone(result.refinement_provider_id)
+        self.registry.rewrite.assert_not_called()
+
+    def test_light_changes_only_spaces_before_literal_snippet_expansion(self):
+        self.set_cleanup("light")
+        raw = "João,  não envie 15,5.\nTalvez amanhã, quer dizer, sexta."
+        self.registry.transcribe.return_value = TranscriptionResult(
+            raw, "openai", "whisper-1"
+        )
+        result = self.service.transcribe(self.audio, "prompt", "pt")
+        self.assertEqual(result.raw_text, raw)
+        self.assertEqual(
+            result.text,
+            "João, não envie 15,5.\nTalvez amanhã, quer dizer, sexta. expanded",
+        )
+        self.assertEqual(result.cleanup_level_applied, "light")
+        self.registry.rewrite.assert_not_called()
+
+    def test_cleanup_snapshot_survives_config_change_during_recognition(self):
+        self.set_cleanup("preserve")
+
+        def recognize(*args):
+            self.set_cleanup("clarity")
+            return TranscriptionResult(self.raw, "openai", "whisper-1")
+
+        self.registry.transcribe.side_effect = recognize
+        result = self.service.transcribe(self.audio, "prompt", "pt")
+        self.assertEqual(result.cleanup_level_requested, "preserve")
+        self.assertEqual(result.cleanup_level_applied, "preserve")
+        self.registry.rewrite.assert_not_called()
+
+    def test_explicit_clarity_local_without_cloud_permission_reports_preserve(self):
+        self.set_cleanup("clarity")
+        self.current = replace(
+            self.current,
+            workflows=replace(
+                self.current.workflows,
+                transcription=WorkflowRoute("local_asr", "local-model"),
+            ),
+        )
+        result = self.service.transcribe(self.audio, "prompt", "pt")
+        self.assertEqual(result.cleanup_level_requested, "clarity")
+        self.assertEqual(result.cleanup_level_applied, "preserve")
+        self.assertFalse(result.refinement_failed)
+        self.assertIsNone(result.refinement_model)
+        self.registry.rewrite.assert_not_called()
+
+    def test_explicit_clarity_failure_retains_recognition_and_provenance(self):
+        self.set_cleanup("clarity")
+        self.registry.rewrite.side_effect = RuntimeError("synthetic failure")
+        result = self.service.transcribe(self.audio, "prompt", "pt")
+        self.assertEqual(result.raw_text, self.raw)
+        self.assertEqual(result.text, self.raw + " expanded")
+        self.assertEqual(result.cleanup_level_requested, "clarity")
+        self.assertEqual(result.cleanup_level_applied, "preserve")
+        self.assertTrue(result.refinement_failed)
+
+    def test_clarity_with_missing_model_recovers_without_provider_request(self):
+        self.set_cleanup("clarity")
+        self.current = replace(
+            self.current,
+            workflows=replace(
+                self.current.workflows, refinement=WorkflowRoute("openai", "")
+            ),
+        )
+        result = self.service.transcribe(self.audio, "prompt", "pt")
+        self.assertEqual(result.text, self.raw + " expanded")
+        self.assertEqual(result.cleanup_level_applied, "preserve")
+        self.assertTrue(result.refinement_failed)
+        self.registry.rewrite.assert_not_called()
+
+    def test_refinement_connection_comes_from_the_same_snapshot_as_its_route(self):
+        self.set_cleanup("clarity")
+        self.current = replace(
+            self.current,
+            workflows=replace(
+                self.current.workflows,
+                refinement=WorkflowRoute(
+                    "openai",
+                    "original-editor",
+                    custom_endpoint="https://old.invalid/v1",
+                    prompt="Original policy.",
+                ),
+            ),
+        )
+        original = self.current
+
+        def recognize(*args):
+            self.current = replace(
+                original,
+                openai=ProviderConfig(
+                    api_key="new-test-key", base_url="https://new.invalid/v1"
+                ),
+                workflows=replace(
+                    original.workflows,
+                    refinement=WorkflowRoute(
+                        "openai",
+                        "new-editor",
+                        custom_endpoint="https://new.invalid/v1",
+                        prompt="New policy.",
+                    ),
+                ),
+            )
+            return TranscriptionResult(self.raw, "openai", "whisper-1")
+
+        self.registry.transcribe.side_effect = recognize
+        self.service.transcribe(self.audio, "prompt", "pt")
+        _, request, connection, _ = self.registry.rewrite.call_args.args
+        self.assertEqual(request.model, "original-editor")
+        self.assertIn("Original policy.", request.instruction)
+        self.assertNotIn("New policy.", request.instruction)
+        self.assertEqual(connection.api_key, original.openai.api_key)
+        self.assertEqual(connection.base_url, "https://old.invalid/v1")
+
+    def test_explicit_multimodal_recognition_cannot_use_rewrite_prompt(self):
+        for level in ("preserve", "light", "clarity"):
+            with self.subTest(level=level):
+                self.set_cleanup(level)
+                self.current = replace(
+                    self.current,
+                    workflows=replace(
+                        self.current.workflows,
+                        transcription=WorkflowRoute(
+                            "gemini", "gemini-2.5-flash", prompt="Rewrite everything."
+                        ),
+                    ),
+                )
+                result = self.service.transcribe(self.audio, "prompt", "pt")
+                request = self.registry.transcribe.call_args.args[1]
+                self.assertIn("Preserve all words", request.instruction)
+                self.assertNotIn("Rewrite everything", request.prompt)
+                self.assertEqual(result.raw_text, self.raw)
+
+    def test_explicit_levels_keep_standalone_snippet_literal_and_skip_review(self):
+        from dictionary_snippets import (
+            DictionarySnippetService,
+            DictionarySnippets,
+            InMemoryDictionarySnippetsRepository,
+            Snippet,
+        )
+
+        self.service.dictionary_service = DictionarySnippetService(
+            InMemoryDictionarySnippetsRepository(
+                DictionarySnippets(
+                    snippets=(Snippet("assinatura", "João\n  Equipe\n"),)
+                )
+            )
+        )
+        self.registry.transcribe.return_value = TranscriptionResult(
+            "assinatura", "openai", "whisper-1"
+        )
+        for level in ("preserve", "light", "clarity"):
+            with self.subTest(level=level):
+                self.set_cleanup(level)
+                result = self.service.transcribe(self.audio, "prompt", "pt")
+                self.assertEqual(result.text, "João\n  Equipe\n")
+                self.assertEqual(result.raw_text, "assinatura")
+                self.assertEqual(result.cleanup_level_applied, "preserve")
+                self.assertFalse(result.refinement_failed)
+        self.registry.rewrite.assert_not_called()
+
+    def test_light_does_not_normalize_spaces_inside_inline_saved_text(self):
+        from dictionary_snippets import (
+            DictionarySnippetService,
+            DictionarySnippets,
+            InMemoryDictionarySnippetsRepository,
+            Snippet,
+        )
+
+        self.service.dictionary_service = DictionarySnippetService(
+            InMemoryDictionarySnippetsRepository(
+                DictionarySnippets(snippets=(Snippet("assinatura", "João  Victor"),))
+            )
+        )
+        self.set_cleanup("light")
+        self.registry.transcribe.return_value = TranscriptionResult(
+            "Use  assinatura amanhã.", "openai", "whisper-1"
+        )
+        result = self.service.transcribe(self.audio, "prompt", "pt")
+        self.assertEqual(result.text, "Use João  Victor amanhã.")
+        self.registry.rewrite.assert_not_called()
+
     def test_success_keeps_routes_provenance_dictionary_and_timing(self):
         result = self.service.transcribe(self.audio, "transcription", "pt-BR")
         self.assertEqual(result.raw_text, self.raw)

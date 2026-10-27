@@ -200,6 +200,8 @@ foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File))
 }
 Copy-Item (Join-Path $repoQmlPython "qt_shell.py") $sourceQmlPython -Force
 Copy-Item (Join-Path $repoQmlPython "history_view.py") $sourceQmlPython -Force
+Copy-Item (Join-Path $repoQmlPython "dictation_practice.py") $sourceQmlPython -Force
+Copy-Item (Join-Path $repoQmlPython "practice_local_model.py") $sourceQmlPython -Force
 foreach ($backendModule in @(
     "account_history.py",
     "audio_file_batch.py",
@@ -211,6 +213,7 @@ foreach ($backendModule in @(
     "dictionary_settings.py",
     "dictionary_snippets.py",
     "experimental_audio_history.py",
+    "history_corrections.py",
     "history_store.py",
     "hotkey_config.py",
     "local_asr.py",
@@ -235,12 +238,13 @@ foreach ($backendModule in @(
     "workflow_config.py",
     "workflow_provider.py",
     "workflow_settings.py",
+    "writing_styles.py",
     "workflows.py"
 )) {
     Copy-Item (Join-Path $repoRoot $backendModule) $sourceDir -Force
 }
 New-Item (Join-Path $sourceDir "shared") -ItemType Directory -Force | Out-Null
-foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json")) {
+foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json", "dictation_policy.py", "writing_style_policy.py")) {
     Copy-Item (Join-Path $repoRoot "shared\$catalogFile") (Join-Path $sourceDir "shared") -Force
 }
 Copy-Item $repoQml $qml -Recurse -Force

@@ -97,6 +97,9 @@ class QmlWorkflowBridge(QObject):
         WorkflowPhase.FAILED: "The dictation could not be completed",
     }
     _STATUS_KEYS = {
+        "account_allowance_exhausted": "Sua cota foi atingida.",
+        "account_allocation_waiting": "Sua conta aguarda a próxima distribuição de cotas.",
+        "account_authentication_required": "Entre na conta novamente.",
         "error": "The dictation could not be completed",
         "no_audio": "No usable audio was captured",
         "refinement_failed": "Refinement failed. Original text is available.",
@@ -120,6 +123,9 @@ class QmlWorkflowBridge(QObject):
         "provider_chatgpt_identity": "Could not validate your ChatGPT identity. Check the selected account in settings.",
     }
     _ERROR_MESSAGES_PT = {
+        "account_allowance_exhausted": "Sua cota foi atingida.",
+        "account_allocation_waiting": "Sua conta aguarda a próxima distribuição de cotas.",
+        "account_authentication_required": "Entre na conta novamente.",
         "error": "Não foi possível concluir a operação. Tente novamente.",
         "no_audio": "Nenhum áudio foi capturado. Verifique o microfone.",
         "no_selection": "Nenhum texto selecionado. Selecione um texto e tente novamente.",
@@ -172,10 +178,13 @@ class QmlWorkflowBridge(QObject):
         audio_batch_controller: Any | None = None,
         target_provider: Callable[[], Any | None] | None = None,
         paste_runner: Callable | None = None,
+        processing_allowed: Callable[[], bool] = lambda: True,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._workflow_service = workflow_service
+        self._processing_allowed = processing_allowed
+        self._starts_pending = 0
         self._dispatch_runner = dispatch_runner or (lambda callback: callback())
         default_copy_runner = getattr(workflow_service, "copy_result", None)
         self._copy_runner = copy_runner or (
@@ -308,6 +317,26 @@ class QmlWorkflowBridge(QObject):
     def targetExecutable(self) -> str:
         return self._target_executable
 
+    @Property(str, notify=statusChanged)
+    def writingStyleCaption(self):
+        from clarify.desktop.qml_application_style import style_caption
+
+        return style_caption(self._state)
+
+    @Property(bool, notify=statusChanged)
+    def writingStyleFinished(self):
+        return (
+            self._state.phase is WorkflowPhase.COMPLETED
+            and self._state.writing_style_requested is not None
+        )
+
+    @Property(bool, notify=statusChanged)
+    def writingStyleApplied(self):
+        return (
+            self._state.writing_style_applied is not None
+            and self._state.writing_style_status == "applied"
+        )
+
     @Property(bool, notify=canShowResultChanged)
     def canShowResult(self) -> bool:
         if self.surface == "voice_result":
@@ -330,12 +359,10 @@ class QmlWorkflowBridge(QObject):
 
     @Slot(result=bool)
     def undoCancellation(self) -> bool:
-        if not self.canUndoCancellation:
+        if not self.canUndoCancellation or not self._processing_allowed():
             return False
         operation_id = self._state.operation_id
-        self._submit(
-            lambda: self._workflow_service.dispatch(UndoCancelDictation(operation_id))
-        )
+        self._submit_start(UndoCancelDictation(operation_id))
         return True
 
     @Property(bool, notify=surfaceChanged)
@@ -395,12 +422,10 @@ class QmlWorkflowBridge(QObject):
 
     @Slot(result=bool)
     def retryTranscription(self) -> bool:
-        if not self.canRetryTranscription:
+        if not self.canRetryTranscription or not self._processing_allowed():
             return False
         operation_id = self._state.operation_id
-        self._submit(
-            lambda: self._workflow_service.dispatch(RetryDictation(operation_id))
-        )
+        self._submit_start(RetryDictation(operation_id))
         return True
 
     @Property(str, notify=modeChanged)
@@ -557,6 +582,27 @@ class QmlWorkflowBridge(QObject):
     def _submit(self, callback: Callable[[], None]) -> None:
         self._dispatch_runner(callback)
 
+    def _dispatch_start(self, command) -> bool:
+        # Recheck on the worker: another surface can open while dispatch waits.
+        return self._processing_allowed() and self._workflow_service.dispatch(command)
+
+    @property
+    def start_pending(self) -> bool:
+        return self._starts_pending > 0
+
+    def _submit_start(self, command) -> None:
+        # Reserve before yielding to a worker so microphone tests and practice
+        # cannot enter while this command is waiting for dispatch.
+        self._starts_pending += 1
+
+        def dispatch():
+            try:
+                self._dispatch_start(command)
+            finally:
+                self._starts_pending -= 1
+
+        self._submit(dispatch)
+
     def _run_when_ready(self, action: Callable[[], None]) -> bool:
         """Release a terminal result before starting the next workflow.
 
@@ -666,7 +712,7 @@ class QmlWorkflowBridge(QObject):
         return self._button_recording and self.recording and not self._stop_requested
 
     def _start_recording(self, from_button: bool) -> None:
-        if self._quick_paste_busy:
+        if self._quick_paste_busy or not self._processing_allowed():
             return
         if self._state.phase in (
             WorkflowPhase.COMPLETED,
@@ -681,11 +727,7 @@ class QmlWorkflowBridge(QObject):
         self._result_visible = False
         self._button_recording = from_button
         target = self._capture_target()
-        self._submit(
-            lambda: self._workflow_service.dispatch(
-                StartDictation(target, self._mode, self._language)
-            )
-        )
+        self._submit_start(StartDictation(target, self._mode, self._language))
 
     @Slot()
     def stopRecording(self) -> None:
@@ -721,6 +763,12 @@ class QmlWorkflowBridge(QObject):
         if self._quick_paste_busy:
             return False
         normalized = str(action or "").strip().lower()
+        if (
+            normalized
+            in {"rewrite_hotkey", "translation_hotkey", "recording_hold_press"}
+            and not self._processing_allowed()
+        ):
+            return False
         if normalized == "escape" and self._hold_down:
             self._hold_down = False
             self._hold_generation += 1
@@ -823,7 +871,7 @@ class QmlWorkflowBridge(QObject):
             if not self._dismiss_files_before_workflow():
                 return False
             target = self._capture_target()
-            self._submit(lambda: self._workflow_service.dispatch(StartRewrite(target)))
+            self._submit_start(StartRewrite(target))
             return True
 
         if normalized == "translation_hotkey":
@@ -842,9 +890,7 @@ class QmlWorkflowBridge(QObject):
             if not self._dismiss_files_before_workflow():
                 return False
             target = self._capture_target()
-            self._submit(
-                lambda: self._workflow_service.dispatch(StartTranslation(target))
-            )
+            self._submit_start(StartTranslation(target))
             return True
 
         if normalized == "escape":

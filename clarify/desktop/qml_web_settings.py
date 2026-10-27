@@ -19,6 +19,7 @@ MAX_SETTINGS_MESSAGE_BYTES = 64 * 1024 * 1024
 PROPERTIES = (
     "uiLanguage",
     "onboardingRequired",
+    "practiceState",
     "accountState",
     "chatgptState",
     "historyState",
@@ -52,6 +53,11 @@ PROPERTIES = (
     "microphoneTestLevel",
     "microphoneTestStatus",
     "recordingControls",
+    "dictationCleanupLevel",
+    "applicationWritingStyles",
+    "applicationStyleTarget",
+    "applicationStyleRefinementAllowed",
+    "dictationCleanupRefinementAllowed",
     "selectedScope",
     "routeProviderId",
     "routeModelId",
@@ -92,6 +98,7 @@ PROPERTIES = (
 METHODS = frozenset(
     (
         "completeOnboarding",
+        "practiceCommand",
         "beginHotkeyCapture",
         "cancelHotkeyCapture",
         "accountCommand",
@@ -214,7 +221,9 @@ class SettingsProtocol:
             elif method == "poll" and not args:
                 result = self.poll()
             elif method == "getHistoryPage":
-                if len(args) != 2 or any(type(value) is not str for value in args):
+                if len(args) not in (2, 3) or any(
+                    type(value) is not str for value in args
+                ):
                     raise ValueError()
                 result = self.settings.getHistoryPage(*args)
             elif method == "getHistoryTextPart":
@@ -225,7 +234,25 @@ class SettingsProtocol:
                 ):
                     raise ValueError()
                 result = self.settings.getHistoryTextPart(*args)
+            elif method == "copyHistoryText":
+                if len(args) != 4 or any(type(value) is not str for value in args):
+                    raise ValueError()
+                result = self.settings.copyHistoryText(*args)
+            elif method == "historyCorrection":
+                if (
+                    len(args) != 2
+                    or type(args[0]) is not str
+                    or type(args[1]) is not dict
+                ):
+                    raise ValueError()
+                result = self.settings.historyCorrection(*args)
             elif method in METHODS:
+                if method == "practiceCommand" and (
+                    len(args) != 1
+                    or type(args[0]) is not str
+                    or args[0] not in {"open", "close", "start", "stop", "cancel"}
+                ):
+                    raise ValueError()
                 if method == "chatgptCommand" and (
                     len(args) != 2 or any(type(value) is not str for value in args)
                 ):
@@ -271,7 +298,7 @@ class SettingsProtocol:
             return {**reply, "result": result}
         except (TypeError, ValueError) as error:
             # Do not echo arguments: they can contain a pending API key.
-            if method in {"getHistoryPage", "getHistoryTextPart"}:
+            if method in {"getHistoryPage", "getHistoryTextPart", "copyHistoryText"}:
                 return {
                     **reply,
                     "error": "O histórico mudou. Atualize e tente novamente."
@@ -280,6 +307,8 @@ class SettingsProtocol:
                 }
             return {**reply, "error": "Invalid settings value"}
         except Exception:
+            if method == "copyHistoryText":
+                return {**reply, "error": "Não foi possível copiar. Tente novamente."}
             if method in {"getHistoryPage", "getHistoryTextPart"}:
                 return {**reply, "error": "Não foi possível carregar o histórico."}
             return {**reply, "error": "Não foi possível ler as configurações."}
@@ -348,6 +377,7 @@ class WebSettingsProcess(QObject):
         return True
 
     def hide(self):
+        self.settings.practiceCommand("close")
         self.settings.cancelChatGPT()
         if self._visible:
             self._visible = False
@@ -376,6 +406,7 @@ class WebSettingsProcess(QObject):
             self.process.write((json.dumps(reply, ensure_ascii=False) + "\n").encode())
 
     def _failed(self, error):
+        self.settings.practiceCommand("close")
         self.settings.cancelChatGPT()
         self.startup_timer.stop()
         self.failed = True
@@ -385,6 +416,7 @@ class WebSettingsProcess(QObject):
             self.fallback()
 
     def _finished(self, code, status):
+        self.settings.practiceCommand("close")
         self.settings.cancelChatGPT()
         self.startup_timer.stop()
         self._visible = False
@@ -400,6 +432,7 @@ class WebSettingsProcess(QObject):
             self.bridge.closeSettings()
 
     def shutdown(self):
+        self.settings.practiceCommand("close")
         self.settings.cancelChatGPT()
         self._shutting_down = True
         self.startup_timer.stop()

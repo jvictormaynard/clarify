@@ -7,6 +7,87 @@ let id = 0;
 const pending = new Map<number, (value: unknown) => void>();
 let releaseUsage: () => Promise<void>;
 
+test("styles: application rules persist and removal restores default", async ({ page }, testInfo) => {
+  await expect(page.getByText("Padrão para todos os aplicativos.", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Caminho do aplicativo", exact: true }).fill("C:\\Apps\\Editor.exe");
+  await page.getByRole("combobox", { name: "Estilo de escrita", exact: true }).click();
+  await page.getByRole("option", { name: "Informal", exact: true }).click();
+  await page.getByRole("button", { name: "Salvar regra", exact: true }).click();
+  const saved = page.getByRole("combobox", { name: "Estilo para c:\\apps\\editor.exe", exact: true });
+  await expect(saved).toContainText("Informal");
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
+  await page.reload();
+  await expect(saved).toContainText("Informal");
+  await page.screenshot({ path: testInfo.outputPath("application-writing-styles.png"), fullPage: true });
+  await page.getByRole("button", { name: "Remover regra", exact: true }).click();
+  await expect(saved).toBeHidden();
+  await expect(page.getByText("Padrão para todos os aplicativos.", { exact: true })).toBeVisible();
+});
+
+test("styles: preserve explains that an app rule cannot enable cloud processing", async ({ page }) => {
+  await page.getByRole("combobox", { name: "Nível de revisão", exact: true }).click();
+  await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Estilo não aplicado nesta rota." })).toBeVisible();
+});
+
+test("quota: styles remain configurable for managed accounts", async ({ page }) => {
+  await page.getByRole("textbox", { name: "Caminho do aplicativo", exact: true }).fill("C:\\Apps\\Chat.exe");
+  await page.getByRole("button", { name: "Salvar regra", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Estilo para c:\\apps\\chat.exe", exact: true })).toContainText("Natural");
+});
+
+test("cleanup: levels persist across pages and explain minimal changes", async ({ page }, testInfo) => {
+  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
+  await expect(level).toContainText("Padrão atual");
+  await level.click();
+  await page.getByRole("option", { name: "Ajustes mínimos", exact: true }).click();
+  await expect(level).toContainText("Ajustes mínimos");
+  await expect(page.getByText("Ajusta apenas espaços e tabulações. Mantém hesitações, repetições e autocorreções.")).toBeVisible();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(level).toContainText("Ajustes mínimos");
+  await level.click();
+  await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(level).toContainText("Preservar palavras");
+  await page.getByRole("button", { name: "Ditado", exact: true }).click();
+  await expect(level).toContainText("Preservar palavras");
+  await level.click();
+  await page.getByRole("option", { name: "Revisar clareza", exact: true }).click();
+  await expect(level).toContainText("Revisar clareza");
+  await page.screenshot({ path: testInfo.outputPath("dictation-cleanup.png"), fullPage: true });
+  await level.click();
+  await page.getByRole("option", { name: "Padrão atual", exact: true }).click();
+  await expect(level).toContainText("Padrão atual");
+  await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
+});
+
+for (const locale of ["en", "es"] as const) {
+  test(`cleanup: locale ${locale} shows honest minimal changes example`, async ({ page }) => {
+    const level = page.getByRole("combobox", { name: locale === "en" ? "Cleanup level" : "Nivel de revisión", exact: true });
+    await level.click();
+    await page.getByRole("option", { name: locale === "en" ? "Minimal changes" : "Ajustes mínimos", exact: true }).click();
+    await expect(page.getByText(locale === "en" ? "Adjusts spaces and tabs only. Keeps hesitations, repetitions and self-corrections." : "Ajusta solo espacios y tabulaciones. Conserva vacilaciones, repeticiones y autocorrecciones.")).toBeVisible();
+  });
+}
+
+test("quota: cleanup choices remain available for managed accounts", async ({ page }) => {
+  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
+  await level.click();
+  await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(level).toContainText("Preservar palavras");
+  await page.reload();
+  await expect(level).toContainText("Preservar palavras");
+});
+
+test("cleanup: clarity explains when the refinement route is disabled", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
+  await level.click();
+  await page.getByRole("option", { name: "Revisar clareza", exact: true }).click();
+  await page.getByRole("switch", { name: "Ativar este fluxo", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Revisão indisponível nesta rota." })).toBeVisible();
+  await expect(level).toContainText("Revisar clareza");
+});
+
 for (const method of ["testMicrophone", "stopMicrophoneTest", "refreshMicrophones"] as const) {
   test(`responsive operations: ${method} keeps navigation and unrelated controls stable`, async ({ page }) => {
     if (method === "stopMicrophoneTest") {
@@ -410,6 +491,87 @@ for (const library of ["dictionary", "snippets"] as const) {
   });
 }
 
+test("history: correction requires review and supports owned undo", async ({ page }, testInfo) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  const row = page.locator(".history-row").filter({ hasText: "Isolated revised desktop history." });
+  await row.getByRole("button", { name: "Corrigir termo", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Corrigir termo", exact: true });
+  await dialog.getByRole("textbox", { name: "Termo ouvido", exact: true }).fill("desktop");
+  await dialog.getByRole("textbox", { name: "Termo correto", exact: true }).fill("Desktop Term");
+  await dialog.getByRole("button", { name: "Revisar correção", exact: true }).click();
+  await expect(dialog.getByRole("textbox", { name: "Termo ouvido", exact: true })).toHaveValue("desktop");
+  await expect(dialog.getByRole("textbox", { name: "Termo correto", exact: true })).toBeDisabled();
+  const snapshot = () => page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  expect((await snapshot()).dictionaryEntries).toEqual([]);
+  await page.setViewportSize({ width: 640, height: 760 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.screenshot({ path: testInfo.outputPath("correction-review-640.png") });
+  await dialog.getByRole("button", { name: "Salvar no dicionário", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(row.getByRole("button", { name: "Desfazer adição", exact: true })).toBeEnabled();
+  expect((await snapshot()).dictionaryEntries).toEqual([{ term: "Desktop Term", pronunciation: "", aliases: ["desktop"], enabled: true }]);
+  await row.getByRole("button", { name: "Desfazer adição", exact: true }).click();
+  await expect(row.getByText("Adição desfeita.", { exact: true })).toBeVisible();
+  expect((await snapshot()).dictionaryEntries).toEqual([]);
+  await row.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await expect(row.getByRole("region", { name: "Original", exact: true })).toContainText("Isolated desktop history.");
+});
+
+test("history: correction cancel has no effect and external edits disable undo", async ({ page }) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  const row = page.locator(".history-row").filter({ hasText: "Isolated revised desktop history." });
+  const dialog = page.getByRole("dialog", { name: "Corrigir termo", exact: true });
+  const review = async () => {
+    await row.getByRole("button", { name: "Corrigir termo", exact: true }).click();
+    await dialog.getByRole("textbox", { name: "Termo ouvido", exact: true }).fill("desktop");
+    await dialog.getByRole("textbox", { name: "Termo correto", exact: true }).fill("Desktop Term");
+    await dialog.getByRole("button", { name: "Revisar correção", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: "Salvar no dicionário", exact: true })).toBeVisible();
+  };
+  await review();
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  const before = await page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  expect(before.dictionaryEntries).toEqual([]);
+  await review();
+  await dialog.getByRole("button", { name: "Salvar no dicionário", exact: true }).click();
+  await expect(row.getByRole("button", { name: "Desfazer adição", exact: true })).toBeEnabled();
+  await page.evaluate(async () => {
+    const invoke = (method: string, args: unknown[]) => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method, args });
+    const state = await invoke("snapshot", []);
+    await invoke("setDictionaryEntries", [[{ ...state.dictionaryEntries[0], pronunciation: "Later edit" }], state.snippetContext]);
+    await invoke("save", [state.snippetContext]);
+  });
+  await expect(row.getByRole("button", { name: "Desfazer adição", exact: true })).toBeDisabled();
+  await expect(row.getByText("Desfazer indisponível: o dicionário ou a sessão mudou.", { exact: true })).toBeVisible();
+});
+
+for (const [localTerm, correctedTerm] of [["Desktop Term", "Desktop Term"], ["Straße", "STRASSE"]]) test(`history: correction reuses unsaved ${localTerm}/${correctedTerm} and keeps pending metadata`, async ({ page }) => {
+  await page.getByRole("button", { name: "Dicionário", exact: true }).click();
+  await page.getByRole("textbox", { name: "Novo termo", exact: true }).fill(localTerm);
+  await page.getByRole("button", { name: "Adicionar termo", exact: true }).click();
+  await page.getByText("Pronúncia e variações", { exact: true }).click();
+  await page.getByRole("textbox", { name: "Pronúncia do termo 1", exact: true }).fill("Pending pronunciation");
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  const row = page.locator(".history-row").filter({ hasText: "Isolated revised desktop history." });
+  await row.getByRole("button", { name: "Corrigir termo", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Corrigir termo", exact: true });
+  await dialog.getByRole("textbox", { name: "Termo ouvido", exact: true }).fill("desktop");
+  await dialog.getByRole("textbox", { name: "Termo correto", exact: true }).fill(correctedTerm);
+  await dialog.getByRole("button", { name: "Revisar correção", exact: true }).click();
+  await dialog.getByRole("button", { name: "Salvar no dicionário", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole("button", { name: "Dicionário", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Termo 1", exact: true })).toHaveValue(localTerm);
+  await expect(page.getByRole("textbox", { name: "Termo 2", exact: true })).toHaveCount(0);
+  await page.getByText("Pronúncia e variações", { exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Pronúncia do termo 1", exact: true })).toHaveValue("Pending pronunciation");
+  await expect(page.getByRole("textbox", { name: "Variações do termo 1", exact: true })).toHaveValue("desktop");
+  await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
+  const saved = await page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  expect(saved.dictionaryEntries).toEqual([{ term: localTerm, pronunciation: "Pending pronunciation", aliases: ["desktop"], enabled: true }]);
+});
+
 test.beforeEach(async ({ page }, testInfo) => {
   if (!process.env.CLARIFY_TEST_PYTHON || !process.env.CLARIFY_TEST_FIXTURE) throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
   const onboarding = testInfo.title.startsWith("onboarding:");
@@ -421,7 +583,8 @@ test.beforeEach(async ({ page }, testInfo) => {
     });
   };
   const locale = /locale (en|es)/.exec(testInfo.title)?.[1] || "pt";
-  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.includes("social cancellation") ? ["--social-wait"] : []), ...(testInfo.title.includes("sync-import") ? ["--library-sync"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : []), ...["legacy", "malformed", "waiting", "unfunded", "inactive", "paused", "exhausted"].filter(mode => testInfo.title.includes(`quota ${mode}`)).map(mode => `--usage-${mode}`)], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
+  const practiceArgs = testInfo.title.includes("practice account error") ? ["--practice-account-error"] : testInfo.title.includes("practice BYOK auth error") ? ["--practice-auth-error"] : testInfo.title.includes("practice BYOK quota") ? ["--practice-provider-quota"] : [];
+  child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", process.env.CLARIFY_TEST_FIXTURE, ...practiceArgs, ...(onboarding ? ["--onboarding"] : []), ...(signedIn ? ["--signed-in"] : []), ...(testInfo.title.includes("social cancellation") ? ["--social-wait"] : []), ...(testInfo.title.includes("sync-import") ? ["--library-sync"] : []), ...(testInfo.title.startsWith("history:") ? ["--history"] : []), ...(testInfo.title.includes("review tools") ? ["--history-review"] : []), ...(testInfo.title.includes("large history") ? ["--history-large"] : []), ...(testInfo.title.includes("failed quota") ? ["--usage-error"] : []), ...["legacy", "malformed", "waiting", "unfunded", "inactive", "paused", "exhausted"].filter(mode => testInfo.title.includes(`quota ${mode}`)).map(mode => `--usage-${mode}`)], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
     const reply = JSON.parse(line); pending.get(reply.id)?.(reply); pending.delete(reply.id);
@@ -459,12 +622,12 @@ test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" })
 test("history: existing records stay visible and local delete and clear update the list", async ({ page }) => {
   await page.getByRole("button", { name: "Histórico", exact: true }).click();
   await expect(page.getByText("Isolated mobile history.", { exact: true })).toBeVisible();
-  await expect(page.getByText("Isolated desktop history.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Isolated revised desktop history.", { exact: true })).toBeVisible();
   const items = page.getByRole("listitem");
   await expect(items).toHaveCount(2);
   await expect(items.first()).toContainText("Mobile");
   await expect(items.last()).toContainText("Desktop");
-  await items.first().getByRole("button").click();
+  await items.first().getByRole("button", { name: "Excluir transcrição", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Excluir", exact: true }).click();
   await expect(items).toHaveCount(1);
   await page.getByRole("button", { name: "Limpar histórico", exact: true }).click();
@@ -476,9 +639,11 @@ test("history: large history loads bounded pages and full legacy text without bl
   test.setTimeout(60000);
   await page.getByRole("button", { name: "Histórico", exact: true }).click();
   await expect(page.getByRole("listitem")).toHaveCount(20);
-  await page.getByRole("listitem").first().getByRole("button", { name: "Mostrar texto completo", exact: true }).click();
-  await expect(page.getByRole("listitem").first()).toContainText("legacy end.", { timeout: 30000 });
-  await expect(page.getByRole("listitem").first().locator(".history-text")).toHaveText("Giant legacy " + "x".repeat(1100000) + " legacy end.");
+  await page.getByRole("listitem").first().getByRole("button", { name: "Abrir textos", exact: true }).click();
+  const reader = page.getByRole("region", { name: "Resultado", exact: true });
+  await expect(reader.locator(".history-text")).toHaveText(("Giant legacy " + "x".repeat(1100000)).slice(0, 4000));
+  await reader.getByRole("button", { name: "Próximo trecho", exact: true }).click();
+  await expect(reader.locator(".history-text")).toHaveText("x".repeat(4000));
   await page.getByRole("button", { name: "Carregar mais", exact: true }).click();
   await expect(page.getByRole("listitem")).toHaveCount(40);
   await page.getByRole("button", { name: "Carregar mais", exact: true }).click();
@@ -496,6 +661,118 @@ test("history: session context changes close a stale delete dialog", async ({ pa
   await page.evaluate(() => fetch("/__test_rpc", { method: "POST", body: JSON.stringify({ method: "testHistoryContextChange", args: [] }) }));
   await expect(page.getByRole("dialog")).toBeHidden();
   await expect(page.getByRole("listitem")).toHaveCount(2);
+});
+
+test("history: review tools compare preserved texts and recover from clipboard failure", async ({ page }, testInfo) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  const revised = page.getByRole("listitem").filter({ hasText: "Isolated revised desktop history." });
+  await revised.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await expect(revised.getByRole("region", { name: "Original", exact: true })).toContainText("Isolated desktop history.");
+  await expect(revised.getByRole("region", { name: "Resultado", exact: true })).toContainText("Isolated revised desktop history.");
+  await page.screenshot({ path: testInfo.outputPath("history-comparison.png"), fullPage: true });
+  let fail = true;
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method === "copyHistoryText" && fail) {
+      fail = false; await route.fulfill({ json: { error: "Não foi possível copiar. Tente novamente." } }); return;
+    }
+    await route.fallback();
+  });
+  await revised.getByRole("button", { name: "Copiar resultado", exact: true }).click();
+  await expect(revised.getByRole("alert")).toContainText("Não foi possível copiar.");
+  await revised.getByRole("button", { name: "Copiar resultado", exact: true }).click();
+  await expect(revised.getByRole("status")).toHaveText("Copiado.");
+  await revised.getByRole("button", { name: "Copiar original", exact: true }).click();
+  await expect.poll(() => page.evaluate(async () => (await (await fetch("/__test_rpc", { method: "POST", body: JSON.stringify({ method: "testHistoryClipboard", args: [] }) })).json()).result)).toEqual(["Isolated revised desktop history.", "Isolated desktop history."]);
+  const same = page.getByRole("listitem").filter({ hasText: "Isolated mobile history." });
+  await same.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await expect(same).toContainText("O original e o resultado são iguais.");
+  const absent = page.getByRole("listitem").filter({ hasText: "Result without original." });
+  await absent.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await expect(absent).toContainText("O original não está disponível para este registro.");
+  await expect(absent.getByRole("button", { name: "Copiar original", exact: true })).toHaveCount(0);
+});
+
+test("history: large history search reaches older originals and never reports partial scan as empty", async ({ page }) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  const queries = ["ISOLATED DESKTOP HISTORY.", "no such text"];
+  // Hold each completed RPC before React receives it. This forces the pending
+  // continuation state, including the final reply that removes the button.
+  await page.evaluate(queries => {
+    const runtime = (window as any).__TAURI_INTERNALS__;
+    const invoke = runtime.invoke;
+    runtime.invoke = async (command: string, request: any) => {
+      const result = await invoke(command, request);
+      if (request.method === "getHistoryPage" && queries.includes(request.args[2])) {
+        await new Promise<void>(resolve => {
+          (window as any).__historyScan = { query: request.args[2], cursor: request.args[1], release: resolve };
+        });
+      }
+      return result;
+    };
+  }, queries);
+  const more = page.getByRole("button", { name: "Continuar busca", exact: true });
+  const empty = page.getByText("Nenhum resultado encontrado.", { exact: true });
+  const scan = async (action: () => Promise<unknown>, query: string, cursor = "") => {
+    const response = page.waitForResponse(response => {
+      if (!response.url().endsWith("/__test_rpc")) return false;
+      const request = response.request().postDataJSON();
+      return request.method === "getHistoryPage" && request.args[1] === cursor && request.args[2] === query;
+    });
+    await action();
+    const reply = await (await response).json();
+    expect(reply.error).toBeUndefined();
+    await page.waitForFunction(({ query, cursor }) => {
+      const held = (window as any).__historyScan;
+      return held?.query === query && held?.cursor === cursor;
+    }, { query, cursor });
+    if (cursor) await expect(more).toBeDisabled();
+    await expect(empty).toHaveCount(0);
+    await page.evaluate(() => {
+      const held = (window as any).__historyScan;
+      delete (window as any).__historyScan;
+      held.release();
+    });
+    // Decide the next action only after this exact cursor's reply has rendered.
+    if (reply.result.hasMore) await expect(more).toBeEnabled();
+    else await expect(more).toHaveCount(0);
+    await expect(page.getByRole("status", { name: "Carregando…", exact: true })).toHaveCount(0);
+    return reply.result as { entries: unknown[]; cursor: string; hasMore: boolean };
+  };
+  const search = page.getByRole("searchbox", { name: "Buscar no histórico", exact: true });
+  await search.fill(queries[0]);
+  let result = await scan(() => page.getByRole("button", { name: "Buscar", exact: true }).click(), queries[0]);
+  for (let i = 0; i < 20 && result.hasMore && !result.entries.length; i++) {
+    result = await scan(() => more.click(), queries[0], result.cursor);
+  }
+  await expect(page.getByText("Isolated revised desktop history.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("listitem")).toHaveCount(1);
+  await search.fill(queries[1]);
+  result = await scan(() => page.getByRole("button", { name: "Buscar", exact: true }).click(), queries[1]);
+  for (let i = 0; i < 20 && result.hasMore; i++) {
+    result = await scan(() => more.click(), queries[1], result.cursor);
+  }
+  await expect(empty).toBeVisible();
+});
+
+test("history: cancelled expansion ignores late text and context change closes comparison", async ({ page }) => {
+  await page.getByRole("button", { name: "Histórico", exact: true }).click();
+  let release!: () => void, started!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method === "getHistoryTextPart") { started(); await held; }
+    await route.fallback();
+  });
+  const row = page.getByRole("listitem").filter({ hasText: "Isolated revised desktop history." });
+  await row.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await entered;
+  await row.getByRole("button", { name: "Fechar textos", exact: true }).click();
+  release();
+  await expect(page.locator(".history-comparison")).toHaveCount(0);
+  await row.getByRole("button", { name: "Abrir textos", exact: true }).click();
+  await expect(row.getByRole("region", { name: "Original", exact: true })).toContainText("Isolated desktop history.");
+  await page.evaluate(() => fetch("/__test_rpc", { method: "POST", body: JSON.stringify({ method: "testHistoryContextChange", args: [] }) }));
+  await expect(page.locator(".history-comparison")).toHaveCount(0);
 });
 
 test("quota: a signed-in startup shows no allowance until the quota arrives", async ({ page }) => {
@@ -597,10 +874,101 @@ test("onboarding: first run shows email and a local link before Settings", async
   await expect(page.getByRole("alert")).toContainText("chave válida");
   await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
   await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Configurações" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
+});
+
+test("onboarding: practice is explicit, keeps its result here and can be repeated", async ({ page }) => {
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
+  await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
+  await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
+  await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await expect(page.getByText(/Use Alt\+L para começar/)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Testar microfone", exact: true }).click();
+  await expect(page.getByRole("meter", { name: "Nível do microfone" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Parar teste", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toBeEnabled();
+  await page.screenshot({ path: "test-results/practice-ready.png" });
+  await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
+  await expect(page.getByText("Gravando. Diga uma frase e pare a gravação.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveValue("Hoje vou escrever com o Clarify.");
+  await page.screenshot({ path: "test-results/practice-result.png" });
+  await page.setViewportSize({ width: 640, height: 520 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.getByRole("button", { name: "Concluir prática", exact: true }).click();
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
+});
+
+test("quota: quota exhausted practice shows the next account action before capture", async ({ page }) => {
+  await releaseUsage();
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  await expect(page.getByText("Não há cota disponível. Confira o saldo e a próxima renovação na sua conta.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Conta Clarify", exact: true })).toBeVisible();
+});
+
+test("practice preserves drafts and permits the window close confirmation", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Keep this draft through practice.");
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Fechar configurações", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Alterações não salvas", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Continuar editando", exact: true }).click();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep this draft through practice.");
+});
+
+test("onboarding: practice BYOK auth error links to personal configuration", async ({ page }) => {
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
+  await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
+  await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
+  await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+  await expect(page.getByText("Conclua e salve a configuração de transcrição antes de ditar.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
+});
+
+test("onboarding: practice BYOK quota points to the provider balance or plan", async ({ page }) => {
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
+  await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
+  await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
+  await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+  await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+  await expect(page.getByText("Limite do provedor atingido. Verifique seu saldo ou plano.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
+});
+
+test("quota: practice account error shows the quota action after processing", async ({ page }) => {
+  await releaseUsage();
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
+  await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+  await expect(page.getByText("Não há cota disponível. Confira o saldo e a próxima renovação na sua conta.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Conta Clarify", exact: true })).toBeVisible();
 });
 
 test("onboarding: email confirmation activates account processing immediately", async ({ page }) => {
@@ -618,6 +986,8 @@ test("onboarding: email confirmation activates account processing immediately", 
   await expect(page.getByRole("navigation")).toBeHidden();
   await expect(page.getByRole("button", { name: "Ativar processamento do Clarify" })).toHaveCount(0);
   await page.getByRole("button", { name: "Começar", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await expect(page.getByRole("navigation")).toBeVisible();
   await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: "Texto", exact: true })).toBeHidden();
@@ -662,6 +1032,7 @@ for (const provider of ["Google", "Microsoft", "GitHub"]) {
     await expect(page.getByRole("heading", { name: "Sua conta está pronta" })).toBeVisible();
     await expect(page.getByText(`${provider.toLowerCase()}@example.test`, { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Começar", exact: true }).click();
+    await page.getByRole("button", { name: "Pular prática", exact: true }).click();
     await expect(page.getByRole("navigation")).toBeVisible();
   });
 }
@@ -680,6 +1051,7 @@ test("onboarding: social cancellation stays enabled while the browser login is p
 test("onboarding: account social cancellation restores provider actions after local setup", async ({ page }) => {
   await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
   await page.getByText("Servidor próprio", { exact: true }).click();
   const server = page.getByRole("textbox", { name: "Endereço do servidor", exact: true });
@@ -833,6 +1205,8 @@ test("cancelled shortcut capture rejects retained keyboard and mouse events", as
 test("onboarding: local choice leads to model setup without a login", async ({ page }) => {
   await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
+  await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+  await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Modelo local", exact: true })).toBeVisible();
 });
