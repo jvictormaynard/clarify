@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import threading
 import unittest
 from urllib.parse import parse_qs, urlsplit
@@ -17,6 +20,155 @@ BASE = "b" * 40
 TAG_OBJECT = "c" * 40
 REPOSITORY = "jvictormaynard/clarify"
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class ReleaseNotesTests(unittest.TestCase):
+    CHANGELOG = """# Changelog
+
+## [Unreleased]
+
+### Added
+
+- A future feature.
+
+## [1.2.4] - 2026-10-25
+
+### Fixed
+
+- Preserve the user's text, including `code` and [links](https://example.com).
+
+## [1.2.3] - 2026-10-20
+
+### Added
+
+- An older feature.
+
+[Unreleased]: https://example.com/compare/v1.2.4...HEAD
+[1.2.4]: https://example.com/compare/v1.2.3...v1.2.4
+"""
+
+    def test_notes_include_only_the_requested_version_before_distribution(self):
+        notes = delivery.community_release_notes(self.CHANGELOG, "v1.2.4")
+        self.assertTrue(
+            notes.startswith(
+                "### Fixed\n\n- Preserve the user's text, including `code` and "
+                "[links](https://example.com).\n"
+            )
+        )
+        self.assertIn(
+            "https://github.com/jvictormaynard/clarify/blob/v1.2.4/CHANGELOG.md",
+            notes,
+        )
+        self.assertIn("Windows SmartScreen", notes)
+        self.assertEqual(
+            delivery.community_release_notes(
+                self.CHANGELOG.replace("\n", "\r\n"), "v1.2.4"
+            ),
+            notes,
+        )
+        self.assertNotIn("A future feature", notes)
+        self.assertNotIn("An older feature", notes)
+        self.assertNotIn("[Unreleased]:", notes)
+        oldest = delivery.changelog_section(self.CHANGELOG, "1.2.3")
+        self.assertEqual(oldest, "### Added\n\n- An older feature.")
+
+    def test_missing_duplicate_undated_and_empty_sections_are_rejected(self):
+        documents = [
+            "## [Unreleased]\n\n- A future feature.\n",
+            self.CHANGELOG + "\n## [1.2.4] - 2026-10-25\n\n- Duplicate.\n",
+            "## [1.2.4]\n\n- Missing date.\n",
+            "## [1.2.4] - 2026-10-25\n\n### Fixed\n\n<!-- No changes yet. -->\n",
+        ]
+        for document in documents:
+            with self.subTest(document=document):
+                with self.assertRaises(delivery.ReleaseError):
+                    delivery.community_release_notes(document, "v1.2.4")
+        with self.assertRaises(delivery.ReleaseError):
+            delivery.community_release_notes(self.CHANGELOG, "main")
+
+    def test_cli_reads_the_tag_instead_of_the_working_changelog(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+
+            def git(*args):
+                subprocess.run(
+                    [
+                        "git",
+                        "-c",
+                        "user.name=Release test",
+                        "-c",
+                        "user.email=release-test@example.com",
+                        "-c",
+                        "commit.gpgsign=false",
+                        "-c",
+                        "tag.gpgsign=false",
+                        "-c",
+                        "core.hooksPath=" + str(repo / "disabled-hooks"),
+                        *args,
+                    ],
+                    cwd=repo,
+                    check=True,
+                    capture_output=True,
+                )
+
+            git("init")
+            (repo / "CHANGELOG.md").write_text(self.CHANGELOG, encoding="utf-8")
+            git("add", "CHANGELOG.md")
+            git(
+                "commit",
+                "-m",
+                "Test release changelog",
+            )
+            git(
+                "tag",
+                "-a",
+                "v1.2.4",
+                "-m",
+                "Test release",
+                "HEAD",
+                "--cleanup=verbatim",
+            )
+            git("tag", "v1.2.5")
+            (repo / "CHANGELOG.md").write_text("Uncommitted future changes.")
+            output = repo / "notes.md"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/release_delivery.py"),
+                    "notes",
+                    "--tag",
+                    "v1.2.4",
+                    "--output",
+                    str(output),
+                ],
+                cwd=repo,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(
+                "Preserve the user's text", output.read_text(encoding="utf-8")
+            )
+            self.assertNotIn("Uncommitted future", output.read_text(encoding="utf-8"))
+            output.unlink()
+            for tag in ("v9.9.9", "v1.2.5"):
+                with self.subTest(tag=tag):
+                    failure = subprocess.run(
+                        [
+                            sys.executable,
+                            str(ROOT / "scripts/release_delivery.py"),
+                            "notes",
+                            "--tag",
+                            tag,
+                            "--output",
+                            str(output),
+                        ],
+                        cwd=repo,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertNotEqual(failure.returncode, 0)
+                    self.assertFalse(output.exists())
 
 
 class FakeGitHub(BaseHTTPRequestHandler):

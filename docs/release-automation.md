@@ -75,6 +75,27 @@ these release metadata files. If main advances with other changes, repeat the
 acceptance or preparation work as applicable. Do not edit the evidence to refer
 to source that was not tested.
 
+### Public desktop release notes
+
+Community Release reads the version's dated `CHANGELOG.md` section from the
+release tag. It publishes these changes first, followed by a link to the tagged
+changelog and the Windows portable distribution notices. Missing, duplicate,
+undated or empty sections stop publication before the build. Review this section in the
+release-preparation PR; the intent's `notes` field records scope and validation
+for the maintainer and does not replace the public changelog section.
+
+To inspect the generated text without publishing:
+
+```bash
+python scripts/release_delivery.py notes --tag vX.Y.Z --output release-notes.md
+```
+
+Run this command in a checkout that has the release tag. It reads the tagged
+file even when the working changelog contains later changes. For an existing
+release with only distribution notices, add its own tagged changelog section
+and keep its original notices. Change the description only; preserve the tag
+and published assets.
+
 ## Prepare a TestFlight build
 
 Before selecting a build number, inspect App Store Connect for this app's
