@@ -1,4 +1,4 @@
-name: iOS installed startup diagnostic (no signing)
+name: iOS installed startup diagnostic (no Apple credentials)
 
 on:
   workflow_dispatch:

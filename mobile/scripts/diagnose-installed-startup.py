@@ -141,6 +141,7 @@ def instrument(name, original):
             '            ClarifyStartupProbe("height.publish.exit");\n',
         )
     elif name == COLLECTOR:
+        change("let exitCode = 1;\n", "let exitCode = 1;\nlet startupLogCollection;\n")
         change(
             '\'process IN {"ClarifyKeyboard", "ActivationContainer", "KeyboardHost"}\'',
             '\'eventMessage CONTAINS "com.clarify.fixture.container.keyboard" OR '
@@ -152,6 +153,21 @@ def instrument(name, original):
             "'show', '--info', '--debug', '--style', 'compact',",
         )
         change("maxBuffer: 16 * 1024 * 1024", "maxBuffer: 64 * 1024 * 1024")
+        log_write = (
+            "  fs.writeFileSync(path.join(results, 'extension-log.txt'), "
+            "(logs.stdout ?? '') + (logs.stderr ?? ''));\n"
+        )
+        change(
+            log_write,
+            log_write + "  startupLogCollection = {\n"
+            "    status: logs.status ?? null, signal: logs.signal ?? null,\n"
+            "    errorCode: logs.error?.code ?? null,\n"
+            "    stdoutBytes: Buffer.byteLength(logs.stdout ?? ''),\n"
+            "    stderrBytes: Buffer.byteLength(logs.stderr ?? ''),\n"
+            "    complete: logs.status === 0 && !logs.error && !logs.signal,\n"
+            "  };\n"
+            "  fs.writeFileSync(path.join(results, 'log-collection.json'), JSON.stringify(startupLogCollection, null, 2));\n",
+        )
         change(
             "['KeyboardViewController.swift', 'App.plist',",
             "['SharedState.swift', 'KeyboardViewController.swift', 'App.plist',",
@@ -159,7 +175,12 @@ def instrument(name, original):
         change(
             "{ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, exitCode }",
             "{ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, "
-            "startupProbeOnly: true, publicationAllowed: false, exitCode }",
+            "startupProbeOnly: true, publicationAllowed: false, exitCode, "
+            "logCollection: startupLogCollection, diagnosticIncomplete: !startupLogCollection.complete }",
+        )
+        change(
+            "process.exitCode = exitCode;",
+            "process.exitCode = exitCode !== 0 ? exitCode : (startupLogCollection?.complete === true ? 0 : 2);",
         )
     else:
         raise ValueError("Unexpected diagnostic target")
