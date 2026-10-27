@@ -356,6 +356,9 @@ class ComputerRelayServer:
             task.cancel()
         if self.tasks:
             await asyncio.gather(*tuple(self.tasks), return_exceptions=True)
+            # gather can complete without yielding for already-finished tasks.
+            # Let their admission-release callbacks run before checking drain.
+            await asyncio.sleep(0)
         # Python 3.12 can wait for active connections here. Abort and drain the
         # owned connections first, or a live tunnel can prevent shutdown.
         if listener:

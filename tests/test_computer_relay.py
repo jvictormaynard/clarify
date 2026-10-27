@@ -509,9 +509,13 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
                 if b"/flood " in request:
                     writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 67108864\r\n\r\n")
                     for _ in range(4096):
+                        if writer.is_closing():
+                            break
                         writer.write(b"x" * 16384)
                         await writer.drain()
                         self.pc_bytes += 16384
+                        # Process TLS close callbacks even if drain did not yield.
+                        await asyncio.sleep(0)
                 elif b"/hold " in request:
                     await reader.read()
                 elif b"/echo " in request:
@@ -1070,6 +1074,25 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.server.status["handshakes"], 0)
         self.assertEqual(self.server.ip_counts, {})
 
+    async def test_stop_waits_for_completed_connection_admission_release(self):
+        async def complete(_stream):
+            return
+
+        writer = mock.Mock()
+        writer.get_extra_info.return_value = ("127.0.0.1", 47100)
+        with mock.patch.object(self.server, "_connection", complete):
+            self.server._accept(mock.Mock(), writer)
+            task = next(iter(self.server.tasks))
+            # Finish the connection task, leaving its registered done callback
+            # queued for the next loop turn. This is not a wall-clock delay.
+            await asyncio.sleep(0)
+            self.assertTrue(task.done())
+            self.assertIn(task, self.server.tasks)
+            await self.server.stop()
+        self.assertEqual(self.server.status["connections"], 0)
+        self.assertEqual(self.server.status["tasks"], 0)
+        self.assertEqual(self.server.ip_counts, {})
+
     async def test_stop_during_listener_start_cannot_leave_unmetered_listener(self):
         await self.server.stop()
         entered, release = asyncio.Event(), asyncio.Event()
@@ -1188,12 +1211,14 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
         finally:
             release.set()
         self.assertTrue(await asyncio.to_thread(client.stop, 3))
+        stopped_relay_port = self.server.address[1]
         await self.server.stop()
         unavailable = ComputerRelayClient(
             HOST,
             pc,
             port,
-            relay_port=port,
+            # Retry a stopped listener, not the PC's unrelated TLS endpoint.
+            relay_port=stopped_relay_port,
             fixture_address="127.0.0.1",
             fixture_ssl_context=self.control_context,
             limits=self.limits,
