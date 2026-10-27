@@ -469,6 +469,12 @@ and Live Activity use the generated catalog. Authentication email copy uses the
 same source. Keep substitutions unchanged across translations. Do not translate
 state IDs, prompts, user transcripts, email addresses or dictionary entries.
 
+Text used only by desktop can be listed in `shared/desktop_ui_keys.json`. This
+file contains source keys, not translations. The generator omits these keys from
+Swift and rejects keys referenced by mobile source. Remove a key from that list
+before using it in mobile. Unclassified keys remain shared. The Python and
+TypeScript catalogs retain every translation, including desktop text.
+
 The Windows Settings build stages `desktop/` and `shared/` together under
 `%TEMP%\clarify-settings-workspace`, with pinned dependencies in the staged
 `desktop` folder. The portable package embeds the shared Python UI catalog.

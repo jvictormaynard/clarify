@@ -280,7 +280,6 @@ class DeliveryPolicyTests(unittest.TestCase):
             "shared/usage.ts",
             "shared/ui_strings.json",
             "shared/text_prompts.json",
-            "workflow_provider.py",
             "mobile/modules/clarify-core/ios/RewritePrompt.swift",
             "scripts/sync_locales.py",
         ):
@@ -291,6 +290,15 @@ class DeliveryPolicyTests(unittest.TestCase):
                         "desktop", "settings", "package", "server", "mobile", "ios"
                     ),
                 )
+
+    def test_python_workflows_and_release_tools_do_not_compile_ios(self):
+        self.assertEqual(
+            affected_components(["workflow_provider.py"]),
+            selection("desktop", "settings", "package", "server", "mobile"),
+        )
+        self.assertEqual(
+            affected_components(["scripts/release_delivery.py"]), selection()
+        )
 
     def test_platform_changes_select_only_their_component(self):
         for path, component in (
@@ -400,6 +408,54 @@ class ReleaseIntentSelectionTests(unittest.TestCase):
 
     def select(self, head):
         return event_components(self.root, "push", {"before": self.base}, head)
+
+    def test_desktop_translation_selection_uses_tested_catalogs_not_working_files(self):
+        shared = self.root / "shared"
+        shared.mkdir()
+        catalog = {
+            "Shared": {"pt": "Comum", "en": "Shared", "es": "Común"},
+            "Desktop": {"pt": "Desktop", "en": "Desktop", "es": "Desktop"},
+        }
+        path = shared / "ui_strings.json"
+        path.write_text(json.dumps(catalog), encoding="utf-8")
+        scope = shared / "desktop_ui_keys.json"
+        scope.write_text('["Desktop"]', encoding="utf-8")
+        self.base = self.commit()
+        catalog["Desktop"]["en"] = "Desktop settings"
+        path.write_text(json.dumps(catalog), encoding="utf-8")
+        head = self.commit()
+        path.write_text("not the tested catalog", encoding="utf-8")
+        scope.write_text("not the tested scope", encoding="utf-8")
+        self.assertEqual(
+            self.select(head),
+            selection("desktop", "settings", "package", "server", "mobile"),
+        )
+
+    def test_native_or_unclassified_catalog_changes_and_invalid_scope_keep_ios(self):
+        shared = self.root / "shared"
+        shared.mkdir()
+        catalog = {
+            "Shared": {"pt": "Comum", "en": "Shared", "es": "Común"},
+            "Desktop": {"pt": "Desktop", "en": "Desktop", "es": "Desktop"},
+        }
+        path = shared / "ui_strings.json"
+        scope = shared / "desktop_ui_keys.json"
+        path.write_text(json.dumps(catalog), encoding="utf-8")
+        scope.write_text('["Desktop"]', encoding="utf-8")
+        self.base = self.commit()
+        for source in ("Shared", "New"):
+            with self.subTest(source=source):
+                catalog[source] = {"pt": "Novo", "en": "New", "es": "Nuevo"}
+                path.write_text(json.dumps(catalog), encoding="utf-8")
+                self.assertTrue(self.select(self.commit())["ios"])
+        catalog["Shared"] = {"pt": "Comum", "en": "Shared", "es": "Común"}
+        del catalog["New"]
+        catalog["Desktop"]["en"] = "Desktop settings"
+        path.write_text(json.dumps(catalog), encoding="utf-8")
+        for invalid in ('["Missing"]', '["Desktop", "Desktop"]', "null", "{"):
+            with self.subTest(scope=invalid):
+                scope.write_text(invalid, encoding="utf-8")
+                self.assertTrue(self.select(self.commit())["ios"])
 
     def test_release_intent_selects_only_its_platform_from_the_tested_commit(self):
         for component, expected in (
