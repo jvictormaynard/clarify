@@ -819,7 +819,7 @@ final class KeyboardUITests: XCTestCase {
   }
   func testCancelledReadyResultCannotBeInsertedByReplacementKeyboard() async throws {
     try await MainActor.run {
-      for delivery in ["pending", "acknowledged", "command expired", "session expired"] {
+      for delivery in ["cached heartbeat expired", "pending", "acknowledged", "command expired", "session expired"] {
         let (original, store, window) = try self.makeDictationFixture()
         var keyboard = original
         defer {
@@ -831,10 +831,19 @@ final class KeyboardUITests: XCTestCase {
         let id = try self.beginProcessing(in: keyboard, store: store)
         let cancel = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
           .first { $0.accessibilityIdentifier == "clarify.keyboard.cancel" })
+        if delivery == "cached heartbeat expired" {
+          var expired = store.snapshot(); expired.heartbeat = Date().timeIntervalSince1970 - 4
+          try store.write(expired, to: "state.json"); keyboard.refreshFromStore()
+          XCTAssertFalse(store.snapshot().isLive, delivery)
+        }
         var result = store.snapshot(); result.phase = .ready; result.text = "Cancelled result"
         result.heartbeat = Date().timeIntervalSince1970
-        // Complete before Cancel, while the controller still displays processing.
+        // Publish a fresh result without refreshing the controller's cached snapshot.
+        XCTAssertTrue(cancel.isEnabled, delivery)
         try store.write(result, to: "state.json"); cancel.sendActions(for: .touchUpInside)
+        XCTAssertTrue(store.commands().contains { $0.1.action == "cancel" && $0.1.operationID == id }, delivery)
+        XCTAssertTrue(store.isCancelled(id), "Cancel must persist intent before recreating the keyboard: \(delivery)")
+        XCTAssertEqual(store.receipt(), "previous", "Cancel must not claim an insertion receipt")
         keyboard = try self.replaceKeyboard(keyboard, store: store, window: window)
         self.attemptExplicitInsertion(keyboard)
         XCTAssertEqual(keyboard.field.before, "Keep this", delivery)
@@ -874,6 +883,34 @@ final class KeyboardUITests: XCTestCase {
         XCTAssertEqual(keyboard.field.before, "Keep thisNew result", delivery)
         XCTAssertEqual(store.receipt(), next, "A cancelled operation cannot replace the new receipt")
       }
+    }
+  }
+  func testCancelWithExpiredCachedHeartbeatKeepsItsOwnedOperationTarget() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer {
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+        window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+      }
+      keyboard.field.before = "Keep this"; keyboard.field.after = " and this"
+      try store.acknowledge("previous")
+      let id = try self.beginProcessing(in: keyboard, store: store)
+      let cancel = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+        .first { $0.accessibilityIdentifier == "clarify.keyboard.cancel" })
+      var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970 - 4
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      XCTAssertFalse(store.snapshot().isLive)
+      let next = UUID().uuidString
+      state.operationID = next; state.phase = .ready; state.text = "New result"
+      state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); cancel.sendActions(for: .touchUpInside)
+      XCTAssertEqual(store.commands().filter { $0.1.action == "cancel" }.map { $0.1.operationID }, [id])
+      XCTAssertTrue(store.isCancelled(id)); XCTAssertFalse(store.isCancelled(next))
+      XCTAssertEqual(store.receipt(), "previous")
+      self.attemptExplicitInsertion(keyboard); keyboard.refreshFromStore(); self.attemptExplicitInsertion(keyboard)
+      XCTAssertEqual(keyboard.field.before, "Keep thisNew result")
+      XCTAssertEqual(keyboard.field.after, " and this")
+      XCTAssertEqual(store.receipt(), next, "Cancelling the owned operation must not cancel the newer result")
     }
   }
   func testLateReadyAfterAcknowledgedCancelAllowsAnotherClipExactlyOnce() async throws {

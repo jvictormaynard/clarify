@@ -394,7 +394,9 @@ class KeyboardViewController: UIInputViewController {
   }
   deinit { timer?.invalidate() }
   private func send(_ action: String) {
-    guard hasFullAccess, state.isLive, let store else { return }
+    guard hasFullAccess, let store else { return }
+    // Cancel preserves intent for the operation this controller already owns.
+    guard action == "cancel" || state.isLive else { return }
     let id: String
     if action == "start" {
       guard !state.phase.busy, recordingRequest.action == nil else { return }
