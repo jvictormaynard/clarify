@@ -22,6 +22,7 @@ or missing boundaries fail validation. Unknown inputs select all checks.
 | Desktop build inputs, Rust, runtime locks or distribution policy | Native Settings, portable EXE, embedded payload, startup and portable update recovery |
 | MSI inputs | Portable build plus isolated installer lifecycle and CAB manifest checks |
 | Server or its shared contracts | PostgreSQL tests, missing migrations, container build and database startup |
+| Computer relay or Desktop Python contracts | Desktop checks, including the relay container build and non-listening entrypoint validation on Linux |
 | Mobile JavaScript or TypeScript | Types, lint, contracts, locale/prompt synchronization and an iOS JavaScript bundle |
 | Swift, Objective-C, native configuration, plugins or mobile dependencies | Mobile checks, native tests, keyboard simulator integration and unsigned app/extension build |
 | Shared contracts or CI policy | All affected consumers; unknown dependencies use full validation |
@@ -100,3 +101,9 @@ SHA, platform-specific evidence, immutable tags and separate publication
 credentials. Windows interaction acceptance and physical iPhone/TestFlight
 acceptance remain required where applicable. Browser tests do not prove native
 focus, hotkeys, tray behavior, microphone routing or keyboard insertion.
+
+An explicitly requested internal TestFlight candidate can keep its implementation
+PR open. Its separate [candidate gate](release-automation.md#explicit-internal-candidates-from-an-open-pr)
+requires current canonical source, completed PR and native CI, a checked build
+reservation and an immutable PR-specific tag. This path does not publish a
+stable client or change the normal preparation and promotion gates.

@@ -18,7 +18,12 @@ operators and policies.
   text, instructions, and any applied vocabulary or snippets directly to OpenAI.
   This connection does not send audio or grant access to ChatGPT conversations
   or memories. Local transcription can be combined with this cloud text step.
-- When you sign in, account processing is active automatically. The Clarify
+- In paired-computer mode, the iPhone sends audio or text to the computer over
+  an authenticated HTTPS connection. The computer uses its own models and
+  provider settings. Local transcription runs on that computer. A configured
+  external provider receives the data needed for its operation. Computer history
+  stays on the iPhone and does not synchronize with a Clarify account.
+- In account mode, signing in activates account processing automatically. The Clarify
   service receives audio and the vocabulary needed for that request. It sends
   audio to Groq for transcription,
   then sends the transcript and vocabulary to Groq for rewriting. The result
@@ -32,6 +37,24 @@ remain on the original device and are not uploaded. Snippets created while signe
 in synchronize with that account. Guest snippets are not imported automatically. Choose Continue without an
 account to keep vocabulary and history local. Earlier app versions do not
 synchronize history.
+
+## Paired computer access
+
+The camera reads a one-use QR inside the iOS app. This code expires after five
+minutes. The app uses it to obtain its own revocable device credential. The
+credential and trusted computer routes remain in the containing app's Keychain;
+they are not shared with JavaScript or the keyboard extension. The computer's
+private TLS identity uses the desktop credential store. Its local database stores
+paired-device names, token hashes and operation metadata. Result text remains in
+a bounded memory cache and is discarded when the host stops.
+
+Desktop access is off until you enable it. Startup access needs a separate
+explicit choice. You can revoke a paired device or stop access in General
+settings. The direct LAN route requires the devices to share a reachable local
+network and uses the certificate fingerprint supplied by the QR. An unavailable
+computer does not silently switch processing to the hosted service. Temporary
+audio is removed after normal processing; a crash or forced shutdown can leave
+files until they are removed. Deleting the executable does not delete the profile.
 
 ## Account information and security
 
