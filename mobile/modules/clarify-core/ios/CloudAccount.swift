@@ -691,6 +691,27 @@ final class CloudAccount {
     return ClarifyError(code.flatMap { messages[$0] } ?? fallback, code: code, phase: phase,
       operationID: diagnosticOperation, status: status)
   }
+  @MainActor func processText(_ operationID: String, action: String, text: String, language: String) async throws -> ProcessingText {
+    guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
+    guard UUID(uuidString: operationID) != nil, ["rewrite", "translate"].contains(action),
+      ["auto", "pt", "en", "es", "de", "ru"].contains(language),
+      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 16_000 else {
+      throw ClarifyError(L("Selecione um texto válido para processar."), code: "invalid_text_request")
+    }
+    let context = historyContext
+    try await waitForAutomaticRefresh()
+    guard configured, context == historyContext else { throw CancellationError() }
+    try begin(); defer { end() }
+    let (code, result) = try await perform("POST", "/v1/text", json: [
+      "operation_id": operationID, "action": action, "text": text, "language": language
+    ])
+    guard code == 200 else { throw Self.processingFailure(code, result: result, operationID: operationID) }
+    guard let output = result["text"] as? String,
+      !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, output.utf8.count <= 64_000 else {
+      throw ClarifyError(L("O Clarify retornou um resultado inválido."))
+    }
+    return ProcessingText(text: output, successful: true)
+  }
   @MainActor func dictate(_ audio: URL, operationID: String, library: LocalLibrary) async throws -> CloudDictation {
     guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
     try await waitForAutomaticRefresh()

@@ -285,7 +285,10 @@ class KeyboardViewController: UIInputViewController {
     addToDictionary.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 16, weight: .regular), forImageIn: .normal)
     addToDictionary.imageEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: -10)
     addToDictionary.layer.cornerRadius = 22
-    addToDictionary.addAction(UIAction { [weak self] _ in self?.saveSelectedTerm() }, for: .touchUpInside)
+    addToDictionary.addAction(UIAction { [weak self] _ in
+      guard let self, !self.addToDictionary.showsMenuAsPrimaryAction else { return }
+      self.saveSelectedTerm()
+    }, for: .touchUpInside)
     addToDictionary.contentEdgeInsets = UIEdgeInsets(top: 0, left: 18, bottom: 0, right: 28)
     addToDictionary.isHidden = true
     undoDictation.accessibilityIdentifier = "clarify.undo-dictation"
@@ -422,12 +425,13 @@ class KeyboardViewController: UIInputViewController {
   private func currentTextSelection() -> TextSelectionOwner? {
     let proxy = textDocumentProxy
     guard proxy.isSecureTextEntry != true, let text = proxy.selectedText,
-      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 32_768 else { return nil }
+      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      text.utf8.count <= (state.computerMode ? 32_768 : 16_000) else { return nil }
     return TextSelectionOwner(document: proxy.documentIdentifier, text: text,
       before: proxy.documentContextBeforeInput, after: proxy.documentContextAfterInput)
   }
   func processSelection(_ action: String, language: String) {
-    guard attached, hasFullAccess, state.isLive, state.computerMode, !state.phase.busy,
+    guard attached, hasFullAccess, state.isLive, state.configured, !state.phase.busy,
       recordingRequest.action == nil, let store, let selection = currentTextSelection() else { return }
     let id = UUID().uuidString
     guard recordingRequest.submit("start", operationID: id, now: Date().timeIntervalSince1970) else { return }
@@ -607,7 +611,8 @@ class KeyboardViewController: UIInputViewController {
     if state.textOperation, state.phase.busy, let id = textOperationID, state.operationID == id,
       textSelection != currentTextSelection(), recordingRequest.action != "cancel" { send("cancel") }
     let proxy = textDocumentProxy
-    let computerSelection = state.computerMode ? currentTextSelection() : nil
+    let selection = currentTextSelection()
+    let textMenu = state.computerMode || state.isLive
     let term = proxy.isSecureTextEntry == true ? nil : KeyboardSelection.term(proxy.selectedText)
     // UIKit has no document identifier while this controller is detached.
     // Access it only when the host actually supplies a text selection.
@@ -616,7 +621,15 @@ class KeyboardViewController: UIInputViewController {
     if selectionChanged { dictionaryError = nil; dictionaryCheckedAt = .distantPast }
     selectedTerm = term; selectedDocument = document
     let available = !state.phase.busy && recordingRequest.action == nil && insert.isHidden
-    let showDictionary = (state.computerMode ? computerSelection != nil : term != nil) && available
+    let showDictionary = (textMenu ? selection != nil : term != nil) && available
+    // Keep the dictionary action in the selected-text menu for account users.
+    if showDictionary, !state.computerMode, let term,
+      selectionChanged || forceDictionaryRefresh || dictionaryRevision != state.libraryRevision || Date().timeIntervalSince(dictionaryCheckedAt) >= 1 {
+      dictionaryContext = store?.keyboardDictionary()
+      selectedScope = dictionaryContext?.scope
+      selectedTermSaved = dictionaryContext.map { store?.isKeyboardTermSaved(term, context: $0) == true } ?? false
+      dictionaryCheckedAt = Date(); dictionaryRevision = state.libraryRevision
+    }
     if !applyingDictationEdit, let edit = dictationEdit, !edit.isCurrent(proxy) { dictationEdit = nil }
     let showEdit = dictationEdit != nil && available && !showDictionary
     undoDictation.isHidden = !showEdit
@@ -625,30 +638,30 @@ class KeyboardViewController: UIInputViewController {
       undoDictation.accessibilityLabel = edit.removed ? L("Refazer ditado") : L("Desfazer ditado")
     }
     addToDictionary.isHidden = !showDictionary
-    addToDictionary.showsMenuAsPrimaryAction = state.computerMode
-    if showDictionary, state.computerMode {
-      addToDictionary.isEnabled = hasFullAccess && state.isLive
+    addToDictionary.showsMenuAsPrimaryAction = textMenu
+    if showDictionary, textMenu {
+      addToDictionary.isEnabled = hasFullAccess && state.isLive && state.configured
       addToDictionary.setTitle(L("Texto selecionado"), for: .normal)
+      addToDictionary.accessibilityLabel = L("Texto selecionado")
+      addToDictionary.accessibilityHint = nil
       addToDictionary.setImage(UIImage(systemName: "wand.and.stars"), for: .normal)
       addToDictionary.backgroundColor = .label; addToDictionary.tintColor = .systemBackground
       addToDictionary.setTitleColor(.systemBackground, for: .normal)
-      addToDictionary.menu = UIMenu(children: [
+      var actions: [UIMenuElement] = [
         UIAction(title: L("Reescrever")) { [weak self] _ in self?.processSelection("rewrite", language: ClarifyLocale.language) },
         UIMenu(title: L("Traduzir"), children: [("pt", "Português"), ("en", "English"), ("es", "Español")].map { language, title in
           UIAction(title: title) { [weak self] _ in self?.processSelection("translate", language: language) }
         })
-      ])
+      ]
+      if !state.computerMode, term != nil {
+        actions.append(UIAction(title: selectedTermSaved ? L("Salvo") : L("Adicionar ao dicionário"),
+          image: UIImage(systemName: selectedTermSaved ? "checkmark" : "plus"),
+          attributes: selectedTermSaved || dictionaryContext == nil ? .disabled : []) { [weak self] _ in self?.saveSelectedTerm() })
+      }
+      addToDictionary.menu = UIMenu(children: actions)
       dictionaryTrailing?.constant = -8
     } else if showDictionary, let term {
       addToDictionary.menu = nil
-      // Selection and taps refresh immediately. Idle polling must not scan the
-      // vocabulary inbox on every 150 ms keyboard state refresh.
-      if selectionChanged || forceDictionaryRefresh || dictionaryRevision != state.libraryRevision || Date().timeIntervalSince(dictionaryCheckedAt) >= 1 {
-        dictionaryContext = store?.keyboardDictionary()
-        selectedScope = dictionaryContext?.scope
-        selectedTermSaved = dictionaryContext.map { store?.isKeyboardTermSaved(term, context: $0) == true } ?? false
-        dictionaryCheckedAt = Date(); dictionaryRevision = state.libraryRevision
-      }
       let saved = selectedTermSaved
       let title = saved ? L("Salvo") : dictionaryError == nil ? L("Adicionar ao dicionário") : L("Tentar novamente")
       let titleChanged = addToDictionary.title(for: .normal) != title
@@ -705,7 +718,7 @@ class KeyboardViewController: UIInputViewController {
     applyingDictationEdit = false
     typing.reset(); feedback.type(); updateCapitalization(); updateSuggestions()
   }
-  private func saveSelectedTerm() {
+  func saveSelectedTerm() {
     guard !state.computerMode else { return }
     guard let term = selectedTerm, let scope = selectedScope, let store,
           hasFullAccess, selectedDocument == textDocumentProxy.documentIdentifier,

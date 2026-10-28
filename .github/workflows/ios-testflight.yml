@@ -95,7 +95,7 @@ jobs:
           require(os.environ['GITHUB_RUN_ATTEMPT'] == '1', 'No automatic signing/upload retry')
           require(re.fullmatch('[0-9a-f]{40}', source) and git('rev-parse', 'HEAD') == source == os.environ['GITHUB_SHA'], 'Wrong preview source')
           config = json.loads(Path('mobile/app.json').read_text())['expo']
-          require(config['version'] == '0.12.0' and config['ios']['buildNumber'].isdigit() and int(config['ios']['buildNumber']) > 44, 'Wrong preview identity')
+          require(config['version'] == '0.12.0' and config['ios']['buildNumber'] == '46', 'Wrong preview identity')
           require(tag == 'ios/pr-179/v0.12.0-build' + config['ios']['buildNumber'] and os.environ['GITHUB_REF'] == 'refs/tags/' + tag, 'Immutable preview tag required')
           require(git('cat-file', '-t', 'refs/tags/' + tag) == 'tag', 'Annotated tag required')
           require(config['ios']['infoPlist']['ClarifyCloudURL'] == 'https://clarify-api-dev-dev.up.railway.app', 'Dev endpoint required')
@@ -110,10 +110,15 @@ jobs:
           normalized['ios']['infoPlist']['ClarifyCloudURL'] = old['ios']['infoPlist']['ClarifyCloudURL']
           require(normalized == old, 'Unexpected product configuration change')
           changed = set(git('diff', '--name-only', product, source).splitlines())
-          require(changed <= {'mobile/app.json', '.github/workflows/ios-testflight.yml', 'mobile/src/components/account-sign-in.tsx', 'mobile/modules/clarify-core/ios/ProcessingDestination.swift', 'mobile/modules/clarify-core/tests/ComputerTests.swift'}, 'Unexpected product/control change')
+          require(changed <= {'mobile/app.json', '.github/workflows/ios-testflight.yml', 'mobile/src/components/account-sign-in.tsx', 'mobile/modules/clarify-core/ios/ProcessingDestination.swift', 'mobile/modules/clarify-core/ios/CloudAccount.swift', 'mobile/modules/clarify-core/ios/AudioSession.swift', 'mobile/native/keyboard/KeyboardViewController.swift', 'mobile/modules/clarify-core/tests/ComputerTests.swift', 'mobile/modules/clarify-core/tests/CloudAccountTests.swift', 'mobile/native/tests/KeyboardUITests.swift'}, 'Unexpected product/control change')
           require(git('rev-parse', source + ':mobile/src/components/account-sign-in.tsx') == '916e8072065dedfdcbe2257b7236ee0acf9de003', 'Preview server selector differs from reviewed delta')
-          require(git('rev-parse', source + ':mobile/modules/clarify-core/ios/ProcessingDestination.swift') == 'c128edea691d750038f2af135fc3b08aac6d155e', 'Reviewed dictation language delta differs')
-          require(git('rev-parse', source + ':mobile/modules/clarify-core/tests/ComputerTests.swift') == '64c534f316416c906810996f65cf61ada859c05a', 'Reviewed dictation language delta differs')
+          require(git('rev-parse', source + ':mobile/modules/clarify-core/ios/ProcessingDestination.swift') == 'b7ebbdf619d3ab069b810d4f60cb5fa12fc98685', 'Reviewed mobile delta differs')
+          require(git('rev-parse', source + ':mobile/modules/clarify-core/ios/CloudAccount.swift') == '0adf64dbe6de2efea3790693e5d68dc5c47ed2e1', 'Reviewed mobile delta differs')
+          require(git('rev-parse', source + ':mobile/modules/clarify-core/ios/AudioSession.swift') == 'b3f8631730ec2dc8c2d9b20273f60c9985998459', 'Reviewed mobile delta differs')
+          require(git('rev-parse', source + ':mobile/native/keyboard/KeyboardViewController.swift') == '34814d897dd903909ec756b739a3e77fc454d710', 'Reviewed mobile delta differs')
+          require(git('rev-parse', source + ':mobile/modules/clarify-core/tests/ComputerTests.swift') == '02bd36782231fa4cc760ea9ff6e11dae7375de4a', 'Reviewed mobile delta differs')
+          require(git('rev-parse', source + ':mobile/modules/clarify-core/tests/CloudAccountTests.swift') == '564a04aec40a9d6c8a107bed5452b46ac9636d45', 'Reviewed mobile delta differs')
+          require(git('rev-parse', source + ':mobile/native/tests/KeyboardUITests.swift') == '468f53d96cc0fbe600d744beae92c7c2aaeea97d', 'Reviewed mobile delta differs')
           pull = api.request('GET', '/pulls/179')
           require(pull['state'] == 'open' and not pull['merged'] and pull['head']['sha'] == product and pull['head']['repo']['full_name'] == 'jvictormaynard/clarify', 'PR179 product source changed')
           accepted = api.request('GET', '/actions/runs/40652173539')
@@ -218,7 +223,7 @@ jobs:
           require(os.environ['GITHUB_RUN_ATTEMPT'] == '1', 'No automatic signing/upload retry')
           require(re.fullmatch('[0-9a-f]{40}', source) and git('rev-parse', 'HEAD') == source == os.environ['GITHUB_SHA'], 'Wrong preview source')
           config = json.loads(Path('mobile/app.json').read_text())['expo']
-          require(config['version'] == '0.12.0' and config['ios']['buildNumber'].isdigit() and int(config['ios']['buildNumber']) > 44, 'Wrong preview identity')
+          require(config['version'] == '0.12.0' and config['ios']['buildNumber'] == '46', 'Wrong preview identity')
           require(tag == 'ios/pr-179/v0.12.0-build' + config['ios']['buildNumber'] and os.environ['GITHUB_REF'] == 'refs/tags/' + tag, 'Immutable preview tag required')
           require(git('cat-file', '-t', 'refs/tags/' + tag) == 'tag', 'Annotated tag required')
           require(config['ios']['infoPlist']['ClarifyCloudURL'] == 'https://clarify-api-dev-dev.up.railway.app', 'Dev endpoint required')
@@ -249,7 +254,7 @@ jobs:
         if: ${{ !inputs.internal_preview && ( !inputs.tests_only || !inputs.extension_diagnostic ) }}
         run: node scripts/test-app-ui.cjs
       - name: Test Swift contracts
-        if: ${{ !inputs.internal_preview && ( !inputs.tests_only || !inputs.extension_diagnostic ) }}
+        if: ${{ inputs.internal_preview || !inputs.tests_only || !inputs.extension_diagnostic }}
         run: npm run test:native
       - name: Validate short speech with the live mobile client
         if: ${{ inputs.short_dictation_acceptance }}
@@ -262,7 +267,7 @@ jobs:
           CLARIFY_SNIPPETS_ACCEPTANCE: ${{ secrets.CLARIFY_SNIPPETS_ACCEPTANCE }}
         run: node scripts/test-snippets-acceptance.cjs
       - name: Test keyboard on iPhone simulator
-        if: ${{ !inputs.internal_preview && ( !inputs.tests_only || !inputs.extension_diagnostic ) }}
+        if: ${{ inputs.internal_preview || !inputs.tests_only || !inputs.extension_diagnostic }}
         env:
           CLARIFY_NATIVE_TESTS: '1'
         run: node scripts/test-keyboard-ui.cjs

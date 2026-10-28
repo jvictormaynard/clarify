@@ -342,13 +342,13 @@ final class ClarifyAudioSession: NSObject {
     }
   }
   func handleText(_ action: String, id: String, text: String, language: String) {
-    guard ProcessingDestination.shared.computerMode, ProcessingDestination.shared.configured,
+    guard ProcessingDestination.shared.configured,
       !state.phase.busy,
       cancellations.acceptsStart(id, now: Date().timeIntervalSince1970),
       ["rewrite", "translate"].contains(action), UUID(uuidString: id) != nil,
       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 32_768 else { return }
     let owner = ProcessingDestination.shared.captureHistory()
-    if !ComputerConnection.shared.isReady(for: action) {
+    if ProcessingDestination.shared.computerMode, !ComputerConnection.shared.isReady(for: action) {
       state.operationID = id; state.textOperation = true; state.text = nil
       fail(ComputerFailure.notReady.localizedDescription); return
     }
@@ -356,7 +356,7 @@ final class ClarifyAudioSession: NSObject {
     task = Task { @MainActor [weak self] in
       guard let self else { return }
       do {
-        let result = try await ComputerConnection.shared.process(id, action: action, text: text, language: language)
+        let result = try await ProcessingDestination.shared.processText(id, action: action, text: text, language: language)
         guard !Task.isCancelled, self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(owner) else { return }
         self.state.text = result.text; self.state.phase = result.successful ? .ready : .error
         if !result.successful { self.state.message = L("A reescrita falhou. Você pode inserir a transcrição original.") }

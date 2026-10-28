@@ -10,6 +10,11 @@ struct ProcessingDictation {
   let rewritten: Bool
   let successful: Bool
 }
+struct ProcessingText {
+  let text: String
+  let successful: Bool
+  var rewritten: Bool { successful }
+}
 
 // Explicit routing for the containing app. CloudAccount continues to own hosted
 // security and sync. ComputerConnection owns only the computer protocol.
@@ -94,5 +99,20 @@ final class ProcessingDestination {
     let result = try await computer.process(operationID, wav: wav, language: "auto")
     guard computerMode, acceptsHistory(capture), !result.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CancellationError() }
     return ProcessingDictation(transcript: result.transcript, text: result.text, rewritten: result.rewritten, successful: result.successful)
+  }
+  @MainActor func processText(_ operationID: String, action: String, text: String, language: String) async throws -> ProcessingText {
+    let capture = captureHistory()
+    guard configured else { throw ComputerFailure.notReady }
+    let result: ProcessingText
+    if computerMode {
+      guard computer.isReady(for: action) else { throw ComputerFailure.notReady }
+      let response = try await computer.process(operationID, action: action, text: text, language: language)
+      result = ProcessingText(text: response.text, successful: response.successful)
+    } else {
+      result = try await account.processText(operationID, action: action, text: text, language: language)
+    }
+    try Task.checkCancellation()
+    guard acceptsHistory(capture) else { throw CancellationError() }
+    return result
   }
 }

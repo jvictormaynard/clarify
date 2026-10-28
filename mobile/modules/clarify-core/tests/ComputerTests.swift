@@ -561,13 +561,38 @@ final class ComputerTests: XCTestCase {
     XCTAssertEqual(body["language"] as? String, "auto")
     XCTAssertNotNil(body["audio_wav"])
     XCTAssertNil(body["action"])
-    _ = try await f.connection.process(UUID().uuidString, action: "translate", text: "Oi", language: "en")
+    _ = try await destination.processText(UUID().uuidString, action: "translate", text: "Oi", language: "en")
     let translation = try XCTUnwrap(f.requests.last { $0.httpMethod == "POST" })
     let translatedBody = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(translation.httpBody)) as? [String: Any])
     XCTAssertEqual(translation.url?.path, "/v1/computer/text")
     XCTAssertEqual(translatedBody["language"] as? String, "en")
     XCTAssertEqual(translatedBody["action"] as? String, "translate")
     XCTAssertEqual(f.requests.filter { $0.httpMethod == "POST" }.count, 2)
+  }
+
+  @MainActor func testAccountSelectedTextNeverUsesThePairedComputerOrFallsBackAfterFailure() async throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var state = CloudAccountState(); state.endpoint = "https://account.test"; state.userID = UUID().uuidString
+    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    let f = Fixture()
+    var requests: [URLRequest] = [], status = 200
+    let account = CloudAccount(defaults: defaults, transport: { request in
+      requests.append(request)
+      let json = status == 200 ? ["text": "Translated"] : ["code": "allowance_exhausted"]
+      return (try JSONSerialization.data(withJSONObject: json),
+        HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+    }, readCredential: { "fixture" }, saveCredential: { _ in })
+    let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
+    XCTAssertFalse(destination.computerMode)
+    let result = try await destination.processText(UUID().uuidString, action: "translate", text: "Original", language: "pt")
+    XCTAssertEqual(result.text, "Translated"); XCTAssertTrue(result.successful)
+    XCTAssertEqual(requests.first?.url?.path, "/v1/text"); XCTAssertTrue(f.requests.isEmpty)
+    status = 429
+    do { _ = try await destination.processText(UUID().uuidString, action: "rewrite", text: "Original", language: "auto"); XCTFail("Account failure accepted") }
+    catch let error as ClarifyError { XCTAssertEqual(error.code, "allowance_exhausted") }
+    XCTAssertEqual(requests.count, 2); XCTAssertTrue(f.requests.isEmpty, "Account errors must not use computer credentials")
   }
 
   @MainActor func testTextStartRefreshesRequestedActionAndRejectsLostReadinessOrStaleOwner() async throws {

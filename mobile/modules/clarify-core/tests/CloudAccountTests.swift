@@ -2,6 +2,68 @@ import XCTest
 @testable import ClarifyContracts
 
 final class CloudAccountTests: XCTestCase {
+  @MainActor func testSelectedTextUsesAccountSessionAndExplicitTranslationTarget() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    var requests: [URLRequest] = []
+    let account = CloudAccount(defaults: f.defaults, transport: { request in
+      requests.append(request)
+      return try f.response(request, ["text": "Hi, how are you?", "usage": ["used_ms": 0]])
+    }, readCredential: { f.token }, saveCredential: { f.token = $0 })
+    for action in ["rewrite", "translate"] {
+      let id = UUID().uuidString
+      let result = try await account.processText(id, action: action, text: "Oi, tudo bem?", language: "en")
+      XCTAssertEqual(result.text, "Hi, how are you?"); XCTAssertTrue(result.successful)
+      let request = try XCTUnwrap(requests.last)
+      XCTAssertEqual(request.url?.absoluteString, "https://one.test/v1/text")
+      XCTAssertEqual(request.httpMethod, "POST")
+      XCTAssertEqual(request.value(forHTTPHeaderField: "X-Session-Token"), "fixture")
+      let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: String])
+      XCTAssertEqual(body, ["operation_id": id, "action": action, "text": "Oi, tudo bem?", "language": "en"])
+      XCTAssertFalse(account.isBusy)
+    }
+    XCTAssertEqual(requests.count, 2, "One request per action, without audio or automatic retries")
+  }
+  @MainActor func testSelectedTextRejectsInvalidInputAndDoesNotRetryQuotaOrMalformedResults() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    var requests = 0, status = 429
+    var response: [String: Any] = ["code": "allowance_exhausted"]
+    let account = CloudAccount(defaults: f.defaults, transport: { request in
+      requests += 1; return try f.response(request, response, status)
+    }, readCredential: { f.token }, saveCredential: { f.token = $0 })
+    let id = UUID().uuidString
+    for (operation, action, text, language) in [("invalid", "rewrite", "Text", "en"),
+      (id, "dictate", "Text", "en"), (id, "rewrite", "Text", "xx"),
+      (id, "translate", " ", "pt"), (id, "rewrite", String(repeating: "é", count: 8001), "auto")] {
+      do { _ = try await account.processText(operation, action: action, text: text, language: language); XCTFail("Invalid text input accepted") }
+      catch let error as ClarifyError { XCTAssertEqual(error.code, "invalid_text_request") }
+    }
+    XCTAssertEqual(requests, 0)
+    do { _ = try await account.processText(id, action: "rewrite", text: "Text", language: "auto"); XCTFail("Quota error accepted") }
+    catch let error as ClarifyError { XCTAssertEqual(error.code, "allowance_exhausted") }
+    XCTAssertEqual(requests, 1); XCTAssertFalse(account.isBusy)
+    status = 200
+    for output in [" ", String(repeating: "é", count: 32_001)] {
+      response = ["text": output]
+      do { _ = try await account.processText(UUID().uuidString, action: "translate", text: "Text", language: "pt"); XCTFail("Invalid result accepted") }
+      catch is ClarifyError {}
+    }
+    XCTAssertEqual(requests, 3); XCTAssertFalse(account.isBusy)
+  }
+  @MainActor func testLateSelectedTextResponseCannotEnterAnotherSession() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    var pending: CheckedContinuation<(Data, HTTPURLResponse), Error>?, sent: URLRequest?
+    let account = CloudAccount(defaults: f.defaults, transport: { request in
+      sent = request; return try await withCheckedThrowingContinuation { pending = $0 }
+    }, readCredential: { f.token }, saveCredential: { f.token = $0 })
+    let task = Task { try await account.processText(UUID().uuidString, action: "rewrite", text: "Original", language: "auto") }
+    while pending == nil { await Task.yield() }
+    f.token = "new-session"
+    pending!.resume(returning: try f.response(try XCTUnwrap(sent), ["text": "Stale result", "usage": ["used_ms": 999]]))
+    do { _ = try await task.value; XCTFail("Stale result accepted") }
+    catch is CancellationError {}
+    XCTAssertEqual(f.token, "new-session"); XCTAssertFalse(account.isBusy)
+    XCTAssertNil((account.snapshot()["usage"] as? [String: Any])?["used_ms"])
+  }
   @MainActor private final class ActivationFixture {
     let suite = "ClarifyTests.\(UUID().uuidString)"
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
