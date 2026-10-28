@@ -43,6 +43,7 @@ $localAsrManifest = Join-Path $repoRoot "local_asr_manifest.json"
 $localAsrLicenses = Join-Path $repoRoot "licenses"
 $icon = Join-Path $assets "branding\clarify.ico"
 $workDir = Join-Path $repoRoot "build\pyinstaller"
+$windowsVersionFile = Join-Path $workDir "windows-version.txt"
 $specDir = Join-Path $repoRoot "build\spec"
 $packageInput = Join-Path $repoRoot "build\package-input"
 $payloadIdentityFile = Join-Path $packageInput "clarify-build-identity.txt"
@@ -83,6 +84,9 @@ if (@(Get-ChildItem $qmlRoot -Filter "*.qml" -File).Count -eq 0) {
 }
 
 New-Item $OutputDirectory, $workDir, $specDir -ItemType Directory -Force | Out-Null
+& $python (Join-Path $PSScriptRoot 'windows_version.py') --version-source $versionSource --output $windowsVersionFile
+if ($LASTEXITCODE -ne 0) { throw 'Windows version resource generation failed.' }
+
 Remove-Item $packageInput -Recurse -Force -ErrorAction SilentlyContinue
 New-Item $packageSox -ItemType Directory -Force | Out-Null
 
@@ -101,6 +105,7 @@ $pyInstallerArgs = @(
     "--noconfirm", "--clean", "--onefile", "--windowed",
     "--name", "Clarify",
     "--icon", $icon,
+    "--version-file", $windowsVersionFile,
     "--distpath", $OutputDirectory,
     "--workpath", $workDir,
     "--specpath", $specDir,
@@ -178,6 +183,9 @@ $executable = Join-Path $OutputDirectory "Clarify.exe"
 if (-not (Test-Path $executable)) {
     throw "PyInstaller completed without producing $executable."
 }
+
+& $python (Join-Path $PSScriptRoot 'windows_version.py') --version-source $versionSource --check-pe $executable
+if ($LASTEXITCODE -ne 0) { throw 'Packaged Windows PE version verification failed.' }
 
 & $python (Join-Path $PSScriptRoot 'check_settings_payload.py') $executable $SettingsExecutable
 if ($LASTEXITCODE -ne 0) { throw 'Packaged Settings payload verification failed.' }

@@ -3,26 +3,29 @@
   display: grid;
   gap: 10px;
   min-width: 0;
-  padding: 16px;
+  padding: 14px 16px;
 }
 
 .snippet-composer,
 .snippet-list {
-  border: 1px solid var(--border, var(--color-border));
-  border-radius: var(--radius, 10px);
-  background: var(--card, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--card) 40%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
 }
 
 .snippet-composer { margin-top: 16px; }
-.snippet-list { margin-top: 16px; }
+.snippet-list { margin-top: 32px; }
 .snippet-entry + .snippet-entry {
-  border-top: 1px solid var(--border, var(--color-border));
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 
 .snippet-composer label,
 .snippet-entry label {
-  font-size: var(--font-size-description);
-  color: var(--muted-foreground, var(--color-text-muted));
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--foreground);
 }
 
 .snippet-actions {
@@ -50,7 +53,7 @@
 .snippets textarea {
   min-height: 76px;
   resize: vertical;
-  line-height: 1.6;
+  line-height: 1.625;
 }
 
 .snippet-entry .dictionary-line > .ghost {
@@ -58,8 +61,8 @@
   padding: 4px 6px;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 639px) {
   .snippet-composer,
-  .snippet-entry { padding: 14px; }
+  .snippet-entry { padding-inline: 12px; }
   .snippet-actions { flex-wrap: wrap; }
 }

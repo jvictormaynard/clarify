@@ -48,8 +48,12 @@ export function AccountPage({ controller }: SettingsPageProps) {
     <fieldset className="account-sections" disabled={accountBusy || dirty}>
       {!account.signedIn ? <Section className="account-card account-auth" title={<><LogIn size={16} aria-hidden="true" />{t("Entrar ou criar conta")}</>}>
         {!account.endpoint && <p className="hint">{t("O serviço ainda não está configurado nesta versão. Os modos locais e com chave própria continuam disponíveis.")}</p>}
-        <AccountSignIn account={account} command={command} busy={accountBusy} />
-        {account.managed && !account.pending && <Button variant="text" onClick={() => command("logout")}>{t("Continuar sem conta")}</Button>}
+        <AccountSignIn account={account} command={command} busy={accountBusy}
+          onContinueWithoutAccount={() => {
+            if (accountBusy || dirty) return;
+            if (account.managed) command("logout");
+            void controller.navigate("general");
+          }} />
         <details className="account-server"><summary>{t("Servidor próprio")}</summary>
           <div className="account-server-fields">
             <Field title={t("Endereço do servidor")} value={server} placeholder="https://…" onChange={e => setServer(e.target.value)} />

@@ -1,11 +1,38 @@
 [
   {
     "name": "t3code",
-    "version": "67c3afbd58e72d088fec7af69d52dd255a00199e",
-    "purl": "pkg:github/pingdotgg/t3code@67c3afbd58e72d088fec7af69d52dd255a00199e",
+    "version": "0b02b21e5a451fa7e488a8596cedbeb0ddd9d63c",
+    "purl": "pkg:github/pingdotgg/t3code@0b02b21e5a451fa7e488a8596cedbeb0ddd9d63c",
     "license": "MIT",
     "file": "t3code-MIT.txt",
-    "source": "https://raw.githubusercontent.com/pingdotgg/t3code/67c3afbd58e72d088fec7af69d52dd255a00199e/LICENSE",
+    "source": "https://raw.githubusercontent.com/pingdotgg/t3code/0b02b21e5a451fa7e488a8596cedbeb0ddd9d63c/LICENSE",
     "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"
+  },
+  {
+    "name": "@fontsource-variable/inter",
+    "version": "5.3.0",
+    "purl": "pkg:npm/%40fontsource-variable/inter@5.3.0",
+    "license": "OFL-1.1",
+    "file": "Inter-OFL-1.1.txt",
+    "source": "https://cdn.jsdelivr.net/npm/@fontsource-variable/inter@5.3.0/LICENSE",
+    "sha256": "3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345"
+  },
+  {
+    "name": "provider-brand-icons",
+    "version": "2026-10-27",
+    "purl": "pkg:generic/clarify-provider-brand-icons@2026-10-27",
+    "license": "LicenseRef-Provider-Brand-Notices",
+    "file": "provider-brand-icons-NOTICE.txt",
+    "source": "https://github.com/primer/octicons/blob/9a274e212ee25c400ff666ce25a57866b7eacc25/README.md#license",
+    "sha256": "9f4af217b72cb5a00627c0fdd5fc2bddacc78923110361a9420fc4ace6168534"
+  },
+  {
+    "name": "google-sans",
+    "version": "v71-latin-500",
+    "purl": "pkg:generic/google-sans@v71-latin-500",
+    "license": "OFL-1.1",
+    "file": "Google-Sans-OFL-1.1.txt",
+    "source": "https://raw.githubusercontent.com/google/fonts/fc0842ce25d003e57a2fc72cd4c4a6af6175a2cc/ofl/googlesans/OFL.txt",
+    "sha256": "65ca17f235e1d9adaf2e25fd14d0929c75521ac1e063a48d6824a8e7b7e4466a"
   }
 ]

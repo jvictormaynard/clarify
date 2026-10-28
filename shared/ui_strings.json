@@ -1,4 +1,10 @@
 {
+  "Ou continue sem conta": {"pt":"Ou continue sem conta","en":"Or continue without an account","es":"O continúa sin cuenta"},
+  "Continuar com e-mail": {"pt":"Continuar com e-mail","en":"Continue with email","es":"Continuar con correo electrónico"},
+  "Opções da conta ChatGPT": {"pt":"Opções da conta ChatGPT","en":"ChatGPT account options","es":"Opciones de la cuenta de ChatGPT"},
+  "Reconectar ChatGPT": {"pt":"Reconectar ChatGPT","en":"Reconnect ChatGPT","es":"Volver a conectar ChatGPT"},
+  "Vocabulário": {"pt":"Vocabulário","en":"Vocabulary","es":"Vocabulario"},
+  "Buscar configurações": {"pt":"Buscar configurações","en":"Search settings","es":"Buscar ajustes"},
   "Natural": {"pt":"Natural","en":"Natural","es":"Natural"},
   "Informal": {"pt":"Informal","en":"Informal","es":"Informal"},
   "Organizado": {"pt":"Organizado","en":"Organized","es":"Organizado"},

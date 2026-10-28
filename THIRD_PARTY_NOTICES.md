@@ -18,6 +18,8 @@ The release SBOM records cryptography and its statically linked OpenSSL.
 | React / React DOM | Settings interface | MIT; Meta Platforms, Inc. and affiliates |
 | Base UI | Settings controls | MIT; Material-UI SAS |
 | t3code | Adapted Settings controls | MIT; T3 Tools Inc.; preserved in `desktop/licenses/t3code-MIT.txt` |
+| Inter Variable | Desktop interface typography | OFL-1.1; preserved in `desktop/licenses/Inter-OFL-1.1.txt` |
+| Google Sans | Google sign-in button typography | OFL-1.1; preserved in `desktop/licenses/Google-Sans-OFL-1.1.txt` |
 | Lucide | Settings icons | ISC, with Feather portions under MIT; see the package LICENSE |
 | Tauri | Native Settings child window | MIT OR Apache-2.0; transitive crate terms also apply |
 | Pillow | Image rendering | HPND |
@@ -29,6 +31,12 @@ The release SBOM records cryptography and its statically linked OpenSSL.
 
 PyInstaller is a build dependency. Its bootloader becomes part of the portable
 executable under PyInstaller's documented exception.
+
+Google, Microsoft, GitHub and ChatGPT marks identify their sign-in or connection
+actions. Their trademark and brand-use terms remain separate from Clarify's MIT
+license. Sources, revisions and preserved code notices are recorded in
+`desktop/licenses/provider-brand-icons-NOTICE.txt` and included in the Settings
+dependency inventory.
 
 The SoX runtime is invoked as a separate process and is not linked into the
 Clarify source. Every tagged release provides `sox-14.4.2-source.tar.gz`

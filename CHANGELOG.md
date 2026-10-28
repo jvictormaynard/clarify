@@ -5,6 +5,24 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+
+- Find desktop Settings pages and sections with sidebar search and keyboard navigation.
+- Run an explicit dictation practice from first-run setup or General settings, with guidance when a service or account needs attention.
+- Choose text cleanup levels and writing styles for individual applications. Review original and revised history text and correct saved vocabulary with an explicit undo action.
+
+### Changed
+
+- Apply the T3-based desktop design system to navigation, grouped settings, controls and dialogs. Keep the titlebar and sidebar fixed while page content scrolls.
+- Show provider logos, a separate email step and a visible account-free option in both desktop login placements. Initial setup uses a flat layout with a distinct account-free action.
+- Give connected ChatGPT subscriptions a primary usage action and an account menu for adding, reconnecting, refreshing models and signing out. Show the ChatGPT mark on connection actions.
+- Make the desktop design guide the default for future interface work, including new pages, through the repository's agent instructions.
+
+### Fixed
+
+- Include Windows file and product version information in the portable executable and reject builds whose version resource differs from the application version.
+- Replace the installed executable during MSI upgrades and explicit rollback, including builds with the same file version, while preserving user data and transaction recovery.
+
 ## [0.13.0] - 2026-10-27
 
 ### Added

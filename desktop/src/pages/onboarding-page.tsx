@@ -31,7 +31,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
       </div>
       {error && <p className="error" role="alert">{t(error)}</p>}
       {account?.error && <p className="error" role="alert">{t(account.error)}</p>}
-      <fieldset className="onboarding-panel" disabled={busy || account?.busy}>
+      <fieldset className={`onboarding-panel${step === "account" && !account?.signedIn ? " onboarding-auth" : ""}`} disabled={busy || account?.busy}>
         {step === "byok" ? <>
           <Field title={t("Chave de API do Groq")} value={key} type="password" autoComplete="off" placeholder="gsk_…" onChange={e => setKey(e.target.value)} />
           <div className="onboarding-note"><KeyRound size={16} aria-hidden="true" /><p className="hint">{t("A chave fica no armazenamento seguro deste computador. Áudio, texto e palavras ativas do dicionário são enviados ao serviço escolhido por você. Ao continuar, você autoriza esse processamento.")}</p></div>
@@ -46,8 +46,9 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
           <p className="hint">{t("Para transcrever e reescrever, o Clarify processa áudio, texto e palavras ativas do dicionário. O histórico da conta é sincronizado entre seus dispositivos. Patrocínios financiam uma cota semanal individual. Novas contas podem receber uma cota inicial proporcional ao tempo até a renovação. Sem saldo de patrocínio, a conta aguarda a próxima distribuição.")}</p>
           <Button variant="primary" onClick={() => void complete("account")}>{t("Começar")}</Button>
         </> : <>
-          <AccountSignIn account={account} command={command} busy={busy || account.busy} />
-          {!account.pending && <Button variant="text" className="onboarding-skip" onClick={() => void chooseLocal()}>{t("Continuar sem conta")}</Button>}
+          <AccountSignIn account={account} command={command} busy={busy || account.busy}
+            guestVariant="primary"
+            onContinueWithoutAccount={() => void chooseLocal()} />
         </>)}
         {step !== "account" && <Button variant="text" onClick={() => { setStep(step === "byok" ? "local" : "account"); setKey(""); }}><ArrowLeft size={15} />{t("Voltar")}</Button>}
       </fieldset>

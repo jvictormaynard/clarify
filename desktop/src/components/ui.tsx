@@ -74,16 +74,16 @@ type RowProps = {
 
 export function Row({ title, hint, children, htmlFor, hintId }: RowProps) {
   return (
-    <div className="row">
-      <div className="row-label">
-        {htmlFor ? (
-          <label htmlFor={htmlFor}>{title}</label>
-        ) : (
-          <div>{title}</div>
-        )}
-        {hint && <p id={hintId}>{hint}</p>}
+    <div className="row" data-slot="settings-row">
+      <div className="row-layout">
+        <div className="row-label">
+          <h3 className="row-title">
+            {htmlFor ? <label htmlFor={htmlFor}>{title}</label> : title}
+          </h3>
+          {hint && <p id={hintId}>{hint}</p>}
+        </div>
+        <div className="row-control">{children}</div>
       </div>
-      <div className="row-control">{children}</div>
     </div>
   );
 }
@@ -141,11 +141,7 @@ export function Toggle({
   const id = useId();
   const hintId = hint ? `${id}-hint` : undefined;
   return (
-    <div className="row">
-      <div className="row-label">
-        <label htmlFor={id}>{title}</label>
-        {hint && <p id={hintId}>{hint}</p>}
-      </div>
+    <Row title={title} hint={hint} htmlFor={id} hintId={hintId}>
       <Switch
         id={id}
         label={title}
@@ -153,7 +149,7 @@ export function Toggle({
         checked={checked}
         onChange={onChange}
       />
-    </div>
+    </Row>
   );
 }
 
@@ -167,9 +163,9 @@ export function Section({
   className?: string;
 }) {
   return (
-    <section className={`settings-section ${className ?? ""}`.trim()}>
+    <section className={cn("settings-section", className)} data-slot="settings-section">
       {title && <h2>{title}</h2>}
-      <div className="section-content">{children}</div>
+      <div className="section-content" data-slot="settings-group">{children}</div>
     </section>
   );
 }
