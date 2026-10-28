@@ -1,14 +1,12 @@
 {
   "schema": 1,
-  "component": "mobile",
-  "version": "0.11.1",
-  "base_sha": "2153320a25ebd8286db431b846a09187e2589ffe",
-  "notes": "Corrige Cancelar no teclado quando o heartbeat em cache expira. O cancelamento continua vinculado à operação iniciada pelo controlador. Start e Concluir mantêm a exigência de sessão ativa.\n\nTeste no iPhone: cancele um ditado durante o processamento, feche e reabra o teclado e confirme que o texto cancelado não aparece. Depois faça outro ditado e confirme uma única inserção.\n\nA correção passou nos contratos e testes UIKit do CI. A aceitação em iPhone continua pendente. Este build não inclui as novas funções Windows do PR #181 e não altera o servidor. A abertura do teclado mantém os limites já documentados; não há nova correção de geometria.",
+  "component": "desktop",
+  "version": "0.14.0",
+  "base_sha": "4229e5580c382574bbd37bc4babaa60eb2d89486",
+  "notes": "Publish the T3-based desktop design system, shared provider/email/guest login flow, clearer ChatGPT account actions and permanent UI guidance. Include the current dictation practice, cleanup and writing-style features already on main. Windows packaging now includes verified PE versions; MSI replacement runs inside the recoverable transaction.\n\nCanonical main CI and scoped Windows UI/packaging acceptance passed on the exact base. Native checks used isolated offline accounts and audio fixtures. Real OAuth, physical recording, clean-machine checks, installed-user migration and broader cross-application focus were not exercised. Windows DPI was 125%; a separate WebView scale 1.0 check did not change system DPI. Community portable assets remain unsigned by Authenticode. Public downloads, Ed25519 metadata and all eight provenance attestations must be verified after publication.",
   "evidence": {
-    "build": "40",
-    "highest_build": "39",
-    "pending_builds_checked": true,
-    "checked_at": "2026-10-27T03:04:15Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/40442060904"
+    "tested_sha": "4229e5580c382574bbd37bc4babaa60eb2d89486",
+    "windows_accepted": true,
+    "report_url": "https://github.com/jvictormaynard/clarify/pull/194#issuecomment-6460065647"
   }
 }
