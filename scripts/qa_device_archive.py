@@ -1058,7 +1058,7 @@ def _bundle_records(root, manifest, policy, *, signed=False, ipa=False):
         require(
             executable_path in by_path
             and by_path[executable_path]["kind"] == "file"
-            and by_path[executable_path]["mode"] & 0o111,
+            and by_path[executable_path]["mode"] & 0o444,
             "Missing framework executable",
         )
         framework_executables.add(executable_path)
@@ -1491,8 +1491,26 @@ def authenticate(api, policy, artifact_id, destination):
         if type(step) is dict
         and str(step.get("uses", "")).startswith("actions/upload-artifact@")
     ]
-    require(len(uploaders) == 1, "Missing or ambiguous MAIN archive uploader")
-    uploader = uploaders[0]
+    diagnostics = [
+        s for s in uploaders if s.get("name") == "Retain unsigned archive diagnostics"
+    ]
+    require(
+        len(diagnostics) <= 1 and len(uploaders) == 1 + len(diagnostics),
+        "Missing or ambiguous MAIN archive uploader",
+    )
+    if diagnostics:
+        step = diagnostics[0]
+        require(
+            step.get("uses") == policy.upload_action
+            and step.get("if") == "always()"
+            and step.get("with", {}).get("overwrite") is False
+            and step["with"].get("name")
+            == "clarify-ios-qa-archive-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}"
+            and step["with"].get("path")
+            == "${{ runner.temp }}/clarify-trusted-ci/logs/\n${{ runner.temp }}/clarify-trusted-ci/archive-phases/\n",
+            "Unexpected MAIN archive diagnostic uploader",
+        )
+    uploader = next(s for s in uploaders if s not in diagnostics)
     options = uploader.get("with", {})
     require(
         uploader.get("name") == policy.uploader_step
