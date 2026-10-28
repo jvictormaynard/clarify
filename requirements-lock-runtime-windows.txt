@@ -12,6 +12,8 @@ cffi==2.1.0
     #   sounddevice
 charset-normalizer==3.5.1
     # via requests
+colorama==0.4.6
+    # via qrcode
 cryptography==50.0.2
     # via -r requirements.txt
 idna==3.18
@@ -21,6 +23,8 @@ pillow==13.0.0
 pycparser==3.0
     # via cffi
 pyside6-essentials==6.11.2
+    # via -r requirements.txt
+qrcode==8.2
     # via -r requirements.txt
 requests==2.34.2
     # via -r requirements.txt

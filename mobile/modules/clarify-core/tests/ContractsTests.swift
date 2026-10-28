@@ -171,12 +171,12 @@ final class ContractsTests: XCTestCase {
     let store = SharedState(root: root)
     var state = DictationSnapshot(); state.operationID = "first"; state.text = "Texto"; state.phase = .ready
     try store.write(state, to: "state.json")
-    try store.send("start", operationID: "second")
+    try store.send("start", operationID: "second", context: nil)
     try store.acknowledge("first")
     XCTAssertEqual(store.snapshot().text, "Texto")
     XCTAssertEqual(store.receipt(), "first")
-    try store.send("lock", operationID: "second")
-    try store.send("finish", operationID: "second")
+    try store.send("lock", operationID: "second", context: nil)
+    try store.send("finish", operationID: "second", context: nil)
     XCTAssertEqual(store.commands().map { $0.1.action }, ["start", "lock", "finish"])
     XCTAssertTrue(store.commands().allSatisfy { $0.1.operationID == "second" })
   }

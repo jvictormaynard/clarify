@@ -18,10 +18,11 @@ export function RecordButton() {
   const operation = useRef('');
   const chain = useRef(Promise.resolve());
   const send = useCallback((action: RecordingAction) => {
-    if (action === 'start') operation.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if (action === 'start') operation.current = Core.newOperationID();
     const id = operation.current;
+    const context = latest.current.processingContext ?? '';
     setHeld(action === 'start'); setLocalLocked(action === 'lock');
-    chain.current = chain.current.then(() => Core.command(action, id)).catch(report);
+    chain.current = chain.current.then(() => Core.command(action, id, context)).catch(report);
   }, []);
   const control = useRef<PressToTalk | null>(null);
   const [gesture, setGesture] = useState<PanResponderInstance | null>(null);
