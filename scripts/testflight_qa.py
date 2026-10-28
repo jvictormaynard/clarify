@@ -272,10 +272,17 @@ PREVIEW_DIAGNOSTIC41 = {
     "job_id": 122563767007,
     "job_name": "Unsigned archive41 diagnostics",
 }
-# Build 41's immutable tag remains unchanged. Build 42 requires a distinct
-# reservation, source/tag, validation, archive and export proof before use.
+# Fixed historical MAIN inventories are data, never execution authority. They
+# exclude controls added later and bind earlier runs to reviewed Git objects.
+PREVIEW_HISTORICAL_CONTROL_ROOTS = {
+    "d777ddde8a5f5dea0b035ee3a49aacb7e1654c79": "d777ddde8a5f5dea0b035ee3a49aacb7e1654c79",
+    PREVIEW_DIAGNOSTIC41["source_sha"]: "d777ddde8a5f5dea0b035ee3a49aacb7e1654c79",
+    "a740ac9c319fd2cca0630bfd8489fa438e969827": "a740ac9c319fd2cca0630bfd8489fa438e969827",
+}
+# Existing tags stay immutable. Build 43 still requires its own reservation,
+# source/tag, validation, archive and native proof; this list reserves nothing.
 PREVIEW_PUBLICATION_IDENTITIES = {
-    ("0.12.0", str(n), f"ios/pr-179/v0.12.0-build{n}") for n in (41, 42)
+    ("0.12.0", str(n), f"ios/pr-179/v0.12.0-build{n}") for n in (41, 42, 43)
 }
 
 
@@ -728,6 +735,12 @@ def reconcile_preview_history(
         )
         diagnostic = workflow_digest == PREVIEW_DIAGNOSTIC41["workflow_sha256"]
         archive41 = diagnostic or workflow_digest == PREVIEW_ARCHIVE41_CONTROLS[QA_PATH]
+        historical_root = (
+            PREVIEW_HISTORICAL_CONTROL_ROOTS.get(source) if path == QA_PATH else None
+        )
+        historical_controls = (
+            archive_controls(ROOT, historical_root) if historical_root else None
+        )
         if diagnostic:
             require(
                 identifier == PREVIEW_DIAGNOSTIC41["run_id"]
@@ -756,7 +769,9 @@ def reconcile_preview_history(
             # Reusable validation graphs still use the current MAIN authority.
             _preview_history_graph(api, CI_PATH, source, trusted, authenticated)
         else:
-            _preview_history_graph(api, path, source, trusted, authenticated)
+            _preview_history_graph(
+                api, path, source, historical_root or trusted, authenticated
+            )
         if path in NON_APPLE_WORKFLOWS:
             continue
         # Apple-capable implementations must be authenticated even if skipped.
@@ -767,11 +782,17 @@ def reconcile_preview_history(
             if path == STABLE_PATH
             else (
                 p
-                for p in q["controls"]
+                for p in (historical_controls or q["controls"])
                 if p.startswith(("scripts/", "mobile/scripts/"))
             )
         ):
             observed = api.file(helper, source).encode("utf-8")
+            if historical_controls is not None:
+                require(
+                    device_archive.git_blob(observed) == historical_controls[helper],
+                    "Unknown historical MAIN Apple implementation",
+                )
+                continue
             require(
                 (
                     hashlib.sha256(observed).hexdigest()
@@ -3822,6 +3843,18 @@ def main(argv=None):
         # Fixed fields only: no arbitrary metadata, tokens, paths or API responses.
         print(json.dumps(result, sort_keys=True))
         return 0
+    except device_archive.ArchiveError as error:
+        # Only fixed MAIN labels can reach the log. Unknown exception text,
+        # subprocess arguments and captured streams remain private.
+        stage = {
+            "Existing signing credential installation failed": "credential-install",
+            "Unsigned archive export unsupported or failed": "archive-export",
+            "Export signature inspection failed": "signature-verification",
+            "Export entitlement inspection failed": "entitlement-verification",
+            "Signing credential cleanup failed": "credential-cleanup",
+        }.get(str(error), "archive-validation")
+        print(f"Internal QA archive blocked at {stage}.", file=sys.stderr)
+        return 1
     except ReleaseError as error:
         # ReleaseError messages use fixed policy text and sanitized HTTP status;
         # candidate JSON and remote response bodies are never included.
@@ -3834,11 +3867,25 @@ def main(argv=None):
         OSError,
         subprocess.SubprocessError,
         RecursionError,
-    ):
+    ) as error:
         print(
             "Internal QA preflight blocked. Check identity, exact CI, history and helper limits.",
             file=sys.stderr,
         )
+        kind = (
+            type(error).__name__
+            if type(error)
+            in {
+                KeyError,
+                TypeError,
+                ValueError,
+                OSError,
+                subprocess.SubprocessError,
+                RecursionError,
+            }
+            else "validation-error"
+        )
+        print(f"Internal QA error type: {kind}.", file=sys.stderr)
         return 1
 
 
