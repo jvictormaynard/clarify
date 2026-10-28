@@ -27,6 +27,11 @@ export function AccountSignIn({ account, busy, command }: {
     setCancelling(true);
     void command('cancel-social').catch(error => { setCancelling(false); report(error); });
   };
+  const previewEndpoint = 'https://clarify-api-dev-dev.up.railway.app';
+  if (account.endpoint !== previewEndpoint) return <>
+    <Text style={[ui.small, { color: c.muted }]}>{t('Servidor Clarify')}: {previewEndpoint}</Text>
+    <Button testID="account.previewServer" loading={busy} disabled={blocked} onPress={() => run('configure', previewEndpoint)}>{t('Salvar servidor')}</Button>
+  </>;
   return account.pending ? <>
     <Text style={[ui.small, { color: c.muted }]}>{t("Digite o código enviado para {v0}. O código vale por 10 minutos.", { v0: account.email })}</Text>
     <TextInput selectionColor={c.text} testID="account.code" accessibilityLabel={t("Código da conta Clarify")} value={code} onChangeText={setCode} editable={!busy} textContentType="oneTimeCode" keyboardType="number-pad" maxLength={16} placeholder={t("Código")} placeholderTextColor={c.muted} style={[ui.input, input]} />

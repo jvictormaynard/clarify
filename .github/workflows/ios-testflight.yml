@@ -7,6 +7,10 @@ on:
         description: Exact reviewed source SHA (required for signed upload on an ios/v tag)
         type: string
         default: ''
+      internal_preview:
+        description: Approved PR179 internal preview on dev using the existing Xcode signing path
+        type: boolean
+        default: false
       tests_only:
         description: Run checks without signing or upload
         type: boolean
@@ -55,6 +59,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -64,7 +69,58 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SOURCE: ${{ inputs.source_sha }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: python scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
+          INTERNAL_PREVIEW: ${{ inputs.internal_preview }}
+        run: |
+          if [ "$INTERNAL_PREVIEW" != "true" ]; then
+            python scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
+            exit $?
+          fi
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          from pathlib import Path
+          from scripts.release_delivery import GitHub, tag_source
+
+          def require(value, message):
+              if not value:
+                  raise ValueError(message)
+
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+
+          source = os.environ['RELEASE_SOURCE']
+          tag = os.environ['RELEASE_TAG']
+          product = 'f05450bd9a5646ac1feb102cef75ca3311aca27c'
+          require(os.environ['GITHUB_REPOSITORY'] == 'jvictormaynard/clarify', 'Wrong repository')
+          require(os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch', 'Manual preview only')
+          require(os.environ['GITHUB_RUN_ATTEMPT'] == '1', 'No automatic signing/upload retry')
+          require(re.fullmatch('[0-9a-f]{40}', source) and git('rev-parse', 'HEAD') == source == os.environ['GITHUB_SHA'], 'Wrong preview source')
+          config = json.loads(Path('mobile/app.json').read_text())['expo']
+          require(config['version'] == '0.12.0' and config['ios']['buildNumber'].isdigit() and int(config['ios']['buildNumber']) > 44, 'Wrong preview identity')
+          require(tag == 'ios/pr-179/v0.12.0-build' + config['ios']['buildNumber'] and os.environ['GITHUB_REF'] == 'refs/tags/' + tag, 'Immutable preview tag required')
+          require(git('cat-file', '-t', 'refs/tags/' + tag) == 'tag', 'Annotated tag required')
+          require(config['ios']['infoPlist']['ClarifyCloudURL'] == 'https://clarify-api-dev-dev.up.railway.app', 'Dev endpoint required')
+          require(config['ios']['bundleIdentifier'] == 'com.jvictormaynard.clarify', 'Wrong app identifier')
+          api = GitHub(os.environ['GH_TOKEN'])
+          require(tag_source(api, tag) == source, 'Remote tag differs')
+          runs = api.pages('/actions/workflows/ios-testflight.yml/runs?head_sha=' + source, 'workflow_runs')
+          require(all(int(item['id']) == int(os.environ['GITHUB_RUN_ID']) for item in runs), 'Prior preview run exists; inspect receipt, never resend')
+          old = json.loads(git('show', product + ':mobile/app.json'))['expo']
+          normalized = json.loads(json.dumps(config))
+          normalized['ios']['buildNumber'] = old['ios']['buildNumber']
+          normalized['ios']['infoPlist']['ClarifyCloudURL'] = old['ios']['infoPlist']['ClarifyCloudURL']
+          require(normalized == old, 'Unexpected product configuration change')
+          changed = set(git('diff', '--name-only', product, source).splitlines())
+          require(changed <= {'mobile/app.json', '.github/workflows/ios-testflight.yml', 'mobile/src/components/account-sign-in.tsx'}, 'Unexpected product/control change')
+          require(git('rev-parse', source + ':mobile/src/components/account-sign-in.tsx') == '916e8072065dedfdcbe2257b7236ee0acf9de003', 'Preview server selector differs from reviewed delta')
+          pull = api.request('GET', '/pulls/179')
+          require(pull['state'] == 'open' and not pull['merged'] and pull['head']['sha'] == product and pull['head']['repo']['full_name'] == 'jvictormaynard/clarify', 'PR179 product source changed')
+          accepted = api.request('GET', '/actions/runs/40652173539')
+          require(accepted['head_sha'] == product and accepted['status'] == 'completed' and accepted['conclusion'] == 'success' and accepted['path'] == '.github/workflows/ci.yml', 'Accepted product CI differs')
+          jobs = api.pages('/actions/runs/40652173539/attempts/1/jobs', 'jobs')
+          require(len(jobs) == 16 and all(job['status'] == 'completed' and job['conclusion'] == 'success' for job in jobs), 'Accepted product/native checks differ')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('result=publish\n')
+          PY
 
   availability:
     name: Verify the uploaded TestFlight build
@@ -79,6 +135,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.21.1
@@ -119,6 +176,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.21.1
@@ -132,7 +190,45 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SOURCE: ${{ inputs.source_sha }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: python3 scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
+          INTERNAL_PREVIEW: ${{ inputs.internal_preview }}
+        run: |
+          if [ "$INTERNAL_PREVIEW" != "true" ]; then
+            python3 scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
+            exit $?
+          fi
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          from pathlib import Path
+          from scripts.release_delivery import GitHub, tag_source
+
+          def require(value, message):
+              if not value:
+                  raise ValueError(message)
+
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+
+          source = os.environ['RELEASE_SOURCE']
+          tag = os.environ['RELEASE_TAG']
+          product = 'f05450bd9a5646ac1feb102cef75ca3311aca27c'
+          require(os.environ['GITHUB_REPOSITORY'] == 'jvictormaynard/clarify', 'Wrong repository')
+          require(os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch', 'Manual preview only')
+          require(os.environ['GITHUB_RUN_ATTEMPT'] == '1', 'No automatic signing/upload retry')
+          require(re.fullmatch('[0-9a-f]{40}', source) and git('rev-parse', 'HEAD') == source == os.environ['GITHUB_SHA'], 'Wrong preview source')
+          config = json.loads(Path('mobile/app.json').read_text())['expo']
+          require(config['version'] == '0.12.0' and config['ios']['buildNumber'].isdigit() and int(config['ios']['buildNumber']) > 44, 'Wrong preview identity')
+          require(tag == 'ios/pr-179/v0.12.0-build' + config['ios']['buildNumber'] and os.environ['GITHUB_REF'] == 'refs/tags/' + tag, 'Immutable preview tag required')
+          require(git('cat-file', '-t', 'refs/tags/' + tag) == 'tag', 'Annotated tag required')
+          require(config['ios']['infoPlist']['ClarifyCloudURL'] == 'https://clarify-api-dev-dev.up.railway.app', 'Dev endpoint required')
+          require(config['ios']['bundleIdentifier'] == 'com.jvictormaynard.clarify', 'Wrong app identifier')
+          api = GitHub(os.environ['GH_TOKEN'])
+          require(tag_source(api, tag) == source, 'Remote tag differs')
+          runs = api.pages('/actions/workflows/ios-testflight.yml/runs?head_sha=' + source, 'workflow_runs')
+          require(all(int(item['id']) == int(os.environ['GITHUB_RUN_ID']) for item in runs), 'Prior preview run exists; inspect receipt, never resend')
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('result=publish\n')
+          PY
       - name: Verify Xcode
         run: xcodebuild -version
       - name: Install locked dependencies
@@ -148,10 +244,10 @@ jobs:
       - name: Install CocoaPods dependencies
         run: pod install --project-directory=ios
       - name: Test first launch and navigation in the containing app
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        if: ${{ !inputs.internal_preview && ( !inputs.tests_only || !inputs.extension_diagnostic ) }}
         run: node scripts/test-app-ui.cjs
       - name: Test Swift contracts
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        if: ${{ !inputs.internal_preview && ( !inputs.tests_only || !inputs.extension_diagnostic ) }}
         run: npm run test:native
       - name: Validate short speech with the live mobile client
         if: ${{ inputs.short_dictation_acceptance }}
@@ -164,11 +260,12 @@ jobs:
           CLARIFY_SNIPPETS_ACCEPTANCE: ${{ secrets.CLARIFY_SNIPPETS_ACCEPTANCE }}
         run: node scripts/test-snippets-acceptance.cjs
       - name: Test keyboard on iPhone simulator
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        if: ${{ !inputs.internal_preview && ( !inputs.tests_only || !inputs.extension_diagnostic ) }}
         env:
           CLARIFY_NATIVE_TESTS: '1'
         run: node scripts/test-keyboard-ui.cjs
       - name: Test installed keyboard typing and activation
+        if: ${{ !inputs.internal_preview }}
         env:
           STRICT_OPENING_HEIGHT: ${{ inputs.tests_only && inputs.extension_diagnostic }}
         run: |
@@ -215,13 +312,188 @@ jobs:
           xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
             -configuration Release -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Clarify.xcarchive" \
-            -derivedDataPath "$RUNNER_TEMP/ClarifyDerivedData" archive | xcbeautify
+            -derivedDataPath "$RUNNER_TEMP/ClarifyDerivedData" archive 2>&1 | tee "$RUNNER_TEMP/clarify-archive.log" | xcbeautify
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Clarify.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/clarify-signing/ExportOptions.plist" \
-            -exportPath "$RUNNER_TEMP/clarify-export" | xcbeautify
+            -exportPath "$RUNNER_TEMP/clarify-export" 2>&1 | tee "$RUNNER_TEMP/clarify-export.log" | xcbeautify
       - name: Verify signed app and both extensions
         if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
         run: python3 scripts/verify-ios-ipa.py "$RUNNER_TEMP/clarify-export/Clarify.ipa"
+      - name: Check complete Apple inventory immediately before the one preview upload
+        if: ${{ inputs.internal_preview && !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
+        env:
+          ASC_KEY: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
+          ASC_ISSUER: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
+        run: |
+          node <<'JS'
+          'use strict';
+          const { sign } = require('node:crypto');
+          const { writeFileSync } = require('node:fs');
+          const app = '6820869157';
+          const origin = 'https://api.appstoreconnect.apple.com';
+          const encode = x => Buffer.from(JSON.stringify(x)).toString('base64url');
+          const report = {
+            app, method: 'GET', started_at: new Date().toISOString(),
+            source_sha: process.env.GITHUB_SHA, run_id: process.env.GITHUB_RUN_ID,
+            source_ref: process.env.GITHUB_REF, queries: [], collections: {}, errors: [],
+            apple_queries_complete: false,
+          };
+          const fields = {
+            builds: ['version', 'uploadedDate', 'expired', 'processingState'],
+            preReleaseVersions: ['version', 'platform'],
+            buildBetaDetails: ['internalBuildState', 'externalBuildState'],
+            buildUploads: ['cfBundleShortVersionString', 'cfBundleVersion', 'createdDate', 'uploadedDate', 'platform'],
+            appStoreVersions: ['versionString', 'platform', 'appStoreState', 'appVersionState', 'createdDate'],
+            appStoreVersionSubmissions: [],
+            reviewSubmissions: ['platform', 'state', 'submittedDate'],
+            reviewSubmissionItems: ['state'],
+            betaAppReviewSubmissions: ['betaReviewState', 'submittedDate'],
+            betaGroups: ['name', 'isInternalGroup', 'hasAccessToAllBuilds'],
+            betaTesters: [],
+          };
+          function safeResource(item) {
+            if (!item || typeof item.type !== 'string' || typeof item.id !== 'string') {
+              throw new Error('Invalid Apple resource');
+            }
+            const attributes = {};
+            for (const key of fields[item.type] || []) {
+              if (Object.hasOwn(item.attributes || {}, key)) attributes[key] = item.attributes[key];
+            }
+            if (item.type === 'buildUploads') attributes.state = item.attributes?.state?.state;
+            const relationships = {};
+            for (const key of ['build', 'preReleaseVersion', 'buildBetaDetail', 'appStoreVersion',
+              'appStoreVersionSubmission', 'appStoreVersionForReview', 'betaAppReviewSubmission']) {
+              if (Object.hasOwn(item.relationships || {}, key)) {
+                relationships[key] = item.relationships[key].data;
+              }
+            }
+            return { type: item.type, id: item.id, attributes, relationships };
+          }
+          async function get(path) {
+            const url = new URL(path, origin);
+            if (url.origin !== origin || !url.pathname.startsWith('/v1/') || url.username || url.password) {
+              throw new Error('Rejected Apple URL');
+            }
+            const now = Math.floor(Date.now() / 1000);
+            const body = encode({ alg: 'ES256', kid: process.env.ASC_KEY_ID, typ: 'JWT' }) + '.' +
+              encode({ iss: process.env.ASC_ISSUER, iat: now, exp: now + 300, aud: 'appstoreconnect-v1' });
+            const signature = sign('sha256', Buffer.from(body), { key: process.env.ASC_KEY, dsaEncoding: 'ieee-p1363' });
+            const token = body + '.' + signature.toString('base64url');
+            const entry = { url: url.href, method: 'GET', checked_at: new Date().toISOString() };
+            report.queries.push(entry);
+            const response = await fetch(url, {
+              method: 'GET', redirect: 'error', signal: AbortSignal.timeout(20000),
+              headers: { Authorization: 'Bearer ' + token },
+            });
+            entry.status = response.status;
+            if (!response.ok) throw new Error('Apple GET failed: HTTP ' + response.status + ' at ' + url.pathname);
+            return response.json();
+          }
+          async function all(name, path) {
+            const result = { complete: false, pages: 0, data: [], included: [], totals: [] };
+            report.collections[name] = result;
+            const seen = new Set();
+            while (path) {
+              const absolute = new URL(path, origin).href;
+              if (seen.has(absolute) || seen.size >= 500) throw new Error('Invalid Apple pagination: ' + name);
+              seen.add(absolute);
+              const page = await get(absolute);
+              if (!Array.isArray(page.data) || !page.links || !Object.hasOwn(page.links, 'self')) {
+                throw new Error('Invalid Apple collection: ' + name);
+              }
+              result.pages++;
+              result.data.push(...page.data.map(safeResource));
+              result.included.push(...(page.included || []).map(safeResource));
+              if (page.meta?.paging?.total !== undefined) result.totals.push(page.meta.paging.total);
+              path = page.links.next;
+              if (path !== undefined && path !== null && typeof path !== 'string') {
+                throw new Error('Invalid Apple next link: ' + name);
+              }
+            }
+            if (new Set(result.data.map(item => item.type + '/' + item.id)).size !== result.data.length ||
+                result.totals.some(total => total !== result.data.length)) {
+              throw new Error('Apple collection count changed or is incomplete: ' + name);
+            }
+            result.complete = true;
+            return result;
+          }
+          async function check(name, fn) {
+            try { return await fn(); }
+            catch (error) {
+              // Never log response bodies, signing material, JWTs or request headers.
+              const message = error.message.startsWith('Apple ') || error.message.startsWith('Invalid Apple') ||
+                error.message === 'Rejected Apple URL' ? error.message : 'Request or signing failure';
+              report.errors.push({ name, message });
+              return null;
+            }
+          }
+          (async () => {
+            const builds = await check('builds', () => all('builds',
+              '/v1/builds?filter[app]=' + app + '&limit=200&include=preReleaseVersion,buildBetaDetail'));
+            await check('uploads', () => all('uploads',
+              '/v1/apps/' + app + '/buildUploads?limit=200&include=build'));
+            await check('appStoreVersions', () => all('appStoreVersions',
+              '/v1/apps/' + app + '/appStoreVersions?limit=200&include=build,appStoreVersionSubmission'));
+            const reviews = await check('reviewSubmissions', () => all('reviewSubmissions',
+              '/v1/apps/' + app + '/reviewSubmissions?limit=200&include=appStoreVersionForReview'));
+            for (const review of reviews?.data || []) {
+              await check('reviewItems:' + review.id, () => all('reviewItems:' + review.id,
+                '/v1/reviewSubmissions/' + encodeURIComponent(review.id) + '/items?limit=200&include=appStoreVersion'));
+            }
+            if (builds) {
+              for (let index = 0; index < builds.data.length; index += 100) {
+                const ids = builds.data.slice(index, index + 100).map(item => item.id).join(',');
+                await check('betaReviews:' + index, () => all('betaReviews:' + index,
+                  '/v1/betaAppReviewSubmissions?filter[build]=' + encodeURIComponent(ids) + '&limit=200&include=build'));
+              }
+            }
+            const groups = await check('groups', () => all('groups', '/v1/betaGroups?filter[app]=' + app + '&limit=200'));
+            for (const group of groups?.data.filter(item => item.attributes.isInternalGroup) || []) {
+              await check('groupBuilds:' + group.id, () => all('groupBuilds:' + group.id,
+                '/v1/betaGroups/' + encodeURIComponent(group.id) + '/builds?limit=200'));
+              await check('groupTesters:' + group.id, () => all('groupTesters:' + group.id,
+                '/v1/betaGroups/' + encodeURIComponent(group.id) + '/relationships/betaTesters?limit=200'));
+            }
+            const versions = new Map();
+            for (const collection of Object.values(report.collections)) {
+              for (const item of [...collection.data, ...collection.included]) {
+                if (item.type === 'appStoreVersions') versions.set(item.id, item);
+              }
+            }
+            report.appStoreVersionBuilds = [];
+            for (const id of versions.keys()) {
+              await check('appStoreVersionBuild:' + id, async () => {
+                const value = await get('/v1/appStoreVersions/' + encodeURIComponent(id) + '/build');
+                if (!Object.hasOwn(value, 'data')) throw new Error('Invalid Apple version build');
+                report.appStoreVersionBuilds.push({ version_id: id, build: value.data === null ? null : safeResource(value.data) });
+              });
+            }
+            report.apple_queries_complete = report.errors.length === 0 &&
+              Object.values(report.collections).every(value => value.complete);
+            report.finished_at = new Date().toISOString();
+            writeFileSync('apple-reservation-report.json', JSON.stringify(report, null, 2) + '\n');
+            console.log(JSON.stringify(report, null, 2));
+            if (!report.apple_queries_complete) process.exitCode = 1;
+          })().catch(() => { console.error('Apple diagnostic failed before report completion'); process.exitCode = 1; });
+          JS
+          python3 - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          report = json.loads(Path('apple-reservation-report.json').read_text())
+          config = json.loads(Path('app.json').read_text())['expo']
+          assert report['apple_queries_complete'] and not report['errors'], 'Incomplete inventory'
+          assert (datetime.now(timezone.utc) - datetime.fromisoformat(report['finished_at'].replace('Z', '+00:00'))).total_seconds() < 900, 'Stale inventory'
+          resources = [item for collection in report['collections'].values() for item in collection['data'] + collection['included']]
+          builds = [item for item in resources if item['type'] == 'builds']
+          uploads = [item for item in resources if item['type'] == 'buildUploads']
+          assert builds and uploads, 'Missing complete build/upload history'
+          assert all(item['attributes']['processingState'] == 'VALID' for item in builds), 'Pending or failed build requires reconciliation'
+          assert all(item['attributes']['state'] == 'COMPLETE' for item in uploads), 'Pending or failed upload requires reconciliation'
+          assert all(int(item['attributes']['version']) < int(config['ios']['buildNumber']) for item in builds), 'Build identity already observed'
+          assert all(int(item['attributes']['cfBundleVersion']) < int(config['ios']['buildNumber']) for item in uploads), 'Upload identity already observed'
+          PY
       - name: Upload directly to App Store Connect
         if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
         env:
@@ -235,9 +507,34 @@ jobs:
           chmod 700 "$RUNNER_TEMP/clarify-upload" "$key_dir"
           printf '%s' "$CLARIFY_ASC_KEY_P8" > "$key_dir/AuthKey_${CLARIFY_ASC_KEY_ID}.p8"
           chmod 600 "$key_dir/AuthKey_${CLARIFY_ASC_KEY_ID}.p8"
+          trap 'rm -rf "$key_dir"' EXIT
+          python3 - <<'PY'
+          import json, os, hashlib
+          from pathlib import Path
+          from datetime import datetime, timezone
+          output = Path(os.environ['RUNNER_TEMP']) / 'clarify-export'
+          verification = json.loads((output / 'verification.json').read_text())
+          assert hashlib.sha256((output / 'Clarify.ipa').read_bytes()).hexdigest() == verification['sha256'], 'Verified IPA changed before upload'
+          receipt = {'state': 'started', 'source': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'], 'attempt': os.environ['GITHUB_RUN_ATTEMPT'], 'ipa_sha256': verification['sha256'], 'started_utc': datetime.now(timezone.utc).isoformat()}
+          with (output / 'upload-receipt.json').open('x') as stream:
+              json.dump(receipt, stream)
+          PY
+          set +e
           API_PRIVATE_KEYS_DIR="$key_dir" xcrun altool --upload-app --type ios \
             --file "$RUNNER_TEMP/clarify-export/Clarify.ipa" \
             --apiKey "$CLARIFY_ASC_KEY_ID" --apiIssuer "$CLARIFY_ASC_ISSUER_ID"
+          upload_exit=$?
+          set -e
+          UPLOAD_EXIT="$upload_exit" python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          from datetime import datetime, timezone
+          path = Path(os.environ['RUNNER_TEMP']) / 'clarify-export/upload-receipt.json'
+          receipt = json.loads(path.read_text())
+          receipt.update(state='confirmed' if os.environ['UPLOAD_EXIT'] == '0' else 'uncertain', upload_exit=int(os.environ['UPLOAD_EXIT']), finished_utc=datetime.now(timezone.utc).isoformat())
+          path.write_text(json.dumps(receipt, indent=2) + '\n')
+          PY
+          exit "$upload_exit"
       - name: Preserve verified IPA and checksum
         if: success() && !inputs.tests_only && steps.resume.outputs.result == 'publish'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -263,6 +560,19 @@ jobs:
           name: clarify-testflight-${{ github.sha }}
           path: mobile/test-results/testflight-availability.json
           if-no-files-found: error
+          retention-days: 7
+      - name: Preserve preview phase and exclusive upload evidence
+        if: always() && inputs.internal_preview
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: clarify-preview-delivery-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/clarify-archive.log
+            ${{ runner.temp }}/clarify-export.log
+            ${{ runner.temp }}/clarify-export/verification.json
+            ${{ runner.temp }}/clarify-export/upload-receipt.json
+            mobile/apple-reservation-report.json
+          if-no-files-found: ignore
           retention-days: 7
       - name: Remove temporary signing credentials
         if: always() && !inputs.tests_only
