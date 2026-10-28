@@ -3037,6 +3037,36 @@ class PreviewHistoryReconciliationTests(unittest.TestCase):
             with self.assertRaisesRegex(ReleaseError, "implementation"):
                 qa._preview_history_graph(self.api, qa.CI_PATH, OLD, BASE, set())
 
+    def test_reviewed_prior_main_ci_is_history_only_and_checks_transitive_controls(
+        self,
+    ):
+        candidate = b"reviewed prior MAIN CI"
+        self.controls[qa.CI_PATH] = b"new MAIN CI"
+        child = ".github/workflows/ios-validation.yml"
+        self.controls[child] = b"unchanged MAIN native"
+        self.api.file.side_effect = lambda path, source: (
+            candidate.decode() if path == qa.CI_PATH else self.file(path, source)
+        )
+        with patch.object(
+            qa,
+            "PREVIEW_PRIOR_MAIN_CI_SHA256",
+            hashlib.sha256(candidate).hexdigest(),
+            create=True,
+        ):
+            self.api.workflow_document.side_effect = [{"uses": "./" + child}, {}]
+            qa._preview_history_graph(self.api, qa.CI_PATH, OLD, BASE, set())
+            self.api.workflow_document.side_effect = [{"uses": "./" + child}]
+            self.api.file.side_effect = lambda path, source: (
+                candidate.decode() if path == qa.CI_PATH else "changed native"
+            )
+            with self.assertRaisesRegex(ReleaseError, "implementation"):
+                qa._preview_history_graph(self.api, qa.CI_PATH, OLD, BASE, set())
+            self.api.file.side_effect = lambda path, source: (
+                candidate.decode() + "extra"
+            )
+            with self.assertRaisesRegex(ReleaseError, "implementation"):
+                qa._preview_history_graph(self.api, qa.CI_PATH, OLD, BASE, set())
+
     def test_previous_archive_controls_are_authenticated_before_skipped_upload(self):
         legacy = {
             p: ("audited old " + p).encode() for p in qa.PREVIEW_ARCHIVE41_CONTROLS
@@ -3181,13 +3211,13 @@ class PreviewHistoryReconciliationTests(unittest.TestCase):
                 self.reconcile()
 
     def test_next_preview_identity_requires_its_own_upload_receipt(self):
-        self.policy.context.update(build="43", tag="ios/pr-179/v0.12.0-build43")
+        self.policy.context.update(build="44", tag="ios/pr-179/v0.12.0-build44")
         self.assertEqual(self.reconcile()["decision"], "publish")
         self.reports[self.fresh_id]["collections"]["builds"]["data"] = [
             dict(
-                id="unattributed-43",
+                id="unattributed-44",
                 type="builds",
-                attributes=dict(version="43", processingState="VALID"),
+                attributes=dict(version="44", processingState="VALID"),
             )
         ]
         self.reports[self.fresh_id]["collections"]["builds"]["totals"] = [1]
@@ -3414,54 +3444,207 @@ class PreviewHistoryReconciliationTests(unittest.TestCase):
 
 
 class NativeFailureDiagnosticTests(unittest.TestCase):
-    def test_fixed_history_root_checks_prior_inventory_not_new_main_inputs(self):
+    def test_real_guard_location_excludes_private_values_and_paths(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as temporary:
+            path = Path(temporary) / "PRIVATE_SENTINEL.plist"
+            path.write_bytes(
+                qa.device_archive.plistlib.dumps(
+                    {
+                        "method": "app-store-connect",
+                        "destination": "export",
+                        "teamID": "8K353P3496",
+                        "signingStyle": "manual",
+                        "signingCertificate": "Apple Distribution",
+                        "manageAppVersionAndBuildNumber": False,
+                        "uploadSymbols": True,
+                        "provisioningProfiles": {
+                            name: "PRIVATE_SENTINEL"
+                            for name in [
+                                qa.BUNDLE,
+                                qa.BUNDLE + ".keyboard",
+                                qa.BUNDLE + ".activity",
+                            ]
+                        },
+                    }
+                )
+            )
+            stderr = io.StringIO()
+            try:
+                qa.device_archive._export_options(path)
+            except qa.device_archive.ArchiveError as error:
+                with contextlib.redirect_stderr(stderr):
+                    qa._report_error_location(error)
+            else:
+                self.fail("Invalid manual profile fixture must reach the real guard")
+            self.assertRegex(
+                stderr.getvalue(),
+                r"scripts/qa_device_archive\.py:_export_options:[0-9]+",
+            )
+            self.assertNotIn("PRIVATE_SENTINEL", stderr.getvalue())
+            self.assertNotIn(temporary, stderr.getvalue())
+
+    def test_only_fixed_inspection43_and_all_skipped_apple_jobs_are_recognized(self):
         test = PreviewHistoryReconciliationTests()
         test.setUp()
         self.addCleanup(test.doCleanups)
-        prior = "a740ac9c319fd2cca0630bfd8489fa438e969827"
-        old = dict(test.controls)
-        old["scripts/testflight_qa.py"] = b"previous reviewed caller"
-        new = "scripts/windows_version.py"
-        test.controls[new] = b"new MAIN helper"
-        test.policy.context["controls"][new] = qa.device_archive.git_blob(
-            test.controls[new]
+        source = "ef3b25f9e539a32a3f0e7b8c44ab50d3bdf69ab7"
+        workflow = b"fixed audited secret-free inspection"
+        spec = dict(
+            run_id=40643791484,
+            source_sha=source,
+            workflow_sha256=hashlib.sha256(workflow).hexdigest(),
+            job_id=122667791524,
+            job_name="Secret-free archive43 pre-key inspection",
         )
         run = test.current | dict(
-            id=91, head_sha=prior, status="completed", conclusion="failure"
+            id=spec["run_id"],
+            head_sha=source,
+            head_branch="codex/ios-archive43-prekey-diagnostic-20261028",
+            workflow_id=398590797,
+            event="workflow_dispatch",
+            status="completed",
+            conclusion="success",
+            repository=dict(id=1135801455, full_name=REPO),
+            head_repository=dict(id=1135801455, full_name=REPO),
+            actor=dict(id=142351107),
+            triggering_actor=dict(id=142351107),
         )
         test.runs.append(run)
-        test.responses["/actions/runs/91/attempts/1/jobs"] = (
+        steps = [
+            dict(name=n, status="completed", conclusion="success")
+            for n in [
+                "Check out immutable MAIN inspection controls",
+                "Install frozen MAIN parser without scripts",
+                "Inspect existing archive and stop before credentials",
+                "Retain inert pre-key diagnostic",
+            ]
+        ]
+        diagnostic = dict(
+            id=spec["job_id"],
+            run_id=spec["run_id"],
+            head_sha=source,
+            name=spec["job_name"],
+            status="completed",
+            conclusion="success",
+            steps=steps,
+        )
+        names = [
+            "Internal QA preflight",
+            "Authenticate trusted validation dispatch",
+            "Trusted validation",
+            qa.FINAL_JOB_NAME,
+            qa.ARCHIVE_JOB_NAME,
+            qa.ARCHIVE_FINAL_JOB_NAME,
+            qa.ARCHIVE_SIGN_JOB_NAME,
+            qa.PREVIEW_PUBLICATION_JOB,
+            qa.PREVIEW_AVAILABILITY_JOB,
+        ]
+        skipped = [
+            dict(
+                id=2000 + i,
+                run_id=spec["run_id"],
+                head_sha=source,
+                name=n,
+                status="completed",
+                conclusion="skipped",
+                steps=[],
+            )
+            for i, n in enumerate(names)
+        ]
+        test.responses[f"/actions/runs/{spec['run_id']}/attempts/1/jobs"] = (
             "jobs",
-            [
-                test.job
-                | dict(
-                    id=1000,
-                    run_id=91,
-                    head_sha=prior,
-                    status="completed",
-                    conclusion="skipped",
-                    steps=[],
-                )
-            ],
+            [diagnostic, *skipped],
         )
-        test.api.file.side_effect = lambda path, source: (
-            old[path].decode() if source == prior else test.file(path, source)
+        test.api.file.side_effect = lambda p, revision: (
+            workflow.decode()
+            if p == QA_PATH and revision == source
+            else test.file(p, revision)
         )
-        test.api.control.side_effect = lambda revision, path: (
-            old[path] if revision == prior else test.controls[path]
-        )
-        inventory = {p: qa.device_archive.git_blob(data) for p, data in old.items()}
-        with patch.object(qa, "archive_controls", return_value=inventory) as controls:
+        inventory = {p: qa.device_archive.git_blob(v) for p, v in test.controls.items()}
+        with (
+            patch.object(qa, "PREVIEW_INSPECTION43", spec, create=True),
+            patch.object(qa, "archive_controls", return_value=inventory),
+        ):
             self.assertEqual(test.reconcile()["decision"], "publish")
-            controls.assert_called_once_with(qa.ROOT, prior)
-            old["scripts/testflight_qa.py"] += b"changed"
-            with self.assertRaisesRegex(
-                ReleaseError, "historical MAIN Apple implementation"
-            ):
+            for key, value in [
+                ("run_attempt", 2),
+                ("workflow_id", 1),
+                ("head_branch", "other"),
+                ("status", "in_progress"),
+                ("event", "push"),
+                ("actor", dict(id=1)),
+            ]:
+                original = run[key]
+                run[key] = value
+                with self.subTest(key=key), self.assertRaises(ReleaseError):
+                    test.reconcile()
+                run[key] = original
+            skipped[0]["conclusion"] = "success"
+            with self.assertRaises(ReleaseError):
                 test.reconcile()
-        self.assertFalse(
-            any(c.args == (new, prior) for c in test.api.file.call_args_list)
-        )
+            skipped[0]["conclusion"] = "skipped"
+            steps.append(steps[0] | {"conclusion": "failure"})
+            with self.assertRaises(ReleaseError):
+                test.reconcile()
+            steps.pop()
+            steps.pop()
+            with self.assertRaises(ReleaseError):
+                test.reconcile()
+
+    def test_fixed_history_root_checks_prior_inventory_not_new_main_inputs(self):
+        for prior in [
+            "264e41335e2edf4d36a9a5b2c711fe24a3a2633d",
+            "a740ac9c319fd2cca0630bfd8489fa438e969827",
+            "be4796c7c771af98a5782acb2eef9a5d4d50e3c4",
+        ]:
+            test = PreviewHistoryReconciliationTests()
+            test.setUp()
+            self.addCleanup(test.doCleanups)
+            old = dict(test.controls)
+            old["scripts/testflight_qa.py"] = b"previous reviewed caller"
+            new = "scripts/windows_version.py"
+            test.controls[new] = b"new MAIN helper"
+            test.policy.context["controls"][new] = qa.device_archive.git_blob(
+                test.controls[new]
+            )
+            run = test.current | dict(
+                id=91, head_sha=prior, status="completed", conclusion="failure"
+            )
+            test.runs.append(run)
+            test.responses["/actions/runs/91/attempts/1/jobs"] = (
+                "jobs",
+                [
+                    test.job
+                    | dict(
+                        id=1000,
+                        run_id=91,
+                        head_sha=prior,
+                        status="completed",
+                        conclusion="skipped",
+                        steps=[],
+                    )
+                ],
+            )
+            test.api.file.side_effect = lambda path, source: (
+                old[path].decode() if source == prior else test.file(path, source)
+            )
+            test.api.control.side_effect = lambda revision, path: (
+                old[path] if revision == prior else test.controls[path]
+            )
+            inventory = {p: qa.device_archive.git_blob(data) for p, data in old.items()}
+            with patch.object(
+                qa, "archive_controls", return_value=inventory
+            ) as controls:
+                self.assertEqual(test.reconcile()["decision"], "publish")
+                controls.assert_called_once_with(qa.ROOT, prior)
+                old["scripts/testflight_qa.py"] += b"changed"
+                with self.assertRaisesRegex(
+                    ReleaseError, "historical MAIN Apple implementation"
+                ):
+                    test.reconcile()
+            self.assertFalse(
+                any(c.args == (new, prior) for c in test.api.file.call_args_list)
+            )
 
     def test_cli_reports_only_fixed_stage_or_exception_type(self):
         values = {
@@ -3527,6 +3710,10 @@ class NativeFailureDiagnosticTests(unittest.TestCase):
                 self.assertEqual(stdout.getvalue(), "")
                 self.assertIn(stage, stderr.getvalue())
                 self.assertNotIn("PRIVATE_SENTINEL", stderr.getvalue())
+                self.assertIn(
+                    "Internal QA location: scripts/testflight_qa.py:main:",
+                    stderr.getvalue(),
+                )
 
 
 if __name__ == "__main__":

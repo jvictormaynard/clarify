@@ -272,17 +272,31 @@ PREVIEW_DIAGNOSTIC41 = {
     "job_id": 122563767007,
     "job_name": "Unsigned archive41 diagnostics",
 }
+PREVIEW_INSPECTION43 = {
+    "run_id": 40643791484,
+    "source_sha": "ef3b25f9e539a32a3f0e7b8c44ab50d3bdf69ab7",
+    "workflow_sha256": "07be9cc1ff05635b7e97597e3005c801173188a0c62a0f390feb8144b1a2d780",
+    "job_id": 122667791524,
+    "job_name": "Secret-free archive43 pre-key inspection",
+}
+# Reviewed pre-197 MAIN CI bytes remain historical data, never current policy.
+PREVIEW_PRIOR_MAIN_CI_SHA256 = (
+    "0621fcb642bda323ca5a7fef37de9b1065ac51b4486e471b08120cf27cd6283d"
+)
 # Fixed historical MAIN inventories are data, never execution authority. They
 # exclude controls added later and bind earlier runs to reviewed Git objects.
 PREVIEW_HISTORICAL_CONTROL_ROOTS = {
+    "264e41335e2edf4d36a9a5b2c711fe24a3a2633d": "264e41335e2edf4d36a9a5b2c711fe24a3a2633d",
     "d777ddde8a5f5dea0b035ee3a49aacb7e1654c79": "d777ddde8a5f5dea0b035ee3a49aacb7e1654c79",
     PREVIEW_DIAGNOSTIC41["source_sha"]: "d777ddde8a5f5dea0b035ee3a49aacb7e1654c79",
     "a740ac9c319fd2cca0630bfd8489fa438e969827": "a740ac9c319fd2cca0630bfd8489fa438e969827",
+    "be4796c7c771af98a5782acb2eef9a5d4d50e3c4": "be4796c7c771af98a5782acb2eef9a5d4d50e3c4",
+    PREVIEW_INSPECTION43["source_sha"]: "be4796c7c771af98a5782acb2eef9a5d4d50e3c4",
 }
-# Existing tags stay immutable. Build 43 still requires its own reservation,
+# Existing tags stay immutable. Build 44 still requires its own reservation,
 # source/tag, validation, archive and native proof; this list reserves nothing.
 PREVIEW_PUBLICATION_IDENTITIES = {
-    ("0.12.0", str(n), f"ios/pr-179/v0.12.0-build{n}") for n in (41, 42, 43)
+    ("0.12.0", str(n), f"ios/pr-179/v0.12.0-build{n}") for n in (41, 42, 43, 44)
 }
 
 
@@ -525,7 +539,8 @@ def _preview_history_graph(api, path, source, trusted, authenticated):
         observed == expected
         or (
             path == CI_PATH
-            and hashlib.sha256(observed).hexdigest() == PREVIEW_FEATURE_CI_SHA256
+            and hashlib.sha256(observed).hexdigest()
+            in {PREVIEW_FEATURE_CI_SHA256, PREVIEW_PRIOR_MAIN_CI_SHA256}
         )
         or (
             path == QA_PATH
@@ -533,6 +548,7 @@ def _preview_history_graph(api, path, source, trusted, authenticated):
             in {
                 PREVIEW_ARCHIVE41_CONTROLS[QA_PATH],
                 PREVIEW_DIAGNOSTIC41["workflow_sha256"],
+                PREVIEW_INSPECTION43["workflow_sha256"],
             }
         ),
         "Unknown post-baseline workflow implementation",
@@ -734,6 +750,7 @@ def reconcile_preview_history(
             else None
         )
         diagnostic = workflow_digest == PREVIEW_DIAGNOSTIC41["workflow_sha256"]
+        inspection43 = workflow_digest == PREVIEW_INSPECTION43["workflow_sha256"]
         archive41 = diagnostic or workflow_digest == PREVIEW_ARCHIVE41_CONTROLS[QA_PATH]
         historical_root = (
             PREVIEW_HISTORICAL_CONTROL_ROOTS.get(source) if path == QA_PATH else None
@@ -752,6 +769,23 @@ def reconcile_preview_history(
                 and run.get("workflow_id") == 398590797
                 and run.get("event") == "workflow_dispatch",
                 "Unknown archive diagnostic execution",
+            )
+        if inspection43:
+            require(
+                identifier == PREVIEW_INSPECTION43["run_id"]
+                and source == PREVIEW_INSPECTION43["source_sha"]
+                and attempts == 1
+                and run.get("status") == "completed"
+                and run.get("conclusion") == "success"
+                and run.get("head_branch")
+                == "codex/ios-archive43-prekey-diagnostic-20261028"
+                and run.get("workflow_id") == 398590797
+                and run.get("event") == "workflow_dispatch"
+                and run.get("repository", {}).get("id") == 1135801455
+                and run.get("head_repository", {}).get("id") == 1135801455
+                and run.get("actor", {}).get("id") == 142351107
+                and run.get("triggering_actor", {}).get("id") == 142351107,
+                "Unknown pre-key inspection execution",
             )
         if unsigned_qa:
             require(
@@ -844,6 +878,8 @@ def reconcile_preview_history(
             if path == QA_PATH:
                 if diagnostic:
                     allowed.add(PREVIEW_DIAGNOSTIC41["job_name"])
+                if inspection43:
+                    allowed.add(PREVIEW_INSPECTION43["job_name"])
                 require(
                     all(j.get("name") in allowed for j in jobs),
                     "Unknown historical QA job",
@@ -889,6 +925,45 @@ def reconcile_preview_history(
                         )
                     ),
                     "Archive diagnostic job or no-Apple boundary differs",
+                )
+                continue
+            if inspection43:
+                inspected = [
+                    j for j in jobs if j.get("name") == PREVIEW_INSPECTION43["job_name"]
+                ]
+                require(
+                    len(jobs) == len(qa_jobs) + 1
+                    and {j.get("name") for j in jobs}
+                    == qa_jobs | {PREVIEW_INSPECTION43["job_name"]}
+                    and len(inspected) == 1
+                    and inspected[0].get("id") == PREVIEW_INSPECTION43["job_id"]
+                    and inspected[0].get("status") == "completed"
+                    and inspected[0].get("conclusion") == "success"
+                    and all(
+                        j.get("status") == "completed"
+                        and j.get("conclusion") == "skipped"
+                        for j in jobs
+                        if j is not inspected[0]
+                    )
+                    and all(
+                        sum(
+                            s.get("name") == name for s in inspected[0].get("steps", [])
+                        )
+                        == 1
+                        and all(
+                            s.get("status") == "completed"
+                            and s.get("conclusion") == "success"
+                            for s in inspected[0].get("steps", [])
+                            if s.get("name") == name
+                        )
+                        for name in (
+                            "Check out immutable MAIN inspection controls",
+                            "Install frozen MAIN parser without scripts",
+                            "Inspect existing archive and stop before credentials",
+                            "Retain inert pre-key diagnostic",
+                        )
+                    ),
+                    "Pre-key inspection or no-Apple boundary differs",
                 )
                 continue
             if unsigned_qa:
@@ -3715,6 +3790,24 @@ def _runtime_validation_inputs(context):
     return result
 
 
+def _report_error_location(error):
+    """Print one trusted code location, never exception values or local paths."""
+    trusted = {
+        ROOT / "scripts/testflight_qa.py": "scripts/testflight_qa.py",
+        ROOT / "scripts/qa_device_archive.py": "scripts/qa_device_archive.py",
+    }
+    location = None
+    trace = error.__traceback__
+    while trace is not None:
+        code = trace.tb_frame.f_code
+        path = trusted.get(Path(code.co_filename))
+        if path is not None and code.co_name != "require":
+            location = f"{path}:{code.co_name}:{trace.tb_lineno}"
+        trace = trace.tb_next
+    if location is not None:
+        print(f"Internal QA location: {location}.", file=sys.stderr)
+
+
 def main(argv=None):
     try:
         arguments = sys.argv[1:] if argv is None else argv
@@ -3854,6 +3947,7 @@ def main(argv=None):
             "Signing credential cleanup failed": "credential-cleanup",
         }.get(str(error), "archive-validation")
         print(f"Internal QA archive blocked at {stage}.", file=sys.stderr)
+        _report_error_location(error)
         return 1
     except ReleaseError as error:
         # ReleaseError messages use fixed policy text and sanitized HTTP status;
@@ -3886,6 +3980,7 @@ def main(argv=None):
             else "validation-error"
         )
         print(f"Internal QA error type: {kind}.", file=sys.stderr)
+        _report_error_location(error)
         return 1
 
 
