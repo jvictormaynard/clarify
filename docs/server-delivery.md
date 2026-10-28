@@ -201,55 +201,9 @@ the Railway source as part of routine CI activation.
 
 ## Activation record, 2026-10-25
 
-This record retains the earlier inspection and activation checklist for the
-service identified above. Its branch, deployment and open gates describe that
-inspection. Use [Configuration verification](#configuration-verification) for new
-work; do not repeat activation or switch sources from this record.
-
-The merge preflight on 2026-10-25 found source repository
-`jvictormaynard/clarify`, branch `codex/release-v0.11.0`, with source `commitSha`
-`9c2cbf4f9f543bd9cd02dbe730686837387bfbc0`. The configured builder is
-`DOCKERFILE`, the Dockerfile path is `server/Dockerfile`, and the deployment
-probe is `/health` with a 60-second timeout and port 8080. There were no staged
-changes. Preserving that source pending authorized activation of the main-based
-flow was a gate at that time. The source connection alone did not prove that
-autodeploy was enabled.
-
-An earlier inspection found branch `main`, source
-`b0e095f0336e74779d5004f4b88016df1bfe2121` and
-`config.source.checkSuites=false`. The serialized config in the later preflight
-did not expose `checkSuites`. Neither observation confirmed Wait for CI for that
-activation.
-That setting and the separate autodeploy control still needed verification.
-
-The latest deployment with status `SUCCESS` recorded in that inspection was
-`1317f2e5-037d-4bf6-bcde-907eea9b8943`, created at
-`2026-10-25T08:12:42.513Z`. This record does not prove that current `main` has
-passed CI or is deployed. No live setting changes were part of that source change.
-
-The activation checklist recorded on that date was:
-
-- Merge and verify the CI wiring on `main`. The CI workflow must run on
-  `push` to `main` and call `server-validation.yml` when the component
-  classifier reports a server change. Server validation must also run for PRs.
-- Confirm that Wait for CI is enabled in the service settings. Read back
-  `config.source.checkSuites=true`, or verify the control directly if the API
-  omits it. This remains an open gate until confirmed. Confirm the separate
-  autodeploy control as well.
-- Check desktop and iOS compatibility with the usage response from PR #158,
-  including `schema_version: 2`, percentage quotas, and reset dates. Record the
-  supported client versions and upgrade plan before changing the live server.
-- Rehearse the first funding migrations on an isolated database. Review
-  `0004_weekly_funding` through `0006_funding_cost_review`, including preservation
-  of historical costs and commitments. Include `0004_social_attempt` and
-  `0007_merge_weekly_funding_social_auth` from the current migration graph.
-  Check the [social authentication configuration](../server/SOCIAL_AUTH.md)
-  before enabling those providers. Confirm a restorable backup and the
-  compatibility of both old and new code with the resulting schema.
-- Approve the first funding rollout under the
-  [funding operations procedure](finances.md#record-confirmed-funds-and-costs).
-  Record actual receipts and operating costs before confirming distribution.
-  A migration, a monthly spending cap, or a green build does not fund a quota.
-- Complete the staging acceptance and backup/restore gates in the
-  [server guide](../server/README.md#release-gates). Passing CI does not establish
-  manual Windows acceptance, live email delivery, or device acceptance.
+Earlier branch, deployment and activation observations remain in the
+[2026-10-25 record](https://github.com/jvictormaynard/clarify/blob/be4796c7c771af98a5782acb2eef9a5d4d50e3c4/docs/server-delivery.md).
+Use the current procedure above for delivery. Client compatibility, migration
+rehearsal, backups and staging acceptance follow the
+[server release gates](../server/README.md#release-gates); confirmed funding
+follows the [funding procedure](finances.md#record-confirmed-funds-and-costs).

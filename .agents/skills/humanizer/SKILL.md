@@ -66,10 +66,9 @@ artifact or requested draft. For file edits, give a short result and relevant
 validation. Do not append intermediate drafts or a pattern checklist unless the
 user asks. Writing or reviewing text grants no permission to send or publish it.
 
-The optional [pattern catalog](references/patterns.md) retains the detailed
-patterns and before/after examples. Read it when a recurring pattern is unclear
-or a detailed writing review needs examples. Routine prose work needs only this
-entrypoint; the catalog is not an additional mandatory read.
+Read the optional [upstream examples](https://github.com/blader/humanizer/blob/8c307f367c91bd974002f10f2be2965d642c13df/SKILL.md)
+only when a recurring pattern needs clarification. Routine prose work needs
+only this entrypoint.
 
 Adapted from blader/humanizer 3.1.0. The [source record](UPSTREAM.json) retains the
 pinned upstream commit and original hashes. The

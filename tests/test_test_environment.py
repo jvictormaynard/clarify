@@ -11,7 +11,6 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNNER = ROOT / "scripts/run_tests.py"
 
 
 class TestEnvironmentTests(unittest.TestCase):

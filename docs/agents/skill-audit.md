@@ -297,13 +297,10 @@ they do not establish measured writing quality or runtime behavior.
 
 ### Humanizer entrypoint adaptation, 2026-10-28
 
-The mandatory entrypoint keeps factual, language, localization and editing
-rules. The optional [pattern catalog](../../.agents/skills/humanizer/references/patterns.md)
-retains the detailed descriptions and before/after examples. Routine prose work
-does not require the catalog. The upstream commit, original hashes, invocation
-metadata and MIT notice are unchanged; `UPSTREAM.json` records the adaptation.
-This reduces the required read size. It does not establish token, time or writing
-quality improvements.
+The entrypoint keeps the project editing rules and links optional examples at
+the pinned upstream commit. It omits the local catalog. Original hashes,
+invocation metadata and the MIT notice remain unchanged. This reduces required
+reading; token, delivery-time and writing-quality gains were not measured.
 
 
 ## CI/CD guidance maintenance, 2026-10-25

@@ -87,23 +87,9 @@ gh api repos/jvictormaynard/clarify/branches/main/protection/required_status_che
 
 <a id="branch-protection-migration"></a>
 
-### Migration record — 2026-10-25 UTC
-
-The migration plan in commit `7428c61` replaced unconditional `Tests (ubuntu-latest)`,
-`Tests (windows-latest)` and `Package Windows executable` requirements with
-`CI required`. Its activation sequence was:
-
-1. Run this workflow on its PR and confirm `CI required` checks the actual tested
-   candidate. Inspect documentation, design, native and failed-job cases.
-2. Add `CI required` as a required GitHub Actions check, then remove the three
-   unconditional Desktop checks. Keep current-base validation, PR requirements,
-   conversation resolution and force-push restrictions.
-3. Verify that a docs-only PR can pass without product jobs, a Settings design
-   PR runs browser checks, and a failed selected job blocks a merge.
-
-The sequence retained the old checks until the replacement was present and
-required. This historical plan is not a request to repeat activation or change
-live protection. The repository workflows cannot apply that setting themselves.
+The [2026-10-25 migration record](https://github.com/jvictormaynard/clarify/blob/be4796c7c771af98a5782acb2eef9a5d4d50e3c4/docs/ci-delivery.md#branch-protection-migration)
+retains the transition from unconditional checks to `CI required`.
+It does not request a new activation or protection change.
 
 ## Repeated work and caches
 

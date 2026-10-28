@@ -198,7 +198,9 @@ test("ChatGPT connects without API keys, refreshes account catalogs and persists
   await page.screenshot({ path: info.outputPath("chatgpt-connected-narrow-synthetic.png"), fullPage: true });
   await page.setViewportSize({ width: 1040, height: 760 });
   await menu.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Add ChatGPT account", exact: true })).toBeFocused();
   await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Reconnect ChatGPT", exact: true })).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("menuitem", { name: "Refresh ChatGPT models", exact: true })).toBeFocused();
   const validations = commands.filter(command => command.method === "validateProvider").length;
