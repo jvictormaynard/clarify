@@ -141,7 +141,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Set up pinned QA Node
-        if: ${{ inputs.trusted_qa }}
+        if: ${{ inputs.trusted_qa && needs.components.outputs.qa_policy != 'false' }}
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22.21.1

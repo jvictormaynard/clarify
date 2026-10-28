@@ -169,11 +169,19 @@ class TrustedPlanTests(unittest.TestCase):
             )
         }
         needs["components"]["outputs"] = {k: str(v).lower() for k, v in flags.items()}
-        needs["components"]["outputs"]["qa_policy"] = "true"
         job = object.__new__(qa.Job)
         job.plan = {"components": flags}
-        job.env = {"CI_NEEDS": qa.canonical_json(needs)}
-        job.results()
+        for required in (False, True):
+            job.qa_policy = required
+            needs["components"]["outputs"]["qa_policy"] = str(required).lower()
+            job.env = {"CI_NEEDS": qa.canonical_json(needs)}
+            job.results()
+            for invalid in (None, "invalid", str(not required).lower()):
+                needs["components"]["outputs"]["qa_policy"] = invalid
+                job.env = {"CI_NEEDS": qa.canonical_json(needs)}
+                with self.assertRaises(ValueError):
+                    job.results()
+        needs["components"]["outputs"]["qa_policy"] = "true"
         needs["components"]["outputs"]["ios"] = "false"
         job.env["CI_NEEDS"] = qa.canonical_json(needs)
         with self.assertRaises(ValueError):
@@ -219,6 +227,7 @@ class RepositoryRecipeTests(unittest.TestCase):
             job.trusted = Path(temp) / "trusted"
             job.python = "controller-python"
             job.node = Path(temp) / "pinned-node"
+            job.qa_policy = True
             with (
                 patch.object(job, "command") as command,
                 patch.object(job, "npm") as npm,
@@ -248,6 +257,26 @@ class RepositoryRecipeTests(unittest.TestCase):
             self.assertEqual(
                 tests["test_testflight_qa.py"]["CLARIFY_QA_TEST_YAML_MODULE"],
                 str(job.trusted / "desktop/node_modules/yaml"),
+            )
+
+            job.qa_policy = False
+            with (
+                patch.object(job, "command") as command,
+                patch.object(job, "npm") as npm,
+            ):
+                job.run_recipe("repository")
+            npm.assert_not_called()
+            self.assertEqual(
+                {
+                    call.args[0][-2]
+                    for call in command.call_args_list
+                    if "unittest" in call.args[0]
+                },
+                {
+                    "test_delivery_policy.py",
+                    "test_release_delivery.py",
+                    "test_trusted_ci.py",
+                },
             )
 
 

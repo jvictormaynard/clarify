@@ -842,6 +842,9 @@ class Job:
         self.plan = build_plan(
             self.trusted, self.source, self.trusted_sha, self.base_sha, self.source_sha
         )
+        self.qa_policy = delivery_policy.event_validation(
+            self.source, "push", {"before": self.base_sha}, self.source_sha
+        )[1]
         self.plan_path = self.metadata / "plan.json"
         self.inventory_path = self.metadata / "inventory.json"
         self.python = Path(sys.executable).resolve()
@@ -917,7 +920,7 @@ class Job:
             key: str(value).lower() for key, value in self.plan["components"].items()
         }
         values.update(
-            qa_policy="true",
+            qa_policy=str(self.qa_policy).lower(),
             selected_keys=canonical_json(self.plan["selected_keys"]),
             source_tree=self.plan["source_tree"],
             base_tree=self.plan["base_tree"],
@@ -998,7 +1001,7 @@ class Job:
             raise ValueError("Unknown or missing aggregate CI result")
         selected = {
             **{k: str(v).lower() for k, v in self.plan["components"].items()},
-            "qa_policy": "true",
+            "qa_policy": str(self.qa_policy).lower(),
         }
         if needs.get("components", {}).get("outputs", {}) | selected != needs.get(
             "components", {}
@@ -1552,16 +1555,24 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer lifecycle failed' }
         root = self.execution
         if recipe == "repository":
             self.command([self.python, "scripts/check_agent_skills.py", "--repo", root])
-            self.npm(
-                "ci", "--ignore-scripts", "--no-fund", cwd=self.trusted / "desktop"
-            )
-            for name in (
+            names = (
                 "test_delivery_policy.py",
                 "test_release_delivery.py",
                 "test_trusted_ci.py",
-                "test_testflight_qa.py",
-                "test_qa_device_archive.py",
-            ):
+            )
+            environment = {"CLARIFY_TRUSTED_CI_TEST_ROOT": str(self.trusted)}
+            if self.qa_policy:
+                self.npm(
+                    "ci", "--ignore-scripts", "--no-fund", cwd=self.trusted / "desktop"
+                )
+                names += ("test_testflight_qa.py", "test_qa_device_archive.py")
+                environment.update(
+                    CLARIFY_QA_TEST_NODE=str(self.node),
+                    CLARIFY_QA_TEST_YAML_MODULE=str(
+                        self.trusted / "desktop/node_modules/yaml"
+                    ),
+                )
+            for name in names:
                 self.command(
                     [
                         self.python,
@@ -1574,13 +1585,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer lifecycle failed' }
                         name,
                         "-v",
                     ],
-                    extra_env={
-                        "CLARIFY_TRUSTED_CI_TEST_ROOT": str(self.trusted),
-                        "CLARIFY_QA_TEST_NODE": str(self.node),
-                        "CLARIFY_QA_TEST_YAML_MODULE": str(
-                            self.trusted / "desktop/node_modules/yaml"
-                        ),
-                    },
+                    extra_env=environment,
                 )
         elif recipe == "python":
             self.python_checks()

@@ -66,6 +66,9 @@ The selector's `qa_policy` metadata adds the QA/archive suites and their locked
 Node/YAML setup for affected controls, dependencies or full validation. The
 aggregate rejects missing or invalid metadata. Docs-only and native-source-only
 changes omit this extra work.
+Trusted QA uses the same range selection for the QA/archive extras. It retains
+its original delivery, release and trusted-policy suites, plus native/mobile
+acceptance. This selection does not change the validation manifest schema.
 
 ## Branch protection
 
