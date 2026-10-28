@@ -45,7 +45,11 @@ class ProfileProbe(unittest.TestCase):
         import app
         import local_asr
         with patch.object(local_asr.platform, "system", return_value="Linux"):
-            asr_isolated = local_asr.default_install_root().is_relative_to(app.DATA_DIR)
+            asr_root = local_asr.default_install_root()
+            asr_isolated = (
+                asr_root.is_relative_to(app.DATA_DIR.parent)
+                and not asr_root.is_relative_to(personal)
+            )
         logging.getLogger("profile_probe").addHandler(
             logging.FileHandler(app.DATA_DIR / "probe.log")
         )
