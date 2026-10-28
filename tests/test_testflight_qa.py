@@ -3005,6 +3005,12 @@ class PreviewHistoryReconciliationTests(unittest.TestCase):
             qa._preview_managed_dependabot(self.api, run)
 
     def test_reviewed_feature_ci_bytes_do_not_allow_unknown_or_transitive_changes(self):
+        self._check_reviewed_feature_ci_boundary("PREVIEW_FEATURE_CI_SHA256")
+
+    def test_recomposed_feature_ci_rejects_unknown_and_transitive_changes(self):
+        self._check_reviewed_feature_ci_boundary("PREVIEW_RECOMPOSED_FEATURE_CI_SHA256")
+
+    def _check_reviewed_feature_ci_boundary(self, pin):
         self.controls[qa.CI_PATH] = b"MAIN CI"
         candidate = b"reviewed feature CI"
         self.api.file.side_effect = lambda path, source: (
@@ -3014,9 +3020,7 @@ class PreviewHistoryReconciliationTests(unittest.TestCase):
             "jobs": {"job": {"uses": "./.github/workflows/ios-validation.yml"}}
         }
         self.controls[".github/workflows/ios-validation.yml"] = b"MAIN native"
-        with patch.object(
-            qa, "PREVIEW_FEATURE_CI_SHA256", hashlib.sha256(candidate).hexdigest()
-        ):
+        with patch.object(qa, pin, hashlib.sha256(candidate).hexdigest(), create=True):
             # The recursive document is empty after its first control.
             self.api.workflow_document.side_effect = [
                 self.api.workflow_document.return_value,

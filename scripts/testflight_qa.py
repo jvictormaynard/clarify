@@ -283,6 +283,10 @@ PREVIEW_INSPECTION43 = {
 PREVIEW_PRIOR_MAIN_CI_SHA256 = (
     "0621fcb642bda323ca5a7fef37de9b1065ac51b4486e471b08120cf27cd6283d"
 )
+# The reviewed source6bd union keeps MAIN197 and the existing normal-only checks.
+PREVIEW_RECOMPOSED_FEATURE_CI_SHA256 = (
+    "f028b12b0964cdbe89a23432dd2a491a89b099c2dbe88b2036e243ceb6b408a5"
+)
 # Fixed historical MAIN inventories are data, never execution authority. They
 # exclude controls added later and bind earlier runs to reviewed Git objects.
 PREVIEW_HISTORICAL_CONTROL_ROOTS = {
@@ -540,7 +544,11 @@ def _preview_history_graph(api, path, source, trusted, authenticated):
         or (
             path == CI_PATH
             and hashlib.sha256(observed).hexdigest()
-            in {PREVIEW_FEATURE_CI_SHA256, PREVIEW_PRIOR_MAIN_CI_SHA256}
+            in {
+                PREVIEW_FEATURE_CI_SHA256,
+                PREVIEW_PRIOR_MAIN_CI_SHA256,
+                PREVIEW_RECOMPOSED_FEATURE_CI_SHA256,
+            }
         )
         or (
             path == QA_PATH
