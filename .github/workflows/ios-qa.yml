@@ -58,7 +58,7 @@ on:
       mode:
         description: Separate validation, unsigned Device archive and experimental export proof
         type: choice
-        options: [validate, archive, sign-export-proof, preflight, upload, availability]
+        options: [validate, archive, sign-export-proof, preflight, upload, availability, archive-diagnostics]
         default: validate
 
 permissions:
@@ -429,3 +429,162 @@ jobs:
         if: always()
         working-directory: trusted
         run: python -m scripts.testflight_qa publication-cleanup
+
+
+  archive_diagnostics:
+    name: Unsigned archive41 diagnostics
+    if: >-
+      github.repository == 'jvictormaynard/clarify' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/codex/ios-archive41-diagnostics-20261028' &&
+      inputs.mode == 'archive-diagnostics'
+    runs-on: macos-26
+    timeout-minutes: 55
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Check out frozen MAIN recipes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: d777ddde8a5f5dea0b035ee3a49aacb7e1654c79
+          path: trusted
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out immutable build41 source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 78be9db144168d1e90f13191eff39a20b8f02aaa
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+      - name: Install frozen MAIN YAML parser without scripts
+        working-directory: trusted/desktop
+        run: npm ci --ignore-scripts --no-fund
+      - name: Reproduce frozen archive recipe and retain failure details
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, shutil, subprocess, sys, traceback
+          from pathlib import Path
+          workspace = Path(os.environ['GITHUB_WORKSPACE']).resolve()
+          trusted, source = workspace / 'trusted', workspace / 'source'
+          sys.path.insert(0, str(trusted))
+          from scripts import testflight_qa as qa, trusted_ci
+          MAIN = 'd777ddde8a5f5dea0b035ee3a49aacb7e1654c79'
+          SOURCE = '78be9db144168d1e90f13191eff39a20b8f02aaa'
+          assert os.environ['GITHUB_REPOSITORY'] == 'jvictormaynard/clarify'
+          assert os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
+          assert os.environ['GITHUB_REF'] == 'refs/heads/codex/ios-archive41-diagnostics-20261028'
+          assert os.environ['GITHUB_WORKFLOW_SHA'] == os.environ['GITHUB_SHA']
+          assert trusted_ci.git(trusted, 'rev-parse', 'HEAD').decode().strip() == MAIN
+          assert trusted_ci.git(source, 'rev-parse', 'HEAD').decode().strip() == SOURCE
+          assert trusted_ci.git(source, 'rev-parse', 'ios/pr-179/v0.12.0-build41^{}').decode().strip() == SOURCE
+          trusted_ci.git(source, 'merge-base', '--is-ancestor', MAIN, SOURCE)
+          api = qa.ArchiveGitHub(os.environ['GH_TOKEN'], trusted_repo=trusted)
+          for actor in {os.environ['GITHUB_ACTOR'], os.environ['GITHUB_TRIGGERING_ACTOR']}:
+              role = api.request('GET', '/collaborators/' + actor + '/permission')
+              assert (role.get('role_name'), role.get('permission')) in {('admin','admin'),('maintain','write')}
+          metadata = Path(os.environ['RUNNER_TEMP']) / 'clarify-trusted-ci'
+          metadata.mkdir(mode=0o700)
+          state = {'schema':1, 'diagnostic_only':True, 'delivery_eligible':False,
+                   'workflow_sha':os.environ['GITHUB_WORKFLOW_SHA'],
+                   'run_id':int(os.environ['GITHUB_RUN_ID']), 'run_attempt':int(os.environ['GITHUB_RUN_ATTEMPT']),
+                   'source_sha':SOURCE,'base_sha':MAIN,'recipes_sha':MAIN,
+                   'original_archive_run':40602477074,'original_attempt':1,
+                   'stage':'authenticate','commands':[]}
+          def save():
+              (metadata / 'diagnostic-state.json').write_text(json.dumps(state,sort_keys=True,indent=2)+'\n')
+          class DiagnosticJob(trusted_ci.Job):
+              # Separate diagnostic controller. It never claims MAIN dispatch
+              # identity or emits an authoritative validation/archive record.
+              def __init__(self):
+                  self.env = dict(os.environ)
+                  self.workspace, self.trusted, self.source = workspace, trusted, source
+                  self.execution = workspace / 'execution'
+                  trusted_ci.validate_roots(self.trusted,self.source,self.execution)
+                  self.component = 'ios_build'
+                  self.source_sha,self.base_sha,self.trusted_sha = SOURCE,MAIN,MAIN
+                  self.metadata = metadata
+                  self.plan = trusted_ci.build_plan(trusted,source,MAIN,MAIN,SOURCE)
+                  self.plan_path,self.inventory_path = metadata/'plan.json',metadata/'inventory.json'
+                  self.python = Path(sys.executable).resolve()
+                  self.node = Path(shutil.which('node')).resolve()
+                  self.tools = {}
+              def observe(self, phase, exit_code=None):
+                  self.write(metadata/(phase+'.json'), {'diagnostic_only':True,'phase':phase,
+                      'exit_code':exit_code,'source_sha':SOURCE,'recipes_sha':MAIN})
+              def run_recipe(self, recipe):
+                  state['stage'] = recipe
+                  save()
+                  return super().run_recipe(recipe)
+              def command(self,args,cwd=None,extra_env=None):
+                  if str(args[0]) == '/usr/bin/xcodebuild': state['stage']='device-archive'
+                  item={'sequence':len(state['commands'])+1,'stage':state['stage'],
+                        'program':Path(str(args[0])).name,'exit_code':None}
+                  state['commands'].append(item)
+                  save()
+                  try:
+                      result=super().command(args,cwd,extra_env)
+                      item['exit_code']=0
+                      return result
+                  except subprocess.CalledProcessError as error:
+                      item['exit_code']=error.returncode
+                      raise
+                  finally: save()
+          save()
+          try:
+              # Policy is authenticated against the original immutable tuple.
+              # Its producer reference is historical; diagnostic output is not
+              # uploaded as an eligible unsigned archive or receipt.
+              original=api.run(40602477074,1)
+              context=dict(repository=qa.REPOSITORY,event='workflow_dispatch',ref='refs/heads/main',
+                  workflow_ref=qa.REPOSITORY+'/'+qa.QA_PATH+'@refs/heads/main',
+                  workflow_sha=MAIN,sha=MAIN,checkout_sha=MAIN,
+                  actor=original['actor']['login'],triggering_actor=original['triggering_actor']['login'],
+                  run_id=40602477074,run_attempt=1,mode='archive')
+              candidate=dict(schema=1,pr=179,source_sha=SOURCE,base_sha=MAIN,
+                  app_id=qa.APP_ID,bundle_id=qa.BUNDLE,version='0.12.0',build='41',
+                  tag='ios/pr-179/v0.12.0-build41',relay_host=None)
+              inputs=dict(candidate=candidate,source_sha=SOURCE,base_sha=MAIN,trusted_sha=MAIN,
+                  validation_run_id=40597529860,validation_run_attempt=1,
+                  producer_run_id=40602477074,producer_run_attempt=1)
+              policy=qa.archive_policy(api,inputs,context,qa.observe_archive_toolchain(),trusted_repo=trusted)
+              original_pack=qa.device_archive.pack
+              def diagnostic_pack(*args,**kwargs):
+                  state['stage']='inspect-and-pack'
+                  save()
+                  return original_pack(*args,**kwargs)
+              qa.device_archive.pack=diagnostic_pack
+              qa.produce_archive(DiagnosticJob(),policy,workspace/'diagnostic-archive')
+              state['result']='success-diagnostic-only'
+              save()
+          except BaseException as error:
+              state['result']='failure'
+              state['error_type']=type(error).__name__
+              state['exit_code']=getattr(error,'returncode',1)
+              # Stored data only; never replay candidate output to Actions stdout.
+              (metadata/'diagnostic-error.txt').write_text(traceback.format_exc())
+              save()
+              print('Archive diagnostic failed. Read the retained diagnostic artifact.',file=sys.stderr)
+              raise SystemExit(1)
+          PY
+      - name: Retain inert archive diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: clarify-archive41-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/clarify-trusted-ci/logs/
+            ${{ runner.temp }}/clarify-trusted-ci/diagnostic-state.json
+            ${{ runner.temp }}/clarify-trusted-ci/diagnostic-error.txt
+          if-no-files-found: warn
+          overwrite: false
+          retention-days: 7
