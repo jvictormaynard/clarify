@@ -18,6 +18,16 @@ try:
     from PySide6.QtCore import QEvent, QObject, Signal
     from PySide6.QtWidgets import QApplication
     from PySide6.QtWidgets import QSystemTrayIcon
+except (ImportError, ModuleNotFoundError):
+    PYSIDE6_AVAILABLE = False
+    QObject = object
+
+    def Signal(*_args, **_kwargs):
+        return None
+else:
+    PYSIDE6_AVAILABLE = True
+
+if PYSIDE6_AVAILABLE:
     from clarify.desktop.qt_shell import (
         ACTIVATION_EVENT_NAME,
         QtShell,
@@ -26,14 +36,6 @@ try:
         WindowsHotkeyEventFilter,
         _WindowsSingleInstanceActivationApi,
     )
-
-    PYSIDE6_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    PYSIDE6_AVAILABLE = False
-    QObject = object
-
-    def Signal(*_args, **_kwargs):
-        return None
 
 
 ROOT = Path(__file__).resolve().parents[1]

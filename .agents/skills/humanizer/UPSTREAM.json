@@ -14,6 +14,7 @@
     "Use a single-line description for project metadata validation and mandatory prose routing.",
     "Add Clarify workflow, language, embedded-output, and localization constraints.",
     "Enable implicit invocation explicitly in agents/openai.yaml.",
-    "Install only the skill entrypoint, invocation metadata, and MIT notice; omit upstream repository tooling and agent guides."
+    "Install only the skill entrypoint, invocation metadata, and MIT notice; omit upstream repository tooling and agent guides.",
+    "Condense the mandatory editing rules; retain the detailed pattern catalog and examples in optional references/patterns.md. Original source hashes and license remain unchanged."
   ]
 }

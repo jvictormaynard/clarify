@@ -23,16 +23,19 @@ from workflows import (
 )
 
 try:
+    from PySide6.QtWidgets import QApplication  # noqa: F401
+except ImportError:
+    QT_AVAILABLE = False
+else:
+    QT_AVAILABLE = True
+
+if QT_AVAILABLE:
     from clarify.desktop.qml_runtime import (
         QtHistoryRecorder,
         QtProviderGateway,
         QtWorkflowConfig,
     )
     from clarify.desktop.qml_bridge import QmlWorkflowBridge
-except ImportError:
-    QT_AVAILABLE = False
-else:
-    QT_AVAILABLE = True
 
 
 @unittest.skipUnless(QT_AVAILABLE, "PySide6 is required")

@@ -53,6 +53,7 @@ jobs:
       mobile: ${{ inputs.trusted_qa && steps.qa_select.outputs.mobile || steps.components.outputs.mobile }}
       ios: ${{ inputs.trusted_qa && steps.qa_select.outputs.ios || steps.components.outputs.ios }}
       audit: ${{ inputs.trusted_qa && steps.qa_select.outputs.audit || steps.components.outputs.audit }}
+      qa_policy: ${{ inputs.trusted_qa && steps.qa_select.outputs.qa_policy || steps.components.outputs.qa_policy }}
       selected_keys: ${{ steps.qa_select.outputs.selected_keys }}
       source_tree: ${{ steps.qa_select.outputs.source_tree }}
       base_tree: ${{ steps.qa_select.outputs.base_tree }}
@@ -114,6 +115,7 @@ jobs:
       QA_TRUSTED_MODE: ${{ inputs.trusted_qa }}
   repository:
     name: Repository checks
+    needs: components
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -163,11 +165,27 @@ jobs:
       - name: Check project agent skills
         run: python scripts/check_agent_skills.py
         if: ${{ !inputs.trusted_qa }}
+      - name: Set up policy test Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+        if: ${{ !inputs.trusted_qa && needs.components.outputs.qa_policy != 'false' }}
+      - name: Install locked policy test dependencies
+        run: npm ci --prefix desktop --ignore-scripts --no-fund
+        if: ${{ !inputs.trusted_qa && needs.components.outputs.qa_policy != 'false' }}
       - name: Test validation and release policies
         run: |
           python -m unittest discover -s tests -p test_delivery_policy.py -v
           python -m unittest discover -s tests -p test_release_delivery.py -v
         if: ${{ !inputs.trusted_qa }}
+      - name: Test QA and archive policies
+        run: |
+          python -m unittest discover -s tests -p test_trusted_ci.py -v
+          python -m unittest discover -s tests -p test_testflight_qa.py -v
+          python -m unittest discover -s tests -p test_qa_device_archive.py -v
+        if: ${{ !inputs.trusted_qa && needs.components.outputs.qa_policy != 'false' }}
       - name: Run trusted repository checks
         if: ${{ inputs.trusted_qa }}
         working-directory: ${{ github.workspace }}
@@ -541,15 +559,15 @@ jobs:
         run: python scripts/check_runtime_lock.py
       - name: Run Ruff lint
         if: ${{ !inputs.trusted_qa && (matrix.os == 'ubuntu-latest') }}
-        run: ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py scripts/format_staged.py clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py workflow_provider.py tests/test_workflow_provider.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py tests/test_qt_distribution.py tests/test_qt_package_policy.py portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
+        run: ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py scripts/format_staged.py scripts/run_tests.py tests/test_test_environment.py clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py workflow_provider.py tests/test_workflow_provider.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py tests/test_qt_distribution.py tests/test_qt_package_policy.py portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
       - name: Run Ruff format check
         if: ${{ !inputs.trusted_qa && (matrix.os == 'ubuntu-latest') }}
-        run: ruff format --check scripts/dependency_audit.py scripts/format_staged.py tests/test_repository.py clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py workflow_provider.py tests/test_workflow_provider.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py tests/test_qt_distribution.py tests/test_qt_package_policy.py portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
+        run: ruff format --check scripts/dependency_audit.py scripts/format_staged.py scripts/run_tests.py tests/test_test_environment.py tests/test_repository.py clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py workflow_provider.py tests/test_workflow_provider.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py tests/test_qt_distribution.py tests/test_qt_package_policy.py portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
       - name: Run targeted type checks
         if: ${{ !inputs.trusted_qa && (matrix.os == 'ubuntu-latest') }}
         run: mypy desktop_state.py windows_hotkeys.py
       - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+        run: python scripts/run_tests.py discover -s tests -v
         if: ${{ !inputs.trusted_qa }}
       - name: Compile Python sources
         run: python -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py workflows.py desktop_state.py repositories.py workflow_config.py workflow_settings.py voice_translation.py secret_store.py update_security.py version.py windows_clipboard.py windows_hotkeys.py provider_types.py provider_adapters.py provider_http.py provider_registry.py workflow_provider.py scripts/format_staged.py scripts/create_release_manifest.py tests local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py scripts/delivery_policy.py scripts/release_delivery.py

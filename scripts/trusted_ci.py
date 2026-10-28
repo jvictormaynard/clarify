@@ -137,6 +137,8 @@ PYTHON_LINT_PATHS = [
     "windows_hotkeys.py",
     "scripts/dependency_audit.py",
     "scripts/format_staged.py",
+    "scripts/run_tests.py",
+    "tests/test_test_environment.py",
     "clarify/desktop/qml_app.py",
     "clarify/desktop/qml_bridge.py",
     "clarify/desktop/qml_runtime.py",
@@ -178,6 +180,8 @@ PYTHON_LINT_PATHS = [
 PYTHON_FORMAT_PATHS = [
     "scripts/dependency_audit.py",
     "scripts/format_staged.py",
+    "scripts/run_tests.py",
+    "tests/test_test_environment.py",
     "tests/test_repository.py",
     "clarify/desktop/qml_app.py",
     "clarify/desktop/qml_bridge.py",
@@ -913,6 +917,7 @@ class Job:
             key: str(value).lower() for key, value in self.plan["components"].items()
         }
         values.update(
+            qa_policy="true",
             selected_keys=canonical_json(self.plan["selected_keys"]),
             source_tree=self.plan["source_tree"],
             base_tree=self.plan["base_tree"],
@@ -991,7 +996,10 @@ class Job:
             "audit",
         }:
             raise ValueError("Unknown or missing aggregate CI result")
-        selected = {k: str(v).lower() for k, v in self.plan["components"].items()}
+        selected = {
+            **{k: str(v).lower() for k, v in self.plan["components"].items()},
+            "qa_policy": "true",
+        }
         if needs.get("components", {}).get("outputs", {}) | selected != needs.get(
             "components", {}
         ).get("outputs", {}):
@@ -1281,7 +1289,7 @@ class Job:
                 ]
             )
         self.command(
-            [python, "-m", "unittest", "discover", "-s", "tests", "-v"],
+            [python, "scripts/run_tests.py", "discover", "-s", "tests", "-v"],
             extra_env={"CLARIFY_TRUSTED_CI_TEST_ROOT": str(self.trusted)},
         )
         self.command(
@@ -1544,10 +1552,15 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer lifecycle failed' }
         root = self.execution
         if recipe == "repository":
             self.command([self.python, "scripts/check_agent_skills.py", "--repo", root])
+            self.npm(
+                "ci", "--ignore-scripts", "--no-fund", cwd=self.trusted / "desktop"
+            )
             for name in (
                 "test_delivery_policy.py",
                 "test_release_delivery.py",
                 "test_trusted_ci.py",
+                "test_testflight_qa.py",
+                "test_qa_device_archive.py",
             ):
                 self.command(
                     [
@@ -1561,7 +1574,13 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer lifecycle failed' }
                         name,
                         "-v",
                     ],
-                    extra_env={"CLARIFY_TRUSTED_CI_TEST_ROOT": str(self.trusted)},
+                    extra_env={
+                        "CLARIFY_TRUSTED_CI_TEST_ROOT": str(self.trusted),
+                        "CLARIFY_QA_TEST_NODE": str(self.node),
+                        "CLARIFY_QA_TEST_YAML_MODULE": str(
+                            self.trusted / "desktop/node_modules/yaml"
+                        ),
+                    },
                 )
         elif recipe == "python":
             self.python_checks()

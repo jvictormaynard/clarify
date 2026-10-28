@@ -18,12 +18,14 @@ from unittest.mock import patch
 
 try:
     from PySide6.QtWidgets import QApplication
-    from clarify.desktop import qml_settings
-    from clarify.desktop.qml_settings import QmlSettingsController
-
-    PYSIDE6_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     PYSIDE6_AVAILABLE = False
+else:
+    PYSIDE6_AVAILABLE = True
+
+if PYSIDE6_AVAILABLE:
+    from clarify.desktop import qml_settings
+    from clarify.desktop.qml_settings import QmlSettingsController
 
 from repositories import (
     AppConfig,

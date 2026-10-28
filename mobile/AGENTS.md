@@ -1,41 +1,40 @@
-This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
+# Mobile contributor guide
 
-## Expo has changed — do not trust your training data
+Apply the [root guide](../AGENTS.md), including Humanizer for prose. This is the
+Clarify iOS app: Expo/React Native with a Swift module, keyboard and activity
+extension. No Android app is included. Expo Go cannot load these native parts.
 
-Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:
+## Source and dependencies
 
-1. Read the major version of the `expo` package in `package.json`.
-2. Fetch the matching versioned docs: `https://docs.expo.dev/versions/v<major>.0.0/`
-3. For anything else, fetch https://docs.expo.dev/llms.txt — an index of all Expo docs with corrections to common LLM misconceptions. Follow its links to the specific page you need; never answer from memory.
+- Use Node and the committed npm lockfile as defined in the
+  [development guide](README.md#development). Read the installed Expo version in
+  `package.json` and its matching versioned documentation before changing an
+  Expo or React Native API. Use `npx expo install <package>` for SDK compatibility.
+- `src/app/` owns Expo Router screens and layouts. Keep shared components and
+  state outside that directory.
+- `modules/clarify-core/ios/` owns account processing, audio and storage.
+  `native/keyboard/` owns keyboard interaction and insertion.
+- `app.json` and `plugins/` own generated native configuration. Generate the
+  Xcode project in an isolated task worktree. Preserve existing generated output;
+  do not hand-edit it as the source of a product change.
 
-## Commands
+## Validation and delivery
 
-Use `bunx` instead of `npx` if the project uses bun (`bun.lock` present).
+Use [component selection](../docs/ci-delivery.md#selected-checks) for the affected
+contract. Run `npm run check` for mobile JavaScript/TypeScript or shared-contract
+changes; it includes types, lint, contracts and synchronization checks. Native
+changes also need the applicable Swift, simulator and unsigned build checks.
+Documentation-only work needs documentation validators, not mobile lint or types.
+Keep tests isolated from user accounts, microphones, keys and recordings.
 
-```bash
-npx expo install <package>  # ALWAYS use instead of npm/yarn/pnpm/bun add — resolves SDK-compatible versions
-npx expo start              # start the dev server
-npx expo lint               # lint
-npx tsc --noEmit            # typecheck
-npx expo-doctor             # diagnose dependency and config issues
-npx expo install --fix      # fix incompatible package versions
-```
+The repository uses GitHub Actions and Xcode for signed TestFlight delivery.
+Follow [direct delivery](README.md#direct-testflight-delivery) and
+[ios-testflight.yml](../.github/workflows/ios-testflight.yml). Use `tests_only`
+for manual validation without signing or upload. Signed publication requires
+the reviewed immutable tag, exact source SHA and release authorization. EAS
+commands in dated delivery records describe historical work.
 
-Run lint and typecheck before declaring any task done.
-
-## Navigation & Routing
-
-- Use **Expo Router** for all navigation. Routes live in `src/app/` — every file there is a screen, `_layout.tsx` files define navigators. Keep non-route code (components, hooks, utils) outside `src/app/`.
-- Import `Link`, `router`, and `useLocalSearchParams` from `expo-router`.
-- Docs: https://docs.expo.dev/router/introduction.md
-
-## Building with EAS
-
-Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.
-Docs: https://docs.expo.dev/eas/index.md
-
-## Rules
-
-- If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
-- Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
-- Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+Verify the signed IPA, upload, Apple processing and internal-group availability
+separately. Source versions and a successful upload do not prove availability
+or physical-iPhone acceptance. The optional direct-provider short-speech harness
+has the [coverage limit documented here](README.md#short-speech-provider-harness).

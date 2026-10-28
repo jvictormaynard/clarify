@@ -522,7 +522,7 @@ class RepositorySafetyTests(unittest.TestCase):
             ("Run Ruff format check", "ruff format --check"),
             ("Run targeted type checks", "mypy"),
             ("Audit dependencies", "python scripts/dependency_audit.py"),
-            ("Run unit tests", "python -m unittest"),
+            ("Run unit tests", "python scripts/run_tests.py"),
             ("Compile Python sources", "python -m compileall"),
         ):
             block = re.search(

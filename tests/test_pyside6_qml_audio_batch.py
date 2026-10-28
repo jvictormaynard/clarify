@@ -7,11 +7,13 @@ import unittest
 
 try:
     from PySide6.QtWidgets import QApplication
-    from clarify.desktop.qml_audio_batch import QmlAudioFileImportController
 except (ImportError, ModuleNotFoundError):
     PYSIDE6_AVAILABLE = False
 else:
     PYSIDE6_AVAILABLE = True
+
+if PYSIDE6_AVAILABLE:
+    from clarify.desktop.qml_audio_batch import QmlAudioFileImportController
 
 from audio_file_batch import (
     AudioBatchResult,

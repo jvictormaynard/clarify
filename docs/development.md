@@ -103,16 +103,27 @@ QML Settings fallback. This is not evidence that the new Settings were built.
 Run the same core checks used in CI:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe scripts/run_tests.py discover -s tests -v
 .\.venv\Scripts\python.exe -m compileall -q clarify\desktop\qml_app.py clarify\desktop\qml_bridge.py clarify\desktop\qml_runtime.py clarify\desktop\qml_settings.py clarify\desktop\qml_audio_batch.py clarify\desktop\qml_clipboard.py clarify\desktop\qml_voice_translation.py clarify\desktop\qt_shell.py workflows.py repositories.py workflow_config.py workflow_settings.py voice_translation.py voice_translation_runtime.py dictionary_snippets.py dictionary_settings.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests
 ```
 
 From Linux or WSL with the dependencies installed:
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 scripts/run_tests.py discover -s tests -v
 python3 -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py workflows.py repositories.py workflow_config.py workflow_settings.py voice_translation.py voice_translation_runtime.py dictionary_snippets.py dictionary_settings.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests
 ```
+
+Use the configured interpreter from the locked environment. `scripts/run_tests.py`
+creates a temporary process profile before discovery, removes inherited provider
+credentials and sets `CLARIFY_SKIP_DOTENV=1`. It accepts the same arguments as
+`unittest`; no arguments run full discovery. For a focused Windows check:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_tests.py discover -s tests -p test_clipboard.py -v
+```
+
+Standalone isolated fixture commands retain their own setup.
 
 Choose local checks by the affected contract. A Settings-only design change
 needs its frontend build and isolated browser tests, without Rust or an EXE
