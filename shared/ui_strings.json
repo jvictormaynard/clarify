@@ -5996,5 +5996,365 @@
     "pt": "Salve ou descarte as alterações pendentes do dicionário antes desta correção.",
     "en": "Save or discard the pending dictionary changes before this correction.",
     "es": "Guarda o descarta los cambios pendientes del diccionario antes de esta corrección."
+  },
+  "Reescrever": {
+    "pt": "Reescrever",
+    "en": "Rewrite",
+    "es": "Reescribir"
+  },
+  "Traduzir": {
+    "pt": "Traduzir",
+    "en": "Translate",
+    "es": "Traducir"
+  },
+  "Copiar": {
+    "pt": "Copiar",
+    "en": "Copy",
+    "es": "Copiar"
+  },
+  "Escolha como usar o Clarify": {
+    "pt": "Escolha como usar o Clarify",
+    "en": "Choose how to use Clarify",
+    "es": "Elige cómo usar Clarify"
+  },
+  "Processar com": {
+    "pt": "Processar com",
+    "en": "Process with",
+    "es": "Procesar con"
+  },
+  "Meu computador": {
+    "pt": "Meu computador",
+    "en": "My computer",
+    "es": "Mi ordenador"
+  },
+  "Computador disponível": {
+    "pt": "Computador disponível",
+    "en": "Computer available",
+    "es": "Ordenador disponible"
+  },
+  "Computador indisponível": {
+    "pt": "Computador indisponível",
+    "en": "Computer unavailable",
+    "es": "Ordenador no disponible"
+  },
+  "Conecte seu computador": {
+    "pt": "Conecte seu computador",
+    "en": "Connect your computer",
+    "es": "Conecta tu ordenador"
+  },
+  "No Clarify do computador, abra a conexão com o iPhone e gere um QR. Mantenha os dois dispositivos na mesma rede Wi-Fi.": {
+    "pt": "No Clarify do computador, abra a conexão com o iPhone e gere um QR. Mantenha os dois dispositivos na mesma rede Wi-Fi.",
+    "en": "In Clarify on your computer, open the iPhone connection and generate a QR code. Keep both devices on the same Wi-Fi network.",
+    "es": "En Clarify del ordenador, abre la conexión con el iPhone y genera un QR. Mantén ambos dispositivos en la misma red Wi-Fi."
+  },
+  "O computador processa seus ditados e textos com a configuração dele. Não é preciso entrar em uma conta Clarify.": {
+    "pt": "O computador processa seus ditados e textos com a configuração dele. Não é preciso entrar em uma conta Clarify.",
+    "en": "The computer processes your dictation and text with its own settings. You do not need to sign in to a Clarify account.",
+    "es": "El ordenador procesa tus dictados y textos con su configuración. No necesitas iniciar sesión en una cuenta Clarify."
+  },
+  "Conectar outro computador": {
+    "pt": "Conectar outro computador",
+    "en": "Connect another computer",
+    "es": "Conectar otro ordenador"
+  },
+  "Ler QR do computador": {
+    "pt": "Ler QR do computador",
+    "en": "Scan computer QR code",
+    "es": "Leer QR del ordenador"
+  },
+  "Leia o QR do computador": {
+    "pt": "Leia o QR do computador",
+    "en": "Scan the computer QR code",
+    "es": "Lee el QR del ordenador"
+  },
+  "Verificar conexão": {
+    "pt": "Verificar conexão",
+    "en": "Check connection",
+    "es": "Comprobar conexión"
+  },
+  "Desconectar computador": {
+    "pt": "Desconectar computador",
+    "en": "Disconnect computer",
+    "es": "Desconectar ordenador"
+  },
+  "Use o dicionário e os snippets configurados no computador.": {
+    "pt": "Use o dicionário e os snippets configurados no computador.",
+    "en": "Use the dictionary and snippets configured on the computer.",
+    "es": "Usa el diccionario y los snippets configurados en el ordenador."
+  },
+  "Esta conexão não envia o dicionário, os snippets ou o histórico do iPhone para uma conta Clarify.": {
+    "pt": "Esta conexão não envia o dicionário, os snippets ou o histórico do iPhone para uma conta Clarify.",
+    "en": "This connection does not send the iPhone dictionary, snippets or history to a Clarify account.",
+    "es": "Esta conexión no envía el diccionario, los snippets ni el historial del iPhone a una cuenta Clarify."
+  },
+  "Texto pelo computador": {
+    "pt": "Texto pelo computador",
+    "en": "Text through your computer",
+    "es": "Texto a través del ordenador"
+  },
+  "Texto para processar": {
+    "pt": "Texto para processar",
+    "en": "Text to process",
+    "es": "Texto para procesar"
+  },
+  "Cole ou escreva o texto": {
+    "pt": "Cole ou escreva o texto",
+    "en": "Paste or write the text",
+    "es": "Pega o escribe el texto"
+  },
+  "Idioma da tradução": {
+    "pt": "Idioma da tradução",
+    "en": "Translation language",
+    "es": "Idioma de traducción"
+  },
+  "Texto selecionado": {
+    "pt": "Texto selecionado",
+    "en": "Selected text",
+    "es": "Texto seleccionado"
+  },
+  "O histórico desta conexão fica neste iPhone. O áudio é removido após o processamento.": {
+    "pt": "O histórico desta conexão fica neste iPhone. O áudio é removido após o processamento.",
+    "en": "History for this connection stays on this iPhone. Audio is removed after processing.",
+    "es": "El historial de esta conexión permanece en este iPhone. El audio se elimina después del procesamiento."
+  },
+  "Esta ação apaga somente o histórico desta conexão neste iPhone.": {
+    "pt": "Esta ação apaga somente o histórico desta conexão neste iPhone.",
+    "en": "This action deletes only the history for this connection on this iPhone.",
+    "es": "Esta acción elimina solo el historial de esta conexión en este iPhone."
+  },
+  "O QR do computador é inválido. Gere outro QR no Clarify.": {
+    "pt": "O QR do computador é inválido. Gere outro QR no Clarify.",
+    "en": "The computer QR code is invalid. Generate another QR code in Clarify.",
+    "es": "El QR del ordenador no es válido. Genera otro QR en Clarify."
+  },
+  "O QR expirou. Gere outro QR no computador.": {
+    "pt": "O QR expirou. Gere outro QR no computador.",
+    "en": "The QR code expired. Generate another QR code on the computer.",
+    "es": "El QR ha caducado. Genera otro QR en el ordenador."
+  },
+  "A conexão foi revogada. Leia outro QR no computador.": {
+    "pt": "A conexão foi revogada. Leia outro QR no computador.",
+    "en": "The connection was revoked. Scan another QR code on the computer.",
+    "es": "La conexión se ha revocado. Lee otro QR en el ordenador."
+  },
+  "O computador retornou uma resposta inválida.": {
+    "pt": "O computador retornou uma resposta inválida.",
+    "en": "The computer returned an invalid response.",
+    "es": "El ordenador ha devuelto una respuesta no válida."
+  },
+  "Configure o processamento no Clarify do computador.": {
+    "pt": "Configure o processamento no Clarify do computador.",
+    "en": "Configure processing in Clarify on the computer.",
+    "es": "Configura el procesamiento en Clarify del ordenador."
+  },
+  "Leitura do QR cancelada.": {
+    "pt": "Leitura do QR cancelada.",
+    "en": "QR scan cancelled.",
+    "es": "Lectura del QR cancelada."
+  },
+  "Permita o acesso à câmera em Ajustes > Clarify.": {
+    "pt": "Permita o acesso à câmera em Ajustes > Clarify.",
+    "en": "Allow camera access in Settings > Clarify.",
+    "es": "Permite el acceso a la cámara en Ajustes > Clarify."
+  },
+  "A câmera está indisponível. Tente novamente.": {
+    "pt": "A câmera está indisponível. Tente novamente.",
+    "en": "The camera is unavailable. Try again.",
+    "es": "La cámara no está disponible. Inténtalo de nuevo."
+  },
+  "Aguarde a conexão com o computador.": {
+    "pt": "Aguarde a conexão com o computador.",
+    "en": "Wait for the computer connection.",
+    "es": "Espera a que se conecte el ordenador."
+  },
+  "Não foi possível acessar o computador. Verifique se ele está ligado e na mesma rede Wi-Fi.": {
+    "pt": "Não foi possível acessar o computador. Verifique se ele está ligado e na mesma rede Wi-Fi.",
+    "en": "Could not reach the computer. Check that it is on and connected to the same Wi-Fi network.",
+    "es": "No se ha podido acceder al ordenador. Comprueba que esté encendido y en la misma red Wi-Fi."
+  },
+  "Esta solicitação foi cancelada.": {
+    "pt": "Esta solicitação foi cancelada.",
+    "en": "This request was cancelled.",
+    "es": "Esta solicitud se ha cancelado."
+  },
+  "Acesso ativo neste computador.": {
+    "pt": "Acesso ativo neste computador.",
+    "en": "Access is active on this computer.",
+    "es": "El acceso está activo en este ordenador."
+  },
+  "Acesso pelo celular": {
+    "pt": "Acesso pelo celular",
+    "en": "Mobile access",
+    "es": "Acceso desde el teléfono"
+  },
+  "Ao ativar, este computador aceita os celulares que você parear. O áudio e o texto usam seus modelos e serviços pessoais.": {
+    "pt": "Ao ativar, este computador aceita os celulares que você parear. O áudio e o texto usam seus modelos e serviços pessoais.",
+    "en": "When enabled, this computer accepts the phones you pair. Audio and text use your personal models and services.",
+    "es": "Al activarlo, este ordenador acepta los teléfonos que vincules. El audio y el texto usan tus modelos y servicios personales."
+  },
+  "Ativar acesso e gerar QR": {
+    "pt": "Ativar acesso e gerar QR",
+    "en": "Enable access and generate QR code",
+    "es": "Activar acceso y generar QR"
+  },
+  "Ative apenas se quiser aceitar conexões após reiniciar o aplicativo.": {
+    "pt": "Ative apenas se quiser aceitar conexões após reiniciar o aplicativo.",
+    "en": "Enable this to accept connections after restarting the app.",
+    "es": "Actívalo para aceptar conexiones después de reiniciar la aplicación."
+  },
+  "Celular": {
+    "pt": "Celular",
+    "en": "Phone",
+    "es": "Teléfono"
+  },
+  "Celulares pareados": {
+    "pt": "Celulares pareados",
+    "en": "Paired phones",
+    "es": "Teléfonos vinculados"
+  },
+  "Conectar celular": {
+    "pt": "Conectar celular",
+    "en": "Connect phone",
+    "es": "Conectar teléfono"
+  },
+  "Expira em {seconds} s": {
+    "pt": "Expira em {seconds} s",
+    "en": "Expires in {seconds} s",
+    "es": "Caduca en {seconds} s"
+  },
+  "Gerar outro QR": {
+    "pt": "Gerar outro QR",
+    "en": "Generate another QR code",
+    "es": "Generar otro QR"
+  },
+  "Gere um novo QR para conectar o celular.": {
+    "pt": "Gere um novo QR para conectar o celular.",
+    "en": "Generate a new QR code to connect your phone.",
+    "es": "Genera un nuevo QR para conectar el teléfono."
+  },
+  "Manter acesso ao iniciar o Clarify": {
+    "pt": "Manter acesso ao iniciar o Clarify",
+    "en": "Keep access enabled when Clarify starts",
+    "es": "Mantener el acceso al iniciar Clarify"
+  },
+  "Nenhum celular pareado.": {
+    "pt": "Nenhum celular pareado.",
+    "en": "No paired phones.",
+    "es": "No hay teléfonos vinculados."
+  },
+  "No Clarify do iPhone, escolha Meu computador e toque em Ler QR do computador. O código funciona uma vez e expira em 5 minutos.": {
+    "pt": "No Clarify do iPhone, escolha Meu computador e toque em Ler QR do computador. O código funciona uma vez e expira em 5 minutos.",
+    "en": "On your iPhone, open Clarify, select My computer, then tap Scan computer QR code. The code works once and expires in 5 minutes.",
+    "es": "En Clarify del iPhone, elige Mi ordenador y toca Leer QR del ordenador. El código funciona una vez y caduca en 5 minutos."
+  },
+  "Não foi possível alterar o acesso do celular. Verifique a conexão e tente novamente.": {
+    "pt": "Não foi possível alterar o acesso do celular. Verifique a conexão e tente novamente.",
+    "en": "Could not change mobile access. Check the connection and try again.",
+    "es": "No se ha podido cambiar el acceso del teléfono. Comprueba la conexión e inténtalo de nuevo."
+  },
+  "Não foi possível gerar o QR. Atualize o Clarify e tente novamente.": {
+    "pt": "Não foi possível gerar o QR. Atualize o Clarify e tente novamente.",
+    "en": "Could not generate the QR code. Update Clarify and try again.",
+    "es": "No se ha podido generar el QR. Actualiza Clarify e inténtalo de nuevo."
+  },
+  "O acesso pelo celular não está disponível nesta versão.": {
+    "pt": "O acesso pelo celular não está disponível nesta versão.",
+    "en": "Mobile access is not available in this version.",
+    "es": "El acceso desde el teléfono no está disponible en esta versión."
+  },
+  "O computador está offline. Pare o acesso e tente novamente.": {
+    "pt": "O computador está offline. Pare o acesso e tente novamente.",
+    "en": "The computer is offline. Stop access and try again.",
+    "es": "El ordenador está sin conexión. Detén el acceso e inténtalo de nuevo."
+  },
+  "Parar acesso": {
+    "pt": "Parar acesso",
+    "en": "Stop access",
+    "es": "Detener acceso"
+  },
+  "QR para parear o iPhone": {
+    "pt": "QR para parear o iPhone",
+    "en": "QR code to pair your iPhone",
+    "es": "QR para vincular el iPhone"
+  },
+  "Revogar": {
+    "pt": "Revogar",
+    "en": "Revoke",
+    "es": "Revocar"
+  },
+  "Revogar acesso de {name}": {
+    "pt": "Revogar acesso de {name}",
+    "en": "Revoke access for {name}",
+    "es": "Revocar el acceso de {name}"
+  },
+  "Saia da conta Clarify para conectar o celular aos seus modelos e serviços pessoais.": {
+    "pt": "Saia da conta Clarify para conectar o celular aos seus modelos e serviços pessoais.",
+    "en": "Sign out of your Clarify account to connect your phone to your personal models and services.",
+    "es": "Cierra la sesión de tu cuenta Clarify para conectar el teléfono a tus modelos y servicios personales."
+  },
+  "Use seus modelos e serviços deste computador no iPhone. Mantenha o computador ligado e na mesma rede Wi-Fi.": {
+    "pt": "Use seus modelos e serviços deste computador no iPhone. Mantenha o computador ligado e na mesma rede Wi-Fi.",
+    "en": "Use this computer's models and services on your iPhone. Keep the computer on and connected to the same Wi-Fi network.",
+    "es": "Usa los modelos y servicios de este ordenador en el iPhone. Mantén el ordenador encendido y conectado a la misma red Wi-Fi."
+  },
+  "Não foi possível alterar o acesso do celular.": {
+    "pt": "Não foi possível alterar o acesso do celular.",
+    "en": "Could not change mobile access.",
+    "es": "No se ha podido cambiar el acceso del teléfono."
+  },
+  "O computador atingiu o limite temporário de solicitações. Aguarde e inicie uma nova ação.": {
+    "pt": "O computador atingiu o limite temporário de solicitações. Aguarde e inicie uma nova ação.",
+    "en": "The computer has reached its temporary request limit. Wait, then start a new action.",
+    "es": "El ordenador ha alcanzado el límite temporal de solicitudes. Espera e inicia una nueva acción."
+  },
+  "O computador atingiu o limite. Nele, revogue o acesso dos celulares que não usa mais e tente novamente.": {
+    "pt": "O computador atingiu o limite. Nele, revogue o acesso dos celulares que não usa mais e tente novamente.",
+    "en": "The computer has reached its limit. On the computer, revoke access for phones you no longer use, then try again.",
+    "es": "El ordenador ha alcanzado el límite. En él, revoca el acceso de los móviles que ya no usas e inténtalo de nuevo."
+  },
+  "Verifique a data e a hora do iPhone e do computador. Depois, inicie uma nova ação.": {
+    "pt": "Verifique a data e a hora do iPhone e do computador. Depois, inicie uma nova ação.",
+    "en": "Check the date and time on your iPhone and computer. Then start a new action.",
+    "es": "Comprueba la fecha y la hora del iPhone y del ordenador. Después, inicia una nueva acción."
+  },
+  "Limite atingido. Revogue no computador o acesso de um celular ou deste iPhone. Leia outro QR.": {
+    "pt": "Limite atingido. Revogue no computador o acesso de um celular ou deste iPhone. Leia outro QR.",
+    "en": "Limit reached. On the computer, revoke access for a phone or this iPhone. Scan a new QR.",
+    "es": "Límite alcanzado. Revoca en el ordenador el acceso de un móvil o de este iPhone. Lee otro QR."
+  },
+  "O computador atingiu o limite de celulares. No computador, revogue o acesso de um celular pareado antes de gerar um novo QR.": {
+    "pt": "O computador atingiu o limite de celulares. No computador, revogue o acesso de um celular pareado antes de gerar um novo QR.",
+    "en": "The computer has reached its phone limit. On the computer, revoke access for a paired phone before generating a new QR code.",
+    "es": "El ordenador ha alcanzado el límite de móviles. En el ordenador, revoca el acceso de un móvil emparejado antes de generar un nuevo QR."
+  },
+  "Use seus modelos e serviços deste computador no iPhone. Mantenha o computador ligado e conectado à rede.": {
+    "pt": "Use seus modelos e serviços deste computador no iPhone. Mantenha o computador ligado e conectado à rede.",
+    "en": "Use this computer's models and services on your iPhone. Keep the computer on and connected to the network.",
+    "es": "Usa los modelos y servicios de este equipo en el iPhone. Mantén el equipo encendido y conectado a la red."
+  },
+  "No Clarify do computador, abra a conexão com o iPhone e gere um QR. Mantenha o computador ligado e conectado à rede.": {
+    "pt": "No Clarify do computador, abra a conexão com o iPhone e gere um QR. Mantenha o computador ligado e conectado à rede.",
+    "en": "In Clarify on your computer, open the iPhone connection and generate a QR code. Keep the computer on and connected to the network.",
+    "es": "En Clarify del equipo, abre la conexión con el iPhone y genera un QR. Mantén el equipo encendido y conectado a la red."
+  },
+  "Não foi possível acessar o computador. Verifique se ele está ligado e conectado à rede.": {
+    "pt": "Não foi possível acessar o computador. Verifique se ele está ligado e conectado à rede.",
+    "en": "Could not reach the computer. Check that it is on and connected to the network.",
+    "es": "No se pudo acceder al equipo. Comprueba que esté encendido y conectado a la red."
+  },
+  "Acesso pela internet ativo.": {
+    "pt": "Acesso pela internet ativo.",
+    "en": "Internet access is active.",
+    "es": "El acceso por internet está activo."
+  },
+  "A conexão pela internet está indisponível. O acesso na mesma rede continua ativo.": {
+    "pt": "A conexão pela internet está indisponível. O acesso na mesma rede continua ativo.",
+    "en": "The internet connection is unavailable. Access on the same network is still active.",
+    "es": "La conexión por internet no está disponible. El acceso en la misma red sigue activo."
+  },
+  "Acesso disponível na mesma rede Wi-Fi.": {
+    "pt": "Acesso disponível na mesma rede Wi-Fi.",
+    "en": "Access is available on the same Wi-Fi network.",
+    "es": "El acceso está disponible en la misma red Wi-Fi."
   }
 }
