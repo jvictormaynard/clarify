@@ -25,6 +25,7 @@ class TestEnvironmentTests(unittest.TestCase):
             before = config.read_bytes()
             script = r"""
 import json, logging, pathlib, runpy, sys, types, unittest
+from unittest.mock import patch
 root, personal = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 reads = {"dotenv": 0, "personal": 0}
 exists, read_text = pathlib.Path.exists, pathlib.Path.read_text
@@ -42,12 +43,16 @@ module = types.ModuleType("profile_probe")
 class ProfileProbe(unittest.TestCase):
     def test_import(self):
         import app
+        import local_asr
+        with patch.object(local_asr.platform, "system", return_value="Linux"):
+            asr_isolated = local_asr.default_install_root().is_relative_to(app.DATA_DIR)
         logging.getLogger("profile_probe").addHandler(
             logging.FileHandler(app.DATA_DIR / "probe.log")
         )
         print(json.dumps({
             "profile": str(app.DATA_DIR),
             "profile_isolated": not app.DATA_DIR.is_relative_to(personal),
+            "asr_isolated": asr_isolated,
             "inherited_key_removed": not app.DEFAULT_CONFIG["gemini_api_key"],
             "dotenv_key_removed": not app.DEFAULT_CONFIG["groq_api_key"],
             "reads": reads,
@@ -58,7 +63,13 @@ sys.argv = [str(root / "scripts/run_tests.py"), "profile_probe", "-v"]
 runpy.run_path(sys.argv[0], run_name="__main__")
 """
             environment = dict(os.environ)
-            for name in ("APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME"):
+            for name in (
+                "APPDATA",
+                "LOCALAPPDATA",
+                "USERPROFILE",
+                "HOME",
+                "XDG_DATA_HOME",
+            ):
                 environment[name] = str(personal)
             environment.pop("CLARIFY_SKIP_DOTENV", None)
             environment.pop("CLARIFY_DATA_DIR", None)
@@ -80,6 +91,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
                 observation,
                 {
                     "profile_isolated": True,
+                    "asr_isolated": True,
                     "inherited_key_removed": True,
                     "dotenv_key_removed": True,
                     "reads": {"dotenv": 0, "personal": 0},

@@ -28,7 +28,13 @@ def main(arguments=None):
         environment.update(
             {
                 name: directory
-                for name in ("APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME")
+                for name in (
+                    "APPDATA",
+                    "LOCALAPPDATA",
+                    "USERPROFILE",
+                    "HOME",
+                    "XDG_DATA_HOME",
+                )
             }
         )
         environment["CLARIFY_DATA_DIR"] = str(Path(directory) / "Clarify")
