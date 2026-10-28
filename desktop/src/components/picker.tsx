@@ -1,8 +1,9 @@
 import { t } from "../i18n";
 import { useMemo, useState } from "react";
-import { Check, ChevronDown, RefreshCw } from "lucide-react";
+import { Check, RefreshCw } from "lucide-react";
 import type { Option } from "../settings/bridge";
 import { Button } from "./primitives/button";
+import { SelectButton } from "./primitives/select";
 import {
   useComboboxFilter, Combobox, ComboboxEmpty, ComboboxItem, ComboboxList,
   ComboboxPopup, ComboboxSearchInput, ComboboxTrigger,
@@ -55,10 +56,9 @@ export function Picker({
       <ComboboxTrigger
         role="combobox"
         aria-label={label}
-        render={<Button variant="outline" className="w-full min-w-0 justify-between" />}
+        render={<SelectButton className="min-w-0" />}
       >
-        <span className="min-w-0 truncate">{t(selected?.label || value || "Selecionar…")}</span>
-        <ChevronDown size={16} aria-hidden />
+        {t(selected?.label || value || "Selecionar…")}
       </ComboboxTrigger>
       <ComboboxPopup>
         <div className={`relative shrink-0 ${onRefresh ? "pe-9" : ""}`}>

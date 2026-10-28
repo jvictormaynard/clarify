@@ -240,6 +240,90 @@ test("desktop navigation: Settings has no global search or floating save island"
   await expect(page.locator(".floating-save")).toHaveCount(0);
 });
 
+test("settings search: keyboard navigation retains drafts and finds sections without accents", async ({ page }, testInfo) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
+  await prompt.fill("Keep this draft through Settings search.");
+  await page.keyboard.press("Control+f");
+  const search = page.getByRole("combobox", { name: "Buscar configurações", exact: true });
+  await expect(search).toBeFocused();
+  await search.fill("dicionario");
+  await expect(page.getByRole("option", { name: "Dicionário Dicionário", exact: true })).toBeVisible();
+  await search.press("Enter");
+  await expect(page.getByRole("textbox", { name: "Novo termo", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(prompt).toHaveValue("Keep this draft through Settings search.");
+  await search.fill("entrada de audio");
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await page.screenshot({ path: testInfo.outputPath("settings-search.png"), animations: "disabled" });
+  await search.press("Enter");
+  await expect(page.getByRole("heading", { name: "Entrada de áudio", exact: true })).toBeFocused();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeInViewport();
+});
+
+test("settings search: compact rail opens search and returns to the selected page", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 640, height: 640 });
+  await page.getByRole("button", { name: "Buscar configurações", exact: true }).click();
+  const search = page.getByRole("combobox", { name: "Buscar configurações", exact: true });
+  await expect(search).toBeFocused();
+  await search.fill("atalhos");
+  await page.screenshot({ path: testInfo.outputPath("settings-search-compact.png"), animations: "disabled" });
+  await search.press("Enter");
+  await expect(page.getByRole("heading", { name: "Atalhos", exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation")).not.toHaveClass(/search-expanded/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+});
+
+for (const locale of ["en", "es"] as const) {
+  test(`settings search: locale ${locale} finds translated recording and vocabulary terms`, async ({ page }) => {
+    const search = page.getByRole("combobox", { name: locale === "en" ? "Search settings" : "Buscar ajustes", exact: true });
+    const cases: [string, string][] = locale === "en"
+      ? [["recording", "Dictation"], ["vocabulary", "Dictionary"]]
+      : [["grabacion", "Dictado"], ["vocabulario", "Diccionario"]];
+    for (const [query, expected] of cases) {
+      await search.fill(query);
+      await expect(page.getByRole("option")).toHaveCount(1);
+      await expect(page.getByRole("option")).toContainText(expected);
+    }
+  });
+}
+
+test("settings search: a late route cannot take focus from a newer query", async ({ page }) => {
+  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toBeVisible();
+  let release!: () => void, started!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    const request = route.request().postDataJSON();
+    if (request.method === "selectWorkflow" && request.args[0] === "transcription") { started(); await held; }
+    await route.fallback();
+  });
+  const search = page.getByRole("combobox", { name: "Buscar configurações", exact: true });
+  try {
+    await search.fill("entrada de audio");
+    await search.press("Enter");
+    await entered;
+    await page.keyboard.press("Control+f");
+    await search.fill("dicionario");
+    release();
+    await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue("dicionario");
+  } finally { release(); }
+});
+
+test("quota: settings search excludes personal processing pages", async ({ page }) => {
+  const search = page.getByRole("combobox", { name: "Buscar configurações", exact: true });
+  await search.fill("Modelos e serviços");
+  await expect(page.getByRole("option")).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: "Nenhum resultado encontrado." })).toBeVisible();
+  await search.fill("Texto");
+  await expect(page.getByRole("option", { name: "Texto Texto", exact: true })).toHaveCount(0);
+  await search.press("Escape");
+  await expect(page.getByRole("button", { name: "Ditado", exact: true })).toBeVisible();
+});
+
 test("contextual confirmation: Save keeps drafts from other pages unsaved", async ({ page }) => {
   await page.getByRole("button", { name: "Texto", exact: true }).click();
   const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
@@ -276,6 +360,7 @@ test("responsive account: pending microphone work does not disable sign-in", asy
     await page.getByRole("button", { name: "Testar microfone", exact: true }).click();
     await entered;
     await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+    await page.getByRole("button", { name: "Continuar com e-mail", exact: true }).click();
     await page.getByRole("textbox", { name: "E-mail", exact: true }).fill("test@example.test");
     await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeEnabled();
   } finally { release(); }
@@ -860,11 +945,15 @@ test.describe("weekly reset timezone", () => {
   });
 });
 
-test("onboarding: first run shows email and a local link before Settings", async ({ page }) => {
+test("onboarding: first run offers login methods and a visible guest action before Settings", async ({ page }) => {
   await expect(page.getByRole("navigation", { name: "Configurações" })).toBeHidden();
   await expect(page.getByText(/300 minutos/)).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
+  await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeHidden();
+  for (const provider of ["Google", "Microsoft", "GitHub", "e-mail"])
+    await expect(page.getByRole("button", { name: `Continuar com ${provider}`, exact: true })).toBeVisible();
+  const guest = page.getByRole("button", { name: "Continuar sem conta", exact: true });
+  await expect(guest).toBeVisible();
+  expect((await guest.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   for (const name of ["Entrar", "Criar conta", "Usar minha chave de API"])
     await expect(page.getByRole("button", { name, exact: true })).toBeHidden();
   await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
@@ -880,6 +969,29 @@ test("onboarding: first run shows email and a local link before Settings", async
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
+});
+
+test("login methods: Settings keeps the email draft and guest preferences", async ({ page }) => {
+  const before = await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
+  const email = page.getByRole("textbox", { name: "E-mail", exact: true });
+  const chooseEmail = page.getByRole("button", { name: "Continuar com e-mail", exact: true });
+  await expect(email).toBeHidden();
+  await chooseEmail.click();
+  await expect(email).toBeFocused();
+  await email.fill("unsent@example.test");
+  await page.getByRole("button", { name: "Voltar", exact: true }).click();
+  await expect(chooseEmail).toBeFocused();
+  await chooseEmail.click();
+  await expect(email).toHaveValue("unsent@example.test");
+  const afterEdit = await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  expect(afterEdit.accountState.pending).toBeFalsy();
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Geral", exact: true })).toBeVisible();
+  const after = await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  expect(after.accountState.signedIn).toBe(false);
+  expect(after.selectedMicrophoneId).toBe(before.selectedMicrophoneId);
+  expect(after.historyEnabled).toBe(before.historyEnabled);
 });
 
 test("onboarding: practice is explicit, keeps its result here and can be repeated", async ({ page }) => {
@@ -972,6 +1084,7 @@ test("quota: practice account error shows the quota action after processing", as
 });
 
 test("onboarding: email confirmation activates account processing immediately", async ({ page }) => {
+  await page.getByRole("button", { name: "Continuar com e-mail", exact: true }).click();
   await page.getByRole("textbox", { name: "E-mail", exact: true }).fill("test@example.test");
   await page.getByRole("textbox", { name: "E-mail", exact: true }).press("Enter");
   await expect(page.getByText("Digite o código enviado para test@example.test.", { exact: false })).toBeVisible();
@@ -1027,7 +1140,7 @@ test("onboarding: email confirmation activates account processing immediately", 
 
 for (const provider of ["Google", "Microsoft", "GitHub"]) {
   test(`onboarding: social ${provider} signs in without requiring the email form`, async ({ page }) => {
-    await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toHaveValue("");
+    await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeHidden();
     await page.getByRole("button", { name: `Continuar com ${provider}`, exact: true }).click();
     await expect(page.getByRole("heading", { name: "Sua conta está pronta" })).toBeVisible();
     await expect(page.getByText(`${provider.toLowerCase()}@example.test`, { exact: true })).toBeVisible();
@@ -1045,7 +1158,7 @@ test("onboarding: social cancellation stays enabled while the browser login is p
   await cancel.click();
   await expect(page.getByRole("alert")).toContainText("O login foi cancelado.");
   await expect(page.getByRole("button", { name: "Continuar com Google", exact: true })).toBeEnabled();
-  await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continuar com e-mail", exact: true })).toBeVisible();
 });
 
 test("onboarding: account social cancellation restores provider actions after local setup", async ({ page }) => {
@@ -1094,7 +1207,7 @@ test("onboarding: account social cancellation restores provider actions after lo
   for (const provider of ["Google", "Microsoft", "GitHub"]) {
     await expect(page.getByRole("button", { name: `Continuar com ${provider}`, exact: true })).toBeEnabled();
   }
-  await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Continuar com e-mail", exact: true })).toBeEnabled();
   await expect(server).toBeEnabled();
   await expect(saveServer).toBeEnabled();
   for (const button of await navigation.getByRole("button").all()) await expect(button).toBeEnabled();
@@ -1214,6 +1327,7 @@ test("onboarding: local choice leads to model setup without a login", async ({ p
 test("account remains optional and self-hosting configuration does not change dictation routes", async ({ page }) => {
   await page.getByRole("button", { name: "Conta Clarify", exact: true }).click();
   await expect(page.getByText("A conta é opcional.", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Continuar com e-mail", exact: true }).click();
   await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
   await page.getByRole("textbox", { name: "E-mail", exact: true }).fill("test@example.test");
   await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeEnabled();
@@ -1348,7 +1462,7 @@ test("integrated titlebar stays compact and close preserves unsaved changes", as
   await page.screenshot({ path: "test-results/settings-titlebar-compact.png" });
 });
 
-test("page headings scroll with content on every settings tab", async ({ page }) => {
+test("page context stays in the header while every settings tab scrolls", async ({ page }) => {
   const consoleErrors: string[] = [];
   page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
   await page.setViewportSize({ width: 640, height: 520 });
@@ -1359,11 +1473,11 @@ test("page headings scroll with content on every settings tab", async ({ page })
     await scroll.evaluate(el => { el.scrollTop = 0; });
     await expect(heading).toBeVisible();
     expect(await heading.evaluate(el => !!el.closest(".scroll-area"))).toBe(true);
-    const top = (await heading.boundingBox())!.y;
-    const delta = await scroll.evaluate(el => { el.scrollTop = 100; return el.scrollTop; });
-    if (delta > 0) {
-      await expect.poll(async () => (await heading.boundingBox())!.y).toBeCloseTo(top - delta, 0);
-    }
+    const context = page.locator(".titlebar-context");
+    await expect(context).toContainText(name);
+    const top = (await context.boundingBox())!.y;
+    await scroll.evaluate(el => { el.scrollTop = 100; });
+    expect((await context.boundingBox())!.y).toBe(top);
     await expect(page.getByRole("button", { name: "Fechar configurações", exact: true })).toBeInViewport();
   }
   expect(consoleErrors).toEqual([]);
@@ -1398,6 +1512,11 @@ test("text actions stay with the form and choices need no save island", async ({
   await page.getByRole("button", { name: "Texto", exact: true }).click();
   const before = await page.locator(".scroll-area").boundingBox();
   await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Contextual text draft.");
+  const editor = page.getByRole("textbox", { name: "Instruções", exact: true });
+  const shell = await editor.locator("..").boundingBox();
+  const panel = await editor.locator("xpath=ancestor::*[@data-slot='settings-group']").boundingBox();
+  expect(shell!.x).toBeGreaterThanOrEqual(panel!.x);
+  expect(shell!.x + shell!.width).toBeLessThanOrEqual(panel!.x + panel!.width);
   await expect(actions).toBeVisible();
   expect(await actions.evaluate(element => !!element.closest(".page"))).toBe(true);
   expect(await page.locator(".scroll-area").boundingBox()).toEqual(before);
@@ -1519,7 +1638,7 @@ test("navigation preserves the page container, brightness and horizontal geometr
 });
 
 test("sidebar width follows the desktop window breakpoints", async ({ page }) => {
-  for (const [width, expected] of [[1040, 220], [820, 208], [640, 60]]) {
+  for (const [width, expected] of [[1040, 240], [820, 240], [640, 56]]) {
     await page.setViewportSize({ width, height: 740 });
     await expect.poll(() => page.locator("aside").evaluate(element => element.getBoundingClientRect().width)).toBe(expected);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
@@ -1578,14 +1697,16 @@ test("local model removal requires confirmation and cancel keeps the model", asy
 });
 
 for (const labels of [
-  { locale: "pt", email: "E-mail", skip: "Continuar sem conta", next: "Continuar", code: "Código recebido por e-mail", confirm: "Confirmar código", back: "Voltar" },
-  { locale: "en", email: "Email", skip: "Continue without an account", next: "Continue", code: "Code received by email", confirm: "Confirm code", back: "Back" },
-  { locale: "es", email: "Correo electrónico", skip: "Continuar sin cuenta", next: "Continuar", code: "Código recibido por correo", confirm: "Confirmar código", back: "Volver" },
+  { locale: "pt", choice: "Continuar com e-mail", email: "E-mail", skip: "Continuar sem conta", next: "Continuar", code: "Código recebido por e-mail", confirm: "Confirmar código", back: "Voltar" },
+  { locale: "en", choice: "Continue with email", email: "Email", skip: "Continue without an account", next: "Continue", code: "Code received by email", confirm: "Confirm code", back: "Back" },
+  { locale: "es", choice: "Continuar con correo electrónico", email: "Correo electrónico", skip: "Continuar sin cuenta", next: "Continuar", code: "Código recibido por correo", confirm: "Confirmar código", back: "Volver" },
 ]) {
   test(`onboarding: locale ${labels.locale} keeps auth geometry and restores the skip action on Back`, async ({ page }) => {
     const email = page.getByRole("textbox", { name: labels.email, exact: true });
     const next = page.getByRole("button", { name: labels.next, exact: true });
     await expect(page.getByRole("button", { name: labels.skip, exact: true })).toBeVisible();
+    await expect(email).toBeHidden();
+    await page.getByRole("button", { name: labels.choice, exact: true }).click();
     await expect(email).toBeEnabled();
     const first = await email.locator("xpath=..").boundingBox(), submit = await next.boundingBox();
     expect(first).not.toBeNull(); expect(submit).not.toBeNull();

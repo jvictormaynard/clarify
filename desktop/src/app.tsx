@@ -1,5 +1,5 @@
 import { t } from "./i18n";
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { AlertCircle, LoaderCircle } from "lucide-react";
 import { Titlebar } from "./components/titlebar";
 import { Button } from "./components/ui";
@@ -18,6 +18,7 @@ import { ModelsPage } from "./pages/models-page";
 import { getSettingsPages } from "./settings/navigation";
 import { SettingsDialogs } from "./settings/settings-dialogs";
 import { useSettings } from "./settings/use-settings";
+import type { SettingsSearchResult } from "./settings/search";
 
 const pageComponents = {
   account: AccountPage,
@@ -35,6 +36,12 @@ export function App() {
   const controller = useSettings();
   const { state, page, error, pageDirty, saved, routeLoading, saving, discardingDrafts } = controller;
   const scrollArea = useRef<HTMLDivElement>(null);
+  const searchGeneration = useRef(0);
+  const [searchTarget, setSearchTarget] = useState<(SettingsSearchResult & { generation: number }) | null>(null);
+  const cancelSearchNavigation = useCallback(() => {
+    searchGeneration.current += 1;
+    setSearchTarget(null);
+  }, []);
   useLayoutEffect(() => {
     if (scrollArea.current) scrollArea.current.scrollTop = 0;
   }, [page]);
@@ -45,24 +52,46 @@ export function App() {
   const waitingForRoute = routeLoading && (activePage === "dictation" || activePage === "text");
   const Page = pageComponents[activePage];
   const info = settingsPages.find((item) => item.id === activePage)!;
+  useLayoutEffect(() => {
+    if (!searchTarget || searchTarget.generation !== searchGeneration.current || activePage !== searchTarget.page.id || !state || waitingForRoute) return;
+    const root = scrollArea.current;
+    const target = searchTarget.target
+      ? Array.from(root?.querySelectorAll<HTMLElement>("h2, label, summary, [aria-label]") ?? [])
+        .find(element => element.textContent?.trim() === searchTarget.target || element.getAttribute("aria-label") === searchTarget.target)
+      : root?.querySelector<HTMLElement>("h1");
+    if (!target) return;
+    target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+    if (searchTarget.target) {
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      target.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" });
+      if (!reducedMotion) {
+        target.classList.remove("settings-search-target-pulse");
+        void target.offsetWidth;
+        target.classList.add("settings-search-target-pulse");
+        target.addEventListener("blur", () => target.classList.remove("settings-search-target-pulse"), { once: true });
+      }
+    }
+    setSearchTarget(null);
+  }, [searchTarget, activePage, state, waitingForRoute]);
 
   return (
     <div className="settings-window">
       <Titlebar
         pageLabel={state?.onboardingRequired || state?.practiceState?.open ? undefined : info.label}
-        onClose={() => controller.setClosing(true)}
+        onClose={() => { cancelSearchNavigation(); controller.setClosing(true); }}
         onError={controller.setError}
       />
       {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} /> : state?.practiceState?.open ? <DictationPractice controller={{ ...controller, state }} /> : <div className="app">
         <aside>
           <SettingsNavigation pages={visiblePages} activePage={activePage}
-            version={state?.applicationVersion} onNavigate={controller.navigate} />
+            version={state?.applicationVersion} onNavigate={async id => { cancelSearchNavigation(); await controller.navigate(id); }}
+            onSearchInteraction={cancelSearchNavigation}
+            onSearchNavigate={result => { setSearchTarget({ ...result, generation: ++searchGeneration.current }); void controller.navigate(result.page.id); }} />
         </aside>
         <main>
           <div className="scroll-area" ref={scrollArea}>
-            <header className="page-header">
-              <div className="page-heading"><span className="page-icon"><info.icon size={20} strokeWidth={1.5} /></span><h1>{info.label}</h1></div>
-            </header>
+            <h1 className="sr-only">{info.label}</h1>
             <div className="page">
               {error && (
                 <div role="alert" className="error settings-error">

@@ -11,6 +11,12 @@
 
 - Production Qt code and QML assets: `clarify/desktop/`.
 - React/Tauri Settings: `desktop/`.
+- Before creating or changing any desktop UI, read the
+  [desktop design system](docs/desktop-design-system.md), the sole visual
+  specification. Inspect and reuse the shared tokens and components. Apply the
+  approved style to new and existing pages without repeated user instructions.
+  Verify the visual result, responsive layout, keyboard focus and relevant states.
+  Keep Qt/QML native contracts and shell behavior within the guide's scope.
 - Provider, storage, and workflow contracts: focused Python modules at the root.
 - `app.py` and `spikes/` support legacy compatibility and historical measurements;
   do not add product features there or remove persisted-data migrations blindly.

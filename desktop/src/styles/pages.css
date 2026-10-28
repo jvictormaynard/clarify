@@ -1,3 +1,14 @@
+.dictionary-list,
+.history-list,
+.history-empty,
+.account-page .danger-zone,
+.onboarding-content .onboarding-panel {
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--card) 40%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+}
+
 .usage-progress {
   height: 5px;
   overflow: hidden;
@@ -14,7 +25,7 @@
 
 .account-page {
   display: grid;
-  gap: 16px;
+  gap: 24px;
   min-width: 0;
 }
 .account-page .account-intro {
@@ -22,7 +33,7 @@
 }
 .account-sections {
   display: grid;
-  gap: 24px;
+  gap: 32px;
 }
 .account-page .account-card {
   min-width: 0;
@@ -33,9 +44,17 @@
 }
 .account-card h2 {
   gap: 8px;
-  margin: 0 0 12px;
-  font-size: var(--text-label);
-  font-weight: 500;
+  margin: 0 0 10px;
+}
+.account-card > .section-content > .hint {
+  margin: 12px 0;
+}
+.account-card > .section-content > .hint:first-child { margin-top: 0; }
+.account-card > .section-content > .hint:last-child { margin-bottom: 0; }
+.account-card > .section-content > .button,
+.account-card > .section-content > .text-button {
+  margin-inline: 0;
+  max-width: 100%;
 }
 .account-card h2 > svg,
 .usage-label > svg {
@@ -54,7 +73,6 @@
 }
 .account-card .account-sign-in .row-label {
   min-width: 0;
-  font-size: var(--font-size-description);
 }
 .account-card .account-sign-in .hint {
   margin: 0;
@@ -62,7 +80,7 @@
 .account-server {
   margin-top: 16px;
   padding: 12px 0 0;
-  border-top: 1px solid var(--border, var(--color-border));
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 .account-server-fields {
   display: grid;
@@ -71,14 +89,21 @@
   padding-top: 12px;
 }
 .account-server-fields .row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
   width: 100%;
-  gap: 8px;
   padding: 0;
   min-height: 0;
 }
+.account-server-fields .row > .row-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
 .account-server-fields .row-control {
+  width: 100%;
+}
+.account-server-fields .row-control > .control,
+.account-sign-in .row-control > .control {
+  flex-basis: 100%;
   width: 100%;
 }
 .account-server-fields input {
@@ -109,38 +134,39 @@
 .account-page .danger-zone {
   margin: 0;
   padding: 0;
-  border: 1px solid var(--border, var(--color-border));
-  border-radius: var(--radius, 10px);
 }
 .danger-zone > summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 18px;
+  padding: 14px 16px;
   list-style: none;
   color: var(--muted-foreground, var(--color-text-muted));
   font-weight: 500;
+  font-size: 14px;
+  line-height: 20px;
 }
 .danger-zone > summary::-webkit-details-marker { display: none; }
 .danger-zone > summary:hover { color: var(--foreground, var(--color-text)); }
 .account-disclosure { margin-left: auto; }
 .danger-zone[open] .account-disclosure { transform: rotate(90deg); }
 .account-page .danger-zone > section {
-  padding: 16px 18px;
+  padding: 14px 16px;
   border: 0;
-  border-top: 1px solid var(--border, var(--color-border));
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 .danger-zone > section { margin: 0; }
 .danger-zone > section > h2 { padding: 0; }
 .danger-zone .section-content { padding: 0; border: 0; background: transparent; box-shadow: none; }
-.danger-zone .section-content > .button { margin-top: 12px; }
+.danger-zone .section-content > .hint { margin-inline: 0; }
+.danger-zone .section-content > .button { margin: 12px 0 0; max-width: 100%; }
 
 .mic-test {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 0 4px;
+  padding: 14px 16px;
 }
 
 .wave {
@@ -180,7 +206,7 @@
   border: 0;
   border-radius: 5px;
   padding: 6px 12px;
-  color: var(--color-text-subtle);
+  color: var(--muted-foreground);
   font-size: var(--font-size-description);
 }
 
@@ -195,14 +221,16 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-5);
-  padding: 12px 0;
+  padding: 14px 16px;
 }
 
 .installation-status {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: var(--text-label);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
 }
 
 .installation-status svg {
@@ -215,14 +243,19 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-5);
-  margin: var(--space-3) 0 6px;
+  padding: 14px 16px;
+}
+.section-content > .inline-actions { margin: 12px 16px; }
+.section-content > .mic-test,
+.section-content > .installation,
+.section-content > .service-actions {
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 
 .shortcut {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: var(--font-size-description);
   width: auto;
-  float: right;
   min-width: 120px;
 }
 
@@ -252,10 +285,10 @@
 .dictionary-search {
   margin: 16px 0 8px;
   padding: 0 10px;
-  min-height: 36px;
-  border: 1px solid var(--border, var(--color-border));
+  min-height: 32px;
+  border: 1px solid var(--input);
   border-radius: var(--control-radius, var(--radius-control));
-  background: var(--card, var(--color-surface));
+  background: color-mix(in srgb, var(--input) 32%, transparent);
   color: var(--muted-foreground, var(--color-text-muted));
 }
 
@@ -265,7 +298,7 @@
   background: transparent;
   border: 0;
   color: var(--foreground, var(--color-text));
-  padding: 8px 0;
+  padding: 6px 0;
   font: inherit;
   font-size: var(--font-size-description);
 }
@@ -283,17 +316,12 @@
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
-.dictionary-list {
-  border: 1px solid var(--border, var(--color-border));
-  border-radius: var(--radius, 10px);
-  background: var(--card, var(--color-surface));
-}
 .dictionary-entry {
   min-width: 0;
-  padding: 8px 12px;
+  padding: 14px 16px;
 }
 .dictionary-entry + .dictionary-entry {
-  border-top: 1px solid var(--border, var(--color-border));
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 .dictionary-term:not(:focus):not(:hover) {
   background: transparent;
@@ -301,8 +329,8 @@
 }
 
 .dictionary-entry details {
-  margin: 0 0 0 12px;
-  padding: 4px 0;
+  margin: 10px 0 0;
+  padding: 0;
 }
 
 .dictionary-entry summary {
@@ -320,17 +348,18 @@
 }
 
 .dictionary-help {
-  margin-top: 16px;
+  margin-top: 32px;
+  padding-inline: 16px;
 }
 
 .history-page { min-width: 0; }
 .history-search { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .history-search > [data-slot="input-control"] { flex: 1; min-width: 160px; }
 .history-entry-actions { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
-.history-comparison { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border, var(--color-border)); }
+.history-comparison { margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent); }
 .history-text-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .history-text-reader { min-width: 0; }
-.history-text-reader h3 { font-size: var(--text-label); margin: 0 0 8px; }
+.history-text-reader h3 { font-size: 14px; font-weight: 500; line-height: 20px; margin: 0 0 8px; }
 @media (max-width: 700px) { .history-text-columns { grid-template-columns: minmax(0, 1fr); } }
 .history-notice {
   display: flex;
@@ -348,11 +377,6 @@
 .history-actions .text-button {
   color: var(--muted-foreground, var(--color-text-muted));
 }
-.history-list {
-  border: 1px solid var(--border, var(--color-border));
-  border-radius: var(--radius, 10px);
-  background: var(--card, var(--color-surface));
-}
 .history-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -360,7 +384,7 @@
   gap: 12px;
   padding: 14px 16px;
 }
-.history-row + .history-row { border-top: 1px solid var(--border, var(--color-border)); }
+.history-row + .history-row { border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent); }
 .history-entry-content { min-width: 0; }
 .history-meta {
   display: flex;
@@ -382,7 +406,7 @@
   overflow-wrap: anywhere;
   margin: 0;
   line-height: 1.65;
-  font-size: var(--text-label);
+  font-size: 14px;
 }
 .history-row .history-delete {
   justify-content: center;
@@ -408,9 +432,6 @@
   min-height: 184px;
   margin-top: 20px;
   padding: 32px 20px;
-  border: 1px solid var(--border, var(--color-border));
-  border-radius: var(--radius, 10px);
-  background: var(--card, var(--color-surface));
   color: var(--muted-foreground, var(--color-text-muted));
 }
 .history-empty > .hint { margin: 0; }
@@ -426,46 +447,58 @@
   max-width: 460px;
   margin: auto;
 }
-.onboarding-heading { margin-bottom: 24px; }
+.onboarding-heading { margin-bottom: 32px; }
 .onboarding-page .onboarding-heading h1 {
+  min-height: 28px;
   margin: 20px 0 10px;
-  font-size: 24px;
-  letter-spacing: -0.6px;
-  line-height: 1.3;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.5;
 }
 .onboarding-heading > .hint { margin: 0; }
 .onboarding-content .onboarding-panel {
   display: grid;
   gap: 16px;
   margin: 0;
-  padding: 24px;
-  border: 1px solid var(--border, var(--color-border));
-  border-radius: var(--radius, 10px);
-  background: var(--card, var(--color-surface));
+  padding: 16px;
+}
+.onboarding-content .onboarding-panel.onboarding-auth {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .onboarding-panel .account-sign-in { gap: 14px; }
 .onboarding-page .onboarding-panel .row {
+  min-height: 0;
+  padding: 0;
+}
+.onboarding-panel .row > .row-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
-  min-height: 0;
-  padding: 0;
   gap: 8px;
 }
-.onboarding-panel .row-label { min-width: 0; font-size: var(--font-size-description); }
+.onboarding-panel .row-label { min-width: 0; }
 .onboarding-page .onboarding-panel .row-control { width: 100%; }
-.onboarding-panel p { margin: 0; line-height: 1.65; }
+.onboarding-panel .row-control > .control { flex-basis: 100%; }
+.onboarding-panel > label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.onboarding-panel > label > .control { font-weight: 400; }
+.onboarding-panel p { margin: 0; line-height: 1.625; }
 .onboarding-panel > .button {
   width: 100%;
   white-space: normal;
 }
 .onboarding-panel > .text-button { justify-content: center; }
-.onboarding-panel .onboarding-skip {
-  justify-self: stretch;
-  border-top: 1px solid var(--border, var(--color-border));
-  padding-top: 16px;
-  color: var(--muted-foreground, var(--color-text-muted));
-}
 .onboarding-note {
   display: flex;
   align-items: flex-start;
@@ -477,18 +510,25 @@
   align-items: center;
   gap: 8px;
   overflow-wrap: anywhere;
-  font-size: var(--text-label);
+  font-size: 14px;
 }
 
 @media (max-width: 700px) {
-  .account-page .account-card { padding: 16px; }
-  .history-row { padding: 12px; }
   .history-meta { column-gap: 10px; }
+}
+@media (max-width: 639px) {
+  .dictionary-entry,
+  .history-row,
+  .danger-zone > summary,
+  .account-page .danger-zone > section,
+  .mic-test,
+  .installation,
+  .service-actions { padding-inline: 12px; }
+  .onboarding.onboarding-page { padding-inline: 20px; }
 }
 @media (max-height: 600px) {
   .onboarding.onboarding-page { padding-block: 24px; }
   .onboarding-page .onboarding-content { margin-block: 0; }
   .onboarding-heading { margin-bottom: 20px; }
   .onboarding-page .onboarding-heading h1 { margin-top: 16px; }
-  .onboarding-content .onboarding-panel { padding: 20px; }
 }

@@ -68,10 +68,11 @@ h1 {
 }
 
 h2 {
-  font-size: var(--text-label);
+  font-size: 16px;
   line-height: 1.5;
-  font-weight: 500;
+  font-weight: 600;
   margin: 0 0 10px;
+  min-height: 28px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -86,44 +87,6 @@ fieldset {
 
 section {
   min-width: 0;
-}
-
-.settings-section {
-  margin: 0 0 var(--space-6);
-}
-
-.settings-section > h2 {
-  color: #cccccc;
-  padding: 0 var(--space-4);
-}
-
-.section-content {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--card) 45%, var(--background));
-  padding: 4px var(--space-4);
-  min-width: 0;
-  box-shadow: 0 1px 2px #0001;
-}
-
-.section-content > .row + .row {
-  border-top: 1px solid var(--border-subtle);
-}
-
-.section-content > .hint {
-  margin: 10px 0;
-}
-
-.section-content > .button {
-  margin: 8px 0;
-}
-
-.section-content > details + details {
-  border-top: 1px solid var(--border-subtle);
-}
-
-.section-content > details > summary {
-  padding: 5px 0;
 }
 
 h2 + .hint {

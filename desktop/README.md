@@ -56,8 +56,9 @@ The [desktop design system](../docs/desktop-design-system.md) records the pinned
 shared tokens, component rules and UX contracts.
 `Section` places its heading above a shared `.section-content` panel. Sidebar
 buttons remain available during settings operations. Managed-account visibility
-applies to navigation and the rendered pages. Global Settings search is omitted;
-long option lists and libraries retain their own filters.
+applies to navigation and the rendered pages. The sidebar search opens pages and
+stable sections with keyboard navigation. It respects managed-account visibility
+and retains text drafts. Long option lists and libraries keep their own filters.
 
 The Python engine remains the sole owner of configuration, secrets, audio,
 shortcuts and clipboard delivery. `clarify/desktop/qml_web_settings.py` defines a

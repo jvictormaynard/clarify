@@ -1,30 +1,86 @@
 .row {
+  display: block;
+  container: settings-row / inline-size;
+  min-width: 0;
+  padding: 12px var(--space-4);
+}
+
+.row > .row-layout {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 32px;
-  min-height: 60px;
-  padding: 12px 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 0;
 }
 
 .row-label {
-  flex: 1;
-  line-height: 1.5;
-  min-width: 110px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.row-title {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+  margin: 0;
+  color: var(--foreground);
+  font-size: 14px;
   font-weight: 500;
+  line-height: 20px;
 }
 
 .row-label p, .hint {
   font-size: var(--font-size-description);
   font-weight: 400;
   color: var(--muted-foreground);
-  line-height: 1.6;
+  line-height: 1.625;
   margin: var(--space-1) 0 0;
 }
 
-.row-control {
-  width: 48%;
+.row .row-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
   min-width: 0;
+}
+
+.row-control > .control,
+.row-control > [data-slot="combobox-trigger"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-control > .button,
+.row-control > [data-slot="button"] {
+  max-width: 100%;
+}
+
+.row-control > .inline-actions { margin: 0; }
+
+@container settings-row (min-width: 32rem) {
+  .row > .row-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, auto);
+    align-items: center;
+    gap: 32px;
+  }
+
+  .row .row-control {
+    width: auto;
+    justify-content: flex-end;
+  }
+
+  .row-control > .control,
+  .row-control > [data-slot="combobox-trigger"] {
+    flex: 0 1 224px;
+    width: 224px;
+  }
+}
+
+@media (max-width: 639px) {
+  .row { padding-inline: 12px; }
 }
 
 .prompt {
@@ -46,7 +102,7 @@
 
 details {
   font-size: var(--font-size-description);
-  color: var(--color-text-subtle);
+  color: var(--muted-foreground);
   line-height: 1.65;
   padding: 10px 0;
 }
@@ -90,7 +146,7 @@ details .row-label {
 
 .settings-error {
   padding: 12px;
-  border: 1px solid #edb2a530;
+  border: 1px solid color-mix(in srgb, var(--destructive) 20%, transparent);
   border-radius: var(--radius);
   background: var(--destructive-surface);
 }
@@ -134,13 +190,36 @@ details .row-label {
   min-height: 44px;
 }
 
+.auth-guest-action {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.auth-guest-action .auth-guest-separator {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+}
+
+.account-sign-in .auth-guest-button {
+  width: 100%;
+  min-height: 44px;
+  color: var(--foreground);
+}
+
 .account-sign-in {
   width: 100%;
 }
 
 .account-sign-in .row {
-  display: flex;
-  flex-direction: column;
+  display: block;
+}
+
+.account-sign-in .row > .row-layout {
+  display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
   gap: 8px;
@@ -175,4 +254,77 @@ details .row-label {
   to {
     transform: rotate(360deg);
   }
+}
+
+.settings-section {
+  margin: 0 0 32px;
+}
+
+.settings-section:last-child { margin-bottom: 0; }
+
+.settings-section > h2 {
+  color: var(--foreground);
+  padding: 0 var(--space-4);
+}
+
+.section-content {
+  position: relative;
+  overflow: visible;
+  color: var(--foreground);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--card) 40%, transparent);
+  min-width: 0;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+}
+
+.section-content > .row + .row {
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.section-content > .hint {
+  margin: 12px var(--space-4);
+}
+
+.section-content > .button,
+.section-content > .text-button {
+  margin: 12px var(--space-4);
+  max-width: calc(100% - 32px);
+}
+
+.section-content > [data-slot="textarea-control"],
+.section-content > progress {
+  width: calc(100% - 32px);
+  max-width: calc(100% - 32px);
+  margin-inline: var(--space-4);
+}
+
+.section-content > details {
+  padding: 14px var(--space-4);
+}
+
+.section-content > details + details {
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.section-content > details > summary {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.section-content > details > .row {
+  padding-inline: 0;
+}
+
+.section-content > details > summary + .row {
+  margin-top: 12px;
+}
+
+.section-content > div:not([class]) {
+  margin: 12px var(--space-4);
+}
+
+@media (max-width: 639px) {
+  .settings-section > h2 { padding-inline: 12px; }
 }

@@ -8,4 +8,7 @@ const DIALOG_POPUP_BASE_CLASS =
 
 const DIALOG_POPUP_CLASS = `dialog-glass ${DIALOG_POPUP_BASE_CLASS} rounded-2xl border`;
 
-export { DIALOG_BACKDROP_CLASS, DIALOG_POPUP_CLASS };
+const DIALOG_MOBILE_SHEET_CLASS =
+  "max-sm:max-w-none max-sm:rounded-none max-sm:border-x-0 max-sm:border-t max-sm:border-b-0 max-sm:opacity-[calc(1-min(var(--nested-dialogs),1))] max-sm:data-ending-style:translate-y-4 max-sm:data-starting-style:translate-y-4";
+
+export { DIALOG_BACKDROP_CLASS, DIALOG_MOBILE_SHEET_CLASS, DIALOG_POPUP_CLASS };

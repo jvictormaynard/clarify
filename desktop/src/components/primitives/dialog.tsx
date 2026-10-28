@@ -4,7 +4,7 @@ import { type ComponentProps, createContext, type ReactNode, use, useState } fro
 import { cn } from "../../lib/utils";
 import { t } from "../../i18n";
 import { Button } from "./button";
-import { DIALOG_BACKDROP_CLASS, DIALOG_POPUP_CLASS } from "./dialog-styles";
+import { DIALOG_BACKDROP_CLASS, DIALOG_MOBILE_SHEET_CLASS, DIALOG_POPUP_CLASS } from "./dialog-styles";
 
 const ControlledOpenContext = createContext<boolean | undefined>(undefined);
 
@@ -53,13 +53,13 @@ function DialogViewport({ className, ...props }: DialogPrimitive.Viewport.Props)
   );
 }
 
-function DialogPopup({ className, children, showCloseButton = true, ...props }: DialogPrimitive.Popup.Props & { showCloseButton?: boolean }) {
+function DialogPopup({ className, children, showCloseButton = true, bottomStickOnMobile = true, ...props }: DialogPrimitive.Popup.Props & { showCloseButton?: boolean; bottomStickOnMobile?: boolean }) {
   return (
     <DialogPortal>
       <DialogBackdrop />
-      <DialogViewport>
+      <DialogViewport className={bottomStickOnMobile ? "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12" : undefined}>
         <DialogPrimitive.Popup
-          className={cn(DIALOG_POPUP_CLASS, "row-start-2 max-h-full max-w-lg text-popover-foreground", className)}
+          className={cn(DIALOG_POPUP_CLASS, "row-start-2 max-h-full max-w-lg text-popover-foreground", bottomStickOnMobile && DIALOG_MOBILE_SHEET_CLASS, className)}
           data-slot="dialog-popup"
           render={renderRetainedPopup}
           {...props}
@@ -80,7 +80,7 @@ function DialogHeader({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 p-6 pe-12",
+        "flex flex-col gap-2 p-6 pe-12 max-sm:pb-4",
         className,
       )}
       data-slot="dialog-header"
@@ -99,7 +99,7 @@ function DialogFooter({
   return (
     <div
       className={cn(
-        "flex flex-wrap justify-end gap-2 px-6 rounded-b-[calc(var(--radius-2xl)-1px)]",
+        "flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end sm:rounded-b-[calc(var(--radius-2xl)-1px)]",
         variant === "default" && "border-t bg-muted/72 py-4",
         variant === "bare" && "py-4",
         className,

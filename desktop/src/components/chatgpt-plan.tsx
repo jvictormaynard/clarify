@@ -1,7 +1,11 @@
+import { ChevronDownIcon, LogOutIcon, RefreshCwIcon, UserPlusIcon } from "lucide-react";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import type { ChatGPTAction } from "../settings/bridge";
 import { Button, Confirm, Picker, Row } from "./ui";
+import { Button as ButtonControl } from "./primitives/button";
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "./primitives/menu";
+import { ProviderBrandIcon } from "./provider-brand-icon";
 
 export function ChatGPTPlan({ controller }: SettingsPageProps) {
   const { state, run, validateProvider, validatingProvider } = controller;
@@ -9,6 +13,8 @@ export function ChatGPTPlan({ controller }: SettingsPageProps) {
   const connected = account?.connected === true;
   const enabled = connected && account?.planEnabled === true;
   const busy = account?.busy === true;
+  const identityDisabled = state.providerBusy || state.routeModelStatus === "loading";
+  const needsReconnect = connected && (!enabled || Boolean(account?.error || state.providerError));
   const command = (action: ChatGPTAction, value = "") =>
     run("chatgptCommand", action, value);
   const options = (account?.accounts ?? []).map(item => ({ ...item,
@@ -38,20 +44,41 @@ export function ChatGPTPlan({ controller }: SettingsPageProps) {
           <Button onClick={() => void command("cancel")}>{t("Cancelar")}</Button>
         ) : (
           <>
-            <Button disabled={state.providerBusy || state.routeModelStatus === "loading"}
-              onClick={() => void command("sign_in")}>{t("Continuar com ChatGPT")}</Button>
+            {(!connected || needsReconnect) && (
+              <Button variant="primary" disabled={identityDisabled}
+                onClick={() => void command("sign_in")}>
+                <ProviderBrandIcon provider="ChatGPT" />
+                {t(connected ? "Reconectar ChatGPT" : "Continuar com ChatGPT")}
+              </Button>
+            )}
             {connected && <>
-              <Button disabled={state.providerBusy || state.routeModelStatus === "loading"}
-                onClick={() => void command("add_account")}>{t("Adicionar conta ChatGPT")}</Button>
-              <Button variant="text" disabled={state.providerBusy || state.routeModelStatus === "loading"}
-                onClick={() => void command("sign_out")}>{t("Sair do ChatGPT")}</Button>
+              <Button variant={needsReconnect ? "default" : "primary"}
+                onClick={() => void command("manage_usage")}>{t("Gerenciar uso no ChatGPT")}</Button>
+              <Menu>
+                <MenuTrigger disabled={state.providerBusy}
+                  render={<ButtonControl variant="outline" />}>
+                  {t("Opções da conta ChatGPT")}<ChevronDownIcon aria-hidden="true" />
+                </MenuTrigger>
+                <MenuPopup>
+                  <MenuItem disabled={identityDisabled} onClick={() => void command("add_account")}>
+                    <UserPlusIcon aria-hidden="true" />{t("Adicionar conta ChatGPT")}
+                  </MenuItem>
+                  <MenuItem disabled={identityDisabled} onClick={() => void command("sign_in")}>
+                    <RefreshCwIcon aria-hidden="true" />{t("Reconectar ChatGPT")}
+                  </MenuItem>
+                  {enabled && <MenuItem disabled={state.providerBusy || validatingProvider}
+                    onClick={() => void validateProvider()}>
+                    <RefreshCwIcon aria-hidden="true" />{state.providerBusy ? t("Carregando…") : t("Atualizar modelos ChatGPT")}
+                  </MenuItem>}
+                  <MenuSeparator />
+                  <MenuItem variant="destructive" disabled={identityDisabled} onClick={() => void command("sign_out")}>
+                    <LogOutIcon aria-hidden="true" />{t("Sair do ChatGPT")}
+                  </MenuItem>
+                </MenuPopup>
+              </Menu>
             </>}
-            {enabled && <Button disabled={state.providerBusy || validatingProvider}
-              onClick={() => void validateProvider()}>{state.providerBusy ? t("Carregando…") : t("Atualizar modelos ChatGPT")}</Button>}
           </>
         )}
-        <Button variant="text" disabled={busy}
-          onClick={() => void command("manage_usage")}>{t("Gerenciar uso no ChatGPT")}</Button>
       </div>
       <Confirm open={enabled && account?.planNoticeSeen === false}
         title={t("Você está usando seu plano ChatGPT")}

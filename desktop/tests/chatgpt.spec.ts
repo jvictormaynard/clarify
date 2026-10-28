@@ -10,6 +10,7 @@ type SessionObservation = {
   accountCount: number; refreshPending: boolean; planNoticeSeen: boolean;
 };
 let sessionObservations: SessionObservation[] = [];
+let commands: { method: string; args?: unknown[] }[] = [];
 
 // Keep the real saved-registration and refresh behavior behind offline OAuth seams.
 const reconnectFixture = String.raw`
@@ -69,12 +70,44 @@ with TemporaryDirectory() as directory:
     raise SystemExit(web_settings_fixture.main())
 `;
 
+const recoveryFixture = String.raw`
+import sys
+import threading
+from pathlib import Path
+
+fixture = Path(sys.argv[1])
+sys.path[:0] = [str(fixture.parent), str(fixture.parent.parent)]
+from chatgpt_auth import ChatGPTPlanError
+import test_chatgpt_settings
+import web_settings_fixture
+
+class RecoverySession(test_chatgpt_settings.FakeChatGPTSession):
+    def __init__(self):
+        super().__init__()
+        super().sign_in(open_browser=lambda _: None)
+        self.acknowledge_plan_notice()
+        self.wait = threading.Event()
+        self.attempts = 0
+
+    def sign_in(self, **kwargs):
+        self.attempts += 1
+        if self.attempts == 1:
+            raise ChatGPTPlanError("Synthetic network failure", code="network")
+        super().sign_in(**kwargs)
+
+test_chatgpt_settings.FakeChatGPTSession = RecoverySession
+raise SystemExit(web_settings_fixture.main())
+`;
+
 test.beforeEach(async ({ page }, info) => {
   if (!process.env.CLARIFY_TEST_PYTHON || !process.env.CLARIFY_TEST_FIXTURE)
     throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
   sessionObservations = [];
+  commands = [];
   const fixture = info.title.includes("reauthorizes")
     ? ["-c", reconnectFixture, process.env.CLARIFY_TEST_FIXTURE]
+    : info.title.includes("failed reconnection")
+    ? ["-c", recoveryFixture, process.env.CLARIFY_TEST_FIXTURE]
     : [process.env.CLARIFY_TEST_FIXTURE];
   child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", ...fixture,
     "--chatgpt", ...(info.title.includes("permission") ? ["--chatgpt-no-plan"] : []),
@@ -92,6 +125,7 @@ test.beforeEach(async ({ page }, info) => {
   });
   await page.route("**/__test_rpc", async route => {
     const key = ++id;
+    commands.push(route.request().postDataJSON());
     const result = new Promise(resolve => pending.set(key, resolve));
     child.stdin.write(JSON.stringify({ id: key, ...route.request().postDataJSON() }) + "\n");
     await route.fulfill({ json: await result });
@@ -126,14 +160,52 @@ async function selectChatGPT(page: Page) {
 test("ChatGPT connects without API keys, refreshes account catalogs and persists notice acknowledgement", async ({ page }, info) => {
   await selectChatGPT(page);
   await expect(page.getByText(/Audio transcription is excluded/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "ChatGPT account options", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Manage usage in ChatGPT", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Continue with ChatGPT", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("You're using your ChatGPT plan");
   await page.getByRole("dialog").getByRole("button", { name: "Got it", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeHidden();
   await expect(page.getByRole("combobox", { name: "ChatGPT account", exact: true })).toContainText("Personal");
+  await expect(page.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toHaveCount(0);
   expect((await snapshot(page)).dirty).toBe(false);
   await page.getByRole("button", { name: "Manage usage in ChatGPT", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Add ChatGPT account", exact: true })).toBeEnabled();
+  const menu = page.getByRole("button", { name: "ChatGPT account options", exact: true });
+  await menu.focus();
+  await menu.press("Enter");
+  await expect(page.getByRole("menuitem", { name: "Add ChatGPT account", exact: true })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Reconnect ChatGPT", exact: true })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Refresh ChatGPT models", exact: true })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Sign out of ChatGPT", exact: true })).toBeFocused();
+  await expect(page.getByRole("menu").getByRole("separator")).toHaveCount(1);
+  await page.screenshot({ path: info.outputPath("chatgpt-account-menu-synthetic.png"), fullPage: true });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(menu).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await menu.click();
+  const popup = page.getByRole("menu");
+  await expect(popup).toBeVisible();
+  const bounds = await popup.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: info.outputPath("chatgpt-account-menu-narrow-synthetic.png"), fullPage: true });
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: info.outputPath("chatgpt-connected-narrow-synthetic.png"), fullPage: true });
+  await page.setViewportSize({ width: 1040, height: 760 });
+  await menu.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Refresh ChatGPT models", exact: true })).toBeFocused();
+  const validations = commands.filter(command => command.method === "validateProvider").length;
+  await page.keyboard.press("Enter");
+  await expect.poll(() => commands.filter(command => command.method === "validateProvider").length).toBe(validations + 1);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(menu).toBeEnabled();
   await page.getByRole("button", { name: "Text", exact: true }).click();
   await page.getByRole("combobox", { name: "Service", exact: true }).click();
   await page.getByRole("option", { name: "ChatGPT (subscription)", exact: true }).click();
@@ -145,7 +217,8 @@ test("ChatGPT connects without API keys, refreshes account catalogs and persists
   await expect(page.getByText("Custom model and endpoint", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("chatgpt-text-synthetic.png"), fullPage: true });
   await page.getByRole("button", { name: "Models and services", exact: true }).click();
-  await page.getByRole("button", { name: "Add ChatGPT account", exact: true }).click();
+  await menu.click();
+  await page.getByRole("menuitem", { name: "Add ChatGPT account", exact: true }).click();
   await expect(page.getByRole("combobox", { name: "ChatGPT account", exact: true })).toContainText("Second");
   await page.getByRole("combobox", { name: "ChatGPT account", exact: true }).click();
   await page.getByRole("option", { name: "demo@example.test · Personal", exact: true }).click();
@@ -160,7 +233,8 @@ test("ChatGPT connects without API keys, refreshes account catalogs and persists
   await page.getByRole("option", { name: "First account model", exact: true }).click();
   expect((await snapshot(page)).routeModelId).toBe("personal-z");
   await page.getByRole("button", { name: "Models and services", exact: true }).click();
-  await page.getByRole("button", { name: "Sign out of ChatGPT", exact: true }).click();
+  await menu.click();
+  await page.getByRole("menuitem", { name: "Sign out of ChatGPT", exact: true }).click();
   await expect(page.getByText("ChatGPT not connected", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Text", exact: true }).click();
   expect((await snapshot(page)).routeModelOptions).toEqual([]);
@@ -185,13 +259,17 @@ test("ChatGPT reauthorizes a connected saved account with the same client after 
   const before = (await snapshot(page)).chatgptState;
   expect(before).toMatchObject({ connected: true, planEnabled: true, planNoticeSeen: true, accountId: saved.accountId });
   await expect(page.getByRole("combobox", { name: "ChatGPT account", exact: true })).toBeEnabled();
-  for (const name of ["Add ChatGPT account", "Sign out of ChatGPT", "Refresh ChatGPT models", "Manage usage in ChatGPT"])
-    await expect(page.getByRole("button", { name, exact: true })).toBeEnabled();
-  const reconnect = page.getByRole("button", { name: "Continue with ChatGPT", exact: true });
+  await expect(page.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toHaveCount(0);
+  const menu = page.getByRole("button", { name: "ChatGPT account options", exact: true });
+  await expect(page.getByRole("button", { name: "Manage usage in ChatGPT", exact: true })).toBeEnabled();
+  await menu.click();
+  for (const name of ["Add ChatGPT account", "Sign out of ChatGPT", "Refresh ChatGPT models"])
+    await expect(page.getByRole("menuitem", { name, exact: true })).toBeEnabled();
+  const reconnect = page.getByRole("menuitem", { name: "Reconnect ChatGPT", exact: true });
   await expect(reconnect).toBeEnabled();
   await reconnect.click();
   await expect.poll(() => sessionObservations.length).toBe(2);
-  await expect(reconnect).toBeEnabled();
+  await expect(menu).toBeEnabled();
   expect(sessionObservations[1]).toEqual({
     clientId: saved.clientId, authorizationClientId: saved.clientId, accountId: saved.accountId,
     accountCount: 1, refreshPending: false, planNoticeSeen: true,
@@ -208,7 +286,12 @@ test("ChatGPT identity without plan permission does not enable text models", asy
   await selectChatGPT(page);
   await expect(page.getByText("Account connected. ChatGPT plan use is not allowed.", { exact: true })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Refresh ChatGPT models", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reconnect ChatGPT", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "ChatGPT account options", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Reconnect ChatGPT", exact: true })).toBeEnabled();
+  await expect(page.getByRole("menuitem", { name: "Refresh ChatGPT models", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  expect((await snapshot(page)).chatgptState.planEnabled).toBe(false);
   await page.getByRole("button", { name: "Text", exact: true }).click();
   await page.getByRole("combobox", { name: "Service", exact: true }).click();
   await page.getByRole("option", { name: "ChatGPT (subscription)", exact: true }).click();
@@ -218,9 +301,35 @@ test("ChatGPT identity without plan permission does not enable text models", asy
 test("ChatGPT sign-in cancellation leaves the account disconnected", async ({ page }) => {
   await selectChatGPT(page);
   await page.getByRole("button", { name: "Continue with ChatGPT", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "ChatGPT account options", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toBeVisible();
   expect((await snapshot(page)).chatgptState.connected).toBe(false);
+});
+
+test("ChatGPT failed reconnection and cancellation preserve the saved account", async ({ page }, info) => {
+  await selectChatGPT(page);
+  const before = (await snapshot(page)).chatgptState;
+  await page.getByRole("button", { name: "ChatGPT account options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Reconnect ChatGPT", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Could not connect to ChatGPT. Check your connection and try again.");
+  const reconnect = page.getByRole("button", { name: "Reconnect ChatGPT", exact: true });
+  await expect(reconnect).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("chatgpt-reconnect-error-synthetic.png"), fullPage: true });
+  await reconnect.click();
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeEnabled();
+  await expect(page.getByRole("combobox", { name: "ChatGPT account", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "ChatGPT account options", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "ChatGPT account options", exact: true })).toBeEnabled();
+  await expect(page.getByRole("combobox", { name: "ChatGPT account", exact: true })).toBeEnabled();
+  expect((await snapshot(page)).chatgptState).toMatchObject({
+    connected: true, planEnabled: true, busy: false,
+    accountId: before.accountId, accounts: before.accounts, planNoticeSeen: true,
+  });
 });
 
 test("Clarify account keeps personal provider controls hidden", async ({ page }) => {
