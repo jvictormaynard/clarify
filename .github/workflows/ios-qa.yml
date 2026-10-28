@@ -58,7 +58,7 @@ on:
       mode:
         description: Separate validation, unsigned Device archive and experimental export proof
         type: choice
-        options: [validate, archive, sign-export-proof, preflight, upload, availability]
+        options: [validate, archive, sign-export-proof, preflight, upload, availability, inspect-archive43]
         default: validate
 
 permissions:
@@ -441,3 +441,109 @@ jobs:
         if: always()
         working-directory: trusted
         run: python -m scripts.testflight_qa publication-cleanup
+
+  archive43_inspection_diagnostic:
+    name: Secret-free archive43 pre-key inspection
+    if: >-
+      github.repository == 'jvictormaynard/clarify' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/codex/ios-archive43-prekey-diagnostic-20261028' &&
+      inputs.mode == 'inspect-archive43'
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Check out immutable MAIN inspection controls
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: be4796c7c771af98a5782acb2eef9a5d4d50e3c4
+          path: trusted
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+      - name: Install frozen MAIN parser without scripts
+        working-directory: trusted/desktop
+        run: npm ci --ignore-scripts --no-fund
+      - name: Inspect existing archive and stop before credentials
+        working-directory: trusted
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json, os, subprocess, sys, traceback
+          from scripts import testflight_qa as q
+          a=q.device_archive
+          root=Path.cwd().resolve()
+          out=root.parent/'archive43-inspection'
+          out.mkdir(exist_ok=False)
+          main='be4796c7c771af98a5782acb2eef9a5d4d50e3c4'
+          source='1f83734940082f19b5f2d4f38d2ce3ba268f6ec4'
+          state=dict(schema=1,diagnostic_only=True,delivery_eligible=False,apple_upload=False,
+                     controller_sha=os.environ['GITHUB_SHA'],run_id=os.environ['GITHUB_RUN_ID'],
+                     run_attempt=os.environ['GITHUB_RUN_ATTEMPT'],trusted_sha=main,source_sha=source,
+                     producer_run_id=40640660173,archive_artifact_id=12795557560,
+                     stopped_before_credentials=False,credential_commands_executed=0,
+                     phase='authenticate-original-producer',safe_frames=[])
+          def stop_before_credentials(command, *, cwd, env):
+              if command[-1]=='install':
+                  state['stopped_before_credentials']=True
+                  raise RuntimeError('Diagnostic stop before credentials')
+              if command[-1]=='clean' and state['stopped_before_credentials']:
+                  return subprocess.CompletedProcess(command,0,b'',b'')
+              raise AssertionError('Diagnostic refuses every other command')
+          try:
+              assert sys.platform=='darwin'
+              assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==main
+              api=q.ArchiveGitHub(os.environ['GH_TOKEN'])
+              run=api.run(40640660173,1)
+              assert run['head_sha']==main and run['status']=='completed' and run['conclusion']=='success'
+              # This context authenticates the ORIGINAL MAIN producer. It does not assert
+              # that this separate diagnostic controller is MAIN or approval authority.
+              context=dict(repository=q.REPOSITORY,event='workflow_dispatch',ref='refs/heads/main',
+                           workflow_ref=q.REPOSITORY+'/'+q.QA_PATH+'@refs/heads/main',workflow_sha=main,
+                           checkout_sha=main,sha=main,actor=run['actor']['login'],
+                           triggering_actor=run['triggering_actor']['login'],run_id=40640660173,
+                           run_attempt=1,mode='archive')
+              candidate=dict(schema=1,pr=179,source_sha=source,base_sha=main,app_id=q.APP_ID,
+                             bundle_id=q.BUNDLE,version='0.12.0',build='43',
+                             tag='ios/pr-179/v0.12.0-build43',relay_host=None)
+              inputs=dict(source_sha=source,base_sha=main,trusted_sha=main,candidate=candidate,
+                          validation_run_id=40637201970,validation_run_attempt=1,
+                          producer_run_id=40640660173,producer_run_attempt=1)
+              policy=q.archive_policy(api,inputs,context,q.observe_archive_toolchain())
+              state['phase']='inspect-frozen-archive-before-keys'
+              a.sign_export(api=api,policy=policy,artifact_id=12795557560,
+                            runner_temp=Path(os.environ['RUNNER_TEMP']),trusted_root=root,
+                            runner=stop_before_credentials)
+          except BaseException as error:
+              allowed={'ArchiveError','ReleaseError','ValueError','OSError','KeyError','TypeError','RuntimeError','AssertionError'}
+              state['error_type']=type(error).__name__ if type(error).__name__ in allowed else 'validation-error'
+              # Only trusted source locations, functions and line numbers. No exception
+              # text, arguments, locals, candidate filenames or captured command streams.
+              for frame in traceback.extract_tb(error.__traceback__):
+                  path=Path(frame.filename).resolve()
+                  if path in {root/'scripts/testflight_qa.py',root/'scripts/qa_device_archive.py'}:
+                      state['safe_frames'].append(dict(file=path.relative_to(root).as_posix(),
+                                                      function=frame.name,line=frame.lineno))
+              state['result']='stopped-before-credentials' if state['stopped_before_credentials'] else 'pre-key-validation-failed'
+              (out/'diagnostic-result.json').write_text(json.dumps(state,sort_keys=True)+'\n',encoding='utf-8')
+              print(json.dumps(state,sort_keys=True))
+              sys.exit(0 if state['stopped_before_credentials'] else 1)
+          raise SystemExit('Diagnostic did not reach its mandatory stop')
+          PY
+      - name: Retain inert pre-key diagnostic
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: clarify-archive43-inspection-${{ github.run_id }}-${{ github.run_attempt }}
+          path: archive43-inspection/diagnostic-result.json
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 7
