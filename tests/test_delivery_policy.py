@@ -265,6 +265,98 @@ class DeliveryPolicyTests(unittest.TestCase):
             selection(),
         )
 
+    def test_internal_qa_controls_use_repository_policy_checks(self):
+        for path in (
+            ".github/workflows/ios-qa.yml",
+            "scripts/testflight_qa.py",
+            "scripts/qa_device_archive.py",
+            "tests/test_testflight_qa.py",
+            "tests/test_qa_device_archive.py",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(policy.documentation(path))
+                self.assertEqual(affected_components([path]), selection())
+
+    def test_qa_controls_do_not_hide_native_build_or_unknown_inputs(self):
+        for path, expected in (
+            (
+                "mobile/native/keyboard/KeyboardViewController.swift",
+                selection("mobile", "ios"),
+            ),
+            ("scripts/build.ps1", selection("desktop", "settings", "package")),
+            ("scripts/new_qa_policy.py", selection(*COMPONENTS)),
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(
+                    affected_components(["scripts/testflight_qa.py", path]), expected
+                )
+
+    def test_extra_policy_oracles_are_selected_only_for_their_inputs(self):
+        for path, expected in (
+            ("docs/development.md", False),
+            ("AGENTS.md", False),
+            ("mobile/native/keyboard/KeyboardViewController.swift", False),
+            ("mobile/modules/clarify-core/ios/SharedState.swift", False),
+            ("desktop/src/App.tsx", False),
+            ("tests/test_clipboard.py", False),
+            (".github/workflows/ios-qa.yml", True),
+            ("scripts/testflight_qa.py", True),
+            ("scripts/qa_device_archive.py", True),
+            ("tests/test_testflight_qa.py", True),
+            ("tests/test_qa_device_archive.py", True),
+            ("scripts/delivery_policy.py", True),
+            ("tests/test_delivery_policy.py", True),
+            (".github/workflows/ci.yml", True),
+            ("scripts/trusted_ci.py", True),
+            ("tests/test_trusted_ci.py", True),
+            ("scripts/run_tests.py", True),
+            ("scripts/release_delivery.py", True),
+            ("tests/test_release_delivery.py", True),
+            ("scripts/sync_locales.py", True),
+            ("mobile/scripts/verify-ios-ipa.py", True),
+            ("mobile/scripts/publish-testflight.cjs", True),
+            ("mobile/scripts/ios-signing.py", True),
+            ("tests/test_ios_qa_helpers.py", True),
+            ("mobile/tests/testflight-qa.test.ts", True),
+            ("desktop/package-lock.json", True),
+            ("requirements-lock-linux.txt", True),
+            ("mobile/package-lock.json", True),
+            ("new-component/runtime.toml", True),
+        ):
+            with self.subTest(path=path):
+                with patch.object(policy, "changed_paths", return_value=[path]) as diff:
+                    _, extra = policy.event_validation(
+                        Path("."), "push", {"before": "a" * 40}, "b" * 40
+                    )
+                self.assertIs(extra, expected)
+                diff.assert_called_once_with(Path("."), "a" * 40, "b" * 40)
+
+    def test_manual_new_branch_and_combined_full_selection_include_policy_oracles(self):
+        for event, payload in (
+            ("workflow_dispatch", {}),
+            ("push", {"before": "0" * 40}),
+        ):
+            with self.subTest(event=event):
+                self.assertIs(
+                    policy.event_validation(Path("."), event, payload, "a" * 40)[1],
+                    True,
+                )
+        with patch.object(
+            policy,
+            "changed_paths",
+            return_value=[
+                "installer/Clarify.wxs",
+                "server/start.py",
+                "mobile/app.json",
+                "dependency-audit.json",
+            ],
+        ):
+            selected, extra = policy.event_validation(
+                Path("."), "push", {"before": "a" * 40}, "b" * 40
+            )
+        self.assertEqual(selected, selection(*COMPONENTS))
+        self.assertTrue(extra)
+
     def test_server_runtime_and_docker_inputs_select_server(self):
         for path in (
             "server/cloud/service/api.py",
@@ -618,7 +710,7 @@ class ReleaseIntentSelectionTests(unittest.TestCase):
             selection("server", "settings"),
         )
 
-    def test_selector_cli_writes_all_eight_output_flags(self):
+    def test_selector_cli_writes_eight_components_and_policy_metadata(self):
         (self.root / "desktop/src").mkdir(parents=True)
         (self.root / "desktop/src/app.tsx").write_text("// fixture\n", encoding="utf-8")
         head = self.commit()
@@ -649,8 +741,55 @@ class ReleaseIntentSelectionTests(unittest.TestCase):
                     f"{key}={str(value).lower()}"
                     for key, value in selection("settings").items()
                 ],
+                "qa_policy=false",
             ],
         )
+
+    def test_policy_metadata_keeps_qa_rename_sources_from_the_complete_range(self):
+        source = self.root / "scripts/testflight_qa.py"
+        source.parent.mkdir()
+        source.write_text("# synthetic QA control\n", encoding="utf-8")
+        base = self.commit()
+        (self.root / "docs").mkdir()
+        self.git("mv", "scripts/testflight_qa.py", "docs/retired-qa.md")
+        self.commit()
+        (self.root / "mobile/native").mkdir(parents=True)
+        (self.root / "mobile/native/Keyboard.swift").write_text(
+            "// synthetic native input\n", encoding="utf-8"
+        )
+        head = self.commit()
+        selected, extra = policy.event_validation(
+            self.root, "pull_request", {"pull_request": {"base": {"sha": base}}}, head
+        )
+        self.assertEqual(selected, selection("mobile", "ios"))
+        self.assertTrue(extra)
+
+    def test_invalid_cli_range_cannot_emit_policy_skip_metadata(self):
+        event_path = self.root / "event.json"
+        output_path = self.root / "outputs"
+        for event in ({}, {"before": "main"}, {"before": "f" * 40}):
+            event_path.write_text(json.dumps(event), encoding="utf-8")
+            with self.subTest(event=event):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(Path(policy.__file__)),
+                        "--repo",
+                        str(self.root),
+                    ],
+                    env={
+                        **self.env,
+                        "GITHUB_EVENT_PATH": str(event_path),
+                        "GITHUB_OUTPUT": str(output_path),
+                        "GITHUB_EVENT_NAME": "push",
+                        "GITHUB_SHA": self.base,
+                    },
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertFalse(output_path.exists())
 
 
 def ci_needs(*selected):
@@ -658,7 +797,10 @@ def ci_needs(*selected):
     needs = {
         "components": {
             "result": "success",
-            "outputs": {key: str(value).lower() for key, value in flags.items()},
+            "outputs": {
+                **{key: str(value).lower() for key, value in flags.items()},
+                "qa_policy": "false",
+            },
         },
         "repository": {"result": "success"},
     }
@@ -722,7 +864,7 @@ class CiResultTests(unittest.TestCase):
                         policy.validate_ci_results(needs)
 
     def test_flags_must_all_be_present_and_use_exact_boolean_strings(self):
-        for component in COMPONENTS:
+        for component in (*COMPONENTS, "qa_policy"):
             with self.subTest(missing=component):
                 needs = ci_needs()
                 del needs["components"]["outputs"][component]

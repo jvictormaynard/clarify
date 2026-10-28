@@ -71,7 +71,7 @@ cd clarify
 .\scripts\setup.ps1 -Dev
 .\scripts\build-settings.ps1
 $env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe scripts/run_tests.py discover -s tests -v
 .\.venv\Scripts\python.exe clarify\desktop\qml_app.py
 ```
 
@@ -133,8 +133,13 @@ PR workflow. Maintainers may need to approve a first-time fork's workflow run.
 For Python changes, use the configured interpreter:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe scripts/run_tests.py discover -s tests -v
 ```
+
+The runner creates a temporary process profile before test discovery, removes
+inherited provider credentials and sets `CLARIFY_SKIP_DOTENV=1`. It accepts the
+same arguments as `unittest`; no arguments run full discovery. See the
+[focused example](docs/development.md#checks) for a single test file.
 
 The [CI policy](docs/ci-delivery.md) defines the checks and branch-protection
 migration. Unknown inputs select full validation. Manual CI runs remain available

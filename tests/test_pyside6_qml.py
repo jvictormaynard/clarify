@@ -14,6 +14,16 @@ try:
     from PySide6.QtGui import QIcon
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtWidgets import QApplication
+except (ImportError, ModuleNotFoundError):
+    PYSIDE6_AVAILABLE = False
+    QObject = object
+
+    def Signal(*args, **kwargs):
+        return None
+else:
+    PYSIDE6_AVAILABLE = True
+
+if PYSIDE6_AVAILABLE:
     from clarify.desktop import qml_app
     from clarify.desktop.qml_app import (
         ShellStartResult,
@@ -38,14 +48,6 @@ try:
         _pillow_data_url,
     )
     from clarify.desktop.qml_settings import QmlSettingsController
-except (ImportError, ModuleNotFoundError):
-    PYSIDE6_AVAILABLE = False
-    QObject = object
-
-    def Signal(*args, **kwargs):
-        return None
-else:
-    PYSIDE6_AVAILABLE = True
 
 
 ROOT = Path(__file__).resolve().parents[1]

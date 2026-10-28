@@ -53,6 +53,32 @@ class GitFixture:
 
 
 class TrustedPlanTests(unittest.TestCase):
+    def test_qa_control_changes_keep_native_qa_without_unrelated_builds(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repo = GitFixture(Path(temp))
+            base = repo.commit({"README.md": "Before"})
+            source = repo.commit(
+                {
+                    ".github/workflows/ios-qa.yml": "workflow fixture",
+                    "scripts/testflight_qa.py": "policy fixture",
+                    "scripts/qa_device_archive.py": "archive fixture",
+                    "tests/test_testflight_qa.py": "policy oracle fixture",
+                    "tests/test_qa_device_archive.py": "archive oracle fixture",
+                }
+            )
+            self.assertEqual(
+                qa.validation_plan(repo.root, base, source)["selected_keys"],
+                [
+                    "selection",
+                    "repository",
+                    "mobile",
+                    "ios_native",
+                    "ios_build",
+                    "ios_aggregate",
+                    "ci_required",
+                ],
+            )
+
     def test_docs_plan_still_requires_both_native_executors(self):
         with tempfile.TemporaryDirectory() as temp:
             repo = GitFixture(Path(temp))
@@ -145,8 +171,17 @@ class TrustedPlanTests(unittest.TestCase):
         needs["components"]["outputs"] = {k: str(v).lower() for k, v in flags.items()}
         job = object.__new__(qa.Job)
         job.plan = {"components": flags}
-        job.env = {"CI_NEEDS": qa.canonical_json(needs)}
-        job.results()
+        for required in (False, True):
+            job.qa_policy = required
+            needs["components"]["outputs"]["qa_policy"] = str(required).lower()
+            job.env = {"CI_NEEDS": qa.canonical_json(needs)}
+            job.results()
+            for invalid in (None, "invalid", str(not required).lower()):
+                needs["components"]["outputs"]["qa_policy"] = invalid
+                job.env = {"CI_NEEDS": qa.canonical_json(needs)}
+                with self.assertRaises(ValueError):
+                    job.results()
+        needs["components"]["outputs"]["qa_policy"] = "true"
         needs["components"]["outputs"]["ios"] = "false"
         job.env["CI_NEEDS"] = qa.canonical_json(needs)
         with self.assertRaises(ValueError):
@@ -156,6 +191,93 @@ class TrustedPlanTests(unittest.TestCase):
         job.env["CI_NEEDS"] = qa.canonical_json(needs)
         with self.assertRaises(ValueError):
             job.results()
+
+
+class RepositoryRecipeTests(unittest.TestCase):
+    def test_full_python_suite_uses_the_isolated_runner_with_main_oracles(self):
+        with tempfile.TemporaryDirectory() as temp:
+            job = object.__new__(qa.Job)
+            job.execution = Path(temp) / "execution"
+            job.trusted = Path(temp) / "trusted"
+            qml = job.execution / "clarify/desktop/qml"
+            qml.mkdir(parents=True)
+            (qml / "Main.qml").write_text("// synthetic asset", encoding="utf-8")
+            with (
+                patch.object(job, "runtime_python", return_value="runtime-python"),
+                patch.object(job, "command") as command,
+            ):
+                job.python_checks()
+            command.assert_any_call(
+                [
+                    "runtime-python",
+                    "scripts/run_tests.py",
+                    "discover",
+                    "-s",
+                    "tests",
+                    "-v",
+                ],
+                extra_env={"CLARIFY_TRUSTED_CI_TEST_ROOT": str(job.trusted)},
+            )
+
+    def test_policy_oracles_use_main_locked_yaml_and_run_in_repository_checks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            job = object.__new__(qa.Job)
+            job.component = "repository"
+            job.execution = Path(temp) / "execution"
+            job.trusted = Path(temp) / "trusted"
+            job.python = "controller-python"
+            job.node = Path(temp) / "pinned-node"
+            job.qa_policy = True
+            with (
+                patch.object(job, "command") as command,
+                patch.object(job, "npm") as npm,
+            ):
+                job.run_recipe("repository")
+            npm.assert_called_once_with(
+                "ci", "--ignore-scripts", "--no-fund", cwd=job.trusted / "desktop"
+            )
+            tests = {
+                call.args[0][-2]: call.kwargs.get("extra_env", {})
+                for call in command.call_args_list
+                if "unittest" in call.args[0]
+            }
+            self.assertEqual(
+                set(tests),
+                {
+                    "test_delivery_policy.py",
+                    "test_release_delivery.py",
+                    "test_trusted_ci.py",
+                    "test_testflight_qa.py",
+                    "test_qa_device_archive.py",
+                },
+            )
+            self.assertEqual(
+                tests["test_testflight_qa.py"]["CLARIFY_QA_TEST_NODE"], str(job.node)
+            )
+            self.assertEqual(
+                tests["test_testflight_qa.py"]["CLARIFY_QA_TEST_YAML_MODULE"],
+                str(job.trusted / "desktop/node_modules/yaml"),
+            )
+
+            job.qa_policy = False
+            with (
+                patch.object(job, "command") as command,
+                patch.object(job, "npm") as npm,
+            ):
+                job.run_recipe("repository")
+            npm.assert_not_called()
+            self.assertEqual(
+                {
+                    call.args[0][-2]
+                    for call in command.call_args_list
+                    if "unittest" in call.args[0]
+                },
+                {
+                    "test_delivery_policy.py",
+                    "test_release_delivery.py",
+                    "test_trusted_ci.py",
+                },
+            )
 
 
 class InputBoundaryTests(unittest.TestCase):

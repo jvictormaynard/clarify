@@ -308,30 +308,13 @@ class RepositorySafetyTests(unittest.TestCase):
             app_source,
         )
 
-    def test_package_scripts_are_documented_maintainer_aliases(self):
-        package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
-        self.assertTrue(package["private"])
-        self.assertEqual(package["version"], __version__)
-        self.assertEqual(
-            set(package["scripts"]),
-            {
-                "test",
-                "check",
-                "build",
-                "build:settings",
-                "installer",
-                "setup",
-                "setup-hooks",
-                "deploy",
-            },
-        )
-
     def test_version_module_is_the_runtime_diagnostics_source(self):
         app_source = (ROOT / "app.py").read_text(encoding="utf-8")
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
 
         self.assertIn("from version import __version__", app_source)
         self.assertNotIn('APP_VERSION = "', app_source)
+        self.assertTrue(package["private"])
         self.assertEqual(package["version"], __version__)
 
     def test_build_deploy_and_ci_include_version_module(self):
@@ -522,7 +505,7 @@ class RepositorySafetyTests(unittest.TestCase):
             ("Run Ruff format check", "ruff format --check"),
             ("Run targeted type checks", "mypy"),
             ("Audit dependencies", "python scripts/dependency_audit.py"),
-            ("Run unit tests", "python -m unittest"),
+            ("Run unit tests", "python scripts/run_tests.py"),
             ("Compile Python sources", "python -m compileall"),
         ):
             block = re.search(

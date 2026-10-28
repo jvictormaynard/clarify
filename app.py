@@ -210,6 +210,8 @@ _RUN_SECRET_STORE_SELF_TEST = (
 
 
 def load_env():
+    if os.environ.get("CLARIFY_SKIP_DOTENV") == "1":
+        return
     env_path = Path(__file__).parent / ".env"
     if env_path.exists():
         for line in env_path.read_text().splitlines():

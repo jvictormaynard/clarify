@@ -1,18 +1,25 @@
 # Clarify for iOS — MVP
 
-## Planned release — 0.11.0 (38)
+For current commands, use [Development](#development) and
+[Direct TestFlight delivery](#direct-testflight-delivery). Versioned and dated
+sections retain candidate plans and delivery evidence from that work. They do
+not identify the current source version or current Apple availability. Check
+`app.json`, the selected source SHA and Apple records for a new delivery.
+
+## Release planning record — 0.11.0 (38)
 
 This candidate combines Google, Microsoft and GitHub sign-in with the complete
 source delivered as TestFlight 0.10.4 (37). Email-code login remains available.
 Account shows funded weekly usage, pending reservations and the next reset in
 the device's time zone. Processing requires an available funded allocation.
 
-The planned app, keyboard and activity extension version is 0.11.0 (38).
-The checked-in Expo identity remains 0.10.4 (37) until the separate mobile
-release-preparation PR selects the next build. Recheck Apple builds, pending
-submissions and other reservations before that PR. The last verified delivery
-is 0.10.4 (37), valid and available to the existing internal group. Delivery
-requires a verified signed IPA, upload, Apple processing and group availability.
+The planned app, keyboard and activity extension version was 0.11.0 (38).
+At that planning point, the checked-in Expo identity was 0.10.4 (37), pending a
+separate mobile release-preparation PR. Recheck Apple builds, pending
+submissions and other reservations before a new preparation PR. The delivery
+record used for that plan was 0.10.4 (37), valid and available to the existing
+internal group. Delivery requires a verified signed IPA, upload, Apple processing
+and group availability.
 Distribution is limited to internal TestFlight; no App Store submission is
 part of this release.
 
@@ -131,13 +138,10 @@ and dictionary are active. Whisper receives plain enabled spellings, bounded to
 896 characters without splitting a term. Saved aliases, pronunciations and
 enabled flags are unchanged; rewriting keeps its vocabulary context. Account
 processing uses the same correction already deployed to the Clarify service.
-Native tests, live synthetic-speech acceptance and signed TestFlight delivery
-are required before reporting this candidate as available. Live acceptance is
-explicitly enabled with the workflow's `short_dictation_acceptance` input and a
-temporary `CLARIFY_SHORT_DICTATION_ACCEPTANCE` secret. It runs the production
-Swift client with synthetic M4A clips, then checks dictionary and history
-persistence. Remove the temporary secret after the run. It does not prove
-physical microphone capture or insertion in another app on the user's iPhone.
+That candidate required native tests, a live synthetic-speech provider check and
+signed TestFlight delivery. The retained `short_dictation_acceptance` workflow
+input runs the [direct-provider harness](#short-speech-provider-harness). Its
+result does not establish acceptance of the current account processing path.
 
 Version **0.7.2 (25)** improves touch coverage between keys, sliding to adjacent
 keys, fast overlapping taps and automatic capitalization after `.?!`. Local
@@ -361,6 +365,23 @@ Secrets are never committed or included in artifacts. The verified IPA, SHA-256
 and simulator results are retained for seven days. An upload alone does not
 establish TestFlight availability; verify `VALID` and `IN_BETA_TESTING` in Apple.
 
+### Short-speech provider harness
+
+[`scripts/test-short-dictation.cjs`](scripts/test-short-dictation.cjs) compiles
+[`ShortDictationAcceptance.swift`](scripts/ShortDictationAcceptance.swift) with
+`GroqClient.swift` and local storage helpers. It retains the historical personal-key
+check from 0.7.3 (26): synthetic M4A speech goes directly to Groq, then the harness
+checks dictionary and history persistence. It uses the optional
+`short_dictation_acceptance` input and temporary
+`CLARIFY_SHORT_DICTATION_ACCEPTANCE` secret. Remove that secret after an authorized
+run. This harness makes live provider requests; it is separate from isolated CI.
+
+The current app calls `CloudAccount.dictate` from `AudioSession.swift`. This
+provider harness bypasses that path, account authentication, managed quotas and
+account history synchronization. Its success is provider evidence only. It
+does not establish current app acceptance, physical microphone capture or
+insertion in another app on an iPhone.
+
 ## Snippets
 
 Open **Snippets** in the bottom tab bar to add a spoken phrase and its saved text.
@@ -504,8 +525,8 @@ enabled flag, with the same limits as desktop (512 terms, 256 characters,
 an instruction or unconditional replacement. Editing is disabled while busy.
 Home pages through all saved results, newest first, and supports original text,
 copying, individual deletion and clearing history without deleting vocabulary.
-Keep mobile in this repository; Expo builds remain
-independent and upload only the mobile directory.
+Keep mobile source in this repository. Its Xcode delivery is separate from
+desktop publication.
 
 The mobile source and build workflows are in this repository. The existing
 `codex/ios-testflight` delivery branch remains available for manual checks.
@@ -535,17 +556,26 @@ iPhone remain required before mobile acceptance.
 Use Node 22.21.1, the committed npm lockfile, and a native iOS build. Expo Go
 does not include the custom module or keyboard. No Android app is included.
 
+Run commands from `mobile/`. Select checks for the affected contract as defined
+in [CI delivery](../docs/ci-delivery.md#selected-checks). Mobile JavaScript or
+TypeScript changes need `npm run check` and the iOS JavaScript bundle. Native
+changes also need the repository's Swift, simulator and unsigned build checks.
+Documentation-only changes use documentation validators. Generate native output
+only in an isolated task worktree; preserve any existing generated project.
+
 ```sh
 npm ci
 npm run check
 npx expo-doctor
 npx expo prebuild --platform ios --no-install
-npm run test:native # macOS with Xcode; also runs during each EAS build
+npm run test:native # macOS with Xcode
 npx expo export --platform ios
-EAS_NO_VCS=1 EAS_PROJECT_ROOT="$PWD" npx eas-cli@24.12.0 build --platform ios --profile simulator
-EAS_NO_VCS=1 EAS_PROJECT_ROOT="$PWD" npx eas-cli@24.12.0 build --platform ios --profile production
-EAS_NO_VCS=1 EAS_PROJECT_ROOT="$PWD" npx eas-cli@24.12.0 submit --platform ios --profile production --id BUILD_ID
 ```
+
+For the complete native check sequence, use the repository's iOS validation
+workflow or the `tests_only` path in
+[`ios-testflight.yml`](../.github/workflows/ios-testflight.yml). Signed archive,
+upload and Apple verification follow [Direct TestFlight delivery](#direct-testflight-delivery).
 
 `src/app/` owns the four native-tab pages and system-link routing.
 `src/components/` contains shared interface elements; `src/state/clarify.tsx`
@@ -558,17 +588,16 @@ gestures, local spelling and safe insertion. `plugins/with-clarify-keyboard.cjs`
 adds the keyboard and App Group; `plugins/with-clarify-activity.cjs` adds the
 ActivityKit widget during prebuild. Native contract tests use a temporary
 container and fake HTTP; they never use real keys, microphones or profiles.
-The simulator and production profiles also run UIKit tests against the production keyboard
-sources and exports actual light/dark key-preview captures as build artifacts.
+The iOS workflow also runs UIKit tests against the production keyboard sources
+and exports light/dark key-preview captures as build artifacts.
 
 ## TestFlight and acceptance
 
-The Expo project is `@victormaynard/clarify-ios`; it is separate from all existing
-apps. Bundle IDs are `com.jvictormaynard.clarify` and the `.keyboard` suffix.
-The verified Apple app record is `6820869157`, configured as
-`submit.production.ios.ascAppId`. Store secrets outside this repository. The EAS
-archive excludes native generated folders, local environment files and signing
-credentials.
+The app bundle ID is `com.jvictormaynard.clarify`; the keyboard and activity
+extensions use the `.keyboard` and `.activity` suffixes. The delivery workflow
+uses Apple app record `6820869157`. Verify these identities against the selected
+source and signed IPA. Store secrets outside this repository; the workflow uses
+temporary signing files and removes them after the job.
 
 A successful simulator build is compilation evidence. A production build must
 also be signed, submitted, processed by Apple, and available to a TestFlight
@@ -591,6 +620,10 @@ downgrades or suppress advisories. Recheck compatible official fixes before
 public distribution; record the actual audit with each candidate.
 
 ## Delivery evidence — 2026-10-08
+
+The following dated records retain earlier builds, checks and EAS delivery
+evidence. Their commands and pending gates belong to those candidates. For a new
+delivery, use [Direct TestFlight delivery](#direct-testflight-delivery).
 
 - [Reviewed simulator build](https://expo.dev/accounts/victormaynard/projects/clarify-ios/builds/bbcb211f-21d2-454b-87a5-2277e5cbc1eb):
   finished, version 0.1.0 (1). Downloaded archive contains the app and keyboard,

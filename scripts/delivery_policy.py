@@ -144,6 +144,25 @@ REPOSITORY_INPUTS = {
     ".github/CODEOWNERS",
     ".agents/skills/upstream-lock.json",
 }
+QA_POLICY_INPUTS = {
+    ".github/workflows/ios-qa.yml",
+    "scripts/testflight_qa.py",
+    "scripts/qa_device_archive.py",
+    "tests/test_testflight_qa.py",
+    "tests/test_qa_device_archive.py",
+}
+QA_ORACLE_INPUTS = QA_POLICY_INPUTS | {
+    "tests/test_trusted_ci.py",
+    "tests/test_release_delivery.py",
+    "tests/test_ios_qa_helpers.py",
+    "mobile/tests/testflight-qa.test.ts",
+    "mobile/scripts/verify-ios-ipa.py",
+    "mobile/scripts/publish-testflight.cjs",
+    "mobile/scripts/ios-signing.py",
+    "mobile/app.json",
+    "mobile/eas.json",
+    "mobile/third-party/KeyboardHostBundleID/LICENSE",
+}
 
 
 def documentation(path: str) -> bool:
@@ -176,6 +195,10 @@ def path_components(path: str) -> set[str]:
         return set()
     if path == "scripts/release_delivery.py":
         # Repository checks exercise publication policy; this is not app input.
+        return set()
+    if path in QA_POLICY_INPUTS:
+        # Repository checks run the QA policy and archive oracles. These controls
+        # do not change product inputs; trusted QA still requires native iOS.
         return set()
     if path == "workflow_provider.py":
         # Mobile checks verify the generated prompts before native code is built.
@@ -325,17 +348,17 @@ def release_components(repo: Path, head: str) -> set[str]:
     return set(COMPONENTS)
 
 
-def event_components(
+def event_validation(
     repo: Path, event_name: str, event: dict, head: str
-) -> dict[str, bool]:
+) -> tuple[dict[str, bool], bool]:
     if event_name == "workflow_dispatch":
-        return dict.fromkeys(COMPONENTS, True)
+        return dict.fromkeys(COMPONENTS, True), True
     if event_name == "pull_request":
         base = event["pull_request"]["base"]["sha"]
     elif event_name == "push":
         base = event["before"]
         if base == "0" * 40:
-            return dict.fromkeys(COMPONENTS, True)
+            return dict.fromkeys(COMPONENTS, True), True
     else:
         raise ValueError("Unsupported validation event")
     paths = changed_paths(repo, base, head)
@@ -351,7 +374,19 @@ def event_components(
     if RELEASE_INTENT in paths:
         for component in release_components(repo, head):
             selected[component] = True
-    return selected
+    extra_policy = all(selected.values()) or any(
+        path in QA_ORACLE_INPUTS
+        or dependency_input(path)
+        or path.startswith(("scripts/", ".github/workflows/", ".github/actions/"))
+        for path in paths
+    )
+    return selected, extra_policy
+
+
+def event_components(
+    repo: Path, event_name: str, event: dict, head: str
+) -> dict[str, bool]:
+    return event_validation(repo, event_name, event, head)[0]
 
 
 def native_catalog_unchanged(repo: Path, base: str, head: str) -> bool:
@@ -395,7 +430,7 @@ def validate_ci_results(needs: dict) -> None:
     if not isinstance(outputs, dict):
         errors.append("components.outputs must contain all component flags")
     else:
-        for component in COMPONENTS:
+        for component in (*COMPONENTS, "qa_policy"):
             value = outputs.get(component)
             if not isinstance(value, str) or value not in {"true", "false"}:
                 errors.append(f"components.outputs.{component} must be true or false")
@@ -439,12 +474,13 @@ def main() -> int:
         event = json.loads(
             Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8")
         )
-        selected = event_components(
+        selected, extra_policy = event_validation(
             args.repo, os.environ["GITHUB_EVENT_NAME"], event, os.environ["GITHUB_SHA"]
         )
         with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
             for component, required in selected.items():
                 output.write(f"{component}={str(required).lower()}\n")
+            output.write(f"qa_policy={str(extra_policy).lower()}\n")
         print(json.dumps(selected, sort_keys=True))
         return 0
     except (

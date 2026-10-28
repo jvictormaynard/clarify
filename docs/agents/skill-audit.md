@@ -295,6 +295,14 @@ preserving supported claims and executable text. These are instruction checks;
 they do not establish measured writing quality or runtime behavior.
 
 
+### Humanizer entrypoint adaptation, 2026-10-28
+
+The entrypoint keeps the project editing rules and links optional examples at
+the pinned upstream commit. It omits the local catalog. Original hashes,
+invocation metadata and the MIT notice remain unchanged. This reduces required
+reading; token, delivery-time and writing-quality gains were not measured.
+
+
 ## CI/CD guidance maintenance, 2026-10-25
 
 `AGENTS.md` now routes CI/CD work through [main validation and delivery](../ci-delivery.md),

@@ -16,6 +16,7 @@ or missing boundaries fail validation. Unknown inputs select all checks.
 | Changed contract | Checks |
 | --- | --- |
 | Prose or agent metadata | Repository policies and skill integrity |
+| Internal iOS QA workflow, policy or archive-only changes | QA/archive policy tests, without unrelated product builds |
 | Settings frontend, styles or browser tests | Frontend build and isolated Playwright/Python bridge tests on Linux |
 | Python or QML behavior | Python tests on Linux and Windows, with existing lint and type checks |
 | Settings bridge | Settings tests and Python tests |
@@ -60,25 +61,35 @@ declared job. A selected job that is missing, cancelled, failed or skipped fails
 the final check. Unselected jobs may be skipped. Do not skip the entire required
 workflow with path filters or commit-message markers.
 
-## Branch protection migration
+Repository checks always runs the skill, delivery and release policy checks.
+The selector's `qa_policy` metadata adds the QA/archive suites and their locked
+Node/YAML setup for affected controls, dependencies or full validation. The
+aggregate rejects missing or invalid metadata. Docs-only and native-source-only
+changes omit this extra work.
+Trusted QA uses the same range selection for the QA/archive extras. It retains
+its original delivery, release and trusted-policy suites, plus native/mobile
+acceptance. This selection does not change the validation manifest schema.
 
-The previous protection requires `Tests (ubuntu-latest)`,
-`Tests (windows-latest)` and `Package Windows executable` for every PR. The new
-required check is `CI required`; the individual job names remain for release
-evidence. Source changes alone do not update the GitHub protection setting.
+## Branch protection
 
-Before enabling the new policy on `main`:
+The required aggregate is `CI required`; individual job names remain for release
+evidence. Source changes do not update GitHub branch protection. When changing
+protection or preparing a merge, read the live `main` protection and record its
+required checks, strict setting and UTC time. Preserve unrelated protection rules.
 
-1. Run this workflow on its PR and confirm `CI required` checks the actual tested
-   candidate. Inspect documentation, design, native and failed-job cases.
-2. Add `CI required` as a required GitHub Actions check, then remove the three
-   unconditional Desktop checks. Keep current-base validation, PR requirements,
-   conversation resolution and force-push restrictions.
-3. Verify that a docs-only PR can pass without product jobs, a Settings design
-   PR runs browser checks, and a failed selected job blocks a merge.
+Read-only verification on 2026-10-28 at 04:59:20 UTC returned only `CI required`
+in the required status checks, with `strict=true`. This is a dated observation,
+not a guarantee for a later delivery. Recheck with:
 
-Do not remove the old required checks before the replacement check is present
-and required. The repository workflows cannot apply this setting themselves.
+```sh
+gh api repos/jvictormaynard/clarify/branches/main/protection/required_status_checks
+```
+
+<a id="branch-protection-migration"></a>
+
+The [2026-10-25 migration record](https://github.com/jvictormaynard/clarify/blob/be4796c7c771af98a5782acb2eef9a5d4d50e3c4/docs/ci-delivery.md#branch-protection-migration)
+retains the transition from unconditional checks to `CI required`.
+It does not request a new activation or protection change.
 
 ## Repeated work and caches
 
