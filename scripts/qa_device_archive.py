@@ -327,7 +327,7 @@ def file_digest(path, maximum=LIMITS.file_bytes):
     return {"bytes": size, "sha256": result.hexdigest()}
 
 
-def _zip_items(archive, limits, *, transport=False):
+def _zip_items(archive, limits, *, transport=False, ipa=False):
     items = archive.infolist()
     require(len(items) <= limits.entries, "Archive entry limit exceeded")
     records, total = [], 0
@@ -350,16 +350,23 @@ def _zip_items(archive, limits, *, transport=False):
             item.compress_type in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED},
             "Unsupported ZIP compression",
         )
-        # Our transport writes no metadata extras. Only ZIP64 is necessary.
-        offset = 0
+        # Native IPAs can include Info-ZIP Unix1 access/modified timestamps.
+        # The central form is exactly eight bytes. Local UID/GID are inert data;
+        # neither timestamp nor ownership metadata is restored by extraction.
+        offset, timestamp_seen = 0, False
         while offset < len(item.extra):
             require(offset + 4 <= len(item.extra), "Truncated ZIP extra")
             tag, size = struct.unpack_from("<HH", item.extra, offset)
             offset += 4
             require(
-                tag == 1 and offset + size <= len(item.extra),
+                offset + size <= len(item.extra)
+                and (
+                    tag == 1
+                    or (ipa and tag == 0x5855 and size == 8 and not timestamp_seen)
+                ),
                 "Unsupported ZIP link or metadata extra",
             )
+            timestamp_seen |= tag == 0x5855
             offset += size
         if transport:
             require(
@@ -400,13 +407,14 @@ def _zip_items(archive, limits, *, transport=False):
     return items, records
 
 
-def zip_manifest(path, *, limits=LIMITS, _transport=False):
+def zip_manifest(path, *, limits=LIMITS, _transport=False, _ipa=False):
     """Read every entry and CRC before a caller can extract or install keys."""
     path = absolute_path(path)
+    require(not (_transport and _ipa), "Conflicting ZIP input roles")
     require(path.stat().st_size <= limits.zip_bytes, "ZIP size limit exceeded")
     try:
         with zipfile.ZipFile(path) as archive:
-            items, records = _zip_items(archive, limits, transport=_transport)
+            items, records = _zip_items(archive, limits, transport=_transport, ipa=_ipa)
             # Reject split, appended, prefixed and comment-bearing containers.
             # Production limits are below ZIP64 central-directory thresholds;
             # ZIP64 local size extras from our streaming pack remain supported.
@@ -474,16 +482,28 @@ def zip_manifest(path, *, limits=LIMITS, _transport=False):
                     except UnicodeError:
                         raise ArchiveError("Invalid ZIP local filename") from None
                     require(name == item.orig_filename, "ZIP local filename differs")
-                    offset = 0
+                    offset, timestamp_seen = 0, False
                     while offset < len(extra):
                         require(offset + 4 <= len(extra), "Truncated ZIP local extra")
                         tag, size = struct.unpack_from("<HH", extra, offset)
                         offset += 4
                         require(
-                            tag == 1 and offset + size <= len(extra),
+                            offset + size <= len(extra)
+                            and (
+                                tag == 1
+                                or (
+                                    _ipa
+                                    and tag == 0x5855
+                                    and size in {8, 12}
+                                    and not timestamp_seen
+                                )
+                            ),
                             "Unsupported ZIP local metadata extra",
                         )
-                        if expanded == 0xFFFFFFFF or compressed == 0xFFFFFFFF:
+                        timestamp_seen |= tag == 0x5855
+                        if tag == 1 and (
+                            expanded == 0xFFFFFFFF or compressed == 0xFFFFFFFF
+                        ):
                             require(size == 16, "Invalid ZIP64 local sizes")
                             expanded, compressed = struct.unpack_from(
                                 "<QQ", extra, offset
@@ -1730,7 +1750,7 @@ def _signed_entitlements(value, identifier):
 
 def _inspect_export(ipa, workspace, policy, runner, env):
     identity = file_digest(ipa, LIMITS.zip_bytes)
-    manifest = zip_manifest(ipa)
+    manifest = zip_manifest(ipa, _ipa=True)
     require(
         all(
             record["path"] == "Payload"

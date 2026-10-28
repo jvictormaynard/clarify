@@ -44,14 +44,18 @@ def macho(platform=2, *, commands=None, kind=2, with_uuid=False):
     )
 
 
-def write_zip(path, entries, *, compression=zipfile.ZIP_DEFLATED):
+def write_zip(
+    path, entries, *, compression=zipfile.ZIP_DEFLATED, extra=b"", local_extra=None
+):
     with zipfile.ZipFile(path, "w") as archive:
         for name, (data, mode) in entries.items():
             item = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
             item.create_system = 3
             item.external_attr = mode << 16
             item.compress_type = compression
+            item.extra = extra if local_extra is None else local_extra
             archive.writestr(item, data)
+            item.extra = extra
 
 
 def fixture_entries():
@@ -727,6 +731,93 @@ class ArchiveBoundaryTests(unittest.TestCase):
         self.archive.write_bytes(data)
         with self.assertRaisesRegex(qa.ArchiveError, "Encrypted"):
             qa.zip_manifest(self.archive)
+
+    def test_native_ipa_allows_only_timestamp_metadata_without_rewriting_bytes(self):
+        timestamp = struct.pack("<HHii", 0x5855, 8, 100, 200)
+        write_zip(
+            self.archive,
+            {"Payload/data": (b"retained bytes", stat.S_IFREG | 0o644)},
+            extra=timestamp,
+            local_extra=struct.pack("<HHiiHH", 0x5855, 12, 100, 200, 501, 20),
+        )
+        original = self.archive.read_bytes()
+        with self.assertRaisesRegex(qa.ArchiveError, "metadata extra"):
+            qa.zip_manifest(self.archive)
+        manifest = qa.zip_manifest(self.archive, _ipa=True)
+        self.assertEqual(manifest[0]["path"], "Payload/data")
+        self.assertEqual(manifest[0]["mode"], 0o644)
+        self.assertEqual(
+            manifest[0]["sha256"], hashlib.sha256(b"retained bytes").hexdigest()
+        )
+        self.assertEqual(self.archive.read_bytes(), original)
+        qa._extract(self.archive, self.root / "ipa-data", manifest)
+        self.assertEqual(
+            (self.root / "ipa-data/Payload/data").read_bytes(), b"retained bytes"
+        )
+        with self.assertRaisesRegex(qa.ArchiveError, "metadata extra"):
+            qa.zip_manifest(self.archive, _transport=True)
+
+    def test_native_ipa_rejects_other_metadata_and_link_nodes(self):
+        timestamp = struct.pack("<HHii", 0x5855, 8, 100, 200)
+        for extra in (
+            timestamp * 2,
+            struct.pack("<HH", 0x5855, 7) + b"x" * 7,
+            struct.pack("<HH", 0x5855, 12) + b"x" * 12,
+            struct.pack("<HH", 0x756E, 8) + b"x" * 8,
+        ):
+            with self.subTest(extra=extra.hex()):
+                write_zip(
+                    self.archive, {"data": (b"data", stat.S_IFREG | 0o644)}, extra=extra
+                )
+                with self.assertRaisesRegex(qa.ArchiveError, "metadata extra"):
+                    qa.zip_manifest(self.archive, _ipa=True)
+        write_zip(
+            self.archive, {"link": (b"target", stat.S_IFLNK | 0o777)}, extra=timestamp
+        )
+        with self.assertRaisesRegex(qa.ArchiveError, "special node"):
+            qa.zip_manifest(self.archive, _ipa=True)
+
+    def test_native_ipa_checks_local_timestamp_metadata_separately(self):
+        timestamp = struct.pack("<HHii", 0x5855, 8, 100, 200)
+        for tag, size in ((0x756E, 8), (0x5855, 7), (0x5855, 12)):
+            with self.subTest(tag=tag, size=size):
+                write_zip(
+                    self.archive,
+                    {"data": (b"data", stat.S_IFREG | 0o644)},
+                    extra=timestamp,
+                )
+                data = bytearray(self.archive.read_bytes())
+                name_size = struct.unpack_from("<H", data, 26)[0]
+                struct.pack_into("<HH", data, 30 + name_size, tag, size)
+                self.archive.write_bytes(data)
+                with self.assertRaisesRegex(qa.ArchiveError, "local metadata extra"):
+                    qa.zip_manifest(self.archive, _ipa=True)
+        for extra in (timestamp * 2, struct.pack("<HH", 0x5855, 14) + b"x" * 14):
+            with self.subTest(local_extra=extra.hex()):
+                write_zip(
+                    self.archive,
+                    {"data": (b"data", stat.S_IFREG | 0o644)},
+                    extra=timestamp,
+                    local_extra=extra,
+                )
+                with self.assertRaisesRegex(qa.ArchiveError, "local metadata extra"):
+                    qa.zip_manifest(self.archive, _ipa=True)
+
+    def test_native_ipa_timestamps_reach_real_export_inspection(self):
+        original = write_zip
+        timestamp = struct.pack("<HHii", 0x5855, 8, 100, 200)
+        with patch(
+            __name__ + ".write_zip",
+            side_effect=lambda path, entries: original(
+                path,
+                entries,
+                extra=timestamp,
+                local_extra=struct.pack("<HHiiHH", 0x5855, 12, 100, 200, 501, 20),
+            ),
+        ):
+            result = self.sign(FakeRunner(self))
+        self.assertEqual(len(result["receipt"]["ipa"]["bundles"]), 3)
+        self.assertIs(result["receipt"]["delivery_eligible"], False)
 
     def test_zip_crc_truncation_bombs_and_bounded_limits(self):
         write_zip(
