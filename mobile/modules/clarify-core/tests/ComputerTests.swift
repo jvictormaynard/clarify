@@ -537,6 +537,39 @@ final class ComputerTests: XCTestCase {
       XCTAssertFalse(f.connection.ready); XCTAssertEqual(f.connection.actionReadiness, .unavailable)
     }
   }
+  @MainActor func testComputerDictationDetectsSpokenLanguageAndTextTranslationKeepsTarget() async throws {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let f = Fixture()
+    let account = CloudAccount(defaults: defaults, transport: { _ in XCTFail("Hosted fallback"); throw ComputerFailure.offline }, readCredential: { nil }, saveCredential: { _ in })
+    let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
+    try destination.select("computer")
+    try await f.connection.refresh()
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let audio = root.appendingPathComponent("generated.wav")
+    try ComputerWAV.wrapPCM16(Data(repeating: 0, count: 32_000)).write(to: audio)
+    let library = try LocalLibrary(root: root.appendingPathComponent("library"))
+    f.onProcessing = { f.resume() }
+    let result = try await destination.dictate(audio, operationID: UUID().uuidString, library: library)
+    XCTAssertTrue(result.successful)
+    let dictation = try XCTUnwrap(f.requests.last { $0.httpMethod == "POST" })
+    let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(dictation.httpBody)) as? [String: Any])
+    XCTAssertEqual(dictation.url?.path, "/v1/computer/dictations")
+    XCTAssertEqual(body["language"] as? String, "auto")
+    XCTAssertNotNil(body["audio_wav"])
+    XCTAssertNil(body["action"])
+    _ = try await f.connection.process(UUID().uuidString, action: "translate", text: "Oi", language: "en")
+    let translation = try XCTUnwrap(f.requests.last { $0.httpMethod == "POST" })
+    let translatedBody = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(translation.httpBody)) as? [String: Any])
+    XCTAssertEqual(translation.url?.path, "/v1/computer/text")
+    XCTAssertEqual(translatedBody["language"] as? String, "en")
+    XCTAssertEqual(translatedBody["action"] as? String, "translate")
+    XCTAssertEqual(f.requests.filter { $0.httpMethod == "POST" }.count, 2)
+  }
+
   @MainActor func testTextStartRefreshesRequestedActionAndRejectsLostReadinessOrStaleOwner() async throws {
     let suite = "ClarifyTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!

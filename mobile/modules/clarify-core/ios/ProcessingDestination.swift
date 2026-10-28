@@ -91,7 +91,7 @@ final class ProcessingDestination {
     let capture = captureHistory()
     let wav = try await ComputerAudio.convert(url)
     guard computerMode, acceptsHistory(capture) else { throw CancellationError() }
-    let result = try await computer.process(operationID, wav: wav)
+    let result = try await computer.process(operationID, wav: wav, language: "auto")
     guard computerMode, acceptsHistory(capture), !result.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CancellationError() }
     return ProcessingDictation(transcript: result.transcript, text: result.text, rewritten: result.rewritten, successful: result.successful)
   }

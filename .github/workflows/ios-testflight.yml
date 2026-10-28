@@ -110,8 +110,10 @@ jobs:
           normalized['ios']['infoPlist']['ClarifyCloudURL'] = old['ios']['infoPlist']['ClarifyCloudURL']
           require(normalized == old, 'Unexpected product configuration change')
           changed = set(git('diff', '--name-only', product, source).splitlines())
-          require(changed <= {'mobile/app.json', '.github/workflows/ios-testflight.yml', 'mobile/src/components/account-sign-in.tsx'}, 'Unexpected product/control change')
+          require(changed <= {'mobile/app.json', '.github/workflows/ios-testflight.yml', 'mobile/src/components/account-sign-in.tsx', 'mobile/modules/clarify-core/ios/ProcessingDestination.swift', 'mobile/modules/clarify-core/tests/ComputerTests.swift'}, 'Unexpected product/control change')
           require(git('rev-parse', source + ':mobile/src/components/account-sign-in.tsx') == '916e8072065dedfdcbe2257b7236ee0acf9de003', 'Preview server selector differs from reviewed delta')
+          require(git('rev-parse', source + ':mobile/modules/clarify-core/ios/ProcessingDestination.swift') == 'c128edea691d750038f2af135fc3b08aac6d155e', 'Reviewed dictation language delta differs')
+          require(git('rev-parse', source + ':mobile/modules/clarify-core/tests/ComputerTests.swift') == '64c534f316416c906810996f65cf61ada859c05a', 'Reviewed dictation language delta differs')
           pull = api.request('GET', '/pulls/179')
           require(pull['state'] == 'open' and not pull['merged'] and pull['head']['sha'] == product and pull['head']['repo']['full_name'] == 'jvictormaynard/clarify', 'PR179 product source changed')
           accepted = api.request('GET', '/actions/runs/40652173539')
