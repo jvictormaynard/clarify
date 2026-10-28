@@ -562,9 +562,13 @@ class ArchiveBoundaryTests(unittest.TestCase):
         job = Mock()
         job.execution = self.root / "execution"
         job.metadata = self.root / "metadata"
-        job.command.side_effect = lambda *args, **kwargs: qa._extract(
-            self.archive, job.metadata, qa.zip_manifest(self.archive)
-        )
+
+        def compile_archive(*args, **kwargs):
+            produced = self.root / "compiled"
+            qa._extract(self.archive, produced, qa.zip_manifest(self.archive))
+            (produced / qa.ARCHIVE_ROOT).rename(job.metadata / qa.ARCHIVE_ROOT)
+
+        job.command.side_effect = compile_archive
         output = self.root / "new-artifact"
         self.assertFalse(output.exists())
 
@@ -873,6 +877,61 @@ class ArchiveBoundaryTests(unittest.TestCase):
         self.entries[name] = macho(7, kind=6), stat.S_IFREG | 0o755
         self.refresh()
         with self.assertRaisesRegex(qa.ArchiveError, "device platform"):
+            self.inspect()
+
+    def test_diagnostic_uploader_is_separate_and_strictly_bounded(self):
+        steps = self.api.workflow["jobs"]["archive"]["steps"]
+        diagnostics = {
+            "name": "Retain unsigned archive diagnostics",
+            "uses": self.policy.upload_action,
+            "if": "always()",
+            "with": {
+                "name": "clarify-ios-qa-archive-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}",
+                "path": "${{ runner.temp }}/clarify-trusted-ci/logs/\n${{ runner.temp }}/clarify-trusted-ci/archive-phases/\n",
+                "overwrite": False,
+            },
+        }
+        original = deepcopy(steps)
+        steps.append(deepcopy(diagnostics))
+        qa.authenticate(self.api, self.policy, 73, self.root / "valid-diagnostics.zip")
+        variants = [
+            [diagnostics],
+            [*original, diagnostics, diagnostics],
+            [*original, diagnostics | {"uses": "actions/upload-artifact@unknown"}],
+            [*original, diagnostics | {"if": "success()"}],
+            [*original, diagnostics | {"with": diagnostics["with"] | {"path": "**/*"}}],
+            [
+                *original,
+                diagnostics | {"with": diagnostics["with"] | {"overwrite": True}},
+            ],
+        ]
+        for index, variant in enumerate(variants):
+            with self.subTest(index=index):
+                steps[:] = deepcopy(variant)
+                with self.assertRaisesRegex(qa.ArchiveError, "uploader"):
+                    qa.authenticate(
+                        self.api, self.policy, 73, self.root / f"invalid-{index}.zip"
+                    )
+
+    def test_framework_library_can_be_readable_without_exec_permission(self):
+        name = qa.APP_PATH + "/Frameworks/Vendor.framework/Vendor"
+        data, _ = self.entries[name]
+        self.entries[name] = data, stat.S_IFREG | 0o644
+        self.refresh()
+        result = self.inspect()
+        self.assertTrue(
+            any(
+                item["path"] == name and item["kind"] == "framework"
+                for item in result["code_objects"]
+            )
+        )
+        self.entries[name] = b"not Mach-O", stat.S_IFREG | 0o644
+        self.refresh()
+        with self.assertRaisesRegex(qa.ArchiveError, "Missing Mach-O code object"):
+            self.inspect()
+        self.entries[name] = data, stat.S_IFREG
+        self.refresh()
+        with self.assertRaisesRegex(qa.ArchiveError, "framework executable"):
             self.inspect()
 
     def test_framework_must_bind_its_declared_executable(self):

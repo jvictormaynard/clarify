@@ -205,7 +205,7 @@ STABLE_APPLE_HELPERS = (
 )
 
 
-# PR 179, 0.12.0 (41) only. These are audited observations, not per-attempt
+# PR 179 internal preview only. These are audited observations, not per-attempt
 # provenance for deleted history and not authority for another reservation.
 PREVIEW_HISTORY_BASELINE = {
     "run_id": 40551997834,
@@ -258,6 +258,25 @@ PREVIEW_OLD_ADAPTER_SHA256 = (
 PREVIEW_FEATURE_CI_SHA256 = (
     "df7479fdb2829f33135747f99166dda621677cc6d9c0af2180a71e210f338844"
 )
+# Finite, reviewed build-41 controls. These authenticate historical execution;
+# they never replace the controls selected for a new run.
+PREVIEW_ARCHIVE41_CONTROLS = {
+    QA_PATH: "d56839bda61d3dbf7410f24346c2ff8db586ee77b289c459941cd57822e12e65",
+    "scripts/testflight_qa.py": "84e7e98d8e3838796888599ecf1c9a77eb262cfa383fec8ddcd887cb2474bab8",
+    "scripts/qa_device_archive.py": "ddba5a71b72bc838d3483417023ad76717c9f2e3848406125fb18c7eadb9ef15",
+}
+PREVIEW_DIAGNOSTIC41 = {
+    "run_id": 40611469556,
+    "source_sha": "2c5d1eb7b40005d0b317e6abe12e385f573516c4",
+    "workflow_sha256": "89404fbe3897e48cb7d1eee193610925b2bdebaa7df276d4809dbc2738b797e4",
+    "job_id": 122563767007,
+    "job_name": "Unsigned archive41 diagnostics",
+}
+# Build 41's immutable tag remains unchanged. Build 42 requires a distinct
+# reservation, source/tag, validation, archive and export proof before use.
+PREVIEW_PUBLICATION_IDENTITIES = {
+    ("0.12.0", str(n), f"ios/pr-179/v0.12.0-build{n}") for n in (41, 42)
+}
 
 
 def _preview_time(value):
@@ -500,6 +519,14 @@ def _preview_history_graph(api, path, source, trusted, authenticated):
         or (
             path == CI_PATH
             and hashlib.sha256(observed).hexdigest() == PREVIEW_FEATURE_CI_SHA256
+        )
+        or (
+            path == QA_PATH
+            and hashlib.sha256(observed).hexdigest()
+            in {
+                PREVIEW_ARCHIVE41_CONTROLS[QA_PATH],
+                PREVIEW_DIAGNOSTIC41["workflow_sha256"],
+            }
         ),
         "Unknown post-baseline workflow implementation",
     )
@@ -626,12 +653,12 @@ def reconcile_preview_history(
         q["trusted_sha"] == trusted
         and q["pr"] == 179
         and set(PREVIEW_UNSIGNED_QA_CONTROLS) <= q["controls"].keys()
-        and (q["app_id"], q["bundle_id"], q["version"], q["build"], q["tag"])
-        == (APP_ID, BUNDLE, "0.12.0", "41", "ios/pr-179/v0.12.0-build41")
+        and (q["app_id"], q["bundle_id"]) == (APP_ID, BUNDLE)
+        and (q["version"], q["build"], q["tag"]) in PREVIEW_PUBLICATION_IDENTITIES
         and q["source_sha"] != PREVIEW_PROTECTED_STABLE_SOURCE
         and isinstance(now, datetime)
         and now.tzinfo is not None,
-        "History reconciliation is limited to PR 179 build 41",
+        "History reconciliation is limited to the internal PR 179 identities",
     )
     fixed = PREVIEW_HISTORY_BASELINE
     baseline, baseline_binding = _preview_inventory(
@@ -694,6 +721,25 @@ def reconcile_preview_history(
             and hashlib.sha256(api.file(path, source).encode("utf-8")).hexdigest()
             == PREVIEW_UNSIGNED_QA_CONTROLS[QA_PATH]
         )
+        workflow_digest = (
+            hashlib.sha256(api.file(path, source).encode("utf-8")).hexdigest()
+            if path == QA_PATH
+            else None
+        )
+        diagnostic = workflow_digest == PREVIEW_DIAGNOSTIC41["workflow_sha256"]
+        archive41 = diagnostic or workflow_digest == PREVIEW_ARCHIVE41_CONTROLS[QA_PATH]
+        if diagnostic:
+            require(
+                identifier == PREVIEW_DIAGNOSTIC41["run_id"]
+                and source == PREVIEW_DIAGNOSTIC41["source_sha"]
+                and attempts == 1
+                and run.get("status") == "completed"
+                and run.get("conclusion") == "failure"
+                and run.get("head_branch") == "codex/ios-archive41-diagnostics-20261028"
+                and run.get("workflow_id") == 398590797
+                and run.get("event") == "workflow_dispatch",
+                "Unknown archive diagnostic execution",
+            )
         if unsigned_qa:
             require(
                 all(
@@ -725,9 +771,14 @@ def reconcile_preview_history(
                 if p.startswith(("scripts/", "mobile/scripts/"))
             )
         ):
+            observed = api.file(helper, source).encode("utf-8")
             require(
-                api.file(helper, source).encode("utf-8")
-                == api.control(trusted, helper),
+                (
+                    hashlib.sha256(observed).hexdigest()
+                    == PREVIEW_ARCHIVE41_CONTROLS[helper]
+                )
+                if archive41 and helper in PREVIEW_ARCHIVE41_CONTROLS
+                else observed == api.control(trusted, helper),
                 "Unknown post-baseline Apple implementation",
             )
         current = identifier == context["run_id"]
@@ -757,7 +808,7 @@ def reconcile_preview_history(
                 "Historical attempt job binding differs",
             )
             checked += 1
-            allowed = {c["job_name"] for c in trusted_ci.CHECKS.values()} | {
+            qa_jobs = {
                 "Internal QA preflight",
                 "Authenticate trusted validation dispatch",
                 "Trusted validation",
@@ -768,11 +819,57 @@ def reconcile_preview_history(
                 PREVIEW_PUBLICATION_JOB,
                 PREVIEW_AVAILABILITY_JOB,
             }
+            allowed = {c["job_name"] for c in trusted_ci.CHECKS.values()} | qa_jobs
             if path == QA_PATH:
+                if diagnostic:
+                    allowed.add(PREVIEW_DIAGNOSTIC41["job_name"])
                 require(
                     all(j.get("name") in allowed for j in jobs),
                     "Unknown historical QA job",
                 )
+            if diagnostic:
+                diagnostic_jobs = [
+                    j for j in jobs if j.get("name") == PREVIEW_DIAGNOSTIC41["job_name"]
+                ]
+                require(
+                    len(jobs) == len(qa_jobs) + 1
+                    and {j.get("name") for j in jobs}
+                    == qa_jobs | {PREVIEW_DIAGNOSTIC41["job_name"]}
+                    and len(diagnostic_jobs) == 1
+                    and diagnostic_jobs[0].get("id") == PREVIEW_DIAGNOSTIC41["job_id"]
+                    and diagnostic_jobs[0].get("status") == "completed"
+                    and diagnostic_jobs[0].get("conclusion") == "failure"
+                    and all(
+                        j.get("status") == "completed"
+                        and j.get("conclusion") == "skipped"
+                        for j in jobs
+                        if j is not diagnostic_jobs[0]
+                    )
+                    and all(
+                        sum(
+                            s.get("name") == name
+                            and s.get("status") == "completed"
+                            and s.get("conclusion") == result
+                            for s in diagnostic_jobs[0].get("steps", [])
+                        )
+                        == 1
+                        for name, result in (
+                            ("Check out frozen MAIN recipes", "success"),
+                            ("Check out immutable build41 source", "success"),
+                            (
+                                "Install frozen MAIN YAML parser without scripts",
+                                "success",
+                            ),
+                            (
+                                "Reproduce frozen archive recipe and retain failure details",
+                                "failure",
+                            ),
+                            ("Retain inert archive diagnostic logs", "success"),
+                        )
+                    ),
+                    "Archive diagnostic job or no-Apple boundary differs",
+                )
+                continue
             if unsigned_qa:
                 require(
                     not current and all(j.get("status") == "completed" for j in jobs),
@@ -954,7 +1051,7 @@ def reconcile_preview_history(
         item["id"]
         for item in resources
         if item.get("type") == "builds"
-        and item.get("attributes", {}).get("version") == "41"
+        and item.get("attributes", {}).get("version") == q["build"]
     }
     versions = {
         item["id"]: item.get("attributes", {})
@@ -976,9 +1073,14 @@ def reconcile_preview_history(
         number = build_number(
             attributes.get("cfBundleVersion" if upload else "version")
         )
-        require(number <= 41, "Another Apple build identity was observed")
-        if number == 41:
-            require(receipts, "Apple build 41 has no authenticated upload source")
+        require(
+            number <= build_number(q["build"]),
+            "Another Apple build identity was observed",
+        )
+        if number == build_number(q["build"]):
+            require(
+                receipts, "Apple candidate build has no authenticated upload source"
+            )
             require(
                 not upload or attributes.get("cfBundleShortVersionString") == "0.12.0",
                 "Apple upload version differs",
@@ -1003,7 +1105,7 @@ def reconcile_preview_history(
         baseline=baseline_binding,
         inventory=fresh_binding,
         existing_uploads=receipts,
-        apple_build41_observed=observed,
+        apple_candidate_build_observed=observed,
         history=dict(
             retained_runs=len(runs),
             checked_attempts=checked,
@@ -2735,42 +2837,85 @@ def archive_policy(api, inputs, context, toolchain, *, trusted_repo=ROOT):
 def produce_archive(job, policy, output_dir):
     output_dir = device_archive.absolute_path(output_dir, exists=False)
     output_dir.mkdir(mode=0o700)
-    job.authenticate()
-    job.prepare()
+
+    def phase(name, operation):
+        record = {
+            "schema": 1,
+            "phase": name,
+            "exit_code": None,
+            "source_sha": policy.context.get("source_sha"),
+            "trusted_sha": policy.context.get("trusted_sha"),
+        }
+        folder = job.metadata / "archive-phases"
+
+        def save():
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+                if folder.is_symlink():
+                    return
+                target = folder / (name + ".json")
+                if not target.is_symlink():
+                    target.write_bytes(canonical_validation_json(record))
+            except OSError:
+                pass  # Diagnostics never replace the original command result.
+
+        save()
+        try:
+            result = operation()
+        except BaseException as error:
+            record.update(
+                exit_code=getattr(error, "returncode", 1),
+                error_type=type(error).__name__,
+            )
+            if type(error) is device_archive.ArchiveError:
+                record["reason"] = str(error)[:1024]
+            save()
+            raise
+        record["exit_code"] = 0
+        save()
+        return result
+
+    phase("authenticate", job.authenticate)
+    phase("prepare", job.prepare)
     archive_path = job.metadata / device_archive.ARCHIVE_ROOT
     try:
-        job.run_recipe("ios-project")
-        job.run_recipe("ios-pods")
-        job.command(
-            [
-                "/usr/bin/xcodebuild",
-                "-workspace",
-                "ios/Clarify.xcworkspace",
-                "-scheme",
-                "Clarify",
-                "-configuration",
-                "Release",
-                "-sdk",
-                "iphoneos",
-                "-destination",
-                "generic/platform=iOS",
-                "-archivePath",
-                archive_path,
-                "-derivedDataPath",
-                job.metadata / "UnsignedDeviceRelease",
-                "ARCHS=arm64",
-                "CODE_SIGNING_ALLOWED=NO",
-                "archive",
-            ],
-            cwd=job.execution / "mobile",
-            extra_env={"DEVELOPER_DIR": DEVELOPER_DIR},
+        phase("ios-project", lambda: job.run_recipe("ios-project"))
+        phase("ios-pods", lambda: job.run_recipe("ios-pods"))
+        phase(
+            "device-archive",
+            lambda: job.command(
+                [
+                    "/usr/bin/xcodebuild",
+                    "-workspace",
+                    "ios/Clarify.xcworkspace",
+                    "-scheme",
+                    "Clarify",
+                    "-configuration",
+                    "Release",
+                    "-sdk",
+                    "iphoneos",
+                    "-destination",
+                    "generic/platform=iOS",
+                    "-archivePath",
+                    archive_path,
+                    "-derivedDataPath",
+                    job.metadata / "UnsignedDeviceRelease",
+                    "ARCHS=arm64",
+                    "CODE_SIGNING_ALLOWED=NO",
+                    "archive",
+                ],
+                cwd=job.execution / "mobile",
+                extra_env={"DEVELOPER_DIR": DEVELOPER_DIR},
+            ),
         )
     finally:
         try:
-            job.verify_source()
+            phase("source-post", job.verify_source)
         finally:
-            job.verify_controls()
-    return device_archive.pack(archive_path, output_dir, policy)
+            phase("controls-post", job.verify_controls)
+    return phase(
+        "inspect-pack", lambda: device_archive.pack(archive_path, output_dir, policy)
+    )
 
 
 def record_archive(api, policy, artifact_id, artifact_digest):
@@ -3195,8 +3340,8 @@ def publication_receipt(api, policy, run_id, attempt, artifact_id=None):
 def _publication_gates(api, policy, inputs, context):
     require(
         (policy.context["version"], policy.context["build"], policy.context["tag"])
-        == ("0.12.0", "41", "ios/pr-179/v0.12.0-build41"),
-        "Only reserved preview 41 can publish",
+        in PREVIEW_PUBLICATION_IDENTITIES,
+        "Only a reserved internal preview identity can publish",
     )
     require_export_proof(api, policy, inputs)
     check_ci(
@@ -3291,8 +3436,8 @@ def run_publication_command(command, inputs, context):
     elif command == "availability":
         require(
             (policy.context["version"], policy.context["build"], policy.context["tag"])
-            == ("0.12.0", "41", "ios/pr-179/v0.12.0-build41"),
-            "Only reserved preview 41 has an availability route",
+            in PREVIEW_PUBLICATION_IDENTITIES,
+            "Only an internal preview identity has an availability route",
         )
         require_export_proof(api, policy, inputs)
         previous = publication_receipt(

@@ -1789,6 +1789,45 @@ class DeviceArchiveGlueTests(unittest.TestCase):
             job.verify_controls.assert_called_once()
             pack.assert_not_called()
 
+    def test_archive_failure_retains_stage_exit_and_preserves_cleanup(self):
+        job = Mock(execution=self.root / "execution", metadata=self.root / "metadata")
+        policy = Mock(context=dict(source_sha=SOURCE, trusted_sha=BASE))
+        error = subprocess.CalledProcessError(65, ["xcodebuild"])
+        job.command.side_effect = error
+        with (
+            patch.object(qa.device_archive, "pack") as pack,
+            contextlib.redirect_stdout(io.StringIO()) as output,
+        ):
+            with self.assertRaises(subprocess.CalledProcessError) as caught:
+                qa.produce_archive(job, policy, self.root / "failed-archive")
+        self.assertIs(caught.exception, error)
+        job.verify_source.assert_called_once_with()
+        job.verify_controls.assert_called_once_with()
+        pack.assert_not_called()
+        self.assertEqual(output.getvalue(), "")
+        stage = json.loads(
+            (job.metadata / "archive-phases/device-archive.json").read_bytes()
+        )
+        self.assertEqual(stage["exit_code"], 65)
+        self.assertEqual(stage["error_type"], "CalledProcessError")
+        self.assertEqual(stage["source_sha"], SOURCE)
+        self.assertNotIn("command", stage)
+
+    def test_archive_inspection_failure_retains_reason_without_masking_error(self):
+        job = Mock(execution=self.root / "execution", metadata=self.root / "metadata")
+        policy = Mock(context=dict(source_sha=SOURCE, trusted_sha=BASE))
+        error = qa.device_archive.ArchiveError("Missing framework executable")
+        with patch.object(qa.device_archive, "pack", side_effect=error):
+            with self.assertRaises(qa.device_archive.ArchiveError) as caught:
+                qa.produce_archive(job, policy, self.root / "failed-inspection")
+        self.assertIs(caught.exception, error)
+        stage = json.loads(
+            (job.metadata / "archive-phases/inspect-pack.json").read_bytes()
+        )
+        self.assertEqual(stage["exit_code"], 1)
+        self.assertEqual(stage["reason"], "Missing framework executable")
+        self.assertEqual(stage["trusted_sha"], BASE)
+
     def test_recorder_authenticates_producer_and_api_without_downloading(self):
         policy = Mock()
         policy.context = dict(
@@ -2997,6 +3036,156 @@ class PreviewHistoryReconciliationTests(unittest.TestCase):
             }
             with self.assertRaisesRegex(ReleaseError, "implementation"):
                 qa._preview_history_graph(self.api, qa.CI_PATH, OLD, BASE, set())
+
+    def test_previous_archive_controls_are_authenticated_before_skipped_upload(self):
+        legacy = {
+            p: ("audited old " + p).encode() for p in qa.PREVIEW_ARCHIVE41_CONTROLS
+        }
+        pins = {p: hashlib.sha256(data).hexdigest() for p, data in legacy.items()}
+        run = self.current | dict(
+            id=91, head_sha=OLD, status="completed", conclusion="failure"
+        )
+        self.runs.append(run)
+        self.responses["/actions/runs/91/attempts/1/jobs"] = (
+            "jobs",
+            [
+                self.job
+                | dict(
+                    id=1000,
+                    run_id=91,
+                    head_sha=OLD,
+                    status="completed",
+                    conclusion="skipped",
+                    steps=[],
+                )
+            ],
+        )
+        self.api.file.side_effect = lambda p, source: (
+            legacy.get(p, self.controls[p]).decode()
+            if source == OLD
+            else self.file(p, source)
+        )
+        with patch.object(qa, "PREVIEW_ARCHIVE41_CONTROLS", pins):
+            self.assertEqual(self.reconcile()["decision"], "publish")
+            legacy["scripts/qa_device_archive.py"] += b"changed"
+            with self.assertRaisesRegex(ReleaseError, "Apple implementation"):
+                self.reconcile()
+
+    def test_only_the_exact_completed_diagnostic_is_a_no_apple_execution(self):
+        spec = qa.PREVIEW_DIAGNOSTIC41
+        source = spec["source_sha"]
+        workflow = b"audited secret-free diagnostic"
+        old = {p: ("audited old " + p).encode() for p in qa.PREVIEW_ARCHIVE41_CONTROLS}
+        pins = {p: hashlib.sha256(data).hexdigest() for p, data in old.items()}
+        run = self.current | dict(
+            id=spec["run_id"],
+            head_sha=source,
+            status="completed",
+            conclusion="failure",
+            head_branch="codex/ios-archive41-diagnostics-20261028",
+            workflow_id=398590797,
+            event="workflow_dispatch",
+        )
+        self.runs.append(run)
+        step_results = [
+            ("Check out frozen MAIN recipes", "success"),
+            ("Check out immutable build41 source", "success"),
+            ("Install frozen MAIN YAML parser without scripts", "success"),
+            ("Reproduce frozen archive recipe and retain failure details", "failure"),
+            ("Retain inert archive diagnostic logs", "success"),
+        ]
+        job = dict(
+            id=spec["job_id"],
+            name=spec["job_name"],
+            run_id=run["id"],
+            head_sha=source,
+            status="completed",
+            conclusion="failure",
+            steps=[
+                dict(name=n, status="completed", conclusion=c) for n, c in step_results
+            ],
+        )
+        publication = self.job | dict(
+            id=1000,
+            run_id=run["id"],
+            head_sha=source,
+            status="completed",
+            conclusion="skipped",
+            steps=[],
+        )
+        skipped = [publication] + [
+            publication | dict(id=1001 + i, name=name)
+            for i, name in enumerate(
+                (
+                    "Internal QA preflight",
+                    "Authenticate trusted validation dispatch",
+                    "Trusted validation",
+                    "Finalize trusted validation",
+                    "Unsigned Device Release archive",
+                    "Finalize trusted Device archive",
+                    "Experimental trusted export proof",
+                    "Complete internal preview availability",
+                )
+            )
+        ]
+        self.responses[f"/actions/runs/{run['id']}/attempts/1/jobs"] = (
+            "jobs",
+            [job, *skipped],
+        )
+        self.api.file.side_effect = lambda p, revision: (
+            (workflow if p == QA_PATH else old.get(p, self.controls[p])).decode()
+            if revision == source
+            else self.file(p, revision)
+        )
+        with (
+            patch.object(qa, "PREVIEW_ARCHIVE41_CONTROLS", pins),
+            patch.dict(
+                qa.PREVIEW_DIAGNOSTIC41,
+                workflow_sha256=hashlib.sha256(workflow).hexdigest(),
+            ),
+        ):
+            self.assertEqual(self.reconcile()["decision"], "publish")
+            for delta in [
+                dict(run_attempt=2),
+                dict(head_branch="another"),
+                dict(status="in_progress"),
+                dict(workflow_id=1),
+            ]:
+                original = deepcopy(run)
+                run.update(delta)
+                with self.assertRaisesRegex(ReleaseError, "diagnostic execution"):
+                    self.reconcile()
+                run.clear()
+                run.update(original)
+            publication["conclusion"] = "success"
+            with self.assertRaisesRegex(ReleaseError, "no-Apple boundary"):
+                self.reconcile()
+            publication["conclusion"] = "skipped"
+            skipped.pop()
+            self.responses[f"/actions/runs/{run['id']}/attempts/1/jobs"] = (
+                "jobs",
+                [job, *skipped],
+            )
+            with self.assertRaisesRegex(ReleaseError, "no-Apple boundary"):
+                self.reconcile()
+            old["scripts/testflight_qa.py"] += b"unknown"
+            with self.assertRaisesRegex(ReleaseError, "Apple implementation"):
+                self.reconcile()
+
+    def test_next_preview_identity_requires_its_own_upload_receipt(self):
+        self.policy.context.update(build="42", tag="ios/pr-179/v0.12.0-build42")
+        self.assertEqual(self.reconcile()["decision"], "publish")
+        self.reports[self.fresh_id]["collections"]["builds"]["data"] = [
+            dict(
+                id="unattributed-42",
+                type="builds",
+                attributes=dict(version="42", processingState="VALID"),
+            )
+        ]
+        self.reports[self.fresh_id]["collections"]["builds"]["totals"] = [1]
+        self.refresh_report(self.fresh_id)
+        with self.assertRaisesRegex(ReleaseError, "no authenticated upload source"):
+            self.reconcile()
 
     def test_publish_requires_both_authenticated_reports_and_complete_history(self):
         result = self.reconcile()

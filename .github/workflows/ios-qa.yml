@@ -227,6 +227,18 @@ jobs:
           overwrite: false
           retention-days: 7
 
+      - name: Retain unsigned archive diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: clarify-ios-qa-archive-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/clarify-trusted-ci/logs/
+            ${{ runner.temp }}/clarify-trusted-ci/archive-phases/
+          if-no-files-found: warn
+          overwrite: false
+          retention-days: 7
+
   finalize_archive:
     name: Finalize trusted Device archive
     needs: archive
