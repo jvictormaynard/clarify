@@ -140,7 +140,7 @@ terms.
 | Operation | Defined behavior |
 | --- | --- |
 | Install | Installs the signed executable and notices under `%LOCALAPPDATA%\Programs\Clarify`; creates per-user Desktop and Start Menu shortcuts. |
-| Upgrade | Windows Installer performs a major upgrade transaction. `%APPDATA%\Clarify` is outside the MSI and is never copied, migrated, or removed. |
+| Upgrade | Windows Installer removes the previous program files after transaction initialization and before copying the new payload. This replaces equal-version builds and supports explicit rollback to an older executable. `%APPDATA%\Clarify` is outside the MSI and is never copied, migrated, or removed. |
 | Repair | `msiexec /fa Clarify-windows-x64.msi` repairs program files and shortcuts without modifying user data. |
 | Autostart | The installer does not enable autostart. The existing in-app setting owns the HKCU Run value. Upgrade preserves it; uninstall removes a stale Clarify Run value. |
 | Failed upgrade | Windows Installer rolls the package transaction back. The previous installed product and all user data remain available. |

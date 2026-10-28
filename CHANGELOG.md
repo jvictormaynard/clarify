@@ -21,6 +21,7 @@ Notable user-facing changes are documented here. This project follows
 ### Fixed
 
 - Include Windows file and product version information in the portable executable and reject builds whose version resource differs from the application version.
+- Replace the installed executable during MSI upgrades and explicit rollback, including builds with the same file version, while preserving user data and transaction recovery.
 
 ## [0.13.0] - 2026-10-27
 
