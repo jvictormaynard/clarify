@@ -1,5 +1,109 @@
 # Clarify for iOS — MVP
 
+## Computer connection candidate
+
+Choose **Meu computador** on the sign-in page or Account tab, then scan the QR
+inside Clarify. The computer must have its iPhone connection enabled. Direct LAN
+routes require access to the computer's private network. A Clarify account is
+not required for this mode. The native client also accepts QR-pinned public DNS
+routes for TLS byte forwarding. A public relay service and operator domain are
+not configured or deployed by this candidate.
+
+The existing recorder, keyboard bridge and local history store serve both modes.
+Computer mode also exposes selected-text rewrite and translation in the keyboard,
+and text processing in Home. It uses the computer's configured dictionary and
+snippets. This protocol does not upload an iPhone library. Computer history has
+its own stable computer scope and is never synchronized with a hosted account.
+An offline or revoked computer connection does not select hosted processing.
+Switching modes or disconnecting stops capture and rejects former operations.
+
+QR parsing, device credentials and HTTPS requests stay in Swift. Keychain stores
+the device session and trusted routes in the containing app only. The keyboard
+gets a nonsecret state projection. Pinned LAN and DNS routes require an exact
+SHA-256 hash of the leaf DER certificate. Other public DNS routes with a null pin
+retain platform CA trust. Redirects are rejected.
+The recorder's AAC clip is converted locally to PCM16 mono 16 kHz WAV, capped at
+300 seconds. Conversion and upload cancellation remove temporary audio.
+
+`shared/ui_strings.json` owns the shared translations; generate the native catalog
+with `scripts/sync_locales.py`. Native contracts, UIKit fixtures,
+camera permission/cancel, local-network permission, pinned TLS, actual keyboard
+insertion and physical iPhone acceptance still require macOS/iOS validation.
+Local TypeScript or bundle checks do not establish TestFlight availability.
+
+### Optional relay build configuration and trust
+
+`shared/computer_connect.json` owns the public relay hostname and port for both
+desktop and iOS builds. A null `relay_host` keeps the public service disabled.
+Select the hostname and budget only after reviewing the deployment. The hostname contains
+only a lowercase public DNS hostname, with no scheme, port, wildcard, trailing
+dot or whitespace. Its maximum length is 200 ASCII bytes, leaving room for a
+52-byte certificate namespace and a dot. An invalid value fails the build. A
+stale native hostname or conflicting ATS policy requires a clean prebuild.
+`EXPO_PUBLIC_CLARIFY_CONNECT_RELAY_HOST` can override the iOS hostname for an
+isolated fixture or custom build. Official desktop and iOS builds must use the
+same reviewed configuration file. The hostname is public and contains no credential.
+
+`plugins/with-computer-relay.cjs` writes the hostname to native Info.plist as
+`ClarifyConnectRelayHost`. It adds one `NSExceptionDomains` entry for that hostname
+with `NSIncludesSubdomains`, `NSExceptionAllowsInsecureHTTPLoads`, minimum TLS 1.2
+and required forward secrecy. Existing LAN exceptions and permissions remain.
+It adds no global, media or web arbitrary-load exception. Apple's
+[manual trust guidance](https://developer.apple.com/documentation/foundation/performing-manual-server-trust-authentication)
+and [scoped exception contract](https://developer.apple.com/documentation/bundleresources/information-property-list/nsexceptionallowsinsecurehttploads)
+require the scoped exception to accept a self-signed computer certificate. The
+native parser and sender still reject HTTP. CA-only routes outside this scope
+keep normal system trust. A pinned DNS route outside this scope can still be
+blocked by ATS if its certificate does not satisfy platform trust.
+
+A computer route within the configured relay domain must be exactly
+`https://<namespace>.<relay-host>[:port]`. The namespace is lowercase unpadded
+RFC 4648 Base32 of the 32 raw bytes in the leaf DER SHA-256 pin. The namespace
+has exactly 52 characters from `a-z2-7`. The native boundary rejects a different
+pin, a null pin, the relay apex, and nested namespace labels. It uses no new QR
+schema or credential format. An old LAN QR remains valid but has no remote route;
+remote access requires a QR that explicitly includes that trusted route.
+
+The phone's TLS session ends at its own computer. The proposed relay forwards
+TLS bytes and cannot read HTTP credentials, audio or text. It can observe network
+metadata and interrupt traffic. Every native request uses one isolated ephemeral
+URLSession with no cookies, cache or default credential store, TLS 1.2 or later,
+an exact host/port/URL check and a 512 KiB response bound. Basic, Digest, client
+certificate and proxy authentication are rejected. External computer URLs remain
+blocked before React Native receives initial or runtime links.
+
+Status discovery tries only QR-trusted routes, serially in their saved order.
+Each private LAN probe has a 1.5-second total resource limit; each DNS probe has a
+5-second limit. Pairing first uses a status GET without a bootstrap or session
+token, then sends its pairing POST once to the selected route. A wrong certificate
+never satisfies the pin; discovery may continue to another explicitly trusted
+route. Revocation, wrong computer identity, cancellation and a changed connection
+generation stop discovery. Processing POSTs are sent once on their selected route.
+An uncertain reply cannot create another operation ID, repeat processing on
+another route, switch computer/mode or select hosted processing. Cancellation
+keeps the original operation ID and route even after a later status refresh.
+
+### Remaining iOS TLS and ATS acceptance
+
+Swift package tests on macOS do not prove ATS in the containing iOS app. The
+Windows implementation environment cannot run Swift, Xcode or iOS tests. The
+native regressions need macOS execution, followed by a signed or unsigned
+containing-app fixture with the exact generated Info.plist.
+
+Prepare that fixture on a dedicated simulator host/VM or an isolated lab network.
+Provide deterministic DNS and a TLS byte-forwarding endpoint there, using only
+test certificates, tokens and generated audio. Do not change a developer's global
+resolver, hosts file, proxy, CA store or user trust settings. No such network
+fixture or public service is prepared by this patch. Run the containing app with
+the reviewed test build hostname and verify: correct self-signed PC pin succeeds;
+wrong leaf/namespace fails before any HTTP credentials; CA-only relay routes,
+HTTP, redirects and auth challenges fail; unrelated public-CA routes still use
+normal trust; LAN timeout reaches the trusted remote route; cancellation and
+revocation stop fallback; processing uncertainty never repeats a POST. Repeat
+the selected-route flow on a physical iPhone using separate Wi-Fi and cellular
+networks. Internet reachability, capacity, cost and TestFlight acceptance remain
+unverified until those checks and the coordinator's delivery gates complete.
+
 ## Planned release — 0.11.0 (38)
 
 This candidate combines Google, Microsoft and GitHub sign-in with the complete
@@ -86,19 +190,21 @@ Publication is not complete until signing, upload, Apple processing and availabi
 in the existing internal group are verified. Physical-iPhone microphone, soundwave,
 source-app return and keyboard acceptance remain separate from these fixtures.
 
-Expo application plus a small Swift keyboard extension. A Clarify account is
-required for speech recognition and rewriting. Sign in with an emailed code,
-Google, Microsoft or GitHub. No personal provider key is needed. Native bottom tabs contain Início, Dicionário,
+Expo application plus a small Swift keyboard extension. Speech recognition and
+rewriting use either a Clarify account or a paired computer. Sign in with an
+emailed code, Google, Microsoft or GitHub, or choose **Meu computador** and scan
+its QR inside Clarify. No personal provider key is needed on the iPhone. Native bottom tabs contain Início, Dicionário,
 Snippets and Conta. Ajustes opens from Conta.
-Signed-out users return to the
-account screen, including after an upgrade from the former personal-key mode.
+Users without an account session or paired computer return to the
+connection screen, including after an upgrade from the former personal-key mode.
 SQLite keeps
 vocabulary and an offline history copy. New signed-in transcriptions sync
 automatically with desktop through the account. Guest and pre-upgrade records
 remain local and are never uploaded. Account caches are isolated by endpoint and
 user. Existing local history, vocabulary and stored personal keys are preserved;
-personal keys no longer enable mobile processing. Signing out stops microphone
-access and requires a new sign-in. See [history synchronization](../docs/history-sync.md).
+personal keys no longer enable mobile processing. Signing out of account mode
+stops microphone access and requires a new sign-in. Computer mode keeps a separate
+local history scope. See [history synchronization](../docs/history-sync.md).
 
 Version **0.8.1 (30)** distinguishes unrecognized speech, transcription failures,
 allowance limits and service capacity. The keyboard shows the cause within its
