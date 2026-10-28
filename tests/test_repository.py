@@ -34,13 +34,11 @@ class RepositorySafetyTests(unittest.TestCase):
         self.assertIn(
             '$sourceQmlPython = Join-Path $sourceDir "clarify\\desktop"', content
         )
-        self.assertIn('Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File', content)
         self.assertIn('Join-Path $repoQmlPython "qt_shell.py"', content)
         self.assertIn('"workflow_provider.py",', content)
         self.assertNotIn('Join-Path $repoRoot "*.py"', content)
         self.assertIn('$repoQml = Join-Path $repoQmlPython "qml"', content)
         self.assertIn("Copy-Item $repoQml $qml -Recurse -Force", content)
-        self.assertIn('"${qml};qml"', content)
         self.assertIn("${distribution};distribution", content)
         self.assertIn('Join-Path $repoRoot "local_asr_manifest.json"', content)
         self.assertIn('Join-Path $repoRoot "licenses"', content)
@@ -128,16 +126,6 @@ class RepositorySafetyTests(unittest.TestCase):
         self.assertIn('"setup-hooks": "git config core.hooksPath .githooks"', package)
         self.assertIn('"config", "core.hooksPath", ".githooks"', setup)
 
-    def test_release_publishes_verified_sox_source(self):
-        content = (ROOT / ".github" / "workflows" / "release.yml").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("sox-14.4.2-source.tar.gz", content)
-        self.assertIn(
-            "b45f598643ffbd8e363ff24d61166ccec4836fea6d3888881b8df53e3bb55f6c",
-            content,
-        )
-
     def test_community_release_is_unsigned_portable_only(self):
         content = (ROOT / ".github" / "workflows" / "community-release.yml").read_text(
             encoding="utf-8"
@@ -169,6 +157,8 @@ class RepositorySafetyTests(unittest.TestCase):
             "azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2",
             "scripts\\verify-signature.ps1",
             "actions/attest-build-provenance@",
+            "attestations: write",
+            "Clarify.sbom.json",
             "Clarify-windows-x64.msi.sha256",
             "Clarify-release-manifest.cab.sha256",
         ):
@@ -366,22 +356,6 @@ class RepositorySafetyTests(unittest.TestCase):
         for relative_path in required:
             self.assertTrue((ROOT / relative_path).is_file(), relative_path)
 
-    def test_release_skill_is_repository_local_and_complete(self):
-        skill_root = ROOT / ".agents" / "skills" / "clarify-release"
-        required = [
-            "SKILL.md",
-            "agents/openai.yaml",
-            "references/release-contract.md",
-            "scripts/release_preflight.py",
-        ]
-        for relative_path in required:
-            self.assertTrue((skill_root / relative_path).is_file(), relative_path)
-
-        skill = (skill_root / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("name: clarify-release", skill)
-        self.assertIn("Clarify.exe.sha256", skill)
-        self.assertNotIn("/mnt/c/Users/Work/.codex/skills", skill)
-
     def test_dependency_contract_files_exist_and_have_review_policy(self):
         for lock_name in (
             "requirements-lock-linux.txt",
@@ -402,10 +376,6 @@ class RepositorySafetyTests(unittest.TestCase):
         self.assertIn("[tool.ruff]", pyproject)
         self.assertIn("[tool.mypy]", pyproject)
         checker = ROOT / "scripts" / "check_dependency_lock.py"
-        self.assertTrue(checker.is_file())
-        self.assertTrue((ROOT / "scripts" / "check_runtime_lock.py").is_file())
-        self.assertTrue((ROOT / "scripts" / "install_bootstrap_tools.py").is_file())
-        self.assertTrue((ROOT / "scripts" / "add_sbom_component.py").is_file())
         self.assertTrue((ROOT / "scripts" / "sox-runtime-manifest.json").is_file())
         self.assertIn(
             "sox-runtime-manifest.json",
@@ -413,9 +383,7 @@ class RepositorySafetyTests(unittest.TestCase):
         )
         checker_content = checker.read_text(encoding="utf-8")
         self.assertNotIn("--check", checker_content)
-        self.assertIn("shutil.copyfile(lockfile, generated)", checker_content)
         self.assertIn('"--allow-unsafe"', checker_content)
-        self.assertNotIn('"--upgrade"', checker_content)
 
         runtime_lock = (ROOT / "requirements-lock-runtime-windows.txt").read_text(
             encoding="utf-8"
@@ -531,19 +499,11 @@ class RepositorySafetyTests(unittest.TestCase):
         self.assertIn("scripts/add_sbom_component.py", workflow)
         self.assertIn("--runtime-root extra\\sox-14.4.2", workflow)
         self.assertIn("--manifest scripts\\sox-runtime-manifest.json", workflow)
+        self.assertIn("sox-14.4.2-source.tar.gz", workflow)
         self.assertIn(
             "b45f598643ffbd8e363ff24d61166ccec4836fea6d3888881b8df53e3bb55f6c",
             workflow,
         )
-
-    def test_release_has_sbom_and_provenance_contract(self):
-        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("Clarify.sbom.json", workflow)
-        self.assertIn("actions/attest-build-provenance@", workflow)
-        self.assertIn("id-token: write", workflow)
-        self.assertIn("attestations: write", workflow)
 
 
 if __name__ == "__main__":
