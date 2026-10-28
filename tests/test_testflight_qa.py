@@ -3143,6 +3143,14 @@ class PreviewHistoryReconciliationTests(unittest.TestCase):
                 qa.PREVIEW_DIAGNOSTIC41,
                 workflow_sha256=hashlib.sha256(workflow).hexdigest(),
             ),
+            patch.object(
+                qa,
+                "archive_controls",
+                return_value={
+                    p: qa.device_archive.git_blob(data)
+                    for p, data in (self.controls | old).items()
+                },
+            ),
         ):
             self.assertEqual(self.reconcile()["decision"], "publish")
             for delta in [
@@ -3173,13 +3181,13 @@ class PreviewHistoryReconciliationTests(unittest.TestCase):
                 self.reconcile()
 
     def test_next_preview_identity_requires_its_own_upload_receipt(self):
-        self.policy.context.update(build="42", tag="ios/pr-179/v0.12.0-build42")
+        self.policy.context.update(build="43", tag="ios/pr-179/v0.12.0-build43")
         self.assertEqual(self.reconcile()["decision"], "publish")
         self.reports[self.fresh_id]["collections"]["builds"]["data"] = [
             dict(
-                id="unattributed-42",
+                id="unattributed-43",
                 type="builds",
-                attributes=dict(version="42", processingState="VALID"),
+                attributes=dict(version="43", processingState="VALID"),
             )
         ]
         self.reports[self.fresh_id]["collections"]["builds"]["totals"] = [1]
@@ -3403,6 +3411,122 @@ class PreviewHistoryReconciliationTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ReleaseError, "Missing preview history page"):
             self.reconcile()
+
+
+class NativeFailureDiagnosticTests(unittest.TestCase):
+    def test_fixed_history_root_checks_prior_inventory_not_new_main_inputs(self):
+        test = PreviewHistoryReconciliationTests()
+        test.setUp()
+        self.addCleanup(test.doCleanups)
+        prior = "a740ac9c319fd2cca0630bfd8489fa438e969827"
+        old = dict(test.controls)
+        old["scripts/testflight_qa.py"] = b"previous reviewed caller"
+        new = "scripts/windows_version.py"
+        test.controls[new] = b"new MAIN helper"
+        test.policy.context["controls"][new] = qa.device_archive.git_blob(
+            test.controls[new]
+        )
+        run = test.current | dict(
+            id=91, head_sha=prior, status="completed", conclusion="failure"
+        )
+        test.runs.append(run)
+        test.responses["/actions/runs/91/attempts/1/jobs"] = (
+            "jobs",
+            [
+                test.job
+                | dict(
+                    id=1000,
+                    run_id=91,
+                    head_sha=prior,
+                    status="completed",
+                    conclusion="skipped",
+                    steps=[],
+                )
+            ],
+        )
+        test.api.file.side_effect = lambda path, source: (
+            old[path].decode() if source == prior else test.file(path, source)
+        )
+        test.api.control.side_effect = lambda revision, path: (
+            old[path] if revision == prior else test.controls[path]
+        )
+        inventory = {p: qa.device_archive.git_blob(data) for p, data in old.items()}
+        with patch.object(qa, "archive_controls", return_value=inventory) as controls:
+            self.assertEqual(test.reconcile()["decision"], "publish")
+            controls.assert_called_once_with(qa.ROOT, prior)
+            old["scripts/testflight_qa.py"] += b"changed"
+            with self.assertRaisesRegex(
+                ReleaseError, "historical MAIN Apple implementation"
+            ):
+                test.reconcile()
+        self.assertFalse(
+            any(c.args == (new, prior) for c in test.api.file.call_args_list)
+        )
+
+    def test_cli_reports_only_fixed_stage_or_exception_type(self):
+        values = {
+            "GITHUB_REPOSITORY": REPO,
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "GITHUB_REF": "refs/heads/main",
+            "GITHUB_WORKFLOW_REF": REPO + "/" + QA_PATH + "@refs/heads/main",
+            "GITHUB_WORKFLOW_SHA": BASE,
+            "GITHUB_SHA": BASE,
+            "GITHUB_ACTOR": "maintainer",
+            "GITHUB_TRIGGERING_ACTOR": "maintainer",
+            "GITHUB_RUN_ID": "90",
+            "GITHUB_RUN_ATTEMPT": "1",
+            "QA_MODE": "sign-export-proof",
+        }
+        cases = [
+            (
+                qa.device_archive.ArchiveError(
+                    "Existing signing credential installation failed"
+                ),
+                "credential-install",
+            ),
+            (
+                qa.device_archive.ArchiveError(
+                    "Unsigned archive export unsupported or failed"
+                ),
+                "archive-export",
+            ),
+            (
+                qa.device_archive.ArchiveError("Export signature inspection failed"),
+                "signature-verification",
+            ),
+            (
+                qa.device_archive.ArchiveError("Export entitlement inspection failed"),
+                "entitlement-verification",
+            ),
+            (
+                qa.device_archive.ArchiveError("Signing credential cleanup failed"),
+                "credential-cleanup",
+            ),
+            (
+                qa.device_archive.ArchiveError("PRIVATE_SENTINEL arbitrary output"),
+                "archive-validation",
+            ),
+            (ValueError("PRIVATE_SENTINEL remote data"), "ValueError"),
+            (KeyError("PRIVATE_SENTINEL credential name"), "KeyError"),
+            (FileNotFoundError("PRIVATE_SENTINEL local path"), "validation-error"),
+        ]
+        for error, stage in cases:
+            with self.subTest(stage=stage):
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with (
+                    patch.dict(os.environ, values, clear=True),
+                    patch.object(
+                        qa.subprocess, "run", return_value=Mock(stdout=BASE + "\n")
+                    ),
+                    patch.object(qa, "_runtime_archive_inputs", return_value={}),
+                    patch.object(qa, "run_archive_command", side_effect=error),
+                    contextlib.redirect_stdout(stdout),
+                    contextlib.redirect_stderr(stderr),
+                ):
+                    self.assertEqual(qa.main(["sign-export-proof"]), 1)
+                self.assertEqual(stdout.getvalue(), "")
+                self.assertIn(stage, stderr.getvalue())
+                self.assertNotIn("PRIVATE_SENTINEL", stderr.getvalue())
 
 
 if __name__ == "__main__":
