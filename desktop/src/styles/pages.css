@@ -532,3 +532,11 @@
   .onboarding-heading { margin-bottom: 20px; }
   .onboarding-page .onboarding-heading h1 { margin-top: 16px; }
 }
+.computer-pairing { padding: 18px; border: 1px solid var(--border); border-radius: 12px; display: grid; gap: 14px; }
+.computer-pairing-header, .computer-devices li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.computer-pairing p { font-size: 13px; line-height: 1.5; }
+.computer-pairing h3 { margin: 0; font-size: 14px; }
+.computer-qr { width: fit-content; max-width: 100%; padding: 12px; background: white; border-radius: 8px; }
+.computer-qr img { display: block; max-width: 100%; height: auto; }
+.computer-devices { display: grid; gap: 10px; list-style: none; padding: 0; margin: 0; }
+.computer-devices span { overflow-wrap: anywhere; }

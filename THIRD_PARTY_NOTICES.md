@@ -23,8 +23,9 @@ The release SBOM records cryptography and its statically linked OpenSSL.
 | Lucide | Settings icons | ISC, with Feather portions under MIT; see the package LICENSE |
 | Tauri | Native Settings child window | MIT OR Apache-2.0; transitive crate terms also apply |
 | Pillow | Image rendering | HPND |
+| python-qrcode 8.2 | Local pairing QR generation | BSD-3-Clause, with inherited MIT attribution; preserved in `licenses/qrcode-BSD.txt` |
 | Requests | HTTP client | Apache-2.0 |
-| cryptography 50.0.2 | Ed25519 portable-update authentication | Apache-2.0 OR BSD-3-Clause; preserved in `licenses/cryptography-APACHE.txt` and `licenses/cryptography-BSD.txt` |
+| cryptography 50.0.2 | Portable-update authentication and paired-computer TLS identity | Apache-2.0 OR BSD-3-Clause; preserved in `licenses/cryptography-APACHE.txt` and `licenses/cryptography-BSD.txt` |
 | OpenSSL 4.0.3 | Static dependency of the Windows cryptography wheel | Apache-2.0; preserved in `licenses/OpenSSL-APACHE.txt` |
 | sounddevice | Audio capture | MIT |
 | PyInstaller bootloader | Portable packaging | GPL-2.0-or-later with a special exception for bundled applications |

@@ -1,5 +1,7 @@
 {
   "ios": {
-    "NSMicrophoneUsageDescription": "Clarify uses the microphone to transcribe and rewrite your speech."
+    "NSMicrophoneUsageDescription": "Clarify uses the microphone to transcribe and rewrite your speech.",
+    "NSCameraUsageDescription": "Clarify uses the camera to scan your computer's QR code.",
+    "NSLocalNetworkUsageDescription": "Clarify connects this iPhone to your computer to process dictation and text."
   }
 }

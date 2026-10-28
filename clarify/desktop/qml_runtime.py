@@ -1765,6 +1765,7 @@ class QtWorkflowRuntime:
         self.account = account
         self.practice_workflow = practice_workflow
         self._shutdown = False
+        self.computer = None
         self._history_timer = None
         if (
             account is not None
@@ -1860,6 +1861,9 @@ class QtWorkflowRuntime:
         if self._shutdown:
             return
         self._shutdown = True
+        computer_drained = True
+        if self.computer is not None:
+            computer_drained = self.computer.shutdown() is not False
         if self._history_timer is not None:
             self._history_timer.stop()
         timeout_seconds = max(0.0, float(timeout_seconds))
@@ -1874,7 +1878,8 @@ class QtWorkflowRuntime:
         self.workflow_service.cancel_active()
         self.recording_audio.wait_for_shutdown(max(0.0, deadline - time.monotonic()))
         self.scheduler.wait_for_background(max(0.0, deadline - time.monotonic()))
-        self.provider_registry.shutdown()
+        if computer_drained:
+            self.provider_registry.shutdown()
 
 
 def create_real_workflow_runtime(
