@@ -13,7 +13,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.jvictormaynard.clarify",
-      "buildNumber": "47",
+      "buildNumber": "48",
       "supportsTablet": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "O Clarify usa o microfone para transcrever e reescrever o que você ditar.",
