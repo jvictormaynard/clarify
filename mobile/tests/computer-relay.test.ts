@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
-import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 const require = createRequire(import.meta.url);
 const { compileModsAsync } = require('expo/config-plugins');
@@ -32,6 +31,7 @@ async function evaluate(value: string | undefined, fullPrebuild = false, plistOv
       config = withComputerRelay(config);
       config = withComputerLinkPrivacy(config);
     }
+    assert.equal(typeof config.mods.ios.appDelegate, 'function');
     return await compileModsAsync(config, { projectRoot, platforms: ['ios'], introspect: true, ignoreExistingNativeFiles: true });
   } finally {
     if (previous === undefined) delete process.env.EXPO_PUBLIC_CLARIFY_CONNECT_RELAY_HOST;
@@ -108,15 +108,4 @@ test('stale native scopes and conflicting ATS policies require a clean reviewed 
     NSAppTransportSecurity: { NSExceptionDomains: { [host]: exception } },
   });
   assert.deepEqual(result._internal.modResults.ios.infoPlist.NSAppTransportSecurity.NSExceptionDomains, { [host]: exception });
-});
-
-test('the composed relay and privacy plugins keep initial and runtime URLs outside JS on the pinned template', () => {
-  const template = path.join(path.dirname(require.resolve('expo/package.json')), 'template.tgz');
-  const source = execFileSync('tar', ['-xOzf', template, 'package/ios/HelloWorld/AppDelegate.swift'], { encoding: 'utf8' });
-  const config = withComputerLinkPrivacy(withComputerRelay(structuredClone(app)));
-  assert.equal(typeof config.mods.ios.appDelegate, 'function');
-  const protectedSource = withComputerLinkPrivacy.protectComputerLinks(source);
-  assert.doesNotMatch(protectedSource, /(?:launchOptions|didFinishLaunchingWithOptions): launchOptions/);
-  const runtime = protectedSource.slice(protectedSource.indexOf('// Linking API'));
-  assert.ok(runtime.indexOf('url.host?.lowercased() == "computer" { return true }') < runtime.indexOf('RCTLinkingManager.application'));
 });

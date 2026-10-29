@@ -5,6 +5,12 @@ import XCTest
 @testable import ClarifyContracts
 
 final class ComputerTests: XCTestCase {
+  private func temporaryDefaults() -> UserDefaults {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+    return defaults
+  }
   private static let now = Date(timeIntervalSince1970: 1_800_000_000)
   private static let computer = UUID(uuidString: "4BE646DB-0E41-41BE-8BD9-D72885FC1AAD")!
   private static let device = UUID(uuidString: "E9C7D24E-9E4F-416B-98AC-F065B69B79E3")!
@@ -574,9 +580,7 @@ final class ComputerTests: XCTestCase {
     }
   }
   @MainActor func testComputerDictationDetectsSpokenLanguageAndTextTranslationKeepsTarget() async throws {
-    let suite = "ClarifyTests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = temporaryDefaults()
     let f = Fixture()
     let account = CloudAccount(defaults: defaults, transport: { _ in XCTFail("Hosted fallback"); throw ComputerFailure.offline }, readCredential: { nil }, saveCredential: { _ in })
     let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
@@ -607,9 +611,7 @@ final class ComputerTests: XCTestCase {
   }
 
   @MainActor func testAccountSelectedTextNeverUsesThePairedComputerOrFallsBackAfterFailure() async throws {
-    let suite = "ClarifyTests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = temporaryDefaults()
     var state = CloudAccountState(); state.endpoint = "https://account.test"; state.userID = UUID().uuidString
     defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
     let f = Fixture()
@@ -632,9 +634,7 @@ final class ComputerTests: XCTestCase {
   }
 
   @MainActor func testTextStartRefreshesRequestedActionAndRejectsLostReadinessOrStaleOwner() async throws {
-    let suite = "ClarifyTests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = temporaryDefaults()
     let f = Fixture()
     let account = CloudAccount(defaults: defaults, transport: { _ in XCTFail("Hosted fallback"); throw ComputerFailure.offline }, readCredential: { nil }, saveCredential: { _ in })
     let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
@@ -663,9 +663,7 @@ final class ComputerTests: XCTestCase {
     XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" })
   }
   @MainActor func testCancelledTextRefreshNeverStartsProcessing() async throws {
-    let suite = "ClarifyTests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = temporaryDefaults()
     let f = Fixture()
     let account = CloudAccount(defaults: defaults, transport: { _ in XCTFail("Hosted fallback"); throw ComputerFailure.offline }, readCredential: { nil }, saveCredential: { _ in })
     let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
@@ -908,9 +906,7 @@ final class ComputerTests: XCTestCase {
     XCTAssertEqual(try library.history().entries, [guest])
   }
   @MainActor func testComputerKeyboardActivationAllowsTextWithoutEnablingDictation() async throws {
-    let suite = "ClarifyTests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = temporaryDefaults()
     let f = Fixture(); f.dictationReady = false
     f.actionReadiness = ["dictate": false, "rewrite": true, "translate": false]
     let account = CloudAccount(defaults: defaults, transport: { _ in XCTFail("Hosted fallback"); throw ComputerFailure.offline }, readCredential: { nil }, saveCredential: { _ in })
@@ -929,9 +925,7 @@ final class ComputerTests: XCTestCase {
     XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" })
   }
   @MainActor func testComputerActivationRejectsModeChangeDuringPermissionWait() async throws {
-    let suite = "ClarifyTests.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = temporaryDefaults()
     let f = Fixture()
     let account = CloudAccount(defaults: defaults, transport: { _ in throw ComputerFailure.invalidResponse }, readCredential: { nil }, saveCredential: { _ in })
     let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)

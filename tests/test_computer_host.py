@@ -4,7 +4,7 @@ import asyncio
 import base64
 from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing, redirect_stderr, suppress
+from contextlib import closing, contextmanager, redirect_stderr, suppress
 import hashlib
 import http.client
 import io
@@ -409,6 +409,19 @@ class ComputerHostTests(unittest.TestCase):
             registry=registry,
         )
         return registry
+
+    @contextmanager
+    def blocked_text(self, request, token):
+        self.processor.block = True
+        with ThreadPoolExecutor(1) as executor:
+            pending = executor.submit(
+                self.request, "POST", "/v1/computer/text", request, token
+            )
+            try:
+                self.assertTrue(self.processor.entered.wait(2))
+                yield pending
+            finally:
+                self.processor.release.set()
 
     def saved_text(self, **changes):
         return {
@@ -1544,13 +1557,8 @@ class ComputerHostTests(unittest.TestCase):
         _, session = self.pair()
         _, other = self.pair()
         token = session["session_token"]
-        self.processor.block = True
         request = self.text()
-        with ThreadPoolExecutor(1) as executor:
-            pending = executor.submit(
-                self.request, "POST", "/v1/computer/text", request, token
-            )
-            self.assertTrue(self.processor.entered.wait(2))
+        with self.blocked_text(request, token) as pending:
             path = f"/v1/computer/operations/{request['operation_id']}"
             self.assertEqual(
                 self.request("DELETE", path, token=other["session_token"])[0], 200
@@ -2106,13 +2114,8 @@ class ComputerHostTests(unittest.TestCase):
         self.host.start()
         _, session = self.pair()
         token = session["session_token"]
-        self.processor.block = True
         second = self.text()
-        with ThreadPoolExecutor(1) as executor:
-            pending = executor.submit(
-                self.request, "POST", "/v1/computer/text", self.text(), token
-            )
-            self.assertTrue(self.processor.entered.wait(2))
+        with self.blocked_text(self.text(), token) as pending:
             self.assertEqual(
                 self.request("POST", "/v1/computer/text", second, token),
                 (429, {"error": "busy"}),
@@ -2193,16 +2196,7 @@ class ComputerHostTests(unittest.TestCase):
 
     def test_revocation_cancels_running_device_work(self):
         _, session = self.pair()
-        self.processor.block = True
-        with ThreadPoolExecutor(1) as executor:
-            pending = executor.submit(
-                self.request,
-                "POST",
-                "/v1/computer/text",
-                self.text(),
-                session["session_token"],
-            )
-            self.assertTrue(self.processor.entered.wait(2))
+        with self.blocked_text(self.text(), session["session_token"]) as pending:
             self.host.revoke_device(session["device_id"])
             self.assertTrue(self.processor.calls[0][-1].cancelled)
             self.processor.release.set()

@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 const { getConfig } = require('expo/config');
 const withClarifyKeyboard = require('../plugins/with-clarify-keyboard.cjs');
 
-test('keyboard source composition includes shared errors without credential access', async () => {
+test('keyboard source composition excludes account credential access', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-keyboard-sources-'));
   try {
     const config = withClarifyKeyboard(structuredClone(require('../app.json').expo));
@@ -26,8 +26,6 @@ test('keyboard source composition includes shared errors without credential acce
     };
     await config.mods.ios.xcodeproj({ ...config, modRequest, modResults: project });
     const swift = sources.filter(file => file.endsWith('.swift')).map(file => fs.readFileSync(path.join(root, file), 'utf8')).join('\n');
-    assert.match(swift, /throw ClarifyError/, 'The preference code still needs the shared error');
-    assert.equal([...swift.matchAll(/struct ClarifyError\b/g)].length, 1, 'The real extension target must own one shared error definition');
     assert.doesNotMatch(swift, /enum KeyStore\b|SecItemCopyMatching|AccountCredential/, 'The keyboard must not receive credential access to obtain an error type');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

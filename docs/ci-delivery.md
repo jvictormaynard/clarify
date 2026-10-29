@@ -71,6 +71,12 @@ Trusted QA uses the same range selection for the QA/archive extras. It retains
 its original delivery, release and trusted-policy suites, plus native/mobile
 acceptance. This selection does not change the validation manifest schema.
 
+The normal Python jobs use `run_tests.py --ci-product-tests`. Delivery and
+release policies run once in Repository checks. The Linux product job also
+omits the QA/archive modules owned by that job. Windows retains their
+PowerShell and filesystem checks when QA policy changes or its selection is
+uncertain. Without this flag, local and trusted runs keep full discovery.
+
 ## Branch protection
 
 The required aggregate is `CI required`; individual job names remain for release
@@ -114,6 +120,9 @@ fixture preparation, simulator boot and test/build durations, and retains its
 result bundle. The app build emits the Xcode build timing summary. CI uploads
 the available evidence after success or failure. Cache keys include the runner,
 toolchain and source inputs; restored builds and all assertions still run.
+The normal native-test job needs Node and Xcode, but no Expo/npm installation.
+JavaScript checks and the bundle run in Mobile checks. The unsigned app build
+still installs the locked app dependencies. Trusted QA keeps its existing recipes.
 
 The `iOS validation` workflow also accepts a manual run on a contribution branch.
 It runs the same unsigned validation and aggregate gate. For a cache measurement,
