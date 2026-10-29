@@ -96,8 +96,10 @@ It does not request a new activation or protection change.
 
 Browser validation is separate from the native Settings build. Cargo downloads
 and compilation outputs use OS, architecture, compiler and lock-based caches.
-iOS caches CocoaPods downloads and Xcode build outputs. Builds still run and
-validate restored inputs; a cache hit is not proof of successful validation.
+iOS caches CocoaPods downloads and native test build outputs. The unsigned app
+build uses fresh DerivedData for each job. It does not restore compiled modules
+or precompiled headers, which can retain incompatible signatures across runners.
+Builds and tests still run; a cache hit is not proof of successful validation.
 Do not put profiles, secrets, recordings or signing materials in caches.
 
 Native iOS tests and unsigned compilation run in separate parallel jobs. Each
