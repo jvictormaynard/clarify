@@ -53,6 +53,9 @@ final class CloudAccount {
   private var lastHistoryAttempt = -Double.infinity
   private var historyFailed = false
   private let transport: ((URLRequest) async throws -> (Data, HTTPURLResponse))?
+  private let connectTransport: ((URLRequest, Int) async throws -> (Data, HTTPURLResponse))?
+  private let connectConfiguration: () throws -> ComputerCloudflareConfiguration?
+  private let connectAccountEndpoint: () -> String?
   private let readCredential: () -> String?
   private let saveCredential: (String?) throws -> Void
   private let historyClock: () -> TimeInterval
@@ -82,9 +85,14 @@ final class CloudAccount {
        socialSleep: @escaping @MainActor (TimeInterval) async throws -> Void = { seconds in
          guard seconds > 0, seconds <= 300 else { throw ClarifyError(L("A entrada com este provedor expirou. Tente novamente.")) }
          try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-       }) {
+       },
+       connectTransport: ((URLRequest, Int) async throws -> (Data, HTTPURLResponse))? = nil,
+       connectConfiguration: @escaping () throws -> ComputerCloudflareConfiguration? = ComputerCloudflareConfiguration.current,
+       connectAccountEndpoint: @escaping () -> String? = { Bundle.main.object(forInfoDictionaryKey: "ClarifyCloudURL") as? String }) {
     self.defaults = defaults
     self.transport = transport; self.readCredential = readCredential; self.saveCredential = saveCredential
+    self.connectTransport = connectTransport; self.connectConfiguration = connectConfiguration
+    self.connectAccountEndpoint = connectAccountEndpoint
     self.historyClock = historyClock
     self.sessionInvalidated = sessionInvalidated
     self.socialBrowser = socialBrowser; self.socialClock = socialClock; self.socialSleep = socialSleep
@@ -142,6 +150,70 @@ final class CloudAccount {
     if (url.scheme == "https" && url.port == 443) || (url.scheme == "http" && url.port == 80) { url.port = nil }
     guard let canonical = url.string else { throw ClarifyError(L("Use um endereço HTTPS, sem caminho, usuário ou senha.")) }
     return canonical
+  }
+  @MainActor func requestComputerGrant(_ registration: ComputerRemoteRegistration, computerID: UUID,
+    now: @escaping () -> Date = Date.init) async throws -> ComputerConnectGrant {
+    try Task.checkCancellation()
+    guard let configuration = try connectConfiguration(), registration.controlURL == configuration.controlURL,
+      let fixedEndpoint = connectAccountEndpoint(), !fixedEndpoint.isEmpty,
+      try Self.validateEndpoint(fixedEndpoint) == fixedEndpoint, fixedEndpoint.hasPrefix("https://"),
+      ComputerRoute.validPin(registration.certificateSHA256), (1...65535).contains(registration.originPort),
+      ComputerInvitation.base64URL(registration.hpkePublicKey, bytes: 32) != nil else { throw ComputerFailure.invalidResponse }
+    try begin(); defer { end() }
+    let identity = locked { (state.endpoint, state.userID, generation, readCredential()) }
+    guard identity.0 == fixedEndpoint, let user = identity.1, UUID(uuidString: user) != nil,
+      let token = identity.3, !token.isEmpty, token.utf8.count <= 4096,
+      token.utf8.allSatisfy({ (33...126).contains($0) }) else { throw ComputerFailure.authentication }
+    let isCurrent = { [weak self] () -> Bool in
+      guard let self else { return false }
+      return self.locked {
+        self.state.endpoint == identity.0 && self.state.userID == identity.1 &&
+          self.generation == identity.2 && self.readCredential() == identity.3 &&
+          self.connectAccountEndpoint() == fixedEndpoint && (try? self.connectConfiguration()) == configuration
+      }
+    }
+    func checkIdentity() throws {
+      try Task.checkCancellation()
+      guard isCurrent() else { throw CancellationError() }
+    }
+    func send(_ endpoint: String, path: String, method: String, json: [String: Any]? = nil,
+      maximum: Int) async throws -> Data {
+      try checkIdentity()
+      guard let url = URL(string: endpoint + path) else { throw ComputerFailure.invalidResponse }
+      var request = URLRequest(url: url); request.httpMethod = method; request.timeoutInterval = 15
+      request.setValue("application/json", forHTTPHeaderField: "Accept")
+      request.setValue(token, forHTTPHeaderField: "X-Session-Token")
+      request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+      if let json {
+        request.httpBody = try JSONSerialization.data(withJSONObject: json)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      }
+      let data: Data, response: HTTPURLResponse
+      do {
+        if let connectTransport { (data, response) = try await connectTransport(request, maximum) }
+        else { (data, response) = try await ComputerHTTPS.sendFixed(request, expectedURL: url, maximumResponseBytes: maximum) }
+      } catch {
+        try checkIdentity(); throw error
+      }
+      try checkIdentity()
+      guard response.url == url, data.count <= maximum else { throw ComputerFailure.invalidResponse }
+      if [401, 403].contains(response.statusCode) { throw ComputerFailure.authentication }
+      guard response.statusCode == 200,
+        response.value(forHTTPHeaderField: "Content-Type")?.split(separator: ";").first?.trimmingCharacters(in: .whitespaces).lowercased() == "application/json" else { throw ComputerFailure.invalidResponse }
+      return data
+    }
+    // Verify the existing session at the fixed account origin. This request
+    // does not activate hosted mode, synchronize data or debit processing quota.
+    let accountData = try await send(fixedEndpoint, path: "/v1/account", method: "GET", maximum: 512 * 1024)
+    let account = try ComputerJSON.object(accountData, maximum: 512 * 1024)
+    guard account["id"] as? String == user else { throw ComputerFailure.authentication }
+    try checkIdentity()
+    let data = try await send(configuration.controlURL, path: "/v1/connect/grants", method: "POST", json: [
+      "computer_id": computerID.uuidString.lowercased(), "certificate_sha256": registration.certificateSHA256.lowercased(),
+      "hpke_public_key": registration.hpkePublicKey, "origin_port": registration.originPort], maximum: 4096)
+    try checkIdentity()
+    return try ComputerConnectGrant.parse(data, registration: registration, configuration: configuration,
+      now: now(), accountIsCurrent: isCurrent)
   }
   private func begin() throws {
     try locked {
@@ -305,7 +377,7 @@ final class CloudAccount {
       return callback
     }
   }
-  @MainActor private func signInSocial(_ provider: String, library: LocalLibrary) async throws {
+  @MainActor private func signInSocial(_ provider: String, library: LocalLibrary, connectionOnly: Bool = false) async throws {
     let base = try Self.validateEndpoint(locked { state.endpoint })
     guard base.hasPrefix("https://") else { throw ClarifyError(L("O endereço de entrada recebido não é seguro. Tente novamente.")) }
     let previous = locked { (generation, readCredential()) }
@@ -383,11 +455,11 @@ final class CloudAccount {
           } else { acceptedToken = token }
           // SQLite preparation can fail. Do it before committing credentials or
           // publishing the account, using the verified account's explicit scope.
-          try prepareLibrary(library, for: userID)
+          if !connectionOnly { try prepareLibrary(library, for: userID) }
           try locked { try checkIdentity(); try saveCredential(acceptedToken); try acceptAccount(account) }
         }
         delivered = true
-        if code == 200 { await syncQuietly(library) }
+        if code == 200 && !connectionOnly { await syncQuietly(library) }
         return
       }
     } catch {
@@ -408,7 +480,10 @@ final class CloudAccount {
       throw error
     }
   }
-  @MainActor func command(_ action: String, value: String, library: LocalLibrary) async throws -> Bool {
+  @MainActor func command(_ action: String, value: String, library: LocalLibrary, connectionOnly: Bool = false) async throws -> Bool {
+    if connectionOnly && !["login", "signup", "confirm", "social", "cancel-social", "configure", "logout", "refresh"].contains(action) {
+      throw ComputerFailure.invalidResponse
+    }
     // Cancellation must reach the retained browser while the original command
     // still owns busy state and server/session cleanup.
     if action == "cancel-social" { socialTask?.cancel(); socialBrowser.cancel(); return false }
@@ -422,7 +497,7 @@ final class CloudAccount {
         try self.begin(); defer { self.end() }
         self.locked { self.automatic = false }
         guard !self.configured else { throw ClarifyError(L("Saia da conta atual primeiro.")) }
-        try await self.signInSocial(value, library: library)
+        try await self.signInSocial(value, library: library, connectionOnly: connectionOnly)
       }
       socialTask = task
       defer { socialTask = nil }
@@ -462,8 +537,10 @@ final class CloudAccount {
         throw ClarifyError(L("O código é inválido ou expirou. Solicite um novo código."))
       }
       try await refresh()
-      try prepareLibrary(library)
-      await syncQuietly(library)
+      if !connectionOnly {
+        try prepareLibrary(library)
+        await syncQuietly(library)
+      }
     case "refresh": try await refresh()
     case "auto":
       do { try await refresh(); try prepareLibrary(library); await syncQuietly(library) }
@@ -690,6 +767,27 @@ final class CloudAccount {
     let diagnosticOperation = receivedOperation != nil && receivedOperation == expectedOperation ? receivedOperation?.uuidString : nil
     return ClarifyError(code.flatMap { messages[$0] } ?? fallback, code: code, phase: phase,
       operationID: diagnosticOperation, status: status)
+  }
+  @MainActor func processText(_ operationID: String, action: String, text: String, language: String) async throws -> ProcessingText {
+    guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
+    guard UUID(uuidString: operationID) != nil, ["rewrite", "translate"].contains(action),
+      ["auto", "pt", "en", "es", "de", "ru"].contains(language),
+      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 16_000 else {
+      throw ClarifyError(L("Selecione um texto válido para processar."), code: "invalid_text_request")
+    }
+    let context = historyContext
+    try await waitForAutomaticRefresh()
+    guard configured, context == historyContext else { throw CancellationError() }
+    try begin(); defer { end() }
+    let (code, result) = try await perform("POST", "/v1/text", json: [
+      "operation_id": operationID, "action": action, "text": text, "language": language
+    ])
+    guard code == 200 else { throw Self.processingFailure(code, result: result, operationID: operationID) }
+    guard let output = result["text"] as? String,
+      !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, output.utf8.count <= 64_000 else {
+      throw ClarifyError(L("O Clarify retornou um resultado inválido."))
+    }
+    return ProcessingText(text: output, successful: true)
   }
   @MainActor func dictate(_ audio: URL, operationID: String, library: LocalLibrary) async throws -> CloudDictation {
     guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }

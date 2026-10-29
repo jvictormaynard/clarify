@@ -1,5 +1,7 @@
 {
   "ios": {
-    "NSMicrophoneUsageDescription": "Clarify usa el micrófono para transcribir y reescribir tu voz."
+    "NSMicrophoneUsageDescription": "Clarify usa el micrófono para transcribir y reescribir tu voz.",
+    "NSCameraUsageDescription": "Clarify usa la cámara para leer el QR de tu ordenador.",
+    "NSLocalNetworkUsageDescription": "Clarify conecta este iPhone a tu ordenador para procesar dictados y textos."
   }
 }

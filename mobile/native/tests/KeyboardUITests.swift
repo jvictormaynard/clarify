@@ -36,6 +36,9 @@ private final class SelectionKeyboard: KeyboardViewController {
   var fullAccess = true
   override var textDocumentProxy: UITextDocumentProxy { field }
   override var hasFullAccess: Bool { fullAccess }
+  // This ordinary child-controller fixture has no system input-mode host.
+  // The real InputField and opening diagnostic retain UIKit's host query.
+  override var needsInputModeSwitchKey: Bool { false }
 }
 
 @MainActor
@@ -64,6 +67,7 @@ final class KeyboardUITests: XCTestCase {
       let status = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UILabel }.first { $0.accessibilityIdentifier == "clarify.keyboard.status" })
       let messages = ["Nenhuma fala foi reconhecida. Tente falar novamente.", "Não foi possível transcrever o áudio. Tente novamente.",
         "O processamento do Clarify está indisponível no momento.", "Esta solicitação não pode ser repetida. Inicie uma nova ação.",
+        "Limite atingido. Revogue no computador o acesso de um celular ou deste iPhone. Leia outro QR.",
         "A reescrita falhou. Você pode inserir a transcrição original."]
       for language in ["pt", "en", "es"] {
         for message in messages {
@@ -95,6 +99,9 @@ final class KeyboardUITests: XCTestCase {
       expired.phase = .idle; expired.message = nil
       try store.write(expired, to: "state.json"); keyboard.refreshFromStore(); keyboard.view.layoutIfNeeded()
       XCTAssertEqual(status.text, L("Entre no Clarify"), "An unconfigured keyboard must lead to account sign-in")
+      expired.computerMode = true
+      try store.write(expired, to: "state.json"); keyboard.refreshFromStore()
+      XCTAssertEqual(status.text, L("Conecte seu computador"), "Computer mode must not request a hosted account")
     }
   }
   func testOwnTypingCapitalizesTheNextSentenceWithoutAHostNotification() async throws {
@@ -197,7 +204,7 @@ final class KeyboardUITests: XCTestCase {
       keyboard.selectionDidChange(nil)
       let save = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
         .first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" })
-      XCTAssertTrue(save.isEnabled); save.sendActions(for: .touchUpInside)
+      XCTAssertTrue(save.isEnabled); keyboard.saveSelectedTerm()
       XCTAssertEqual(store.keyboardAdditions(scope: "guest").map { $0.1.term }, ["helllo"])
       keyboard.field.selectedText = nil; keyboard.selectionDidChange(nil)
       let space = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
@@ -246,10 +253,39 @@ final class KeyboardUITests: XCTestCase {
   @MainActor
   private func beginProcessing(in keyboard: SelectionKeyboard, store: SharedState) throws -> String {
     var state = store.snapshot(); state.heartbeat = Date().timeIntervalSince1970
-    try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+    try store.write(state, to: "state.json")
+    let beforeRefresh = Date().timeIntervalSince1970
+    keyboard.refreshFromStore()
+    let afterRefresh = Date().timeIntervalSince1970
     let mic = try XCTUnwrap(descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
+    let beforeActivation = Date().timeIntervalSince1970
+    let microphoneEnabled = mic.isEnabled; let microphoneHidden = mic.isHidden
     XCTAssertTrue(mic.accessibilityActivate())
-    let start = try XCTUnwrap(store.commands().last?.1)
+    let commands = store.commands()
+    if commands.isEmpty {
+      // Keep metadata only. A true accessibility return does not prove that
+      // the controller accepted Start or that its command file was readable.
+      var report = [
+        "heartbeatAgeBeforeRefresh=\(beforeRefresh - state.heartbeat)",
+        "heartbeatAgeAfterRefresh=\(afterRefresh - state.heartbeat)",
+        "heartbeatAgeBeforeActivation=\(beforeActivation - state.heartbeat)",
+        "microphoneEnabled=\(microphoneEnabled), microphoneHidden=\(microphoneHidden)",
+        "sessionActive=\(state.sessionActive), configured=\(state.configured), phase=\(state.phase.rawValue)"
+      ]
+      do {
+        _ = try JSONDecoder().decode(DictationSnapshot.self, from: Data(contentsOf: store.root.appendingPathComponent("state.json")))
+        let files = try FileManager.default.contentsOfDirectory(at: store.root, includingPropertiesForKeys: nil)
+          .filter { $0.lastPathComponent.hasPrefix("command-") && $0.pathExtension == "json" }
+        report.append("commandFiles=\(files.count)")
+        for file in files.prefix(8) {
+          do { _ = try JSONDecoder().decode(DictationCommand.self, from: Data(contentsOf: file)); report.append("commandDecode=ok") }
+          catch { report.append("commandDecode=\(String(reflecting: type(of: error)))") }
+        }
+      } catch { report.append("fixtureRead=\(String(reflecting: type(of: error)))") }
+      let attachment = XCTAttachment(string: report.joined(separator: "\n"))
+      attachment.name = "dictation-start-fixture"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+    let start = try XCTUnwrap(commands.last?.1, "Start command missing; see dictation-start-fixture attachment")
     XCTAssertEqual(start.action, "start")
     state.operationID = start.operationID; state.phase = .recording; state.text = nil
     state.heartbeat = Date().timeIntervalSince1970
@@ -425,7 +461,8 @@ final class KeyboardUITests: XCTestCase {
       defer { try? FileManager.default.removeItem(at: root) }
       let store = SharedState(root: root)
       try store.publishKeyboardDictionary(KeyboardDictionaryContext(scope: "guest", words: []))
-      var snapshot = DictationSnapshot(); snapshot.sessionActive = true; snapshot.configured = true
+      // The offline dictionary button remains available without a live session.
+      var snapshot = DictationSnapshot(); snapshot.sessionActive = false; snapshot.configured = true
       try store.write(snapshot, to: "state.json")
       let keyboard = SelectionKeyboard(); keyboard.store = store
       keyboard.overrideUserInterfaceStyle = .dark
@@ -1066,6 +1103,223 @@ final class KeyboardUITests: XCTestCase {
       assistant.insert(" ", into: field); XCTAssertEqual(field.before, "obrigaddo ")
       field.autocorrectionType = .yes; field.before = "victor@obrigaddo"
       assistant.insert(" ", into: field); XCTAssertEqual(field.before, "victor@obrigaddo ")
+    }
+  }
+  func testInsertionRejectsAResultClearedByAnotherDestinationBeforeTheNextPoll() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer { window.isHidden = true; try? FileManager.default.removeItem(at: store.root) }
+      let id = try self.beginProcessing(in: keyboard, store: store)
+      var state = store.snapshot(); state.phase = .error; state.text = "Former result"; state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      XCTAssertNotEqual(store.receipt(), id)
+      state.processingContext = "other-destination"; state.operationID = nil; state.text = nil; state.phase = .idle
+      try store.write(state, to: "state.json")
+      self.attemptExplicitInsertion(keyboard)
+      XCTAssertFalse(keyboard.field.before.contains("Former result")); XCTAssertNotEqual(store.receipt(), id)
+    }
+  }
+  func testSelectedTextInBothDestinationsReusesCommandsAndRejectsChangedDocument() async throws {
+    try await MainActor.run {
+      for computerMode in [false, true] {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer { window.isHidden = true; try? FileManager.default.removeItem(at: store.root) }
+      let context = computerMode ? "computer-fixture" : "account-fixture"
+      var state = store.snapshot(); state.computerMode = computerMode; state.processingContext = context
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      keyboard.field.selectedText = "Selected text with several words"
+      keyboard.selectionDidChange(nil)
+      let button = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }.first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" })
+      XCTAssertFalse(button.isHidden); XCTAssertTrue(button.showsMenuAsPrimaryAction); XCTAssertNotNil(button.menu)
+      keyboard.processSelection("translate", language: "es")
+      let command = try XCTUnwrap(store.commands().last?.1)
+      XCTAssertEqual(command.action, "translate"); XCTAssertEqual(command.language, "es")
+      XCTAssertEqual(command.text, "Selected text with several words"); XCTAssertEqual(command.context, context)
+      state.operationID = command.operationID; state.textOperation = true; state.phase = .rewriting
+      state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      keyboard.field.documentIdentifier = UUID(); keyboard.selectionDidChange(nil)
+      XCTAssertTrue(store.isCancelled(command.operationID))
+      state.phase = .ready; state.text = "Old translation"; state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore(); self.attemptExplicitInsertion(keyboard)
+      XCTAssertFalse(keyboard.field.before.contains("Old translation"))
+      }
+    }
+  }
+  func testSelectedTextCapsuleKeepsTitleBeforeIconAcrossRefreshAndDictionaryTransitions() async throws {
+    try await MainActor.run {
+      for startsOffline in [false, true] {
+        let (keyboard, store, window) = try self.makeDictationFixture()
+        defer {
+          keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+          window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+        }
+        try store.publishKeyboardDictionary(KeyboardDictionaryContext(scope: "guest", words: []))
+        var state = store.snapshot(); state.sessionActive = !startsOffline
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+        keyboard.field.selectedText = "Clarify"; keyboard.selectionDidChange(nil)
+        let button = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }.first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" })
+        state.sessionActive = true
+        for appearance in [UIUserInterfaceStyle.light, .dark] {
+          keyboard.view.overrideUserInterfaceStyle = appearance
+          for width in [CGFloat(320), 393, 852] {
+            keyboard.view.frame.size.width = width
+            for _ in 0..<3 {
+              state.heartbeat = Date().timeIntervalSince1970
+              try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+              keyboard.selectionDidChange(nil)
+              button.isHighlighted.toggle(); button.setNeedsUpdateConfiguration()
+              keyboard.view.layoutIfNeeded(); button.layoutIfNeeded()
+              let label = try XCTUnwrap(button.titleLabel), icon = try XCTUnwrap(button.imageView)
+              let titleRect = label.convert(label.bounds, to: button), iconRect = icon.convert(icon.bounds, to: button)
+              XCTAssertEqual(label.text, L("Texto selecionado")); XCTAssertFalse(button.isHidden)
+              XCTAssertGreaterThan(titleRect.width, 0); XCTAssertGreaterThan(iconRect.width, 0)
+              XCTAssertGreaterThanOrEqual(iconRect.minX - titleRect.maxX, 8, "The wand must stay after the title with a visible gap")
+              XCTAssertTrue(button.bounds.contains(titleRect)); XCTAssertTrue(button.bounds.contains(iconRect))
+              XCTAssertTrue(keyboard.view.bounds.contains(button.frame)); XCTAssertEqual(keyboard.view.bounds.height, 278)
+              XCTAssertEqual(button.tintColor.resolvedColor(with: button.traitCollection), UIColor.label.resolvedColor(with: button.traitCollection), "The menu must inherit the readable foreground, independently of the capsule")
+              XCTAssertEqual(keyboard.field.selectedText, "Clarify"); XCTAssertTrue(store.commands().isEmpty)
+            }
+          }
+        }
+        state.sessionActive = false
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore(); button.layoutIfNeeded()
+        XCTAssertFalse(button.showsMenuAsPrimaryAction); XCTAssertNil(button.menu)
+        button.sendActions(for: .touchUpInside)
+        XCTAssertEqual(store.keyboardAdditions(scope: "guest").map { $0.1.term }, ["Clarify"])
+        XCTAssertFalse(button.isEnabled)
+        for appearance in [UIUserInterfaceStyle.light, .dark] { try self.assertSavedTitleIsVisible(button, in: appearance) }
+      }
+    }
+  }
+  func testTranslationMenuSurvivesRefreshAndStillCancelsWhenSelectionChanges() async throws {
+    try await MainActor.run {
+      for computerMode in [false, true] {
+        let (keyboard, store, window) = try self.makeDictationFixture()
+        defer {
+          keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+          window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+        }
+        var state = store.snapshot(); state.computerMode = computerMode
+        state.processingContext = computerMode ? "computer-fixture" : "account-fixture"
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+        keyboard.field.before = "Prefix "; keyboard.field.selectedText = "Original selection"
+        keyboard.selectionDidChange(nil)
+        let button = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }.first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" })
+        let menu = try XCTUnwrap(button.menu)
+        let translate = try XCTUnwrap(menu.children.compactMap { $0 as? UIMenu }.first { $0.title == L("Traduzir") })
+        let spanish = try XCTUnwrap(translate.children.compactMap { $0 as? UIAction }.first { $0.title == "Español" })
+        XCTAssertFalse(spanish.attributes.contains(.disabled)); XCTAssertTrue(button.isEnabled)
+        for _ in 0..<20 {
+          state.heartbeat = Date().timeIntervalSince1970; state.libraryRevision += 1
+          try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+          keyboard.selectionDidChange(nil); keyboard.textDidChange(nil)
+          XCTAssertTrue(button.menu === menu, "Polling must preserve the menu that owns the open language submenu")
+          XCTAssertTrue(button.menu?.children.contains { $0 === translate } == true)
+          XCTAssertEqual(keyboard.field.selectedText, "Original selection"); XCTAssertTrue(store.commands().isEmpty)
+        }
+        // Invoke the retained language action through UIKit's public control event.
+        let choice = UIButton(type: .system, primaryAction: spanish)
+        choice.sendActions(for: .primaryActionTriggered)
+        let command = try XCTUnwrap(store.commands().last?.1)
+        XCTAssertEqual(command.action, "translate"); XCTAssertEqual(command.language, "es")
+        XCTAssertEqual(command.text, "Original selection"); XCTAssertEqual(command.context, state.processingContext)
+        state.operationID = command.operationID; state.textOperation = true; state.phase = .rewriting
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+        keyboard.field.selectedText = "Changed selection"; keyboard.selectionDidChange(nil)
+        XCTAssertTrue(store.isCancelled(command.operationID))
+        state.phase = .ready; state.text = "Stale translation"; state.heartbeat = Date().timeIntervalSince1970
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore(); self.attemptExplicitInsertion(keyboard)
+        XCTAssertEqual(keyboard.field.before, "Prefix "); XCTAssertEqual(keyboard.field.selectedText, "Changed selection")
+        XCTAssertNotEqual(store.receipt(), command.operationID)
+      }
+    }
+  }
+  func testAccountSelectedTextMenuPreservesDictionaryAndRejectsSecureOrOversizedSelections() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer { window.isHidden = true; try? FileManager.default.removeItem(at: store.root) }
+      try store.publishKeyboardDictionary(KeyboardDictionaryContext(scope: "guest", words: []))
+      keyboard.field.selectedText = "Clarify"; keyboard.selectionDidChange(nil)
+      let button = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }.first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" })
+      XCTAssertFalse(button.isHidden); XCTAssertTrue(button.showsMenuAsPrimaryAction)
+      keyboard.view.layoutIfNeeded(); button.layoutIfNeeded()
+      XCTAssertEqual(button.titleLabel?.text, L("Texto selecionado"))
+      let menu = try XCTUnwrap(button.menu)
+      XCTAssertTrue(menu.children.contains { ($0 as? UIAction)?.title == L("Reescrever") })
+      XCTAssertTrue(menu.children.contains { ($0 as? UIMenu)?.title == L("Traduzir") })
+      XCTAssertTrue(menu.children.contains { ($0 as? UIAction)?.title == L("Adicionar ao dicionário") })
+      button.sendActions(for: .touchUpInside)
+      XCTAssertTrue(store.keyboardAdditions(scope: "guest").isEmpty, "Opening the menu must not save a word")
+      keyboard.saveSelectedTerm()
+      XCTAssertEqual(store.keyboardAdditions(scope: "guest").map { $0.1.term }, ["Clarify"])
+      let saved = try XCTUnwrap(button.menu?.children.compactMap { $0 as? UIAction }.first { $0.title == L("Salvo") })
+      XCTAssertTrue(saved.attributes.contains(.disabled))
+      XCTAssertFalse(button.menu === menu, "Saving must update the dictionary entry in the selected-text menu")
+      let savedMenu = button.menu
+      keyboard.refreshFromStore(); XCTAssertTrue(button.menu === savedMenu)
+      var renewed = store.snapshot(); renewed.processingContext = "renewed-account-session"
+      try store.write(renewed, to: "state.json"); keyboard.refreshFromStore()
+      XCTAssertFalse(button.menu === savedMenu, "A new destination or session must invalidate the old menu")
+      XCTAssertEqual(keyboard.field.selectedText, "Clarify"); XCTAssertTrue(store.commands().isEmpty)
+      for width in [CGFloat(320), 393, 852] {
+        keyboard.view.frame.size.width = width; keyboard.view.layoutIfNeeded()
+        XCTAssertTrue(keyboard.view.bounds.contains(button.frame)); XCTAssertEqual(keyboard.view.bounds.height, 278)
+      }
+      keyboard.field.isSecureTextEntry = true; keyboard.selectionDidChange(nil)
+      XCTAssertTrue(button.isHidden); XCTAssertNil(button.menu)
+      keyboard.processSelection("translate", language: "en"); XCTAssertTrue(store.commands().isEmpty)
+      keyboard.field.isSecureTextEntry = false; keyboard.field.selectedText = String(repeating: "é", count: 8001)
+      keyboard.selectionDidChange(nil); XCTAssertTrue(button.isHidden)
+      keyboard.processSelection("rewrite", language: "pt"); XCTAssertTrue(store.commands().isEmpty)
+      keyboard.field.selectedText = "Text"; keyboard.fullAccess = false; keyboard.selectionDidChange(nil)
+      XCTAssertFalse(button.isEnabled)
+      keyboard.processSelection("translate", language: "en"); XCTAssertTrue(store.commands().isEmpty)
+    }
+  }
+  func testCommandKeepsTheKeyboardContextWhenTheAppChangesDestinationBeforeSend() async throws {
+    try await MainActor.run {
+      for action in ["start", "rewrite"] {
+        let (keyboard, store, window) = try self.makeDictationFixture()
+        defer {
+          keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+          window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+        }
+        var state = store.snapshot(); state.computerMode = true; state.processingContext = "computer-A"
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+        keyboard.field.selectedText = "Text authorized for computer A"
+        // The containing app publishes B before the extension's next timer poll.
+        state.processingContext = "computer-B"
+        try store.write(state, to: "state.json")
+        if action == "rewrite" { keyboard.processSelection(action, language: "pt") }
+        else {
+          let mic = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? RecordControl }.first)
+          XCTAssertTrue(mic.accessibilityActivate())
+        }
+        let command = try XCTUnwrap(store.commands().last?.1)
+        XCTAssertEqual(command.action, action)
+        XCTAssertEqual(command.text, action == "rewrite" ? "Text authorized for computer A" : nil)
+        XCTAssertEqual(command.context, "computer-A", "Delivery must retain the destination that authorized the action")
+        XCTAssertNotEqual(command.context, store.snapshot().processingContext, "The app must see this command as stale")
+      }
+    }
+  }
+  func testSelectedTextResultInBothDestinationsInsertsOnlyIntoOriginalSelection() async throws {
+    try await MainActor.run {
+      for computerMode in [false, true] {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer { window.isHidden = true; try? FileManager.default.removeItem(at: store.root) }
+      var state = store.snapshot(); state.computerMode = computerMode; state.processingContext = computerMode ? "computer-fixture" : "account-fixture"
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      keyboard.field.selectedText = "Original"
+      keyboard.processSelection("rewrite", language: "pt")
+      let command = try XCTUnwrap(store.commands().last?.1)
+      state.operationID = command.operationID; state.textOperation = true; state.phase = .ready
+      state.text = "Revised"; state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      XCTAssertEqual(keyboard.field.before, "Revised"); XCTAssertEqual(store.receipt(), command.operationID)
+      self.attemptExplicitInsertion(keyboard); XCTAssertEqual(keyboard.field.before, "Revised")
+      }
     }
   }
   func testKeyboardLayoutAndPressPreviewInBothAppearances() async {

@@ -73,6 +73,19 @@ function useClarifyState() {
     }
     finally { setAccountBusy(false); await refreshAccount(); }
   }, [refreshAccount]);
+  const computerCommand = useCallback(async (action: 'computer' | 'hosted' | 'scan' | 'refresh' | 'disconnect') => {
+    const request = ++accountRequest.current;
+    setAccountBusy(true);
+    try {
+      const next = await Core.computerCommand(action);
+      if (mounted.current && request === accountRequest.current) setAccount(next);
+    } finally {
+      setAccountBusy(false);
+      await refreshAccount();
+      const snapshot = await Core.getSnapshot();
+      if (mounted.current) setState(snapshot);
+    }
+  }, [refreshAccount]);
   // Native snapshots are local reads. Server refresh has its own one-minute gate.
   useEffect(() => {
     let live = true;
@@ -140,7 +153,7 @@ function useClarifyState() {
     return () => { mounted.current = false; clearInterval(timer); listener.remove(); };
   }, [refresh]);
   return { state, refresh, activate, activating, keyboardEntry, setKeyboardEntry, keyboardToken, setKeyboardToken,
-    account, accountBusy, refreshAccount, accountCommand,
+    account, accountBusy, refreshAccount, accountCommand, computerCommand,
     onboardingRequired, setupError, refreshOnboarding, markOnboardingPresented, dismissOnboarding, completeOnboarding };
 }
 const Context = createContext<ReturnType<typeof useClarifyState> | null>(null);

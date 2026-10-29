@@ -1,7 +1,242 @@
 import XCTest
+import Foundation
 @testable import ClarifyContracts
 
 final class CloudAccountTests: XCTestCase {
+  @MainActor func testConnectSignInKeepsComputerDestinationAndDoesNotSyncOrProcess() async throws {
+    let suite = "clarify.connect.auth." + UUID().uuidString
+    let defaults = UserDefaults(suiteName: suite)!
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+    var state = CloudAccountState(); state.endpoint = "https://account.example.com"; state.pending = "login"
+    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    defaults.set("computer", forKey: "clarify.processing.destination")
+    var token: String? = "pending-fixture", requests: [String] = []
+    let user = UUID().uuidString
+    let account = CloudAccount(defaults: defaults, transport: { request in
+      let path = request.url!.path; requests.append(path)
+      let value: [String: Any]
+      if path == "/_allauth/app/v1/auth/code/confirm" {
+        value = ["meta": ["is_authenticated": true, "session_token": "authenticated-fixture"]]
+      } else {
+        XCTAssertEqual(path, "/v1/account", "Connect authorization cannot synchronize or process data")
+        value = ["id": user, "email": "fixture@example.com"]
+      }
+      return (try JSONSerialization.data(withJSONObject: value),
+        HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }, readCredential: { token }, saveCredential: { token = $0 })
+    let credential = ComputerCredential(computerID: UUID(), computerName: "Fixture PC", deviceID: UUID(),
+      sessionToken: String(repeating: "x", count: 43),
+      routes: [ComputerRoute(url: "https://192.168.1.2:47653", certificateSHA256: String(repeating: "a", count: 64))])
+    let computer = ComputerConnection(read: { credential }, save: { _ in })
+    let destination = ProcessingDestination(defaults: defaults, computer: computer, account: account)
+    let before = destination.captureHistory()
+    let library = try LocalLibrary(root: root)
+    try await destination.authorizeComputerConnection("confirm", value: "123456", library: library)
+    XCTAssertTrue(account.configured); XCTAssertTrue(destination.computerMode)
+    XCTAssertEqual(destination.captureHistory(), before)
+    XCTAssertEqual(requests, ["/_allauth/app/v1/auth/code/confirm", "/v1/account"])
+    do {
+      _ = try await account.command("sync", value: "", library: library, connectionOnly: true)
+      XCTFail("Connect authorization cannot call synchronization")
+    } catch ComputerFailure.invalidResponse {}
+    XCTAssertEqual(requests.count, 2)
+  }
+  @MainActor private final class ConnectFixture {
+    let suite = "clarify.connect.test." + UUID().uuidString
+    let defaults: UserDefaults
+    let user = UUID().uuidString
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    var token: String? = "fixture-session"
+    var fixedEndpoint: String? = "https://account.example.com"
+    var configuration: ComputerCloudflareConfiguration? = ComputerCloudflareConfiguration(controlURL: "https://clarify-connect.victormaynard.com", domain: "victormaynard.com")
+    var requests: [URLRequest] = []
+    var status = 200
+    var grantReply: [String: Any]?
+    var wrongUser = false
+    var responseURL: URL?
+    var rawReply: Data?
+    var pausePath: String?
+    var suspended: CheckedContinuation<Void, Never>?
+    var onRequest: (() -> Void)?
+    var maximums: [Int] = []
+    let registration = ComputerRemoteRegistration(controlURL: "https://clarify-connect.victormaynard.com", originPort: 47654,
+      certificateSHA256: String(repeating: "a", count: 64), hpkePublicKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8")
+    lazy var account = CloudAccount(defaults: defaults, readCredential: { self.token }, saveCredential: { self.token = $0 },
+      connectTransport: { request, maximum in
+        self.requests.append(request); self.maximums.append(maximum)
+        if request.url?.path == self.pausePath {
+          await withCheckedContinuation { self.suspended = $0; self.onRequest?() }
+        }
+        let json: [String: Any]
+        if request.url?.path == "/v1/account" { json = ["id": self.wrongUser ? UUID().uuidString : self.user, "email": "fixture@example.com", "usage": ["used_ms": 999]] }
+        else { json = self.grantReply ?? ["schema_version": 1, "grant": ComputerJSON.base64URL(Data(repeating: 4, count: 32)),
+          "expires_at": Int(self.now.timeIntervalSince1970) + 200, "control_url": self.registration.controlURL,
+          "hostname": "c-mmg42klgyqzwneiskrelxms3j72bfje4omw3fsflyg4fqg6xcdoq.victormaynard.com"] }
+        return (try self.rawReply ?? JSONSerialization.data(withJSONObject: json),
+          HTTPURLResponse(url: self.responseURL ?? request.url!, statusCode: self.status, httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"])!)
+      }, connectConfiguration: { self.configuration }, connectAccountEndpoint: { self.fixedEndpoint })
+    init() throws {
+      defaults = UserDefaults(suiteName: suite)!
+      var state = CloudAccountState(); state.endpoint = "https://account.example.com"; state.userID = user
+      defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    }
+    func resume() { suspended?.resume(); suspended = nil }
+    func cleanup() { resume(); defaults.removePersistentDomain(forName: suite) }
+  }
+  @MainActor func testComputerGrantUsesVerifiedSessionAtFixedOriginsWithoutHostedUsageMutation() async throws {
+    let f = try ConnectFixture(); defer { f.cleanup() }
+    let before = f.account.snapshot()
+    let computerID = UUID()
+    let grant = try await f.account.requestComputerGrant(f.registration, computerID: computerID, now: { f.now })
+    XCTAssertEqual(f.requests.map { $0.url!.absoluteString }, ["https://account.example.com/v1/account", "https://clarify-connect.victormaynard.com/v1/connect/grants"])
+    XCTAssertEqual(f.requests.map(\.httpMethod), ["GET", "POST"])
+    XCTAssertEqual(f.maximums, [512 * 1024, 4096]); XCTAssertTrue(grant.accountIsCurrent())
+    for request in f.requests {
+      XCTAssertEqual(request.value(forHTTPHeaderField: "X-Session-Token"), "fixture-session")
+      XCTAssertNil(request.value(forHTTPHeaderField: "Authorization")); XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
+      XCTAssertEqual(request.timeoutInterval, 15)
+    }
+    let body = try ComputerJSON.object(try XCTUnwrap(f.requests.last?.httpBody), maximum: 4096,
+      keys: ["computer_id", "certificate_sha256", "hpke_public_key", "origin_port"])
+    XCTAssertEqual(body["origin_port"] as? Int, 47654)
+    XCTAssertEqual(body["computer_id"] as? String, computerID.uuidString.lowercased())
+    XCTAssertEqual(f.account.snapshot()["hosted"] as? Bool, before["hosted"] as? Bool)
+    XCTAssertTrue((f.account.snapshot()["usage"] as! [String: Any]).isEmpty)
+    XCTAssertFalse(f.account.isBusy); XCTAssertEqual(f.token, "fixture-session")
+    f.token = "another-session"; XCTAssertFalse(grant.accountIsCurrent())
+  }
+  @MainActor func testComputerGrantRejectsNoSessionWrongEndpointAndUnverifiedAccountBeforeGrantPOST() async throws {
+    for change in ["signed_out", "fixed_endpoint", "wrong_account", "disabled", "control"] {
+      let f = try ConnectFixture(); defer { f.cleanup() }
+      var registration = f.registration
+      switch change {
+      case "signed_out": f.token = nil
+      case "fixed_endpoint": f.fixedEndpoint = "https://attacker.example.com"
+      case "wrong_account": f.wrongUser = true
+      case "disabled": f.configuration = nil
+      default: registration = ComputerRemoteRegistration(controlURL: "https://attacker.example.com", originPort: 47654,
+        certificateSHA256: f.registration.certificateSHA256, hpkePublicKey: f.registration.hpkePublicKey)
+      }
+      do { _ = try await f.account.requestComputerGrant(registration, computerID: UUID(), now: { f.now }); XCTFail("Untrusted grant accepted: \(change)") }
+      catch {}
+      XCTAssertFalse(f.requests.contains { $0.httpMethod == "POST" }); XCTAssertFalse(f.account.isBusy)
+      XCTAssertTrue((f.account.snapshot()["usage"] as! [String: Any]).isEmpty)
+    }
+  }
+  @MainActor func testComputerGrantRejectsStaleTokenEndpointConfigurationAndCancellationAtBothAwaits() async throws {
+    for path in ["/v1/account", "/v1/connect/grants"] {
+      for change in ["token", "endpoint", "configuration", "cancel"] {
+        let f = try ConnectFixture(); defer { f.cleanup() }
+        f.pausePath = path
+        let entered = expectation(description: "connect request suspended"); f.onRequest = { entered.fulfill() }
+        let task = Task { try await f.account.requestComputerGrant(f.registration, computerID: UUID(), now: { f.now }) }
+        await fulfillment(of: [entered], timeout: 2)
+        switch change {
+        case "token": f.token = "replacement-session"
+        case "endpoint": f.fixedEndpoint = "https://replacement.example.com"
+        case "configuration": f.configuration = nil
+        default: task.cancel()
+        }
+        f.resume()
+        do { _ = try await task.value; XCTFail("Stale grant accepted: \(change)") } catch is CancellationError {}
+        XCTAssertFalse(f.account.isBusy)
+        XCTAssertEqual(f.requests.filter { $0.httpMethod == "POST" }.count, path == "/v1/account" ? 0 : 1)
+      }
+    }
+  }
+  @MainActor func testComputerGrantDoesNotRetryRedirectMalformedOversizedExpiredOrCapacityResponses() async throws {
+    for change in ["redirect", "response_origin", "oversized", "duplicate", "expired", "future", "wrong_hostname", "wrong_control", "capacity", "boolean_version"] {
+      let f = try ConnectFixture(); defer { f.cleanup() }
+      f.pausePath = "/v1/connect/grants"
+      let entered = expectation(description: "grant POST suspended"); f.onRequest = { entered.fulfill() }
+      let task = Task { try await f.account.requestComputerGrant(f.registration, computerID: UUID(), now: { f.now }) }
+      await fulfillment(of: [entered], timeout: 2)
+      var reply: [String: Any] = ["schema_version": 1, "grant": ComputerJSON.base64URL(Data(repeating: 4, count: 32)),
+        "expires_at": Int(f.now.timeIntervalSince1970) + 200, "control_url": f.registration.controlURL,
+        "hostname": "c-mmg42klgyqzwneiskrelxms3j72bfje4omw3fsflyg4fqg6xcdoq.victormaynard.com"]
+      switch change {
+      case "redirect": f.status = 307
+      case "response_origin": f.responseURL = URL(string: "https://attacker.example.com/v1/connect/grants")
+      case "oversized": f.rawReply = Data(repeating: 32, count: 4097)
+      case "duplicate": f.rawReply = Data(#"{"schema_version":1,"schema_version":1}"#.utf8)
+      case "expired": reply["expires_at"] = Int(f.now.timeIntervalSince1970)
+      case "future": reply["expires_at"] = Int(f.now.timeIntervalSince1970) + 301
+      case "wrong_hostname": reply["hostname"] = "wrong.victormaynard.com"
+      case "wrong_control": reply["control_url"] = "https://attacker.example.com"
+      case "capacity": f.status = 429
+      default: reply["schema_version"] = true
+      }
+      f.grantReply = reply; f.resume()
+      do { _ = try await task.value; XCTFail("Invalid grant accepted: \(change)") } catch {}
+      XCTAssertEqual(f.requests.filter { $0.httpMethod == "POST" }.count, 1)
+      XCTAssertEqual(f.token, "fixture-session"); XCTAssertFalse(f.account.isBusy)
+      XCTAssertTrue((f.account.snapshot()["usage"] as! [String: Any]).isEmpty)
+    }
+  }
+  @MainActor func testSelectedTextUsesAccountSessionAndExplicitTranslationTarget() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    var requests: [URLRequest] = []
+    let account = CloudAccount(defaults: f.defaults, transport: { request in
+      requests.append(request)
+      return try f.response(request, ["text": "Hi, how are you?", "usage": ["used_ms": 0]])
+    }, readCredential: { f.token }, saveCredential: { f.token = $0 })
+    for action in ["rewrite", "translate"] {
+      let id = UUID().uuidString
+      let result = try await account.processText(id, action: action, text: "Oi, tudo bem?", language: "en")
+      XCTAssertEqual(result.text, "Hi, how are you?"); XCTAssertTrue(result.successful)
+      let request = try XCTUnwrap(requests.last)
+      XCTAssertEqual(request.url?.absoluteString, "https://one.test/v1/text")
+      XCTAssertEqual(request.httpMethod, "POST")
+      XCTAssertEqual(request.value(forHTTPHeaderField: "X-Session-Token"), "fixture")
+      let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: String])
+      XCTAssertEqual(body, ["operation_id": id, "action": action, "text": "Oi, tudo bem?", "language": "en"])
+      XCTAssertFalse(account.isBusy)
+    }
+    XCTAssertEqual(requests.count, 2, "One request per action, without audio or automatic retries")
+  }
+  @MainActor func testSelectedTextRejectsInvalidInputAndDoesNotRetryQuotaOrMalformedResults() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    var requests = 0, status = 429
+    var response: [String: Any] = ["code": "allowance_exhausted"]
+    let account = CloudAccount(defaults: f.defaults, transport: { request in
+      requests += 1; return try f.response(request, response, status)
+    }, readCredential: { f.token }, saveCredential: { f.token = $0 })
+    let id = UUID().uuidString
+    for (operation, action, text, language) in [("invalid", "rewrite", "Text", "en"),
+      (id, "dictate", "Text", "en"), (id, "rewrite", "Text", "xx"),
+      (id, "translate", " ", "pt"), (id, "rewrite", String(repeating: "é", count: 8001), "auto")] {
+      do { _ = try await account.processText(operation, action: action, text: text, language: language); XCTFail("Invalid text input accepted") }
+      catch let error as ClarifyError { XCTAssertEqual(error.code, "invalid_text_request") }
+    }
+    XCTAssertEqual(requests, 0)
+    do { _ = try await account.processText(id, action: "rewrite", text: "Text", language: "auto"); XCTFail("Quota error accepted") }
+    catch let error as ClarifyError { XCTAssertEqual(error.code, "allowance_exhausted") }
+    XCTAssertEqual(requests, 1); XCTAssertFalse(account.isBusy)
+    status = 200
+    for output in [" ", String(repeating: "é", count: 32_001)] {
+      response = ["text": output]
+      do { _ = try await account.processText(UUID().uuidString, action: "translate", text: "Text", language: "pt"); XCTFail("Invalid result accepted") }
+      catch is ClarifyError {}
+    }
+    XCTAssertEqual(requests, 3); XCTAssertFalse(account.isBusy)
+  }
+  @MainActor func testLateSelectedTextResponseCannotEnterAnotherSession() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    var pending: CheckedContinuation<(Data, HTTPURLResponse), Error>?, sent: URLRequest?
+    let account = CloudAccount(defaults: f.defaults, transport: { request in
+      sent = request; return try await withCheckedThrowingContinuation { pending = $0 }
+    }, readCredential: { f.token }, saveCredential: { f.token = $0 })
+    let task = Task { try await account.processText(UUID().uuidString, action: "rewrite", text: "Original", language: "auto") }
+    while pending == nil { await Task.yield() }
+    f.token = "new-session"
+    pending!.resume(returning: try f.response(try XCTUnwrap(sent), ["text": "Stale result", "usage": ["used_ms": 999]]))
+    do { _ = try await task.value; XCTFail("Stale result accepted") }
+    catch is CancellationError {}
+    XCTAssertEqual(f.token, "new-session"); XCTAssertFalse(account.isBusy)
+    XCTAssertNil((account.snapshot()["usage"] as? [String: Any])?["used_ms"])
+  }
   @MainActor private final class ActivationFixture {
     let suite = "ClarifyTests.\(UUID().uuidString)"
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

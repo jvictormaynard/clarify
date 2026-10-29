@@ -24,19 +24,20 @@ final class ClarifyAudioSession: NSObject {
   private var hasTap = false
   private var backgroundTask = UIBackgroundTaskIdentifier.invalid
   private lazy var libraryResult = Result { try LocalLibrary.openDefault() }
-  private var clipHistory = CloudAccount.shared.captureHistory()
+  private var clipHistory = ProcessingDestination.shared.captureHistory()
   private(set) var state = DictationSnapshot()
 
   func library() throws -> LocalLibrary { try libraryResult.get() }
   func libraryChanged() { state.libraryRevision += 1; try? importKeyboardVocabulary(); publish() }
   func syncHistory(force: Bool = false) {
     Task { @MainActor [weak self] in
-      guard let self, let library = try? self.library() else { return }
-      if await CloudAccount.shared.syncHistory(library, force: force) { self.libraryChanged() }
+      guard let self, !ProcessingDestination.shared.computerMode, let library = try? self.library() else { return }
+      if await ProcessingDestination.shared.syncHistory(library, force: force) { self.libraryChanged() }
     }
   }
   func importKeyboardVocabulary() throws {
-    guard let store, !state.phase.busy, !CloudAccount.shared.isBusy else { return }
+    guard let store, !state.phase.busy, !ProcessingDestination.shared.isBusy else { return }
+    if ProcessingDestination.shared.computerMode { try store.publishKeyboardDictionary(nil); return }
     let account = CloudAccount.shared
     let library = try library()
     guard account.configured, let scope = account.scope else {
@@ -58,17 +59,25 @@ final class ClarifyAudioSession: NSObject {
 
   private override init() {
     super.init()
-    CloudAccount.shared.setSessionInvalidationHandler { [weak self] in self?.accountSessionInvalidated() }
+    CloudAccount.shared.setSessionInvalidationHandler { [weak self] in
+      if !ProcessingDestination.shared.computerMode { self?.accountSessionInvalidated() }
+    }
+    ComputerConnection.shared.setInvalidationHandler { [weak self] in
+      guard ProcessingDestination.shared.computerMode else { return }
+      self?.destinationChanged()
+      self?.fail(ComputerFailure.authentication.localizedDescription)
+    }
     // Remove only this app's clips left by an interrupted or terminated process.
     let temporary = FileManager.default.temporaryDirectory
     for url in (try? FileManager.default.contentsOfDirectory(at: temporary, includingPropertiesForKeys: nil)) ?? [] {
-      if url.lastPathComponent.hasPrefix("clarify-"), url.pathExtension == "m4a" {
+      if url.lastPathComponent.hasPrefix("clarify-"), ["m4a", "wav"].contains(url.pathExtension) {
         try? FileManager.default.removeItem(at: url)
       }
     }
     store = SharedState()
     try? importKeyboardVocabulary()
-    state.configured = CloudAccount.shared.configured
+    state.computerMode = ProcessingDestination.shared.computerMode
+    state.configured = ProcessingDestination.shared.configured
     publish()
     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
       Unmanaged.passUnretained(self).toOpaque(), { _, observer, _, _, _ in
@@ -85,15 +94,17 @@ final class ClarifyAudioSession: NSObject {
   }
   func publish() {
     state.heartbeat = Date().timeIntervalSince1970
-    state.configured = CloudAccount.shared.configured
+    state.processingContext = ProcessingDestination.shared.historyContext
+    state.computerMode = ProcessingDestination.shared.computerMode
+    state.configured = ProcessingDestination.shared.configured
     try? store?.write(state, to: "state.json")
     liveActivity.update(state)
     publishMeter()
   }
   func activate() throws {
-    guard !CloudAccount.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
+    guard !ProcessingDestination.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
     guard store != nil else { throw ClarifyError(L("Não foi possível acessar os dados do teclado.")) }
-    guard CloudAccount.shared.configured else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
+    guard ProcessingDestination.shared.configured else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
     if engine.isRunning { publish(); return }
     let session = AVAudioSession.sharedInstance()
     do {
@@ -159,6 +170,7 @@ final class ClarifyAudioSession: NSObject {
     publish()
   }
   func accountSessionInvalidated() {
+    clearResult()
     stopAudio()
     fail(L("Entre na conta novamente."), diagnostics: ClarifyError(L("Entre na conta novamente."), code: "authentication_required"))
     try? store?.publishKeyboardDictionary(nil)
@@ -183,9 +195,12 @@ final class ClarifyAudioSession: NSObject {
   private func tick() {
     for (url, command) in store?.commands() ?? [] {
       try? FileManager.default.removeItem(at: url)
-      if Date().timeIntervalSince1970 - command.createdAt < 5 {
+      let age = Date().timeIntervalSince1970 - command.createdAt
+      if age >= 0, age < 5, command.context == ProcessingDestination.shared.historyContext {
         // The visible keyboard owns feedback for keyboard-originated commands.
-        handle(command.action, id: command.operationID, haptics: false)
+        if let text = command.text, let language = command.language {
+          handleText(command.action, id: command.operationID, text: text, language: language)
+        } else { handle(command.action, id: command.operationID, haptics: false) }
       }
     }
     if SessionDeadline.action(startedAt: startedAt, phase: state.phase, now: Date()) == .finishRecording {
@@ -208,6 +223,7 @@ final class ClarifyAudioSession: NSObject {
       }
       do { try start(id: id, locked: action == "lock", haptics: haptics) }
       catch {
+        if let error = error as? ComputerFailure { fail(error.localizedDescription); return }
         let failure = MicrophoneFailure.recordingError(for: error)
         fail(failure.localizedDescription, diagnostics: failure)
       }
@@ -220,10 +236,14 @@ final class ClarifyAudioSession: NSObject {
     }
   }
   private func start(id: String, locked: Bool, haptics: Bool) throws {
-    guard CloudAccount.shared.configured else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
-    guard !CloudAccount.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
+    if ProcessingDestination.shared.computerMode, ComputerConnection.shared.busy { throw ComputerFailure.busy }
+    guard ProcessingDestination.shared.configured else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
+    guard !ProcessingDestination.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
+    if ProcessingDestination.shared.computerMode, !ComputerConnection.shared.isReady(for: "dictate") {
+      throw ComputerConnection.shared.status == "offline" ? ComputerFailure.offline : ComputerFailure.notReady
+    }
     try? importKeyboardVocabulary()
-    clipHistory = CloudAccount.shared.captureHistory()
+    clipHistory = ProcessingDestination.shared.captureHistory()
     let format = engine.inputNode.outputFormat(forBus: 0)
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("clarify-\(UUID().uuidString).m4a")
     let newFile = try AudioClipWriter(url: url, inputFormat: format)
@@ -239,6 +259,7 @@ final class ClarifyAudioSession: NSObject {
     fileLock.unlock()
     startedAt = captureStart
     state.operationID = id
+    state.textOperation = false
     state.phase = locked ? .locked : .recording
     state.text = nil; state.message = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
     publish()
@@ -273,10 +294,10 @@ final class ClarifyAudioSession: NSObject {
       try? FileManager.default.removeItem(at: url)
       fail(L("Fale por mais tempo antes de concluir.")); return
     }
-    guard CloudAccount.shared.acceptsHistory(historyOwner) else {
+    guard ProcessingDestination.shared.acceptsHistory(historyOwner) else {
       try? FileManager.default.removeItem(at: url); fail(L("Entre na conta novamente.")); return
     }
-    guard CloudAccount.shared.configured else {
+    guard ProcessingDestination.shared.configured else {
       try? FileManager.default.removeItem(at: url)
       fail(L("Entre na conta novamente.")); return
     }
@@ -292,18 +313,19 @@ final class ClarifyAudioSession: NSObject {
         self.endBackgroundTask(backgroundID)
       }
       do {
-        let outcome = try await CloudAccount.shared.dictate(url, operationID: id, library: self.library())
-        guard !Task.isCancelled, self.state.operationID == id, CloudAccount.shared.acceptsHistory(historyOwner) else { return }
+        let outcome = try await ProcessingDestination.shared.dictate(url, operationID: id, library: self.library())
+        guard !Task.isCancelled, self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(historyOwner) else { return }
         let transcript = outcome.transcript
         self.state.text = outcome.text
         self.state.phase = outcome.successful ? .ready : .error
         if !outcome.successful { self.state.message = L("A reescrita falhou. Você pode inserir a transcrição original.") }
         // Save only the terminal result of this still-current operation. The
         // original remains available when rewriting fails; audio is never kept.
-        guard !Task.isCancelled, self.state.operationID == id, CloudAccount.shared.acceptsHistory(historyOwner) else { return }
+        guard !Task.isCancelled, self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(historyOwner) else { return }
         do {
           try self.library().record(HistoryEntry(id: id, createdAt: recordedAt,
-            transcript: transcript, text: self.state.text ?? transcript, rewritten: self.state.phase == .ready), scope: historyOwner.scope)
+            transcript: transcript, text: self.state.text ?? transcript,
+            rewritten: ProcessingDestination.shared.computerMode ? outcome.rewritten : self.state.phase == .ready), scope: historyOwner.scope)
           self.state.libraryRevision += 1
           self.syncHistory(force: true)
         } catch {
@@ -315,7 +337,35 @@ final class ClarifyAudioSession: NSObject {
         // The account boundary cancels stale responses without marking this
         // Task cancelled. End only this still-current clip, not a new recording.
         if error is CancellationError { self.cancel(); return }
-        self.fail(error is ClarifyError ? error.localizedDescription : L("Falha de conexão. Verifique a internet e tente novamente."), diagnostics: error as? ClarifyError)
+        self.fail((error is ClarifyError || error is ComputerFailure) ? error.localizedDescription : L("Falha de conexão. Verifique a internet e tente novamente."), diagnostics: error as? ClarifyError)
+      }
+    }
+  }
+  func handleText(_ action: String, id: String, text: String, language: String) {
+    guard ProcessingDestination.shared.configured,
+      !state.phase.busy,
+      cancellations.acceptsStart(id, now: Date().timeIntervalSince1970),
+      ["rewrite", "translate"].contains(action), UUID(uuidString: id) != nil,
+      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 32_768 else { return }
+    let owner = ProcessingDestination.shared.captureHistory()
+    if ProcessingDestination.shared.computerMode, !ComputerConnection.shared.isReady(for: action) {
+      state.operationID = id; state.textOperation = true; state.text = nil
+      fail(ComputerFailure.notReady.localizedDescription); return
+    }
+    state.operationID = id; state.textOperation = true; state.text = nil; state.message = nil; state.phase = .rewriting; publish()
+    task = Task { @MainActor [weak self] in
+      guard let self else { return }
+      do {
+        let result = try await ProcessingDestination.shared.processText(id, action: action, text: text, language: language)
+        guard !Task.isCancelled, self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(owner) else { return }
+        self.state.text = result.text; self.state.phase = result.successful ? .ready : .error
+        if !result.successful { self.state.message = L("A reescrita falhou. Você pode inserir a transcrição original.") }
+        try self.library().record(HistoryEntry(id: id, createdAt: Date().timeIntervalSince1970,
+          transcript: text, text: result.text, rewritten: result.rewritten), scope: owner.scope)
+        self.libraryChanged()
+      } catch {
+        guard !Task.isCancelled, self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(owner) else { return }
+        self.fail((error is ComputerFailure || error is ClarifyError) ? error.localizedDescription : ComputerFailure.offline.localizedDescription)
       }
     }
   }
@@ -323,7 +373,25 @@ final class ClarifyAudioSession: NSObject {
     if let expected = expected, expected != backgroundTask { return }
     if backgroundTask != .invalid { UIApplication.shared.endBackgroundTask(backgroundTask); backgroundTask = .invalid }
   }
+  func clearResult(publish: Bool = true) {
+    state.operationID = nil; state.textOperation = false; state.text = nil; state.phase = .idle; state.message = nil
+    state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
+    if publish { self.publish() }
+  }
+  func destinationChanged() {
+    if let id = state.operationID {
+      // Control callbacks already use the main queue. Cancel synchronously so
+      // the remote action is retired before publishing another destination.
+      MainActor.assumeIsolated { ComputerConnection.shared.cancelOperation(id) }
+    }
+    // Clear ownership before cancel/deactivate publish any intermediate state.
+    clearResult(publish: false)
+    deactivate(); libraryChanged()
+  }
   func cancel() {
+    if ProcessingDestination.shared.computerMode, let id = state.operationID {
+      MainActor.assumeIsolated { ComputerConnection.shared.cancelOperation(id) }
+    }
     cuePlayer?.stop(); cuePlayer = nil
     task?.cancel(); task = nil; startedAt = nil
     if let url = closeFile() { try? FileManager.default.removeItem(at: url) }
@@ -335,7 +403,7 @@ final class ClarifyAudioSession: NSObject {
     publish()
   }
   private func fail(_ message: String, diagnostics: ClarifyError? = nil) {
-    if !CloudAccount.shared.configured, state.sessionActive { stopAudio() }
+    if !ProcessingDestination.shared.configured, state.sessionActive { stopAudio() }
     cuePlayer?.stop(); cuePlayer = nil
     task?.cancel(); task = nil; startedAt = nil
     if let url = closeFile() { try? FileManager.default.removeItem(at: url) }

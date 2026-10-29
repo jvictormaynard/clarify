@@ -704,6 +704,57 @@ test.beforeEach(async ({ page }, testInfo) => {
 });
 test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
 
+test("computer: explicit consent, private QR, replacement, expiry, devices and stop", async ({ page }, testInfo) => {
+  const rpc = (method: string, args: unknown[] = []) => page.evaluate(async request => {
+    const response = await fetch("/__test_rpc", { method: "POST", body: JSON.stringify(request) });
+    const reply = await response.json();
+    if (reply.error) throw reply.error;
+    return reply.result;
+  }, { method, args });
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  expect((await rpc("snapshot")).computerState.enabled).toBe(false);
+  await page.getByRole("button", { name: "Conectar celular", exact: true }).click();
+  expect((await rpc("snapshot")).computerState.enabled).toBe(false);
+  await page.getByRole("button", { name: "Ativar acesso e gerar QR", exact: true }).click();
+  const qr = page.getByRole("img", { name: "QR para parear o iPhone", exact: true });
+  await expect(qr).toBeVisible();
+  await qr.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("computer-pairing-fixture.png"), fullPage: true });
+  const first = await qr.getAttribute("src");
+  const snapshot = JSON.stringify(await rpc("snapshot"));
+  expect(snapshot).not.toContain("data:image");
+  expect(snapshot).not.toContain("FAKE-QR");
+  await page.getByRole("switch", { name: "Manter acesso ao iniciar o Clarify", exact: true }).click();
+  await expect(page.getByRole("switch", { name: "Manter acesso ao iniciar o Clarify", exact: true })).toBeChecked();
+  await page.getByRole("button", { name: "Gerar outro QR", exact: true }).click();
+  await expect(qr).toBeVisible();
+  await expect(qr).not.toHaveAttribute("src", first!);
+  await page.getByRole("region", { name: "Conectar celular", exact: true }).getByRole("button", { name: "Fechar", exact: true }).click();
+  await expect(qr).toHaveCount(0);
+  await expect.poll(() => rpc("getComputerPairing")).toEqual({});
+  await page.getByRole("button", { name: "Conectar celular", exact: true }).click();
+  await expect(qr).toBeVisible();
+  await rpc("testComputer", ["expire"]);
+  await expect(qr).toHaveCount(0);
+  await expect(page.getByText("Gere um novo QR para conectar o celular.", { exact: true })).toBeVisible();
+  await rpc("testComputer", ["paired"]);
+  await expect(page.getByText("Fixture iPhone", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Revogar acesso de Fixture iPhone", exact: true }).click();
+  await expect(page.getByText("Nenhum celular pareado.", { exact: true })).toBeVisible();
+  await rpc("testComputer", ["offline"]);
+  await expect(page.getByText("O computador está offline. Pare o acesso e tente novamente.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Gerar outro QR", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Parar acesso", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Parar acesso", exact: true })).toHaveCount(0);
+  expect((await rpc("snapshot")).computerState.durable).toBe(false);
+});
+
+test("quota: computer access stays disabled for a signed-in account", async ({ page }) => {
+  await page.getByRole("button", { name: "Geral", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Conectar celular", exact: true })).toBeDisabled();
+  await expect(page.getByText("Saia da conta Clarify para conectar o celular aos seus modelos e serviços pessoais.", { exact: true })).toBeVisible();
+});
+
 test("history: existing records stay visible and local delete and clear update the list", async ({ page }) => {
   await page.getByRole("button", { name: "Histórico", exact: true }).click();
   await expect(page.getByText("Isolated mobile history.", { exact: true })).toBeVisible();
