@@ -294,9 +294,7 @@ test("text actions: shortcut input receives focus only after the controller acce
 test.describe("hosted text actions", () => {
   test.use({ signedIn: true });
   test("an incomplete hosted write can be refreshed without losing the open draft", async ({ page, settingsFixture }) => {
-    await settingsFixture.rpc("testRequireTextActionRefresh" as never);
-    await page.reload();
-    await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
+    await expect.poll(async () => (await settingsFixture.rpc("snapshot")).textActionRefresh?.status).toBe("succeeded");
     await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
     await expect(page.getByRole("button", { name: "Atualizar ações", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Nova ação", exact: true }).click();
@@ -304,6 +302,7 @@ test.describe("hosted text actions", () => {
     const name = editor.getByRole("textbox", { name: "Nome da ação", exact: true });
     const prompt = editor.getByRole("textbox", { name: "Instruções da ação", exact: true });
     await name.fill("Rascunho preservado"); await prompt.fill("Preserve estas instruções durante a atualização.");
+    await settingsFixture.rpc("testRequireTextActionRefresh" as never);
     await expect(editor.getByRole("status")).toContainText("concluir a recuperação");
     await editor.getByRole("button", { name: "Atualizar ações", exact: true }).click();
     await expect(editor.getByText("Atualize as ações para concluir a recuperação. Seu rascunho será mantido.", { exact: true })).toHaveCount(0);

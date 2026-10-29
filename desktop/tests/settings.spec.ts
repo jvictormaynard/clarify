@@ -1230,6 +1230,7 @@ test("onboarding: account social cancellation restores provider actions after lo
   await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
   await page.getByRole("button", { name: "Pular prática", exact: true }).click();
+  await expect(settingsDialog(page)).toBeVisible();
   await navigate(page, "Conta Clarify");
   await page.getByText("Servidor próprio", { exact: true }).click();
   const server = page.getByRole("textbox", { name: "Endereço do servidor", exact: true });
