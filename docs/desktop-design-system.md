@@ -114,6 +114,9 @@ Pages use the feature-facing facade in `components/ui.tsx`:
 - `Row` and `Field`: associated labels and help text, with aligned controls.
 - `Switch` and `Toggle`: labeled binary state, using the shared switch primitive.
 - `Section`: a quiet heading outside a grouped panel with internal dividers.
+  Use `grouped={false}` for standalone multiline editors and their help or actions.
+  These fields align with the heading without an outer card. Keep the textarea's
+  own input border and focus state.
 - `SettingsDisclosure`: T3's `AdvancedSettings` pattern for advanced rows inside
   a section, library entry, help text or history comparison. Use its full-width
   trigger, Lucide chevron and shared Base UI

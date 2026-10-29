@@ -309,6 +309,19 @@
   padding: 0 var(--space-4);
 }
 
+.section-fields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin-inline: var(--space-4);
+}
+
+.section-fields > .hint,
+.section-fields > p,
+.section-fields > .inline-actions { margin: 0; }
+.section-fields > .row,
+.section-fields > .text-action-preview { padding: 0; }
+
 .section-content {
   position: relative;
   overflow: visible;
@@ -382,4 +395,5 @@
 
 @media (max-width: 639px) {
   .settings-section > h2 { padding-inline: 12px; }
+  .section-fields { margin-inline: 12px; }
 }

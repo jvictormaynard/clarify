@@ -159,16 +159,18 @@ export function Section({
   id,
   children,
   className,
+  grouped = true,
 }: {
   title?: ReactNode;
   id?: string;
   children: ReactNode;
   className?: string;
+  grouped?: boolean;
 }) {
   return (
     <section id={id} className={cn("settings-section", className)} data-slot="settings-section">
       {title && <h2>{title}</h2>}
-      <div className="section-content" data-slot="settings-group">{children}</div>
+      <div className={grouped ? "section-content" : "section-fields"} data-slot={grouped ? "settings-group" : "settings-fields"}>{children}</div>
     </section>
   );
 }

@@ -173,6 +173,7 @@ test("text actions: prompt and shortcut remain drafts until Save", async ({ page
   const saved = (await settingsFixture.rpc("snapshot")).textActions?.find(action => action.name === "Resumo de teste");
   expect(saved?.prompt).toBe("Resuma o texto em três tópicos.");
   await page.reload();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Resumo de teste", exact: true })).toBeVisible();
 });

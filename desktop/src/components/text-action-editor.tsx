@@ -25,7 +25,7 @@ export function TextActionEditor({ controller: c }: SettingsPageProps) {
             onClick={() => void a.refresh()}>{t("Atualizar ações")}</Button></div>
           {c.state.textActionMutation?.restoreRequired && <p className="hint" role="status">{t("Atualize as ações para concluir a recuperação. Seu rascunho será mantido.")}</p>}
           <div className="page-content">
-            {a.conflict && <Section title={t("A versão salva mudou")}>
+            {a.conflict && <Section title={t("A versão salva mudou")} grouped={false}>
               <p className="hint" role="status">{a.conflict.action ? t("Compare a versão salva antes de manter seu rascunho. Nada será substituído sem salvar.") : t("Esta ação foi excluída. Você pode salvar seu rascunho como uma nova ação.")}</p>
               {a.conflict.action && <><p>{a.conflict.action.name}</p><TextArea aria-label={t("Instruções da versão salva")} readOnly value={a.conflict.action.prompt} /></>}
               <div className="inline-actions">{a.conflict.action && <Button onClick={() => a.resolveConflict(true)}>{t("Usar versão salva")}</Button>}
@@ -55,13 +55,13 @@ export function TextActionEditor({ controller: c }: SettingsPageProps) {
                 </Row>
               </SettingsDisclosure>
             </Section>
-            <Section title={t("Instruções")}>
+            <Section title={t("Instruções")} grouped={false}>
               <label className="sr-only" htmlFor={promptId}>{t("Instruções da ação")}</label>
               <TextArea id={promptId} aria-describedby={`${promptId}-hint`} className="prompt min-h-48" value={editor.action.prompt}
                 onChange={event => a.change({ prompt: event.target.value })} placeholder={t("Descreva o que deve mudar no texto e o que deve ser preservado.")} />
               <p id={`${promptId}-hint`} className="hint">{t("Até 8 KiB. O texto será tratado como conteúdo da ação.")}</p>
             </Section>
-            <Section title={t("Testar ação")}>
+            <Section title={t("Testar ação")} grouped={false}>
               <label className="sr-only" htmlFor={sampleId}>{t("Texto de exemplo")}</label>
               <TextArea id={sampleId} className="min-h-24" value={a.sample} onChange={event => a.setSample(event.target.value)}
                 placeholder={t("Cole um texto de exemplo.")} />
