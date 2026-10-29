@@ -11,7 +11,7 @@ import { formatUsageReset, usageProgress } from '../../shared/usage';
 async function pageHarness(file, name, controller) {
  const slots=[];let index=0;const effects=[];
  const node=(type,props,...children)=>({type,props:{...props,children}});
- const symbols=['Button','Confirm','Input','HistoryEntryActions','HistoryComparison','HistoryCorrectionAction','Field','Section','AccountSignIn','ChevronRight','Gauge','LogIn','RefreshCw','TriangleAlert','UserRound','Cloud','HardDrive','History','LoaderCircle','Monitor','Smartphone','Trash2'];
+ const symbols=['Button','Confirm','Input','HistoryEntryActions','HistoryComparison','HistoryCorrectionAction','Field','Section','SettingsDisclosure','AccountSignIn','ChevronRight','Gauge','LogIn','RefreshCw','TriangleAlert','UserRound','Cloud','HardDrive','History','LoaderCircle','Monitor','Smartphone','Trash2'];
  const context=createContext({controller, jsx:node,Fragment:'Fragment',...Object.fromEntries(symbols.map(x=>[x,x])),
    t:x=>x,uiLanguage:'en',usageProgress,formatUsageReset,
    useState:initial=>{const slot=index++;if(!(slot in slots))slots[slot]=initial;return [slots[slot],value=>{slots[slot]=typeof value==='function'?value(slots[slot]):value;}];},
