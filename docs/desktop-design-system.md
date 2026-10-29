@@ -115,11 +115,14 @@ Pages use the feature-facing facade in `components/ui.tsx`:
 - `Switch` and `Toggle`: labeled binary state, using the shared switch primitive.
 - `Section`: a quiet heading outside a grouped panel with internal dividers.
 - `SettingsDisclosure`: T3's `AdvancedSettings` pattern for advanced rows inside
-  a section. Use its full-width trigger, Lucide chevron and shared Base UI
+  a section, library entry, help text or history comparison. Use its full-width
+  trigger, Lucide chevron and shared Base UI
   collapsible panel instead of the browser's native disclosure marker. The
   chevron rotates in 150 ms; panel height changes in 200 ms. Reduced motion
   removes both transitions. Keep the panel mounted while closed to preserve
-  existing input and operation lifetimes. Enter and Space toggle the control.
+  existing input and operation lifetimes. History comparisons mount on expansion
+  and unmount after collapse, so closed entries do not fetch text. Enter and Space
+  toggle the control. Do not use native `details` or separate disclosure buttons.
 - `Confirm`: controlled modal dialog with title, description and explicit actions.
 - `Picker`: searchable combobox with stable option IDs, keyboard selection,
   selected state, refresh, empty state and focus return.

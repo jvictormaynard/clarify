@@ -2,7 +2,7 @@ import { t } from "../i18n";
 import { useState } from "react";
 import { Plus, Search, X } from "lucide-react";
 import type { DictionaryEntry } from "../settings/bridge";
-import { Button, Input, Switch } from "../components/ui";
+import { Button, Input, SettingsDisclosure, Switch } from "../components/ui";
 import type { SettingsPageProps } from "../settings/use-settings";
 
 export function DictionaryPage({ controller }: SettingsPageProps) {
@@ -121,8 +121,7 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
                 <X size={16} />
               </Button>
             </div>
-            <details>
-              <summary>{t("Pronúncia e variações")}</summary>
+            <SettingsDisclosure title={t("Pronúncia e variações")}>
               <Input
                 aria-label={t("Pronúncia do termo {v0}", { v0: index + 1 })}
                 placeholder={t("Pronúncia (opcional)")}
@@ -141,7 +140,7 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
                 }
               />
               <p className="hint">{t("Referências para o reconhecimento, não regras de substituição.")}</p>
-            </details>
+            </SettingsDisclosure>
           </div>
         ))}
         {!visible.length && (
@@ -152,10 +151,9 @@ export function DictionaryPage({ controller }: SettingsPageProps) {
           </p>
         )}
       </div>
-      <details className="dictionary-help">
-        <summary>{t("Como funciona")}</summary>
+      <SettingsDisclosure className="dictionary-help" title={t("Como funciona")}>
         <p className="hint">{t("O vocabulário orienta modelos de transcrição compatíveis e a revisão, quando ativada. Não treina o modelo nem garante a grafia. No modo local, fica no dispositivo; em serviços na nuvem, os termos usados como contexto são enviados ao serviço. Listas longas podem exceder o contexto: priorize os termos mais importantes no início.")}</p>
-      </details>
+      </SettingsDisclosure>
     </section>
   );
 }

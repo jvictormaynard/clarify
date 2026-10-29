@@ -693,8 +693,18 @@ for (const [localTerm, correctedTerm] of [["Desktop Term", "Desktop Term"], ["St
   await navigate(page, "Dicionário");
   await page.getByRole("textbox", { name: "Novo termo", exact: true }).fill(localTerm);
   await page.getByRole("button", { name: "Adicionar termo", exact: true }).click();
-  await page.getByText("Pronúncia e variações", { exact: true }).click();
-  await page.getByRole("textbox", { name: "Pronúncia do termo 1", exact: true }).fill("Pending pronunciation");
+  const pronunciation = page.getByRole("button", { name: "Pronúncia e variações", exact: true });
+  await pronunciation.focus();
+  await page.keyboard.press("Enter");
+  const pronunciationInput = page.getByRole("textbox", { name: "Pronúncia do termo 1", exact: true });
+  await pronunciationInput.fill("Pending pronunciation");
+  await pronunciation.focus();
+  await page.keyboard.press("Space");
+  await expect(pronunciation).toHaveAttribute("aria-expanded", "false");
+  await expect(pronunciation).toBeFocused();
+  await expect(pronunciationInput).toBeHidden();
+  await page.keyboard.press("Enter");
+  await expect(pronunciationInput).toHaveValue("Pending pronunciation");
   await navigate(page, "Histórico");
   const row = page.locator(".history-row").filter({ hasText: "Isolated revised desktop history." });
   await row.getByRole("button", { name: "Corrigir termo", exact: true }).click();
@@ -1819,6 +1829,7 @@ test("advanced settings use keyboard disclosure and retain recording drafts when
   await trigger.focus();
   await page.keyboard.press("Enter");
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await expect(trigger.locator("svg")).toHaveCSS("rotate", "90deg");
   const maximum = page.getByRole("spinbutton", { name: "Duração máxima", exact: true });
   await maximum.fill("120");
   await trigger.focus();
@@ -1830,6 +1841,7 @@ test("advanced settings use keyboard disclosure and retain recording drafts when
   await expect(maximum).toHaveValue("120");
   await section.screenshot({ path: testInfo.outputPath("recording-options-open.png"), animations: "disabled" });
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(trigger.locator("svg")).toHaveCSS("transition-property", "none");
   await trigger.click();
   await expect(maximum).toBeHidden();
   await trigger.click();
