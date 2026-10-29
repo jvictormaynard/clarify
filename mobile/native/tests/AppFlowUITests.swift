@@ -37,7 +37,21 @@ final class AppFlowUITests: XCTestCase {
   func tab(_ label: String) {
     let button = app.tabBars.buttons[label].firstMatch
     XCTAssertTrue(button.waitForExistence(timeout: 20), "Missing tab: \(label)")
+    let keyboard = app.keyboards.firstMatch
+    if keyboard.exists && keyboard.isHittable {
+      app.scrollViews.firstMatch.swipeDown()
+      let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == false"), object: keyboard)
+      guard XCTWaiter.wait(for: [dismissed], timeout: 5) == .completed else {
+        diagnose("keyboard-obscures-tab-\(label)"); XCTFail("Dismiss the keyboard before choosing tab: \(label)"); return
+      }
+    }
+    let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
+    guard XCTWaiter.wait(for: [reachable], timeout: 5) == .completed else {
+      diagnose("unreachable-tab-\(label)"); XCTFail("Unreachable tab: \(label)"); return
+    }
     button.tap()
+    let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: button)
+    XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed, "Select tab: \(label)")
   }
   func pressWithKeyboard(_ identifier: String, field: XCUIElement, value: String) {
     let keyboard = app.keyboards.firstMatch
