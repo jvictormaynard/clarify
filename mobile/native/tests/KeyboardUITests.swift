@@ -1159,6 +1159,10 @@ final class KeyboardUITests: XCTestCase {
         try store.write(state, to: "state.json"); keyboard.refreshFromStore()
         keyboard.field.selectedText = "Clarify"; keyboard.selectionDidChange(nil)
         let button = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }.first { $0.accessibilityIdentifier == "clarify.add-to-dictionary" })
+        if startsOffline {
+          XCTAssertEqual(button.title(for: .normal), L("Adicionar ao dicionário"))
+          XCTAssertNil(button.configuration); XCTAssertFalse(button.showsMenuAsPrimaryAction)
+        }
         state.sessionActive = true
         for appearance in [UIUserInterfaceStyle.light, .dark] {
           keyboard.view.overrideUserInterfaceStyle = appearance

@@ -655,6 +655,10 @@ class KeyboardViewController: UIInputViewController {
       // Configuration owns spacing and the capsule's inverse foreground.
       // The menu inherits its own readable tint.
       if addToDictionary.configuration?.title != title {
+        // Clear dictionary-only values before Configuration owns the title
+        // and image when the session becomes live.
+        addToDictionary.setTitle(nil, for: .normal)
+        addToDictionary.setImage(nil, for: .normal)
         var configuration = UIButton.Configuration.filled()
         configuration.title = title; configuration.image = UIImage(systemName: "wand.and.stars")
         configuration.imagePlacement = .trailing; configuration.imagePadding = 10
