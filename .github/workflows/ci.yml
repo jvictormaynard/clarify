@@ -179,7 +179,6 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_delivery_policy.py -v
           python -m unittest discover -s tests -p test_release_delivery.py -v
-          python -m unittest discover -s tests -p test_testflight_candidate.py -v
         if: ${{ !inputs.trusted_qa }}
       - name: Test QA and archive policies
         run: |
@@ -582,7 +581,6 @@ jobs:
           scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py
           tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py
           scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
-          scripts/testflight_candidate.py tests/test_testflight_candidate.py
 
       - name: Run Ruff format check
         if: ${{ !inputs.trusted_qa && (matrix.os == 'ubuntu-latest') }}
@@ -605,7 +603,6 @@ jobs:
           scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py
           tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py
           scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
-          scripts/testflight_candidate.py tests/test_testflight_candidate.py
 
       - name: Run targeted type checks
         if: ${{ !inputs.trusted_qa && (matrix.os == 'ubuntu-latest') }}
@@ -635,7 +632,7 @@ jobs:
           local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py
           scripts/delivery_policy.py scripts/release_delivery.py
           computer_host.py computer_processing.py computer_relay_protocol.py computer_relay_client.py computer_relay_server.py
-          shared/computer_connect.py clarify/desktop/qml_computer.py scripts/testflight_candidate.py
+          shared/computer_connect.py clarify/desktop/qml_computer.py
 
       - name: Validate QML assets
         run: python -c "from pathlib import Path; qml = Path('clarify/desktop/qml'); assert qml.is_dir() and (qml / 'Main.qml').is_file() and any(qml.glob('*.qml'))"

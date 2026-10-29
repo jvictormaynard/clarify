@@ -24,7 +24,7 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Integração nativa com atalhos e bandeja do Windows
 - Interface em português, inglês e espanhol, independente do idioma do ditado
 - Área de trabalho em React/Tauri: Ditado, Estilo, Ações de texto, Dicionário, Snippets e Histórico
-- Diálogo de Configurações com Geral, Modelos e serviços, Atalhos, Privacidade e Conta Clarify
+- Diálogo de Configurações com Geral, Dispositivos, Modelos e serviços, Atalhos, Privacidade e Conta Clarify
 - Ações de texto com nome, instruções próprias, atalhos opcionais e prévia
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
 - Dicionário pessoal para nomes e termos técnicos
@@ -93,11 +93,12 @@ por QR para processar pela rede local, com a configuração pessoal do computado
 
 ## Prévia da interface
 
-![Ditado nas Configurações atuais](images/settings-desktop-dictation.png)
+As capturas da interface ficam nos artefatos `Settings-tests` das execuções de CI.
+O [sistema visual do desktop](desktop-design-system.md) define o layout, os tokens
+e os componentes compartilhados.
 
-Captura do frontend React atual, em teste de navegador com dados fictícios.
-Os testes da janela nativa e os cenários não testados estão registrados em
-[Release readiness](release-readiness.md).
+Consulte [Release readiness](release-readiness.md) para os testes de aceitação
+nativa e as verificações de publicação.
 
 ## Instalação no Windows
 

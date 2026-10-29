@@ -111,9 +111,11 @@ The sign-in form supports email codes, Google, Microsoft and GitHub. The server'
 same login-code verification and session machinery for both paths. New-account
 limits still apply; no usable password is saved. Legacy separate endpoints remain
 available. Authentication forms are shared with desktop Settings and the iOS
-sign-in screen. After sign-in, the bottom tabs contain Home, Dictionary, Snippets
-and Account. Account opens Settings and the explicit guide replay. The tabs,
-Settings and guide routes share the destination guard. In iOS account mode,
+sign-in screen. Once the selected destination is configured, the bottom tabs
+contain Dictation, Actions, Library and Settings. Library opens Dictionary and
+Snippets. Settings separates account, processing destination, dictation output,
+microphone and keyboard, and history and privacy. It also opens the explicit
+guide replay. The tabs, Settings and guide routes share the destination guard. In iOS account mode,
 sign-out or session expiry returns to the connection choice before tabs can be used.
 
 An authenticated account uses Clarify-managed processing for dictation, imported

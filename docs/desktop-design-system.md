@@ -38,8 +38,8 @@ from [#22287](https://github.com/pingdotgg/t3code/pull/22287).
 The copied source and local Inter font retain their license
 texts and exact provenance in `desktop/licenses/source-components.json`.
 
-The pinned source and the local reference screenshots below define the approved
-style. The source check included development and staging branch names, recent
+The pinned source, tokens and shared components define the approved style.
+The source check included development and staging branch names, recent
 Settings and redesign PRs, and the changes since the previous reference
 `0b02b21e5a45`. The relevant Settings design is already on `main`. Open PRs
 [#26708](https://github.com/pingdotgg/t3code/pull/26708) and
@@ -318,8 +318,8 @@ actions use the existing ChatGPT session owner and command gates.
 
 ## Validation
 
-For every new or changed page, compare the rendered result with the reference
-screenshots and an existing page of the same type. Check 640, 820 and 1040 px
+For every new or changed page, compare the rendered result with the pinned
+reference and an existing page of the same type. Check 640, 820 and 1040 px
 widths, long localized labels, wrapping and scroll boundaries. Verify hover,
 focus, selected, disabled, loading, empty and error states where applicable.
 For account UI, also inspect guest, email, managed-session, connected and
@@ -327,12 +327,8 @@ reconnect states affected by the change. Check keyboard entry, menu dismissal
 and focus return. Retain screenshots of the affected states and identify which
 are fixture evidence and which are native Windows evidence.
 
-The screenshots below use the isolated controller fixture, with no user profile
-or live audio. They show task navigation, the Settings dialog and the saved-action editor.
-
-![Style and task navigation](images/settings-desktop-style.png)
-![Settings dialog and privacy](images/settings-desktop-dialog.png)
-![Text action editor](images/settings-desktop-action-editor.png)
+Keep fixture and native screenshots in CI artifacts. Do not commit review
+captures as application assets or present an older capture as the current UI.
 
 Use `desktop/tests/settings.spec.ts` with `tests/web_settings_fixture.py` for
 isolated controller-backed browser checks. Cover labels, help, keyboard, focus,

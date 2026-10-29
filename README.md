@@ -90,7 +90,7 @@ registration is deferred until a business account is available.
 - Native Windows hotkeys and system tray integration
 - Portuguese, English and Spanish interfaces, independently of dictation language
 - A React/Tauri workspace with Dictation, Style, Text actions, Dictionary, Snippets and History
-- A Settings dialog for General, Models and services, Shortcuts, Privacy and Clarify account
+- A Settings dialog for General, Devices, Models and services, Shortcuts, Privacy and Clarify account
 - Named text actions with custom instructions, optional shortcuts and previews
 - Toggle or hold-to-record keyboard activation; the microphone button uses toggle
 - A personal dictionary for names and technical terms, with per-term enablement
@@ -116,11 +116,12 @@ another application. Local Whisper remains an audio transcription provider.
 
 ## Interface preview
 
-![Dictation in the current Settings frontend](docs/images/settings-desktop-dictation.png)
+Interface captures are retained in the `Settings-tests` artifacts of CI runs.
+The [desktop design system](docs/desktop-design-system.md) defines the layout,
+tokens and shared components.
 
-The current React frontend, captured in an isolated browser test with synthetic
-data. Native-window checks and untested scenarios are recorded in
-[Release readiness](docs/release-readiness.md).
+See [Release readiness](docs/release-readiness.md) for native acceptance and
+release checks.
 
 ## Installation
 

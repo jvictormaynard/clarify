@@ -1,10 +1,8 @@
 # Client release automation
 
 Code changes on `main` run validation. They do not request a client release.
-Desktop publication and standard TestFlight delivery require a separate
-release-preparation PR, a maintainer review and merge, and successful CI for that
-exact merge commit. An explicitly requested internal TestFlight candidate uses
-the separate [open PR candidate gate](#explicit-internal-candidates-from-an-open-pr).
+Desktop publication and TestFlight delivery require a separate release-preparation
+PR, a maintainer review and merge, and successful CI for that exact merge commit.
 A maintainer can review and merge their own preparation PR. The repository does
 not require a second person's approval.
 
@@ -143,34 +141,6 @@ height diagnostic, status and availability modes remain available. A signed
 manual upload must also use a reviewed mobile tag and its exact source SHA.
 The `codex/ios-testflight` branch can still be selected for manual validation
 and status work. Do not use a mutable branch for signed upload.
-
-## Explicit internal candidates from an open PR
-
-A maintainer can explicitly request a TestFlight candidate before merging its
-implementation PR. This is a separate internal test path. It does not authorize
-a stable release, merge the PR or change the normal release-preparation gate.
-
-Use an unused mobile build after checking Apple uploads and existing build
-reservations. Complete the implementation's local checks and independent reviews,
-open the canonical PR for review, and wait for its complete green CI. Record the
-candidate source, build reservation and review evidence in that PR.
-Store the same mobile intent fields and Apple reservation evidence in
-`.github/testflight-candidate.json`, using current main as `base_sha`. This
-separate file cannot request stable promotion. Its check must be less than
-24 hours old at the time of candidate publication.
-
-Create an immutable `ios/pr-N/vX.Y.Z-buildB` tag on that exact PR head. Dispatch
-`iOS TestFlight` on the tag with `source_sha` and `candidate_pr=N`. The read-only
-`scripts/testflight_candidate.py` gate requires a repository maintainer, an open
-nondraft conflict-free PR against canonical main, inclusion of current main and
-successful CI for that exact head and main base. Mobile checks and the native
-iOS job must both have completed successfully. It rechecks the PR before upload.
-
-The existing signing, IPA verification, upload, Apple processing and existing
-internal-group verification still apply. An uncertain prior upload blocks a new
-upload. A confirmed upload resumes availability checks. Do not move candidate
-tags, reuse a reserved build, or interpret internal availability as stable
-publication or approval of the open implementation PR.
 
 ## Intent and promotion checks
 
