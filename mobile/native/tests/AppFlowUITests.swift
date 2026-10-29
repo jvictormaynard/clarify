@@ -37,10 +37,23 @@ final class AppFlowUITests: XCTestCase {
   func tab(_ label: String) {
     let button = app.tabBars.buttons[label].firstMatch
     XCTAssertTrue(button.waitForExistence(timeout: 20), "Missing tab: \(label)")
+    let introduction = app.otherElements["UIContinuousPathIntroductionView"].firstMatch
+    if introduction.exists {
+      capture("system-keyboard-introduction")
+      let proceed = introduction.buttons["Continue"].firstMatch
+      guard proceed.waitForExistence(timeout: 5) && proceed.isHittable else {
+        diagnose("keyboard-introduction-blocked"); XCTFail("Cannot finish the system keyboard introduction"); return
+      }
+      proceed.tap()
+      let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: introduction)
+      guard XCTWaiter.wait(for: [closed], timeout: 5) == .completed else {
+        diagnose("keyboard-introduction-remains"); XCTFail("System keyboard introduction is still visible"); return
+      }
+    }
     let keyboard = app.keyboards.firstMatch
-    if keyboard.exists && keyboard.isHittable {
+    if keyboard.exists {
       app.scrollViews.firstMatch.swipeDown()
-      let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == false"), object: keyboard)
+      let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: keyboard)
       guard XCTWaiter.wait(for: [dismissed], timeout: 5) == .completed else {
         diagnose("keyboard-obscures-tab-\(label)"); XCTFail("Dismiss the keyboard before choosing tab: \(label)"); return
       }
