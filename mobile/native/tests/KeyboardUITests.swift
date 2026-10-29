@@ -61,6 +61,7 @@ final class KeyboardUITests: XCTestCase {
       let (keyboard, store, window) = try self.makeDictationFixture()
       defer { window.isHidden = true; try? FileManager.default.removeItem(at: store.root) }
       let caption = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UILabel }.first { $0.accessibilityIdentifier == "clarify.keyboard.recording-status" })
+      let panel = try XCTUnwrap(self.descendants(keyboard.view).first { $0.accessibilityIdentifier == "clarify.keyboard.recording-panel" })
       let capsule = try self.outputCapsule(keyboard)
       for language in ["pt", "en", "es"] {
         for width in [CGFloat(320), 375, 430] {
@@ -71,11 +72,22 @@ final class KeyboardUITests: XCTestCase {
           keyboard.view.frame.size.width = width; keyboard.view.layoutIfNeeded()
           XCTAssertFalse(caption.isHidden); XCTAssertEqual(caption.text, state.message)
           XCTAssertFalse(capsule.isHidden); XCTAssertEqual(capsule.accessibilityHint, state.message)
-          let required = (caption.text! as NSString).boundingRect(with: CGSize(width: caption.bounds.width, height: .greatestFiniteMagnitude),
+          let genericHeight = (caption.text! as NSString).boundingRect(with: CGSize(width: caption.bounds.width, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: caption.font!], context: nil).height
+          // Use UILabel's drawing metrics for clipping; NSString's optional
+          // font leading is retained only as diagnostic data.
+          let required = caption.textRect(forBounds: CGRect(x: 0, y: 0, width: caption.bounds.width,
+            height: .greatestFiniteMagnitude), limitedToNumberOfLines: 0).height
+          XCTAssertEqual(caption.numberOfLines, 0)
           XCTAssertLessThanOrEqual(ceil(required), caption.bounds.height + 1)
+          XCTAssertTrue(panel.bounds.contains(caption.convert(caption.bounds, to: panel)))
           XCTAssertEqual(keyboard.view.bounds.height, KeyboardInputView.contentHeight)
           XCTAssertTrue(keyboard.view.bounds.contains(capsule.frame))
+          let captureName = "error-caption-\(language)-\(Int(width))"
+          let capture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) })
+          capture.name = captureName; capture.lifetime = .keepAlways; self.add(capture)
+          let metrics = XCTAttachment(string: "UILabel=\(required), NSStringWithLeading=\(genericHeight), available=\(caption.bounds.height)")
+          metrics.name = captureName + "-metrics"; metrics.lifetime = .keepAlways; self.add(metrics)
         }
       }
     }
