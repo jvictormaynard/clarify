@@ -21,8 +21,8 @@ export async function closeSettings(page: Page) {
 }
 
 export async function navigate(page: Page, destination: string) {
-  if (["Geral", "Modelos e serviços", "Atalhos", "Privacidade", "Conta Clarify",
-    "General", "Models and services", "Shortcuts", "Privacy", "Clarify account", "Cuenta Clarify"].includes(destination)) {
+  if (["Geral", "Dispositivos", "Modelos e serviços", "Atalhos", "Privacidade", "Conta Clarify",
+    "General", "Devices", "Dispositivos", "Models and services", "Shortcuts", "Privacy", "Clarify account", "Cuenta Clarify"].includes(destination)) {
     await openSettings(page, destination);
   } else {
     await closeSettings(page);

@@ -73,8 +73,11 @@ uploaded. Pending account changes survive connection failures and app restarts.
 Guest snippets stay local. Account snippets synchronize separately from vocabulary.
 See [history synchronization](docs/history-sync.md) and [voice snippets](docs/dictionary-snippets.md).
 Existing profiles retain their setup. The [iOS client](mobile/README.md) is
-delivered through TestFlight. The [account service](server/README.md) can also
+available on the [App Store](https://apps.apple.com/app/id6820869157).
+TestFlight is used for internal testing. The [account service](server/README.md) can also
 be self-hosted. Production keys and user data are never public.
+The source also supports [pairing an iPhone with a computer](docs/computer-connection.md)
+by QR for direct LAN processing with the computer's personal configuration.
 The [financial model and public transparency page](docs/finances.md) explain how
 confirmed support pays operating costs and weekly processing quotas. Stripe
 registration is deferred until a business account is available.

@@ -7,6 +7,8 @@ Notable user-facing changes are documented here. This project follows
 
 ### Added
 
+- Pair an iPhone with a personal Clarify computer by QR code. Use the computer's dictation, rewrite, translation, dictionary and snippets. Revoke paired phones or stop access from desktop Settings.
+- Enable encrypted internet access for a paired computer with a verified free account. Processing models and provider keys remain on the computer.
 - Create named text actions with custom instructions, optional shortcuts and a saved-action preview. Rewrite and Translation remain available as initial actions.
 - Select an action after dictation and configure separate text processing profiles. Account actions belong to the signed-in account; shortcuts and profile choices remain device preferences.
 

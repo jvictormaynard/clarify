@@ -273,6 +273,8 @@ class AccountService:
         self._state = self._read(self.path, {})
         self._usage: dict[str, Any] = {}
         self._usage_generation = 0
+        self._output_preferences_identity: HistoryIdentity | None = None
+        self._output_preferences_available = False
         self._dictionary_conflict = False
         self._sync_error = ""
         self.history = None
@@ -358,6 +360,8 @@ class AccountService:
                 raise AccountError("Saia da conta antes de alterar o servidor.")
             self.secrets.delete(SECRET_ID)
             self._state = {"endpoint": endpoint(value)}
+            self._output_preferences_identity = None
+            self._output_preferences_available = False
             self._generation += 1
             self._save()
 
@@ -383,6 +387,16 @@ class AccountService:
             / identity.user_id
             / "snippets.json"
         )
+
+    @property
+    def output_preferences_supported(self):
+        with self._lock:
+            identity = self.history_identity()
+            return (
+                identity is not None
+                and self._output_preferences_identity == identity
+                and self._output_preferences_available
+            )
 
     def history_identity(self):
         """Capture the account/session before starting a history operation."""
@@ -483,6 +497,8 @@ class AccountService:
                 self._state["sync"] = False
                 self._usage = {}
                 self._usage_generation += 1
+                self._output_preferences_identity = None
+                self._output_preferences_available = False
                 self._generation += 1
                 self._save()
             else:
@@ -644,6 +660,10 @@ class AccountService:
             if self._state.get("user_id") != user_id:
                 self._generation += 1
             self._state = updated
+            self._output_preferences_identity = self.history_identity()
+            self._output_preferences_available = (
+                result.get("output_preferences_supported") is True
+            )
 
     def refresh_if_due(self, service, *, force=False):
         """Foreground refresh, at most once a minute, including after failures."""
@@ -695,6 +715,8 @@ class AccountService:
                 "endpoint": self._state.get("endpoint", self.default_endpoint)
             }
             self._usage = {}
+            self._output_preferences_identity = None
+            self._output_preferences_available = False
             self._dictionary_conflict = False
             self._sync_error = ""
             self._generation += 1
@@ -886,17 +908,43 @@ class AccountService:
         *,
         cleanup_level=None,
         writing_style=None,
+        output_language=None,
         text_action=None,
         text_action_language="auto",
         expected_identity=None,
     ):
         from shared.dictation_policy import cleanup_level as parse_cleanup_level
         from shared.writing_style_policy import writing_style as parse_writing_style
+        from shared.output_preferences import output_language as parse_output_language
 
         level = parse_cleanup_level(cleanup_level)
         style = parse_writing_style(writing_style)
+        target = parse_output_language(output_language)
         if not self.hosted:
             raise AccountError("Entre na conta novamente.")
+        preference_identity = None
+        if target is not None or (
+            style is not None and style.value in {"formal", "casual", "very_casual"}
+        ):
+            with self._lock:
+                preference_identity = self.history_identity()
+                if preference_identity is None:
+                    raise AccountError("Entre na conta novamente.")
+                if (
+                    expected_identity is not None
+                    and expected_identity != preference_identity
+                ):
+                    raise AccountError("A conta mudou. O resultado foi descartado.")
+                known = self._output_preferences_identity == preference_identity
+            if not known:
+                self.refresh()
+            with self._lock:
+                if preference_identity != self.history_identity():
+                    raise AccountError("A conta mudou. O resultado foi descartado.")
+                if not self.output_preferences_supported:
+                    raise AccountError(
+                        "Atualize o serviço para usar estas preferências de saída."
+                    )
         if source.cancel_token:
             source.cancel_token.raise_if_cancelled()
         if self.scope and self._clock() - self._last_sync_attempt >= 60:
@@ -914,6 +962,8 @@ class AccountService:
             fields["cleanup_level"] = level.value
         if style is not None:
             fields["writing_style"] = style.value
+        if target is not None:
+            fields["output_language"] = target
         if text_action is not None:
             if text_action.account_context != self.history_identity():
                 raise AccountError("A conta mudou. Atualize as ações.")
@@ -927,9 +977,10 @@ class AccountService:
             cancel=source.cancel_token,
             data=fields,
             files={"audio": ("clip.wav", data, "audio/wav")},
+            # A new preference cannot move to another account before upload.
             expected_identity=text_action.account_context
             if text_action is not None
-            else expected_identity,
+            else expected_identity or preference_identity,
         )
         if code != 200:
             if code in {401, 403}:
@@ -997,6 +1048,37 @@ class AccountService:
                 raise AccountError(
                     "O Clarify retornou um resultado inválido."
                 ) from None
+        output_fields = {}
+        if target is not None:
+            requested = result.get("output_language_requested")
+            target_applied = result.get("output_language_applied")
+            status = result.get("output_language_status")
+            if (
+                requested != target
+                or status
+                not in {
+                    "applied",
+                    "unchanged",
+                    "standalone",
+                    "refinement_failed",
+                    "refinement_not_allowed",
+                }
+                or (status == "applied" and target_applied != target)
+                or (
+                    status == "unchanged"
+                    and (target != "auto" or target_applied != "auto")
+                )
+                or (
+                    status not in {"applied", "unchanged"}
+                    and target_applied is not None
+                )
+            ):
+                raise AccountError("O Clarify retornou um resultado inválido.")
+            output_fields = {
+                "output_language_requested": target,
+                "output_language_applied": target_applied,
+                "output_language_status": status,
+            }
         return TranscriptionResult(
             text,
             "clarify",
@@ -1006,14 +1088,14 @@ class AccountService:
             if rewritten or text != raw or result.get("snippet_expanded") is True
             else None,
             refinement_failed=(result.get("refinement_failed") is True)
-            if level is not None or style is not None
+            if level is not None or style is not None or target is not None
             else not rewritten and result.get("snippet_expanded") is not True,
             refinement_provider_id="clarify"
-            if (level is None and style is None)
+            if (level is None and style is None and target is None)
             or result.get("refinement_attempted") is True
             else None,
             refinement_model="openai/gpt-oss-20b"
-            if (level is None and style is None)
+            if (level is None and style is None and target is None)
             or result.get("refinement_attempted") is True
             else None,
             cleanup_level_requested=level,
@@ -1022,6 +1104,7 @@ class AccountService:
             text_action_name=text_action.action.name if text_action else None,
             text_action_revision=text_action.action.revision if text_action else None,
             **style_fields,
+            **output_fields,
         )
 
     def transform_text(self, text, action, language="auto", *, cancel=None):

@@ -8,11 +8,12 @@ import { ModelsPage } from "../pages/models-page";
 import { ShortcutsPage } from "../pages/shortcuts-page";
 import { PrivacyPage } from "../pages/privacy-page";
 import { AccountPage } from "../pages/account-page";
+import { DevicesPage } from "../pages/devices-page";
 import { PracticeEntry } from "./dictation-practice";
 import { Button } from "./ui";
 import { Dialog, DialogPopup, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./primitives/dialog";
 
-const sections = { general: GeneralPage, models: ModelsPage, shortcuts: ShortcutsPage, privacy: PrivacyPage, account: AccountPage };
+const sections = { general: GeneralPage, devices: DevicesPage, models: ModelsPage, shortcuts: ShortcutsPage, privacy: PrivacyPage, account: AccountPage };
 
 export function SettingsDialog({ controller: c, returnFocus }: SettingsPageProps & { returnFocus: RefObject<HTMLButtonElement | null> }) {
   const managed = !!(c.state.accountState?.managed || c.state.accountState?.signedIn);

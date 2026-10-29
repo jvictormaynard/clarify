@@ -1,6 +1,7 @@
 """Isolated real-controller RPC fixture. Never opens user config or a microphone."""
 
 import json
+import base64
 import os
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -304,6 +305,25 @@ class Dispatcher(QObject):
         if request.get("method") == "quit":
             QCoreApplication.quit()
             return
+        if request.get("method") == "testComputer":
+            controller = self.protocol.settings._computer
+            action = request.get("args", [""])[0]
+            if action == "paired":
+                controller._host.devices.append(
+                    {"device_id": "fixture-phone", "device_name": "Fixture iPhone"}
+                )
+                controller.refresh()
+            elif action == "expire":
+                controller._expires = 1
+            elif action == "offline":
+                controller._host.enabled = False
+                controller._host.ready = False
+                controller.refresh()
+            elif action in ("internet", "local"):
+                controller._host.relay_connected = action == "internet"
+                controller.refresh()
+            print(json.dumps({"id": request.get("id"), "result": True}), flush=True)
+            return
         if (
             "--text-actions" in sys.argv
             and request.get("method") == "testRejectTextActionSave"
@@ -479,6 +499,19 @@ def main():
         from practice_settings_fixture import bind_practice
 
         bind_practice(settings, app)
+        from clarify.desktop.qml_computer import QmlComputerController
+
+        computer = QmlComputerController(
+            Path(directory) / "computer.sqlite3",
+            FixtureComputerHost,
+            render_qr=fixture_qr,
+            blocked=lambda: bool(
+                settings.accountState.get("signedIn")
+                or settings.accountState.get("managed")
+            ),
+        )
+        settings.bindComputer(computer)
+        computer.initialize()
         if "--history" in sys.argv:
             from history_store import HistoryRecord, HistoryStore
             from datetime import datetime, timezone
@@ -578,11 +611,63 @@ def main():
         try:
             result = app.exec()
         finally:
+            computer.shutdown()
             if host is not None:
                 host.shutdown()
             settings.shutdown()
             fixtures.close()
         return result
+
+
+class FixtureComputerHost:
+    """Offline mobile host. Its QR and devices are synthetic test data."""
+
+    def __init__(self):
+        self.enabled = False
+        self.ready = False
+        self.devices = []
+        self.sequence = 0
+        self.relay_connected = False
+
+    def start(self):
+        # Pairing is available before processing has been configured.
+        self.enabled = True
+
+    def stop(self):
+        self.enabled = False
+        self.ready = False
+
+    def create_pairing(self):
+        import time
+
+        self.sequence += 1
+        return {
+            "pairing_url": f"clarify://computer?data=FAKE-QR-{self.sequence}",
+            "expires_at": time.time() + 300,
+        }
+
+    def snapshot(self):
+        return {
+            "enabled": self.enabled,
+            "ready": self.ready,
+            "devices": list(self.devices),
+            "relay_configured": True,
+            "relay_connected": self.relay_connected,
+        }
+
+    def revoke_device(self, device_id):
+        self.devices = [
+            device for device in self.devices if device["device_id"] != device_id
+        ]
+
+
+def fixture_qr(value):
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="white"/><rect x="24" y="24" width="60" height="60" fill="black"/><rect x="172" y="24" width="60" height="60" fill="black"/><rect x="24" y="172" width="60" height="60" fill="black"/><text x="90" y="140" fill="black" font-size="16">FAKE QR</text><!-- '
+        + value.rsplit("-", 1)[-1]
+        + " --></svg>"
+    )
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
 
 
 if __name__ == "__main__":

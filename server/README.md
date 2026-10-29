@@ -8,8 +8,9 @@ operator commands and the public transparency page. Stripe registration is
 deferred until a business account is available.
 See the [privacy notice and account deletion instructions](../PRIVACY.md).
 The server is optional: local inference and personal provider keys still work
-without an account. The iOS app currently supports personal Groq keys, not local
-inference. Accounts share vocabulary, hosted audio allowance and new account
+without an account. The iOS app uses a Clarify account or an explicitly paired
+computer. Personal models and provider keys remain on that computer.
+Accounts share vocabulary, hosted audio allowance and new account
 transcriptions. Pre-upgrade records and guest history stay on their original
 device. Account snippets have a separate synchronized library; guest snippets
 and personal provider keys stay on their original device. Signing in does not

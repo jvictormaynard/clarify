@@ -3,7 +3,7 @@ import type { SettingsPageProps } from "../settings/use-settings";
 import { applicationName } from "../settings/use-app-style-editor";
 import { Button, Row, Section } from "./ui";
 
-const names = { natural: "Natural", informal: "Informal", organized: "Organizado" };
+const names = { formal: "Formal", casual: "Casual", very_casual: "Muito casual", natural: "Natural", informal: "Informal", organized: "Organizado" };
 
 export function ApplicationWritingStyles({ controller }: SettingsPageProps) {
   const { state, run, appStyleEditor } = controller;

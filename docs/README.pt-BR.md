@@ -74,8 +74,11 @@ conexão e reinícios. Os snippets da conta sincronizam entre os clientes; os sn
 sem conta permanecem locais. Consulte o [contrato de sincronização](history-sync.md)
 e os [snippets de voz](dictionary-snippets.md). As instalações
 existentes mantêm sua configuração. O [aplicativo iOS](../mobile/README.md)
-é distribuído pelo TestFlight. O [servidor de contas](../server/README.md) também
+está na [App Store](https://apps.apple.com/br/app/clarify/id6820869157).
+O TestFlight é usado para testes internos. O [servidor de contas](../server/README.md) também
 pode ser hospedado por você. As chaves de produção e os dados dos usuários são privados.
+O código também permite [parear o iPhone com o computador](computer-connection.md)
+por QR para processar pela rede local, com a configuração pessoal do computador.
 
 > [!IMPORTANT]
 > O acesso pessoal à nuvem usa sua chave de API ou um plano ChatGPT elegível.
@@ -266,8 +269,8 @@ esse vocabulário também é enviado ao provedor. Veja as etapas e os limites no
 
 ## Privacidade
 
-O Clarify não possui servidor próprio. As configurações e estatísticas
-locais ficam em `%APPDATA%\Clarify`. No Windows, as chaves ficam separadas
+As configurações e estatísticas locais ficam em `%APPDATA%\Clarify`.
+No Windows, as chaves ficam separadas
 em `secrets.dpapi.json`, criptografadas pela DPAPI para o usuário atual. Chaves
 antigas em texto simples são migradas e só são removidas de `config.json` depois
 da confirmação da cópia protegida. Variáveis de ambiente são substituições

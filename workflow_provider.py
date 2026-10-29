@@ -12,6 +12,12 @@ from shared.writing_style_policy import (
     writing_style as parse_writing_style,
     with_writing_style,
     style_outcome,
+    presentation as style_presentation,
+)
+from shared.output_preferences import (
+    output_language as parse_output_language,
+    output_language_outcome,
+    with_output_language,
 )
 
 from dataclasses import replace
@@ -42,6 +48,7 @@ from provider_types import (
     TranslationResult,
 )
 from repositories import AppConfig
+from text_actions import TextActionInputPolicy
 from transcription_performance import safe_timings
 from workflow_config import WorkflowRoute, WorkflowScope
 from workflows import RecordingSnapshot, TranscriptionTransportError
@@ -205,6 +212,9 @@ def _action_writing_style(instruction, style):
         "natural": "Use natural sentences and keep the result's vocabulary and tone.",
         "informal": "Use plain, everyday language. Do not add slang, emojis, greetings or opinions.",
         "organized": "Group the result into clear paragraphs. Use lists for explicit enumerations.",
+        "formal": style_presentation("formal"),
+        "casual": style_presentation("casual"),
+        "very_casual": style_presentation("very_casual"),
     }[style.value]
     return (
         instruction
@@ -238,12 +248,14 @@ class WorkflowProviderService:
         registry: ProviderRegistry | None = None,
         account=None,
         text_actions=None,
+        text_action_input_policy=TextActionInputPolicy.STANDARD,
     ) -> None:
         self.config = config
         self.dictionary_service = dictionary_service
         self._registry = registry
         self.account = account
         self.text_actions = text_actions
+        self.text_action_input_policy = text_action_input_policy
 
     def snapshot_text_action(self, action_id):
         if self.text_actions is None:
@@ -291,11 +303,25 @@ class WorkflowProviderService:
             yield
 
     def transform_text_action(
-        self, snapshot, text, language="auto", *, cancel=None, writing_style=None
+        self,
+        snapshot,
+        text,
+        language="auto",
+        *,
+        cancel=None,
+        writing_style=None,
+        output_language=None,
     ):
         from text_actions import validate_input, validate_output
 
-        validate_input(text, language)
+        if self.text_action_input_policy is TextActionInputPolicy.PAIRED_COMPUTER and (
+            snapshot.account_context is not None or self._uses_account()
+        ):
+            raise ValueError("Paired text input requires personal processing")
+        validate_input(text, language, policy=self.text_action_input_policy)
+        target = parse_output_language(output_language)
+        if target not in (None, "auto") and snapshot.action.kind == "translation":
+            language = target
         if not self.text_action_is_current(snapshot):
             raise RuntimeError("Text action account context changed")
         if cancel is not None:
@@ -318,6 +344,7 @@ class WorkflowProviderService:
             )
             instruction = _action_writing_style(instruction, writing_style)
             instruction += f"\nThe selected target language is {label}. It takes precedence over all other language requests. Output MUST be in {label}."
+            instruction = with_output_language(instruction, target)
             request = TranslationRequest(
                 text=text,
                 model=route.model_id,
@@ -343,10 +370,11 @@ class WorkflowProviderService:
                 if action.kind == "rewrite"
                 else _action_writing_style
             )(_workflow_instruction(base, action.prompt), writing_style)
+            instruction = with_output_language(instruction, target)
             request = RewriteRequest(
                 text=text,
                 model=route.model_id,
-                language=language,
+                language=target if target not in (None, "auto") else language,
                 instruction=instruction,
                 source_message=f"BEGIN_SELECTED_SOURCE\n{text}\nEND_SELECTED_SOURCE",
                 temperature=0.1,
@@ -404,6 +432,7 @@ class WorkflowProviderService:
         selection: FileTranscriptionSelection | None = None,
         cleanup_level: str | None = None,
         writing_style: str | None = None,
+        output_language: str | None = None,
         dictation_snapshot=None,
     ) -> TranscriptionResult:
         current = (
@@ -423,6 +452,7 @@ class WorkflowProviderService:
             after_action_error = dictation_snapshot.action_error
             after_language = dictation_snapshot.language
         style = parse_writing_style(writing_style)
+        target = parse_output_language(output_language)
         policy = DictationCleanupPolicy(
             parse_cleanup_level(
                 cleanup_level
@@ -436,6 +466,8 @@ class WorkflowProviderService:
                 options["cleanup_level"] = policy.requested
             if style is not None:
                 options["writing_style"] = style
+            if target is not None:
+                options["output_language"] = target
             if after_action is not None:
                 options["text_action"] = after_action
                 options["text_action_language"] = after_language
@@ -472,6 +504,7 @@ class WorkflowProviderService:
         # editing, and inline saved content is present before optional cleanup.
         snippet_two_stage = metadata.supports(ProviderCapability.MULTIMODAL_AUDIO) and (
             after_action is not None
+            or target not in (None, "auto")
             or policy.separate_recognition
             or any(item.enabled for item in self.dictionary_service.state.snippets)
         )
@@ -485,18 +518,17 @@ class WorkflowProviderService:
             "" if language in {"", "auto"} else language.split("-", 1)[0]
         )
         mode = "prompt"
+        recognition_only = policy.separate_recognition or target not in (None, "auto")
         instruction = (
             RECOGNITION_INSTRUCTION
-            if policy.separate_recognition
+            if recognition_only
             else (
                 TRANSCRIPTION_INSTRUCTION
                 if mode == "transcription" or snippet_two_stage
                 else PROMPT_INSTRUCTION
             )
         ).format(lang=language_label)
-        prompt = (
-            instruction if policy.separate_recognition else route.prompt or instruction
-        )
+        prompt = instruction if recognition_only else route.prompt or instruction
         if inline_style:
             instruction = with_writing_style(instruction, style)
             prompt = with_writing_style(prompt, style)
@@ -596,6 +628,7 @@ class WorkflowProviderService:
                         after_language,
                         cancel=audio_source.cancel_token,
                         writing_style=style,
+                        output_language=target,
                     )
                     if after_action is not None
                     else self._refine_transcript(
@@ -606,6 +639,7 @@ class WorkflowProviderService:
                         audio_source.cancel_token,
                         route=refinement_route,
                         writing_style=style,
+                        output_language=target,
                         connection=self._connection(refinement_route, current=current),
                     )
                 )
@@ -693,6 +727,12 @@ class WorkflowProviderService:
                 attempted=refinement_requested,
                 standalone=standalone_snippet is not None,
             ),
+            **output_language_outcome(
+                target,
+                refined=refinement_used,
+                attempted=refinement_requested,
+                standalone=standalone_snippet is not None,
+            ),
         )
 
     def _refine_transcript(
@@ -705,6 +745,7 @@ class WorkflowProviderService:
         *,
         route=None,
         writing_style=None,
+        output_language=None,
         connection: ProviderConnection | None = None,
     ) -> RewriteResult:
         refinement_route = route if route is not None else self._route(refinement_scope)
@@ -717,10 +758,12 @@ class WorkflowProviderService:
         refinement_instruction = with_writing_style(
             refinement_instruction, writing_style
         )
+        target = parse_output_language(output_language)
+        refinement_instruction = with_output_language(refinement_instruction, target)
         refinement_request = RewriteRequest(
             text=raw_transcript,
             model=refinement_route.model_id,
-            language=language,
+            language=target if target not in (None, "auto") else language,
             instruction=refinement_instruction
             + self.dictionary_service.refinement_context(),
             source_message=(
@@ -746,6 +789,7 @@ class WorkflowProviderService:
         refined_size = len(" ".join(refined.text.split()))
         if (
             source_size >= 240
+            and target in (None, "auto")
             and refined_size * 4 < source_size
             and not _is_exact_duplicate_removal(raw_transcript, refined.text)
         ):

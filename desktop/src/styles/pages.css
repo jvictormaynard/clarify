@@ -505,3 +505,10 @@
   .onboarding-heading { margin-bottom: 20px; }
   .onboarding-page .onboarding-heading h1 { margin-top: 16px; }
 }
+.computer-pairing { padding-inline: 24px; display: grid; gap: 16px; min-height: 0; overflow-y: auto; }
+.computer-devices li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.computer-qr { width: fit-content; max-width: 100%; padding: 12px; background: white; border-radius: 8px; }
+.computer-qr img { display: block; max-width: 100%; height: auto; }
+.computer-devices { display: grid; gap: 10px; list-style: none; padding: 0; margin: 0; }
+.computer-devices span { overflow-wrap: anywhere; }
+.computer-options-content { display: grid; gap: 16px; }

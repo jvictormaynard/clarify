@@ -5,7 +5,10 @@ import { applicationName } from "../settings/use-app-style-editor";
 import { Button, Field, Picker, Row, Section, SettingsDisclosure } from "./ui";
 import { Dialog, DialogPopup, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./primitives/dialog";
 
-const descriptions = {
+const descriptions: Record<WritingStyle, string> = {
+  formal: "Usa linguagem profissional e frases completas, sem acrescentar informações.",
+  casual: "Usa linguagem natural e conversacional, mantendo o sentido do texto.",
+  very_casual: "Usa linguagem descontraída e direta, sem inventar gírias ou emojis.",
   natural: "Mantém seu vocabulário e tom, com frases naturais.",
   informal: "Usa linguagem cotidiana, sem acrescentar gírias ou emojis.",
   organized: "Organiza os pontos em parágrafos e as enumerações em listas, sem acrescentar conteúdo.",
@@ -25,7 +28,10 @@ export function AppStyleEditor({ controller: c }: SettingsPageProps) {
             onClick={() => a.change({ executable: c.state.applicationStyleTarget ?? "" })}>{t("Usar último aplicativo")}</Button></div>}
           <Row title={t("Estilo de escrita")} hint={t(descriptions[editor.style])}>
             <Picker label={t("Estilo de escrita")} value={editor.style}
-              options={[{ id: "natural", label: t("Natural") }, { id: "informal", label: t("Informal") }, { id: "organized", label: t("Organizado") }]}
+              options={[
+                { id: "formal", label: t("Formal") }, { id: "casual", label: t("Casual") }, { id: "very_casual", label: t("Muito casual") },
+                ...(["natural", "informal", "organized"].includes(editor.style) ? [{ id: editor.style, label: t(({ natural: "Natural", informal: "Informal", organized: "Organizado" } as Record<string, string>)[editor.style]) }] : []),
+              ]}
               onChange={style => a.change({ style: style as WritingStyle })} />
           </Row>
           <SettingsDisclosure title={editor.isNew ? t("Escolher outro aplicativo") : t("Detalhes do aplicativo")} defaultOpen={!editor.executable}>

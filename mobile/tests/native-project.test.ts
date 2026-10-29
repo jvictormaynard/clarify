@@ -16,3 +16,14 @@ test('EAS config declares both targets with the same app group', () => {
   assert.equal(activity?.bundleIdentifier, 'com.jvictormaynard.clarify.activity');
   assert.equal(exp.ios.infoPlist.NSSupportsLiveActivities, true);
 });
+
+test('computer pairing requests camera and LAN access with only private-network ATS exceptions', () => {
+  const { exp } = getConfig(process.cwd());
+  assert.match(exp.ios.infoPlist.NSCameraUsageDescription, /QR/);
+  assert.match(exp.ios.infoPlist.NSLocalNetworkUsageDescription, /computador/);
+  const ats = exp.ios.infoPlist.NSAppTransportSecurity;
+  assert.equal(ats.NSAllowsArbitraryLoads, undefined);
+  assert.equal(ats.NSAllowsArbitraryLoadsInWebContent, undefined);
+  assert.equal(ats.NSAllowsLocalNetworking, true);
+  assert.deepEqual(Object.keys(ats.NSExceptionDomains).sort(), ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']);
+});

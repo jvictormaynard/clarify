@@ -40,6 +40,8 @@ def main(arguments=None):
         environment["CLARIFY_DATA_DIR"] = str(Path(directory) / "Clarify")
         environment["CLARIFY_SKIP_DOTENV"] = "1"
         environment.setdefault("QT_QPA_PLATFORM", "offscreen")
+        # Match the product style before discovery creates the first QML engine.
+        environment["QT_QUICK_CONTROLS_STYLE"] = "Basic"
         with patch.dict(os.environ, environment, clear=True):
             try:
                 result = unittest.main(

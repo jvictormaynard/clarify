@@ -497,6 +497,7 @@ class QmlSettingsController(QObject):
 
     configChanged = Signal()
     updatesChanged = Signal()
+    computerStateChanged = Signal()
     routeChanged = Signal()
     selectedScopeChanged = Signal()
     dirtyChanged = Signal()
@@ -543,6 +544,7 @@ class QmlSettingsController(QObject):
         self._background_timer.timeout.connect(self._drain_background_publications)
         self._updates = None
         self._practice = None
+        self._computer = None
         self.repositories = repositories
         self._account = account_service or AccountService(
             Path(repositories.config.path).parent,
@@ -3833,6 +3835,48 @@ class QmlSettingsController(QObject):
             "error": self._account_error,
         }
 
+    def bindComputer(self, controller):
+        self._computer = controller
+        controller.changed.connect(self.computerStateChanged)
+        self.accountStateChanged.connect(controller.refresh)
+        self.computerStateChanged.emit()
+
+    @Property("QVariantMap", notify=computerStateChanged)
+    def computerState(self):
+        if self._computer is not None:
+            return self._computer.snapshot()
+        return {
+            "enabled": False,
+            "running": False,
+            "durable": False,
+            "busy": False,
+            "blocked": True,
+            "error": "unavailable",
+            "devices": [],
+            "pairingReady": False,
+            "pairingExpiresAt": 0,
+        }
+
+    @Property(str, notify=computerStateChanged)
+    def computerPairingImage(self):
+        return self._computer.pairingImage if self._computer is not None else ""
+
+    @Slot(str, str, result=bool)
+    def computerCommand(self, action, value=""):
+        if self._computer is None or not self._computer.command(action, value):
+            self._set_error(ValueError("Não foi possível alterar o acesso do celular."))
+            return False
+        self._set_error(None)
+        return True
+
+    def getComputerPairing(self):
+        return self._computer.pairing() if self._computer is not None else {}
+
+    @Slot()
+    def closeComputerPairing(self):
+        if self._computer is not None:
+            self._computer.command("close")
+
     @Property("QVariantMap", notify=accountStateChanged)
     def historyState(self):
         return (
@@ -4138,6 +4182,8 @@ class QmlSettingsController(QObject):
 
     @Slot(str, str, result=bool)
     def accountCommand(self, action, value="", *, expected_identity=None):
+        if self._account_shutdown:
+            return False
         if action == "cancel-social":
             if self._account_busy and self._account_social:
                 self._account_cancel.set()
@@ -4184,6 +4230,16 @@ class QmlSettingsController(QObject):
                     return False
             if not self._account.begin_change():
                 return False
+            account_generation = getattr(self._account, "_generation", 0)
+        # Host workers can read account state while draining. Do not hold
+        # the account/history guard when scheduling or waiting for that drain.
+        computer_barrier = (
+            self._computer.prepare_account_change()
+            if self._computer is not None
+            and action
+            in {"configure", "login", "signup", "confirm", "social", "logout", "delete"}
+            else None
+        )
         self._account_busy, self._account_error = True, ""
         self._account_social = action == "social"
         self._account_cancel.clear()
@@ -4192,6 +4248,24 @@ class QmlSettingsController(QObject):
         def perform():
             error = ""
             try:
+                if computer_barrier is not None and computer_barrier.result().get(
+                    "error"
+                ):
+                    raise ValueError("Não foi possível alterar o acesso do celular.")
+                if self._account_shutdown:
+                    return
+                # The drain can outlive the session that reserved this change.
+                # Recheck its owner, then release the guard before account I/O.
+                with self._history_correction_guard:
+                    if getattr(
+                        self._account, "_generation", 0
+                    ) != account_generation or (
+                        expected_identity is not None
+                        and self._history_correction_identity() != expected_identity
+                    ):
+                        raise CorrectionError("context_changed")
+                if action == "social" and self._account_cancel.is_set():
+                    raise ValueError("A operação da conta foi cancelada.")
                 if action == "configure":
                     self._account.configure(value)
                 elif action == "social":
@@ -4240,6 +4314,10 @@ class QmlSettingsController(QObject):
 
     @Slot(object)
     def _finish_account(self, error):
+        if self._account_shutdown:
+            return
+        if self._computer is not None:
+            self._computer.finish_account_change()
         self._account_social = False
         self._account_error = error
         try:

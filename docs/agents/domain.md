@@ -15,6 +15,9 @@ manual or create a second root glossary.
 | Processing profile | A validated text provider route used by one or more actions; credentials remain with their existing secure owner |
 | Action binding | A device-local shortcut or profile choice for a personal or account action, scoped to its owner and endpoint |
 | Style | Dictation cleanup, optional action after dictation and writing rules for applications; a style does not enable a cloud service |
+| Writing style | A bounded presentation or tone choice; new choices are Formal, Casual and Very casual, while saved legacy styles keep their meaning |
+| Recognition language | The language of the spoken source; automatic recognition can remain active when output uses another language |
+| Output language | The requested language of the final dictation text, independent of recognition language |
 | Operation ID | The monotonic session identity used to reject a stale worker result |
 | Publication | The claimed external result effect; usage is accounted once for an accepted publication |
 | Provider route | The explicitly selected provider/model/endpoint and capabilities for a workflow |

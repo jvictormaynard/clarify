@@ -337,10 +337,12 @@ class ExecutionTests(TestCase):
         self.assertEqual(self.send().status_code, 503)
         provider.assert_not_called()
 
+    @patch("cloud.service.middleware.time")
     @patch("cloud.service.groq.perform", return_value=completion())
     def test_new_and_legacy_actions_share_the_text_processing_rate_limit(
-        self, provider
+        self, provider, clock
     ):
+        clock.time.return_value = 1793275200
         for index in range(6):
             if index % 2:
                 response = self.client.post(

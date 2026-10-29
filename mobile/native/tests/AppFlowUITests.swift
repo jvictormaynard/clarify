@@ -1,4 +1,5 @@
 import XCTest
+import CoreFoundation
 
 final class AppFlowUITests: XCTestCase {
   let app = XCUIApplication(bundleIdentifier: "com.jvictormaynard.clarify")
@@ -15,7 +16,7 @@ final class AppFlowUITests: XCTestCase {
     print("APP_UI_DIAGNOSTIC \(name)\n\(app.debugDescription)")
   }
   func press(_ identifier: String, allowScroll: Bool = true) {
-    let button = app.buttons[identifier].firstMatch
+    let button = app.descendants(matching: .any)[identifier].firstMatch
     guard button.waitForExistence(timeout: 15) else {
       diagnose("missing-\(identifier)"); XCTFail("Missing action: \(identifier)"); return
     }
@@ -23,7 +24,11 @@ final class AppFlowUITests: XCTestCase {
     guard XCTWaiter.wait(for: [enabled], timeout: 15) == .completed else {
       diagnose("disabled-\(identifier)"); XCTFail("Disabled action: \(identifier)"); return
     }
-    if allowScroll && !button.isHittable { diagnose("before-scroll-\(identifier)"); app.swipeUp() }
+    if allowScroll {
+      for _ in 0..<6 where !button.isHittable {
+        if button.frame.midY < app.frame.midY { app.swipeDown() } else { app.swipeUp() }
+      }
+    }
     guard button.isHittable else {
       diagnose("unreachable-\(identifier)"); XCTFail("Unreachable action: \(identifier)"); return
     }
@@ -67,6 +72,117 @@ final class AppFlowUITests: XCTestCase {
       }
     }
   }
+  func fixture(_ path: String, values: [String: Any]? = nil) -> [String: Any] {
+    let completed = expectation(description: "Fixture \(path)")
+    var output: [String: Any] = [:]
+    var request = URLRequest(url: URL(string: "__CLARIFY_APP_UI_ENDPOINT__" + path)!)
+    if let values {
+      request.httpMethod = "POST"; request.httpBody = try! JSONSerialization.data(withJSONObject: values)
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    }
+    URLSession.shared.dataTask(with: request) { data, response, error in
+      XCTAssertNil(error)
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+      if let data { output = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:] }
+      completed.fulfill()
+    }.resume()
+    XCTAssertEqual(XCTWaiter.wait(for: [completed], timeout: 15), .completed)
+    return output
+  }
+  func absent(_ element: XCUIElement) {
+    let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
+    XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 15), .completed)
+  }
+  func back() { app.navigationBars.buttons.firstMatch.tap() }
+  func chooseRewrite() {
+    press("actions.choose")
+    press("actions.option.saved:rewrite:1")
+  }
+  func verifyActions() {
+    tab("Ações")
+    let text = app.textViews["actions.text"]
+    enter("cancelled-preparation", in: text, name: "composer")
+    capture("actions-draft-keyboard")
+    chooseRewrite()
+    tab("Biblioteca"); tab("Ações")
+    XCTAssertEqual(text.value as? String, "cancelled-preparation", "Tab navigation keeps the mounted draft")
+    press("actions.refresh")
+    XCTAssertEqual(text.value as? String, "cancelled-preparation")
+    press("actions.choose"); press("Fechar")
+    XCTAssertEqual(text.value as? String, "cancelled-preparation", "Sheet dismissal keeps the draft")
+    let previousPosts = (fixture("/__fixture/state")["processing"] as? [Any])?.count
+    _ = fixture("/__fixture/control", values: ["catalog": "slow"])
+    press("actions.run")
+    let progress = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH 'actions.operation.' AND identifier != 'actions.operation.starting'")).firstMatch
+    XCTAssertTrue(progress.waitForExistence(timeout: 10), "Accepted UUID must arrive before discovery completes")
+    let identifier = progress.identifier.replacingOccurrences(of: "actions.operation.", with: "")
+    XCTAssertNotNil(UUID(uuidString: identifier))
+    XCTAssertEqual(fixture("/__fixture/wait-catalog")["held"] as? Int, 1)
+    XCTAssertFalse(app.buttons["actions.copy"].exists)
+    capture("actions-slow-catalog-accepted")
+    press("actions.cancel")
+    absent(app.buttons["actions.cancel"])
+    _ = fixture("/__fixture/control", values: ["release": true])
+    XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
+    XCTAssertEqual(text.value as? String, "cancelled-preparation")
+    XCTAssertFalse(app.buttons["actions.copy"].exists)
+    text.tap(); text.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "cancelled-preparation".count))
+    text.typeText("deactivated-preparation")
+    _ = fixture("/__fixture/control", values: ["catalog": "slow"])
+    press("actions.run")
+    XCTAssertTrue(progress.waitForExistence(timeout: 10))
+    XCTAssertNotNil(UUID(uuidString: progress.identifier.replacingOccurrences(of: "actions.operation.", with: "")))
+    XCTAssertEqual(fixture("/__fixture/wait-catalog")["held"] as? Int, 1)
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+      CFNotificationName("com.clarify.app-flow.deactivate" as CFString), nil, nil, true)
+    absent(app.buttons["actions.cancel"])
+    _ = fixture("/__fixture/control", values: ["release": true])
+    XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
+    XCTAssertFalse(app.buttons["actions.copy"].exists)
+    capture("actions-deactivated-discovery")
+    text.tap(); text.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "deactivated-preparation".count))
+    text.typeText("cancelled-preparation")
+    for mode in ["empty", "failed"] {
+      _ = fixture("/__fixture/control", values: ["catalog": mode])
+      press("actions.refresh")
+      let status = app.staticTexts["actions.catalog-status"]
+      XCTAssertTrue(status.waitForExistence(timeout: 10))
+      let expected = mode == "empty" ? "Nenhuma ação salva neste destino." : "Não foi possível carregar as ações. Atualize para tentar novamente."
+      let updated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", expected), object: status)
+      XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 15), .completed)
+      XCTAssertFalse(app.buttons["actions.run"].isEnabled)
+      XCTAssertEqual(text.value as? String, "cancelled-preparation")
+      capture("actions-catalog-\(mode)")
+    }
+    _ = fixture("/__fixture/control", values: ["catalog": "ready"])
+    press("actions.refresh"); chooseRewrite()
+    text.tap(); text.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "cancelled-preparation".count))
+    text.typeText("successful-action")
+    press("actions.run")
+    XCTAssertTrue(app.staticTexts["actions.result"].waitForExistence(timeout: 15))
+    XCTAssertEqual(app.staticTexts["actions.result"].label, "Fixture result: successful-action")
+    press("actions.copy")
+    capture("actions-owned-result")
+    press("actions.choose"); press("actions.option.saved:translation:1")
+    absent(app.staticTexts["actions.result"])
+    press("actions.language")
+    for language in ["pt", "en", "es", "de", "ru"] {
+      XCTAssertTrue(app.descendants(matching: .any)["actions.target.\(language)"].firstMatch.exists)
+    }
+    press("actions.target.ru")
+    press("actions.run")
+    XCTAssertTrue(app.staticTexts["actions.result"].waitForExistence(timeout: 15))
+    let posted = fixture("/__fixture/state")["processing"] as? [[String: Any]]
+    let translation = posted?.last?["value"] as? [String: Any]
+    XCTAssertEqual(translation?["language"] as? String, "ru")
+    capture("actions-translation-russian")
+    _ = fixture("/__fixture/control", values: ["revision": 2])
+    press("actions.refresh")
+    XCTAssertTrue(app.staticTexts["actions.catalog-status"].waitForExistence(timeout: 10))
+    let stale = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == false"), object: app.buttons["actions.run"])
+    XCTAssertEqual(XCTWaiter.wait(for: [stale], timeout: 15), .completed)
+    capture("actions-stale-choice")
+  }
   func testFirstPresentationAccountNavigationAndExplicitReplay() {
     app.launch()
     XCTAssertTrue(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.waitForExistence(timeout: 30))
@@ -76,6 +192,12 @@ final class AppFlowUITests: XCTestCase {
     app.terminate(); app.launch()
     XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 20))
     XCTAssertFalse(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.exists)
+    press("processing.computer")
+    XCTAssertTrue(app.buttons["computer.scan"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.textFields["account.email"].exists, "Computer pairing does not require hosted sign-in")
+    XCTAssertFalse(app.tabBars.firstMatch.exists, "Choosing a mode alone does not authorize processing")
+    press("processing.hosted")
+    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 10))
     for provider in ["Google", "Microsoft", "GitHub"] {
       XCTAssertTrue(app.buttons["Continuar com \(provider)"].exists, "Social sign-in remains available")
     }
@@ -89,34 +211,56 @@ final class AppFlowUITests: XCTestCase {
     enter("123456", in: app.textFields["account.code"], name: "code")
     capture("login-code-keyboard-visible")
     pressWithKeyboard("account.verifyCode", field: app.textFields["account.code"], value: "123456")
-    tab("Início")
-    XCTAssertFalse(app.buttons["home.account"].exists, "Account opens from the bottom tabs")
+    tab("Ditado")
     XCTAssertEqual(app.tabBars.buttons.count, 4)
-    capture("home-dark")
-    tab("Dicionário")
-    XCTAssertEqual(app.buttons.matching(identifier: "Snippets").count, 1, "Snippets has one destination in the bottom tabs")
-    capture("dictionary-dark")
-    tab("Snippets"); capture("snippets-dark")
-    tab("Conta")
+    XCTAssertFalse(app.buttons["home.account"].exists)
+    capture("dictation")
+    tab("Biblioteca")
+    press("library.dictionary"); capture("dictionary")
+    press("Adicionar palavra")
+    let word = app.textFields["Palavra"]
+    enter("Fixture draft", in: word, name: "dictionary-draft")
+    capture("dictionary-editor-keyboard-dirty")
+    press("Cancelar"); back()
+    XCTAssertTrue(app.tabBars.buttons["Biblioteca"].isSelected)
+    press("library.snippets"); capture("snippets")
+    press("Adicionar snippet")
+    let trigger = app.textFields["Frase de ativação"]
+    enter("fixture phrase", in: trigger, name: "snippet-draft")
+    capture("snippets-editor-keyboard-dirty")
+    press("Cancelar"); back()
+    tab("Ajustes"); capture("settings")
+    press("settings.account")
     XCTAssertTrue(app.descendants(matching: .any)["app.account"].firstMatch.waitForExistence(timeout: 15))
     let weeklyUsage = app.staticTexts["account.weeklyUsage"]
     XCTAssertTrue(weeklyUsage.waitForExistence(timeout: 15))
-    XCTAssertEqual(weeklyUsage.label, "12,5% usados · 82,5% restantes", "Pending reservations must not count as consumed quota")
-    XCTAssertTrue(app.staticTexts["Uso nesta semana"].exists)
+    XCTAssertEqual(weeklyUsage.label, "12,5% usados · 82,5% restantes")
     XCTAssertTrue(app.staticTexts["account.usageReset"].label.hasPrefix("Próxima renovação: "))
-    XCTAssertFalse(app.staticTexts["A cota semanal não está disponível. Atualize para tentar novamente."].exists)
-    capture("account-dark")
-    press("account.settings"); capture("settings-dark")
-    app.navigationBars.buttons.firstMatch.tap()
-    XCTAssertTrue(app.tabBars.buttons["Conta"].isSelected)
-    press("account.guide")
+    XCTAssertFalse(app.buttons["processing.computer"].exists, "Identity and usage do not become PC controls")
+    capture("account"); back()
+    XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
+    press("settings.processing"); capture("processing"); back()
+    press("settings.output")
+    press("output.language.de"); press("output.style.very_casual")
+    capture("output-preferences")
+    press("output.close")
+    press("settings.output")
+    let german = app.descendants(matching: .any)["output.language.de"].firstMatch
+    XCTAssertTrue(german.waitForExistence(timeout: 15))
+    XCTAssertTrue(german.isSelected)
+    press("output.close")
+    press("settings.microphone"); capture("microphone-keyboard"); back()
+    press("settings.privacy"); capture("privacy"); back()
+    press("settings.guide")
     XCTAssertTrue(app.descendants(matching: .any)["onboarding.keyboard"].firstMatch.waitForExistence(timeout: 15))
-    capture("guide-keyboard-dark")
-    app.navigationBars.buttons.firstMatch.tap()
-    XCTAssertTrue(app.tabBars.buttons["Conta"].isSelected)
-    tab("Início")
-    XCTAssertFalse(app.buttons["home.account"].exists)
-    tab("Conta")
+    capture("guide-keyboard"); back()
+    XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
+    verifyActions()
+    tab("Ajustes"); press("settings.output")
+    let unchangedLanguage = app.descendants(matching: .any)["output.language.de"].firstMatch
+    XCTAssertTrue(unchangedLanguage.waitForExistence(timeout: 15))
+    XCTAssertTrue(unchangedLanguage.isSelected, "Translation target does not change dictation output")
+    press("output.close"); press("settings.account")
     press("account.logout")
     XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
     app.terminate(); app.launch()

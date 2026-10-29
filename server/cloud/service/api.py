@@ -113,6 +113,7 @@ class AccountView(ServiceView):
                 "id": str(request.user.pk),
                 "email": request.user.email,
                 "usage": ledger.usage(request.user),
+                "output_preferences_supported": True,
             }
         )
 
@@ -302,6 +303,9 @@ class DictationView(ServiceView):
         try:
             from shared.dictation_policy import cleanup_level as parse_cleanup_level
             from shared.writing_style_policy import writing_style as parse_writing_style
+            from shared.output_preferences import (
+                output_language as parse_output_language,
+            )
 
             if set(request.data) - {
                 "audio",
@@ -309,6 +313,7 @@ class DictationView(ServiceView):
                 "language",
                 "cleanup_level",
                 "writing_style",
+                "output_language",
                 "text_action_id",
                 "text_action_revision",
                 "text_action_language",
@@ -316,6 +321,7 @@ class DictationView(ServiceView):
                 raise ValueError()
             level = parse_cleanup_level(request.data.get("cleanup_level"))
             style = parse_writing_style(request.data.get("writing_style"))
+            target = parse_output_language(request.data.get("output_language"))
             if any(len(request.data.getlist(key)) != 1 for key in request.data):
                 raise ValueError()
             operation_id = uuid.UUID(request.data["operation_id"])
@@ -348,7 +354,11 @@ class DictationView(ServiceView):
         action = None
         try:
             digest = audio.fingerprint(
-                upload, language, cleanup_level=level, writing_style=style
+                upload,
+                language,
+                cleanup_level=level,
+                writing_style=style,
+                **({"output_language": target} if target is not None else {}),
             )
             if action_id is not None:
                 digest = hashlib.sha256(
@@ -396,6 +406,7 @@ class DictationView(ServiceView):
                     snippets=snippets.entries if snippets else [],
                     cleanup_level=level,
                     writing_style=style,
+                    **({"output_language": target} if target is not None else {}),
                     cost_budget=operation.reserved_cost,
                     authorize=lambda total: ledger.authorize(operation, total),
                     **(
@@ -506,10 +517,19 @@ class TextView(ServiceView):
         if not take_rate("text", str(request.user.pk), 6):
             return Response({"code": "rate_limited"}, status=429)
         try:
+            from shared.writing_style_policy import writing_style as parse_writing_style
+
             fields = {"operation_id", "text", "language"} | (
                 {"action_id", "action_revision"} if self.saved_actions else {"action"}
             )
-            if not isinstance(request.data, dict) or set(request.data) != fields:
+            if (
+                not isinstance(request.data, dict)
+                or not fields <= set(request.data)
+                or set(request.data) - fields - {"writing_style"}
+            ):
+                raise ValueError()
+            style = parse_writing_style(request.data.get("writing_style"))
+            if "writing_style" in request.data and style is None:
                 raise ValueError()
             operation_id = uuid.UUID(request.data["operation_id"])
             source, language = request.data["text"], request.data["language"]
@@ -536,9 +556,12 @@ class TextView(ServiceView):
                 raise ValueError()
             fingerprint = hashlib.sha256(
                 json.dumps(
-                    ["text-action", action_id, action_revision, source, language]
-                    if self.saved_actions
-                    else ["text", action, source, language],
+                    (
+                        ["text-action", action_id, action_revision, source, language]
+                        if self.saved_actions
+                        else ["text", action, source, language]
+                    )
+                    + (["writing_style", style.value] if style is not None else []),
                     ensure_ascii=False,
                 ).encode()
             ).hexdigest()
@@ -568,6 +591,7 @@ class TextView(ServiceView):
                     language,
                     cost_budget=operation.reserved_cost,
                     authorize=lambda total: ledger.authorize(operation, total),
+                    **({"writing_style": style} if style is not None else {}),
                 )
                 with ledger.admission_lock():
                     current = Operation.objects.get(pk=operation.pk)

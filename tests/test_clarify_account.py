@@ -82,6 +82,169 @@ class AccountTests(unittest.TestCase):
         self.request.assert_not_called()
         self.signed_in()
         self.assertNotIn("test-session-only", json.dumps(self.account.snapshot()))
+
+    def test_new_output_choices_require_advertised_capability_before_upload(self):
+        from provider_http import CancellationToken
+        from workflows import RecordingSnapshot
+
+        self.signed_in()
+        self.account._last_sync_attempt = self.account._clock()
+        self.request.reset_mock()
+        source = RecordingSnapshot(
+            Path("unused.wav"), b"synthetic", CancellationToken()
+        )
+        for fields in (
+            {"writing_style": "formal"},
+            {"writing_style": "casual"},
+            {"writing_style": "very_casual"},
+            {"output_language": "en"},
+        ):
+            with self.assertRaisesRegex(AccountError, "preferências de saída"):
+                self.account.transcribe(source, "auto", self.service, **fields)
+        self.request.assert_not_called()
+
+    def test_output_capability_does_not_cross_account_or_endpoint(self):
+        from provider_http import CancellationToken
+        from workflows import RecordingSnapshot
+
+        user = self.signed_in()
+        self.request.return_value = self.response(
+            {
+                "id": user,
+                "email": "user@example.test",
+                "usage": {},
+                "output_preferences_supported": True,
+            }
+        )
+        self.account.refresh()
+        self.assertTrue(self.account.output_preferences_supported)
+        self.account.logout()
+        self.account.configure("https://other.example")
+        self.signed_in(user)
+        self.assertFalse(self.account.output_preferences_supported)
+        self.request.return_value = self.response(
+            {
+                "id": user,
+                "email": "user@example.test",
+                "usage": {},
+                "output_preferences_supported": True,
+            }
+        )
+        self.account.refresh()
+        self.assertTrue(self.account.output_preferences_supported)
+        self.signed_in(str(uuid.uuid4()))
+        self.assertFalse(self.account.output_preferences_supported)
+        self.request.reset_mock()
+        source = RecordingSnapshot(
+            Path("unused.wav"), b"synthetic", CancellationToken()
+        )
+        with self.assertRaises(AccountError):
+            self.account.transcribe(
+                source, "auto", self.service, writing_style="formal"
+            )
+        self.request.assert_not_called()
+
+    def test_advertised_output_choices_and_legacy_styles_keep_their_wire_fields(self):
+        from provider_http import CancellationToken
+        from workflows import RecordingSnapshot
+
+        user = self.signed_in()
+        self.account._last_sync_attempt = self.account._clock()
+        source = RecordingSnapshot(
+            Path("unused.wav"), b"synthetic", CancellationToken()
+        )
+        for style in ("natural", "informal", "organized"):
+            self.request.return_value = self.response(
+                {
+                    "transcript": "Source",
+                    "text": "Edited",
+                    "rewritten": True,
+                    "writing_style_requested": style,
+                    "writing_style_applied": style,
+                    "writing_style_status": "applied",
+                }
+            )
+            self.assertEqual(
+                self.account.transcribe(
+                    source, "auto", self.service, writing_style=style
+                ).writing_style_applied,
+                style,
+            )
+            self.assertNotIn("output_language", self.request.call_args.kwargs["data"])
+        self.request.return_value = self.response(
+            {
+                "id": user,
+                "email": "user@example.test",
+                "usage": {},
+                "output_preferences_supported": True,
+            }
+        )
+        self.account.refresh()
+        self.request.return_value = self.response(
+            {
+                "transcript": "Source",
+                "text": "Edited",
+                "rewritten": True,
+                "writing_style_requested": "formal",
+                "writing_style_applied": "formal",
+                "writing_style_status": "applied",
+                "output_language_requested": "en",
+                "output_language_applied": "en",
+                "output_language_status": "applied",
+            }
+        )
+        result = self.account.transcribe(
+            source, "auto", self.service, writing_style="formal", output_language="en"
+        )
+        self.assertEqual(result.output_language_applied, "en")
+        self.assertEqual(self.request.call_args.kwargs["data"]["language"], "auto")
+        self.assertEqual(self.request.call_args.kwargs["data"]["output_language"], "en")
+
+    def test_restored_account_discovers_output_support_before_upload(self):
+        from provider_http import CancellationToken
+        from workflows import RecordingSnapshot
+
+        user = self.signed_in()
+        restored = AccountService(
+            self.root,
+            secrets=self.account.secrets,
+            request=self.request,
+            default_endpoint="https://clarify.example",
+        )
+        restored._last_sync_attempt = restored._clock()
+        self.request.reset_mock()
+        self.request.side_effect = [
+            self.response(
+                {
+                    "id": user,
+                    "email": "user@example.test",
+                    "usage": {},
+                    "output_preferences_supported": True,
+                }
+            ),
+            self.response(
+                {
+                    "transcript": "Source",
+                    "text": "Edited",
+                    "rewritten": True,
+                    "writing_style_requested": "formal",
+                    "writing_style_applied": "formal",
+                    "writing_style_status": "applied",
+                }
+            ),
+        ]
+        source = RecordingSnapshot(
+            Path("unused.wav"), b"synthetic", CancellationToken()
+        )
+        self.assertEqual(
+            restored.transcribe(
+                source, "auto", self.service, writing_style="formal"
+            ).writing_style_applied,
+            "formal",
+        )
+        self.assertEqual(
+            [call.args[0] for call in self.request.call_args_list], ["GET", "POST"]
+        )
         self.assertNotIn("test-session-only", self.account.path.read_text())
         self.assertTrue(self.account.hosted)
 

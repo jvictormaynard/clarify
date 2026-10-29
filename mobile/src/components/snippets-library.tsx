@@ -1,10 +1,11 @@
+import { ComputerLibraryNotice } from './computer-connection';
 import { t } from '../i18n';
 import { useEffect, useState } from 'react';
 import { useIsFocused } from 'expo-router';
 import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Core, { type Snippet } from '../../modules/clarify-core';
-import { Button, Card, EmptyState, ModalHeader, ScreenHeader, TableRow, ui, usePalette, useReducedMotion } from './ui';
+import { Button, Card, EmptyState, ModalHeader, TableRow, ui, usePalette, useReducedMotion } from './ui';
 import { isBusy, report, useClarify } from '../state/clarify';
 
 const empty = (): Snippet => ({ trigger: '', replacement: '', enabled: true, case_sensitive: false });
@@ -13,7 +14,7 @@ export function SnippetsLibrary() {
   const reducedMotion = useReducedMotion();
   const focused = useIsFocused();
   const { state, account, refresh, accountBusy } = useClarify();
-  const scope = account?.signedIn ? `${account.endpoint}/${account.email}` : 'guest';
+  const scope = account?.historyContext ?? 'guest';
   const [entries, setEntries] = useState<Snippet[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState('');
@@ -22,11 +23,11 @@ export function SnippetsLibrary() {
   const [editing, setEditing] = useState<{ index: number; value: Snippet; base: Snippet[]; scope: string } | null>(null);
   const busy = isBusy(state) || accountBusy || !!account?.busy || saving || !!(account?.managed && !account.signedIn);
   useEffect(() => {
-    if (!focused) return;
+    if (!focused || account?.mode === 'computer') return;
     let active = true;
     void Core.getSnippets().then(values => { if (active) { setEntries(values); setLoaded(true); } }).catch(report).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [focused, scope, state.libraryRevision]);
+  }, [focused, scope, state.libraryRevision, account?.mode]);
   const edit = (index = -1) => setEditing({ index, value: index < 0 ? empty() : { ...entries[index] }, base: entries, scope });
   async function save(values: Snippet[]) {
     if (!editing || editing.scope !== scope) return;
@@ -44,11 +45,11 @@ export function SnippetsLibrary() {
   }
   const visible = entries.map((entry, index) => ({ entry, index })).filter(({ entry }) =>
     `${entry.trigger} ${entry.replacement}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+  if (account?.mode === 'computer') return <View style={[ui.content, { flex: 1, backgroundColor: c.background }]}><ComputerLibraryNotice /></View>;
   return <>
     <FlatList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[ui.content, { gap: 0 }]} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
       data={visible} keyExtractor={({ index }) => String(index)}
       ListHeaderComponent={<View style={{ gap: 16, marginBottom: 16 }}>
-        <ScreenHeader title={t('Snippets')} />
         <Text style={[ui.small, { color: c.muted }]}>{account?.signedIn
           ? t('Seus snippets são sincronizados entre seus dispositivos.')
           : t('Os snippets deste dispositivo são aplicados localmente.')}</Text>

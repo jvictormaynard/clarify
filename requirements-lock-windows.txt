@@ -38,6 +38,7 @@ colorama==0.4.6
     # via
     #   build
     #   click
+    #   qrcode
 cryptography==50.0.2
     # via -r requirements.txt
 cyclonedx-bom==7.3.1
@@ -139,6 +140,8 @@ python-dateutil==2.9.0.post0
     # via arrow
 pywin32-ctypes==0.2.3
     # via pyinstaller
+qrcode==8.2
+    # via -r requirements.txt
 referencing==0.37.0
     # via
     #   cyclonedx-python-lib

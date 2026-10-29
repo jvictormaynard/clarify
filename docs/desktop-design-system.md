@@ -179,6 +179,12 @@ Duplicate starts a new draft with a new ID and no shortcut. Preview uses a saved
 action and explicit sample text, and never publishes through the clipboard.
 Translation requires its own target language.
 
+New application writing rules offer Formal, Casual and Very casual. Existing
+Natural, Informal and Organized rules retain their names and processing meaning
+until the user selects a new tone. Editing an existing legacy rule keeps its
+current choice available. A tone change remains a draft until Save and does not
+enable a disabled refinement route.
+
 Keep action refresh available in the loaded catalog and the editor. Refresh
 preserves the draft. If the saved definition changed, show its instructions and
 let the user choose the saved version or retain the draft before saving again.

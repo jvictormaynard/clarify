@@ -909,6 +909,21 @@ class WorkflowActionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             provider.transform_text_action(snapshot, "Source")
 
+    def test_paired_input_policy_cannot_expand_hosted_or_default_requests(self):
+        from text_actions import TextActionInputPolicy
+
+        self.save(self.custom())
+        provider, registry = self.provider()
+        snapshot = provider.snapshot_text_action("summary")
+        with self.assertRaises(ValueError):
+            provider.transform_text_action(snapshot, "Source", "fr")
+        provider.text_action_input_policy = TextActionInputPolicy.PAIRED_COMPUTER
+        with self.assertRaises(ValueError):
+            provider.transform_text_action(
+                replace(snapshot, account_context=object()), "Source"
+            )
+        registry.rewrite.assert_not_called()
+
     def test_dictation_action_snapshot_precedes_recording_and_queued_publication(self):
         from workflows import StartDictation, StopDictation
 

@@ -4,6 +4,9 @@ from enum import Enum
 
 
 class WritingStyle(str, Enum):
+    FORMAL = "formal"
+    CASUAL = "casual"
+    VERY_CASUAL = "very_casual"
     NATURAL = "natural"
     INFORMAL = "informal"
     ORGANIZED = "organized"
@@ -18,6 +21,18 @@ def writing_style(value: object) -> WritingStyle | None:
 
 
 _PRESENTATION = {
+    WritingStyle.FORMAL: (
+        "Formal presentation: use clear, professional language and complete sentences. "
+        "Avoid slang and unnecessary familiarity. Do not invent greetings or sign-offs."
+    ),
+    WritingStyle.CASUAL: (
+        "Casual presentation: use natural, conversational language with clear sentences. "
+        "Keep the speaker's vocabulary and intended tone without adding familiarity."
+    ),
+    WritingStyle.VERY_CASUAL: (
+        "Very casual presentation: use relaxed, concise everyday wording. "
+        "Do not invent slang, emojis, greetings, opinions or relationships."
+    ),
     WritingStyle.NATURAL: (
         "Natural presentation: keep the speaker's vocabulary and tone. "
         "Use natural sentences without imposing a formal register."
@@ -31,6 +46,21 @@ _PRESENTATION = {
         "Use lists only for explicit enumerations. Do not add headings or items."
     ),
 }
+
+
+def presentation(style: WritingStyle | str) -> str:
+    return _PRESENTATION[WritingStyle(style)]
+
+
+def with_action_style(instruction: str, style: WritingStyle | None) -> str:
+    if style is None:
+        return instruction
+    return (
+        instruction
+        + "\n\nPresent the saved task's result using this style: "
+        + presentation(style)
+        + " Preserve the saved task and explicit translation target."
+    )
 
 
 def with_writing_style(instruction: str, style: WritingStyle | None) -> str:

@@ -23,7 +23,7 @@ class TestEnvironmentTests(unittest.TestCase):
             config.write_text('{"ui_mode": "prompt"}', encoding="utf-8")
             before = config.read_bytes()
             script = r"""
-import json, logging, pathlib, runpy, sys, types, unittest
+import json, logging, os, pathlib, runpy, sys, types, unittest
 from unittest.mock import patch
 root, personal = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 reads = {"dotenv": 0, "personal": 0}
@@ -58,6 +58,7 @@ class ProfileProbe(unittest.TestCase):
             "asr_isolated": asr_isolated,
             "inherited_key_removed": not app.DEFAULT_CONFIG["gemini_api_key"],
             "dotenv_key_removed": not app.DEFAULT_CONFIG["groq_api_key"],
+            "qml_style": os.environ.get("QT_QUICK_CONTROLS_STYLE"),
             "reads": reads,
         }))
 module.ProfileProbe = ProfileProbe
@@ -76,6 +77,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
                 environment[name] = str(personal)
             environment.pop("CLARIFY_SKIP_DOTENV", None)
             environment.pop("CLARIFY_DATA_DIR", None)
+            environment["QT_QUICK_CONTROLS_STYLE"] = "Windows"
             environment["GEMINI_API_KEY"] = "inherited-test-only"
             environment.pop("GROQ_API_KEY", None)
             result = subprocess.run(
@@ -97,6 +99,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
                     "asr_isolated": True,
                     "inherited_key_removed": True,
                     "dotenv_key_removed": True,
+                    "qml_style": "Basic",
                     "reads": {"dotenv": 0, "personal": 0},
                 },
             )

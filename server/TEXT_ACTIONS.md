@@ -68,3 +68,23 @@ results contain `text_action_id`, `text_action_name`, and
 `text_action_revision`, plus refinement provenance. The existing history and
 response bounds still apply. Old dictation requests and `/v1/text` keep their
 existing behavior.
+
+## Output preferences
+
+`GET /v1/account` advertises `output_preferences_supported: true`. Dictation
+accepts an optional `output_language` independently of the recognition `language`.
+Output choices are `auto`, `pt`, `en`, `es`, `de` and `ru`. Recognition can remain
+automatic while the editor produces a different output language. `writing_style`
+accepts `formal`, `casual` and `very_casual`; legacy `natural`, `informal` and
+`organized` retain their existing meaning. Text execution and `/v1/text` also
+accept optional `writing_style`, applied within the existing paid transform.
+Custom action tasks and explicit selected-text translation targets remain intact.
+
+Each explicit preference participates in the operation fingerprint. Omitting all
+new fields keeps the old fingerprint and behavior. Dictation returns
+`output_language_requested`, `output_language_applied` and
+`output_language_status`, alongside the existing style provenance. Unavailable
+or failed refinement preserves the original text with an unapplied status.
+Standalone snippets retain their exact saved text and report `standalone` with
+no applied preference. Output preferences do not enable a disabled refinement
+policy, add a provider fallback, bypass funding admission or repeat a POST.

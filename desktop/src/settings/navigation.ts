@@ -1,6 +1,6 @@
 import { t } from "../i18n";
 import {
-  Settings2, Mic, Sparkles, Keyboard, Cpu, BookOpen, TextQuote, UserRound, History, Languages, PenLine, Paintbrush, Shield,
+  Settings2, Mic, Sparkles, Keyboard, Cpu, BookOpen, TextQuote, UserRound, History, Languages, PenLine, Paintbrush, Shield, Smartphone,
 } from "lucide-react";
 
 export const getMainPages = () => [
@@ -14,6 +14,7 @@ export const getMainPages = () => [
 
 export const getSettingsSections = () => [
   { id: "general", label: t("Geral"), icon: Settings2, group: "settings" },
+  { id: "devices", label: t("Dispositivos"), icon: Smartphone, group: "settings" },
   { id: "models", label: t("Modelos e serviços"), icon: Cpu, group: "settings" },
   { id: "shortcuts", label: t("Atalhos"), icon: Keyboard, group: "settings" },
   { id: "privacy", label: t("Privacidade"), icon: Shield, group: "settings" },
@@ -24,7 +25,7 @@ export type MainPageId = ReturnType<typeof getMainPages>[number]["id"];
 export type SettingsSectionId = ReturnType<typeof getSettingsSections>[number]["id"];
 
 export const isSettingsSection = (id: PageId): id is SettingsSectionId =>
-  id === "general" || id === "models" || id === "shortcuts" || id === "privacy" || id === "account";
+  id === "general" || id === "devices" || id === "models" || id === "shortcuts" || id === "privacy" || id === "account";
 
 export const getSettingsPages = () => [
   ...getMainPages(), ...getSettingsSections(),

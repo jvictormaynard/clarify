@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, useColorScheme, View, type StyleProp, type ViewStyle } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Animated, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useColorScheme, View, type StyleProp, type ViewStyle } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { t } from '../i18n';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 
 export function usePalette() {
@@ -65,9 +67,9 @@ export function Button({ children, onPress, disabled = false, destructive = fals
     {loading && <ActivityIndicator size="small" color={color} style={{ position: 'absolute', right: 16 }} />}
   </Pressable>;
 }
-export function TextButton({ children, onPress, disabled = false, testID }: { children: string; onPress: () => void; disabled?: boolean; testID?: string }) {
+export function TextButton({ children, onPress, disabled = false, testID, expanded }: { children: string; onPress: () => void; disabled?: boolean; testID?: string; expanded?: boolean }) {
   const c = usePalette();
-  return <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
+  return <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ disabled, expanded }} disabled={disabled} onPress={onPress}
     style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.4 : pressed ? 0.65 : 1 })}>
     <Text style={[ui.body, { color: c.text, fontWeight: '500' }]}>{children}</Text>
   </Pressable>;
@@ -116,6 +118,31 @@ export function EmptyState({ title, detail, children }: { title: string; detail:
     <Text style={[ui.body, { color: c.muted }]}>{detail}</Text>
     {children}
   </View>;
+}
+
+export function ChoiceRow({ title, detail, selected, disabled = false, onPress, testID }: {
+  title: string; detail?: string; selected: boolean; disabled?: boolean; onPress: () => void; testID?: string;
+}) {
+  const c = usePalette();
+  return <Pressable testID={testID} accessibilityRole="radio" accessibilityLabel={title}
+    accessibilityState={{ selected, checked: selected, disabled }} disabled={disabled} onPress={onPress}
+    style={({ pressed }) => ({ minHeight: 48, paddingVertical: 12, gap: 8, flexDirection: 'row', alignItems: 'center', opacity: disabled ? 0.45 : pressed ? 0.65 : 1 })}>
+    <View style={{ flex: 1 }}><Text style={[ui.body, { color: c.text }]}>{title}</Text>{detail && <Text style={[ui.small, { color: c.muted }]}>{detail}</Text>}</View>
+    {selected && <SymbolView name="checkmark" tintColor={c.text} size={18} accessible={false} />}
+  </Pressable>;
+}
+
+export function NativeSheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: ReactNode }) {
+  const c = usePalette();
+  const reduced = useReducedMotion();
+  return <Modal visible={visible} presentationStyle="pageSheet" animationType={reduced ? 'none' : 'slide'} onRequestClose={onClose}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>
+      <View style={[ui.content, ui.row, { paddingTop: 12, paddingBottom: 8 }]}>
+        <Text accessibilityRole="header" style={[ui.section, { color: c.text, flex: 1 }]}>{title}</Text><TextButton onPress={onClose}>{t('Fechar')}</TextButton>
+      </View>
+      <ScrollView contentContainerStyle={[ui.content, { paddingTop: 8 }]} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+    </SafeAreaView>
+  </Modal>;
 }
 
 export function TableRow({ children, first, last, onPress, disabled = false, accessibilityLabel }: {

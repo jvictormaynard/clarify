@@ -88,6 +88,7 @@ try:
     from .qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from .qml_bridge import QmlWorkflowBridge  # noqa: E402
     from .qml_settings import QmlSettingsController  # noqa: E402
+    from .qml_computer import create_computer_controller  # noqa: E402
     from .qml_updates import QmlUpdateController  # noqa: E402
     from .qml_web_settings import WebSettingsProcess  # noqa: E402
     from .qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
@@ -106,6 +107,7 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from qml_bridge import QmlWorkflowBridge  # noqa: E402
     from qml_settings import QmlSettingsController  # noqa: E402
+    from qml_computer import create_computer_controller  # noqa: E402
     from qml_updates import QmlUpdateController  # noqa: E402
     from qml_web_settings import WebSettingsProcess  # noqa: E402
     from qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
@@ -778,6 +780,9 @@ def main(argv: list[str] | None = None) -> int:
     if shell_result is ShellStartResult.SECONDARY_INSTANCE:
         runtime.shutdown()
         return 0
+    runtime.computer = create_computer_controller(runtime, parent=app)
+    settings.bindComputer(runtime.computer)
+    runtime.computer.initialize()
     app.setQuitOnLastWindowClosed(
         shell_result
         in (ShellStartResult.STARTED_WITHOUT_TRAY, ShellStartResult.SETUP_FAILED)

@@ -1,10 +1,10 @@
 import { t, uiLanguage } from "../i18n";
 import { useState, type ReactNode } from 'react';
-import { router } from 'expo-router';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, ui, usePalette } from './ui';
 import { isBusy, report, useClarify } from '../state/clarify';
 import { formatUsageReset, usageProgress } from '../usage';
+import { AccountSignIn } from './account-sign-in';
 
 export function AccountCard({ children }: { children?: ReactNode }) {
   const c = usePalette();
@@ -16,9 +16,9 @@ export function AccountCard({ children }: { children?: ReactNode }) {
   const error = account.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.text }]}>{t(account.error)}</Text>;
   if (!account.signedIn) return <Card>
       <Text style={[ui.section, { color: c.text }]}>{t("Conta Clarify")}</Text>
-      <Text style={[ui.body, { color: c.muted }]}>{t("Entre para ditar sem chave de API e compartilhar seu dicionário com o computador.")}</Text>
+      <Text style={[ui.body, { color: c.muted }]}>{t("Entre ou crie sua conta Clarify.")}</Text>
       {error}
-      <Button disabled={busy} onPress={() => router.push('/sign-in')}>{t("Entrar ou criar conta")}</Button>
+      <AccountSignIn account={account} busy={!!busy} command={accountCommand} />
     </Card>;
   const usage = usageProgress(account.usage);
   const percent = new Intl.NumberFormat(uiLanguage, { style: 'percent', maximumFractionDigits: 1 });
