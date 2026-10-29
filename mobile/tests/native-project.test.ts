@@ -1,8 +1,36 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 const require = createRequire(import.meta.url);
 const { getConfig } = require('expo/config');
+const withClarifyKeyboard = require('../plugins/with-clarify-keyboard.cjs');
+
+test('keyboard source composition includes shared errors without credential access', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-keyboard-sources-'));
+  try {
+    const config = withClarifyKeyboard(structuredClone(require('../app.json').expo));
+    const modRequest = { projectRoot: process.cwd(), platformProjectRoot: root };
+    await config.mods.ios.dangerous({ ...config, modRequest });
+    let sources: string[] = [];
+    const project = {
+      pbxTargetByName: () => null,
+      addTarget: () => ({ uuid: 'keyboard-target' }),
+      addPbxGroup: () => ({ uuid: 'keyboard-group' }),
+      addToPbxGroup() {},
+      getFirstProject: () => ({ firstProject: { mainGroup: 'main-group' } }),
+      addBuildPhase(files: string[], type: string) { if (type === 'PBXSourcesBuildPhase') sources = files; },
+      pbxXCBuildConfigurationSection: () => ({}),
+    };
+    await config.mods.ios.xcodeproj({ ...config, modRequest, modResults: project });
+    const swift = sources.filter(file => file.endsWith('.swift')).map(file => fs.readFileSync(path.join(root, file), 'utf8')).join('\n');
+    assert.match(swift, /throw ClarifyError/, 'The preference code still needs the shared error');
+    assert.equal([...swift.matchAll(/struct ClarifyError\b/g)].length, 1, 'The real extension target must own one shared error definition');
+    assert.doesNotMatch(swift, /enum KeyStore\b|SecItemCopyMatching|AccountCredential/, 'The keyboard must not receive credential access to obtain an error type');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 
 test('EAS config declares both targets with the same app group', () => {
   const { exp } = getConfig(process.cwd());

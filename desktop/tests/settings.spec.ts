@@ -259,8 +259,12 @@ test("desktop navigation: Settings sections retain keyboard navigation at every 
     const dialog = await openSettings(page, "Geral");
     const navigation = dialog.getByRole("navigation");
     await expect(navigation.getByRole("combobox")).toHaveCount(0);
-    expect(await navigation.getByRole("button").allTextContents()).toHaveLength(5);
+    await expect(navigation.getByRole("button")).toHaveText([
+      "Geral", "Dispositivos", "Modelos e serviços", "Atalhos", "Privacidade", "Conta Clarify",
+    ]);
     await navigation.getByRole("button", { name: "Geral", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await expect(navigation.getByRole("button", { name: "Dispositivos", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(navigation.getByRole("button", { name: "Modelos e serviços", exact: true })).toBeFocused();
     await page.keyboard.press("Enter");

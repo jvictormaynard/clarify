@@ -30,7 +30,7 @@ function fixtureFiles(root, testRoot = root) {
   for (const name of ['KeyboardViewController.swift', 'DictationEdit.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift']) {
     copy(`native/keyboard/${name}`, `Sources/KeyboardUI/${name}`);
   }
-  for (const name of ['KeyboardState.swift', 'SharedState.swift', 'KeyboardVocabulary.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'LocalLibrary.swift', 'Snippets.swift', 'KeyStore.swift', 'MicrophoneFailure.swift', 'AudioClipWriter.swift', 'Localization.swift', 'KeyboardOpeningDiagnostic.swift']) {
+  for (const name of ['KeyboardState.swift', 'SharedState.swift', 'ClarifyError.swift', 'KeyboardVocabulary.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'LocalLibrary.swift', 'Snippets.swift', 'MicrophoneFailure.swift', 'AudioClipWriter.swift', 'Localization.swift', 'KeyboardOpeningDiagnostic.swift']) {
     copy(`modules/clarify-core/ios/${name}`, `Sources/KeyboardUI/${name}`);
   }
   for (const name of ['KeyboardUITests.swift', 'MicrophoneFailureTests.swift', 'KeyboardOpeningDiagnosticTests.swift']) {
