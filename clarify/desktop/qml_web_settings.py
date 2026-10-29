@@ -17,6 +17,21 @@ from PySide6.QtCore import QObject, QProcess, QTimer
 MAX_SETTINGS_MESSAGE_BYTES = 64 * 1024 * 1024
 
 PROPERTIES = (
+    "textActions",
+    "textActionProfiles",
+    "textActionProviders",
+    "textActionContext",
+    "textActionsRevision",
+    "afterDictationTextActionId",
+    "afterDictationTextActionLanguage",
+    "textActionDictationContext",
+    "textActionPreview",
+    "textActionHotkeyCaptureActive",
+    "textActionMutation",
+    "textActionsBusy",
+    "textActionsError",
+    "textActionRefresh",
+    "textActionProfileModels",
     "uiLanguage",
     "onboardingRequired",
     "practiceState",
@@ -97,6 +112,21 @@ PROPERTIES = (
 
 METHODS = frozenset(
     (
+        "saveTextAction",
+        "deleteTextAction",
+        "duplicateTextAction",
+        "saveTextActionProfile",
+        "loadTextActionProfileModels",
+        "refreshTextActionProfileModels",
+        "cancelTextActionProfileModels",
+        "setAfterDictationTextAction",
+        "previewTextAction",
+        "cancelTextActionPreview",
+        "refreshTextActions",
+        "beginTextActionHotkeyCapture",
+        "endTextActionHotkeyCapture",
+        "cancelTextActionHotkeyCapture",
+        "runTextAction",
         "completeOnboarding",
         "practiceCommand",
         "beginHotkeyCapture",
@@ -164,6 +194,9 @@ class SettingsProtocol:
 
     def snapshot(self):
         library = self.settings.library_snapshot()
+        action_snapshot = getattr(self.settings, "text_action_snapshot", None)
+        if callable(action_snapshot):
+            library.update(action_snapshot())
         state = {
             key: library[key] if key in library else getattr(self.settings, key)
             for key in PROPERTIES
@@ -247,6 +280,36 @@ class SettingsProtocol:
                     raise ValueError()
                 result = self.settings.historyCorrection(*args)
             elif method in METHODS:
+                action_signatures = {
+                    "saveTextAction": (dict, str, str),
+                    "deleteTextAction": (str, str, str),
+                    "duplicateTextAction": (str, str, str),
+                    "saveTextActionProfile": (dict, str, str),
+                    "loadTextActionProfileModels": (str, str, str, str, str, str),
+                    "refreshTextActionProfileModels": (str, str, str, str, str, str),
+                    "cancelTextActionProfileModels": (),
+                    "setAfterDictationTextAction": (str, str, str, str),
+                    "previewTextAction": (str, str, str, int),
+                    "beginTextActionHotkeyCapture": (str,),
+                    "endTextActionHotkeyCapture": (),
+                    "cancelTextActionHotkeyCapture": (),
+                    "refreshTextActions": (),
+                    "cancelTextActionPreview": (),
+                    "runTextAction": (str,),
+                }
+                signature = action_signatures.get(method)
+                if method == "previewTextAction" and len(args) == 5:
+                    signature = (str, str, str, int, str)
+                if method == "saveTextActionProfile" and len(args) == 4:
+                    signature = (dict, str, str, str)
+                if signature is not None and (
+                    len(args) != len(signature)
+                    or any(
+                        type(value) is not expected
+                        for value, expected in zip(args, signature)
+                    )
+                ):
+                    raise ValueError()
                 if method == "practiceCommand" and (
                     len(args) != 1
                     or type(args[0]) is not str
@@ -379,6 +442,7 @@ class WebSettingsProcess(QObject):
     def hide(self):
         self.settings.practiceCommand("close")
         self.settings.cancelChatGPT()
+        self.settings.cancelTextActionPreview()
         if self._visible:
             self._visible = False
             self.settings.stopMicrophoneTest()
@@ -418,6 +482,7 @@ class WebSettingsProcess(QObject):
     def _finished(self, code, status):
         self.settings.practiceCommand("close")
         self.settings.cancelChatGPT()
+        self.settings.cancelTextActionPreview()
         self.startup_timer.stop()
         self._visible = False
         self.settings.stopMicrophoneTest()

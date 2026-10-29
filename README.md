@@ -57,8 +57,9 @@ Microsoft or GitHub, or enter your email and confirm the code inside the app
 to enter or create an account.
 **Continue without an account** opens local-model setup; a personal API key is
 also available there. Signing in activates Clarify processing automatically.
-Signed-in accounts use Clarify-managed models; personal provider and local-model
-settings and the Text page appear only in account-free mode. Weekly sponsored
+Signed-in accounts use Clarify-managed models. Personal provider and local-model
+settings are available in account-free mode. Style and Text actions are available
+in both modes. Weekly sponsored
 usage appears as a percentage with the next renewal in your local time. Quotas
 renew each Monday at 00:00 UTC. An unknown quota shows a loading state, and an
 unfunded allowance has an explicit availability message. Sign-out and deletion
@@ -85,8 +86,9 @@ registration is deferred until a business account is available.
 - Gemini, OpenAI, Groq, Local Whisper, and compatible custom endpoints
 - Native Windows hotkeys and system tray integration
 - Portuguese, English and Spanish interfaces, independently of dictation language
-- React/Tauri Settings organized into Account, General, Dictation, Text, Dictionary, Snippets, History,
-  Shortcuts, and Models and services
+- A React/Tauri workspace with Dictation, Style, Text actions, Dictionary, Snippets and History
+- A Settings dialog for General, Models and services, Shortcuts, Privacy and Clarify account
+- Named text actions with custom instructions, optional shortcuts and previews
 - Toggle or hold-to-record keyboard activation; the microphone button uses toggle
 - A personal dictionary for names and technical terms, with per-term enablement
 - Local-only usage statistics without storing transcripts
@@ -101,6 +103,13 @@ and **Descartar** (Discard) for the current page. Provider key and connection UR
 edits on **Modelos e serviços** (Models and services) require **Validar e salvar
 chave** (Validate and save key). Validate or discard those edits before saving
 other drafts. Closing Settings can save or discard drafts from all pages.
+
+Use **Style** for dictation cleanup, an optional action after dictation and
+application writing styles. **Text actions** starts with Rewrite and Translation;
+create another action to use your own instructions. Action, processing-profile
+and application-style dialogs keep edits as drafts until **Save**. **Cancel**
+discards that dialog's edits. Previews use sample text and do not paste into
+another application. Local Whisper remains an audio transcription provider.
 
 ## Interface preview
 

@@ -1696,6 +1696,9 @@ class QtHistoryRecorder:
                     raw_text=raw_text,
                     refined_text=refined_text,
                     workflow=kind,
+                    text_action_id=getattr(state, "text_action_id", None),
+                    text_action_name=getattr(state, "text_action_name", None),
+                    text_action_revision=getattr(state, "text_action_revision", None),
                     provider=provider,
                     model=model,
                     refinement_provider=getattr(state, "refinement_provider_id", None),
@@ -1904,12 +1907,17 @@ def create_real_workflow_runtime(
     clipboard = QtClipboardGateway()
     from chatgpt_auth import get_chatgpt_session
 
-    scoped_registry = PROVIDER_REGISTRY.with_chatgpt_session(
-        get_chatgpt_session(Path(active.config.path).parent)
-    )
+    chatgpt_session = get_chatgpt_session(Path(active.config.path).parent)
+    scoped_registry = PROVIDER_REGISTRY.with_chatgpt_session(chatgpt_session)
     provider = QtProviderGateway(
         config, dictionary_service, account=account, registry=scoped_registry
     )
+    from text_action_service import TextActionService
+
+    provider.text_actions = TextActionService(
+        active.config, account, chatgpt_session=chatgpt_session
+    )
+    account.desktop_text_actions = provider.text_actions
     audio_batch_gateway = QtAudioFileGateway(provider)
     audio_batch_service = AudioFileBatchService(
         audio_batch_gateway,

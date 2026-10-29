@@ -931,6 +931,62 @@ def main():
                     "PASS: hover language selection, animated menus and compact quick-menu geometry"
                 )
                 return
+            if "--text-actions-only" in sys.argv:
+                from text_actions import TextAction
+
+                assert controller.saveTextAction(
+                    TextAction(
+                        "summary", "Summary", "Summarize this text."
+                    ).to_mapping(),
+                    controller.textActionContext,
+                    controller.textActionsRevision,
+                )
+                settle()
+                click(visible_item("settingsButton"))
+                text_actions_menu = find_item(QObject, "quickTextActionsMenu")
+                assert text_actions_menu is not None
+                assert QMetaObject.invokeMethod(text_actions_menu, "open")
+                settle()
+                action_item = find_item(QObject, "quickTextAction2")
+                assert action_item is not None
+                assert action_item.property("text") == "Summary"
+                action_window = action_item.window()
+                assert isinstance(action_window, QQuickWindow)
+                assert text_actions_menu.property("visible")
+                assert (
+                    text_actions_menu.property("height")
+                    <= action_window.screen().availableGeometry().height()
+                )
+                with patch.object(service, "dispatch", create=True) as dispatch:
+                    text_actions_menu.property("contentItem").forceActiveFocus(
+                        Qt.TabFocusReason
+                    )
+                    for _ in range(4):
+                        if text_actions_menu.property("currentIndex") == 2:
+                            break
+                        QTest.keyClick(action_window, Qt.Key.Key_Down)
+                        settle()
+                    assert text_actions_menu.property("currentIndex") == 2
+                    if output:
+                        assert action_window.grabWindow().save(
+                            str(output / "quick-text-actions.png")
+                        )
+                    QTest.keyClick(action_window, Qt.Key.Key_Return)
+                    settle()
+                    assert dispatch.call_count == 1, (
+                        dispatch.call_count,
+                        text_actions_menu.property("currentIndex"),
+                        text_actions_menu.property("visible"),
+                    )
+                    command = dispatch.call_args.args[0]
+                    assert type(command).__name__ == "RunTextAction"
+                    assert command.action_id == "summary"
+                assert not text_actions_menu.property("visible")
+                assert not quick_menu.property("visible")
+                print(
+                    "PASS: saved text action menu, keyboard selection and RunTextAction dispatch"
+                )
+                return
             old_surface = bridge.surface
 
             def finish_surface_transition(expected):

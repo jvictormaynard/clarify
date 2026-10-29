@@ -42,9 +42,11 @@ so the next hosted dictation includes them. History and credentials remain
 app-only; pending additions never cross account or guest scopes.
 
 `server/` uses Django, django-allauth headless email codes, DRF and PostgreSQL.
-The server owns provider selection, prompts, billing bounds and per-account/global
-admission. Clients cannot send arbitrary model, prompt, endpoint or ownership
-settings. A PostgreSQL lock serializes quota reservations and cost settlement.
+The server owns provider selection, default prompts, billing bounds and
+per-account/global admission. Clients cannot select arbitrary models, endpoints,
+credentials or owners. Account text-action definitions accept bounded saved
+instructions; execution supplies their ID and revision. A PostgreSQL lock
+serializes quota reservations and cost settlement.
 `shared/dictation_prompt.json` is generated from the canonical desktop prompt.
 See [server operations and release gates](../server/README.md).
 
@@ -168,8 +170,8 @@ and audio devices; React displays state and submits changes through this bridge.
 `qml_settings.py` remains the shared controller. The QML Settings view remains a
 fallback when the native child is unavailable.
 
-The new Settings currently use Portuguese labels. QML locale coverage must not
-be described as complete localization of the React pages.
+React and QML use the shared translation catalog. Desktop-only copy stays in
+the reviewed desktop projection and does not add unused mobile strings.
 
 The Settings frontend separates window composition (`desktop/src/app.tsx`),
 feature pages (`pages/`), reusable controls (`components/`), and application state
@@ -189,6 +191,74 @@ during editing or while Save waits in the queue. The close confirmation can
 explicitly save all pending drafts. `settings/use-settings-window.ts` owns native close
 requests. `settings/bridge.ts` defines typed command arguments for frontend
 callers without changing the Python allowlist or private pipe protocol.
+
+The workspace separates Dictation, Style, Text actions and content libraries.
+Application preferences use a Settings dialog. Opening that dialog preserves
+the main destination and its drafts. Action, app-style and processing-profile
+editors use explicit Save/Cancel. Native close includes their dirty state.
+
+### Saved text actions
+
+`text_actions.py` owns validated action definitions, processing profiles, device
+bindings, limits and immutable execution snapshots. Configuration schema 5
+migrates effective schema-4 rewrite/translation prompts, enabled state, routes,
+ChatGPT account bindings and shortcuts. An intentionally empty catalog remains
+empty. Older readers reject schema 5; newer unknown schemas remain read-only.
+
+`text_action_service.py` owns catalog transactions, account-context guards,
+definition revisions, local shortcut registration and rollback. Personal
+definitions remain on the device. Hosted definitions belong to the authenticated
+account; shortcuts, profile choices and post-dictation selection remain device
+preferences scoped to the endpoint and account. Signing in does not upload the
+personal catalog. Profile edits address an existing profile ID without changing
+the selected Settings workflow or committing unrelated drafts.
+
+Hosted catalog writes run as explicit jobs. Network requests do not hold the
+locks used by Qt snapshots. The worker performs the remote write; Qt rechecks
+the context and local revision before applying shortcuts and configuration.
+`textActionMutation` retains the terminal result for its generation. The private
+frontend transaction waits for that same generation, including compensation,
+before reporting success or releasing the pipe. A failed job returns the latest
+snapshot and keeps the editor draft. Refresh also performs network work outside
+the snapshot locks and publishes through the Qt mailbox. `textActionRefresh`
+identifies its generation and terminal result. A successful refresh clears the
+incomplete-write guard. The editor preserves the draft and requires an explicit
+choice when the saved definition changed before it accepts the new revision.
+
+Processing profiles use a dedicated model catalog command. Discovery does not
+select a workflow or save a profile. Request identity includes the profile,
+provider, endpoint, configured credential and ChatGPT session. Late results are
+discarded. A draft endpoint requires an explicit refresh. Changing a ChatGPT
+model requires its current verified catalog; another active account cannot
+replace the profile's saved account binding.
+
+`WorkflowProviderService` resolves an immutable action/profile/account snapshot
+at operation start. The same transform handles selection, menu, shortcut,
+preview and the optional post-dictation refinement. Custom actions use a neutral
+transform policy that permits tasks such as summarization. Translation retains
+an explicit target language. Local Whisper only transcribes audio; it does not
+become a text model or gain an implicit cloud fallback.
+
+`WorkflowService` retains selection capture, cancellation, overlap prevention,
+operation identity, clipboard ownership and once-only publication. Legacy
+rewrite and translation entrypoints resolve their stable action IDs. History
+can record action ID/name/revision alongside the preserved original. Preview
+accepts only a saved revision and explicit sample text. Its generation identifies
+the result; closing or invalidating the preview cancels it without clipboard
+publication. Cancellation is cooperative around existing blocking HTTP calls;
+late cancelled or account-stale results are discarded.
+
+`clarify_account.py` implements the hosted catalog and execution protocol in
+[server/TEXT_ACTIONS.md](../server/TEXT_ACTIONS.md). Account catalog writes use
+compare-and-swap revisions. Compensation also uses its accepted revision and
+cannot overwrite a later client change. Hosted execution uses service-owned
+models and credentials. Post-dictation selection replaces the existing
+refinement pass after one snippet expansion. Standalone snippets bypass it;
+cleanup permissions and original-text recovery remain in force.
+Cleanup modes that do not permit AI, a disabled review route, and local
+transcription with cloud refinement disabled bypass the optional action before
+resolving its profile.
+A disabled or unavailable optional action cannot prevent those dictations.
 
 Periodic Settings reads use top-level deltas from one previous poll snapshot.
 Initial reads and command replies remain full snapshots. Only a poll advances

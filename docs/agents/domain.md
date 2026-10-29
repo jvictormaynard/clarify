@@ -11,6 +11,10 @@ manual or create a second root glossary.
 | Rewrite | Transform selected text through the configured text workflow |
 | Translation | Translate selected text or recorded speech into an explicit target language |
 | Workflow | The application command/state lifecycle for an operation, including cancellation and publication |
+| Text action | A saved named text transformation with a stable ID, instructions, kind, enabled state and definition revision |
+| Processing profile | A validated text provider route used by one or more actions; credentials remain with their existing secure owner |
+| Action binding | A device-local shortcut or profile choice for a personal or account action, scoped to its owner and endpoint |
+| Style | Dictation cleanup, optional action after dictation and writing rules for applications; a style does not enable a cloud service |
 | Operation ID | The monotonic session identity used to reject a stale worker result |
 | Publication | The claimed external result effect; usage is accounted once for an accepted publication |
 | Provider route | The explicitly selected provider/model/endpoint and capabilities for a workflow |

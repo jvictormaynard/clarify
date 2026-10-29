@@ -1,10 +1,37 @@
 import { invoke } from "@tauri-apps/api/core";
+import { t } from "../i18n";
 import type { RecordingControls } from "./recording";
 
 export type Option = { id: string; label: string };
 export type DictationCleanupLevel = "preserve" | "light" | "clarity";
 export type WritingStyle = "natural" | "informal" | "organized";
 export type ApplicationWritingStyle = { executable: string; style: WritingStyle };
+export type HotkeyDefinition = { modifiers: string[]; key: string };
+export type TextActionKind = "rewrite" | "translation" | "custom";
+export type TextAction = {
+  id: string; name: string; prompt: string; kind: TextActionKind; enabled: boolean; revision: number;
+  processingProfileId: string; shortcut: HotkeyDefinition | null;
+};
+export type TextActionWrite = Omit<TextAction, "revision">;
+export type TextActionProfile = {
+  id: string; name: string; providerId: string; modelId: string;
+  customEndpoint: string; enabled: boolean; managed: boolean; available: boolean;
+};
+export type TextActionProfileWrite = Pick<TextActionProfile, "id" | "providerId" | "modelId" | "customEndpoint" | "enabled">;
+export type TextActionPreview = {
+  generation?: number;
+  busy?: boolean; text?: string; error?: string;
+};
+export type TextActionMutation = {
+  generation: number; busy: boolean; status: "idle" | "pending" | "restoring" | "succeeded" | "failed";
+  error: string; errorCode: string; restoreRequired: boolean;
+};
+export type TextActionProfileModels = {
+  generation: number; requestId: string; requestKey: string; busy: boolean;
+  status: "idle" | "loading" | "ready" | "empty" | "error" | "not_configured" | "account_mismatch" | "refresh_required" | "stale" | "cancelled";
+  models: Option[]; error: string;
+  profileId?: string; providerId?: string; customEndpoint?: string; context?: string; revision?: string;
+};
 export type DictionaryEntry = {
   term: string;
   pronunciation: string;
@@ -24,6 +51,20 @@ export type ChatGPTState = {
   busy: boolean; error: string;
 };
 export interface Settings {
+  textActions?: TextAction[];
+  textActionProfiles?: TextActionProfile[];
+  textActionProviders?: (Option & { defaultModel: string; supportsCustomEndpoint: boolean })[];
+  textActionContext?: string;
+  textActionsRevision?: string;
+  textActionsBusy?: boolean;
+  textActionsError?: string;
+  afterDictationTextActionId?: string;
+  afterDictationTextActionLanguage?: string;
+  textActionDictationContext?: "cloud" | "local_asr";
+  textActionPreview?: TextActionPreview;
+  textActionMutation?: TextActionMutation;
+  textActionRefresh?: Pick<TextActionMutation, "generation" | "busy" | "status" | "error">;
+  textActionProfileModels?: TextActionProfileModels;
   chatgptState?: ChatGPTState;
   snippets: Snippet[];
   snippetContext: string;
@@ -115,6 +156,19 @@ export interface Settings {
 
 // Argument tuples keep every frontend call checked without changing the pipe protocol.
 export type SettingsArguments = {
+  saveTextAction: [action: TextActionWrite, context: string, expectedRevision: string];
+  deleteTextAction: [actionId: string, context: string, expectedRevision: string];
+  saveTextActionProfile: [profile: TextActionProfileWrite, context: string, expectedRevision: string, catalogRequestKey?: string];
+  duplicateTextAction: [actionId: string, context: string, expectedRevision: string];
+  loadTextActionProfileModels: [profileId: string, providerId: string, customEndpoint: string, context: string, expectedRevision: string, requestId: string];
+  refreshTextActionProfileModels: [profileId: string, providerId: string, customEndpoint: string, context: string, expectedRevision: string, requestId: string];
+  cancelTextActionProfileModels: [];
+  setAfterDictationTextAction: [actionId: string, language: string, context: string, expectedRevision: string];
+  previewTextAction: [actionId: string, sampleText: string, context: string, actionRevision: number, language: string];
+  beginTextActionHotkeyCapture: [context: string];
+  endTextActionHotkeyCapture: [];
+  cancelTextActionPreview: [];
+  refreshTextActions: [];
   practiceCommand: [action: "open" | "close" | "start" | "stop" | "cancel"];
   completeOnboarding: [mode: "account" | "byok" | "local", key: string];
   accountCommand: [action: string, value: string];
@@ -186,6 +240,35 @@ export const preferenceMethods = [
 export type PreferenceMethod = typeof preferenceMethods[number];
 export type SettingsCall = <M extends SettingsMethod>(method: M, ...args: SettingsArguments[M]) => Promise<Settings>;
 
+export class SettingsOperationError extends Error {
+  readonly snapshot: Settings;
+  constructor(message: string, snapshot: Settings) { super(message); this.snapshot = snapshot; }
+}
+
+const textActionWrites = new Set<SettingsMethod>([
+  "saveTextAction", "deleteTextAction", "duplicateTextAction", "saveTextActionProfile", "setAfterDictationTextAction",
+]);
+async function invokeSettings<M extends SettingsMethod>(method: M, args: SettingsArguments[M]): Promise<Settings> {
+  let snapshot = await invoke<Settings>("settings_call", { method, args });
+  const key = method === "refreshTextActions" ? "textActionRefresh" : textActionWrites.has(method) ? "textActionMutation" : null;
+  if (!key || !snapshot[key]) return snapshot;
+  const generation = snapshot[key].generation;
+  while (snapshot[key]?.busy) {
+    await new Promise<void>(resolve => setTimeout(resolve, 100));
+    let delta: Partial<Settings>;
+    try { delta = await invoke<Partial<Settings>>("settings_call", { method: "poll", args: [] }); }
+    catch (error) { throw new SettingsOperationError(String(error), snapshot); }
+    snapshot = { ...snapshot, ...delta };
+    if (snapshot[key]?.generation !== generation) {
+      throw new SettingsOperationError(t("A operação de ações mudou. Atualize e tente novamente."), snapshot);
+    }
+  }
+  if (snapshot[key]?.status !== "succeeded") {
+    throw new SettingsOperationError(snapshot[key]?.error || t("Não foi possível concluir a alteração das ações."), snapshot);
+  }
+  return snapshot;
+}
+
 let queue: Promise<unknown> = Promise.resolve();
 function enqueue<T>(operation: () => Promise<T>): Promise<T> {
   const next = queue.then(operation);
@@ -198,7 +281,7 @@ function queuedCall<T>(method: string, args: unknown[]): Promise<T> {
 // Reserve the connection for the complete operation. A poll or another action
 // cannot change workflow/account scope between staging and persistence.
 export function settingsTransaction<T>(operation: (call: SettingsCall) => Promise<T>): Promise<T> {
-  return enqueue(() => operation((method, ...args) => invoke<Settings>("settings_call", { method, args })));
+  return enqueue(() => operation((method, ...args) => invokeSettings(method, args)));
 }
 export const getHistoryPage = (context: string, cursor = "", query = "") => queuedCall<HistoryPageResult>("getHistoryPage", [context, cursor, query]);
 export const getHistoryTextPart = (context: string, id: string, offset: number, field: HistoryTextField = "text") => queuedCall<HistoryTextPart>("getHistoryTextPart", [context, id, offset, field]);
@@ -221,5 +304,5 @@ export function call<M extends SettingsMethod>(
   method: M,
   ...args: SettingsArguments[M]
 ): Promise<Settings> {
-  return queuedCall<Settings>(method, args);
+  return enqueue(() => invokeSettings(method, args));
 }

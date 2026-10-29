@@ -1,93 +1,63 @@
 import { t } from "./i18n";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { AlertCircle, LoaderCircle } from "lucide-react";
 import { Titlebar } from "./components/titlebar";
 import { Button } from "./components/ui";
 import { SettingsNavigation } from "./components/settings-navigation";
-import { GeneralPage } from "./pages/general-page";
-import { AccountPage } from "./pages/account-page";
+import { SettingsDialog } from "./components/settings-dialog";
+import { TextActionEditor } from "./components/text-action-editor";
+import { AppStyleEditor } from "./components/app-style-editor";
+import { TextProfileEditor } from "./components/text-profile-editor";
 import { HistoryPage } from "./pages/history-page";
 import { OnboardingPage } from "./pages/onboarding-page";
 import { DictationPractice, PracticeEntry } from "./components/dictation-practice";
 import { DictationPage } from "./pages/dictation-page";
-import { TextPage } from "./pages/text-page";
+import { StylePage } from "./pages/style-page";
+import { ActionsPage } from "./pages/actions-page";
 import { SnippetsPage } from "./pages/snippets-page";
 import { DictionaryPage } from "./pages/dictionary-page";
-import { ShortcutsPage } from "./pages/shortcuts-page";
-import { ModelsPage } from "./pages/models-page";
-import { getSettingsPages } from "./settings/navigation";
+import { getMainPages, isWorkflowPage } from "./settings/navigation";
 import { SettingsDialogs } from "./settings/settings-dialogs";
 import { useSettings } from "./settings/use-settings";
-import type { SettingsSearchResult } from "./settings/search";
 
 const pageComponents = {
-  account: AccountPage,
   history: HistoryPage,
-  general: GeneralPage,
   dictation: DictationPage,
-  text: TextPage,
+  style: StylePage,
+  actions: ActionsPage,
   dictionary: DictionaryPage,
   snippets: SnippetsPage,
-  shortcuts: ShortcutsPage,
-  models: ModelsPage,
 };
 
 export function App() {
   const controller = useSettings();
-  const { state, page, error, pageDirty, saved, routeLoading, saving, discardingDrafts } = controller;
+  const { state, mainPage, settingsOpen, error, saved, routeLoading, saving, discardingDrafts } = controller;
   const scrollArea = useRef<HTMLDivElement>(null);
-  const searchGeneration = useRef(0);
-  const [searchTarget, setSearchTarget] = useState<(SettingsSearchResult & { generation: number }) | null>(null);
-  const cancelSearchNavigation = useCallback(() => {
-    searchGeneration.current += 1;
-    setSearchTarget(null);
-  }, []);
+  const settingsButton = useRef<HTMLButtonElement>(null);
+  const background = useRef(controller);
+  if (!settingsOpen) background.current = controller;
+  const pageController = settingsOpen ? background.current : controller;
+  const pageState = pageController.state;
   useLayoutEffect(() => {
     if (scrollArea.current) scrollArea.current.scrollTop = 0;
-  }, [page]);
-  const managed = !!(state?.accountState?.managed || state?.accountState?.signedIn);
-  const settingsPages = getSettingsPages();
-  const visiblePages = settingsPages.filter(item => !managed || (item.id !== "models" && item.id !== "text"));
-  const activePage = managed && (page === "models" || page === "text") ? "account" : page;
-  const waitingForRoute = routeLoading && (activePage === "dictation" || activePage === "text");
-  const Page = pageComponents[activePage];
-  const info = settingsPages.find((item) => item.id === activePage)!;
-  useLayoutEffect(() => {
-    if (!searchTarget || searchTarget.generation !== searchGeneration.current || activePage !== searchTarget.page.id || !state || waitingForRoute) return;
-    const root = scrollArea.current;
-    const target = searchTarget.target
-      ? Array.from(root?.querySelectorAll<HTMLElement>("h2, label, summary, [aria-label]") ?? [])
-        .find(element => element.textContent?.trim() === searchTarget.target || element.getAttribute("aria-label") === searchTarget.target)
-      : root?.querySelector<HTMLElement>("h1");
-    if (!target) return;
-    target.tabIndex = -1;
-    target.focus({ preventScroll: true });
-    if (searchTarget.target) {
-      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      target.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" });
-      if (!reducedMotion) {
-        target.classList.remove("settings-search-target-pulse");
-        void target.offsetWidth;
-        target.classList.add("settings-search-target-pulse");
-        target.addEventListener("blur", () => target.classList.remove("settings-search-target-pulse"), { once: true });
-      }
-    }
-    setSearchTarget(null);
-  }, [searchTarget, activePage, state, waitingForRoute]);
+  }, [mainPage]);
+  const pages = getMainPages();
+  const waitingForRoute = !settingsOpen && routeLoading && isWorkflowPage(mainPage);
+  const Page = pageComponents[mainPage];
+  const info = pages.find(item => item.id === mainPage)!;
 
   return (
     <div className="settings-window">
       <Titlebar
         pageLabel={state?.onboardingRequired || state?.practiceState?.open ? undefined : info.label}
-        onClose={() => { cancelSearchNavigation(); controller.setClosing(true); }}
+        onClose={() => controller.setClosing(true)}
         onError={controller.setError}
       />
       {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} /> : state?.practiceState?.open ? <DictationPractice controller={{ ...controller, state }} /> : <div className="app">
         <aside>
-          <SettingsNavigation pages={visiblePages} activePage={activePage}
-            version={state?.applicationVersion} onNavigate={async id => { cancelSearchNavigation(); await controller.navigate(id); }}
-            onSearchInteraction={cancelSearchNavigation}
-            onSearchNavigate={result => { setSearchTarget({ ...result, generation: ++searchGeneration.current }); void controller.navigate(result.page.id); }} />
+          <SettingsNavigation pages={pages} activePage={mainPage} settingsButtonRef={settingsButton}
+            version={state?.applicationVersion} onNavigate={controller.navigate}
+            onOpenSettings={() => void controller.navigate(controller.settingsSection)} />
         </aside>
         <main>
           <div className="scroll-area" ref={scrollArea}>
@@ -99,19 +69,19 @@ export function App() {
                   <span>{t(error)}</span>
                 </div>
               )}
-              {!state ? (
+              {!pageState ? (
                 <div className="connection" role="status">
                   <LoaderCircle className="spin" size={22} />{t("Conectando ao Clarify…")}</div>
               ) : waitingForRoute ? (
                 <div className="connection" role="status"><LoaderCircle className="spin" size={22} />{t("Carregando…")}</div>
               ) : (
                 <div className="page-content">
-                  {(activePage === "general" || activePage === "models") && <PracticeEntry controller={{ ...controller, state }} />}
-                  <Page key={activePage === "snippets" || activePage === "dictionary"
-                    ? `${activePage}:${state.snippetContext}` : activePage} controller={{ ...controller, state }} />
+                  <Page key={mainPage === "snippets" || mainPage === "dictionary"
+                    ? `${mainPage}:${pageState.snippetContext}` : mainPage} controller={{ ...pageController, state: pageState }} />
+                  {mainPage === "dictation" && <PracticeEntry controller={{ ...pageController, state: pageState }} />}
                 </div>
               )}
-              {pageDirty && !waitingForRoute && <div className="draft-actions" role="group" aria-label={t("Alterações pendentes")}>
+              {pageController.pageDirty && !waitingForRoute && <div className="draft-actions" role="group" aria-label={t("Alterações pendentes")}>
                 <span>{t("Alterações pendentes")}</span>
                 <Button variant="ghost" disabled={saving || discardingDrafts}
                   onClick={() => controller.setDiscarding(true)}>{t("Descartar")}</Button>
@@ -128,6 +98,12 @@ export function App() {
           </span>
         </main>
       </div>}
+      {state && <>
+        <SettingsDialog controller={{ ...controller, settingsOpen: settingsOpen && !state.practiceState?.open && !state.onboardingRequired, state }} returnFocus={settingsButton} />
+        <TextActionEditor controller={{ ...controller, state }} />
+        <AppStyleEditor controller={{ ...controller, state }} />
+        <TextProfileEditor controller={{ ...controller, state }} />
+      </>}
       <SettingsDialogs controller={controller} />
     </div>
   );

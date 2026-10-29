@@ -15,6 +15,8 @@ device. Account snippets have a separate synchronized library; guest snippets
 and personal provider keys stay on their original device. Signing in does not
 upload guest snippets. Account
 history uses [bounded, idempotent synchronization](../docs/history-sync.md).
+Account-owned text actions use a separate [versioned catalog and execution
+protocol](TEXT_ACTIONS.md). Device shortcuts and processing profiles stay local.
 
 ## Run and verify
 

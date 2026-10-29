@@ -99,8 +99,9 @@ class FakeProvider:
         self.on_transcribe = None
         self.on_rewrite = None
 
-    def transcribe(self, audio_source, mode, language):
+    def transcribe(self, audio_source, mode, language, *, dictation_snapshot=None):
         self.transcription_request = (audio_source, mode, language)
+        self.dictation_snapshot = dictation_snapshot
         if self.on_transcribe:
             self.on_transcribe()
         return TranscriptionResult(self.transcription, "gemini", "gemini-test")

@@ -230,6 +230,8 @@ foreach ($backendModule in @(
     "portable_updates.py",
     "portable_update_windows.py",
     "secret_store.py",
+    "text_actions.py",
+    "text_action_service.py",
     "version.py",
     "voice_translation.py",
     "voice_translation_runtime.py",

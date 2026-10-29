@@ -188,33 +188,6 @@
   transition: height var(--motion-fast);
 }
 
-.segmented {
-  display: flex;
-  gap: 3px;
-  background: var(--background, var(--color-background));
-  border: 1px solid var(--border, var(--color-border));
-  padding: 3px;
-  border-radius: var(--control-radius, var(--radius-control));
-  margin: var(--space-3) 0 8px;
-  width: fit-content;
-  max-width: 100%;
-  flex-wrap: wrap;
-}
-
-.segmented button {
-  background: none;
-  border: 0;
-  border-radius: 5px;
-  padding: 6px 12px;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-description);
-}
-
-.segmented button[aria-pressed="true"] {
-  background: var(--accent, var(--color-surface));
-  color: var(--foreground, var(--color-text-bright));
-}
-
 .installation {
   display: flex;
   align-items: center;

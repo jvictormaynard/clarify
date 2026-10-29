@@ -43,6 +43,16 @@ class AccountError(RuntimeError):
         self.status = status
 
 
+class TextActionsConflict(AccountError):
+    def __init__(self, current):
+        super().__init__(
+            "As ações mudaram. Atualize e tente novamente.",
+            code="text_actions_conflict",
+            status=409,
+        )
+        self.current = current
+
+
 def _processing_error(status, result, *, text=False):
     """Use bounded service codes, never provider bodies or arbitrary server copy."""
     unavailable = "O processamento do Clarify está indisponível no momento."
@@ -77,6 +87,11 @@ def _processing_error(status, result, *, text=False):
         "invalid_duration": invalid_audio,
         "invalid_audio_request": invalid_audio,
         "invalid_text_request": invalid_text,
+        "invalid_text_actions": "As ações são inválidas. Atualize e tente novamente.",
+        "text_action_missing": "A ação não existe. Atualize as ações.",
+        "text_action_disabled": "A ação está desativada.",
+        "text_action_stale": "A ação mudou. Atualize as ações.",
+        "text_action_language_required": "Selecione o idioma da tradução.",
         "invalid_request": invalid_text if text else invalid_audio,
         "operation_conflict": replay,
         "operation_expired": replay,
@@ -419,12 +434,19 @@ class AccountService:
                 method,
                 endpoint(base) + path,
                 headers=headers,
-                timeout=(5, 100 if path in {"/v1/dictations", "/v1/text"} else 15),
+                timeout=(
+                    5,
+                    100
+                    if path
+                    in {"/v1/dictations", "/v1/text", "/v1/text-actions/execute"}
+                    else 15,
+                ),
                 allow_redirects=False,
                 **kwargs,
             )
             processing_failure = (
-                path in {"/v1/dictations", "/v1/text"} and response.status_code != 200
+                path in {"/v1/dictations", "/v1/text", "/v1/text-actions/execute"}
+                and response.status_code != 200
             )
             try:
                 result = response.json() if response.content else {}
@@ -442,7 +464,19 @@ class AccountService:
             ) from None
         with self._lock:
             if generation != self._generation:
-                raise AccountError("A conta mudou. O resultado foi descartado.")
+                error = AccountError(
+                    "A conta mudou. O resultado foi descartado.", code="context_expired"
+                )
+                if (
+                    method == "PUT"
+                    and path == "/v1/text-actions"
+                    and response.status_code == 200
+                ):
+                    from text_actions import read_library
+
+                    read_library(result)
+                    error.accepted_text_actions = result
+                raise error
             if response.status_code in {401, 403} and path.startswith("/v1/"):
                 self.secrets.delete(SECRET_ID)
                 self._state.pop("user_id", None)
@@ -670,6 +704,7 @@ class AccountService:
                 snippet_path = self.snippet_path(history_owner)
                 snippet_path.unlink(missing_ok=True)
                 snippet_path.with_name("snippets-sync.json").unlink(missing_ok=True)
+                self.text_actions_path(history_owner).unlink(missing_ok=True)
             if self.history is not None:
                 self.history.remove_account(history_owner)
             target = self.directory / "account-data" / str(uuid.UUID(scope))
@@ -851,6 +886,9 @@ class AccountService:
         *,
         cleanup_level=None,
         writing_style=None,
+        text_action=None,
+        text_action_language="auto",
+        expected_identity=None,
     ):
         from shared.dictation_policy import cleanup_level as parse_cleanup_level
         from shared.writing_style_policy import writing_style as parse_writing_style
@@ -876,12 +914,22 @@ class AccountService:
             fields["cleanup_level"] = level.value
         if style is not None:
             fields["writing_style"] = style.value
+        if text_action is not None:
+            if text_action.account_context != self.history_identity():
+                raise AccountError("A conta mudou. Atualize as ações.")
+            fields["text_action_id"] = text_action.action.id
+            fields["text_action_revision"] = str(text_action.action.revision)
+            if text_action.action.kind == "translation":
+                fields["text_action_language"] = text_action_language
         code, result = self._request(
             "POST",
             "/v1/dictations",
             cancel=source.cancel_token,
             data=fields,
             files={"audio": ("clip.wav", data, "audio/wav")},
+            expected_identity=text_action.account_context
+            if text_action is not None
+            else expected_identity,
         )
         if code != 200:
             if code in {401, 403}:
@@ -891,6 +939,13 @@ class AccountService:
         if not isinstance(raw, str) or not isinstance(text, str) or not text.strip():
             raise AccountError("O Clarify retornou um resultado inválido.")
         rewritten = result.get("rewritten") is True
+        if text_action is not None and (
+            result.get("text_action_id") != text_action.action.id
+            or type(result.get("text_action_revision")) is not int
+            or result.get("text_action_revision") != text_action.action.revision
+            or result.get("text_action_name") != text_action.action.name
+        ):
+            raise AccountError("O Clarify retornou uma ação inválida.")
         applied = None
         if level is not None:
             # An old or mismatched server must not silently apply a different
@@ -963,6 +1018,9 @@ class AccountService:
             else None,
             cleanup_level_requested=level,
             cleanup_level_applied=applied,
+            text_action_id=text_action.action.id if text_action else None,
+            text_action_name=text_action.action.name if text_action else None,
+            text_action_revision=text_action.action.revision if text_action else None,
             **style_fields,
         )
 
@@ -985,6 +1043,138 @@ class AccountService:
         value = result.get("text")
         if not isinstance(value, str) or not value.strip():
             raise AccountError("O Clarify retornou um resultado inválido.")
+        return value
+
+    def text_actions_path(self, identity):
+        key = hashlib.sha256(identity.endpoint.encode("utf-8")).hexdigest()
+        return (
+            self.directory
+            / "account-text-actions"
+            / key
+            / identity.user_id
+            / "actions.json"
+        )
+
+    def text_actions(self, *, expected_identity=None, cancel=None):
+        from text_actions import read_library
+
+        owner = expected_identity or self.history_identity()
+        if owner is None:
+            raise AccountError(
+                "Entre na conta novamente.", code="authentication_required"
+            )
+        code, result = self._request(
+            "GET", "/v1/text-actions", expected_identity=owner, cancel=cancel
+        )
+        if code != 200:
+            raise _processing_error(code, result, text=True)
+        read_library(result)
+        with self._lock:
+            if owner != self.history_identity():
+                raise AccountError("A conta mudou. Atualize as ações.")
+            path = self.text_actions_path(owner)
+            try:
+                cached_revision, _ = read_library(
+                    json.loads(path.read_text(encoding="utf-8"))
+                )
+            except (OSError, ValueError):
+                cached_revision = -1
+            if result["revision"] >= cached_revision:
+                _atomic_write_json(path, result)
+        return result
+
+    def save_text_actions(
+        self, actions, expected_revision, *, expected_identity, cancel=None
+    ):
+        from text_actions import (
+            TextAction,
+            validate_library,
+            read_library,
+            MAX_LIBRARY_BYTES,
+        )
+
+        if type(expected_revision) is not int or expected_revision < 0:
+            raise ValueError("Invalid text action library revision")
+        values = validate_library(
+            TextAction.from_mapping(item, definition_only=True) for item in actions
+        )
+        body = {
+            "expected_revision": expected_revision,
+            "actions": [item.definition() for item in values],
+        }
+        if (
+            len(
+                json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode(
+                    "utf-8"
+                )
+            )
+            > MAX_LIBRARY_BYTES
+        ):
+            raise ValueError("Text library exceeds 256 KiB")
+        code, result = self._request(
+            "PUT",
+            "/v1/text-actions",
+            expected_identity=expected_identity,
+            cancel=cancel,
+            json=body,
+        )
+        if code == 409:
+            current = result.get("current", result.get("library"))
+            if current is None and "actions" in result:
+                current = {
+                    "revision": result.get("revision"),
+                    "actions": result["actions"],
+                }
+            read_library(current)
+            raise TextActionsConflict(current)
+        if code != 200:
+            raise _processing_error(code, result, text=True)
+        read_library(result)
+        with self._lock:
+            if expected_identity != self.history_identity():
+                error = AccountError(
+                    "A conta mudou. Atualize as ações.", code="context_expired"
+                )
+                error.accepted_text_actions = result
+                raise error
+            try:
+                _atomic_write_json(self.text_actions_path(expected_identity), result)
+            except OSError as error:
+                error.accepted_text_actions = result
+                raise
+        return result
+
+    def execute_text_action(self, snapshot, text, language="auto", *, cancel=None):
+        from text_actions import validate_input, validate_output
+
+        validate_input(text, language)
+        code, result = self._request(
+            "POST",
+            "/v1/text-actions/execute",
+            cancel=cancel,
+            expected_identity=snapshot.account_context,
+            json={
+                "operation_id": snapshot.operation_id,
+                "action_id": snapshot.action.id,
+                "action_revision": snapshot.action.revision,
+                "text": text,
+                "language": language,
+            },
+        )
+        if code != 200:
+            raise _processing_error(code, result, text=True)
+        value = result.get("text")
+        try:
+            validate_output(value)
+        except ValueError:
+            raise AccountError("O Clarify retornou um resultado inválido.")
+        if (
+            result.get("action_id") != snapshot.action.id
+            or type(result.get("action_revision")) is not int
+            or result.get("action_revision") != snapshot.action.revision
+            or result.get("action_name") != snapshot.action.name
+        ):
+            raise AccountError("O Clarify retornou uma ação inválida.")
         return value
 
 

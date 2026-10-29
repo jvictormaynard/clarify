@@ -1,8 +1,9 @@
 # Desktop design system
 
 The React/Tauri Settings window uses the approved T3 Code dark design and shared
-React controls. Its pages include account access, onboarding, history, dictation, text,
-dictionary, snippets, shortcuts, models and general preferences. The Qt/QML pill,
+React controls. Its workspace includes dictation, style, text actions, dictionary,
+snippets and history. Application preferences and account access use a Settings
+dialog. The Qt/QML pill,
 quick menus and launch-failure Settings fallback retain their own theme and
 behavior. Mobile and the server are outside this system.
 
@@ -26,19 +27,26 @@ to the pill or its quick menus.
 
 ## Source reference
 
-The reference is [T3 Code at `0b02b21e5a45`](https://github.com/pingdotgg/t3code/tree/0b02b21e5a451fa7e488a8596cedbeb0ddd9d63c),
-with `redesignEnabled=true`. The redesign, default activation and Settings
-reorganization are already on `main`: [#24865](https://github.com/pingdotgg/t3code/pull/24865),
+The reference is [T3 Code at `5eebf77b373b`](https://github.com/pingdotgg/t3code/tree/5eebf77b373b719ca4456985340707afa267310e),
+checked on 29 October 2026. Its design overhaul and Settings reorganization are
+on `main`: [#24865](https://github.com/pingdotgg/t3code/pull/24865),
 [#25324](https://github.com/pingdotgg/t3code/pull/25324) and
-[#25651](https://github.com/pingdotgg/t3code/pull/25651). The later open
-[#25778](https://github.com/pingdotgg/t3code/pull/25778) removes the old design
-toggle; it is not required for these visual rules. Source was checked on
-27 October 2026. The copied source and local Inter font retain their license
+[#25651](https://github.com/pingdotgg/t3code/pull/25651).
+[#25778](https://github.com/pingdotgg/t3code/pull/25778) has also merged, so the
+new design is the only design. The refresh includes the shared sidebar geometry
+from [#22287](https://github.com/pingdotgg/t3code/pull/22287).
+The copied source and local Inter font retain their license
 texts and exact provenance in `desktop/licenses/source-components.json`.
 
 The pinned source and the local reference screenshots below define the approved
-style. Routine UI work does not require a newer upstream checkout. Later T3
-changes do not change this standard automatically.
+style. The source check included development and staging branch names, recent
+Settings and redesign PRs, and the changes since the previous reference
+`0b02b21e5a45`. The relevant Settings design is already on `main`. Open PRs
+[#26708](https://github.com/pingdotgg/t3code/pull/26708) and
+[#26716](https://github.com/pingdotgg/t3code/pull/26716) propose further menu
+motion changes; they are outside this reference. Routine UI work does not
+require a newer upstream checkout. Later T3 changes do not change this standard
+automatically.
 
 T3's `SettingsSidebarNav`, `WorkspacePageContainer`, `SettingsGroup`,
 `settingsLayout` and `components/ui` define the navigation, page, form and
@@ -68,13 +76,18 @@ primitive utilities provide the final control states.
 | Window | 240 px sidebar; 56 px icon rail below 768 px; 48 px header |
 | Content | 896 px maximum including 20/24 px side padding; 24 px top; 48 px bottom |
 | Forms | 16 px/600 section titles; 14 px/500 row labels; 12 px descriptions |
+| Row descriptions | 18 px line height; balanced wrapping; 672 px maximum |
+| Navigation | 8 px outer inset and icon gap; 10 px row inset; 32 px rows |
+| Menus | 28 px minimum row height from 640 px; 32 px below; 16/18 px icons |
+| Scrollbars | 6 px; foreground at 8%, 12% on hover; 3 px radius |
+| Advanced disclosure | 40 px minimum trigger; 12 px/500 muted label; 14 px chevron; 6 px gap; 12/16 px side padding |
 | Spacing | 4, 8, 12, 16, 20, 24 and 32 px |
 | Motion | Existing T3 control and overlay transitions; reduced-motion override; immediate page navigation |
 
 The root font size is 16 px so rem-based control geometry remains predictable.
 The body is 14 px. Inter Variable is bundled with its Unicode subsets. Apple
 platforms use their system font first. No remote font is loaded.
-Use monospace for shortcuts, versions and technical metadata. Error and warning
+Use monospace for captured keybindings, versions and technical metadata. Error and warning
 states need text as well as color. Lucide supplies shared icons.
 
 Use semantic roles for surfaces, text, borders and states. Keep the black canvas
@@ -101,28 +114,87 @@ Pages use the feature-facing facade in `components/ui.tsx`:
 - `Row` and `Field`: associated labels and help text, with aligned controls.
 - `Switch` and `Toggle`: labeled binary state, using the shared switch primitive.
 - `Section`: a quiet heading outside a grouped panel with internal dividers.
+- `SettingsDisclosure`: T3's `AdvancedSettings` pattern for advanced rows inside
+  a section. Use its full-width trigger, Lucide chevron and shared Base UI
+  collapsible panel instead of the browser's native disclosure marker. The
+  chevron rotates in 150 ms; panel height changes in 200 ms. Reduced motion
+  removes both transitions. Keep the panel mounted while closed to preserve
+  existing input and operation lifetimes. Enter and Space toggle the control.
 - `Confirm`: controlled modal dialog with title, description and explicit actions.
 - `Picker`: searchable combobox with stable option IDs, keyboard selection,
   selected state, refresh, empty state and focus return.
 
 `components/settings-navigation.tsx` renders grouped page buttons from the shared
 button styles. Navigation remains available while a preference, refresh, or
-text save is pending. The sidebar search finds pages and stable sections. Ctrl+F
-or `/` focuses it; arrows select results; Enter opens a result; Escape clears
-the search. `/` remains text when an editor has focus. Dialogs and dropdowns
-retain their own keyboard handling. Search indexes only visible pages, so
-managed accounts cannot expose personal processing pages. Dropdowns and
-libraries keep their local filters.
+text save is pending. The sidebar starts with Dictation and uses direct task
+navigation without a global search or search shortcuts. Style and Text actions
+remain visible for managed accounts. Dropdowns and libraries keep their local filters.
+Dialogs and dropdowns retain their own keyboard handling.
 
 `components/titlebar.tsx` owns the native drag region, identity, page context and
 existing minimize, maximize and close commands. Page geometry belongs in
 `styles/pages.css` and `styles/snippets.css`; window geometry belongs in
 `styles/layout.css`. Reuse the facade instead of copying control styles.
 
+## Settings organization
+
+Keep T3's shared visual controls and separate work tasks from application
+preferences. The workspace has six destinations. A footer Settings button opens
+a controlled dialog and preserves the main page behind it. Do not duplicate
+settings as main sidebar destinations. Rewrite and Translation are initial saved
+text actions. Custom actions use the same editor and execution contract.
+
+| Destination | Contents and order |
+| --- | --- |
+| Dictation | Microphone, recording mode and limits, transcription route and practice entry |
+| Style | Cleanup level, optional action after dictation, application styles, then advanced review routing and instructions |
+| Text actions | Named actions, state, shortcut, edit, duplicate and delete |
+| Dictionary / Snippets / History | Separate content destinations with their existing filters and account guards |
+| Settings: General | Output language, startup, updates and practice entry |
+| Settings: Models and services | Cloud connections, local model setup and activation, then personal text processing profiles |
+| Settings: Shortcuts | Application bindings and access to saved text-action shortcuts |
+| Settings: Privacy | Local history storage and retention, or account history access |
+| Settings: Account | Sign-in, session, allowance and account actions |
+
+When local dictation is selected, put local-model setup first instead of the
+cloud connection. This also keeps local onboarding on its chosen setup path.
+Keep installation and activation visible beside local-model status. Put
+streaming, optimization and removal in advanced options. Keep recording mode
+with microphone and recording limits. Cleanup level belongs to Style. A disabled
+cleanup route links to the matching cloud or local context in Style without changing a setting
+automatically.
+
+Use dialogs for one bounded edit: action definition, processing profile or app
+style. Use shared dialog headers, footers, overflow, focus return and dismissal
+rules. The Settings dialog uses a 184 px inner navigation column; below 768 px,
+it uses a 56 px icon column with accessible labels. Content scrolls independently
+from navigation and action footers. Keep dialog bounds inside the window at
+640, 820 and 1040 px widths.
+
+Action name, instructions, profile and shortcut remain local drafts until Save.
+Cancel discards the dialog draft. Closing with unsaved edits asks whether to keep
+editing or discard. A shortcut input receives focus only after the backend has
+suspended native shortcuts. Restore failure keeps capture available for retry.
+Duplicate starts a new draft with a new ID and no shortcut. Preview uses a saved
+action and explicit sample text, and never publishes through the clipboard.
+Translation requires its own target language.
+
+Keep action refresh available in the loaded catalog and the editor. Refresh
+preserves the draft. If the saved definition changed, show its instructions and
+let the user choose the saved version or retain the draft before saving again.
+An incomplete write must show how to refresh and recover.
+
+Settings saves handle only Settings drafts. Main-page instructions and content
+drafts keep their own owners. Profile edits use an explicit profile command;
+they do not select another global workflow. Native window close accounts for
+all open dirty editors. Account or endpoint changes reject stale writes and
+results. Opening a dialog must not enable cloud processing or upload personal
+actions to an account.
+
 ## New and changed pages
 
 - Use the existing titlebar, sidebar, breadcrumb and bounded content container.
-  Add navigation and search entries through their existing owners. Keep an
+  Add navigation entries through their existing owner. Keep an
   accessible page heading and use `Section`, `Row` and `Field` for grouped forms.
 - Keep section titles outside their panels, labels beside their controls where
   space permits, and help text with its field. Associate labels and descriptions
@@ -170,8 +242,13 @@ Python remains the only owner of configuration, accounts, secrets, audio,
 history and workflow effects. UI components do not add a bridge command, data
 migration or external service.
 
-Switches, selection lists and shortcuts save automatically through a targeted
-preference command. An automatic save must not commit unrelated text drafts.
+Page switches, selection lists and application shortcuts save automatically
+through a targeted preference command. Action and profile dialogs keep their
+controls in the dialog draft until Save. An automatic save must not commit unrelated text drafts.
+Hosted Save and Delete remain pending until the complete backend job finishes.
+The editor must not confirm or close on job acceptance. Keep failures visible
+inside the affected dialog. Model profiles show the verified catalog and an
+explicit refresh control. Do not require a user to type a ChatGPT model ID.
 Existing library flags save only the selected flag under its account context.
 New library entries remain drafts until explicitly saved.
 
@@ -187,10 +264,13 @@ saves or discards. A workflow page can show local loading while its route data
 arrives. Async completions must not replace a later navigation or text edit.
 
 The titlebar and sidebar stay fixed. The current page appears in the header
-breadcrumb; an accessible level-one heading remains in the page.
+context; an accessible level-one heading remains in the page.
 The content is centered and bounded. At 820 px, navigation remains labeled;
 at 640 px, it becomes an icon rail with accessible names and hover titles.
-Search expands over the page on the compact rail. Controls stack when needed. Library and history text can wrap and remain
+The navigation uses
+the shared scroll area with 12 px edge fades and hidden scrollbars; keyboard
+focus removes the mask. The page keeps T3's 24 px fade below its header and a
+stable scrollbar lane. Controls stack when needed. Library and history text can wrap and remain
 available in full; layout must not truncate persisted content.
 
 Authentication keeps full-width forms through each step. Managed accounts hide
@@ -242,14 +322,15 @@ and focus return. Retain screenshots of the affected states and identify which
 are fixture evidence and which are native Windows evidence.
 
 The screenshots below use the isolated controller fixture, with no user profile
-or live audio. The text screen shows contextual actions inside the page.
+or live audio. They show task navigation, the Settings dialog and the saved-action editor.
 
-![Dictation settings](images/settings-desktop-dictation.png)
-![Text draft and contextual actions](images/settings-desktop-text-draft.png)
+![Style and task navigation](images/settings-desktop-style.png)
+![Settings dialog and privacy](images/settings-desktop-dialog.png)
+![Text action editor](images/settings-desktop-action-editor.png)
 
 Use `desktop/tests/settings.spec.ts` with `tests/web_settings_fixture.py` for
 isolated controller-backed browser checks. Cover labels, help, keyboard, focus,
-Settings search, local filters, automatic preferences, drafts, managed accounts
+page navigation, local filters, automatic preferences, drafts, managed accounts
 and 640/820/1040 px geometry. Run the TypeScript/production build and Settings
 suite. Python behavior changes also require the Python suite. Native Windows checks cover the
 Tauri/QProcess boundary and the actual window.

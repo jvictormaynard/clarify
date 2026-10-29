@@ -1,6 +1,6 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
-import { Button, Field, Picker, Row, Section, Toggle } from "../components/ui";
+import { Button, Picker, Row, Section, Toggle } from "../components/ui";
 const languageNames: Record<string, string> = {
   en: "English",
   pt: "Portuguese",
@@ -10,7 +10,7 @@ const languageNames: Record<string, string> = {
 };
 
 export function GeneralPage({ controller }: SettingsPageProps) {
-  const { state, run, retention, setRetention } = controller;
+  const { state, run } = controller;
   return (
     <>
       <Section title={t("Preferências")}>
@@ -56,25 +56,6 @@ export function GeneralPage({ controller }: SettingsPageProps) {
           </Row>
         </Section>
       )}
-      {!state.accountState?.managed && !state.accountState?.signedIn && <Section title={t("Privacidade")}>
-        <Toggle
-          title={t("Salvar histórico")}
-          hint={t("Mantenha suas transcrições neste computador.")}
-          checked={state.historyEnabled}
-          onChange={(v) => void run("setHistoryEnabled", v)}
-        />
-        {state.historyEnabled && (
-          <Field
-            title={t("Retenção do histórico")}
-            hint={t("Em dias. Deixe vazio para não definir um prazo.")}
-            type="number"
-            min="0"
-            max="3650"
-            value={retention}
-            onChange={(e) => setRetention(e.target.value)}
-          />
-        )}
-      </Section>}
     </>
   );
 }

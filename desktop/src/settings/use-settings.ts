@@ -4,15 +4,18 @@ import {
   type KeyboardEvent, type MouseEvent, type SetStateAction,
 } from "react";
 import {
-  call, pollSettings, preferenceMethods, settingsTransaction, historyCorrection,
+  call, pollSettings, preferenceMethods, settingsTransaction, historyCorrection, SettingsOperationError,
   type DictionaryEntry, type Snippet, type Settings, type SettingsArguments,
   type SettingsMethod, type SettingsCall, type PreferenceMethod,
 } from "./bridge";
 import { recordingDraft, recordingValue, type RecordingDraft } from "./recording";
-import type { PageId } from "./navigation";
+import { defaultWorkflowScope, isSettingsSection, isWorkflowPage, workflowPage, type MainPageId, type SettingsSectionId, type PageId } from "./navigation";
 import { useSettingsWindow } from "./use-settings-window";
 import { mergeSettings, settingsValuesEqual } from "./state";
 import { dictionaryIdentity } from "./dictionary-identity";
+import { useTextActions } from "./use-text-actions";
+import { useAppStyleEditor } from "./use-app-style-editor";
+import { useTextProfileEditor } from "./use-text-profile-editor";
 
 type RouteOverride = { model?: string; endpoint?: string };
 type RouteDraft = { prompt?: string; override?: RouteOverride };
@@ -198,6 +201,17 @@ export function useSettings() {
     setSaved(false);
   };
   const [page, setPage, pageRef] = useDraft<PageId>("dictation");
+  const [mainPage, setMainPage] = useDraft<MainPageId>("dictation");
+  const [settingsOpen, setSettingsOpen, settingsOpenRef] = useDraft(false);
+  const [settingsSection, setSettingsSection] = useDraft<SettingsSectionId>("general");
+  const [settingsDismissRequested, renderSettingsDismissRequested] = useState(false);
+  const settingsCloseEpoch = useRef(0);
+  const setSettingsDismissRequested = (value: boolean) => {
+    settingsCloseEpoch.current += 1;
+    renderSettingsDismissRequested(value);
+  };
+  const mainScope = useRef("transcription");
+  const reviewScope = useRef("refinement");
   const [error, setError] = useState("");
   const [callBusy, setBusy] = useState(false);
   const busy = callBusy || !!state?.accountState?.busy;
@@ -295,7 +309,7 @@ export function useSettings() {
     Object.keys(routes).some(routeDirty) || snippetsDirty || dictionaryDirty;
   const pageDirty = !!state?.dirty || ({
     dictation: routeDirty("transcription") || recordingDirty,
-    text: routeDirty(scope), general: retentionDirty, models: providerDirty,
+    style: routeDirty(scope), text: routeDirty(scope), rewrite: routeDirty(scope), translation: routeDirty(scope), privacy: retentionDirty, general: retentionDirty, models: providerDirty,
     dictionary: dictionaryDirty, snippets: snippetsDirty,
   } as Partial<Record<PageId, boolean>>)[page] === true;
   const acceptedOperations = useRef(new Set<Promise<unknown>>());
@@ -308,7 +322,6 @@ export function useSettings() {
     if (isCurrent()) failedOperation.current = false; // Only the active close attempt acknowledges a failure.
     return succeeded;
   }, []);
-  const { closing, setClosing, closeWindow, closeRequest } = useSettingsWindow(dirtyRef, setError, awaitAcceptedOperations);
   const runHistoryCorrection = useCallback((...args: Parameters<typeof historyCorrection>) => {
     const result = historyCorrection(...args);
     if (args[0] === "confirm" || args[0] === "undo") {
@@ -344,7 +357,10 @@ export function useSettings() {
         });
       } catch (error) {
         failedOperation.current = true;
-        if (generation === lifetime.current) setError(String(error));
+        if (generation === lifetime.current) {
+          if (error instanceof SettingsOperationError) acceptState(error.snapshot);
+          setError(error instanceof SettingsOperationError ? error.message : String(error));
+        }
         return false as const;
       } finally {
         pending.current -= 1;
@@ -373,6 +389,13 @@ export function useSettings() {
     });
     return accountOperation ? result.finally(() => setAccountPending(false)) : result;
   }, [execute, setAccountPending]);
+
+  const textActions = useTextActions(state, run);
+  const appStyleEditor = useAppStyleEditor(state, run);
+  const textProfileEditor = useTextProfileEditor(state, run);
+  const actionsCaptureRef = useRef(false); actionsCaptureRef.current = textActions.capturing;
+  dirtyRef.current ||= textActions.dirty || appStyleEditor.dirty || textProfileEditor.dirty;
+  const { closing, setClosing, closeWindow, closeRequest } = useSettingsWindow(dirtyRef, setError, awaitAcceptedOperations);
 
   useEffect(() => {
     let live = true;
@@ -409,7 +432,7 @@ export function useSettings() {
       if (live) timer = setTimeout(refresh, current.current?.microphoneTestBusy ? 100 : 1000);
     };
     const visibility = () => {
-      if (document.hidden && current.current?.hotkeyCaptureAction) void run("cancelHotkeyCapture");
+      if (document.hidden && current.current?.hotkeyCaptureAction && !actionsCaptureRef.current) void run("cancelHotkeyCapture");
       if (document.hidden && current.current?.microphoneTestBusy) void run("stopMicrophoneTest");
     };
     document.addEventListener("visibilitychange", visibility);
@@ -436,26 +459,26 @@ export function useSettings() {
     return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", refreshAccount); };
   }, [state?.accountState?.signedIn, run]);
 
-  const captureDrafts = (all = false) => {
+  const captureDrafts = (all = false, settingsOnly = false) => {
     const activePage = pageRef.current;
     const activeScope = current.current?.selectedScope ?? "transcription";
-    const captureRoutes = all ? routesRef.current :
-      (activePage === "dictation" || activePage === "text") && routesRef.current[activeScope]
+    const captureRoutes = settingsOnly ? {} : all ? routesRef.current :
+      isWorkflowPage(activePage) && routesRef.current[activeScope]
         ? { [activeScope]: routesRef.current[activeScope] } : {};
     return {
-      dictionary: all || activePage === "dictionary" ? dictionaryRef.current : null,
-      snippets: all || activePage === "snippets" ? snippetsRef.current : null,
+      dictionary: !settingsOnly && (all || activePage === "dictionary") ? dictionaryRef.current : null,
+      snippets: !settingsOnly && (all || activePage === "snippets") ? snippetsRef.current : null,
       routes: captureRoutes,
-      recording: all || activePage === "dictation" ? recordingRef.current : null,
-      retention: all || activePage === "general" ? retentionRef.current : null,
-      endpoint: all || activePage === "models" ? endpointRef.current : null,
-      apiKey: all || activePage === "models" ? apiKeyRef.current : "",
+      recording: !settingsOnly && (all || activePage === "dictation") ? recordingRef.current : null,
+      retention: all || settingsOnly || activePage === "privacy" || activePage === "general" ? retentionRef.current : null,
+      endpoint: all || settingsOnly || activePage === "models" ? endpointRef.current : null,
+      apiKey: all || settingsOnly || activePage === "models" ? apiKeyRef.current : "",
     };
   };
   const hasLocalDrafts = () => !!dictionaryRef.current || !!snippetsRef.current || !!recordingRef.current ||
     retentionRef.current !== null || endpointRef.current !== null || !!apiKeyRef.current ||
-    Object.keys(routesRef.current).length > 0;
-  const waitingForDraftRoute = () => routeLoadingRef.current && (pageRef.current === "dictation" || pageRef.current === "text");
+    Object.keys(routesRef.current).length > 0 || textActions.isDirty() || appStyleEditor.isDirty() || textProfileEditor.isDirty();
+  const waitingForDraftRoute = () => routeLoadingRef.current && isWorkflowPage(pageRef.current);
   const clearCapturedDrafts = (captured: ReturnType<typeof captureDrafts>) => {
     if (dictionaryRef.current === captured.dictionary) setDictionaryDraft(null);
     if (snippetsRef.current === captured.snippets) setSnippetDraft(null);
@@ -465,9 +488,11 @@ export function useSettings() {
     if (apiKeyRef.current === captured.apiKey) setApiKeyDraft("");
     setRoutes(before => Object.fromEntries(Object.entries(before).filter(([key, value]) => captured.routes[key] !== value)));
   };
-  const reset = async (all = false) => {
+  const reset = async (all = false, settingsOnly = false) => {
     if (resettingRef.current || savingRef.current || (!all && waitingForDraftRoute())) return false;
-    const captured = captureDrafts(all);
+    const captured = captureDrafts(all, settingsOnly);
+    if (all) { if (!await textActions.close(true)) return false; appStyleEditor.close(true); }
+    if (all || settingsOnly) textProfileEditor.close(true);
     setDiscardingDrafts(true);
     try {
       return !!await execute(async call => {
@@ -479,10 +504,10 @@ export function useSettings() {
       });
     } finally { setDiscardingDrafts(false); }
   };
-  const save = async (all = false) => {
+  const save = async (all = false, settingsOnly = false) => {
     const snapshot = current.current;
     if (!snapshot || savingRef.current || resettingRef.current || validatingRef.current || (!all && waitingForDraftRoute())) return false;
-    const captured = captureDrafts(all);
+    const captured = captureDrafts(all, settingsOnly);
     const retained = captured.retention ?? String(snapshot.historyRetentionDays ?? "");
     if (retained !== "" && (!/^\d+$/.test(retained) || Number(retained) > 3650)) {
       setError(t("A retenção deve ser um número inteiro entre 0 e 3650 dias."));
@@ -499,6 +524,9 @@ export function useSettings() {
       setError(t("Valide ou descarte as alterações do serviço antes de salvar."));
       return false;
     }
+    if (all && textActions.isDirty() && !await textActions.save()) return false;
+    if (all && appStyleEditor.isDirty() && !await appStyleEditor.save()) return false;
+    if ((all || settingsOnly) && textProfileEditor.isDirty() && !await textProfileEditor.save()) return false;
     setSaving(true);
     try {
       return !!await execute(async call => {
@@ -589,13 +617,28 @@ export function useSettings() {
       });
     } finally { setSaving(false); }
   };
-  const navigate = async (id: PageId, targetScope = id === "dictation" ? "transcription" : "refinement") => {
+  const navigate = async (id: PageId, requestedScope?: string) => {
     const snapshot = current.current;
     if (!snapshot) return;
+    const targetScope = requestedScope ?? (id === "style" || id === "text"
+      ? snapshot.selectedScope === "transcription" ? snapshot.routeProviderId === "local_asr" ? "local_asr_refinement" : "refinement" : reviewScope.current
+      : defaultWorkflowScope(id));
     const epoch = ++navigationEpoch.current;
-    setPage(id);
+    const resolved = workflowPage(id, targetScope);
+    const destination = resolved === "text" ? "style" : resolved;
+    setPage(destination);
+    if (isSettingsSection(destination)) {
+      if (!settingsOpenRef.current) mainScope.current = snapshot.selectedScope;
+      setSettingsSection(destination);
+      setSettingsOpen(true);
+    } else {
+      setSettingsOpen(false);
+      setMainPage((destination === "rewrite" || destination === "translation" ? "actions" : destination) as MainPageId);
+      if (destination === "style") reviewScope.current = targetScope;
+    }
+    setSettingsDismissRequested(false);
     setSaved(false);
-    const needsRoute = (id === "dictation" || id === "text") && (targetScope !== snapshot.selectedScope || pendingOperations.current > 0);
+    const needsRoute = isWorkflowPage(id) && (targetScope !== snapshot.selectedScope || pendingOperations.current > 0);
     setRouteLoading(needsRoute);
     // A local page transition has no snapshot to publish and needs no pipe call.
     const needsProvider = id === "models" && snapshot.selectedProviderId === "local_asr";
@@ -615,6 +658,27 @@ export function useSettings() {
       return next;
     });
     if (epoch === navigationEpoch.current) setRouteLoading(false);
+  };
+
+  const hasSettingsDrafts = () => !!current.current?.providerDirty || !!apiKeyRef.current ||
+    textProfileEditor.isDirty() ||
+    (endpointRef.current !== null && endpointRef.current !== current.current?.providerBaseUrl) ||
+    (retentionRef.current !== null && retentionRef.current !== String(current.current?.historyRetentionDays ?? ""));
+  const requestCloseSettings = () => {
+    if (hasSettingsDrafts()) setSettingsDismissRequested(true);
+    else void navigate(mainPage, mainScope.current);
+  };
+  const saveSettings = async (close = false) => {
+    const dismissal = settingsCloseEpoch.current;
+    if (!await save(false, true)) return false;
+    if (close && dismissal === settingsCloseEpoch.current && settingsOpenRef.current && !hasSettingsDrafts()) await navigate(mainPage, mainScope.current);
+    return true;
+  };
+  const discardSettings = async (close = false) => {
+    const dismissal = settingsCloseEpoch.current;
+    if (!await reset(false, true)) return false;
+    if (close && dismissal === settingsCloseEpoch.current && settingsOpenRef.current && !hasSettingsDrafts()) await navigate(mainPage, mainScope.current);
+    return true;
   };
 
   const cancelDiscard = () => { setClosing(false); setDiscarding(false); };
@@ -816,17 +880,20 @@ export function useSettings() {
   };
 
   return {
-    state, page, error, busy, accountPending, navigating: routeLoading, routeLoading,
+    state, page, mainPage, settingsOpen, settingsSection, settingsDismissRequested, setSettingsDismissRequested,
+    requestCloseSettings, saveSettings, discardSettings, hasSettingsDrafts,
+    error, busy, accountPending, navigating: routeLoading, routeLoading,
     saving, discardingDrafts, validatingProvider, selectingProvider, confirming, saved,
     dirty: dirtyRef.current, pageDirty,
     dictionary, setDictionary, snippets, setSnippets, setLibraryPreference,
     prompt, setPrompt, retention, setRetention, apiKey, setApiKey, endpoint, setEndpoint,
     recording, setRecording, routeOverride, setRouteOverride,
-    closing, setClosing, discarding, setDiscarding, capture, setCapture,
+    closing, setClosing, discarding, setDiscarding, capture: textActions.capturing ? undefined : capture, setCapture,
     confirmAction, setConfirmAction, setError, run, runHistoryCorrection, save, navigate,
     cancelDiscard, discardAndClose, saveAndClose, confirmMutation,
     captureHotkey, captureMouseHotkey, selectProvider, validateProvider,
     selectRouteProvider, setTextRouteEnabled, useLocalModel,
+    textActions, appStyleEditor, textProfileEditor,
   };
 }
 

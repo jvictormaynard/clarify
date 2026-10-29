@@ -23,8 +23,9 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Tradução de texto selecionado
 - Integração nativa com atalhos e bandeja do Windows
 - Interface em português, inglês e espanhol, independente do idioma do ditado
-- Configurações em React/Tauri: Conta Clarify, Geral, Ditado, Texto, Dicionário, Snippets, Histórico, Atalhos e
-  Modelos e serviços
+- Área de trabalho em React/Tauri: Ditado, Estilo, Ações de texto, Dicionário, Snippets e Histórico
+- Diálogo de Configurações com Geral, Modelos e serviços, Atalhos, Privacidade e Conta Clarify
+- Ações de texto com nome, instruções próprias, atalhos opcionais e prévia
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
 - Dicionário pessoal para nomes e termos técnicos
 - Estatísticas locais sem armazenar o conteúdo das transcrições
@@ -40,6 +41,14 @@ chave**. Valide ou descarte essas alterações antes de salvar outros rascunhos.
 Ao fechar as Configurações, você pode salvar ou descartar os rascunhos de todas
 as páginas.
 
+Use **Estilo** para revisar o ditado, escolher uma ação após o ditado e definir
+estilos por aplicativo. **Ações de texto** começa com Reescrita e Tradução;
+crie outra ação para usar suas próprias instruções. Os diálogos de ação, perfil
+de processamento e estilo por aplicativo mantêm rascunhos até **Salvar**.
+**Cancelar** descarta as alterações daquele diálogo. A prévia usa texto de
+exemplo e não cola em outro aplicativo. Local Whisper continua restrito à
+transcrição de áudio.
+
 O Clarify usa o idioma do dispositivo: português, inglês ou espanhol,
 incluindo o e-mail de autenticação. No primeiro acesso, use Google, Microsoft
 ou GitHub, ou informe seu e-mail e confirme o código dentro do aplicativo
@@ -47,7 +56,8 @@ para entrar ou criar uma conta.
 **Continuar sem conta** abre a configuração do modelo local; a chave própria
 continua disponível nessa etapa. Entrar na conta ativa o processamento do Clarify automaticamente.
 Contas autenticadas usam os modelos gerenciados pelo Clarify. As configurações
-de provedores, chaves e modelos locais e a aba Texto aparecem apenas no modo sem conta.
+de provedores, chaves e modelos locais ficam no modo sem conta. Estilo e Ações
+de texto ficam disponíveis nos dois modos.
 A cota semanal aparece como porcentagem, com a próxima renovação no horário local.
 As cotas renovam na segunda-feira, às 00:00 UTC. Enquanto a cota não é conhecida,
 a tela mostra o carregamento. Uma mensagem informa quando faltam fundos.

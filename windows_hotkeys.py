@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import time
+import threading
 from dataclasses import dataclass
 from ctypes import wintypes
 
@@ -39,6 +40,23 @@ HOTKEY_SPECS = {
     0x5106: ("voice_translation_hotkey", ord("V")),
 }
 HOTKEY_IDS_BY_ACTION = {spec[0]: hotkey_id for hotkey_id, spec in HOTKEY_SPECS.items()}
+_DYNAMIC_HOTKEY_LOCK = threading.Lock()
+
+
+def hotkey_id_for_action(action):
+    value = action.value
+    with _DYNAMIC_HOTKEY_LOCK:
+        if value not in HOTKEY_IDS_BY_ACTION:
+            if not value.startswith("text_action:"):
+                raise HotkeyValidationError("Unknown hotkey action")
+            identifier = 0x5200 + sum(
+                key.startswith("text_action:") for key in HOTKEY_IDS_BY_ACTION
+            )
+            if identifier > 0xBFFF:
+                raise HotkeyValidationError("Too many native hotkey identities")
+            HOTKEY_IDS_BY_ACTION[value] = identifier
+            HOTKEY_SPECS[identifier] = (value, 0)
+        return HOTKEY_IDS_BY_ACTION[value]
 
 
 class HotkeyRegistrationError(RuntimeError):
@@ -162,8 +180,8 @@ def register_global_hotkeys(user32, hwnd, settings=None, *, strict=False) -> set
     user32.RegisterHotKey.restype = wintypes.BOOL
     registered: set[int] = set()
     failed: list[str] = []
-    for action in HotkeyAction:
-        hotkey_id = HOTKEY_IDS_BY_ACTION[action.value]
+    for action in configured.hotkeys:
+        hotkey_id = hotkey_id_for_action(action)
         # Legacy configurations predate voice translation and intentionally
         # omit its binding.  Skipping an omitted action keeps those users'
         # existing shortcuts registered even if Alt+V belongs to another app.
@@ -281,7 +299,7 @@ class HookHotkeyState:
 
     def __init__(self, settings, *, clock=time.monotonic):
         self.bindings = {
-            definition.combination: HOTKEY_IDS_BY_ACTION[action.value]
+            definition.combination: hotkey_id_for_action(action)
             for action, definition in settings.hotkeys.items()
             if definition.requires_hook
         }

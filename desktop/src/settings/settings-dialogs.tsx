@@ -16,7 +16,7 @@ const confirmations = {
   resetAllHotkeys: {
     title: t("Restaurar atalhos?"),
     description:
-      t("Os atalhos voltarão ao padrão e serão salvos agora."),
+      t("Os atalhos padrão do aplicativo serão restaurados. Ações personalizadas manterão seus atalhos."),
   },
 };
 

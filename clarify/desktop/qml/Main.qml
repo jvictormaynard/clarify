@@ -181,6 +181,32 @@ ApplicationWindow {
                 onObjectRemoved: function(index, object) { microphoneMenu.removeItem(object) }
             }
         }
+        QuickMenu {
+            id: textActionsMenu
+            objectName: "quickTextActionsMenu"
+            visualTheme: root.visualTheme
+            title: qsTr("Text actions")
+            height: Math.min(implicitHeight, Math.max(48, Screen.desktopAvailableHeight - 16))
+            Instantiator {
+                model: settings.textActions
+                delegate: QuickMenuItem {
+                    required property var modelData
+                    required property int index
+                    objectName: "quickTextAction" + index
+                    visualTheme: root.visualTheme
+                    text: modelData.name
+                    enabled: modelData.enabled && !workflow.busy
+                    onTriggered: {
+                        var actionId = modelData.id
+                        textActionsMenu.close()
+                        quickMenu.runAfterClose(function() { workflow.runTextAction(actionId) })
+                    }
+                }
+                onObjectAdded: function(index, object) { textActionsMenu.insertItem(index, object) }
+                onObjectRemoved: function(index, object) { textActionsMenu.removeItem(object) }
+            }
+        }
+
         QuickMenuItem {
             objectName: "quickPasteItem"
             visualTheme: root.visualTheme
