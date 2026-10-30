@@ -165,6 +165,9 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
     XCTAssertEqual(text.value as? String, "cancelled-preparation")
     XCTAssertFalse(app.buttons["actions.copy"].exists)
+    // Reload the interrupted catalog before starting the next independent case.
+    press("actions.refresh"); chooseRewrite()
+    XCTAssertEqual(text.value as? String, "cancelled-preparation")
     enter("deactivated-preparation", in: text, name: "deactivated-composer", replacing: true)
     _ = fixture("/__fixture/control", values: ["catalog": "slow"])
     press("actions.run")
