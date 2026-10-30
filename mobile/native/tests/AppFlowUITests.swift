@@ -86,7 +86,10 @@ final class AppFlowUITests: XCTestCase {
       diagnose("keyboard-before-scroll-\(identifier)")
       let page = app.descendants(matching: .any)["app.keyboard-page"].firstMatch.scrollViews.firstMatch
       XCTAssertTrue(page.exists && page.isHittable)
-      page.swipeUp()
+      let distance = min(max(button.frame.maxY - page.frame.maxY + 16, 16), page.frame.height * 0.6)
+      let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85))
+      let finish = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85 - distance / page.frame.height))
+      start.press(forDuration: 0.1, thenDragTo: finish)
     }
     let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
     XCTAssertEqual(XCTWaiter.wait(for: [reachable], timeout: 5), .completed, "Reach \(identifier) with the keyboard open")

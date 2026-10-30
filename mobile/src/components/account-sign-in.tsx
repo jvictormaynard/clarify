@@ -42,7 +42,7 @@ export function AccountSignIn({ account, busy, command }: {
     </>}
     <Text style={[ui.small, { color: c.muted, textAlign: 'center' }]}>{t("Ou continue com seu e-mail")}</Text>
     <TextInput selectionColor={c.text} testID="account.email" accessibilityLabel={t("E-mail da conta Clarify")} value={email} onChangeText={setEmail} editable={!blocked} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" returnKeyType="go" onSubmitEditing={send} maxLength={254} placeholder={t("E-mail")} placeholderTextColor={c.muted} style={[ui.input, input]} />
-    <Text style={[ui.small, { color: c.muted }]}>{t("Enviaremos um código para entrar ou criar sua conta. Você não precisa de senha.")}</Text>
     <Button primary testID="account.requestCode" loading={busy && !social} disabled={blocked || !email.trim() || !account.endpoint} onPress={send}>{t("Continuar")}</Button>
+    <Text style={[ui.small, { color: c.muted }]}>{t("Enviaremos um código para entrar ou criar sua conta. Você não precisa de senha.")}</Text>
   </>;
 }
