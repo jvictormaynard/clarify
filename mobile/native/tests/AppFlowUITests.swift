@@ -96,10 +96,11 @@ final class AppFlowUITests: XCTestCase {
     capture("keyboard-action-ready-\(identifier)")
     press(identifier, allowScroll: false)
   }
-  func enter(_ value: String, in field: XCUIElement, name: String) {
+  func enter(_ value: String, in field: XCUIElement, name: String, replacing: Bool = false) {
     XCTAssertTrue(field.waitForExistence(timeout: 15))
     field.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+    if replacing { field.typeKey("a", modifierFlags: .command) }
     var expected = ""
     for character in value {
       expected += String(character)
@@ -164,8 +165,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
     XCTAssertEqual(text.value as? String, "cancelled-preparation")
     XCTAssertFalse(app.buttons["actions.copy"].exists)
-    text.tap(); text.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "cancelled-preparation".count))
-    text.typeText("deactivated-preparation")
+    enter("deactivated-preparation", in: text, name: "deactivated-composer", replacing: true)
     _ = fixture("/__fixture/control", values: ["catalog": "slow"])
     press("actions.run")
     XCTAssertTrue(progress.waitForExistence(timeout: 10))
@@ -178,8 +178,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
     XCTAssertFalse(app.buttons["actions.copy"].exists)
     capture("actions-deactivated-discovery")
-    text.tap(); text.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "deactivated-preparation".count))
-    text.typeText("cancelled-preparation")
+    enter("cancelled-preparation", in: text, name: "cancelled-composer", replacing: true)
     for mode in ["empty", "failed"] {
       _ = fixture("/__fixture/control", values: ["catalog": mode])
       press("actions.refresh")
@@ -194,8 +193,7 @@ final class AppFlowUITests: XCTestCase {
     }
     _ = fixture("/__fixture/control", values: ["catalog": "ready"])
     press("actions.refresh"); chooseRewrite()
-    text.tap(); text.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "cancelled-preparation".count))
-    text.typeText("successful-action")
+    enter("successful-action", in: text, name: "successful-composer", replacing: true)
     press("actions.run")
     XCTAssertTrue(app.staticTexts["actions.result"].waitForExistence(timeout: 15))
     XCTAssertEqual(app.staticTexts["actions.result"].label, "Fixture result: successful-action")
