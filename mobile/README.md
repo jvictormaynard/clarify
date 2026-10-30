@@ -230,8 +230,9 @@ source-app return and keyboard acceptance remain separate from these fixtures.
 Expo application plus a small Swift keyboard extension. Speech recognition and
 rewriting use either a Clarify account or a paired computer. Sign in with an
 emailed code, Google, Microsoft or GitHub, or choose **Meu computador** and scan
-its QR inside Clarify. No personal provider key is needed on the iPhone. Native bottom tabs contain Início, Dicionário,
-Snippets and Conta. Ajustes opens from Conta.
+its QR inside Clarify. No personal provider key is needed on the iPhone. Native
+bottom tabs contain Ditado, Ações, Biblioteca and Ajustes. Biblioteca contains
+the dictionary and snippets. Account and processing options open from Ajustes.
 Users without an account session or paired computer return to the
 connection screen, including after an upgrade from the former personal-key mode.
 SQLite keeps
@@ -654,12 +655,13 @@ This does not replace the system's microphone icon or orange privacy indicator.
 The rewrite rules are generated from the desktop's canonical dictation prompt,
 including spoken self-corrections, faithful editing and source-data boundaries.
 Run `python3 scripts/sync-prompts.py` after changing the desktop rules; `npm run
-check` detects drift. Mobile preserves the source language and has no custom
-workflows. Vocabulary supports canonical terms, pronunciation, aliases and an
+check` detects drift. Output language and writing style are independent of speech
+recognition. Saved rewrite, translation and custom actions use their destination's
+catalog and revision. Vocabulary supports canonical terms, pronunciation, aliases and an
 enabled flag, with the same limits as desktop (512 terms, 256 characters,
 32 aliases). Active vocabulary is bounded context for ASR and rewrite, never
 an instruction or unconditional replacement. Editing is disabled while busy.
-Home pages through all saved results, newest first, and supports original text,
+Ditado pages through all saved results, newest first, and supports original text,
 copying, individual deletion and clearing history without deleting vocabulary.
 Keep mobile source in this repository. Its Xcode delivery is separate from
 desktop publication.

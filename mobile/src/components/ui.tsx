@@ -137,8 +137,12 @@ export function NativeSheet({ visible, title, onClose, children }: { visible: bo
   const reduced = useReducedMotion();
   return <Modal visible={visible} presentationStyle="pageSheet" animationType={reduced ? 'none' : 'slide'} onRequestClose={onClose}>
     <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>
-      <View style={[ui.content, ui.row, { paddingTop: 12, paddingBottom: 8 }]}>
-        <Text accessibilityRole="header" style={[ui.section, { color: c.text, flex: 1 }]}>{title}</Text><TextButton onPress={onClose}>{t('Fechar')}</TextButton>
+      <View style={[ui.content, ui.row, { alignItems: 'flex-start', paddingTop: 12, paddingBottom: 8 }]}>
+        <Text accessibilityRole="header" style={[ui.section, { color: c.text, flex: 1 }]}>{title}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('Fechar')} onPress={onClose}
+          style={({ pressed }) => ({ width: 44, height: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.65 : 1 })}>
+          <SymbolView name="xmark" size={20} tintColor={c.text} accessible={false} />
+        </Pressable>
       </View>
       <ScrollView contentContainerStyle={[ui.content, { paddingTop: 8 }]} keyboardShouldPersistTaps="handled">{children}</ScrollView>
     </SafeAreaView>
