@@ -52,7 +52,7 @@ final class AppFlowUITests: XCTestCase {
     }
     let keyboard = app.keyboards.firstMatch
     if keyboard.exists {
-      let page = app.scrollViews.firstMatch
+      let page = app.scrollViews["app.keyboard-page"].firstMatch
       guard page.exists && page.frame.intersects(app.frame) else {
         diagnose("keyboard-dismissal-page-missing"); XCTFail("Cannot reach the page to dismiss the keyboard"); return
       }
@@ -60,7 +60,9 @@ final class AppFlowUITests: XCTestCase {
       // Container isHittable does not establish whether its gutter can be dragged.
       // Use that gutter so the page's interactive dismissal runs.
       let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2))
-      let finish = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85))
+      // Interactive dismissal follows the touch. Cross the keyboard's top edge
+      // instead of stopping inside the page that has already resized above it.
+      let finish = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.95))
       start.press(forDuration: 0.1, thenDragTo: finish)
       let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: keyboard)
       guard XCTWaiter.wait(for: [dismissed], timeout: 5) == .completed else {
@@ -82,7 +84,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(button.waitForExistence(timeout: 15))
     if !button.isHittable {
       diagnose("keyboard-before-scroll-\(identifier)")
-      let page = app.scrollViews.firstMatch
+      let page = app.scrollViews["app.keyboard-page"].firstMatch
       XCTAssertTrue(page.exists && page.isHittable)
       page.swipeUp()
     }

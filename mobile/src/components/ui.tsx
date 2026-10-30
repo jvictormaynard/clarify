@@ -40,7 +40,7 @@ export function StepContent({ step, children }: { step: string; children: ReactN
 
 export function KeyboardPage({ children, contentContainerStyle }: { children: ReactNode; contentContainerStyle?: StyleProp<ViewStyle> }) {
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={[ui.content, { flexGrow: 1 }, contentContainerStyle]}
+    <ScrollView testID="app.keyboard-page" style={{ flex: 1 }} contentContainerStyle={[ui.content, { flexGrow: 1 }, contentContainerStyle]}
       keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
       {children}
     </ScrollView>

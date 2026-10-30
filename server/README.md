@@ -259,7 +259,8 @@ verification. Changing this recovery source pin requires a new review.
 Server tests, desktop Python/Settings checks and iOS native compilation must pass.
 Live email, device activation/dictation, account isolation, quota exhaustion,
 session revocation and account deletion need staging acceptance. No automatic
-TestFlight upload is part of this change. The existing private-API app-return
-experiment is limited to TestFlight; remove it before a public App Store release.
+TestFlight upload is part of this change. The public iOS release must validate
+keyboard activation and return to the source app under the
+[iOS release procedure](../mobile/README.md).
 Public launch also needs an accurate privacy policy, account deletion instructions
 and a tested backup/restore policy. Apple login and billing are separate increments.
