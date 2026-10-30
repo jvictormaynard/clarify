@@ -118,7 +118,13 @@ final class AppFlowUITests: XCTestCase {
       field.typeText(String(character))
       let updated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", expected), object: field)
       guard XCTWaiter.wait(for: [updated], timeout: 5) == .completed else {
-        diagnose("typing-\(name)"); XCTFail("Input did not retain the typed characters: \(name)"); return
+        // debugDescription shortens long values. Capture the actual value before
+        // collecting the slower hierarchy; a later update must not pass this check.
+        let actual = field.value as? String
+        print("APP_UI_INPUT_FAILURE \(name) expected=\(String(reflecting: expected)) actual=\(String(reflecting: actual)) frame=\(field.frame) hittable=\(field.isHittable)")
+        diagnose("typing-\(name)")
+        XCTFail("Input did not retain the typed characters: \(name); expected \(String(reflecting: expected)), actual \(String(reflecting: actual))")
+        return
       }
     }
   }

@@ -60,6 +60,7 @@ async function main() {
   let simulator;
   const results = [];
   const scenarios = [];
+  const compactOnly = process.env.CLARIFY_APP_UI_COMPACT_ONLY === 'true';
   const derivedData = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-app-ui-derived-'));
   let testRun, buildSeconds;
   let exitCode = 1;
@@ -82,7 +83,7 @@ async function main() {
     for (const scenario of [
       { name: 'AppFlow', device: regular, appearance: 'dark', text: 'large', method: 'testFirstPresentationAccountNavigationAndExplicitReplay' },
       { name: 'AppFlow-compact-light', device: compact, appearance: 'light', text: 'accessibility-extra-extra-extra-large', method: 'testCompactKeyboardAndActionLayout' },
-    ]) {
+    ].filter(scenario => !compactOnly || scenario.name === 'AppFlow-compact-light')) {
       const device = scenario.device;
       scenarios.push({ ...scenario, device: device?.name });
       await fetch(endpoint + '/__fixture/control', { method: 'POST', body: JSON.stringify({ catalog: 'ready', revision: 1, release: true }) });
@@ -120,7 +121,7 @@ async function main() {
   } catch (error) { console.error(error.message); } finally {
     for (const result of results) if (fs.existsSync(result.path)) spawnSync('xcrun', ['xcresulttool', 'export', 'attachments', '--path', result.path, '--output-path', path.join(output, 'captures', result.name)], { stdio: 'inherit' });
     for (const [name, hash] of preserved) if (fingerprint(path.join(original, name)) !== hash) { console.error('Production generated project changed during app UI testing.'); exitCode = 1; }
-    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
+    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, completeAppAcceptance: exitCode === 0 && !compactOnly, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
     service.release();
     await new Promise(resolve => server.close(resolve));
     if (simulator) { spawnSync('xcrun', ['simctl', 'shutdown', simulator]); spawnSync('xcrun', ['simctl', 'delete', simulator]); }

@@ -215,6 +215,9 @@ copy confirmation. Both use the same test build. Each profile must execute its
 selected test; a successful command with zero tests fails acceptance. Swift
 contracts run before these app flows. Keyboard and installed-extension tests
 remain separate.
+For a focused retry, `tests_only=true` and `app_ui_compact_only=true` run only
+the compact app profile. Its summary marks full app acceptance as incomplete.
+Signed publication ignores this diagnostic selector and runs both profiles.
 Pending reservations remain separate from consumed quota. It uses no user account, microphone or real provider. The signed
 project is unchanged; the IPA check rejects a non-production endpoint. The practice
 field’s empty/filled input guard is tested by JavaScript contracts. The app E2E

@@ -15,6 +15,10 @@ on:
         description: Also enforce the unresolved opening-height diagnostic (tests only)
         type: boolean
         default: false
+      app_ui_compact_only:
+        description: Diagnose only the compact app UI profile (tests only; incomplete acceptance)
+        type: boolean
+        default: false
       status_only:
         description: Read Apple build and group status without building or uploading
         type: boolean
@@ -152,6 +156,8 @@ jobs:
         run: npm run test:native
       - name: Test first launch and navigation in the containing app
         if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        env:
+          CLARIFY_APP_UI_COMPACT_ONLY: ${{ inputs.tests_only && inputs.app_ui_compact_only }}
         run: node scripts/test-app-ui.cjs
       - name: Validate short speech with the live mobile client
         if: ${{ inputs.short_dictation_acceptance }}
