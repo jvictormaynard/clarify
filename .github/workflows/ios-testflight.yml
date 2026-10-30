@@ -272,34 +272,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Read App Store Connect build availability
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.21.1
+      - name: Read complete Apple release inventory
         env:
           ASC_KEY: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
           ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
           ASC_ISSUER: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
         shell: bash
-        run: |
-          node <<'JS'
-          const { sign } = require('node:crypto');
-          const encode = x => Buffer.from(JSON.stringify(x)).toString('base64url');
-          const now = Math.floor(Date.now() / 1000);
-          const body = encode({ alg: 'ES256', kid: process.env.ASC_KEY_ID, typ: 'JWT' }) + '.' +
-            encode({ iss: process.env.ASC_ISSUER, iat: now, exp: now + 300, aud: 'appstoreconnect-v1' });
-          const signature = sign('sha256', Buffer.from(body), { key: process.env.ASC_KEY, dsaEncoding: 'ieee-p1363' });
-          const token = body + '.' + signature.toString('base64url');
-          async function get(path) {
-            const response = await fetch('https://api.appstoreconnect.apple.com/v1/' + path, { headers: { Authorization: 'Bearer ' + token } });
-            if (!response.ok) throw new Error('Apple status request failed: HTTP ' + response.status);
-            return response.json();
-          }
-          (async () => {
-            const builds = await get('builds?filter[app]=6820869157&sort=-uploadedDate&limit=10&include=preReleaseVersion,buildBetaDetail');
-            console.log(JSON.stringify({ checkedAt: new Date().toISOString(), builds }, null, 2));
-            const groups = await get('betaGroups?filter[app]=6820869157&limit=100');
-            for (const group of groups.data.filter(item => item.attributes.isInternalGroup)) {
-              group.builds = (await get('betaGroups/' + group.id + '/builds?limit=100')).data.map(item => item.id);
-              group.existingTesters = (await get('betaGroups/' + group.id + '/relationships/betaTesters?limit=200')).data.length;
-            }
-            console.log(JSON.stringify({ groups }, null, 2));
-          })().catch(error => { console.error(error.message); process.exitCode = 1; });
-          JS
+        run: node mobile/scripts/read-apple-inventory.cjs "$RUNNER_TEMP/apple-release-inventory.json"
+      - name: Preserve Apple inventory evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: clarify-apple-inventory-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apple-release-inventory.json
+          if-no-files-found: error
+          retention-days: 7
