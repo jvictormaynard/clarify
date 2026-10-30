@@ -52,7 +52,7 @@ final class AppFlowUITests: XCTestCase {
     }
     let keyboard = app.keyboards.firstMatch
     if keyboard.exists {
-      let page = app.scrollViews["app.keyboard-page"].firstMatch
+      let page = app.descendants(matching: .any)["app.keyboard-page"].firstMatch.scrollViews.firstMatch
       guard page.exists && page.frame.intersects(app.frame) else {
         diagnose("keyboard-dismissal-page-missing"); XCTFail("Cannot reach the page to dismiss the keyboard"); return
       }
@@ -84,7 +84,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(button.waitForExistence(timeout: 15))
     if !button.isHittable {
       diagnose("keyboard-before-scroll-\(identifier)")
-      let page = app.scrollViews["app.keyboard-page"].firstMatch
+      let page = app.descendants(matching: .any)["app.keyboard-page"].firstMatch.scrollViews.firstMatch
       XCTAssertTrue(page.exists && page.isHittable)
       page.swipeUp()
     }
