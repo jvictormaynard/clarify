@@ -147,12 +147,12 @@ jobs:
         run: npx expo prebuild --clean --platform ios --no-install
       - name: Install CocoaPods dependencies
         run: pod install --project-directory=ios
-      - name: Test first launch and navigation in the containing app
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
-        run: node scripts/test-app-ui.cjs
       - name: Test Swift contracts
         if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
         run: npm run test:native
+      - name: Test first launch and navigation in the containing app
+        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        run: node scripts/test-app-ui.cjs
       - name: Validate short speech with the live mobile client
         if: ${{ inputs.short_dictation_acceptance }}
         env:

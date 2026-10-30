@@ -208,6 +208,13 @@ return. It also runs the actual containing app in an isolated Release simulator
 copy against a local fake account service. The app UI test checks first presentation,
 dismissal/relaunch, native login, four tabs, weekly usage percentages and reset,
 Account and back navigation, Settings, explicit guide replay and logout/relaunch.
+It builds the isolated app once. The standard iPhone runs the complete functional
+flow. A compact iPhone with the largest accessibility text size runs a shorter
+flow for keyboard access, scrolling, dialogs, draft retention, cancellation and
+copy confirmation. Both use the same test build. Each profile must execute its
+selected test; a successful command with zero tests fails acceptance. Swift
+contracts run before these app flows. Keyboard and installed-extension tests
+remain separate.
 Pending reservations remain separate from consumed quota. It uses no user account, microphone or real provider. The signed
 project is unchanged; the IPA check rejects a non-production endpoint. The practice
 field’s empty/filled input guard is tested by JavaScript contracts. The app E2E

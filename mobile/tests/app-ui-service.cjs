@@ -1,7 +1,7 @@
 const http = require('node:http');
 
 // Only synthetic simulator data. No request leaves this loopback service.
-function createAppUIService({ record = () => {} } = {}) {
+function createAppUIService({ record = () => {}, heartbeatMs = 1000 } = {}) {
   const requests = [], unexpected = [], held = [], waiters = [];
   let catalog = 'ready', revision = 1;
   const libraries = { '/v1/dictionary': [], '/v1/snippets': [] };
@@ -27,7 +27,8 @@ function createAppUIService({ record = () => {} } = {}) {
     function send(status, result) {
       requests.push({ method, route, status, value }); record({ event: 'responded', method, route, status });
       if (response.destroyed) return;
-      response.writeHead(status, { 'Content-Type': 'application/json' }).end(result === null ? '' : JSON.stringify(result));
+      if (!response.headersSent) response.writeHead(status, { 'Content-Type': 'application/json' });
+      response.end(result === null ? '' : JSON.stringify(result));
     }
     if (method === 'POST' && route === '/__fixture/control') {
       if (value.catalog) catalog = value.catalog;
@@ -44,7 +45,17 @@ function createAppUIService({ record = () => {} } = {}) {
     }
     if (method === 'GET' && route === '/v1/text-actions') {
       if (catalog === 'slow') {
-        held.push(() => send(200, { revision, actions: actions() })); waiters.splice(0).forEach(done => done()); return;
+        // Keep the request active; only the release barrier completes its JSON.
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.write(' ');
+        const heartbeat = setInterval(() => {
+          if (!response.destroyed && !response.writableEnded) response.write(' ');
+        }, heartbeatMs);
+        heartbeat.unref();
+        const stop = () => clearInterval(heartbeat);
+        response.once('close', stop);
+        held.push(() => { stop(); send(200, { revision, actions: actions() }); });
+        waiters.splice(0).forEach(done => done()); return;
       }
       send(catalog === 'failed' ? 503 : catalog === 'unsupported' ? 404 : 200,
         { revision, actions: catalog === 'empty' ? [] : actions() }); return;
