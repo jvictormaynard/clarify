@@ -9,6 +9,7 @@ worker completion and cancellation rules testable without constructing Tk.
 from __future__ import annotations
 
 from transcription_performance import safe_timings
+from contextlib import nullcontext
 
 import threading
 import time
@@ -24,6 +25,7 @@ from provider_types import (
     TranslationResult,
 )
 from clarify_account import AccountError
+from provider_http import CancellationToken
 
 
 def _failure_status(error: Exception, fallback: str) -> str:
@@ -37,6 +39,10 @@ def _failure_status(error: Exception, fallback: str) -> str:
             "allowance_exhausted",
             "allocation_waiting",
             "authentication_required",
+            "text_action_missing",
+            "text_action_disabled",
+            "text_action_stale",
+            "text_action_language_required",
         }
     ):
         return f"account_{code}"
@@ -161,6 +167,9 @@ class WorkflowState:
     writing_style_requested: str | None = None
     writing_style_applied: str | None = None
     writing_style_status: str | None = None
+    text_action_id: str | None = None
+    text_action_name: str | None = None
+    text_action_revision: int | None = None
 
 
 @dataclass(frozen=True)
@@ -209,6 +218,12 @@ class StartTranslation:
 
 
 @dataclass(frozen=True)
+class RunTextAction:
+    action_id: str
+    target: SelectionTarget | None = None
+
+
+@dataclass(frozen=True)
 class ChooseTranslationLanguage:
     language: str
 
@@ -227,6 +242,7 @@ WorkflowCommand = (
     | DismissMicrophoneUnavailable
     | StartRewrite
     | StartTranslation
+    | RunTextAction
     | ChooseTranslationLanguage
     | CancelTranslation
 )
@@ -371,6 +387,9 @@ class _Session:
     publication_claimed: bool = False
     publication_finished: bool = True
     finish_requested: bool = False
+    text_action: Any = None
+    cancel_token: Any = field(default_factory=CancellationToken)
+    dictation_snapshot: Any = None
 
 
 class WorkflowService:
@@ -424,9 +443,17 @@ class WorkflowService:
         if isinstance(command, DismissMicrophoneUnavailable):
             return self._dismiss_microphone_unavailable()
         if isinstance(command, StartRewrite):
+            if getattr(self._provider, "text_actions", None) is not None:
+                return self._start_text_action(RunTextAction("rewrite", command.target))
             return self._start_rewrite(command)
         if isinstance(command, StartTranslation):
+            if getattr(self._provider, "text_actions", None) is not None:
+                return self._start_text_action(
+                    RunTextAction("translation", command.target)
+                )
             return self._start_translation(command)
+        if isinstance(command, RunTextAction):
+            return self._start_text_action(command)
         if isinstance(command, ChooseTranslationLanguage):
             return self._choose_translation_language(command.language)
         if isinstance(command, CancelTranslation):
@@ -501,6 +528,8 @@ class WorkflowService:
         if session and session.recording is not None:
             session.retry_audio = None
             self._run_recording(session.recording, session.recording.cancel)
+        if session and not deferred_release:
+            session.cancel_token.cancel()
         if not deferred_release:
             self._scheduler.call_soon(lambda: self._deliver_ready())
 
@@ -581,6 +610,9 @@ class WorkflowService:
         writing_style_requested: str | None = None,
         writing_style_applied: str | None = None,
         writing_style_status: str | None = None,
+        text_action_id: str | None = None,
+        text_action_name: str | None = None,
+        text_action_revision: int | None = None,
         after_delivery: Callable[[], None] | None = None,
     ) -> bool:
         with self._lock:
@@ -607,6 +639,15 @@ class WorkflowService:
                 or session.writing_style,
                 writing_style_applied=writing_style_applied,
                 writing_style_status=writing_style_status,
+                text_action_id=session.text_action.action.id
+                if session.text_action
+                else text_action_id,
+                text_action_name=session.text_action.action.name
+                if session.text_action
+                else text_action_name,
+                text_action_revision=session.text_action.action.revision
+                if session.text_action
+                else text_action_revision,
             )
             self._state = state
 
@@ -732,6 +773,17 @@ class WorkflowService:
         session.started_at = self._clock.time()
         session.usage_context = self._config.recording_usage_context(command.mode)
         session.recording = recording
+        if getattr(self._provider, "text_actions", None) is not None:
+            try:
+                session.dictation_snapshot = self._provider.snapshot_dictation()
+            except Exception as error:
+                self._run_recording(recording, recording.cancel)
+                self._transition(
+                    session,
+                    WorkflowPhase.FAILED,
+                    status_key=_failure_status(error, "error"),
+                )
+                return True
         set_boundary_callback = getattr(recording, "set_boundary_callback", None)
         if callable(set_boundary_callback):
             operation_id = session.operation_id
@@ -866,16 +918,20 @@ class WorkflowService:
                 )
                 * 1000
             )
+            provider_options = {}
+            if session.dictation_snapshot is not None:
+                provider_options["dictation_snapshot"] = session.dictation_snapshot
             if session.writing_style is not None:
                 provider_result = self._provider.transcribe(
                     audio_source,
                     session.mode,
                     session.language,
                     writing_style=session.writing_style,
+                    **provider_options,
                 )
             else:
                 provider_result = self._provider.transcribe(
-                    audio_source, session.mode, session.language
+                    audio_source, session.mode, session.language, **provider_options
                 )
             session.timings_ms.update(
                 safe_timings(getattr(provider_result, "timings_ms", {}))
@@ -910,6 +966,11 @@ class WorkflowService:
                     else result
                 ),
                 refined_text=getattr(provider_result, "refined_text", None),
+                text_action_id=getattr(provider_result, "text_action_id", None),
+                text_action_name=getattr(provider_result, "text_action_name", None),
+                text_action_revision=getattr(
+                    provider_result, "text_action_revision", None
+                ),
                 provider_id=provider_result.provider_id,
                 model=provider_result.model,
                 refinement_provider_id=getattr(
@@ -994,16 +1055,16 @@ class WorkflowService:
     def _write_dictation_if_current(
         self, session: _Session, result: str, elapsed: float | None = None
     ) -> None:
-        with self._lock:
-            if (
-                not self._is_current_locked(session.operation_id)
-                or session.publication_claimed
-            ):
+        try:
+            if not self._claim_publication(session):
                 return
-            session.publication_claimed = True
-            session.publication_finished = False
-            target = session.target
-            usage_context = dict(session.usage_context)
+        except Exception:
+            with self._lock:
+                session.publication_finished = True
+            self._transition(session, WorkflowPhase.FAILED, status_key="error")
+            return
+        target = session.target
+        usage_context = dict(session.usage_context)
 
         # Never hold the service lock across statistics or clipboard adapters.
         # The claim above is the linearization point: cancellation before it
@@ -1134,7 +1195,33 @@ class WorkflowService:
 
     # Rewrite
 
-    def _start_rewrite(self, command: StartRewrite | None = None) -> bool:
+    def _start_text_action(self, command):
+        with self._lock:
+            if (
+                self._session is not None
+                or self._state.phase is not WorkflowPhase.READY
+            ):
+                return False
+        try:
+            snapshot = self._provider.snapshot_text_action(command.action_id)
+        except Exception as error:
+            session = self._new_session(WorkflowKind.REWRITE, target=command.target)
+            if session is None:
+                return False
+            return self._transition(
+                session,
+                WorkflowPhase.FAILED,
+                status_key=_failure_status(error, "rewrite_failed"),
+            )
+        if snapshot.action.kind == "translation":
+            return self._start_translation(
+                StartTranslation(command.target), snapshot=snapshot
+            )
+        return self._start_rewrite(StartRewrite(command.target), snapshot=snapshot)
+
+    def _start_rewrite(
+        self, command: StartRewrite | None = None, *, snapshot=None
+    ) -> bool:
         target = command.target if command is not None else None
         target = target or self._clipboard.capture_target()
         if target is None:
@@ -1145,6 +1232,7 @@ class WorkflowService:
         )
         if session is None:
             return False
+        session.text_action = snapshot
         self._transition(session, WorkflowPhase.REWRITING)
         self._scheduler.run_in_background(lambda: self._rewrite_worker(session))
         return True
@@ -1191,7 +1279,13 @@ class WorkflowService:
             capture_restored = True
             if not self._is_current(session.operation_id):
                 return
-            provider_result = self._provider.rewrite(capture.text)
+            provider_result = (
+                self._provider.transform_text_action(
+                    session.text_action, capture.text, cancel=session.cancel_token
+                )
+                if session.text_action is not None
+                else self._provider.rewrite(capture.text)
+            )
             rewritten = provider_result.text
             if not self._is_current(session.operation_id):
                 return
@@ -1226,7 +1320,9 @@ class WorkflowService:
 
     # Translation
 
-    def _start_translation(self, command: StartTranslation | None = None) -> bool:
+    def _start_translation(
+        self, command: StartTranslation | None = None, *, snapshot=None
+    ) -> bool:
         target = command.target if command is not None else None
         target = target or self._clipboard.capture_target()
         if target is None:
@@ -1237,6 +1333,7 @@ class WorkflowService:
         )
         if session is None:
             return False
+        session.text_action = snapshot
         # The state is explicit even though the current presentation keeps this
         # preparation step visually silent until the picker is ready.
         self._transition(session, WorkflowPhase.PREPARING_TRANSLATION)
@@ -1331,8 +1428,15 @@ class WorkflowService:
             selection = session.selection
             if selection is None:
                 raise RuntimeError("Translation selection was not captured")
-            provider_result = self._provider.translate(
-                selection.text, session.target_language
+            provider_result = (
+                self._provider.transform_text_action(
+                    session.text_action,
+                    selection.text,
+                    session.target_language,
+                    cancel=session.cancel_token,
+                )
+                if session.text_action is not None
+                else self._provider.translate(selection.text, session.target_language)
             )
             translated = provider_result.text
             if not self._is_current(session.operation_id):
@@ -1376,6 +1480,7 @@ class WorkflowService:
             ):
                 return False
             target = session.target
+            session.cancel_token.cancel()
             self._session = None
             self._state = WorkflowState()
         if target is not None:
@@ -1387,6 +1492,25 @@ class WorkflowService:
         return True
 
     # Shared selection completion
+
+    def _claim_publication(self, session):
+        snapshot = session.text_action or session.dictation_snapshot
+        guard = (
+            self._provider.publication_guard(snapshot)
+            if snapshot is not None
+            else nullcontext()
+        )
+        # Account identity and operation ownership share one acceptance point.
+        # No account or workflow lock remains held during clipboard/statistics.
+        with guard, self._lock:
+            if (
+                not self._is_current_locked(session.operation_id)
+                or session.publication_claimed
+            ):
+                return False
+            session.publication_claimed = True
+            session.publication_finished = False
+            return True
 
     def _apply_selection_result(
         self,
@@ -1434,14 +1558,12 @@ class WorkflowService:
         provider_id: str | None = None,
         model: str | None = None,
     ) -> None:
-        with self._lock:
-            if (
-                not self._is_current_locked(session.operation_id)
-                or session.publication_claimed
-            ):
+        try:
+            if not self._claim_publication(session):
                 return
-            session.publication_claimed = True
-            session.publication_finished = False
+        except Exception:
+            self._transition(session, WorkflowPhase.FAILED, status_key="rewrite_failed")
+            return
 
         try:
             # Once capture identity has been validated, the clipboard adapter

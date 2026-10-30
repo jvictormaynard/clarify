@@ -1,7 +1,7 @@
 import { t, uiLanguage } from "../i18n";
 import { useRef, useState } from "react";
-import { ChevronRight, Gauge, LogIn, RefreshCw, TriangleAlert, UserRound } from "lucide-react";
-import { Button, Confirm, Field, Section } from "../components/ui";
+import { Gauge, LogIn, RefreshCw, UserRound } from "lucide-react";
+import { Button, Confirm, Field, Section, SettingsDisclosure } from "../components/ui";
 import { formatUsageReset, usageProgress } from "../../../shared/usage";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { AccountSignIn } from "../components/account-sign-in";
@@ -54,12 +54,12 @@ export function AccountPage({ controller }: SettingsPageProps) {
             if (account.managed) command("logout");
             void controller.navigate("general");
           }} />
-        <details className="account-server"><summary>{t("Servidor próprio")}</summary>
+        <SettingsDisclosure className="account-server" title={t("Servidor próprio")}>
           <div className="account-server-fields">
             <Field title={t("Endereço do servidor")} value={server} placeholder="https://…" onChange={e => setServer(e.target.value)} />
             <Button onClick={() => command("configure", server)}>{t("Salvar servidor")}</Button>
           </div>
-        </details>
+        </SettingsDisclosure>
       </Section> : <>
         <Section className="account-card" title={<><UserRound size={16} aria-hidden="true" /><span className="account-email">{account.email}</span></>}>
           <p className="hint">{t("O Clarify gerencia os modelos e provedores da sua conta. Áudio, texto e palavras ativas do dicionário são processados pelo Clarify.")}</p>
@@ -86,8 +86,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
             </div>
           </>}
         </Section>
-        <details className="danger-zone">
-          <summary><TriangleAlert size={15} aria-hidden="true" /><span>{t("Zona de perigo")}</span><ChevronRight size={15} className="account-disclosure" aria-hidden="true" /></summary>
+        <SettingsDisclosure className="danger-zone" title={t("Zona de perigo")}>
           <Section title={t("Sessão")}>
             <p className="hint">{t("Ao sair, o Clarify volta ao dicionário e ao processamento locais. As palavras da conta ficam separadas por conta neste computador.")}</p>
             <Button onClick={() => setConfirmation("logout")}>{t("Sair da conta")}</Button>
@@ -96,7 +95,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
             <p className="hint">{t("Excluir a conta remove o dicionário, os snippets e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos.")}</p>
             <Button className="destructive" onClick={() => setConfirmation("delete")}>{t("Excluir conta")}</Button>
           </Section>
-        </details>
+        </SettingsDisclosure>
       </>}
     </fieldset>
     {account.socialPending && <Button variant="text" disabled={accountPending} onClick={() => command("cancel-social")}>{t("Cancelar login")}</Button>}

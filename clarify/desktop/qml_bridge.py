@@ -21,6 +21,7 @@ try:
         DismissMicrophoneUnavailable,
         StartDictation,
         StartRewrite,
+        RunTextAction,
         StartTranslation,
         StopDictation,
         RetryDictation,
@@ -36,6 +37,7 @@ except ImportError:  # PyInstaller may analyze the spike as a standalone file.
         DismissMicrophoneUnavailable,
         StartDictation,
         StartRewrite,
+        RunTextAction,
         StartTranslation,
         StopDictation,
         RetryDictation,
@@ -97,6 +99,10 @@ class QmlWorkflowBridge(QObject):
         WorkflowPhase.FAILED: "The dictation could not be completed",
     }
     _STATUS_KEYS = {
+        "account_text_action_missing": "A ação não existe. Atualize as ações.",
+        "account_text_action_disabled": "A ação está desativada.",
+        "account_text_action_stale": "A ação mudou. Atualize as ações.",
+        "account_text_action_language_required": "Selecione o idioma da tradução.",
         "account_allowance_exhausted": "Sua cota foi atingida.",
         "account_allocation_waiting": "Sua conta aguarda a próxima distribuição de cotas.",
         "account_authentication_required": "Entre na conta novamente.",
@@ -123,6 +129,10 @@ class QmlWorkflowBridge(QObject):
         "provider_chatgpt_identity": "Could not validate your ChatGPT identity. Check the selected account in settings.",
     }
     _ERROR_MESSAGES_PT = {
+        "account_text_action_missing": "A ação não existe. Atualize as ações.",
+        "account_text_action_disabled": "A ação está desativada.",
+        "account_text_action_stale": "A ação mudou. Atualize as ações.",
+        "account_text_action_language_required": "Selecione o idioma da tradução.",
         "account_allowance_exhausted": "Sua cota foi atingida.",
         "account_allocation_waiting": "Sua conta aguarda a próxima distribuição de cotas.",
         "account_authentication_required": "Entre na conta novamente.",
@@ -763,6 +773,8 @@ class QmlWorkflowBridge(QObject):
         if self._quick_paste_busy:
             return False
         normalized = str(action or "").strip().lower()
+        if normalized.startswith("text_action:"):
+            return self.runTextAction(str(action).strip().split(":", 1)[1])
         if (
             normalized
             in {"rewrite_hotkey", "translation_hotkey", "recording_hold_press"}
@@ -900,6 +912,24 @@ class QmlWorkflowBridge(QObject):
             if self._state.phase is WorkflowPhase.TRANSLATION_PICKER:
                 return self.cancelTranslation()
         return False
+
+    @Slot(str, result=bool)
+    def runTextAction(self, actionId):
+        if self._quick_paste_busy or self.busy or not self._processing_allowed():
+            return False
+        if self._state.phase in (
+            WorkflowPhase.COMPLETED,
+            WorkflowPhase.FAILED,
+            WorkflowPhase.CANCELLED,
+        ):
+            return self._run_when_ready(lambda: self.runTextAction(actionId))
+        if (
+            self._state.phase is not WorkflowPhase.READY
+            or not self._dismiss_files_before_workflow()
+        ):
+            return False
+        self._submit_start(RunTextAction(actionId, self._capture_target()))
+        return True
 
     @Slot()
     def showResult(self) -> None:

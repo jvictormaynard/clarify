@@ -13,6 +13,12 @@ shared_source = File.join(fixture, 'SharedState.swift')
 File.write(shared_source, File.read(File.join(root, 'modules/clarify-core/ios/SharedState.swift')).sub(/  init\?\(\) \{.*?\n  \}/m, "  init?() { self.root = URL(fileURLWithPath: #{shared_root.inspect}) }"))
 app.source_build_phase.add_file_reference(project.main_group.new_file(shared_source))
 container.source_build_phase.add_file_reference(project.main_group.new_file(shared_source))
+%w[ClarifyError.swift Localization.swift].each do |name|
+  source = File.join(root, 'modules/clarify-core/ios', name)
+  [app, container].each do |target|
+    target.source_build_phase.add_file_reference(project.main_group.new_file(source))
+  end
+end
 %w[ActivationRequest.swift].each do |name|
   container.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'modules/clarify-core/ios', name)))
 end
@@ -61,7 +67,7 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
 bridge = File.join(root, 'native/keyboard/ClarifyKeyboard-Bridging-Header.h')
-%w[SharedState.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
+%w[SharedState.swift ClarifyError.swift KeyboardVocabulary.swift KeyboardState.swift TypingCorrection.swift HapticFeedback.swift ClarifyMark.swift ActivationRequest.swift Localization.swift].each do |name|
   source = name == 'SharedState.swift' ? shared_source : File.join(root, 'modules/clarify-core/ios', name)
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end

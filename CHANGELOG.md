@@ -5,6 +5,19 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+
+- Pair an iPhone with a personal Clarify computer by QR code. Use the computer's dictation, rewrite, translation, dictionary and snippets. Revoke paired phones or stop access from desktop Settings.
+- Enable encrypted internet access for a paired computer with a verified free account. Processing models and provider keys remain on the computer.
+- Create named text actions with custom instructions, optional shortcuts and a saved-action preview. Rewrite and Translation remain available as initial actions.
+- Select an action after dictation and configure separate text processing profiles. Account actions belong to the signed-in account; shortcuts and profile choices remain device preferences.
+
+### Changed
+
+- Organize the desktop workspace into Dictation, Style, Text actions, Dictionary, Snippets and History. Open application preferences, services, shortcuts, privacy and account access in a Settings dialog.
+- Move cleanup, post-dictation actions and application writing styles into Style. Use focused dialogs with Save and Cancel for actions, profiles and application rules.
+- Remove global Settings search and use the current T3-derived controls, disclosure motion and navigation geometry. Library and picker filters remain available.
+
 ## [0.14.0] - 2026-10-28
 
 ### Added

@@ -168,7 +168,7 @@ def _supported_shell_hotkey_settings(
         for action, definition in configured.hotkeys.items()
         if action not in _UNSUPPORTED_SHELL_HOTKEY_ACTIONS
     }
-    filtered = HotkeySettings(supported, configured.activation_mode)
+    filtered = HotkeySettings(supported, configured.activation_mode, closed=True)
     # HotkeySettings normally fills omitted actions with compatibility
     # defaults.  The shell boundary needs a closed set instead: passing those
     # defaults downstream would reserve unsupported global shortcuts again.

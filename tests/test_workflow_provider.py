@@ -116,6 +116,32 @@ class WorkflowProviderTests(unittest.TestCase):
             }
         )
 
+    def test_output_language_without_style_separates_multimodal_recognition_from_editing(
+        self,
+    ):
+        self.current = replace(
+            self.current,
+            workflows=replace(
+                self.current.workflows,
+                transcription=WorkflowRoute(
+                    "gemini", "gemini-2.5-flash", prompt="Rewrite everything."
+                ),
+            ),
+        )
+        result = self.service.transcribe(
+            self.audio, "prompt", "pt", output_language="en"
+        )
+        recognition = self.registry.transcribe.call_args.args[1]
+        self.assertEqual(recognition.language, "pt")
+        self.assertNotIn("Rewrite everything", recognition.prompt)
+        self.assertNotIn("English", recognition.instruction)
+        self.assertEqual(self.registry.rewrite.call_args.args[1].language, "en")
+        self.assertEqual(result.raw_text, self.raw)
+        self.assertEqual(result.output_language_applied, "en")
+        self.assertIsNone(result.writing_style_requested)
+        self.registry.transcribe.assert_called_once()
+        self.registry.rewrite.assert_called_once()
+
     def test_preserve_bypasses_review_but_keeps_expansion_and_original(self):
         self.set_cleanup("preserve")
         result = self.service.transcribe(self.audio, "prompt", "pt")

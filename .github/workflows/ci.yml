@@ -354,6 +354,7 @@ jobs:
     timeout-minutes: 15
     env:
       QT_QPA_PLATFORM: offscreen
+      QT_QUICK_CONTROLS_STYLE: Basic
       QA_SOURCE_SHA: ${{ inputs.source_sha }}
       QA_BASE_SHA: ${{ inputs.base_sha }}
       QA_TRUSTED_SHA: ${{ inputs.trusted_sha }}
@@ -471,6 +472,7 @@ jobs:
             lock_file: requirements-lock-windows.txt
     env:
       QT_QPA_PLATFORM: offscreen
+      QT_QUICK_CONTROLS_STYLE: Basic
       PYTHONFAULTHANDLER: "1"
       QA_SOURCE_SHA: ${{ inputs.source_sha }}
       QA_BASE_SHA: ${{ inputs.base_sha }}
@@ -478,6 +480,7 @@ jobs:
       QA_WORKFLOW_SHA: ${{ github.workflow_sha }}
       QA_COMPONENT_KEY: ${{ matrix.os == 'windows-latest' && 'python_windows' || 'python_linux' }}
       QA_TRUSTED_MODE: ${{ inputs.trusted_qa }}
+      CLARIFY_CI_QA_POLICY: ${{ needs.components.outputs.qa_policy }}
     steps:
       - name: Check out trusted MAIN controls
         if: ${{ inputs.trusted_qa }}
@@ -559,19 +562,79 @@ jobs:
         run: python scripts/check_runtime_lock.py
       - name: Run Ruff lint
         if: ${{ !inputs.trusted_qa && (matrix.os == 'ubuntu-latest') }}
-        run: ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py scripts/format_staged.py scripts/run_tests.py tests/test_test_environment.py clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py workflow_provider.py tests/test_workflow_provider.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py tests/test_qt_distribution.py tests/test_qt_package_policy.py portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
+        run: >-
+          ruff check desktop_state.py windows_hotkeys.py scripts/dependency_audit.py scripts/format_staged.py scripts/run_tests.py tests/test_test_environment.py
+          clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
+          workflow_provider.py tests/test_workflow_provider.py
+          computer_host.py computer_processing.py clarify/desktop/qml_computer.py
+          computer_relay_protocol.py computer_relay_client.py computer_relay_server.py shared/computer_connect.py
+          tests/test_computer_relay.py tests/test_computer_connect.py
+          tests/test_computer_host.py tests/test_computer_processing.py tests/test_pyside6_qml_computer.py
+          clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
+          clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
+          clarify/desktop/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
+          tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py
+          tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py
+          tests/test_pyside6_qt_shell.py
+          scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py
+          tests/test_qt_distribution.py tests/test_qt_package_policy.py
+          portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py
+          scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py
+          tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py
+          scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
+
       - name: Run Ruff format check
         if: ${{ !inputs.trusted_qa && (matrix.os == 'ubuntu-latest') }}
-        run: ruff format --check scripts/dependency_audit.py scripts/format_staged.py scripts/run_tests.py tests/test_test_environment.py tests/test_repository.py clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py workflow_provider.py tests/test_workflow_provider.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py tests/test_qt_distribution.py tests/test_qt_package_policy.py portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
+        run: >-
+          ruff format --check scripts/dependency_audit.py scripts/format_staged.py scripts/run_tests.py tests/test_test_environment.py tests/test_repository.py
+          clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
+          workflow_provider.py tests/test_workflow_provider.py
+          computer_host.py computer_processing.py clarify/desktop/qml_computer.py
+          computer_relay_protocol.py computer_relay_client.py computer_relay_server.py shared/computer_connect.py
+          tests/test_computer_relay.py tests/test_computer_connect.py
+          tests/test_computer_host.py tests/test_computer_processing.py tests/test_pyside6_qml_computer.py
+          clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
+          clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
+          clarify/desktop/qt_shell.py tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py
+          tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py
+          tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py
+          scripts/qt_distribution.py scripts/qt_package_policy.py scripts/check_settings_payload.py
+          tests/test_qt_distribution.py tests/test_qt_package_policy.py
+          portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py
+          scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py
+          tests/test_portable_updates.py tests/test_qml_updates.py tests/test_portable_update_windows.py tests/test_portable_update_manifest.py
+          scripts/delivery_policy.py scripts/release_delivery.py tests/test_delivery_policy.py tests/test_release_delivery.py
+
       - name: Run targeted type checks
         if: ${{ !inputs.trusted_qa && (matrix.os == 'ubuntu-latest') }}
         run: mypy desktop_state.py windows_hotkeys.py
       - name: Run unit tests
-        run: python scripts/run_tests.py discover -s tests -v
+        run: python scripts/run_tests.py --ci-product-tests discover -s tests -v
         if: ${{ !inputs.trusted_qa }}
+
+      - name: Build and validate the computer relay image
+        if: ${{ !inputs.trusted_qa && (matrix.os == 'ubuntu-latest') }}
+        run: |
+          docker build --file connect/Dockerfile --tag clarify-connect:ci .
+          docker run --rm clarify-connect:ci --help
+
       - name: Compile Python sources
-        run: python -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py workflows.py desktop_state.py repositories.py workflow_config.py workflow_settings.py voice_translation.py secret_store.py update_security.py version.py windows_clipboard.py windows_hotkeys.py provider_types.py provider_adapters.py provider_http.py provider_registry.py workflow_provider.py scripts/format_staged.py scripts/create_release_manifest.py tests local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py scripts/delivery_policy.py scripts/release_delivery.py
         if: ${{ !inputs.trusted_qa }}
+        run: >-
+          python -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py
+          clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py
+          clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py
+          clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py
+          workflows.py desktop_state.py repositories.py workflow_config.py workflow_settings.py
+          voice_translation.py
+          secret_store.py update_security.py version.py windows_clipboard.py
+          windows_hotkeys.py provider_types.py provider_adapters.py provider_http.py
+          provider_registry.py workflow_provider.py scripts/format_staged.py scripts/create_release_manifest.py tests
+          local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/local_asr_harness.py
+          scripts/delivery_policy.py scripts/release_delivery.py
+          computer_host.py computer_processing.py computer_relay_protocol.py computer_relay_client.py computer_relay_server.py
+          shared/computer_connect.py clarify/desktop/qml_computer.py
+
       - name: Validate QML assets
         run: python -c "from pathlib import Path; qml = Path('clarify/desktop/qml'); assert qml.is_dir() and (qml / 'Main.qml').is_file() and any(qml.glob('*.qml'))"
         if: ${{ !inputs.trusted_qa }}

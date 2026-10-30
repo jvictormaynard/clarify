@@ -181,6 +181,9 @@ class KeyboardViewController: UIInputViewController {
   private let recordingPanel = UIView()
   private let waveform = RecordingWaveform()
   private let recordingStatus = UILabel()
+  private var recordingStatusTop: NSLayoutConstraint?
+  private var errorStatusTop: NSLayoutConstraint?
+  private var dismissedError: String?
   private let processingSpinner = UIActivityIndicatorView(style: .medium)
   private let globe = UIButton(type: .system)
   private var recordingRequest = RecordingRequest()
@@ -196,19 +199,38 @@ class KeyboardViewController: UIInputViewController {
   private var dictationEdit: DictationEdit?
   private var applyingDictationEdit = false
   private var dictionaryTrailing: NSLayoutConstraint?
+  private var capsuleLeading: NSLayoutConstraint?
   private var selectedTerm: String?
   private var selectedScope: String?
   private var selectedDocument: UUID?
   private var dictionaryError: String?
+  private var outputPreferenceError: String?
   private var dictionaryContext: KeyboardDictionaryContext?
   private var dictionaryCheckedAt = Date.distantPast
   private var dictionaryRevision = -1
   private var selectedTermSaved = false
+  private struct SelectedTextMenuState: Equatable {
+    let selection: TextSelectionOwner?
+    let context: String?
+    let computerMode: Bool
+    let language: String
+    let enabled: Bool
+    let preferences: OutputPreferences
+    let catalog: TextActionCatalog
+    let rewriteReady: Bool
+    let translateReady: Bool
+    let preferencesSupported: Bool
+    let dictionaryTitle: String?
+    let dictionaryEnabled: Bool
+  }
+  private var selectedTextMenuState: SelectedTextMenuState?
   private let feedback = HapticFeedback()
   private var activation: UIHostingController<ActivationLink>?
   private var timer: Timer?
   private var operationID: String?
   private var documentID: UUID?
+  private var textOperationID: String?
+  private var textSelection: TextSelectionOwner?
   private var attached = false
   private var state = DictationSnapshot()
 
@@ -276,16 +298,15 @@ class KeyboardViewController: UIInputViewController {
       else { self?.advanceToNextInputMode() }
     }
     suggestions.axis = .horizontal; suggestions.distribution = .fillEqually
-    addToDictionary.accessibilityIdentifier = "clarify.add-to-dictionary"
+    addToDictionary.accessibilityIdentifier = "clarify.output-preferences"
     addToDictionary.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
     addToDictionary.titleLabel?.adjustsFontSizeToFitWidth = true
     addToDictionary.titleLabel?.minimumScaleFactor = 0.75
     addToDictionary.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 16, weight: .regular), forImageIn: .normal)
     addToDictionary.imageEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: -10)
     addToDictionary.layer.cornerRadius = 22
-    addToDictionary.addAction(UIAction { [weak self] _ in self?.saveSelectedTerm() }, for: .touchUpInside)
-    addToDictionary.contentEdgeInsets = UIEdgeInsets(top: 0, left: 18, bottom: 0, right: 28)
-    addToDictionary.isHidden = true
+    addToDictionary.showsMenuAsPrimaryAction = true
+    addToDictionary.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     undoDictation.accessibilityIdentifier = "clarify.undo-dictation"
     undoDictation.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 22, weight: .medium), forImageIn: .normal)
     undoDictation.tintColor = .label; undoDictation.isHidden = true
@@ -304,7 +325,7 @@ class KeyboardViewController: UIInputViewController {
       insert.widthAnchor.constraint(equalToConstant: 48),
       keys.topAnchor.constraint(equalTo: view.topAnchor, constant: 58), keys.heightAnchor.constraint(equalToConstant: 220),
       keys.leadingAnchor.constraint(equalTo: view.leadingAnchor), keys.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-      suggestions.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
+      suggestions.leadingAnchor.constraint(equalTo: addToDictionary.trailingAnchor, constant: 4),
       suggestions.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -8),
       suggestions.topAnchor.constraint(equalTo: view.topAnchor, constant: 7),
       suggestions.heightAnchor.constraint(equalToConstant: 44)
@@ -314,9 +335,10 @@ class KeyboardViewController: UIInputViewController {
       undoDictation.centerYAnchor.constraint(equalTo: mic.centerYAnchor),
       undoDictation.widthAnchor.constraint(equalToConstant: 44), undoDictation.heightAnchor.constraint(equalToConstant: 44)
     ])
-    dictionaryTrailing = addToDictionary.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -8)
+    dictionaryTrailing = addToDictionary.trailingAnchor.constraint(lessThanOrEqualTo: mic.leadingAnchor, constant: -8)
+    capsuleLeading = addToDictionary.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10)
     NSLayoutConstraint.activate([
-      addToDictionary.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 12),
+      capsuleLeading!, addToDictionary.widthAnchor.constraint(lessThanOrEqualToConstant: 176),
       dictionaryTrailing!, addToDictionary.centerYAnchor.constraint(equalTo: mic.centerYAnchor),
       addToDictionary.heightAnchor.constraint(equalToConstant: 44)
     ])
@@ -399,6 +421,7 @@ class KeyboardViewController: UIInputViewController {
     guard action == "cancel" || state.isLive else { return }
     let id: String
     if action == "start" {
+      textOperationID = nil; textSelection = nil
       guard !state.phase.busy, recordingRequest.action == nil else { return }
       id = UUID().uuidString
     } else {
@@ -412,9 +435,30 @@ class KeyboardViewController: UIInputViewController {
       dictationEdit = nil; recordingError = nil
       operationID = id; documentID = textDocumentProxy.documentIdentifier
     }
-    do { try store.send(action, operationID: id); feedback.record(action) }
+    do { try store.send(action, operationID: id, context: state.processingContext); feedback.record(action) }
     catch { recordingRequest.reset(); recordingError = L("Abra o Clarify para configurar o teclado.") }
     refreshFromStore()
+  }
+  private func currentTextSelection() -> TextSelectionOwner? {
+    let proxy = textDocumentProxy
+    guard proxy.isSecureTextEntry != true, let text = proxy.selectedText,
+      !text.contains("\0"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      text.utf8.count <= (state.computerMode ? 32_768 : 16_000) else { return nil }
+    return TextSelectionOwner(document: proxy.documentIdentifier, text: text,
+      before: proxy.documentContextBeforeInput, after: proxy.documentContextAfterInput)
+  }
+  func processSelection(_ action: String, language: String, savedAction: TextActionDescriptor? = nil) {
+    guard attached, hasFullAccess, state.isLive, state.configured, !state.phase.busy,
+      recordingRequest.action == nil, let store, let selection = currentTextSelection() else { return }
+    let id = UUID().uuidString
+    guard recordingRequest.submit("start", operationID: id, now: Date().timeIntervalSince1970) else { return }
+    do {
+      try store.send(action, operationID: id, context: state.processingContext, text: selection.text, language: language,
+        actionID: savedAction?.id, actionRevision: savedAction?.revision)
+      operationID = id; documentID = selection.document
+      textOperationID = id; textSelection = selection; dictationEdit = nil
+      feedback.type()
+    } catch { recordingRequest.reset(); recordingError = L("Abra o Clarify para configurar o teclado.") }
   }
   private func isCancelled(_ id: String?) -> Bool {
     recordingRequest.isCancelled(id) || store?.isCancelled(id) == true
@@ -422,7 +466,12 @@ class KeyboardViewController: UIInputViewController {
   // The lifecycle and timer share this state refresh. It does not simulate a
   // UIKit appearance transition when a snapshot or microphone meter changes.
   func refreshFromStore() {
+    let previousContext = state.processingContext
     state = store?.snapshot() ?? DictationSnapshot()
+    if previousContext != state.processingContext {
+      dismissedError = nil
+      operationID = nil; documentID = nil; textOperationID = nil; textSelection = nil; recordingRequest.reset()
+    }
     let requestTimedOut = recordingRequest.observe(state, now: Date().timeIntervalSince1970)
     if requestTimedOut { recordingError = L("O ditado não iniciou. Tente novamente.") }
     if state.phase.busy || !state.isLive { recordingError = nil }
@@ -434,14 +483,14 @@ class KeyboardViewController: UIInputViewController {
     let available = hasFullAccess && state.configured
     activation?.view.isHidden = !hasFullAccess || state.isLive
     mic.isEnabled = available && state.isLive && !state.phase.busy && recordingRequest.action == nil
-    insert.isHidden = !state.isLive || state.text?.isEmpty != false || state.phase.busy ||
-      isCancelled(state.operationID) || state.operationID == store?.receipt()
+    insert.isHidden = !canInsertResult
     if !hasFullAccess {
       status.text = L("Ative o Acesso Total"); detail.text = L("Ajustes > Geral > Teclado > Clarify")
     } else if state.isLive, state.phase == .error {
       status.text = L("Não foi possível concluir"); detail.text = state.message
     } else if !state.configured {
-      status.text = L("Entre no Clarify"); detail.text = L("Abra o Clarify para configurar.")
+      status.text = state.computerMode ? L("Conecte seu computador") : L("Entre no Clarify")
+      detail.text = L("Abra o Clarify para configurar.")
     } else if !state.isLive {
       status.text = L("Ative o microfone"); detail.text = L("Toque em Começar.")
     } else {
@@ -480,6 +529,8 @@ class KeyboardViewController: UIInputViewController {
       recordingPanel.addSubview(element); element.translatesAutoresizingMaskIntoConstraints = false
     }
     finishRecordingButton.addSubview(processingSpinner); processingSpinner.translatesAutoresizingMaskIntoConstraints = false
+    recordingStatusTop = recordingStatus.topAnchor.constraint(equalTo: waveform.bottomAnchor, constant: 12)
+    errorStatusTop = recordingStatus.topAnchor.constraint(equalTo: recordingPanel.topAnchor, constant: 76)
     NSLayoutConstraint.activate([
       recordingPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor), recordingPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
       recordingPanel.topAnchor.constraint(equalTo: view.topAnchor), recordingPanel.bottomAnchor.constraint(equalTo: view.topAnchor, constant: KeyboardInputView.contentHeight),
@@ -490,15 +541,17 @@ class KeyboardViewController: UIInputViewController {
       processingSpinner.centerXAnchor.constraint(equalTo: finishRecordingButton.centerXAnchor), processingSpinner.centerYAnchor.constraint(equalTo: finishRecordingButton.centerYAnchor),
       waveform.centerXAnchor.constraint(equalTo: recordingPanel.centerXAnchor), waveform.centerYAnchor.constraint(equalTo: recordingPanel.centerYAnchor, constant: -16),
       waveform.widthAnchor.constraint(equalToConstant: 144), waveform.heightAnchor.constraint(equalToConstant: 56),
-      recordingStatus.topAnchor.constraint(equalTo: waveform.bottomAnchor, constant: 12), recordingStatus.centerXAnchor.constraint(equalTo: recordingPanel.centerXAnchor),
-      recordingStatus.leadingAnchor.constraint(greaterThanOrEqualTo: recordingPanel.leadingAnchor, constant: 60), recordingStatus.trailingAnchor.constraint(lessThanOrEqualTo: recordingPanel.trailingAnchor, constant: -60),
+      recordingStatusTop!, recordingStatus.centerXAnchor.constraint(equalTo: recordingPanel.centerXAnchor),
+      recordingStatus.leadingAnchor.constraint(greaterThanOrEqualTo: recordingPanel.leadingAnchor, constant: 20), recordingStatus.trailingAnchor.constraint(lessThanOrEqualTo: recordingPanel.trailingAnchor, constant: -20),
+      recordingStatus.bottomAnchor.constraint(lessThanOrEqualTo: recordingPanel.bottomAnchor, constant: -58),
       globe.leadingAnchor.constraint(equalTo: cancel.leadingAnchor), globe.bottomAnchor.constraint(equalTo: recordingPanel.bottomAnchor, constant: -6),
       globe.widthAnchor.constraint(equalToConstant: 44), globe.heightAnchor.constraint(equalToConstant: 44)
     ])
   }
   private func updateRecordingPanel() {
     let pending = recordingRequest.action
-    let visible = hasFullAccess && state.isLive && (state.phase.busy || pending != nil)
+    let error = outputPreferenceError != nil || (state.phase == .error && state.message != nil && dismissedError != errorIdentity)
+    let visible = hasFullAccess && ((state.isLive && (state.phase.busy || pending != nil)) || error)
     let recording = [.recording, .locked].contains(state.phase) && pending != "cancel"
     let processing = [.transcribing, .rewriting].contains(state.phase) || pending == "finish"
     finishRecordingButton.isEnabled = recording && pending == nil
@@ -506,10 +559,17 @@ class KeyboardViewController: UIInputViewController {
     finishRecordingButton.alpha = (recording && pending == nil) || processing ? 1 : 0.4
     if processing { processingSpinner.startAnimating() } else { processingSpinner.stopAnimating() }
     cancel.isEnabled = pending != "cancel"
+    cancel.accessibilityLabel = error ? L("Fechar") : L("Cancelar gravação")
     cancel.alpha = cancel.isEnabled ? 1 : 0.4
     globe.isHidden = !needsInputModeSwitchKey
-    let caption = pending == "cancel" ? L("Cancelando…") : pending == "start" ? L("Preparando…") :
+    let caption = error ? (outputPreferenceError ?? state.message!) : pending == "cancel" ? L("Cancelando…") : pending == "start" ? L("Preparando…") :
       state.phase == .rewriting ? L("Reescrevendo…") : processing ? L("Transcrevendo…") : L("Ouvindo…")
+    waveform.isHidden = error; finishRecordingButton.isHidden = error
+    recordingStatus.numberOfLines = error ? 0 : 2
+    if errorStatusTop?.isActive != error {
+      (error ? recordingStatusTop : errorStatusTop)?.isActive = false
+      (error ? errorStatusTop : recordingStatusTop)?.isActive = true
+    }
     if visible, recordingStatus.text != caption, UIAccessibility.isVoiceOverRunning {
       UIAccessibility.post(notification: .announcement, argument: caption)
     }
@@ -528,9 +588,14 @@ class KeyboardViewController: UIInputViewController {
     }
     if visible {
       // These may also be updated by a host selection callback while recording.
-      for element in [status, detail, mic, insert, suggestions, addToDictionary, undoDictation] { element.isHidden = true }
+      for element in [status, detail, mic, insert, suggestions, undoDictation] { element.isHidden = true }
       activation?.view.isHidden = true
       view.bringSubviewToFront(recordingPanel)
+      view.bringSubviewToFront(addToDictionary)
+      if error, canInsertResult {
+        insert.isHidden = false; view.bringSubviewToFront(insert)
+      }
+      updateToolbar()
     } else { mic.isHidden = false; updateToolbar() }
   }
   @objc private func finishRecording() { send("finish") }
@@ -538,14 +603,23 @@ class KeyboardViewController: UIInputViewController {
     if let event { handleInputModeList(from: sender, with: event) } else { advanceToNextInputMode() }
   }
   @objc private func insertResult() {
-    guard attached, let store = store, let text = state.text, !text.isEmpty,
+    guard attached, canInsertResult, let store = store, let text = state.text, !text.isEmpty,
           let id = state.operationID, !isCancelled(id), store.receipt() != id else { return }
+    let current = store.snapshot()
+    guard current.isLive, current.operationID == id, current.processingContext == state.processingContext,
+      !current.phase.busy, current.text == text else { return }
+    if state.textOperation, id != textOperationID || textSelection != currentTextSelection() { return }
     // Claim publication before insertion, so repeated polling cannot insert twice.
     do { try store.acknowledge(id) } catch { return }
     let proxy = textDocumentProxy, replaced = textDocumentProxy.selectedText ?? ""
     typing.reset(); dictationEdit = nil; proxy.insertText(text)
     dictationEdit = DictationEdit(text: text, replaced: replaced, proxy: proxy)
     insert.isHidden = true; updateCapitalization(); updateSuggestions()
+  }
+  private var canInsertResult: Bool {
+    guard let id = state.operationID, let store, state.isLive, !state.phase.busy,
+      state.text?.isEmpty == false, !isCancelled(id), store.receipt() != id else { return false }
+    return !state.textOperation || (textOperationID == id && textSelection == currentTextSelection())
   }
   private func updateSuggestions() {
     if typingVocabularyRevision != state.libraryRevision || Date().timeIntervalSince(typingVocabularyCheckedAt) >= 1 {
@@ -572,81 +646,157 @@ class KeyboardViewController: UIInputViewController {
     updateToolbar()
   }
   private func updateToolbar(forceDictionaryRefresh: Bool = false) {
+    if state.textOperation, state.phase.busy, let id = textOperationID, state.operationID == id,
+      textSelection != currentTextSelection(), recordingRequest.action != "cancel" { send("cancel") }
     let proxy = textDocumentProxy
+    let selection = currentTextSelection()
     let term = proxy.isSecureTextEntry == true ? nil : KeyboardSelection.term(proxy.selectedText)
-    // UIKit has no document identifier while this controller is detached.
-    // Access it only when the host actually supplies a text selection.
     let document = term == nil ? nil : proxy.documentIdentifier
     let selectionChanged = term != selectedTerm || selectedDocument != document
     if selectionChanged { dictionaryError = nil; dictionaryCheckedAt = .distantPast }
     selectedTerm = term; selectedDocument = document
-    let available = !state.phase.busy && recordingRequest.action == nil && insert.isHidden
-    let showDictionary = term != nil && available
+    let available = !state.phase.busy && recordingRequest.action == nil
+    if !state.computerMode, let term,
+      selectionChanged || forceDictionaryRefresh || dictionaryRevision != state.libraryRevision || Date().timeIntervalSince(dictionaryCheckedAt) >= 1 {
+      dictionaryContext = store?.keyboardDictionary()
+      selectedScope = dictionaryContext?.scope
+      selectedTermSaved = dictionaryContext.map { store?.isKeyboardTermSaved(term, context: $0) == true } ?? false
+      dictionaryRevision = state.libraryRevision; dictionaryCheckedAt = Date()
+    }
     if !applyingDictationEdit, let edit = dictationEdit, !edit.isCurrent(proxy) { dictationEdit = nil }
-    let showEdit = dictationEdit != nil && available && !showDictionary
+    let showEdit = dictationEdit != nil && available && insert.isHidden
     undoDictation.isHidden = !showEdit
     if let edit = dictationEdit {
       undoDictation.setImage(UIImage(systemName: edit.removed ? "arrow.uturn.forward" : "arrow.uturn.backward"), for: .normal)
       undoDictation.accessibilityLabel = edit.removed ? L("Refazer ditado") : L("Desfazer ditado")
     }
-    addToDictionary.isHidden = !showDictionary
-    if showDictionary, let term {
-      // Selection and taps refresh immediately. Idle polling must not scan the
-      // vocabulary inbox on every 150 ms keyboard state refresh.
-      if selectionChanged || forceDictionaryRefresh || dictionaryRevision != state.libraryRevision || Date().timeIntervalSince(dictionaryCheckedAt) >= 1 {
-        dictionaryContext = store?.keyboardDictionary()
-        selectedScope = dictionaryContext?.scope
-        selectedTermSaved = dictionaryContext.map { store?.isKeyboardTermSaved(term, context: $0) == true } ?? false
-        dictionaryCheckedAt = Date(); dictionaryRevision = state.libraryRevision
+    let preferences = store?.outputPreferences() ?? OutputPreferences()
+    let title = preferences.language.flag + " " + preferences.style.title
+    let wand = selection != nil
+    let setupTitle = !hasFullAccess ? L("Ative o Acesso Total") : !state.configured ?
+      (state.computerMode ? L("Conecte seu computador") : L("Entre no Clarify")) : nil
+    if addToDictionary.configuration?.title != title || addToDictionary.configuration?.subtitle != setupTitle || (addToDictionary.configuration?.image != nil) != wand {
+      var configuration = UIButton.Configuration.filled()
+      configuration.title = title; configuration.image = wand ? UIImage(systemName: "wand.and.stars") : nil
+      configuration.subtitle = setupTitle
+      configuration.titleAlignment = .center
+      configuration.imagePlacement = .trailing; configuration.imagePadding = 8
+      configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12)
+      configuration.baseBackgroundColor = .label; configuration.baseForegroundColor = .systemBackground
+      configuration.cornerStyle = .capsule
+      configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+      configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+        var result = attributes
+        result.font = UIFontMetrics(forTextStyle: .subheadline).scaledFont(for: .systemFont(ofSize: 15, weight: .semibold), maximumPointSize: 20)
+        return result
       }
-      let saved = selectedTermSaved
-      let title = saved ? L("Salvo") : dictionaryError == nil ? L("Adicionar ao dicionário") : L("Tentar novamente")
-      let titleChanged = addToDictionary.title(for: .normal) != title
-      // A system button crossfades title changes. Confirm the durable save
-      // immediately, and do not restart that transition on keyboard polling.
-      UIView.performWithoutAnimation {
-        addToDictionary.isEnabled = !saved && hasFullAccess && dictionaryContext != nil
-        addToDictionary.backgroundColor = .label
-        addToDictionary.setTitleColor(.systemBackground, for: .normal)
-        addToDictionary.setTitleColor(.systemBackground, for: .disabled)
-        if titleChanged {
-          addToDictionary.setTitle(title, for: .normal)
-          addToDictionary.setImage(UIImage(systemName: saved ? "checkmark" : "plus"), for: .normal)
-        }
-        addToDictionary.tintColor = .systemBackground
-        addToDictionary.semanticContentAttribute = .forceRightToLeft
-        if titleChanged { view.layoutIfNeeded() }
+      configuration.subtitleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+        var result = attributes; result.font = .systemFont(ofSize: 10); return result
       }
-      addToDictionary.accessibilityLabel = title
-      addToDictionary.accessibilityHint = dictionaryError ?? term
-      dictionaryTrailing?.constant = state.isLive ? -8 : -82
+      addToDictionary.configuration = configuration
+      addToDictionary.titleLabel?.adjustsFontSizeToFitWidth = true
+      addToDictionary.titleLabel?.minimumScaleFactor = 0.65
+      addToDictionary.semanticContentAttribute = .forceLeftToRight; addToDictionary.tintColor = .label
     }
-    let showSuggestions = !showDictionary && !showEdit && !suggestions.arrangedSubviews.isEmpty && available
+    addToDictionary.isHidden = false; addToDictionary.isEnabled = hasFullAccess && store != nil
+    addToDictionary.accessibilityLabel = L("Saída do ditado") + ": " + preferences.language.title + ", " + preferences.style.title
+    addToDictionary.accessibilityHint = dictionaryError ?? (wand ? L("Preferências e ações para o texto selecionado.") : L("Altera o idioma e o estilo do próximo ditado."))
+    if !hasFullAccess || !state.configured { addToDictionary.accessibilityHint = detail.text }
+    let menuState = SelectedTextMenuState(selection: selection, context: state.processingContext,
+      computerMode: state.computerMode, language: ClarifyLocale.language,
+      enabled: hasFullAccess && state.isLive && state.configured && available,
+      preferences: preferences, catalog: state.textActions, rewriteReady: state.legacyRewriteReady, translateReady: state.legacyTranslateReady,
+      preferencesSupported: state.outputPreferencesSupported,
+      dictionaryTitle: !state.computerMode && term != nil && selection != nil ? (selectedTermSaved ? L("Salvo") : L("Adicionar ao dicionário")) : nil,
+      dictionaryEnabled: hasFullAccess && available && !selectedTermSaved && dictionaryContext != nil)
+    if selectedTextMenuState != menuState {
+      addToDictionary.menu = outputMenu(menuState); selectedTextMenuState = menuState
+    }
+    capsuleLeading?.constant = recordingPanelVisible ? 64 : showEdit ? 60 : 10
+    dictionaryTrailing?.constant = recordingPanelVisible ? (insert.isHidden ? -8 : -56) : !state.isLive ? -82 : insert.isHidden ? -8 : -56
+    // Suggestions use the remaining toolbar width. The existing recording panel
+    // also shows complete errors without changing the keyboard's fixed height.
     let showingError = hasFullAccess && state.isLive && state.phase == .error
-    suggestions.isHidden = !showSuggestions || showingError
-    let covered = showDictionary || (!suggestions.isHidden) || showEdit
-    // Keep the toolbar and keyboard heights fixed. Errors replace the redundant
-    // generic title with the complete cause in the same 44-point row.
-    status.isHidden = covered || showingError || status.text?.isEmpty != false; detail.isHidden = covered
-    detail.numberOfLines = showingError ? 3 : 1
-    detail.lineBreakMode = showingError ? .byWordWrapping : .byTruncatingTail
-    detail.textColor = showingError ? .label : .secondaryLabel
-    // Remove an alternative before enabling its replacement. Activating both
-    // even briefly imposes incompatible required positions on the same label.
-    let vertical = showingError ? detailCenter : detailTop
-    if vertical?.isActive == false {
-      (showingError ? detailTop : detailCenter)?.isActive = false
-      vertical?.isActive = true
-    }
-    let wideError = showingError && insert.isHidden
-    let trailing = wideError ? errorTrailing : detailTrailing
-    if trailing?.isActive == false {
-      (wideError ? detailTrailing : errorTrailing)?.isActive = false
-      trailing?.isActive = true
-    }
+    suggestions.isHidden = selection != nil || showEdit || !insert.isHidden || !available || showingError || !state.isLive
+    status.isHidden = true; detail.isHidden = true
+    if showingError { addToDictionary.accessibilityHint = state.message }
+    if let outputPreferenceError { addToDictionary.accessibilityHint = outputPreferenceError }
     if recordingPanelVisible {
-      for element in [status, detail, mic, insert, suggestions, addToDictionary, undoDictation] { element.isHidden = true }
+      for element in [status, detail, mic, suggestions, undoDictation] { element.isHidden = true }
     }
+  }
+  private func menuIsCurrent(_ captured: SelectedTextMenuState) -> Bool {
+    guard selectedTextMenuState == captured, currentTextSelection() == captured.selection,
+      store?.snapshot().processingContext == captured.context,
+      store?.outputPreferences() == captured.preferences else { return false }
+    return true
+  }
+  private func outputMenu(_ captured: SelectedTextMenuState) -> UIMenu {
+    func preference(_ key: String, _ value: String, _ title: String, selected: Bool) -> UIAction {
+      UIAction(title: title, state: selected ? .on : .off) { [weak self] _ in
+        guard let self, self.menuIsCurrent(captured), self.hasFullAccess else { return }
+        do {
+          _ = try self.store?.setOutputPreference(key, value: value)
+          self.outputPreferenceError = nil
+        } catch {
+          self.outputPreferenceError = L("Não foi possível salvar a preferência de saída. Tente novamente.")
+          UIAccessibility.post(notification: .announcement, argument: self.outputPreferenceError)
+        }
+        self.updateToolbar(); self.updateRecordingPanel()
+      }
+    }
+    let language = UIMenu(title: L("Idioma de saída"), children: OutputLanguage.allCases.map {
+      preference("language", $0.rawValue, $0.menuTitle, selected: $0 == captured.preferences.language)
+    })
+    let styles: [OutputStyle] = [.formal, .casual, .very_casual]
+    var styleChoices: [UIMenuElement] = styles.map {
+      preference("style", $0.rawValue, $0.title, selected: $0 == captured.preferences.style)
+    }
+    if [.natural, .informal, .organized].contains(captured.preferences.style) {
+      let old = captured.preferences.style
+      styleChoices.append(preference("style", old.rawValue, old.title, selected: true))
+    }
+    styleChoices.append(preference("style", "default", L("Padrão"), selected: captured.preferences.style == .default))
+    var groups: [UIMenuElement] = [UIMenu(title: L("Saída do ditado"), options: .displayInline,
+      children: [language, UIMenu(title: L("Estilo de escrita"), children: styleChoices)])]
+    if !captured.preferencesSupported, captured.preferences.language != .auto || captured.preferences.style != .default {
+      groups.append(UIAction(title: L("Atualize o serviço para usar estas preferências de saída."), attributes: .disabled) { _ in })
+    }
+    if captured.selection != nil {
+      var actions: [UIMenuElement] = []
+      func action(_ title: String, kind: String, saved: TextActionDescriptor? = nil, enabled: Bool) -> UIMenuElement {
+        func choice(_ target: String, title: String) -> UIAction {
+          UIAction(title: title, attributes: enabled && captured.enabled ? [] : .disabled) { [weak self] _ in
+            guard let self, self.menuIsCurrent(captured), captured.enabled else { return }
+            self.processSelection(saved == nil ? kind : "text_action", language: target, savedAction: saved)
+          }
+        }
+        if kind == "translate" {
+          return UIMenu(title: title, children: OutputLanguage.allCases.filter { $0 != .auto }.map { choice($0.rawValue, title: $0.menuTitle) })
+        }
+        return choice("auto", title: title)
+      }
+      if captured.catalog.status == .ready {
+        for saved in captured.catalog.actions {
+          actions.append(action(saved.name, kind: saved.kind == "translation" ? "translate" : "rewrite", saved: saved, enabled: saved.enabled && saved.ready))
+        }
+        if actions.isEmpty { actions.append(UIAction(title: L("Nenhuma ação salva."), attributes: .disabled) { _ in }) }
+        if captured.catalog.actions.isEmpty || captured.catalog.actions.contains(where: { !$0.enabled || !$0.ready }) {
+          actions.append(UIAction(title: L("Atualize as ações no Clarify."), attributes: .disabled) { _ in })
+        }
+      } else if captured.catalog.status == .unsupported {
+        actions = [action(L("Reescrever"), kind: "rewrite", enabled: captured.rewriteReady),
+          action(L("Traduzir"), kind: "translate", enabled: captured.translateReady)]
+      } else { actions.append(UIAction(title: L("Atualize as ações no Clarify."), attributes: .disabled) { _ in }) }
+      if let title = captured.dictionaryTitle {
+        actions.append(UIAction(title: title, image: UIImage(systemName: selectedTermSaved ? "checkmark" : "plus"),
+          attributes: captured.dictionaryEnabled ? [] : .disabled) { [weak self] _ in
+          guard let self, self.menuIsCurrent(captured) else { return }; self.saveSelectedTerm()
+        })
+      }
+      groups.append(UIMenu(title: L("Texto selecionado"), options: .displayInline, children: actions))
+    }
+    return UIMenu(children: groups)
   }
   private func toggleDictationEdit() {
     guard !state.phase.busy, !applyingDictationEdit, var edit = dictationEdit else { return }
@@ -655,7 +805,8 @@ class KeyboardViewController: UIInputViewController {
     applyingDictationEdit = false
     typing.reset(); feedback.type(); updateCapitalization(); updateSuggestions()
   }
-  private func saveSelectedTerm() {
+  func saveSelectedTerm() {
+    guard !state.computerMode else { return }
     guard let term = selectedTerm, let scope = selectedScope, let store,
           hasFullAccess, selectedDocument == textDocumentProxy.documentIdentifier,
           term == KeyboardSelection.term(textDocumentProxy.selectedText), !state.phase.busy else { updateToolbar(); return }
@@ -668,5 +819,10 @@ class KeyboardViewController: UIInputViewController {
     catch { dictionaryError = error.localizedDescription; UIAccessibility.post(notification: .announcement, argument: dictionaryError) }
     updateToolbar(forceDictionaryRefresh: true)
   }
-  @objc private func cancelRecording() { send("cancel") }
+  private var errorIdentity: String { (state.operationID ?? "") + "|" + (state.message ?? "") }
+  @objc private func cancelRecording() {
+    if outputPreferenceError != nil { outputPreferenceError = nil; updateRecordingPanel(); return }
+    if state.phase == .error { dismissedError = errorIdentity; updateRecordingPanel(); return }
+    send("cancel")
+  }
 }

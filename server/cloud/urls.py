@@ -9,6 +9,8 @@ from .service.api import (
     HistorySyncView,
     SnippetView,
     TextView,
+    TextActionsView,
+    TextActionExecuteView,
     UsageView,
     health,
 )
@@ -65,4 +67,6 @@ urlpatterns = [
     path("v1/history/sync", HistorySyncView.as_view()),
     path("v1/dictations", DictationView.as_view()),
     path("v1/text", TextView.as_view()),
+    path("v1/text-actions", TextActionsView.as_view()),
+    path("v1/text-actions/execute", TextActionExecuteView.as_view()),
 ]

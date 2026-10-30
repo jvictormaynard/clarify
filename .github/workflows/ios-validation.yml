@@ -79,12 +79,6 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22.21.1
-          cache: npm
-          cache-dependency-path: mobile/package-lock.json
-        if: ${{ !inputs.trusted_qa }}
-      - run: npm ci
-        if: ${{ !inputs.trusted_qa }}
-      - run: npm run check
         if: ${{ !inputs.trusted_qa }}
       - name: Restore native test build cache
         id: native-cache
@@ -94,11 +88,11 @@ jobs:
             mobile/modules/clarify-core/.build
             ${{ runner.temp }}/ClarifyKeyboardUI
             ${{ runner.temp }}/ClarifyKeyboardUIFixture
-          key: ios-tests-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-${{ hashFiles('mobile/package-lock.json', 'mobile/modules/clarify-core/Package.swift', 'mobile/modules/clarify-core/Package.resolved', 'mobile/modules/clarify-core/ios/**/*.swift', 'mobile/modules/clarify-core/tests/**/*.swift', 'mobile/native/keyboard/**', 'mobile/native/tests/**', 'mobile/scripts/test-keyboard-ui.cjs') }}
+          key: ios-tests-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-${{ hashFiles('mobile/modules/clarify-core/Package.swift', 'mobile/modules/clarify-core/Package.resolved', 'mobile/modules/clarify-core/ios/**/*.swift', 'mobile/modules/clarify-core/tests/**/*.swift', 'mobile/native/keyboard/**', 'mobile/native/tests/**', 'mobile/scripts/test-keyboard-ui.cjs') }}
           restore-keys: |
             ios-tests-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-
         if: ${{ !inputs.trusted_qa }}
-      - run: npm run test:native
+      - run: swift test --package-path modules/clarify-core
         if: ${{ !inputs.trusted_qa }}
       - name: Test native keyboard and library integration
         env:
@@ -215,17 +209,16 @@ jobs:
         if: ${{ !inputs.trusted_qa }}
       - run: npx expo prebuild --clean --platform ios --no-install
         if: ${{ !inputs.trusted_qa }}
-      - name: Restore CocoaPods downloads and native build cache
+      - name: Restore CocoaPods downloads
         id: build-cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
         with:
           path: |
             ~/Library/Caches/CocoaPods
             ~/.cocoapods/repos
-            ${{ runner.temp }}/ClarifyAccount
-          key: ios-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-${{ hashFiles('mobile/package-lock.json', 'mobile/app.json', 'mobile/plugins/**') }}-${{ hashFiles('mobile/native/**', 'mobile/modules/**') }}
+          key: ios-pods-v1-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-${{ hashFiles('mobile/package-lock.json', 'mobile/app.json', 'mobile/plugins/**') }}
           restore-keys: |
-            ios-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-${{ hashFiles('mobile/package-lock.json', 'mobile/app.json', 'mobile/plugins/**') }}-
+            ios-pods-v1-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-
         if: ${{ !inputs.trusted_qa }}
       - run: pod install --project-directory=ios
         if: ${{ !inputs.trusted_qa }}

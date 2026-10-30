@@ -82,6 +82,8 @@ from workflow_config import (
     WorkflowScope,
 )
 from windows_hotkeys import supports_qt_push_to_talk as supports_push_to_talk
+from text_action_service import TextActionService, TextActionMutation
+from text_actions import settings_for, native_bindings, validate_input
 
 
 AUTOSTART_REGISTRY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -477,6 +479,8 @@ def _merge_library_draft(before, draft, persisted, key):
 
 
 class QmlSettingsController(QObject):
+    textActionsChanged = Signal()
+    textActionPreviewChanged = Signal()
     chatgptStateChanged = Signal()
     accountStateChanged = Signal()
     _accountFinished = Signal(object)
@@ -493,6 +497,7 @@ class QmlSettingsController(QObject):
 
     configChanged = Signal()
     updatesChanged = Signal()
+    computerStateChanged = Signal()
     routeChanged = Signal()
     selectedScopeChanged = Signal()
     dirtyChanged = Signal()
@@ -528,6 +533,9 @@ class QmlSettingsController(QObject):
         application_target=None,
         processing_allowed: Callable[[], bool] = lambda: True,
         chatgpt_session=None,
+        text_action_service=None,
+        text_action_provider=None,
+        text_action_runner=None,
     ) -> None:
         super().__init__(parent)
         self._background_mailbox = _SettingsMailbox()
@@ -536,6 +544,7 @@ class QmlSettingsController(QObject):
         self._background_timer.timeout.connect(self._drain_background_publications)
         self._updates = None
         self._practice = None
+        self._computer = None
         self.repositories = repositories
         self._account = account_service or AccountService(
             Path(repositories.config.path).parent,
@@ -670,6 +679,42 @@ class QmlSettingsController(QObject):
         self._model_error_key = None
         self._selected_scope = WorkflowScope.TRANSCRIPTION.value
         self._config = self._config_repository.load()
+        self._text_actions = text_action_service or TextActionService(
+            self._config_repository, self._account
+        )
+        self._text_actions.apply_bindings = hotkey_applier
+        self._text_action_provider = text_action_provider
+        self._text_action_runner = text_action_runner
+        self._text_action_preview = {"busy": False, "text": "", "error": ""}
+        self._text_action_preview_generation = 0
+        self._text_action_preview_token = None
+        self._text_action_preview_context = ""
+        self._text_action_refresh_generation = 0
+        self._text_action_refresh_token = None
+        self._text_action_refreshing = False
+        self._text_action_refresh_error = ""
+        self._text_action_mutation = {
+            "generation": 0,
+            "busy": False,
+            "status": "idle",
+            "error": "",
+            "errorCode": "",
+            "restoreRequired": False,
+        }
+        self._text_action_mutation_job = None
+        self._text_profile_model_generation = 0
+        self._text_profile_model_token = None
+        self._text_profile_model_request = None
+        self._text_profile_model_state = {
+            "generation": 0,
+            "requestId": "",
+            "requestKey": "",
+            "busy": False,
+            "status": "idle",
+            "models": [],
+            "error": "",
+        }
+        self._text_action_capture_context = ""
         configured_provider = (
             str(self._config.selection.transcription_provider or "gemini")
             .strip()
@@ -737,6 +782,8 @@ class QmlSettingsController(QObject):
             self._local_product.refresh_async()
         self.refreshMicrophoneInventory()
         self._background_timer.start()
+        if self._text_actions.managed():
+            self.refreshTextActions()
 
     @Slot()
     def _drain_background_publications(self):
@@ -751,6 +798,746 @@ class QmlSettingsController(QObject):
                 self._apply_local_devices(payload)
             elif kind == "chatgpt":
                 self._finish_chatgpt_command(generation, payload)
+            elif kind == "text_action_preview":
+                context, result, error = payload
+                if generation == self._text_action_preview_generation:
+                    try:
+                        valid = context == self._text_actions.context()
+                    except Exception:
+                        valid = False
+                    self._text_action_preview = {
+                        "generation": generation,
+                        "busy": False,
+                        "text": result if valid else "",
+                        "error": error
+                        if valid
+                        else "A conta mudou. Atualize as ações.",
+                    }
+                    self.textActionPreviewChanged.emit()
+            elif kind == "text_action_refresh":
+                if generation == self._text_action_refresh_generation:
+                    result, error = payload
+                    if error is None:
+                        try:
+                            self._text_actions.publish_refresh(result)
+                        except Exception as problem:
+                            error = problem
+                    self._set_error(error)
+                    self._text_action_refreshing = False
+                    self._text_action_refresh_error = self.lastError if error else ""
+                    if error is None:
+                        self._text_action_mutation["restoreRequired"] = False
+                    self.textActionsChanged.emit()
+            elif kind == "text_action_commit":
+                if payload is self._text_action_mutation_job:
+                    self._text_actions.commit_mutation(payload)
+                    if not payload.committed and payload.accepted is not None:
+                        self._text_action_mutation["status"] = "restoring"
+                        self.textActionsChanged.emit()
+            elif kind == "text_action_finish":
+                if payload is self._text_action_mutation_job:
+                    self._finish_text_action_write(payload)
+            elif kind == "text_profile_models":
+                request, catalog = payload
+                if (
+                    generation == self._text_profile_model_generation
+                    and self._profile_model_request_current(request)
+                ):
+                    self._text_profile_model_token = None
+                    if catalog is not None:
+                        self._model_catalogs[request.cache_key] = catalog
+                    self._publish_profile_models(catalog)
+
+    def text_action_snapshot(self):
+        try:
+            return self._text_actions.projection()
+        except Exception:
+            return {
+                "textActions": [],
+                "textActionProfiles": [],
+                "textActionContext": "",
+                "textActionsRevision": "",
+                "afterDictationTextActionId": "",
+                "afterDictationTextActionLanguage": "auto",
+                "textActionDictationContext": "cloud",
+            }
+
+    @Property("QVariantList", notify=textActionsChanged)
+    def textActions(self):
+        return self.text_action_snapshot()["textActions"]
+
+    @Property("QVariantList", notify=textActionsChanged)
+    def textActionProfiles(self):
+        return self.text_action_snapshot()["textActionProfiles"]
+
+    @Property("QVariantList", constant=True)
+    def textActionProviders(self):
+        return [
+            {
+                "id": metadata.provider_id,
+                "label": metadata.display_name,
+                "defaultModel": metadata.default_text_model,
+                "supportsCustomEndpoint": metadata.supports(
+                    ProviderCapability.CUSTOM_BASE_URL
+                ),
+            }
+            for metadata in PROVIDER_REGISTRY.metadata
+            if metadata.supports(ProviderCapability.TEXT_GENERATION)
+        ]
+
+    @Property(str, notify=textActionsChanged)
+    def textActionContext(self):
+        return self.text_action_snapshot()["textActionContext"]
+
+    @Property(str, notify=textActionsChanged)
+    def textActionsRevision(self):
+        return self.text_action_snapshot()["textActionsRevision"]
+
+    @Property(str, notify=textActionsChanged)
+    def afterDictationTextActionId(self):
+        return self.text_action_snapshot()["afterDictationTextActionId"]
+
+    @Property(str, notify=textActionsChanged)
+    def afterDictationTextActionLanguage(self):
+        return self.text_action_snapshot()["afterDictationTextActionLanguage"]
+
+    @Property(str, notify=textActionsChanged)
+    def textActionDictationContext(self):
+        return self.text_action_snapshot()["textActionDictationContext"]
+
+    @Property("QVariantMap", notify=textActionPreviewChanged)
+    def textActionPreview(self):
+        if self._text_action_preview_context:
+            try:
+                if self._text_action_preview_context != self._text_actions.context():
+                    return {"busy": False, "text": "", "error": ""}
+            except Exception:
+                return {"busy": False, "text": "", "error": ""}
+        return dict(self._text_action_preview)
+
+    @Property(bool, notify=textActionsChanged)
+    def textActionHotkeyCaptureActive(self):
+        return bool(self._text_action_capture_context)
+
+    @Property("QVariantMap", notify=textActionsChanged)
+    def textActionMutation(self):
+        return dict(self._text_action_mutation)
+
+    @Property(bool, notify=textActionsChanged)
+    def textActionsBusy(self):
+        return self._text_action_refreshing or self._text_action_mutation["busy"]
+
+    @Property(str, notify=textActionsChanged)
+    def textActionsError(self):
+        return self._text_action_refresh_error
+
+    @Property("QVariantMap", notify=textActionsChanged)
+    def textActionRefresh(self):
+        return {
+            "generation": self._text_action_refresh_generation,
+            "busy": self._text_action_refreshing,
+            "status": "pending"
+            if self._text_action_refreshing
+            else "failed"
+            if self._text_action_refresh_error
+            else "succeeded"
+            if self._text_action_refresh_generation
+            else "idle",
+            "error": self._text_action_refresh_error,
+        }
+
+    def _adopt_text_action_write(self, before):
+        current = self._config_repository.load()
+        routes = self._config.workflows
+        selected_before = self._config.workflow(self._selected_scope)
+        for scope in WORKFLOW_SCOPES:
+            if self._config.workflow(scope) == before.workflow(scope):
+                routes = routes.with_route(scope, current.workflow(scope))
+        self._config = self._sync_legacy_route_actions(
+            replace(self._config, workflows=routes, text_actions=current.text_actions),
+            current,
+        )
+        if selected_before != self._config.workflow(self._selected_scope):
+            self.routeChanged.emit()
+        self._set_error(None)
+        self.configChanged.emit()
+        self.saved.emit()
+
+    def _finish_text_action_write(self, mutation):
+        try:
+            self._text_actions.finish_mutation(mutation)
+            self._text_action_mutation.update(
+                busy=False,
+                status="succeeded",
+                error="",
+                errorCode="",
+                restoreRequired=False,
+            )
+            self._adopt_text_action_write(mutation.before)
+        except Exception as error:
+            self._set_error(error)
+            self._text_action_mutation.update(
+                busy=False,
+                status="failed",
+                error=self.lastError,
+                errorCode="context_expired"
+                if mutation.context != self.textActionContext
+                else (
+                    "restore_failed"
+                    if mutation.incomplete
+                    else getattr(error, "code", "") or "text_action_write_failed"
+                ),
+                restoreRequired=mutation.incomplete,
+            )
+        self._text_action_mutation_job = None
+        self.textActionsChanged.emit()
+
+    def _text_action_write(self, command, *args, defer_remote=False):
+        try:
+            if (
+                self._account_shutdown
+                or self._text_action_mutation["busy"]
+                or self._hotkey_capture_action
+                or not self._account_can_change()
+            ):
+                raise ValueError("Finalize a operação antes de continuar.")
+            if not self.endTextActionHotkeyCapture():
+                return False
+            before = self._config_repository.load()
+            result = command(*args, **({"defer_remote": True} if defer_remote else {}))
+            generation = self._text_action_mutation["generation"] + 1
+            self._text_action_mutation = {
+                "generation": generation,
+                "busy": isinstance(result, TextActionMutation),
+                "status": "pending"
+                if isinstance(result, TextActionMutation)
+                else "succeeded",
+                "error": "",
+                "errorCode": "",
+                "restoreRequired": False,
+            }
+            if isinstance(result, TextActionMutation):
+                self._text_action_mutation_job = result
+                service, mailbox, mutation = (
+                    self._text_actions,
+                    self._background_mailbox,
+                    result,
+                )
+
+                def write():
+                    service.send_mutation(mutation)
+                    mailbox.post("text_action_commit", generation, mutation)
+                    mutation.decision.wait()
+                    if (
+                        mutation.abandoned.is_set()
+                        and not mutation.committed
+                        and mutation.error is None
+                    ):
+                        mutation.error = ValueError("A alteração foi cancelada.")
+                    service.compensate_mutation(mutation)
+                    if mutation.abandoned.is_set():
+                        try:
+                            service.finish_mutation(mutation, apply_bindings=False)
+                        except Exception:
+                            pass
+                    else:
+                        mailbox.post("text_action_finish", generation, mutation)
+
+                threading.Thread(
+                    target=write, daemon=True, name="TextActionMutation"
+                ).start()
+            else:
+                self._adopt_text_action_write(before)
+            self.textActionsChanged.emit()
+            return True
+        except Exception as error:
+            self._set_error(error)
+            self.textActionsChanged.emit()
+            return False
+
+    def _apply_config_hotkeys(self, config):
+        if self._hotkey_applier is None:
+            return
+        try:
+            bindings = self._text_actions.bindings_for(config)
+        except Exception:
+            if not self._text_actions.managed():
+                raise
+            bindings = native_bindings(config, ())
+        self._hotkey_applier(bindings)
+
+    def _sync_legacy_text_hotkeys(self, config, previous):
+        settings = settings_for(config)
+        changed = {
+            action_id: key
+            for action_id, key in (
+                ("rewrite", HotkeyAction.REWRITE),
+                ("translation", HotkeyAction.TRANSLATION),
+            )
+            if config.hotkeys.definition(key) != previous.hotkeys.definition(key)
+        }
+        if not changed:
+            return config
+        if self._text_actions.managed():
+            devices = {key: dict(value) for key, value in settings.devices.items()}
+            owner = self._text_actions._device_key()
+            prefs = devices.setdefault(owner, {})
+            for action_id, key in changed.items():
+                prefs[action_id] = {
+                    **prefs.get(action_id, {"processingProfileId": "default"}),
+                    "shortcut": config.hotkeys.definition(key).to_mapping(),
+                }
+            return replace(config, text_actions=replace(settings, devices=devices))
+        actions = []
+        for action in settings.actions:
+            key = {
+                "rewrite": HotkeyAction.REWRITE,
+                "translation": HotkeyAction.TRANSLATION,
+            }.get(action.id)
+            if key is not None and config.hotkeys.definition(
+                key
+            ) != previous.hotkeys.definition(key):
+                action = replace(action, shortcut=config.hotkeys.definition(key))
+            actions.append(action)
+        return replace(config, text_actions=replace(settings, actions=tuple(actions)))
+
+    def _sync_legacy_route_actions(self, config, previous):
+        if self._text_actions.managed():
+            return config
+        settings = settings_for(config)
+        actions = []
+        changed = False
+        revisions = dict(settings.action_revisions)
+        for action in settings.actions:
+            if action.id in {"rewrite", "translation"}:
+                before, after = previous.workflow(action.id), config.workflow(action.id)
+                changes = {}
+                if before.prompt != after.prompt:
+                    from workflow_config import DEFAULT_WORKFLOW_PROMPTS
+
+                    changes["prompt"] = (
+                        after.prompt or DEFAULT_WORKFLOW_PROMPTS[action.id]
+                    )
+                if before.enabled != after.enabled:
+                    changes["enabled"] = after.enabled
+                if changes:
+                    candidate = replace(action, **changes)
+                    if candidate.definition() != action.definition():
+                        action = replace(candidate, revision=action.revision + 1)
+                        revisions[action.id] = action.revision
+                        changed = True
+            actions.append(action)
+        return (
+            replace(
+                config,
+                text_actions=replace(
+                    settings,
+                    actions=tuple(actions),
+                    revision=settings.revision + 1,
+                    action_revisions=revisions,
+                ),
+            )
+            if changed
+            else config
+        )
+
+    @Slot("QVariantMap", str, str, result=bool)
+    def saveTextAction(self, action, context, expectedRevision):
+        return self._text_action_write(
+            self._text_actions.save,
+            action,
+            context,
+            expectedRevision,
+            defer_remote=True,
+        )
+
+    @Slot(str, str, str, result=bool)
+    def deleteTextAction(self, actionId, context, expectedRevision):
+        return self._text_action_write(
+            self._text_actions.delete,
+            actionId,
+            context,
+            expectedRevision,
+            defer_remote=True,
+        )
+
+    @Slot(str, str, str, result=bool)
+    def duplicateTextAction(self, actionId, context, expectedRevision):
+        return self._text_action_write(
+            self._text_actions.duplicate,
+            actionId,
+            context,
+            expectedRevision,
+            defer_remote=True,
+        )
+
+    @Slot("QVariantMap", str, str, result=bool)
+    @Slot("QVariantMap", str, str, str, result=bool)
+    def saveTextActionProfile(
+        self, profile, context, expectedRevision, catalogRequestKey=""
+    ):
+        if type(profile) is dict and profile.get("providerId") == "chatgpt":
+            try:
+                if self._text_actions.chatgpt_session is None:
+                    self._text_actions.chatgpt_session = self._get_chatgpt_session()
+            except Exception as error:
+                self._set_error(error)
+                return False
+        model_catalog = None
+        if catalogRequestKey:
+            state = self.textActionProfileModels
+            if (
+                state.get("requestKey") != catalogRequestKey
+                or state["status"] != "ready"
+                or state.get("profileId") != profile.get("id")
+                or state.get("providerId") != profile.get("providerId")
+                or state.get("customEndpoint") != profile.get("customEndpoint")
+            ):
+                self._set_error(
+                    ValueError("O catálogo mudou. Atualize os modelos do perfil.")
+                )
+                return False
+            model_catalog = (catalogRequestKey, tuple(m["id"] for m in state["models"]))
+
+        def save_profile(*args):
+            return self._text_actions.save_profile(*args, model_catalog=model_catalog)
+
+        return self._text_action_write(save_profile, profile, context, expectedRevision)
+
+    def _profile_model_request_current(self, request):
+        try:
+            current = self._text_actions.profile_model_request(
+                request.profile_id,
+                request.provider_id,
+                request.endpoint,
+                request.context,
+                request.revision,
+            )
+            return current == request and not self._account_shutdown
+        except Exception:
+            return False
+
+    @Property("QVariantMap", notify=textActionsChanged)
+    def textActionProfileModels(self):
+        state = self._text_profile_model_state
+        if (
+            self._text_profile_model_request is not None
+            and not self._profile_model_request_current(
+                self._text_profile_model_request
+            )
+        ):
+            if self._text_profile_model_token is not None:
+                self._text_profile_model_token.cancel()
+            return {
+                **state,
+                "busy": False,
+                "status": "stale",
+                "models": [],
+                "error": "O catálogo mudou. Atualize os modelos do perfil.",
+            }
+        return {**state, "models": list(state["models"])}
+
+    def _publish_profile_models(self, catalog):
+        models = (
+            []
+            if catalog is None
+            else [
+                {"id": model, "label": catalog.display_names.get(model, model)}
+                for model in dict.fromkeys(catalog.text_models)
+            ]
+        )
+        self._text_profile_model_state.update(
+            busy=False,
+            models=models,
+            status=("ready" if models else "empty") if catalog is not None else "error",
+            error=""
+            if catalog is not None
+            else "Não foi possível consultar os modelos. Tente novamente.",
+        )
+        self.textActionsChanged.emit()
+
+    def _load_profile_models(
+        self,
+        profileId,
+        providerId,
+        customEndpoint,
+        context,
+        expectedRevision,
+        requestId,
+        *,
+        refresh,
+    ):
+        try:
+            if self._account_shutdown or not self._processing_allowed():
+                return False
+            if not requestId or len(requestId) > 128:
+                raise ValueError("Invalid catalog request")
+            if providerId == "chatgpt" and self._text_actions.chatgpt_session is None:
+                self._text_actions.chatgpt_session = self._get_chatgpt_session()
+            request = self._text_actions.profile_model_request(
+                profileId, providerId, customEndpoint, context, expectedRevision
+            )
+            self.cancelTextActionProfileModels()
+            generation = self._text_profile_model_generation
+            self._text_profile_model_request = request
+            self._text_profile_model_state = {
+                "generation": generation,
+                "requestId": requestId,
+                "requestKey": request.request_key,
+                "profileId": profileId,
+                "providerId": providerId,
+                "customEndpoint": request.endpoint,
+                "context": context,
+                "revision": expectedRevision,
+                "busy": False,
+                "status": request.status,
+                "models": [],
+                "error": "",
+            }
+            if request.status != "idle":
+                self.textActionsChanged.emit()
+                return True
+            catalog = self._model_catalogs.get(request.cache_key)
+            if not refresh and catalog is not None:
+                self._publish_profile_models(catalog)
+                return True
+            if request.draft_endpoint and not refresh:
+                self._text_profile_model_state["status"] = "refresh_required"
+                self.textActionsChanged.emit()
+                return True
+            token = self._text_profile_model_token = CancellationToken()
+            self._text_profile_model_state.update(busy=True, status="loading")
+            registry = (
+                PROVIDER_REGISTRY.with_chatgpt_session(self._get_chatgpt_session())
+                if providerId == "chatgpt"
+                else PROVIDER_REGISTRY
+            )
+            mailbox = self._background_mailbox
+
+            def discover():
+                try:
+                    catalog = registry.discover_models(
+                        request.provider_id, request.connection, token
+                    )
+                    token.raise_if_cancelled()
+                except Exception:
+                    catalog = None
+                mailbox.post("text_profile_models", generation, (request, catalog))
+
+            threading.Thread(
+                target=discover, daemon=True, name="TextProfileModels"
+            ).start()
+            self.textActionsChanged.emit()
+            return True
+        except Exception:
+            self._set_error(
+                ValueError(
+                    "O catálogo mudou ou está indisponível. Atualize os modelos do perfil."
+                )
+            )
+            return False
+
+    @Slot(str, str, str, str, str, str, result=bool)
+    def loadTextActionProfileModels(
+        self,
+        profileId,
+        providerId,
+        customEndpoint,
+        context,
+        expectedRevision,
+        requestId,
+    ):
+        return self._load_profile_models(
+            profileId,
+            providerId,
+            customEndpoint,
+            context,
+            expectedRevision,
+            requestId,
+            refresh=False,
+        )
+
+    @Slot(str, str, str, str, str, str, result=bool)
+    def refreshTextActionProfileModels(
+        self,
+        profileId,
+        providerId,
+        customEndpoint,
+        context,
+        expectedRevision,
+        requestId,
+    ):
+        return self._load_profile_models(
+            profileId,
+            providerId,
+            customEndpoint,
+            context,
+            expectedRevision,
+            requestId,
+            refresh=True,
+        )
+
+    @Slot(result=bool)
+    def cancelTextActionProfileModels(self):
+        if self._text_profile_model_token is not None:
+            self._text_profile_model_token.cancel()
+        self._text_profile_model_generation += 1
+        self._text_profile_model_token = None
+        self._text_profile_model_request = None
+        self._text_profile_model_state = {
+            "generation": self._text_profile_model_generation,
+            "requestId": "",
+            "requestKey": "",
+            "busy": False,
+            "status": "cancelled",
+            "models": [],
+            "error": "",
+        }
+        self.textActionsChanged.emit()
+        return True
+
+    @Slot(str, str, str, str, result=bool)
+    def setAfterDictationTextAction(
+        self, actionId, language, context, expectedRevision
+    ):
+        return self._text_action_write(
+            self._text_actions.set_after, actionId, language, context, expectedRevision
+        )
+
+    @Slot(result=bool)
+    def refreshTextActions(self):
+        if self._account_shutdown or self._text_action_mutation["busy"]:
+            return False
+        self.cancelTextActionPreview()
+        if self._text_action_refresh_token is not None:
+            self._text_action_refresh_token.cancel()
+        token = self._text_action_refresh_token = CancellationToken()
+        self._text_action_refresh_generation += 1
+        generation = self._text_action_refresh_generation
+        self._text_action_refreshing = True
+        self._text_action_refresh_error = ""
+        self.textActionsChanged.emit()
+        mailbox, service = self._background_mailbox, self._text_actions
+
+        def refresh():
+            result, error = None, None
+            try:
+                # Native binding effects belong to the Qt thread, after refresh.
+                result = service.fetch_refresh(cancel=token)
+            except Exception as problem:
+                error = problem
+            mailbox.post("text_action_refresh", generation, (result, error))
+
+        threading.Thread(target=refresh, daemon=True, name="TextActionsRefresh").start()
+        return True
+
+    @Slot(str, str, str, "qlonglong", result=bool)
+    @Slot(str, str, str, "qlonglong", str, result=bool)
+    def previewTextAction(
+        self, actionId, sampleText, context, actionRevision, language="auto"
+    ):
+        try:
+            if self._text_action_provider is None or not self._processing_allowed():
+                raise ValueError("O processamento está indisponível.")
+            validate_input(sampleText)
+            if context != self._text_actions.context():
+                raise ValueError("A conta mudou. Atualize as ações.")
+            snapshot = self._text_action_provider.snapshot_text_action(actionId)
+            if (
+                type(actionRevision) is not int
+                or snapshot.action.revision != actionRevision
+            ):
+                raise ValueError("A ação mudou. Salve e tente novamente.")
+            validate_input(sampleText, language)
+            if snapshot.action.kind == "translation" and language == "auto":
+                raise ValueError("Selecione o idioma da tradução.")
+            self.cancelTextActionPreview()
+            token = self._text_action_preview_token = CancellationToken()
+            generation = self._text_action_preview_generation
+            self._text_action_preview_context = context
+            self._text_action_preview = {
+                "generation": generation,
+                "busy": True,
+                "text": "",
+                "error": "",
+            }
+            self.textActionPreviewChanged.emit()
+            provider, mailbox = self._text_action_provider, self._background_mailbox
+
+            def preview():
+                result, error = "", ""
+                try:
+                    result = provider.transform_text_action(
+                        snapshot, sampleText, language, cancel=token
+                    ).text
+                except Exception:
+                    error = "Não foi possível testar a ação. Tente novamente."
+                mailbox.post(
+                    "text_action_preview", generation, (context, result, error)
+                )
+
+            threading.Thread(
+                target=preview, daemon=True, name="TextActionPreview"
+            ).start()
+            return True
+        except Exception as error:
+            self._set_error(error)
+            return False
+
+    @Slot(result=bool)
+    def cancelTextActionPreview(self):
+        if self._text_action_preview_token is not None:
+            self._text_action_preview_token.cancel()
+        self._text_action_preview_generation += 1
+        self._text_action_preview_context = ""
+        self._text_action_preview = {
+            "generation": self._text_action_preview_generation,
+            "busy": False,
+            "text": "",
+            "error": "",
+        }
+        self.textActionPreviewChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def beginTextActionHotkeyCapture(self, context):
+        try:
+            if (
+                context != self._text_actions.context()
+                or self._text_action_mutation["busy"]
+                or not self._account_can_change()
+            ):
+                raise ValueError("A conta mudou ou há uma operação em andamento.")
+            if self._hotkey_capture_action:
+                raise ValueError("Finalize a captura de atalho atual.")
+            if not self._text_action_capture_context and self._hotkey_capture_changed:
+                self._hotkey_capture_changed(True)
+            self._text_action_capture_context = context
+            self.textActionsChanged.emit()
+            return True
+        except Exception as error:
+            self._set_error(error)
+            return False
+
+    @Slot(result=bool)
+    def endTextActionHotkeyCapture(self):
+        try:
+            if self._text_action_capture_context and self._hotkey_capture_changed:
+                self._hotkey_capture_changed(False)
+            self._text_action_capture_context = ""
+            self.textActionsChanged.emit()
+            return True
+        except Exception as error:
+            self._set_error(error)
+            return False
+
+    @Slot(result=bool)
+    def cancelTextActionHotkeyCapture(self):
+        return self.endTextActionHotkeyCapture()
+
+    @Slot(str, result=bool)
+    def runTextAction(self, actionId):
+        return bool(self._text_action_runner and self._text_action_runner(actionId))
 
     def _get_chatgpt_session(self):
         if self._chatgpt_session is None:
@@ -1023,6 +1810,15 @@ class QmlSettingsController(QObject):
         self._provider_activity.pop("chatgpt", None)
 
         def clear_models(config):
+            # Legacy route controls may reset, but saved text profiles retain
+            # their original account binding until their provider is changed.
+            settings = settings_for(config)
+            profiles = tuple(
+                replace(p, route=p.resolved(config), source_scope="")
+                if p.source_scope and p.resolved(config).provider_id == "chatgpt"
+                else p
+                for p in settings.profiles
+            )
             routes = config.workflows
             for scope in WORKFLOW_SCOPES:
                 route = config.workflow(scope)
@@ -1031,7 +1827,10 @@ class QmlSettingsController(QObject):
                         scope,
                         replace(route, model_id="", custom_endpoint="", account_id=""),
                     )
-            fields = {"workflows": routes}
+            fields = {
+                "workflows": routes,
+                "text_actions": replace(settings, profiles=profiles),
+            }
             if config.voice_translation.route.provider_id == "chatgpt":
                 fields["voice_translation"] = replace(
                     config.voice_translation,
@@ -1917,7 +2716,11 @@ class QmlSettingsController(QObject):
     def beginHotkeyCapture(self, action: str) -> bool:
         """Put one QML row into capture mode without changing the draft."""
 
-        if not self._account_can_change():
+        if (
+            self._text_action_capture_context
+            or self._text_action_mutation["busy"]
+            or not self._account_can_change()
+        ):
             self._set_error(ValueError("Finalize a operação antes de continuar."))
             return False
         try:
@@ -1942,15 +2745,17 @@ class QmlSettingsController(QObject):
     def cancelHotkeyCapture(self) -> bool:
         """Leave capture mode without changing the current draft."""
 
+        if not self.endTextActionHotkeyCapture():
+            return False
         if self._hotkey_capture_action:
-            self._hotkey_capture_action = ""
-            self.hotkeyChanged.emit()
             if self._hotkey_capture_changed:
                 try:
                     self._hotkey_capture_changed(False)
                 except Exception as error:
                     self._set_error(error)
                     return False
+            self._hotkey_capture_action = ""
+            self.hotkeyChanged.emit()
         return True
 
     @Slot(str, object, result=bool)
@@ -2943,6 +3748,14 @@ class QmlSettingsController(QObject):
 
     @Slot()
     def shutdown(self) -> None:
+        self.cancelTextActionProfileModels()
+        if self._text_action_refresh_token is not None:
+            self._text_action_refresh_token.cancel()
+        if self._text_action_mutation_job is not None:
+            self._text_action_mutation_job.abandoned.set()
+            self._text_action_mutation_job.decision.set()
+        self.cancelTextActionPreview()
+        self.endTextActionHotkeyCapture()
         if self._practice is not None:
             self._practice.command("close")
         self.cancelChatGPT()
@@ -3021,6 +3834,48 @@ class QmlSettingsController(QObject):
             "socialPending": self._account_busy and self._account_social,
             "error": self._account_error,
         }
+
+    def bindComputer(self, controller):
+        self._computer = controller
+        controller.changed.connect(self.computerStateChanged)
+        self.accountStateChanged.connect(controller.refresh)
+        self.computerStateChanged.emit()
+
+    @Property("QVariantMap", notify=computerStateChanged)
+    def computerState(self):
+        if self._computer is not None:
+            return self._computer.snapshot()
+        return {
+            "enabled": False,
+            "running": False,
+            "durable": False,
+            "busy": False,
+            "blocked": True,
+            "error": "unavailable",
+            "devices": [],
+            "pairingReady": False,
+            "pairingExpiresAt": 0,
+        }
+
+    @Property(str, notify=computerStateChanged)
+    def computerPairingImage(self):
+        return self._computer.pairingImage if self._computer is not None else ""
+
+    @Slot(str, str, result=bool)
+    def computerCommand(self, action, value=""):
+        if self._computer is None or not self._computer.command(action, value):
+            self._set_error(ValueError("Não foi possível alterar o acesso do celular."))
+            return False
+        self._set_error(None)
+        return True
+
+    def getComputerPairing(self):
+        return self._computer.pairing() if self._computer is not None else {}
+
+    @Slot()
+    def closeComputerPairing(self):
+        if self._computer is not None:
+            self._computer.command("close")
 
     @Property("QVariantMap", notify=accountStateChanged)
     def historyState(self):
@@ -3327,6 +4182,8 @@ class QmlSettingsController(QObject):
 
     @Slot(str, str, result=bool)
     def accountCommand(self, action, value="", *, expected_identity=None):
+        if self._account_shutdown:
+            return False
         if action == "cancel-social":
             if self._account_busy and self._account_social:
                 self._account_cancel.set()
@@ -3373,6 +4230,16 @@ class QmlSettingsController(QObject):
                     return False
             if not self._account.begin_change():
                 return False
+            account_generation = getattr(self._account, "_generation", 0)
+        # Host workers can read account state while draining. Do not hold
+        # the account/history guard when scheduling or waiting for that drain.
+        computer_barrier = (
+            self._computer.prepare_account_change()
+            if self._computer is not None
+            and action
+            in {"configure", "login", "signup", "confirm", "social", "logout", "delete"}
+            else None
+        )
         self._account_busy, self._account_error = True, ""
         self._account_social = action == "social"
         self._account_cancel.clear()
@@ -3381,6 +4248,24 @@ class QmlSettingsController(QObject):
         def perform():
             error = ""
             try:
+                if computer_barrier is not None and computer_barrier.result().get(
+                    "error"
+                ):
+                    raise ValueError("Não foi possível alterar o acesso do celular.")
+                if self._account_shutdown:
+                    return
+                # The drain can outlive the session that reserved this change.
+                # Recheck its owner, then release the guard before account I/O.
+                with self._history_correction_guard:
+                    if getattr(
+                        self._account, "_generation", 0
+                    ) != account_generation or (
+                        expected_identity is not None
+                        and self._history_correction_identity() != expected_identity
+                    ):
+                        raise CorrectionError("context_changed")
+                if action == "social" and self._account_cancel.is_set():
+                    raise ValueError("A operação da conta foi cancelada.")
                 if action == "configure":
                     self._account.configure(value)
                 elif action == "social":
@@ -3429,6 +4314,10 @@ class QmlSettingsController(QObject):
 
     @Slot(object)
     def _finish_account(self, error):
+        if self._account_shutdown:
+            return
+        if self._computer is not None:
+            self._computer.finish_account_change()
         self._account_social = False
         self._account_error = error
         try:
@@ -3440,6 +4329,13 @@ class QmlSettingsController(QObject):
             self._account_busy = False
             self._account.end_change()
         self.accountStateChanged.emit()
+        self.endTextActionHotkeyCapture()
+        try:
+            self._apply_config_hotkeys(self._config_repository.load())
+        except Exception as problem:
+            self._set_error(problem)
+        self.refreshTextActions()
+        self.textActionsChanged.emit()
         self.loaded.emit()
 
     @Slot(result=bool)
@@ -3489,6 +4385,14 @@ class QmlSettingsController(QObject):
                 change = self._preference_change(method, args, before)
                 candidate = change(before)
                 draft = change(self._config)
+                candidate = self._sync_legacy_route_actions(candidate, before)
+                draft = self._sync_legacy_route_actions(draft, self._config)
+                if (
+                    candidate.hotkeys != before.hotkeys
+                    or draft.hotkeys != self._config.hotkeys
+                ):
+                    candidate = self._sync_legacy_text_hotkeys(candidate, before)
+                    draft = self._sync_legacy_text_hotkeys(draft, self._config)
             except (TypeError, ValueError):
                 self._set_error(ValueError("Invalid settings value"))
                 return False
@@ -3507,13 +4411,15 @@ class QmlSettingsController(QObject):
                     return False
             if (
                 self._hotkey_applier is not None
-                and hotkey_method
+                and (hotkey_method or candidate.text_actions != before.text_actions)
                 and (
-                    candidate.hotkeys != before.hotkeys or self._hotkey_reapply_required
+                    candidate.hotkeys != before.hotkeys
+                    or candidate.text_actions != before.text_actions
+                    or self._hotkey_reapply_required
                 )
             ):
                 hotkeys_attempted = True
-                self._hotkey_applier(candidate.hotkeys)
+                self._apply_config_hotkeys(candidate)
             if method == "setAutostart":
                 saved = _apply_config_with_autostart_transaction(
                     candidate, self.repositories, self._autostart_registry
@@ -3523,7 +4429,7 @@ class QmlSettingsController(QObject):
         except Exception as error:
             if hotkeys_attempted and before is not None:
                 try:
-                    self._hotkey_applier(before.hotkeys)
+                    self._apply_config_hotkeys(before)
                     self._hotkey_reapply_required = False
                 except Exception:
                     self._hotkey_reapply_required = True
@@ -3811,11 +4717,11 @@ class QmlSettingsController(QObject):
         persisted_config = None
         try:
             persisted_before = self._config_repository.load()
-            if (
-                self._hotkey_applier is not None
-                and persisted_before.hotkeys != self._config.hotkeys
+            if self._hotkey_applier is not None and (
+                persisted_before.hotkeys != self._config.hotkeys
+                or persisted_before.text_actions != self._config.text_actions
             ):
-                self._hotkey_applier(self._config.hotkeys)
+                self._apply_config_hotkeys(self._config)
                 hotkeys_applied = True
             persisted_config = _apply_config_with_autostart_transaction(
                 self._config,
@@ -3843,7 +4749,7 @@ class QmlSettingsController(QObject):
             if hotkeys_applied and self._hotkey_applier is not None:
                 try:
                     assert persisted_before is not None
-                    self._hotkey_applier(persisted_before.hotkeys)
+                    self._apply_config_hotkeys(persisted_before)
                 except Exception:
                     pass
             self._set_error(error)
@@ -4309,7 +5215,10 @@ class QmlSettingsController(QObject):
         self._set_error(None)
         if config == self._config:
             return True
+        config = self._sync_legacy_route_actions(config, self._config)
         hotkeys_changed = config.hotkeys != self._config.hotkeys
+        if hotkeys_changed:
+            config = self._sync_legacy_text_hotkeys(config, self._config)
         microphone_changed = (
             config.microphone != self._config.microphone
             or config.recording_controls != self._config.recording_controls
@@ -4329,6 +5238,7 @@ class QmlSettingsController(QObject):
             self._dirty = True
             self.dirtyChanged.emit()
         self.configChanged.emit()
+        self.textActionsChanged.emit()
         if hotkeys_changed and not capture_changed:
             self.hotkeyChanged.emit()
         if microphone_changed:
@@ -4372,6 +5282,7 @@ class QmlSettingsController(QObject):
         )
         if config_changed:
             self.configChanged.emit()
+            self.textActionsChanged.emit()
         if microphone_changed:
             self.microphoneChanged.emit()
         if hotkeys_changed and not capture_changed:

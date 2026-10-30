@@ -64,7 +64,7 @@ function setup() {
     useRef:value=>{const slot=index++;if(!(slot in slots))slots[slot]={current:value};return slots[slot];},
     useMemo:fn=>fn(),useCallback:(fn,deps)=>{const slot=index++;const previous=slots[slot];if(!previous || deps.some((x,i)=>!Object.is(x,previous.deps[i])))slots[slot]={fn,deps};return slots[slot].fn;},useEffect:()=>{},
   });
-  for(const file of ['bridge.ts','state.ts','dictionary-identity.ts','use-settings-window.ts','use-settings.ts']){
+  for(const file of ['navigation.ts','bridge.ts','state.ts','dictionary-identity.ts','use-settings-window.ts','use-text-actions.ts','use-app-style-editor.ts','use-text-profile-editor.ts','use-settings.ts']){
     const sourceRoot = root;
     let source=readFileSync(`${sourceRoot}/desktop/src/settings/${file}`,'utf8').replace(/^import\b[\s\S]*?;\s*/gm,'').replace(/^export /gm,'');
     if(file==='use-settings-window.ts') source=source.replace(/\buseEffect\(/g,'windowEffect(');
@@ -83,7 +83,7 @@ test('save captures its revision; typing and navigation stay responsive', async 
  const h=setup();let c=h.render();await c.navigate('text');c=h.render();c.setPrompt('save-me');c=h.render();
  const gate=h.pause('save');const saving=c.save();await gate.started;
  c=h.render();c.setPrompt('newer-text');const nav=c.navigate('dictionary');c=h.render();assert.equal(c.page,'dictionary');assert.equal(c.routeLoading,false);
- const back=c.navigate('text');c=h.render();assert.equal(c.page,'text');gate.release();await Promise.all([saving,nav,back]);c=h.render();
+ const back=c.navigate('text');c=h.render();assert.equal(c.page,'style');gate.release();await Promise.all([saving,nav,back]);c=h.render();
  assert.equal(h.persisted.routes.refinement.prompt,'save-me');assert.equal(c.prompt,'newer-text');assert.equal(c.dirty,true);assert.equal(c.pageDirty,true);
  await c.save();c=h.render();assert.equal(h.persisted.routes.refinement.prompt,'newer-text');assert.equal(c.dirty,false);
 
@@ -98,7 +98,7 @@ test('contextual save preserves drafts on other pages', async () => {
 
 test('latest route wins and hidden microphone test stops', async () => {
  const h=setup();let c=h.render();const gate=h.pause('testMicrophone');const test=c.run('testMicrophone');await gate.started;
- const one=c.navigate('text','rewrite');const two=c.navigate('dictionary');const three=c.navigate('text','refinement');c=h.render();assert.equal(c.page,'text');
+ const one=c.navigate('text','rewrite');const two=c.navigate('dictionary');const three=c.navigate('text','refinement');c=h.render();assert.equal(c.page,'style');
  gate.release();await Promise.all([test,one,two,three]);c=h.render();assert.equal(c.state.selectedScope,'refinement');assert.equal(c.state.microphoneTestBusy,false);assert.equal(c.routeLoading,false);assert.equal(h.records.some(x=>x.method==='save'),false);
 
 });
@@ -484,4 +484,23 @@ test('save all queued after navigation preserves the requested workflow', async 
  gate.release();await Promise.all([navigation,saving]);c=h.render();
  assert.equal(c.page,'dictation');assert.equal(c.state.selectedScope,'transcription');assert.equal(c.routeLoading,false);
  assert.equal(h.persisted.routes.transcription.prompt,'dictation draft');assert.equal(h.persisted.routes.refinement.prompt,'text draft');
+});
+
+test('settings dialog preserves its main destination and local review context', async () => {
+ const h=setup();let c=h.render();await c.navigate('style','local_asr_refinement');c=h.render();
+ await c.navigate('general');c=h.render();assert.equal(c.mainPage,'style');assert.equal(c.settingsOpen,true);assert.equal(c.settingsSection,'general');
+ c.requestCloseSettings();await Promise.resolve();c=h.render();assert.equal(c.settingsOpen,false);assert.equal(c.page,'style');assert.equal(c.state.selectedScope,'local_asr_refinement');
+});
+
+test('settings dialog save excludes main-page drafts', async () => {
+ const h=setup();let c=h.render();await c.navigate('style');c=h.render();c.setPrompt('keep the style draft');
+ await c.navigate('privacy');c=h.render();c.setRetention('30');c=h.render();await c.saveSettings();c=h.render();
+ assert.equal(h.persisted.historyRetentionDays,30);assert.equal(h.persisted.routes.refinement.prompt,'saved-refinement');assert.equal(c.prompt,'keep the style draft');assert.equal(c.dirty,true);
+});
+
+test('continuing settings editing revokes a pending save-and-close', async () => {
+ const h=setup();let c=h.render();await c.navigate('privacy');c=h.render();c.setRetention('30');c=h.render();c.requestCloseSettings();c=h.render();
+ const gate=h.pause('save');const saving=c.saveSettings(true);await gate.started;
+ c=h.render();c.setSettingsDismissRequested(false);gate.release();await saving;c=h.render();
+ assert.equal(h.persisted.historyRetentionDays,30);assert.equal(c.settingsOpen,true);assert.equal(c.settingsDismissRequested,false);
 });

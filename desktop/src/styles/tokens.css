@@ -39,6 +39,13 @@
   --radius: 12px;
   --control-radius: 8px;
   --sidebar-width: 240px;
+  --sidebar-content-inset: 8px;
+  --sidebar-row-content-inset: 10px;
+  --sidebar-control-gap: 8px;
+  --workspace-titlebar-scroll-fade-height: 24px;
+  --app-scrollbar-width: 6px;
+  --app-scrollbar-thumb: rgb(255 255 255 / 8%);
+  --app-scrollbar-thumb-hover: rgb(255 255 255 / 12%);
   --color-text: var(--foreground);
   --color-background: var(--background);
   --color-text-muted: var(--muted-foreground);

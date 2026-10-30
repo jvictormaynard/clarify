@@ -9,7 +9,10 @@ export interface Snapshot {
   text?: string;
   message?: string;
   configured: boolean;
+  computerMode?: boolean;
+  processingContext?: string;
   libraryRevision?: number;
+  textOperation?: boolean;
 }
 
 export interface VocabularyEntry {
@@ -31,7 +34,23 @@ export interface HistoryEntry {
 }
 export interface HistoryPage { entries: HistoryEntry[]; nextCursor?: string; context: string }
 export interface MicrophoneActivation { active: boolean; message?: string }
-export interface AccountSnapshot {
+export interface ComputerActionReadiness { dictate: boolean; rewrite: boolean; translate: boolean }
+export type OutputLanguage = 'auto' | 'pt' | 'en' | 'es' | 'de' | 'ru';
+export type OutputStyle = 'default' | 'formal' | 'casual' | 'very_casual' | 'natural' | 'informal' | 'organized';
+export interface OutputPreferences { language: OutputLanguage; style: OutputStyle }
+export interface ComputerTextAction {
+  id: string; revision: string; name: string;
+  kind: 'rewrite' | 'translation' | 'custom'; enabled: boolean; ready: boolean;
+}
+export interface TextActionCatalog {
+  textActionsSupported: boolean;
+  textActions: ComputerTextAction[];
+  textActionsStatus: 'unavailable' | 'loading' | 'ready' | 'unsupported';
+  outputPreferencesSupported: boolean;
+}
+export interface ComputerSnapshot extends TextActionCatalog { paired: boolean; computerID: string; computerName: string; status: string; ready: boolean; busy: boolean; actionReadiness?: ComputerActionReadiness; remoteStatus?: string; remoteAvailable?: boolean }
+export interface AccountSnapshot extends TextActionCatalog {
+  mode?: 'hosted' | 'computer'; processingConfigured?: boolean; computer?: ComputerSnapshot;
   endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
   hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
   dictionaryConflict?: boolean;
@@ -44,6 +63,7 @@ export interface AccountSnapshot {
 export default requireNativeModule<{
   readonly uiLanguage: string;
   readonly keyboardDiagnosticAvailable: boolean;
+  newOperationID(): string;
   openKeyboardDiagnostic(): Promise<void>;
   onboardingRequired(): Promise<boolean>;
   markOnboardingPresented(): Promise<void>;
@@ -51,12 +71,19 @@ export default requireNativeModule<{
   getSnapshot(): Promise<Snapshot>;
   getAccount(): Promise<AccountSnapshot>;
   accountCommand(action: string, value: string): Promise<AccountSnapshot>;
+  computerCommand(action: 'computer' | 'hosted' | 'scan' | 'refresh' | 'disconnect'): Promise<AccountSnapshot>;
+  processComputerText(action: 'rewrite' | 'translate', text: string, language: string, context: string): Promise<void>;
+  processText(action: 'rewrite' | 'translate', text: string, language: string, context: string): Promise<string>;
+  processTextAction(actionID: string, actionRevision: string, text: string, language: string, context: string): Promise<string>;
+  getOutputPreferences(): Promise<OutputPreferences>;
+  setOutputPreference(key: 'language' | 'style', value: string): Promise<OutputPreferences>;
   activate(): Promise<MicrophoneActivation>;
   deactivate(): Promise<void>;
   returnToSource(token: string): Promise<boolean>;
-  command(action: RecordingAction, operationID: string): Promise<void>;
+  command(action: RecordingAction, operationID: string, context: string): Promise<void>;
   copyResult(): Promise<void>;
   copyText(text: string): Promise<void>;
+  copyTextOperationResult(operationID: string, context: string): Promise<boolean>;
   getHistory(before: string): Promise<HistoryPage>;
   deleteHistory(id: string, localOnly: boolean, context: string): Promise<void>;
   clearHistory(context: string): Promise<void>;

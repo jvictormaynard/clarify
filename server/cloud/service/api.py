@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.db import transaction
 from django.http import JsonResponse
+from django.utils import timezone
 from rest_framework import exceptions, permissions
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
@@ -20,7 +21,7 @@ from dictionary_snippets import (
     DictionarySnippets,
     Snippet,
 )
-from . import audio, groq, history, ledger
+from . import audio, groq, history, ledger, text_actions
 from .middleware import take_rate
 from .models import Dictionary, Operation, SnippetLibrary
 
@@ -112,6 +113,7 @@ class AccountView(ServiceView):
                 "id": str(request.user.pk),
                 "email": request.user.email,
                 "usage": ledger.usage(request.user),
+                "output_preferences_supported": True,
             }
         )
 
@@ -258,6 +260,34 @@ class SnippetView(ServiceView):
         return Response({"revision": item.revision, "entries": item.entries})
 
 
+class TextActionsView(ServiceView):
+    def get(self, request):
+        return Response(text_actions.read(request.user))
+
+    def put(self, request):
+        try:
+            if not isinstance(request.data, dict) or set(request.data) != {
+                "expected_revision",
+                "actions",
+            }:
+                raise ValueError()
+            return Response(
+                text_actions.replace(
+                    request.user,
+                    request.data["expected_revision"],
+                    request.data["actions"],
+                )
+            )
+        except text_actions.Conflict as error:
+            return Response(
+                {"code": "text_actions_conflict", **error.current}, status=409
+            )
+        except (KeyError, TypeError, ValueError):
+            return Response({"code": "invalid_text_actions"}, status=400)
+        except ledger.Rejected as error:
+            return Response({"code": error.code}, status=error.status)
+
+
 class DictationView(ServiceView):
     parser_classes = [MultiPartParser]
 
@@ -273,6 +303,9 @@ class DictationView(ServiceView):
         try:
             from shared.dictation_policy import cleanup_level as parse_cleanup_level
             from shared.writing_style_policy import writing_style as parse_writing_style
+            from shared.output_preferences import (
+                output_language as parse_output_language,
+            )
 
             if set(request.data) - {
                 "audio",
@@ -280,15 +313,36 @@ class DictationView(ServiceView):
                 "language",
                 "cleanup_level",
                 "writing_style",
+                "output_language",
+                "text_action_id",
+                "text_action_revision",
+                "text_action_language",
             }:
                 raise ValueError()
             level = parse_cleanup_level(request.data.get("cleanup_level"))
             style = parse_writing_style(request.data.get("writing_style"))
+            target = parse_output_language(request.data.get("output_language"))
             if any(len(request.data.getlist(key)) != 1 for key in request.data):
                 raise ValueError()
             operation_id = uuid.UUID(request.data["operation_id"])
             language = request.data.get("language", "auto")
             if language not in {"auto", "pt", "en", "es", "de", "ru"}:
+                raise ValueError()
+            action_id = request.data.get("text_action_id")
+            action_revision = request.data.get("text_action_revision")
+            action_language = request.data.get("text_action_language", "auto")
+            if action_id is not None or action_revision is not None:
+                if (
+                    not text_actions.valid_id(action_id)
+                    or not isinstance(action_revision, str)
+                    or not action_revision.isascii()
+                    or not action_revision.isdecimal()
+                    or not text_actions.valid_revision(int(action_revision), minimum=1)
+                    or action_language not in text_actions.LANGUAGES
+                ):
+                    raise ValueError()
+                action_revision = int(action_revision)
+            elif "text_action_language" in request.data:
                 raise ValueError()
             upload = request.FILES["audio"]
             if not 0 < upload.size <= settings.CLARIFY_MAX_UPLOAD_BYTES:
@@ -297,10 +351,39 @@ class DictationView(ServiceView):
             return Response({"code": "invalid_audio_request"}, status=400)
         operation = None
         outcome = None
+        action = None
         try:
             digest = audio.fingerprint(
-                upload, language, cleanup_level=level, writing_style=style
+                upload,
+                language,
+                cleanup_level=level,
+                writing_style=style,
+                **({"output_language": target} if target is not None else {}),
             )
+            if action_id is not None:
+                digest = hashlib.sha256(
+                    json.dumps(
+                        [
+                            "dictation-text-action",
+                            digest,
+                            action_id,
+                            action_revision,
+                            action_language,
+                        ],
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                ).hexdigest()
+                previous = ledger.replay(request.user, operation_id, digest)
+                if previous is not None:
+                    return Response(
+                        {**previous.result, "usage": ledger.usage(request.user)},
+                        status=422
+                        if previous.result.get("code") == "snippet_result_too_large"
+                        else 200,
+                    )
+                action = text_actions.resolve(
+                    request.user, action_id, action_revision, action_language
+                )
             with tempfile.TemporaryDirectory(prefix="clarify-cloud-") as directory:
                 path, duration_ms = audio.decode(upload, directory)
                 operation, fresh = ledger.reserve(
@@ -323,8 +406,14 @@ class DictationView(ServiceView):
                     snippets=snippets.entries if snippets else [],
                     cleanup_level=level,
                     writing_style=style,
+                    **({"output_language": target} if target is not None else {}),
                     cost_budget=operation.reserved_cost,
                     authorize=lambda total: ledger.authorize(operation, total),
+                    **(
+                        {"text_action": action, "text_action_language": action_language}
+                        if action is not None
+                        else {}
+                    ),
                 )
                 if outcome.result.get("snippet_expanded") is True and any(
                     len(outcome.result[name].encode("utf-8")) > history.MAX_TEXT_BYTES
@@ -335,7 +424,10 @@ class DictationView(ServiceView):
                     raise groq.SnippetResultTooLarge()
                 with ledger.admission_lock():
                     current = Operation.objects.get(pk=operation.pk)
-                    if current.state != "running":
+                    if (
+                        current.state != "running"
+                        or current.lease_until <= timezone.now()
+                    ):
                         raise ledger.Rejected("operation_expired", 410)
                     ledger.settle(
                         operation,
@@ -403,6 +495,8 @@ class DictationView(ServiceView):
                 operation=operation,
                 cost=error.cost,
             )
+        except exceptions.PermissionDenied:
+            raise
         except Exception:
             return processing_failure(
                 request.user,
@@ -417,25 +511,43 @@ class DictationView(ServiceView):
 class TextView(ServiceView):
     """Bounded rewrite/translation, never a general provider proxy."""
 
+    saved_actions = False
+
     def post(self, request):
         if not take_rate("text", str(request.user.pk), 6):
             return Response({"code": "rate_limited"}, status=429)
         try:
-            if set(request.data) != {"operation_id", "action", "text", "language"}:
+            from shared.writing_style_policy import writing_style as parse_writing_style
+
+            fields = {"operation_id", "text", "language"} | (
+                {"action_id", "action_revision"} if self.saved_actions else {"action"}
+            )
+            if (
+                not isinstance(request.data, dict)
+                or not fields <= set(request.data)
+                or set(request.data) - fields - {"writing_style"}
+            ):
+                raise ValueError()
+            style = parse_writing_style(request.data.get("writing_style"))
+            if "writing_style" in request.data and style is None:
                 raise ValueError()
             operation_id = uuid.UUID(request.data["operation_id"])
-            action, source, language = (
-                request.data[k] for k in ("action", "text", "language")
-            )
-            if action not in {"rewrite", "translate"} or language not in {
-                "auto",
-                "pt",
-                "en",
-                "es",
-                "de",
-                "ru",
-            }:
+            source, language = request.data["text"], request.data["language"]
+            if not isinstance(language, str) or language not in text_actions.LANGUAGES:
                 raise ValueError()
+            if self.saved_actions:
+                action_id, action_revision = (
+                    request.data["action_id"],
+                    request.data["action_revision"],
+                )
+                if not text_actions.valid_id(
+                    action_id
+                ) or not text_actions.valid_revision(action_revision, minimum=1):
+                    raise ValueError()
+            else:
+                action = request.data["action"]
+                if action not in {"rewrite", "translate"}:
+                    raise ValueError()
             if (
                 not isinstance(source, str)
                 or not source.strip()
@@ -444,33 +556,59 @@ class TextView(ServiceView):
                 raise ValueError()
             fingerprint = hashlib.sha256(
                 json.dumps(
-                    ["text", action, source, language], ensure_ascii=False
+                    (
+                        ["text-action", action_id, action_revision, source, language]
+                        if self.saved_actions
+                        else ["text", action, source, language]
+                    )
+                    + (["writing_style", style.value] if style is not None else []),
+                    ensure_ascii=False,
                 ).encode()
             ).hexdigest()
         except (KeyError, TypeError, ValueError, AttributeError):
             return Response({"code": "invalid_text_request"}, status=400)
         operation = None
         try:
+            if self.saved_actions:
+                previous = ledger.replay(request.user, operation_id, fingerprint)
+                if previous is not None:
+                    return Response(
+                        {**previous.result, "usage": ledger.usage(request.user)}
+                    )
+                action = text_actions.resolve(
+                    request.user, action_id, action_revision, language
+                )
             operation, fresh = ledger.reserve(
                 request.user, operation_id, fingerprint, 0, text_operation=True
             )
             if fresh:
-                outcome = groq.text_operation(
+                transform = (
+                    groq.action_operation if self.saved_actions else groq.text_operation
+                )
+                outcome = transform(
                     source,
                     action,
                     language,
                     cost_budget=operation.reserved_cost,
                     authorize=lambda total: ledger.authorize(operation, total),
+                    **({"writing_style": style} if style is not None else {}),
                 )
-                ledger.settle(
-                    operation,
-                    result=outcome.result,
-                    cost=outcome.cost,
-                    input_tokens=outcome.input_tokens,
-                    output_tokens=outcome.output_tokens,
-                    cost_estimated=outcome.cost_estimated,
-                )
-                result = outcome.result
+                with ledger.admission_lock():
+                    current = Operation.objects.get(pk=operation.pk)
+                    if (
+                        current.state != "running"
+                        or current.lease_until <= timezone.now()
+                    ):
+                        raise ledger.Rejected("operation_expired", 410)
+                    ledger.settle(
+                        operation,
+                        result=outcome.result,
+                        cost=outcome.cost,
+                        input_tokens=outcome.input_tokens,
+                        output_tokens=outcome.output_tokens,
+                        cost_estimated=outcome.cost_estimated,
+                    )
+                    result = outcome.result
             else:
                 result = operation.result
             return Response({**result, "usage": ledger.usage(request.user)})
@@ -495,6 +633,8 @@ class TextView(ServiceView):
                 input_tokens=error.input_tokens,
                 output_tokens=error.output_tokens,
             )
+        except exceptions.PermissionDenied:
+            raise
         except Exception:
             return processing_failure(
                 request.user,
@@ -504,6 +644,10 @@ class TextView(ServiceView):
                 502,
                 operation=operation,
             )
+
+
+class TextActionExecuteView(TextView):
+    saved_actions = True
 
 
 def health(request):

@@ -5,12 +5,15 @@ import { ActivityIndicator, Alert, SectionList, Modal, ScrollView, Text, View } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
 import Core, { type HistoryEntry } from '../../../modules/clarify-core';
-import { Button, Card, EmptyState, ScreenHeader, TableRow, ui, usePalette, useReducedMotion } from '../../components/ui';
+import { Button, Card, EmptyState, ScreenHeader, NavigationRow, TableRow, ui, usePalette, useReducedMotion } from '../../components/ui';
 import { report, useClarify } from '../../state/clarify';
 import { MicrophoneSwitch } from '../../components/microphone-switch';
 import { ClarifyLogo } from '../../components/clarify-logo';
 
 import { groupHistory, historyDayTitle, historyTime } from '../../history';
+
+import { destinationLabel } from '../../processing';
+import { RecordButton } from '../../components/record-button';
 
 const timestamp = (value: number) => new Date(value * 1000).toLocaleString(uiLanguage, { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -68,7 +71,7 @@ export default function Home() {
   // The native library revision invalidates the focused page, including keyboard dictations.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, state.libraryRevision, account?.historyContext]));
-  const remove = (entry: HistoryEntry) => Alert.alert(t("Excluir transcrição?"), entry.localOnly ? t("Este texto será removido do histórico deste iPhone.") : t("Este texto será removido do histórico da sua conta em todos os dispositivos."), [
+  const remove = (entry: HistoryEntry) => Alert.alert(t("Excluir transcrição?"), account?.mode === 'computer' || entry.localOnly ? t("Este texto será removido do histórico deste iPhone.") : t("Este texto será removido do histórico da sua conta em todos os dispositivos."), [
     { text: t("Cancelar"), style: 'cancel' }, { text: t("Excluir"), style: 'destructive', onPress: () => {
       setAction('delete');
       void Core.deleteHistory(entry.id, entry.localOnly, entry.context).then(async () => { setSelected(null); await refresh(); await load(); }).catch(report).finally(() => setAction(null));
@@ -87,10 +90,12 @@ export default function Home() {
       onEndReached={() => { if (cursor) void load(cursor, true); }} onEndReachedThreshold={0.4}
       ListHeaderComponent={<View testID="app.home" collapsable={false} style={{ gap: 16 }}>
         <ClarifyLogo size={28} />
-        <ScreenHeader title={t('Início')} />
+        <ScreenHeader title={t('Ditado')} />
+        <NavigationRow testID="home.destination" title={t(destinationLabel(account))} icon={account?.mode === 'computer' ? 'desktopcomputer' : 'cloud'} onPress={() => router.push('/processing')} />
         <MicrophoneSwitch />
+        {account?.mode === 'computer' && <RecordButton />}
         <Text style={[ui.small, { color: c.muted, marginTop: -8 }]}>{state.sessionActive ? t('O Clarify está ativo para receber ditados do teclado.') : t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>
-        {state.phase === 'error' && state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(state.message)}</Text>}
+        {state.phase === 'error' && !state.textOperation && state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(state.message)}</Text>}
       </View>}
       renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { color: c.text, paddingTop: 16, paddingBottom: 12 }]}>{historyDayTitle(section.date, today, uiLanguage, t("Hoje"))}</Text>}
       renderItem={({ item, index, section }) => <TableRow first={index === 0} last={index === section.data.length - 1}

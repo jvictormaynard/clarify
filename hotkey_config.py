@@ -215,12 +215,20 @@ _LEGACY_DEFAULT_HOTKEYS: dict[HotkeyAction, HotkeyDefinition] = {
 }
 
 
-def _action(value: Any) -> HotkeyAction | None:
+class TextActionHotkey(str):
+    @property
+    def value(self):
+        return str(self)
+
+
+def _action(value: Any) -> HotkeyAction | TextActionHotkey | None:
     if isinstance(value, HotkeyAction):
         return value
     try:
         return HotkeyAction(str(value))
     except ValueError:
+        if re.fullmatch(r"text_action:[A-Za-z0-9_-]{1,64}", str(value), re.ASCII):
+            return TextActionHotkey(value)
         aliases = {
             "recording": HotkeyAction.RECORDING,
             "rewrite": HotkeyAction.REWRITE,
@@ -235,7 +243,9 @@ def _action(value: Any) -> HotkeyAction | None:
 
 def validate_hotkeys(
     values: Mapping[Any, Any],
-) -> dict[HotkeyAction, HotkeyDefinition]:
+    *,
+    include_defaults: bool = True,
+) -> dict[Any, HotkeyDefinition]:
     """Normalise bindings and reject duplicate combinations.
 
     Omitted actions normally receive their defaults.  The one exception is
@@ -246,7 +256,11 @@ def validate_hotkeys(
     includes_voice = any(
         _action(raw_action) is HotkeyAction.VOICE_TRANSLATION for raw_action in values
     )
-    normalised = dict(DEFAULT_HOTKEYS if includes_voice else _LEGACY_DEFAULT_HOTKEYS)
+    normalised: dict[Any, HotkeyDefinition] = (
+        dict(DEFAULT_HOTKEYS if includes_voice else _LEGACY_DEFAULT_HOTKEYS)
+        if include_defaults
+        else {}
+    )
     for raw_action, raw_definition in values.items():
         action = _action(raw_action)
         if action is None:
@@ -274,14 +288,15 @@ def validate_hotkeys(
 class HotkeySettings:
     """Versioned user preference consumed by repositories and the tray."""
 
-    hotkeys: Mapping[HotkeyAction, HotkeyDefinition] = field(
+    hotkeys: Mapping[Any, HotkeyDefinition] = field(
         default_factory=lambda: dict(DEFAULT_HOTKEYS)
     )
     activation_mode: ActivationMode = ActivationMode.TOGGLE
     schema_version: int = HOTKEY_SCHEMA_VERSION
+    closed: bool = False
 
     def __post_init__(self) -> None:
-        normalised = validate_hotkeys(self.hotkeys)
+        normalised = validate_hotkeys(self.hotkeys, include_defaults=not self.closed)
         try:
             mode = (
                 self.activation_mode
@@ -308,7 +323,7 @@ class HotkeySettings:
         if not isinstance(value, Mapping):
             return cls.defaults()
         bindings = value.get("bindings", value.get("hotkeys", value))
-        parsed: dict[HotkeyAction, Any] = {}
+        parsed: dict[Any, Any] = {}
         if isinstance(bindings, Mapping):
             for action, definition in bindings.items():
                 if _action(action) is not None:
@@ -333,7 +348,7 @@ class HotkeySettings:
         except HotkeyValidationError:
             # One bad entry must not prevent startup. Invalid entries are
             # replaced individually with the migration-safe default.
-            repaired: dict[HotkeyAction, HotkeyDefinition] = dict(defaults)
+            repaired: dict[Any, HotkeyDefinition] = dict(defaults)
             if isinstance(bindings, Mapping):
                 for action, definition in bindings.items():
                     parsed_action = _action(action)
@@ -380,11 +395,11 @@ class HotkeySettings:
             if isinstance(definition, HotkeyDefinition)
             else HotkeyDefinition.from_mapping(definition)
         )
-        return HotkeySettings(updated, self.activation_mode)
+        return HotkeySettings(updated, self.activation_mode, closed=self.closed)
 
     def reset(self, action: HotkeyAction | str) -> "HotkeySettings":
         parsed = _action(action)
-        if parsed is None:
+        if not isinstance(parsed, HotkeyAction):
             raise HotkeyValidationError(f"Unknown hotkey action: {action!r}")
         return self.with_hotkey(parsed, DEFAULT_HOTKEYS[parsed])
 
@@ -411,7 +426,7 @@ class HotkeySettings:
                 "Push-to-talk requires a key-release capable native input layer",
                 code="unsupported_activation_mode",
             )
-        return HotkeySettings(self.hotkeys, parsed)
+        return HotkeySettings(self.hotkeys, parsed, closed=self.closed)
 
 
 class HotkeySettingsController:

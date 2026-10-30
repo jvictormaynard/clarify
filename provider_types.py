@@ -148,6 +148,12 @@ class TranscriptionResult:
     writing_style_requested: str | None = None
     writing_style_applied: str | None = None
     writing_style_status: str | None = None
+    output_language_requested: str | None = None
+    output_language_applied: str | None = None
+    output_language_status: str | None = None
+    text_action_id: str | None = None
+    text_action_name: str | None = None
+    text_action_revision: int | None = None
 
 
 @dataclass(frozen=True)

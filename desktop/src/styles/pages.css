@@ -78,15 +78,14 @@
   margin: 0;
 }
 .account-server {
-  margin-top: 16px;
-  padding: 12px 0 0;
+  margin: 16px -16px -16px;
   border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 .account-server-fields {
   display: grid;
   justify-items: start;
   gap: 12px;
-  padding-top: 12px;
+  padding: 12px 16px;
 }
 .account-server-fields .row {
   width: 100%;
@@ -135,28 +134,12 @@
   margin: 0;
   padding: 0;
 }
-.danger-zone > summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 16px;
-  list-style: none;
-  color: var(--muted-foreground, var(--color-text-muted));
-  font-weight: 500;
-  font-size: 14px;
-  line-height: 20px;
-}
-.danger-zone > summary::-webkit-details-marker { display: none; }
-.danger-zone > summary:hover { color: var(--foreground, var(--color-text)); }
-.account-disclosure { margin-left: auto; }
-.danger-zone[open] .account-disclosure { transform: rotate(90deg); }
-.account-page .danger-zone > section {
+.danger-zone .settings-disclosure-content > section {
+  margin: 0;
   padding: 14px 16px;
   border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
-.danger-zone > section { margin: 0; }
-.danger-zone > section > h2 { padding: 0; }
+.danger-zone .settings-disclosure-content > section > h2 { padding: 0; }
 .danger-zone .section-content { padding: 0; border: 0; background: transparent; box-shadow: none; }
 .danger-zone .section-content > .hint { margin-inline: 0; }
 .danger-zone .section-content > .button { margin: 12px 0 0; max-width: 100%; }
@@ -186,33 +169,6 @@
   border-radius: 4px;
   background: var(--ring, var(--color-focus));
   transition: height var(--motion-fast);
-}
-
-.segmented {
-  display: flex;
-  gap: 3px;
-  background: var(--background, var(--color-background));
-  border: 1px solid var(--border, var(--color-border));
-  padding: 3px;
-  border-radius: var(--control-radius, var(--radius-control));
-  margin: var(--space-3) 0 8px;
-  width: fit-content;
-  max-width: 100%;
-  flex-wrap: wrap;
-}
-
-.segmented button {
-  background: none;
-  border: 0;
-  border-radius: 5px;
-  padding: 6px 12px;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-description);
-}
-
-.segmented button[aria-pressed="true"] {
-  background: var(--accent, var(--color-surface));
-  color: var(--foreground, var(--color-text-bright));
 }
 
 .installation {
@@ -328,17 +284,8 @@
   border-color: transparent;
 }
 
-.dictionary-entry details {
-  margin: 10px 0 0;
-  padding: 0;
-}
-
-.dictionary-entry summary {
-  font-size: var(--font-size-description);
-}
-
-.dictionary-entry details > .control {
-  margin: 5px 0;
+.dictionary-entry > .settings-disclosure {
+  margin: 10px -16px -14px;
 }
 
 .dictionary-empty {
@@ -349,14 +296,14 @@
 
 .dictionary-help {
   margin-top: 32px;
-  padding-inline: 16px;
 }
 
 .history-page { min-width: 0; }
 .history-search { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .history-search > [data-slot="input-control"] { flex: 1; min-width: 160px; }
 .history-entry-actions { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
-.history-comparison { margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent); }
+.history-disclosure { margin-inline: -16px; }
+.history-comparison { padding: 12px 16px; }
 .history-text-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .history-text-reader { min-width: 0; }
 .history-text-reader h3 { font-size: 14px; font-weight: 500; line-height: 20px; margin: 0 0 8px; }
@@ -519,11 +466,13 @@
 @media (max-width: 639px) {
   .dictionary-entry,
   .history-row,
-  .danger-zone > summary,
-  .account-page .danger-zone > section,
+  .danger-zone .settings-disclosure-content > section,
   .mic-test,
   .installation,
   .service-actions { padding-inline: 12px; }
+  .dictionary-entry > .settings-disclosure { margin-inline: -12px; }
+  .history-disclosure { margin-inline: -12px; }
+  .history-comparison { padding-inline: 12px; }
   .onboarding.onboarding-page { padding-inline: 20px; }
 }
 @media (max-height: 600px) {
@@ -532,3 +481,10 @@
   .onboarding-heading { margin-bottom: 20px; }
   .onboarding-page .onboarding-heading h1 { margin-top: 16px; }
 }
+.computer-pairing { padding-inline: 24px; display: grid; gap: 16px; min-height: 0; overflow-y: auto; }
+.computer-devices li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.computer-qr { width: fit-content; max-width: 100%; padding: 12px; background: white; border-radius: 8px; }
+.computer-qr img { display: block; max-width: 100%; height: auto; }
+.computer-devices { display: grid; gap: 10px; list-style: none; padding: 0; margin: 0; }
+.computer-devices span { overflow-wrap: anywhere; }
+.computer-options-content { display: grid; gap: 16px; }

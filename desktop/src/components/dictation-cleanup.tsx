@@ -1,7 +1,7 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import type { DictationCleanupLevel } from "../settings/bridge";
-import { Picker, Row, Section } from "./ui";
+import { Button, Picker, Row, Section } from "./ui";
 
 export function DictationCleanup({ controller }: SettingsPageProps) {
   const { state, run } = controller;
@@ -32,7 +32,10 @@ export function DictationCleanup({ controller }: SettingsPageProps) {
       {level === "light" && <p className="hint whitespace-pre-wrap">{t("Exemplo: ‘Não  envie 42.’ vira ‘Não envie 42.’ Só os espaços mudam.")}</p>}
       {level === "clarity" && <p className="hint">{t("Exemplo possível: ‘O prazo, o prazo termina amanhã.’ vira ‘O prazo termina amanhã.’")}</p>}
       {level === "clarity" && state.dictationCleanupRefinementAllowed === false && (
-        <p className="hint" role="status">{t("Revisão indisponível nesta rota. As palavras serão preservadas. Ative a revisão nas opções de Texto para aplicar clareza.")}</p>
+        <div>
+          <p className="hint" role="status">{t("Revisão indisponível nesta rota. As palavras serão preservadas.")}</p>
+          {!(state.accountState?.managed || state.accountState?.signedIn) && <Button variant="text" onClick={() => void controller.navigate("style", state.textActionDictationContext === "local_asr" ? "local_asr_refinement" : "refinement")}>{t("Configurar revisão")}</Button>}
+        </div>
       )}
       <p className="hint">{t("Snippets isolados inserem o texto salvo exatamente. Outros snippets são expandidos uma vez antes da revisão.")}</p>
     </Section>

@@ -3,7 +3,7 @@
     "name": "Clarify",
     "slug": "clarify-ios",
     "owner": "victormaynard",
-    "version": "0.11.1",
+    "version": "0.12.0",
     "scheme": "clarify",
     "platforms": [
       "ios"
@@ -13,10 +13,20 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.jvictormaynard.clarify",
-      "buildNumber": "40",
+      "buildNumber": "48",
       "supportsTablet": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "O Clarify usa o microfone para transcrever e reescrever o que você ditar.",
+        "NSCameraUsageDescription": "O Clarify usa a câmera para ler o QR do seu computador.",
+        "NSLocalNetworkUsageDescription": "O Clarify conecta este iPhone ao seu computador para processar ditados e textos.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "10.0.0.0/8": { "NSExceptionAllowsInsecureHTTPLoads": true, "NSExceptionMinimumTLSVersion": "TLSv1.2" },
+            "172.16.0.0/12": { "NSExceptionAllowsInsecureHTTPLoads": true, "NSExceptionMinimumTLSVersion": "TLSv1.2" },
+            "192.168.0.0/16": { "NSExceptionAllowsInsecureHTTPLoads": true, "NSExceptionMinimumTLSVersion": "TLSv1.2" }
+          }
+        },
         "ITSAppUsesNonExemptEncryption": false,
         "NSSupportsLiveActivities": true,
         "ClarifyAppGroup": "group.com.jvictormaynard.clarify",
@@ -40,6 +50,8 @@
     "plugins": [
       "./plugins/with-clarify-keyboard.cjs",
       "./plugins/with-clarify-activity.cjs",
+      "./plugins/with-computer-link-privacy.cjs",
+      "./plugins/with-computer-relay.cjs",
       "expo-router",
       "expo-font"
     ],

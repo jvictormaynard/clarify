@@ -6,7 +6,9 @@ from pathlib import Path
 from .ledger import Rejected
 
 
-def fingerprint(upload, language, *, cleanup_level=None, writing_style=None):
+def fingerprint(
+    upload, language, *, cleanup_level=None, writing_style=None, output_language=None
+):
     digest = hashlib.sha256(language.encode() + b"\0")
     if cleanup_level is not None:
         from shared.dictation_policy import cleanup_level as parse_cleanup_level
@@ -18,6 +20,13 @@ def fingerprint(upload, language, *, cleanup_level=None, writing_style=None):
 
         style = parse_writing_style(writing_style)
         digest.update(b"writing_style\0" + style.value.encode() + b"\0")
+    if output_language is not None:
+        from shared.output_preferences import output_language as parse_output_language
+
+        target = parse_output_language(output_language)
+        if target is None:
+            raise ValueError("invalid_output_language")
+        digest.update(b"output_language\0" + target.encode() + b"\0")
     for chunk in upload.chunks():
         digest.update(chunk)
     upload.seek(0)

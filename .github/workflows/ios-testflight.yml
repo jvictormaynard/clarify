@@ -15,6 +15,10 @@ on:
         description: Also enforce the unresolved opening-height diagnostic (tests only)
         type: boolean
         default: false
+      app_ui_compact_only:
+        description: Diagnose only the compact app UI profile (tests only; incomplete acceptance)
+        type: boolean
+        default: false
       status_only:
         description: Read Apple build and group status without building or uploading
         type: boolean
@@ -147,12 +151,14 @@ jobs:
         run: npx expo prebuild --clean --platform ios --no-install
       - name: Install CocoaPods dependencies
         run: pod install --project-directory=ios
-      - name: Test first launch and navigation in the containing app
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
-        run: node scripts/test-app-ui.cjs
       - name: Test Swift contracts
         if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
         run: npm run test:native
+      - name: Test first launch and navigation in the containing app
+        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        env:
+          CLARIFY_APP_UI_COMPACT_ONLY: ${{ inputs.tests_only && inputs.app_ui_compact_only }}
+        run: node scripts/test-app-ui.cjs
       - name: Validate short speech with the live mobile client
         if: ${{ inputs.short_dictation_acceptance }}
         env:
@@ -215,10 +221,10 @@ jobs:
           xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
             -configuration Release -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Clarify.xcarchive" \
-            -derivedDataPath "$RUNNER_TEMP/ClarifyDerivedData" archive | xcbeautify
+            -derivedDataPath "$RUNNER_TEMP/ClarifyDerivedData" archive 2>&1 | tee "$RUNNER_TEMP/clarify-archive.log" | xcbeautify
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Clarify.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/clarify-signing/ExportOptions.plist" \
-            -exportPath "$RUNNER_TEMP/clarify-export" | xcbeautify
+            -exportPath "$RUNNER_TEMP/clarify-export" 2>&1 | tee "$RUNNER_TEMP/clarify-export.log" | xcbeautify
       - name: Verify signed app and both extensions
         if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
         run: python3 scripts/verify-ios-ipa.py "$RUNNER_TEMP/clarify-export/Clarify.ipa"
@@ -235,9 +241,34 @@ jobs:
           chmod 700 "$RUNNER_TEMP/clarify-upload" "$key_dir"
           printf '%s' "$CLARIFY_ASC_KEY_P8" > "$key_dir/AuthKey_${CLARIFY_ASC_KEY_ID}.p8"
           chmod 600 "$key_dir/AuthKey_${CLARIFY_ASC_KEY_ID}.p8"
+          trap 'rm -rf "$key_dir"' EXIT
+          python3 - <<'PY'
+          import json, os, hashlib
+          from pathlib import Path
+          from datetime import datetime, timezone
+          output = Path(os.environ['RUNNER_TEMP']) / 'clarify-export'
+          verification = json.loads((output / 'verification.json').read_text())
+          assert hashlib.sha256((output / 'Clarify.ipa').read_bytes()).hexdigest() == verification['sha256'], 'Verified IPA changed before upload'
+          receipt = {'state': 'started', 'source': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'], 'attempt': os.environ['GITHUB_RUN_ATTEMPT'], 'ipa_sha256': verification['sha256'], 'started_utc': datetime.now(timezone.utc).isoformat()}
+          with (output / 'upload-receipt.json').open('x') as stream:
+              json.dump(receipt, stream)
+          PY
+          set +e
           API_PRIVATE_KEYS_DIR="$key_dir" xcrun altool --upload-app --type ios \
             --file "$RUNNER_TEMP/clarify-export/Clarify.ipa" \
             --apiKey "$CLARIFY_ASC_KEY_ID" --apiIssuer "$CLARIFY_ASC_ISSUER_ID"
+          upload_exit=$?
+          set -e
+          UPLOAD_EXIT="$upload_exit" python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          from datetime import datetime, timezone
+          path = Path(os.environ['RUNNER_TEMP']) / 'clarify-export/upload-receipt.json'
+          receipt = json.loads(path.read_text())
+          receipt.update(state='confirmed' if os.environ['UPLOAD_EXIT'] == '0' else 'uncertain', upload_exit=int(os.environ['UPLOAD_EXIT']), finished_utc=datetime.now(timezone.utc).isoformat())
+          path.write_text(json.dumps(receipt, indent=2) + '\n')
+          PY
+          exit "$upload_exit"
       - name: Preserve verified IPA and checksum
         if: success() && !inputs.tests_only && steps.resume.outputs.result == 'publish'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -263,6 +294,18 @@ jobs:
           name: clarify-testflight-${{ github.sha }}
           path: mobile/test-results/testflight-availability.json
           if-no-files-found: error
+          retention-days: 7
+      - name: Preserve signing and upload evidence
+        if: always() && !inputs.tests_only
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: clarify-ios-delivery-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/clarify-archive.log
+            ${{ runner.temp }}/clarify-export.log
+            ${{ runner.temp }}/clarify-export/verification.json
+            ${{ runner.temp }}/clarify-export/upload-receipt.json
+          if-no-files-found: ignore
           retention-days: 7
       - name: Remove temporary signing credentials
         if: always() && !inputs.tests_only

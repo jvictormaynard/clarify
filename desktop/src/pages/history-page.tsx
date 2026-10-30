@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Cloud, HardDrive, History, LoaderCircle, Monitor, Smartphone, Trash2 } from "lucide-react";
 import { t, uiLanguage } from "../i18n";
-import { Button, Confirm, Input } from "../components/ui";
+import { Button, Confirm, Input, SettingsDisclosure } from "../components/ui";
 import { HistoryComparison, HistoryEntryActions, type HistoryEntryExtension } from "../components/history-entry";
 import { HistoryCorrectionAction } from "../components/history-correction-dialog";
 import { getHistoryPage, type HistoryEntry } from "../settings/bridge";
@@ -94,10 +94,12 @@ export function HistoryPage({ controller, renderEntryAction }: SettingsPageProps
               </div>
               <p className="history-text">{entry.text || t("Sem texto")}</p>
               <HistoryEntryActions entry={entry} scope={scope} isCurrent={isCurrent}>
-                <Button variant="text" aria-expanded={expanded === entry.id} onClick={() => setExpanded(value => value === entry.id ? null : entry.id)}>{t(expanded === entry.id ? "Fechar textos" : "Abrir textos")}</Button>
                 {renderEntryAction ? renderEntryAction(entry, scope) : <HistoryCorrectionAction entry={entry} scope={scope} controller={controller} />}
               </HistoryEntryActions>
-              {expanded === entry.id && <HistoryComparison entry={entry} scope={scope} isCurrent={isCurrent} />}
+              <SettingsDisclosure className="history-disclosure" title={t(expanded === entry.id ? "Fechar textos" : "Abrir textos")}
+                open={expanded === entry.id} onOpenChange={open => setExpanded(value => open ? entry.id : value === entry.id ? null : value)} keepMounted={false}>
+                <HistoryComparison entry={entry} scope={scope} isCurrent={isCurrent} />
+              </SettingsDisclosure>
             </div>
             <Button className="history-delete" variant="text" aria-label={t("Excluir transcrição")} onClick={() => setDeletion({ id: entry.id, context })}><Trash2 size={15} aria-hidden="true" /></Button>
           </article>;

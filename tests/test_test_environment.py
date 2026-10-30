@@ -14,6 +14,65 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class TestEnvironmentTests(unittest.TestCase):
+    def test_ci_product_scope_keeps_unknown_tests_and_product_failures(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            case = "import unittest\nclass Case(unittest.TestCase):\n def test_case(self): {body}\n"
+            for name in (
+                "test_delivery_policy",
+                "test_release_delivery",
+                "test_trusted_ci",
+                "test_testflight_qa",
+                "test_qa_device_archive",
+            ):
+                (root / f"{name}.py").write_text(
+                    case.format(body="self.fail('repository duplicate')")
+                )
+            product = root / "test_product.py"
+            product.write_text(case.format(body="pass"))
+            command = [sys.executable, str(ROOT / "scripts/run_tests.py")]
+
+            def run(*options, qa_policy="false"):
+                return subprocess.run(
+                    [*command, *options, "discover", "-s", str(root)],
+                    cwd=ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env={**os.environ, "CLARIFY_CI_QA_POLICY": qa_policy},
+                )
+
+            complete = run()
+            self.assertNotEqual(complete.returncode, 0)
+            self.assertIn("Ran 6 tests", complete.stderr)
+            scoped = run("--ci-product-tests")
+            self.assertEqual(scoped.returncode, 0, scoped.stdout + scoped.stderr)
+            self.assertIn("Ran 1 test", scoped.stderr)
+            for policy in ("true", "", "invalid"):
+                with self.subTest(qa_policy=policy):
+                    guarded = run("--ci-product-tests", qa_policy=policy)
+                    count = 4 if sys.platform == "win32" else 1
+                    self.assertIn(f"Ran {count} test", guarded.stderr)
+                    self.assertEqual(guarded.returncode, int(sys.platform == "win32"))
+            product.write_text(case.format(body="self.fail('product failure')"))
+            failed = run("--ci-product-tests")
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn("product failure", failed.stderr)
+            product.write_text(case.format(body="pass"))
+            (root / "test_new_policy.py").write_text(
+                case.format(body="self.fail('unknown module')")
+            )
+            package = root / "extra"
+            package.mkdir()
+            (package / "__init__.py").touch()
+            (package / "test_trusted_ci.py").write_text(
+                case.format(body="self.fail('nested module')")
+            )
+            unknown = run("--ci-product-tests")
+            self.assertNotEqual(unknown.returncode, 0)
+            self.assertIn("unknown module", unknown.stderr)
+            self.assertIn("nested module", unknown.stderr)
+
     def test_runner_isolates_imports_before_discovery_and_ignores_dotenv(self):
         with TemporaryDirectory() as directory:
             personal = Path(directory) / "personal"
@@ -23,7 +82,7 @@ class TestEnvironmentTests(unittest.TestCase):
             config.write_text('{"ui_mode": "prompt"}', encoding="utf-8")
             before = config.read_bytes()
             script = r"""
-import json, logging, pathlib, runpy, sys, types, unittest
+import json, logging, os, pathlib, runpy, sys, types, unittest
 from unittest.mock import patch
 root, personal = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 reads = {"dotenv": 0, "personal": 0}
@@ -58,6 +117,7 @@ class ProfileProbe(unittest.TestCase):
             "asr_isolated": asr_isolated,
             "inherited_key_removed": not app.DEFAULT_CONFIG["gemini_api_key"],
             "dotenv_key_removed": not app.DEFAULT_CONFIG["groq_api_key"],
+            "qml_style": os.environ.get("QT_QUICK_CONTROLS_STYLE"),
             "reads": reads,
         }))
 module.ProfileProbe = ProfileProbe
@@ -76,6 +136,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
                 environment[name] = str(personal)
             environment.pop("CLARIFY_SKIP_DOTENV", None)
             environment.pop("CLARIFY_DATA_DIR", None)
+            environment["QT_QUICK_CONTROLS_STYLE"] = "Windows"
             environment["GEMINI_API_KEY"] = "inherited-test-only"
             environment.pop("GROQ_API_KEY", None)
             result = subprocess.run(
@@ -97,6 +158,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
                     "asr_isolated": True,
                     "inherited_key_removed": True,
                     "dotenv_key_removed": True,
+                    "qml_style": "Basic",
                     "reads": {"dotenv": 0, "personal": 0},
                 },
             )

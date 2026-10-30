@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import { Field, Toggle } from "./ui";
+import { Field, SettingsDisclosure, Toggle } from "./ui";
 import type { RecordingDraft } from "../settings/recording";
 
 export function RecordingOptions({
@@ -29,8 +29,7 @@ export function RecordingOptions({
     />
   );
   return (
-    <details>
-      <summary>{t("Limites e parada automática")}</summary>
+    <SettingsDisclosure title={t("Limites e parada automática")}>
       {input(
         "maximum",
         t("Duração máxima"),
@@ -59,6 +58,6 @@ export function RecordingOptions({
         t("Segundos de silêncio para encerrar a gravação."),
         !value.enabled,
       )}
-    </details>
+    </SettingsDisclosure>
   );
 }

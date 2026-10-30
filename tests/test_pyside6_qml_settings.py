@@ -43,6 +43,7 @@ from microphone_controls import (
     RecordingControls,
 )
 from hotkey_config import HotkeyAction, HotkeySettings
+from text_actions import native_bindings, settings_for
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -200,7 +201,10 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 "Ctrl+Shift+K",
             )
             self.assertTrue(controller.dirty)
-            self.assertEqual(applied[-1], repo.load().hotkeys)
+            saved = repo.load()
+            self.assertEqual(
+                applied[-1], native_bindings(saved, settings_for(saved).actions)
+            )
 
             with patch.object(
                 controller._hotkey_settings_controller, "push_to_talk_supported", True
@@ -280,7 +284,9 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 )
             )
             self.assertEqual(controller.repositories.config.load(), original)
-            self.assertEqual(applied[-1], original.hotkeys)
+            self.assertEqual(
+                applied[-1], native_bindings(original, settings_for(original).actions)
+            )
             self.assertEqual(
                 controller.hotkeyDefinitions["recording_hotkey"]["display"],
                 original.hotkeys.definition(HotkeyAction.RECORDING).display,
@@ -291,7 +297,10 @@ class QmlSettingsControllerTests(unittest.TestCase):
                     "setHotkey", ["recording_hotkey", "Ctrl+Shift+L"]
                 )
             )
-            self.assertEqual(applied[-1], controller.repositories.config.load().hotkeys)
+            saved = controller.repositories.config.load()
+            self.assertEqual(
+                applied[-1], native_bindings(saved, settings_for(saved).actions)
+            )
 
     def test_preference_hotkey_storage_failure_restores_runtime_and_draft(self):
         with TemporaryDirectory() as directory:
@@ -309,7 +318,9 @@ class QmlSettingsControllerTests(unittest.TestCase):
                     )
                 )
             self.assertEqual(repo.load(), original)
-            self.assertEqual(applied[-1], original.hotkeys)
+            self.assertEqual(
+                applied[-1], native_bindings(original, settings_for(original).actions)
+            )
             self.assertEqual(controller.language, "pt")
             self.assertTrue(controller.dirty)
             self.assertTrue(
@@ -343,7 +354,10 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 controller.savePreference("resetHotkey", ["recording_hotkey"])
             )
             self.assertEqual(apply.call_count, 3)
-            self.assertEqual(apply.call_args.args[0], original.hotkeys)
+            self.assertEqual(
+                apply.call_args.args[0],
+                native_bindings(original, settings_for(original).actions),
+            )
 
     def test_preference_capture_restore_failure_keeps_the_operation_retryable(self):
         from unittest.mock import Mock

@@ -51,7 +51,7 @@ class DictationPolicyTests(unittest.TestCase):
     def test_v2_migration_keeps_legacy_and_roundtrip_is_atomic(self):
         old = {"schema_version": 2, "history_enabled": True}
         migrated = migrate_config_payload(old)
-        self.assertEqual(migrated["schema_version"], 4)
+        self.assertEqual(migrated["schema_version"], 5)
         self.assertEqual(migrate_config_payload(migrated), migrated)
         self.assertIsNone(AppConfig.from_mapping(migrated).dictation_cleanup_level)
         self.assertIsNone(

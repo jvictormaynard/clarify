@@ -51,7 +51,7 @@ export function Titlebar({
         alt="Clarify"
         draggable={false}
       /><span data-tauri-drag-region>Clarify</span></div>
-      {pageLabel && <div className="titlebar-context" data-tauri-drag-region><span data-tauri-drag-region>{t("Configurações")}</span><span aria-hidden="true">/</span><span data-tauri-drag-region>{pageLabel}</span></div>}
+      {pageLabel && <div className="titlebar-context" data-tauri-drag-region><span data-tauri-drag-region>{pageLabel}</span></div>}
       <div className="window-controls">
         <Button variant="ghost" size="icon" className="h-full w-11.5 sm:h-full sm:w-11.5 rounded-none border-0 p-0 hover:bg-white/5 [&:active:not([aria-haspopup])]:scale-100" aria-label={t("Minimizar")} onClick={() => void action("minimize")}>
           <Minus className="size-3.5" size={14} />
@@ -65,7 +65,7 @@ export function Titlebar({
         </Button>
         <Button variant="ghost" size="icon"
           className="window-close h-full w-11.5 sm:h-full sm:w-11.5 rounded-none border-0 p-0 hover:bg-[#b93640] hover:text-white [&:active:not([aria-haspopup])]:scale-100"
-          aria-label={t("Fechar configurações")}
+          aria-label={t("Fechar janela")}
           onClick={onClose}
         >
           <X className="size-4" size={16} />

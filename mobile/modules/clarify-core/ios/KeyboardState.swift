@@ -1,5 +1,37 @@
 import Foundation
 
+extension OutputLanguage {
+  var flag: String {
+    switch self { case .auto: return "🌐"; case .pt: return "🇧🇷"; case .en: return "🇺🇸"; case .es: return "🇪🇸"; case .de: return "🇩🇪"; case .ru: return "🇷🇺" }
+  }
+  var title: String {
+    switch self { case .auto: return L("Idioma original"); case .pt: return "Português"; case .en: return "English"; case .es: return "Español"; case .de: return "Deutsch"; case .ru: return "Русский" }
+  }
+  var menuTitle: String { flag + " " + title }
+}
+extension OutputStyle {
+  var title: String {
+    switch self {
+    case .default: return L("Padrão")
+    case .casual: return L("Casual")
+    case .formal: return L("Formal")
+    case .very_casual: return L("Muito casual")
+    case .natural: return L("Natural")
+    case .informal: return L("Informal")
+    case .organized: return L("Organizado")
+    }
+  }
+}
+
+// The extension retains selected text only while its operation owns the same
+// document and surrounding context. No document ID is sent to the computer.
+struct TextSelectionOwner: Equatable {
+  let document: UUID
+  let text: String
+  let before: String?
+  let after: String?
+}
+
 // Pure keyboard state. Typed text stays in the document proxy, never in storage.
 struct KeyboardState {
   enum Page { case letters, numbers, symbols }

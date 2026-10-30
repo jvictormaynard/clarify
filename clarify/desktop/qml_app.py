@@ -88,6 +88,7 @@ try:
     from .qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from .qml_bridge import QmlWorkflowBridge  # noqa: E402
     from .qml_settings import QmlSettingsController  # noqa: E402
+    from .qml_computer import create_computer_controller  # noqa: E402
     from .qml_updates import QmlUpdateController  # noqa: E402
     from .qml_web_settings import WebSettingsProcess  # noqa: E402
     from .qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
@@ -106,6 +107,7 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from qml_bridge import QmlWorkflowBridge  # noqa: E402
     from qml_settings import QmlSettingsController  # noqa: E402
+    from qml_computer import create_computer_controller  # noqa: E402
     from qml_updates import QmlUpdateController  # noqa: E402
     from qml_web_settings import WebSettingsProcess  # noqa: E402
     from qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
@@ -622,6 +624,9 @@ def main(argv: list[str] | None = None) -> int:
         microphone_backend=runtime.recording_audio.recorder,
         hotkey_applier=apply_qml_hotkeys,
         hotkey_capture_changed=capture_qml_hotkeys,
+        text_action_service=getattr(runtime.account, "desktop_text_actions", None),
+        text_action_provider=workflow_service._provider,
+        text_action_runner=lambda action_id: bridge.runTextAction(action_id),
         dictionary_service=getattr(runtime, "dictionary_service", None),
         account_service=getattr(runtime, "account", None),
         application_target=lambda: quick_paste.target,
@@ -722,7 +727,11 @@ def main(argv: list[str] | None = None) -> int:
     if sys.platform == "win32":
         hotkeys = WindowsGlobalHotkeyBackend(
             app,
-            settings=repositories.config.load().hotkeys,
+            settings=settings._text_actions.bindings()
+            if settings.textActionContext
+            else __import__("text_actions").native_bindings(
+                repositories.config.load(), ()
+            ),
             parent=app,
         )
     if hotkeys is not None:
@@ -771,6 +780,9 @@ def main(argv: list[str] | None = None) -> int:
     if shell_result is ShellStartResult.SECONDARY_INSTANCE:
         runtime.shutdown()
         return 0
+    runtime.computer = create_computer_controller(runtime, parent=app)
+    settings.bindComputer(runtime.computer)
+    runtime.computer.initialize()
     app.setQuitOnLastWindowClosed(
         shell_result
         in (ShellStartResult.STARTED_WITHOUT_TRAY, ShellStartResult.SETUP_FAILED)

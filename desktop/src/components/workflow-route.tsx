@@ -1,6 +1,6 @@
 import { t } from "../i18n";
 import { ArrowRight } from "lucide-react";
-import { Button, Field, Picker, Row } from "./ui";
+import { Button, Field, Picker, Row, SettingsDisclosure } from "./ui";
 import type { SettingsPageProps } from "../settings/use-settings";
 
 export function WorkflowRoute({ controller }: SettingsPageProps) {
@@ -57,8 +57,7 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
         </Button>
       )}
       {!["local_asr", "chatgpt"].includes(state.routeProviderId) && (
-        <details key={state.selectedScope}>
-          <summary>{t("Modelo e endereço personalizados")}</summary>
+        <SettingsDisclosure key={state.selectedScope} title={t("Modelo e endereço personalizados")}>
           <Field
             title={t("ID do modelo")}
             hint={t("Opcional: use um modelo que não aparece no catálogo.")}
@@ -81,7 +80,7 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
               })
             }
           />
-        </details>
+        </SettingsDisclosure>
       )}
     </>
   );

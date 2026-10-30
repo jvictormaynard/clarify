@@ -49,6 +49,30 @@ def _remaining_monthly_cap(month, budget=None):
     )
 
 
+def _previous(user, operation_id, fingerprint):
+    previous = Operation.objects.filter(user=user, operation_id=operation_id).first()
+    if previous is None:
+        return None
+    if previous.fingerprint != fingerprint:
+        raise Rejected("operation_conflict", 409)
+    if previous.state == "running":
+        raise Rejected("operation_pending", 409)
+    if (
+        previous.result
+        and previous.result_expires_at
+        and previous.result_expires_at > timezone.now()
+    ):
+        return previous
+    raise Rejected("operation_expired", 410)
+
+
+def replay(user, operation_id, fingerprint):
+    """Check accepted work before resolving mutable user-owned definitions."""
+    with funding.locked():
+        expire_leases()
+        return _previous(user, operation_id, fingerprint)
+
+
 def reserve(user, operation_id, fingerprint, audio_ms, *, text_operation=False):
     if (
         not settings.CLARIFY_FUNDED_ENABLED
@@ -60,21 +84,9 @@ def reserve(user, operation_id, fingerprint, audio_ms, *, text_operation=False):
         raise Rejected("invalid_duration", 400)
     expire_leases()
     with funding.locked() as treasury:
-        previous = Operation.objects.filter(
-            user=user, operation_id=operation_id
-        ).first()
+        previous = _previous(user, operation_id, fingerprint)
         if previous:
-            if previous.fingerprint != fingerprint:
-                raise Rejected("operation_conflict", 409)
-            if previous.state == "running":
-                raise Rejected("operation_pending", 409)
-            if (
-                previous.result
-                and previous.result_expires_at
-                and previous.result_expires_at > timezone.now()
-            ):
-                return previous, False
-            raise Rejected("operation_expired", 410)
+            return previous, False
         if Operation.objects.filter(user=user, state="running").exists():
             raise Rejected("account_busy")
         if (

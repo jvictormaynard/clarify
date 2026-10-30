@@ -47,6 +47,7 @@ from workflow_config import (
     validate_workflow_route,
 )
 from voice_translation import VoiceTranslationConfig
+from text_actions import TextActionSettings
 
 __all__ = [
     "AppConfig",
@@ -74,7 +75,7 @@ __all__ = [
 ]
 
 
-CONFIG_SCHEMA_VERSION = 4
+CONFIG_SCHEMA_VERSION = 5
 STATS_SCHEMA_VERSION = 1
 SUPPORTED_PROVIDERS = PROVIDER_IDS
 PROVIDER_SECRET_KEYS = {
@@ -208,6 +209,7 @@ class AppConfig:
     history_retention_days: int | None = 30
     hotkeys: HotkeySettings = field(default_factory=HotkeySettings.defaults)
     workflows: WorkflowConfig = field(default_factory=WorkflowConfig)
+    text_actions: TextActionSettings | None = None
     voice_translation: VoiceTranslationConfig = field(
         default_factory=VoiceTranslationConfig
     )
@@ -575,6 +577,7 @@ class AppConfig:
             history_retention_days=history_retention_days,
             hotkeys=hotkeys,
             workflows=workflows,
+            text_actions=_config_text_actions(source, workflows, hotkeys),
             voice_translation=voice_translation,
             microphone=microphone,
             recording_controls=recording_controls,
@@ -619,6 +622,9 @@ class AppConfig:
             "history_retention_days": self.history_retention_days,
             "hotkeys": self.hotkeys.to_mapping(),
             "workflows": self.workflows.to_mapping(),
+            "text_actions": self.text_actions.to_mapping()
+            if self.text_actions is not None
+            else TextActionSettings.migrate(self.workflows, self.hotkeys).to_mapping(),
             "voice_translation": self.voice_translation.to_mapping(),
             "microphone": self.microphone.to_mapping(),
             "recording_controls": self.recording_controls.to_mapping(),
@@ -860,6 +866,19 @@ def _version(value: Any) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
+def _config_text_actions(source, workflows, hotkeys):
+    try:
+        return TextActionSettings.from_mapping(
+            source.get("text_actions"), workflows, hotkeys
+        )
+    except (KeyError, TypeError, ValueError, AttributeError):
+        if _version(source.get("schema_version")) <= CONFIG_SCHEMA_VERSION:
+            raise
+        # Newer files can use an unknown action representation. Existing routes
+        # remain readable; require_writable/save still reject this file.
+        return TextActionSettings.migrate(workflows, hotkeys)
+
+
 def _migrate_legacy_to_v1(payload: dict[str, Any]) -> dict[str, Any]:
     migrated = dict(payload)
     migrated["schema_version"] = 1
@@ -1091,11 +1110,18 @@ def _migrate_v3_to_v4(payload: dict[str, Any]) -> dict[str, Any]:
     return {**payload, "schema_version": 4}
 
 
+def _migrate_v4_to_v5(payload: dict[str, Any]) -> dict[str, Any]:
+    # AppConfig materializes missing actions only after effective routes and
+    # environment defaults have been resolved. Older readers must refuse saves.
+    return {**payload, "schema_version": 5}
+
+
 CONFIG_MIGRATIONS = {
     0: _migrate_legacy_to_v1,
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
+    4: _migrate_v4_to_v5,
 }
 
 
@@ -1230,6 +1256,11 @@ class LocalConfigRepository(ConfigRepository):
             self.path.parent, filename_stem=secret_stem
         )
         self._lock = threading.RLock()
+
+    def require_writable(self):
+        """Reject a newer file before native or remote settings effects."""
+        with self._lock:
+            _ensure_supported_schema(self.path, CONFIG_SCHEMA_VERSION)
 
     def _environment_secret(self, provider: str) -> str | None:
         names = (

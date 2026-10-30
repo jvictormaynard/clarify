@@ -8,13 +8,16 @@ operator commands and the public transparency page. Stripe registration is
 deferred until a business account is available.
 See the [privacy notice and account deletion instructions](../PRIVACY.md).
 The server is optional: local inference and personal provider keys still work
-without an account. The iOS app currently supports personal Groq keys, not local
-inference. Accounts share vocabulary, hosted audio allowance and new account
+without an account. The iOS app uses a Clarify account or an explicitly paired
+computer. Personal models and provider keys remain on that computer.
+Accounts share vocabulary, hosted audio allowance and new account
 transcriptions. Pre-upgrade records and guest history stay on their original
 device. Account snippets have a separate synchronized library; guest snippets
 and personal provider keys stay on their original device. Signing in does not
 upload guest snippets. Account
 history uses [bounded, idempotent synchronization](../docs/history-sync.md).
+Account-owned text actions use a separate [versioned catalog and execution
+protocol](TEXT_ACTIONS.md). Device shortcuts and processing profiles stay local.
 
 ## Run and verify
 
@@ -256,7 +259,8 @@ verification. Changing this recovery source pin requires a new review.
 Server tests, desktop Python/Settings checks and iOS native compilation must pass.
 Live email, device activation/dictation, account isolation, quota exhaustion,
 session revocation and account deletion need staging acceptance. No automatic
-TestFlight upload is part of this change. The existing private-API app-return
-experiment is limited to TestFlight; remove it before a public App Store release.
+TestFlight upload is part of this change. The public iOS release must validate
+keyboard activation and return to the source app under the
+[iOS release procedure](../mobile/README.md).
 Public launch also needs an accurate privacy policy, account deletion instructions
 and a tested backup/restore policy. Apple login and billing are separate increments.

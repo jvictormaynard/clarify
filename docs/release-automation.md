@@ -1,7 +1,7 @@
 # Client release automation
 
 Code changes on `main` run validation. They do not request a client release.
-Desktop publication and TestFlight upload require a separate release-preparation
+Desktop publication and TestFlight delivery require a separate release-preparation
 PR, a maintainer review and merge, and successful CI for that exact merge commit.
 A maintainer can review and merge their own preparation PR. The repository does
 not require a second person's approval.

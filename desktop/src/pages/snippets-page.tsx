@@ -1,7 +1,7 @@
 import { t } from "../i18n";
 import { useState } from "react";
 import { Plus, Search, X } from "lucide-react";
-import { Button, Input, Switch, TextArea } from "../components/ui";
+import { Button, Input, SettingsDisclosure, Switch, TextArea } from "../components/ui";
 import type { Snippet } from "../settings/bridge";
 import type { SettingsPageProps } from "../settings/use-settings";
 import "../styles/snippets.css";
@@ -97,23 +97,21 @@ export function SnippetsPage({ controller }: SettingsPageProps) {
             <TextArea id={`snippet-text-${index}`} aria-label={t("Texto do snippet {v0}", { v0: index + 1 })}
               rows={3} maxLength={4096} value={entry.replacement}
               onChange={(event) => update(index, { replacement: event.target.value })} />
-            <details>
-              <summary>{t("Opções de correspondência")}</summary>
-              <div className="snippet-actions">
+            <SettingsDisclosure title={t("Opções de correspondência")}>
+              <div className="snippet-actions inline-actions">
                 <span className="hint">{t("Diferenciar maiúsculas e minúsculas")}</span>
                 <Switch label={t("Diferenciar maiúsculas no snippet {v0}", { v0: index + 1 })}
                   checked={entry.case_sensitive}
                   onChange={(case_sensitive) => void controller.setLibraryPreference("snippets", index, "case_sensitive", case_sensitive)} />
               </div>
-            </details>
+            </SettingsDisclosure>
           </div>
         ))}
         {!visible.length && <p className="hint dictionary-empty">
           {entries.length ? t("Nenhum snippet encontrado.") : t("Adicione seu primeiro snippet acima.")}
         </p>}
       </div>
-      <details className="dictionary-help">
-        <summary>{t("Como funciona")}</summary>
+      <SettingsDisclosure className="dictionary-help" title={t("Como funciona")}>
         <p className="hint">
           {t("Diga a frase sozinha para inserir o texto exato. Dentro de uma mensagem, o texto é inserido antes da reescrita e pode ser ajustado. Use Salvar para aplicar ou Descartar para cancelar.")}
         </p>
@@ -123,7 +121,7 @@ export function SnippetsPage({ controller }: SettingsPageProps) {
             : t("Os snippets deste dispositivo são aplicados localmente.")}
           {" "}{t("Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.")}
         </p>
-      </details>
+      </SettingsDisclosure>
     </section>
   );
 }

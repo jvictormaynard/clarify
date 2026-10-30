@@ -210,6 +210,11 @@ foreach ($backendModule in @(
     "chatgpt_provider.py",
     "clarify_account.py",
     "cloud_defaults.py",
+    "computer_host.py",
+    "computer_cloudflare.py",
+    "computer_processing.py",
+    "computer_relay_client.py",
+    "computer_relay_protocol.py",
     "dictionary_settings.py",
     "dictionary_snippets.py",
     "experimental_audio_history.py",
@@ -230,6 +235,8 @@ foreach ($backendModule in @(
     "portable_updates.py",
     "portable_update_windows.py",
     "secret_store.py",
+    "text_actions.py",
+    "text_action_service.py",
     "version.py",
     "voice_translation.py",
     "voice_translation_runtime.py",
@@ -244,7 +251,7 @@ foreach ($backendModule in @(
     Copy-Item (Join-Path $repoRoot $backendModule) $sourceDir -Force
 }
 New-Item (Join-Path $sourceDir "shared") -ItemType Directory -Force | Out-Null
-foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json", "dictation_policy.py", "writing_style_policy.py")) {
+foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json", "dictation_policy.py", "writing_style_policy.py", "output_preferences.py", "computer_connect.py", "computer_connect.json", "computer_cloudflare.json")) {
     Copy-Item (Join-Path $repoRoot "shared\$catalogFile") (Join-Path $sourceDir "shared") -Force
 }
 Copy-Item $repoQml $qml -Recurse -Force
@@ -295,6 +302,8 @@ $pyinstallerArgs = @(
     "--add-data", "${distribution};distribution",
     "--add-data", "${qml};qml",
     "--add-data", "$(Join-Path $sourceDir 'shared\ui_strings.json');shared",
+    "--add-data", "$(Join-Path $sourceDir 'shared\computer_connect.json');shared",
+    "--add-data", "$(Join-Path $sourceDir 'shared\computer_cloudflare.json');shared",
     "--add-data", "${localAsrManifest};.",
     "--add-data", "${localAsrLicenses};licenses",
     "--hidden-import", "version",

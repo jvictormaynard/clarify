@@ -1,12 +1,13 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
-import { Button, Picker, Row, Section } from "../components/ui";
+import { Button, Row, Section } from "../components/ui";
+import { actionDisplayName, hotkeyLabel } from "../settings/use-text-actions";
 
 export function ShortcutsPage({ controller }: SettingsPageProps) {
   const { state, run, setCapture, setConfirmAction } = controller;
   return (
-    <Section title={t("Ações rápidas")}>
-      {state.hotkeyActions.map((item) => (
+    <><Section title={t("Ações rápidas")}>
+      {state.hotkeyActions.filter(item => !["rewrite_hotkey", "translation_hotkey"].includes(item.id)).map((item) => (
         <Row key={item.id} title={t(item.label)}>
           <div className="inline-actions">
             <Button
@@ -27,20 +28,13 @@ export function ShortcutsPage({ controller }: SettingsPageProps) {
       <Button
         variant="text"
         onClick={() => setConfirmAction("resetAllHotkeys")}
-      >{t("Restaurar todos os atalhos")}</Button>
-      <Row title={t("Modo de gravação")}>
-        <Picker
-          label={t("Modo de gravação")}
-          value={state.hotkeyActivationMode}
-          options={[
-            { id: "toggle", label: t("Pressionar para iniciar e parar") },
-            ...(state.hotkeyPushToTalkSupported
-              ? [{ id: "push_to_talk", label: t("Segurar para gravar") }]
-              : []),
-          ]}
-          onChange={(v) => void run("setHotkeyActivationMode", v)}
-        />
-      </Row>
+      >{t("Restaurar atalhos padrão")}</Button>
     </Section>
+    <Section title={t("Atalhos das ações")}>
+      <p className="hint">{t("Edite o atalho junto com as instruções da ação. A mudança só vale após salvar.")}</p>
+      {(state.textActions ?? []).map(action => <Row key={action.id} title={actionDisplayName(action)}>
+        <Button className="shortcut" onClick={() => controller.textActions.open(action)}>{hotkeyLabel(action.shortcut) || t("Definir atalho")}</Button>
+      </Row>)}
+    </Section></>
   );
 }

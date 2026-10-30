@@ -8,6 +8,7 @@ import { Textarea as TextareaControl } from "./primitives/textarea";
 
 export { Confirm } from "./confirm";
 export { Picker } from "./picker";
+export { SettingsDisclosure } from "./settings-disclosure";
 
 const variants = {
   default: "outline",
@@ -155,17 +156,21 @@ export function Toggle({
 
 export function Section({
   title,
+  id,
   children,
   className,
+  grouped = true,
 }: {
   title?: ReactNode;
+  id?: string;
   children: ReactNode;
   className?: string;
+  grouped?: boolean;
 }) {
   return (
-    <section className={cn("settings-section", className)} data-slot="settings-section">
+    <section id={id} className={cn("settings-section", className)} data-slot="settings-section">
       {title && <h2>{title}</h2>}
-      <div className="section-content" data-slot="settings-group">{children}</div>
+      <div className={grouped ? "section-content" : "section-fields"} data-slot={grouped ? "settings-group" : "settings-fields"}>{children}</div>
     </section>
   );
 }

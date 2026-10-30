@@ -5,22 +5,19 @@ import {
   Picker,
   Row,
   Section,
+  SettingsDisclosure,
   TextArea,
   Toggle,
 } from "../components/ui";
 import { WorkflowRoute } from "../components/workflow-route";
 import { RecordingOptions } from "../components/recording-options";
 import { recordingDraft } from "../settings/recording";
-import { DictationCleanup } from "../components/dictation-cleanup";
-import { ApplicationWritingStyles } from "../components/application-writing-styles";
 
 export function DictationPage({ controller }: SettingsPageProps) {
   const { state, run, prompt, setPrompt, recording, setRecording } = controller;
+  const managedProcessing = state.accountState?.managed || state.accountState?.signedIn;
   return (
     <>
-      <DictationCleanup controller={controller} />
-      <ApplicationWritingStyles controller={controller} />
-      {(state.accountState?.managed || state.accountState?.signedIn) && <p className="hint">{t("O Clarify gerencia os modelos de transcrição e reescrita da sua conta.")}</p>}
       <Section title={t("Entrada de áudio")}>
         <Row title={t("Microfone")}>
           <Picker
@@ -67,40 +64,43 @@ export function DictationPage({ controller }: SettingsPageProps) {
           </p>
         )}
       </Section>
-      {!(state.accountState?.managed || state.accountState?.signedIn) && <Section title={t("Transcrição")}>
-        <WorkflowRoute controller={controller} />
-        <Toggle
-          title={t("Ativar ditado")}
-          checked={state.routeEnabled}
-          onChange={(v) => void run("setRouteEnabled", v)}
-        />
-        <details>
-          <summary>{t("Instruções da transcrição")}</summary>
-          <TextArea
-            className="prompt"
-            aria-label={t("Instruções da transcrição")}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+      <Section title={t("Modo de gravação")}>
+        <Row title={t("Modo de gravação")}>
+          <Picker
+            label={t("Modo de gravação")}
+            value={state.hotkeyActivationMode}
+            options={[
+              { id: "toggle", label: t("Pressionar para iniciar e parar") },
+              ...(state.hotkeyPushToTalkSupported
+                ? [{ id: "push_to_talk", label: t("Segurar para gravar") }]
+                : []),
+            ]}
+            onChange={(v) => void run("setHotkeyActivationMode", v)}
           />
-        </details>
-      </Section>}
-      <Section>
+        </Row>
         <RecordingOptions
           value={{ ...(recording ?? recordingDraft(state.recordingControls)), enabled: state.recordingControls.vad.enabled }}
           onChange={setRecording}
           onEnabledChange={(enabled) => void run("setRecordingVadEnabled", enabled)}
         />
       </Section>
-      {!(state.accountState?.managed || state.accountState?.signedIn) && state.routeProviderId === "local_asr" && (
-        <Section title={t("Acabamento do texto")}>
-          <Toggle
-            title={t("Revisar com IA na nuvem")}
-            hint={t("Após a transcrição local, envie o texto ao serviço de revisão configurado.")}
-            checked={state.localAsrCloudRefinement}
-            onChange={(v) => void run("setLocalAsrCloudRefinement", v)}
+      {managedProcessing && <p className="hint">{t("O Clarify gerencia os modelos de transcrição e reescrita da sua conta.")}</p>}
+      {!managedProcessing && <Section title={t("Transcrição")}>
+        <Toggle
+          title={t("Ativar ditado")}
+          checked={state.routeEnabled}
+          onChange={(v) => void run("setRouteEnabled", v)}
+        />
+        <WorkflowRoute controller={controller} />
+        <SettingsDisclosure title={t("Instruções da transcrição")}>
+          <TextArea
+            className="prompt"
+            aria-label={t("Instruções da transcrição")}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
           />
-        </Section>
-      )}
+        </SettingsDisclosure>
+      </Section>}
     </>
   );
 }

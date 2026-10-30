@@ -23,8 +23,9 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Tradução de texto selecionado
 - Integração nativa com atalhos e bandeja do Windows
 - Interface em português, inglês e espanhol, independente do idioma do ditado
-- Configurações em React/Tauri: Conta Clarify, Geral, Ditado, Texto, Dicionário, Snippets, Histórico, Atalhos e
-  Modelos e serviços
+- Área de trabalho em React/Tauri: Ditado, Estilo, Ações de texto, Dicionário, Snippets e Histórico
+- Diálogo de Configurações com Geral, Dispositivos, Modelos e serviços, Atalhos, Privacidade e Conta Clarify
+- Ações de texto com nome, instruções próprias, atalhos opcionais e prévia
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
 - Dicionário pessoal para nomes e termos técnicos
 - Estatísticas locais sem armazenar o conteúdo das transcrições
@@ -40,6 +41,14 @@ chave**. Valide ou descarte essas alterações antes de salvar outros rascunhos.
 Ao fechar as Configurações, você pode salvar ou descartar os rascunhos de todas
 as páginas.
 
+Use **Estilo** para revisar o ditado, escolher uma ação após o ditado e definir
+estilos por aplicativo. **Ações de texto** começa com Reescrita e Tradução;
+crie outra ação para usar suas próprias instruções. Os diálogos de ação, perfil
+de processamento e estilo por aplicativo mantêm rascunhos até **Salvar**.
+**Cancelar** descarta as alterações daquele diálogo. A prévia usa texto de
+exemplo e não cola em outro aplicativo. Local Whisper continua restrito à
+transcrição de áudio.
+
 O Clarify usa o idioma do dispositivo: português, inglês ou espanhol,
 incluindo o e-mail de autenticação. No primeiro acesso, use Google, Microsoft
 ou GitHub, ou informe seu e-mail e confirme o código dentro do aplicativo
@@ -47,7 +56,8 @@ para entrar ou criar uma conta.
 **Continuar sem conta** abre a configuração do modelo local; a chave própria
 continua disponível nessa etapa. Entrar na conta ativa o processamento do Clarify automaticamente.
 Contas autenticadas usam os modelos gerenciados pelo Clarify. As configurações
-de provedores, chaves e modelos locais e a aba Texto aparecem apenas no modo sem conta.
+de provedores, chaves e modelos locais ficam no modo sem conta. Estilo e Ações
+de texto ficam disponíveis nos dois modos.
 A cota semanal aparece como porcentagem, com a próxima renovação no horário local.
 As cotas renovam na segunda-feira, às 00:00 UTC. Enquanto a cota não é conhecida,
 a tela mostra o carregamento. Uma mensagem informa quando faltam fundos.
@@ -64,8 +74,11 @@ conexão e reinícios. Os snippets da conta sincronizam entre os clientes; os sn
 sem conta permanecem locais. Consulte o [contrato de sincronização](history-sync.md)
 e os [snippets de voz](dictionary-snippets.md). As instalações
 existentes mantêm sua configuração. O [aplicativo iOS](../mobile/README.md)
-é distribuído pelo TestFlight. O [servidor de contas](../server/README.md) também
+está na [App Store](https://apps.apple.com/br/app/clarify/id6820869157).
+O TestFlight é usado para testes internos. O [servidor de contas](../server/README.md) também
 pode ser hospedado por você. As chaves de produção e os dados dos usuários são privados.
+O código também permite [parear o iPhone com o computador](computer-connection.md)
+por QR para processar pela rede local, com a configuração pessoal do computador.
 
 > [!IMPORTANT]
 > O acesso pessoal à nuvem usa sua chave de API ou um plano ChatGPT elegível.
@@ -80,11 +93,12 @@ pode ser hospedado por você. As chaves de produção e os dados dos usuários s
 
 ## Prévia da interface
 
-![Ditado nas Configurações atuais](images/settings-desktop-dictation.png)
+As capturas da interface ficam nos artefatos `Settings-tests` das execuções de CI.
+O [sistema visual do desktop](desktop-design-system.md) define o layout, os tokens
+e os componentes compartilhados.
 
-Captura do frontend React atual, em teste de navegador com dados fictícios.
-Os testes da janela nativa e os cenários não testados estão registrados em
-[Release readiness](release-readiness.md).
+Consulte [Release readiness](release-readiness.md) para os testes de aceitação
+nativa e as verificações de publicação.
 
 ## Instalação no Windows
 
@@ -256,8 +270,8 @@ esse vocabulário também é enviado ao provedor. Veja as etapas e os limites no
 
 ## Privacidade
 
-O Clarify não possui servidor próprio. As configurações e estatísticas
-locais ficam em `%APPDATA%\Clarify`. No Windows, as chaves ficam separadas
+As configurações e estatísticas locais ficam em `%APPDATA%\Clarify`.
+No Windows, as chaves ficam separadas
 em `secrets.dpapi.json`, criptografadas pela DPAPI para o usuário atual. Chaves
 antigas em texto simples são migradas e só são removidas de `config.json` depois
 da confirmação da cópia protegida. Variáveis de ambiente são substituições

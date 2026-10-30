@@ -49,7 +49,7 @@ class ApplicationStyleConfigTests(unittest.TestCase):
             "workflows": {"refinement": {"prompt": "Keep my personal wording."}},
         }
         migrated = migrate_config_payload(original)
-        self.assertEqual(migrated["schema_version"], 4)
+        self.assertEqual(migrated["schema_version"], 5)
         self.assertEqual(migrate_config_payload(migrated), migrated)
         config = AppConfig.from_mapping(migrated)
         self.assertEqual(
@@ -79,7 +79,7 @@ class ApplicationStyleConfigTests(unittest.TestCase):
                 WritingStyle.INFORMAL,
             )
             self.assertTrue(loaded.history_enabled)
-            self.assertEqual(json.loads(path.read_text())["schema_version"], 4)
+            self.assertEqual(json.loads(path.read_text())["schema_version"], 5)
 
 
 class ApplicationStyleProviderTests(unittest.TestCase):

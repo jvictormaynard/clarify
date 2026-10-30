@@ -59,6 +59,28 @@ class SnippetLibrary(models.Model):
     entries = models.JSONField(default=list)
 
 
+class TextActionLibrary(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True
+    )
+    revision = models.PositiveBigIntegerField(default=0)
+    actions = models.JSONField(default=list)
+
+
+class TextActionRevision(models.Model):
+    # Retain only identity/version after deletion to prevent revision reuse.
+    library = models.ForeignKey(TextActionLibrary, on_delete=models.CASCADE)
+    action_id = models.CharField(max_length=64)
+    revision = models.PositiveBigIntegerField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["library", "action_id"], name="one_account_text_action_revision"
+            )
+        ]
+
+
 class HistoryState(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True

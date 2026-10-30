@@ -36,7 +36,7 @@ try {
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Opções avançadas" })).toHaveCount(0);
   console.log(`Native ready after ${Math.round(performance.now() - started)} ms (includes isolated Python fixture startup)`);
-  await expect(page.getByRole("button", { name: "Buscar configurações…", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("navigation").getByRole("combobox")).toHaveCount(0);
   await page.evaluate(() => {
     window.__disabledNavigation = [];
     window.__navigationObserver = new MutationObserver(() => {
@@ -73,16 +73,17 @@ try {
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("textbox", { name: "Texto do snippet 1", exact: true })).toHaveValue("Nome\n  Equipe\n");
   await page.screenshot({ path: `${process.env.CLARIFY_TEST_OUTPUT}/native-snippets.png` });
-  await page.getByRole("button", { name: "Texto", exact: true }).click();
+  await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await page.getByRole("button", { name: "Modelo e instruções da revisão", exact: true }).click();
   await page.getByRole("textbox", { name: "Instruções" }).fill("Unsaved native test draft");
   expect(await page.evaluate(() => window.__disabledNavigation)).toEqual([]);
   await page.evaluate(() => window.__navigationObserver.disconnect());
   await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("plugin:window|close", { label: "main" }));
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Alterações não salvas", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Continuar editando" }).click();
   await expect(page.getByRole("textbox", { name: "Instruções" })).toHaveValue("Unsaved native test draft");
   await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("plugin:window|close", { label: "main" }));
-  await page.getByRole("dialog").getByRole("button", { name: "Descartar tudo", exact: true }).click();
+  await page.getByRole("dialog", { name: "Alterações não salvas", exact: true }).getByRole("button", { name: "Descartar tudo", exact: true }).click();
   const code = await Promise.race([exited, delay(10000).then(() => "timeout")]);
   if (code !== 0) throw new Error(`Close did not release the child: ${code}`);
   if (errors.length) throw new Error(`Native frontend errors: ${errors.join("; ")}`);

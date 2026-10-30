@@ -378,8 +378,28 @@ class HistoryRecord:
     error: str | None = None
     record_id: str = field(default_factory=_new_record_id)
     source_device: str | None = None
+    text_action_id: str | None = None
+    text_action_name: str | None = None
+    text_action_revision: int | None = None
 
     def __post_init__(self) -> None:
+        from text_actions import identity
+
+        if self.text_action_id is not None:
+            try:
+                identity(self.text_action_id)
+            except ValueError as error:
+                raise HistoryValidationError("Invalid text action ID") from error
+        if self.text_action_name is not None and (
+            type(self.text_action_name) is not str
+            or not self.text_action_name.strip()
+            or len(self.text_action_name) > 80
+        ):
+            raise HistoryValidationError("Invalid text action name")
+        if self.text_action_revision is not None and (
+            type(self.text_action_revision) is not int or self.text_action_revision < 1
+        ):
+            raise HistoryValidationError("Invalid text action revision")
         if self.source_device not in (None, "desktop", "mobile"):
             raise HistoryValidationError("source_device must be desktop or mobile")
         for field_name in ("raw_text", "refined_text"):
@@ -450,6 +470,9 @@ class HistoryRecord:
             mapping["refinement_model"] = self.refinement_model
         if self.source_device is not None:
             mapping["source_device"] = self.source_device
+        for key in ("text_action_id", "text_action_name", "text_action_revision"):
+            if getattr(self, key) is not None:
+                mapping[key] = getattr(self, key)
         return mapping
 
     @classmethod
@@ -491,6 +514,9 @@ class HistoryRecord:
             error=error,
             record_id=record_id,
             source_device=payload.get("source_device"),
+            text_action_id=payload.get("text_action_id"),
+            text_action_name=payload.get("text_action_name"),
+            text_action_revision=payload.get("text_action_revision"),
         )
 
 

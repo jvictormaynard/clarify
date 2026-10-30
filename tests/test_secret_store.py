@@ -42,7 +42,13 @@ class SecretStoreContractTests(unittest.TestCase):
             first = DpapiSecretStore(path)
             expected = {
                 provider: f"non-production-{provider}-credential"
-                for provider in ("gemini", "openai", "groq", "chatgpt")
+                for provider in (
+                    "gemini",
+                    "openai",
+                    "groq",
+                    "chatgpt",
+                    "clarify_computer",
+                )
             }
             for provider, value in expected.items():
                 first.set(provider, value)

@@ -23,6 +23,7 @@ or missing boundaries fail validation. Unknown inputs select all checks.
 | Desktop build inputs, Rust, runtime locks or distribution policy | Native Settings, portable EXE, embedded payload, startup and portable update recovery |
 | MSI inputs | Portable build plus isolated installer lifecycle and CAB manifest checks |
 | Server or its shared contracts | PostgreSQL tests, missing migrations, container build and database startup |
+| Computer relay or Desktop Python contracts | Desktop checks, including the relay container build and non-listening entrypoint validation on Linux |
 | Mobile JavaScript or TypeScript | Types, lint, contracts, locale/prompt synchronization and an iOS JavaScript bundle |
 | Swift, Objective-C, native configuration, plugins or mobile dependencies | Mobile checks, native tests, keyboard simulator integration and unsigned app/extension build |
 | Shared contracts or CI policy | All affected consumers; unknown dependencies use full validation |
@@ -70,6 +71,12 @@ Trusted QA uses the same range selection for the QA/archive extras. It retains
 its original delivery, release and trusted-policy suites, plus native/mobile
 acceptance. This selection does not change the validation manifest schema.
 
+The normal Python jobs use `run_tests.py --ci-product-tests`. Delivery and
+release policies run once in Repository checks. The Linux product job also
+omits the QA/archive modules owned by that job. Windows retains their
+PowerShell and filesystem checks when QA policy changes or its selection is
+uncertain. Without this flag, local and trusted runs keep full discovery.
+
 ## Branch protection
 
 The required aggregate is `CI required`; individual job names remain for release
@@ -95,8 +102,10 @@ It does not request a new activation or protection change.
 
 Browser validation is separate from the native Settings build. Cargo downloads
 and compilation outputs use OS, architecture, compiler and lock-based caches.
-iOS caches CocoaPods downloads and Xcode build outputs. Builds still run and
-validate restored inputs; a cache hit is not proof of successful validation.
+iOS caches CocoaPods downloads and native test build outputs. The unsigned app
+build uses fresh DerivedData for each job. It does not restore compiled modules
+or precompiled headers, which can retain incompatible signatures across runners.
+Builds and tests still run; a cache hit is not proof of successful validation.
 Do not put profiles, secrets, recordings or signing materials in caches.
 
 Native iOS tests and unsigned compilation run in separate parallel jobs. Each
@@ -111,6 +120,9 @@ fixture preparation, simulator boot and test/build durations, and retains its
 result bundle. The app build emits the Xcode build timing summary. CI uploads
 the available evidence after success or failure. Cache keys include the runner,
 toolchain and source inputs; restored builds and all assertions still run.
+The normal native-test job needs Node and Xcode, but no Expo/npm installation.
+JavaScript checks and the bundle run in Mobile checks. The unsigned app build
+still installs the locked app dependencies. Trusted QA keeps its existing recipes.
 
 The `iOS validation` workflow also accepts a manual run on a contribution branch.
 It runs the same unsigned validation and aggregate gate. For a cache measurement,
@@ -146,3 +158,9 @@ SHA, platform-specific evidence, immutable tags and separate publication
 credentials. Windows interaction acceptance and physical iPhone/TestFlight
 acceptance remain required where applicable. Browser tests do not prove native
 focus, hotkeys, tray behavior, microphone routing or keyboard insertion.
+
+An explicitly requested internal TestFlight candidate can keep its implementation
+PR open. Its separate [candidate gate](release-automation.md#explicit-internal-candidates-from-an-open-pr)
+requires current canonical source, completed PR and native CI, a checked build
+reservation and an immutable PR-specific tag. This path does not publish a
+stable client or change the normal preparation and promotion gates.
