@@ -15,6 +15,17 @@ final class AppFlowUITests: XCTestCase {
     capture(name)
     print("APP_UI_DIAGNOSTIC \(name)\n\(app.debugDescription)")
   }
+  func reveal(_ element: XCUIElement, identifier: String) {
+    for _ in 0..<6 where !element.isHittable {
+      let page = app.scrollViews.containing(element.elementType, identifier: identifier).firstMatch
+      if page.exists && page.frame.height > 0 && page.frame.intersects(app.frame) {
+        let down = element.frame.midY < page.frame.midY
+        let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: down ? 0.2 : 0.8))
+        let finish = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: down ? 0.8 : 0.2))
+        start.press(forDuration: 0.1, thenDragTo: finish)
+      } else if element.frame.midY < app.frame.midY { app.swipeDown() } else { app.swipeUp() }
+    }
+  }
   func press(_ identifier: String, allowScroll: Bool = true) {
     let button = app.descendants(matching: .any)[identifier].firstMatch
     guard button.waitForExistence(timeout: 15) else {
@@ -24,11 +35,7 @@ final class AppFlowUITests: XCTestCase {
     guard XCTWaiter.wait(for: [enabled], timeout: 15) == .completed else {
       diagnose("disabled-\(identifier)"); XCTFail("Disabled action: \(identifier)"); return
     }
-    if allowScroll {
-      for _ in 0..<6 where !button.isHittable {
-        if button.frame.midY < app.frame.midY { app.swipeDown() } else { app.swipeUp() }
-      }
-    }
+    if allowScroll { reveal(button, identifier: identifier) }
     guard button.isHittable else {
       diagnose("unreachable-\(identifier)"); XCTFail("Unreachable action: \(identifier)"); return
     }
@@ -101,6 +108,7 @@ final class AppFlowUITests: XCTestCase {
   }
   func enter(_ value: String, in field: XCUIElement, name: String, replacing: Bool = false) {
     XCTAssertTrue(field.waitForExistence(timeout: 15))
+    reveal(field, identifier: field.identifier.isEmpty ? field.label : field.identifier)
     field.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
     if replacing { field.typeKey("a", modifierFlags: .command) }
