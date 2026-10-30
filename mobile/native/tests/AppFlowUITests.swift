@@ -53,11 +53,12 @@ final class AppFlowUITests: XCTestCase {
     let keyboard = app.keyboards.firstMatch
     if keyboard.exists {
       let page = app.scrollViews.firstMatch
-      guard page.exists && page.isHittable else {
+      guard page.exists && page.frame.intersects(app.frame) else {
         diagnose("keyboard-dismissal-page-missing"); XCTFail("Cannot reach the page to dismiss the keyboard"); return
       }
       // The center of the page can be an independently scrolling TextView.
-      // Drag through the page's leading gutter so its interactive dismissal runs.
+      // Container isHittable does not establish whether its gutter can be dragged.
+      // Use that gutter so the page's interactive dismissal runs.
       let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2))
       let finish = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85))
       start.press(forDuration: 0.1, thenDragTo: finish)
