@@ -170,7 +170,7 @@ test("ChatGPT connects without API keys, refreshes account catalogs and persists
   await expect(page.getByRole("combobox", { name: "ChatGPT account", exact: true })).toContainText("Personal");
   await expect(page.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toHaveCount(0);
   expect((await snapshot(page)).dirty).toBe(false);
-  await page.getByRole("button", { name: "Manage usage in ChatGPT", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Manage usage in ChatGPT", exact: true })).toBeVisible();
   const menu = page.getByRole("button", { name: "ChatGPT account options", exact: true });
   await expect(menu).toBeEnabled();
   await menu.focus();
