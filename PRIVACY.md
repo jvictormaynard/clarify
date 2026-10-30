@@ -62,8 +62,17 @@ audio, text or device credential in plaintext. Its operator can see network
 addresses, the computer's public certificate and route, connection times and
 traffic volume. The included relay saves aggregate monthly byte-budget counters;
 it does not save device credentials, desktop certificates, audio or text.
-Remote access does not require a Clarify account. It remains disabled in builds
-without a configured relay service.
+This optional TLS relay does not require a Clarify account. It remains disabled
+in builds without a configured relay service.
+
+Cloudflare internet access is a separate route and requires a free, verified
+Clarify account. The account authorizes tunnel allocation; processing still runs
+on the paired computer. The control service stores bounded allocation metadata
+and a hash of the account identifier, not the account's email or processing usage.
+Device credentials, audio and text use HPKE-encrypted envelopes inside HTTPS.
+Cloudflare can observe network metadata and interrupt traffic, but does not
+receive those encrypted contents in plaintext. Direct LAN access remains
+available without a Clarify account.
 
 ## Account information and security
 
