@@ -67,7 +67,9 @@ test("after dictation: translation saves only after an explicit target language"
   const saved = await settingsFixture.rpc("snapshot");
   expect(saved.afterDictationTextActionId).toBe("translation");
   expect(saved.afterDictationTextActionLanguage).toBe("en");
-  await page.reload(); await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Estilo", exact: true }).click();
   await expect(select).toContainText("Tradução");
 });
 
