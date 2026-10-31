@@ -1,9 +1,16 @@
 import { t } from "../i18n";
 import { useState } from 'react';
-import { Text, TextInput } from 'react-native';
+import { Text, TextInput, type TextInputProps } from 'react-native';
 import { Button, TextButton, ui, usePalette } from './ui';
 import type { AccountSnapshot } from '../../modules/clarify-core';
 import { report } from '../state/clarify';
+
+function EmailDraft({ initialValue, ...props }: Omit<TextInputProps, 'value' | 'defaultValue'> & { initialValue: string }) {
+  // Keep the native edit buffer stable while account snapshots update.
+  // A remount starts with the current draft retained by AccountSignIn.
+  const [initialText] = useState(initialValue);
+  return <TextInput {...props} defaultValue={initialText} />;
+}
 
 export function AccountSignIn({ account, busy, command }: {
   account: AccountSnapshot; busy: boolean;
@@ -41,7 +48,7 @@ export function AccountSignIn({ account, busy, command }: {
       <TextButton disabled={cancelling} onPress={cancel}>{t("Cancelar")}</TextButton>
     </>}
     <Text style={[ui.small, { color: c.muted, textAlign: 'center' }]}>{t("Ou continue com seu e-mail")}</Text>
-    <TextInput selectionColor={c.text} testID="account.email" accessibilityLabel={t("E-mail da conta Clarify")} value={email} onChangeText={setEmail} editable={!blocked} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" returnKeyType="go" onSubmitEditing={send} maxLength={254} placeholder={t("E-mail")} placeholderTextColor={c.muted} style={[ui.input, input]} />
+    <EmailDraft selectionColor={c.text} testID="account.email" accessibilityLabel={t("E-mail da conta Clarify")} initialValue={email} onChangeText={setEmail} editable={!blocked} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" returnKeyType="go" onSubmitEditing={send} maxLength={254} placeholder={t("E-mail")} placeholderTextColor={c.muted} style={[ui.input, input]} />
     <Button primary testID="account.requestCode" loading={busy && !social} disabled={blocked || !email.trim() || !account.endpoint} onPress={send}>{t("Continuar")}</Button>
     <Text style={[ui.small, { color: c.muted }]}>{t("Enviaremos um código para entrar ou criar sua conta. Você não precisa de senha.")}</Text>
   </>;
