@@ -285,7 +285,23 @@ final class AppFlowUITests: XCTestCase {
     let word = app.textFields["Palavra"]
     enter(compact ? "ui" : "Fixture draft", in: word, name: "dictionary-draft")
     capture("dictionary-editor-keyboard-dirty")
-    press("Cancelar"); back()
+    press("Cancelar")
+    if !compact {
+      let savedWord = "fixture saved"
+      press("Adicionar palavra")
+      enter(savedWord, in: word, name: "dictionary-save")
+      enter("fixture alias", in: app.textFields["Variações"], name: "dictionary-alias")
+      press("Salvar"); absent(word)
+      let saved = (fixture("/v1/dictionary")["entries"] as? [[String: Any]])?.first { ($0["term"] as? String) == savedWord }
+      XCTAssertEqual(saved?["term"] as? String, savedWord, "The received dictionary payload retains the full term")
+      XCTAssertEqual(saved?["aliases"] as? [String], ["fixture alias"])
+      let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", savedWord)).firstMatch
+      XCTAssertTrue(row.waitForExistence(timeout: 15)); row.tap()
+      XCTAssertEqual(word.value as? String, savedWord)
+      XCTAssertEqual(app.textFields["Variações"].value as? String, "fixture alias")
+      capture("dictionary-saved-readback"); press("Cancelar")
+    }
+    back()
     XCTAssertTrue(app.tabBars.buttons["Biblioteca"].isSelected)
     press("library.snippets"); capture("snippets")
     press("Adicionar snippet")

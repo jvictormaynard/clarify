@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Keyboard, Linking, Text, TextInput, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Keyboard, Linking, Text, type TextInput, View } from 'react-native';
+import { DraftInput } from './draft-input';
 import { t } from '../i18n';
 import { guideCompletion, guideTransition, initialGuide, type GuideAction, type GuideExit } from '../quick-start';
 import { isBusy, report, useClarify } from '../state/clarify';
@@ -12,6 +13,7 @@ export function QuickStartGuide({ onFinish, busy = false, replay = false }: {
   const { state, activate, activating } = useClarify();
   const [progress, setProgress] = useState(initialGuide);
   const [practiceText, setPracticeText] = useState('');
+  const practiceInput = useRef<TextInput>(null);
   const [finishing, setFinishing] = useState(false);
   const blocked = busy || finishing || activating || isBusy(state);
   const step = progress.step === 'keyboard' ? 0 : progress.step === 'microphone' ? 1 : 2;
@@ -28,6 +30,7 @@ export function QuickStartGuide({ onFinish, busy = false, replay = false }: {
     try {
       await onFinish(confirmed);
       setPracticeText('');
+      practiceInput.current?.clear();
       Keyboard.dismiss();
     }
     catch (error) { report(error); }
@@ -56,8 +59,8 @@ export function QuickStartGuide({ onFinish, busy = false, replay = false }: {
       </> : <>
         <Title>{t('Experimente um ditado')}</Title>
         <Text style={[ui.body, { color: c.text }]}>{t('Toque no campo e escolha o teclado Clarify pelo globo.')}</Text>
-        <TextInput testID="onboarding.practiceInput" accessibilityLabel={t('Texto de teste')}
-          value={practiceText} onChangeText={setPracticeText} editable={!finishing} multiline
+        <DraftInput ref={practiceInput} testID="onboarding.practiceInput" accessibilityLabel={t('Texto de teste')}
+          initialValue={practiceText} onChangeText={setPracticeText} editable={!finishing} multiline
           placeholder={t('Oi, tudo bem?')} placeholderTextColor={c.muted} selectionColor={c.text}
           style={[ui.input, { color: c.text, borderColor: c.controlBorder, backgroundColor: c.card, minHeight: 112, maxHeight: 180, textAlignVertical: 'top' }]} />
         {state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.text }]}>{t(state.message)}</Text>}

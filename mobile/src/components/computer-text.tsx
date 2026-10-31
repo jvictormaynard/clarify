@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
+import { DraftInput } from './draft-input';
 import { router } from 'expo-router';
 import Core from '../../modules/clarify-core';
 import { t, uiLanguage } from '../i18n';
@@ -47,7 +48,7 @@ export function ComputerText() {
   }
   return <View style={{ gap: 20 }}>
     <NavigationRow testID="actions.destination" title={t(destinationLabel(account))} icon={account?.mode === 'computer' ? 'desktopcomputer' : 'cloud'} onPress={() => router.push('/processing')} />
-    <TextInput testID="actions.text" accessibilityLabel={t('Texto para processar')} multiline value={model.draft}
+    <DraftInput testID="actions.text" accessibilityLabel={t('Texto para processar')} multiline initialValue={model.draft}
       onChangeText={value => session.setDraft(value)} maxLength={8000} selectionColor={c.text}
       placeholder={t('Cole ou escreva o texto')} placeholderTextColor={c.muted}
       style={[ui.input, { color: c.text, borderColor: c.controlBorder, backgroundColor: c.card, minHeight: 156, textAlignVertical: 'top' }]} />

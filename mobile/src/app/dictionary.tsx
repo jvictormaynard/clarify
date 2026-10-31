@@ -2,7 +2,8 @@ import { ComputerLibraryNotice } from '../components/computer-connection';
 import { t } from "../i18n";
 import { useEffect, useState } from 'react';
 import { useIsFocused } from 'expo-router';
-import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, Switch, Text, View } from 'react-native';
+import { DraftInput } from '../components/draft-input';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Core, { type VocabularyEntry } from '../../modules/clarify-core';
 import { Button, Card, EmptyState, ModalHeader, TableRow, ui, usePalette, useReducedMotion } from '../components/ui';
@@ -55,7 +56,7 @@ function Words() {
   }
   const visibleEntries = entries.map((entry, index) => ({ entry, index })).filter(({ entry }) =>
     [entry.term, entry.pronunciation, ...entry.aliases].join(' ').toLocaleLowerCase().includes(search.toLocaleLowerCase()));
-  const field = (label: string, value: string, change: (value: string) => void, placeholder: string) => <View style={{ gap: 8 }}><Text style={[ui.body, { color: c.text }]}>{label}</Text><TextInput selectionColor={c.text} accessibilityLabel={label} value={value} onChangeText={change} editable={!busy} autoCorrect={false} placeholder={placeholder} placeholderTextColor={c.muted} maxLength={label === t("Variações") ? 8192 : 256} style={[ui.input, { color: c.text, borderColor: c.controlBorder }]} /></View>;
+  const field = (label: string, value: string, change: (value: string) => void, placeholder: string) => <View style={{ gap: 8 }}><Text style={[ui.body, { color: c.text }]}>{label}</Text><DraftInput selectionColor={c.text} accessibilityLabel={label} initialValue={value} onChangeText={change} editable={!busy} autoCorrect={false} placeholder={placeholder} placeholderTextColor={c.muted} maxLength={label === t("Variações") ? 8192 : 256} style={[ui.input, { color: c.text, borderColor: c.controlBorder }]} /></View>;
   if (account?.mode === 'computer') return <View style={[ui.content, { flex: 1, backgroundColor: c.background }]}><ComputerLibraryNotice /></View>;
   return <>
     <FlatList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[ui.content, { gap: 0 }]} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
@@ -64,7 +65,7 @@ function Words() {
       ListHeaderComponent={<View style={{ gap: 16, marginBottom: 16 }}>
         {account?.syncEnabled && <Text style={[ui.small, { color: c.muted }]}>{t("Dicionário da conta {v0}. As alterações são sincronizadas ao salvar.", { v0: account.email })}</Text>}
         {account?.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.text }]}>{t(account.error)}</Text>}
-        <TextInput selectionColor={c.text} accessibilityLabel={t("Buscar no dicionário")} value={search} onChangeText={setSearch} placeholder={t("Buscar palavra")} placeholderTextColor={c.muted} style={[ui.input, { color: c.text, backgroundColor: c.card, borderColor: c.controlBorder }]} />
+        <DraftInput selectionColor={c.text} accessibilityLabel={t("Buscar no dicionário")} initialValue={search} onChangeText={setSearch} placeholder={t("Buscar palavra")} placeholderTextColor={c.muted} style={[ui.input, { color: c.text, backgroundColor: c.card, borderColor: c.controlBorder }]} />
         <Button primary disabled={busy || !loaded || entries.length >= 512} onPress={() => edit()}>{t("Adicionar palavra")}</Button>
       </View>}
       renderItem={({ item: { entry, index }, index: rowIndex }) => <TableRow first={rowIndex === 0} last={rowIndex === visibleEntries.length - 1} disabled={busy} onPress={() => edit(index)}>
@@ -80,10 +81,10 @@ function Words() {
           onCancel={() => setEditing(null)} onSave={commit} busy={saving} loading={saving && !deleting} disabled={busy || !editing?.value.term.trim()} />
         <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={[ui.content, { paddingTop: 12 }]} keyboardShouldPersistTaps="handled">
         {editing && <Card>
-          {field(t("Palavra"), editing.value.term, (term) => setEditing({ ...editing, value: { ...editing.value, term } }), t("Nome ou termo"))}
-          {field(t("Pronúncia"), editing.value.pronunciation, (pronunciation) => setEditing({ ...editing, value: { ...editing.value, pronunciation } }), t("Opcional"))}
+          {field(t("Palavra"), editing.value.term, (term) => setEditing(current => current ? { ...current, value: { ...current.value, term } } : null), t("Nome ou termo"))}
+          {field(t("Pronúncia"), editing.value.pronunciation, (pronunciation) => setEditing(current => current ? { ...current, value: { ...current.value, pronunciation } } : null), t("Opcional"))}
           {field(t("Variações"), aliases, setAliases, t("Separe por vírgulas (opcional)"))}
-          <View style={ui.row}><Text style={[ui.body, { color: c.text }]}>{t("Usar esta palavra")}</Text><Switch accessibilityLabel={t("Usar esta palavra")} value={editing.value.enabled} disabled={busy} onValueChange={(enabled) => setEditing({ ...editing, value: { ...editing.value, enabled } })} /></View>
+          <View style={ui.row}><Text style={[ui.body, { color: c.text }]}>{t("Usar esta palavra")}</Text><Switch accessibilityLabel={t("Usar esta palavra")} value={editing.value.enabled} disabled={busy} onValueChange={(enabled) => setEditing(current => current ? { ...current, value: { ...current.value, enabled } } : null)} /></View>
         </Card>}
         {editing && editing.index >= 0 && <Button loading={deleting} disabled={busy} destructive onPress={() => Alert.alert(t("Excluir palavra?"), editing.value.term, [{ text: t("Cancelar"), style: 'cancel' }, { text: t("Excluir"), style: 'destructive', onPress: () => void save(editing.base.filter((_, index) => index !== editing.index), true) }])}>{t("Excluir palavra")}</Button>}
       </ScrollView></SafeAreaView>
