@@ -1,12 +1,14 @@
 {
   "schema": 1,
-  "component": "desktop",
-  "version": "0.15.0",
-  "base_sha": "f9dd60efc4da5f8e089eb9cccf642f23707e3021",
-  "notes": "Publish the desktop workspace and Settings redesign, custom text actions, processing profiles and paired-computer support already integrated in PR202. Preserve the community portable track.\n\nThe maintainer accepted navigation with saved preferences, action create/edit/preview, and shortcut recording/cancellation/restart on the exact installed base. Packaging, embedded Settings, Qt/crypto attribution and main CI passed. Signed iOS and physical-phone/WAN acceptance are separate; this desktop preparation does not submit an App Store build. Verify published assets, Ed25519 metadata and provenance after publication.",
+  "component": "mobile",
+  "version": "0.13.0",
+  "base_sha": "6b742c8f7a1570073ccf8afba1aca0e62809c19e",
+  "notes": "Prepare the integrated mobile navigation, saved text actions and permanent keyboard output control for an internal TestFlight acceptance build before the public App Store update. Preserve keyboard activation, return to the source app and the existing sign-in providers.\n\nComplete Apple inventory run 41139466023, attempt 1, ended at 2026-10-30T22:38:51.726Z with 32 builds and 32 uploads, maximum 48, and no pending upload or review. Artifact, JSON and collector hashes were independently checked. Remote tags, preparation refs, open PRs and iOS workflow runs were checked at 2026-10-31T01:26:57Z; no build 49 reservation was found. Recheck before merge.\n\nCloudflare now uses the production account API. Readback confirmed an enabled Worker, a free allocation lock, one ready computer and no uncertain operation. The existing administrative token expires at 2026-11-28T22:59:59Z; renew it before that date.\n\nNative CI, signed IPA verification, upload, Apple processing and internal-group availability remain delivery gates. Physical iPhone acceptance and production-account WAN processing remain open before App Store submission. This preparation does not submit the app for public review.",
   "evidence": {
-    "tested_sha": "f9dd60efc4da5f8e089eb9cccf642f23707e3021",
-    "windows_accepted": true,
-    "report_url": "https://github.com/jvictormaynard/clarify/pull/202#windows-acceptance"
+    "build": "49",
+    "highest_build": "48",
+    "pending_builds_checked": true,
+    "checked_at": "2026-10-30T22:38:51Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41139466023"
   }
 }
