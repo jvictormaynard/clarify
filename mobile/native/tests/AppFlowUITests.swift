@@ -63,14 +63,9 @@ final class AppFlowUITests: XCTestCase {
       guard page.exists && page.frame.intersects(app.frame) else {
         diagnose("keyboard-dismissal-page-missing"); XCTFail("Cannot reach the page to dismiss the keyboard"); return
       }
-      // The center of the page can be an independently scrolling TextView.
-      // Container isHittable does not establish whether its gutter can be dragged.
-      // Use that gutter so the page's interactive dismissal runs.
-      let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2))
-      // Interactive dismissal follows the touch. Cross the keyboard's top edge
-      // instead of stopping inside the page that has already resized above it.
-      let finish = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.95))
-      start.press(forDuration: 0.1, thenDragTo: finish)
+      // KeyboardPage uses handled taps. Its empty gutter is outside child controls.
+      // Tap there to finish editing without leaving an interactive drag in progress.
+      page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).tap()
       let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: keyboard)
       guard XCTWaiter.wait(for: [dismissed], timeout: 5) == .completed else {
         diagnose("keyboard-obscures-tab-\(label)"); XCTFail("Dismiss the keyboard before choosing tab: \(label)"); return
