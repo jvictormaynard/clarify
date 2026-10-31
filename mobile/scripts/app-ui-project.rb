@@ -32,6 +32,7 @@ native.build_configurations.each do |configuration|
   configuration.build_settings.merge!({
     'PRODUCT_BUNDLE_IDENTIFIER' => 'com.jvictormaynard.clarify.textinputtests',
     'PRODUCT_NAME' => '$(TARGET_NAME)', 'GENERATE_INFOPLIST_FILE' => 'YES',
+    'SWIFT_VERSION' => '5.0',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++20', 'CLANG_ENABLE_OBJC_ARC' => 'YES', 'CLANG_ENABLE_MODULES' => 'YES',
     'CODE_SIGNING_ALLOWED' => 'YES', 'CODE_SIGN_IDENTITY' => '-',
     'CODE_SIGN_INJECT_BASE_ENTITLEMENTS' => 'YES', 'ONLY_ACTIVE_ARCH' => 'YES',
@@ -53,6 +54,13 @@ end
 native_file = File.join(fixture, 'TextInputStateTests.mm')
 FileUtils.cp(File.join(root, 'native/tests/TextInputStateTests.mm'), native_file)
 native.source_build_phase.add_file_reference(project.main_group.new_file(native_file))
+swift_file = File.join(fixture, 'TextInputTestRuntime.swift')
+File.write(swift_file, <<~SWIFT)
+  // This Objective-C++ test bundle links Swift Pods. A Swift source file makes
+  // Xcode add the Swift compiler's runtime paths and compatibility libraries.
+  import Foundation
+SWIFT
+native.source_build_phase.add_file_reference(project.main_group.new_file(swift_file))
 project.save
 scheme = Xcodeproj::XCScheme.new
 scheme.add_build_target(app)
