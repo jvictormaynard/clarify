@@ -86,7 +86,8 @@ jobs:
   app:
     name: Containing app UI tests
     runs-on: macos-26
-    timeout-minutes: 60
+    # Includes patched React core compilation, both UI profiles and evidence export.
+    timeout-minutes: 90
     defaults:
       run:
         working-directory: mobile
