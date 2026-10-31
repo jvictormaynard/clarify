@@ -92,7 +92,7 @@ jobs:
           CLARIFY_ASC_ISSUER_ID: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
         run: node scripts/publish-testflight.cjs
       - name: Preserve TestFlight availability evidence
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: clarify-testflight-${{ github.sha }}
           path: mobile/test-results/testflight-availability.json
@@ -186,7 +186,7 @@ jobs:
           fi
       - name: Preserve simulator results
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: clarify-keyboard-tests-${{ github.sha }}
           path: |
@@ -272,7 +272,7 @@ jobs:
           exit "$upload_exit"
       - name: Preserve verified IPA and checksum
         if: success() && inputs.mode == 'testflight' && steps.resume.outputs.result == 'publish'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: clarify-ios-${{ github.sha }}
           path: |
@@ -300,7 +300,7 @@ jobs:
       - name: Preserve TestFlight candidate evidence
         id: candidate
         if: success() && inputs.mode == 'testflight' && steps.resume.outputs.result == 'publish'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: clarify-testflight-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/testflight-candidate/*
@@ -315,7 +315,7 @@ jobs:
         run: echo "TestFlight candidate run $GITHUB_RUN_ID attempt $GITHUB_RUN_ATTEMPT, artifact $CANDIDATE_ARTIFACT, digest sha256:${CANDIDATE_DIGEST#sha256:}. App Store submission remains manual." >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve signing and upload evidence
         if: always() && inputs.mode == 'testflight'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: clarify-ios-delivery-${{ github.sha }}-${{ github.run_attempt }}
           path: |
