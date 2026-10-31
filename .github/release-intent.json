@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "component": "desktop",
-  "version": "0.14.0",
-  "base_sha": "4229e5580c382574bbd37bc4babaa60eb2d89486",
-  "notes": "Publish the T3-based desktop design system, shared provider/email/guest login flow, clearer ChatGPT account actions and permanent UI guidance. Include the current dictation practice, cleanup and writing-style features already on main. Windows packaging now includes verified PE versions; MSI replacement runs inside the recoverable transaction.\n\nCanonical main CI and scoped Windows UI/packaging acceptance passed on the exact base. Native checks used isolated offline accounts and audio fixtures. Real OAuth, physical recording, clean-machine checks, installed-user migration and broader cross-application focus were not exercised. Windows DPI was 125%; a separate WebView scale 1.0 check did not change system DPI. Community portable assets remain unsigned by Authenticode. Public downloads, Ed25519 metadata and all eight provenance attestations must be verified after publication.",
+  "version": "0.15.0",
+  "base_sha": "f9dd60efc4da5f8e089eb9cccf642f23707e3021",
+  "notes": "Publish the desktop workspace and Settings redesign, custom text actions, processing profiles and paired-computer support already integrated in PR202. Preserve the community portable track.\n\nThe maintainer accepted navigation with saved preferences, action create/edit/preview, and shortcut recording/cancellation/restart on the exact installed base. Packaging, embedded Settings, Qt/crypto attribution and main CI passed. Signed iOS and physical-phone/WAN acceptance are separate; this desktop preparation does not submit an App Store build. Verify published assets, Ed25519 metadata and provenance after publication.",
   "evidence": {
-    "tested_sha": "4229e5580c382574bbd37bc4babaa60eb2d89486",
+    "tested_sha": "f9dd60efc4da5f8e089eb9cccf642f23707e3021",
     "windows_accepted": true,
-    "report_url": "https://github.com/jvictormaynard/clarify/pull/194#issuecomment-6460065647"
+    "report_url": "https://github.com/jvictormaynard/clarify/pull/202#windows-acceptance"
   }
 }

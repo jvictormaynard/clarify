@@ -5,6 +5,8 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-31
+
 ### Added
 
 - Pair an iPhone with a personal Clarify computer by QR code. Use the computer's dictation, rewrite, translation, dictionary and snippets. Revoke paired phones or stop access from desktop Settings.
@@ -468,7 +470,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/jvictormaynard/clarify/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/jvictormaynard/clarify/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/jvictormaynard/clarify/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/jvictormaynard/clarify/compare/v0.11.0...v0.12.0
