@@ -4,6 +4,23 @@ import { createRequire } from 'node:module';
 const { createAppUIService } = createRequire(import.meta.url)('./app-ui-service.cjs');
 const { requirePassedTest } = createRequire(import.meta.url)('../scripts/test-app-ui.cjs');
 
+test('account fixture checks the complete email sent by the native client', async () => {
+  const f = createAppUIService();
+  await new Promise<void>(done => f.server.listen(0, '127.0.0.1', done));
+  const base = `http://127.0.0.1:${f.server.address().port}`;
+  const send = (email: string) => fetch(base + '/_allauth/app/v1/auth/continue', {
+    method: 'POST', body: JSON.stringify({ email }),
+  });
+  try {
+    const complete = await send('clarify-e2e@example.test');
+    assert.equal(complete.status, 401);
+    assert.equal((await complete.json()).meta.session_token, 'isolated-e2e-session');
+    const truncated = await send('clarify-e2e@exa');
+    assert.equal(truncated.status, 400);
+    assert.equal((await truncated.json()).meta, undefined);
+  } finally { f.release(); await new Promise<void>(done => f.server.close(done)); }
+});
+
 test('native profile accepts only its selected passing test, not a zero-test success', () => {
   const method = 'testCompactKeyboardAndActionLayout';
   const start = `Test Case '-[ClarifyAppFlowTests.AppFlowUITests ${method}]' started.`;

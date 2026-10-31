@@ -112,20 +112,14 @@ final class AppFlowUITests: XCTestCase {
     field.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
     if replacing { field.typeKey("a", modifierFlags: .command) }
-    var expected = ""
-    for character in value {
-      expected += String(character)
-      field.typeText(String(character))
-      let updated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", expected), object: field)
-      guard XCTWaiter.wait(for: [updated], timeout: 5) == .completed else {
-        // debugDescription shortens long values. Capture the actual value before
-        // collecting the slower hierarchy; a later update must not pass this check.
-        let actual = field.value as? String
-        print("APP_UI_INPUT_FAILURE \(name) expected=\(String(reflecting: expected)) actual=\(String(reflecting: actual)) frame=\(field.frame) hittable=\(field.isHittable)")
-        diagnose("typing-\(name)")
-        XCTFail("Input did not retain the typed characters: \(name); expected \(String(reflecting: expected)), actual \(String(reflecting: actual))")
-        return
-      }
+    field.typeText(value)
+    // Read once after typing. Preserve that observation before diagnostics.
+    let actual = field.value as? String
+    guard actual == value else {
+      print("APP_UI_INPUT_FAILURE \(name) expected=\(String(reflecting: value)) actual=\(String(reflecting: actual)) frame=\(field.frame) hittable=\(field.isHittable)")
+      diagnose("typing-\(name)")
+      XCTFail("Input did not retain the typed characters: \(name); expected \(String(reflecting: value)), actual \(String(reflecting: actual))")
+      return
     }
   }
   func fixture(_ path: String, values: [String: Any]? = nil) -> [String: Any] {
