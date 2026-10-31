@@ -808,31 +808,43 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
                     self.assertTrue(data)
                     incoming.write(data)
 
-    async def test_setup_idle_preface_and_ip_admission_deadlines(self):
-        small = replace(
-            self.limits,
-            handshake_timeout=0.2,
-            setup_timeout=0.25,
-            idle_timeout=0.4,
-            heartbeat_interval=0.1,
-            preface_bytes=1024,
-        )
-        await self.start_relay(limits=small)
+    async def test_incomplete_tls_preface_expires(self):
+        await self.start_relay(limits=replace(self.limits, handshake_timeout=0.2))
         reader, writer = await asyncio.open_connection(*self.server.address)
         self.streams.append(Stream(reader, writer, self.limits))
         writer.write(b"\x16\x03")
         await writer.drain()
         self.assertEqual(await asyncio.wait_for(reader.read(1), 1), b"")
+        await eventually(lambda: self.server.status["connections"] == 0)
+
+    async def test_pending_setup_expires_without_an_attachment(self):
         pc, cert, _ = await self.pc()
         owner, _ = await self.control(pc)
         await read_frame(owner)
+        # Arm the attachment deadline after the control has registered.
+        self.server.limits = replace(self.limits, setup_timeout=0.25)
         pending_phone = asyncio.create_task(self.phone(pc, cert))
+        self.assertEqual((await read_frame(owner))["kind"], "open")
+        with self.assertRaises(OSError) as closed:
+            await asyncio.wait_for(pending_phone, 1)
+        self.assertNotIsInstance(closed.exception, TimeoutError)
+        await eventually(lambda: self.server.status["pending"] == 0, timeout=1)
+        self.assertEqual(self.server.status["hosts"], 1)
+
+    async def test_registered_control_expires_without_another_ping(self):
+        pc, _, _ = await self.pc()
+        owner, _ = await self.control(pc)
         await read_frame(owner)
-        with self.assertRaises(OSError):
-            await pending_phone
-        await eventually(lambda: self.server.status["pending"] == 0)
-        # No ping: the registered control must expire too.
-        await eventually(lambda: self.server.status["hosts"] == 0)
+        self.server.limits = replace(self.limits, idle_timeout=0.4)
+        # The pong acknowledges a healthy control and starts its next idle wait.
+        await owner.write(encode_frame({"v": 1, "kind": "ping"}))
+        self.assertEqual((await read_frame(owner))["kind"], "pong")
+        await eventually(lambda: self.server.status["hosts"] == 0, timeout=1)
+        await eventually(lambda: self.server.status["connections"] == 0)
+
+    async def test_oversized_tls_preface_is_rejected(self):
+        await self.start_relay(limits=replace(self.limits, preface_bytes=1024))
+        pc, cert, _ = await self.pc()
         padded = client_context(cert, check_hostname=False)
         padded.set_alpn_protocols([str(index) + "x" * 250 for index in range(8)])
         with self.assertRaises(OSError):
@@ -843,7 +855,9 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
                 ssl_handshake_timeout=1,
             )
         self.assertEqual(self.server.last_error, "preface_limit")
-        await self.start_relay(limits=replace(small, admissions_per_ip_minute=2))
+
+    async def test_ip_admission_limit_rejects_the_next_connection(self):
+        await self.start_relay(limits=replace(self.limits, admissions_per_ip_minute=2))
         for _ in range(2):
             reader, writer = await asyncio.open_connection(*self.server.address)
             writer.transport.abort()
