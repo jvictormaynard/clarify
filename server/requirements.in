@@ -1,5 +1,5 @@
 # Server dependencies stay separate from the desktop runtime.
-Django>=5.2,<5.3
+Django>=5.2,<6.2
 django-allauth[headless]==65.19.7
 djangorestframework==3.18.3
 psycopg[binary]==3.3.6
