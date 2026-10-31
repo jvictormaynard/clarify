@@ -15,7 +15,7 @@ function fixture(file, modules = {}) {
   let stateIndex = 0, refIndex = 0;
   const jsx = (type, props) => ({ type, props: props ?? {} });
   const exports = {};
-  vm.runInNewContext(code, { exports, require(name) {
+  vm.runInNewContext(code, { exports, process: { env: {} }, require(name) {
     if (name in modules) return modules[name];
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
     if (name === 'react') return {
@@ -25,6 +25,7 @@ function fixture(file, modules = {}) {
         return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value; }];
       },
       useRef(initial) { return refs[refIndex++] ??= { current: initial }; },
+      useEffect() {},
     };
     if (name === 'react-native') return { TextInput: 'TextInput', Text: 'Text', View: 'View' };
     if (name === '../i18n') return { t: text => text };
