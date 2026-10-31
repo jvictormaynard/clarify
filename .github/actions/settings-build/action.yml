@@ -13,27 +13,17 @@ inputs:
   audit:
     description: Audit dependencies during a release build
     default: "false"
-  trusted-qa:
-    description: Use the MAIN-controlled internal QA recipe
-    default: "false"
-  source-root:
-    description: Materialized QA product root, relative to the workspace
-    default: .
-  trusted-root:
-    description: QA MAIN control checkout, relative to the workspace
-    default: trusted
 runs:
   using: composite
   steps:
     - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
       with:
-        node-version: "22"
+        node-version: "22.21.1"
         cache: npm
         cache-dependency-path: desktop/package-lock.json
-      if: ${{ inputs['trusted-qa'] != 'true' }}
     - name: Check native toolchain
       id: toolchain
-      if: ${{ inputs['trusted-qa'] != 'true' && (inputs.native == 'true') }}
+      if: ${{ (inputs.native == 'true') }}
       shell: pwsh
       working-directory: desktop
       run: |
@@ -44,7 +34,7 @@ runs:
         $rustVersion = (rustc --version) -replace '[^a-zA-Z0-9.-]', '-'
         "rust=$rustVersion" >> $env:GITHUB_OUTPUT
     - name: Restore native compilation cache
-      if: ${{ inputs['trusted-qa'] != 'true' && (inputs.native == 'true') }}
+      if: ${{ (inputs.native == 'true') }}
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
       with:
         path: |
@@ -58,24 +48,41 @@ runs:
       shell: pwsh
       working-directory: desktop
       run: npm ci --no-fund
-      if: ${{ inputs['trusted-qa'] != 'true' }}
     - name: Audit frontend and build dependencies
-      if: ${{ inputs['trusted-qa'] != 'true' && (inputs.audit == 'true') }}
+      if: ${{ (inputs.audit == 'true') }}
       shell: pwsh
       working-directory: desktop
       run: npm audit --include=dev --audit-level=high
     - name: Type-check and build frontend
+      if: inputs.test != 'true'
       shell: pwsh
       working-directory: desktop
       run: npm run build
-      if: ${{ inputs['trusted-qa'] != 'true' }}
-    - name: Install test browser
-      if: ${{ inputs['trusted-qa'] != 'true' && (inputs.test == 'true') }}
+    - name: Resolve pinned Chromium cache
+      id: chromium
+      if: ${{ (inputs.test == 'true') }}
+      shell: pwsh
+      working-directory: desktop
+      run: |
+        $browser = node -e "const fs = require('node:fs'); const path = require('node:path'); const root = path.dirname(require.resolve('playwright-core/package.json')); const registry = JSON.parse(fs.readFileSync(path.join(root, 'browsers.json'), 'utf8')); const browser = registry.browsers.find(item => item.name === 'chromium'); console.log(browser.browserVersion + '-' + browser.revision);"
+        if ($LASTEXITCODE -ne 0 -or -not $browser) { throw 'Cannot resolve pinned Chromium.' }
+        $cachePath = Join-Path $env:RUNNER_TEMP 'clarify-playwright-browsers'
+        "version=$browser" >> $env:GITHUB_OUTPUT
+        "path=$cachePath" >> $env:GITHUB_OUTPUT
+        "PLAYWRIGHT_BROWSERS_PATH=$cachePath" >> $env:GITHUB_ENV
+    - name: Restore Chromium downloads
+      if: ${{ (inputs.test == 'true') }}
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: ${{ steps.chromium.outputs.path }}
+        key: playwright-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.chromium.outputs.version }}-${{ hashFiles('desktop/package-lock.json') }}
+    - name: Check browser downloads and install system dependencies
+      if: ${{ (inputs.test == 'true') }}
       shell: pwsh
       working-directory: desktop
       run: npx --no-install playwright install --with-deps chromium
-    - name: Test Settings with isolated Python controller
-      if: ${{ inputs['trusted-qa'] != 'true' && (inputs.test == 'true') }}
+    - name: Validate Settings through shared component commands
+      if: ${{ (inputs.test == 'true') }}
       shell: pwsh
       working-directory: desktop
       env:
@@ -84,10 +91,12 @@ runs:
         QT_QPA_PLATFORM: offscreen
       run: |
         $env:CLARIFY_TEST_FIXTURE = Join-Path $env:GITHUB_WORKSPACE 'tests/web_settings_fixture.py'
-        npm test
-        if ($LASTEXITCODE -ne 0) { throw 'Settings browser tests failed.' }
+        & $env:CLARIFY_TEST_PYTHON ../scripts/ci.py --task settings_unit
+        if ($LASTEXITCODE -ne 0) { throw 'Settings unit tests failed.' }
+        & $env:CLARIFY_TEST_PYTHON ../scripts/ci.py --task settings_browser
+        if ($LASTEXITCODE -ne 0) { throw 'Settings browser, bridge or boot checks failed.' }
     - name: Compile native Settings
-      if: ${{ inputs['trusted-qa'] != 'true' && (inputs.native == 'true') }}
+      if: ${{ (inputs.native == 'true') }}
       shell: pwsh
       working-directory: desktop
       run: |
@@ -96,7 +105,7 @@ runs:
         New-Item -ItemType Directory -Path ../dist -Force | Out-Null
         Copy-Item src-tauri/target/release/clarify-settings.exe ../dist/clarify-settings.exe
     - name: Collect locked dependency inventory and license texts
-      if: ${{ inputs['trusted-qa'] != 'true' && (inputs.native == 'true') }}
+      if: ${{ (inputs.native == 'true') }}
       shell: pwsh
       env:
         INVENTORY_PYTHON: ${{ inputs.python }}
@@ -104,28 +113,10 @@ runs:
         & $env:INVENTORY_PYTHON scripts/settings_inventory.py --desktop desktop --output-dir dist
         if ($LASTEXITCODE -ne 0) { throw 'Settings dependency inventory failed.' }
     - name: Retain isolated Settings test evidence
-      if: ${{ inputs['trusted-qa'] != 'true' && (always() && inputs.test == 'true') }}
+      if: ${{ (always() && inputs.test == 'true') }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
         name: Settings-tests-${{ github.job }}-${{ github.sha }}
         path: desktop/test-results/
         if-no-files-found: ignore
         retention-days: 7
-    - name: Run MAIN QA Settings recipe
-      if: ${{ inputs['trusted-qa'] == 'true' }}
-      shell: pwsh
-      working-directory: ${{ github.workspace }}
-      env:
-        QA_ACTION_SOURCE: ${{ inputs.source-root }}
-        QA_ACTION_TRUSTED: ${{ inputs.trusted-root }}
-        QA_ACTION_NATIVE: ${{ inputs.native }}
-        QA_ACTION_TEST: ${{ inputs.test }}
-      run: |
-        $ErrorActionPreference = 'Stop'
-        if ($env:QA_ACTION_SOURCE -cne 'execution' -or $env:QA_ACTION_TRUSTED -cne 'trusted') { throw 'Unexpected QA action roots' }
-        if ($env:QA_ACTION_NATIVE -cnotin @('true','false') -or $env:QA_ACTION_TEST -cnotin @('true','false')) { throw 'Invalid QA action options' }
-        $recipe = if ($env:QA_ACTION_NATIVE -ceq 'true') { 'settings-native' } else { 'settings' }
-        $arguments = @('trusted/scripts/trusted_ci.py', 'run', '--recipe', $recipe)
-        if ($env:QA_ACTION_TEST -ceq 'false') { $arguments += '--skip-settings-tests' }
-        python @arguments
-        if ($LASTEXITCODE -ne 0) { throw 'Trusted Settings validation failed' }

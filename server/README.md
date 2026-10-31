@@ -238,7 +238,7 @@ and funding rollout gates. The 2026-10-25 read-only inspection found
 `config.source.checkSuites=false`, so Wait for CI still needs activation and
 verification. The source connection does not establish that autodeploy is enabled.
 
-The **Shared account** workflow has a manual `publish_server_image` option,
+The **Server recovery image** workflow has a manual `publish_server_image` option,
 off by default. Only an explicit dispatch in `jvictormaynard/clarify` can publish
 to `ghcr.io/jvictormaynard/clarify-server`. This recovery path pins commit
 `ced75d817decd55e7ed6f350e34e008b59f9cb26` and its reviewed Git archive hash.
@@ -248,8 +248,9 @@ the image files before login or push. The image contains 47 source files:
 `.dockerignore` is not copied and `server/.env.example` is excluded by Docker.
 No runtime credentials, profiles or recordings enter the build context.
 
-The dispatch skips the ordinary server/iOS jobs and uses a separate image job.
-PR jobs retain read-only permissions. Registry login uses only the temporary
+Canonical `CI` owns ordinary server and iOS validation. The recovery workflow
+checks the pinned image by default. Publication requires its explicit option
+on `main`. Registry login uses only the temporary
 workflow token through stdin; the image has a unique run/attempt tag. The artifact
 records its digest, source SHA and source manifest. No Railway credentials or
 service configuration are used. Publishing an image does not deploy it; whether

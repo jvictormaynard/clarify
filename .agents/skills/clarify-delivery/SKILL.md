@@ -22,9 +22,11 @@ for authorization, risk, checks, and completion rules.
    separate from a dedicated version-preparation PR and its publication.
    Inspect activation settings without exposing secrets. Implementing automation
    does not authorize enabling it in production or publishing a version.
-3. Classify the affected behavior using the workflow's validation table. Choose
-   existing test boundaries autonomously. Use `tdd` for meaningful changed
+3. Classify the affected behavior using the workflow's validation table and the
+   shared plan in the [CI delivery guide](../../../docs/ci-delivery.md#local-validation).
+   Choose existing test boundaries autonomously. Use `tdd` for meaningful changed
    behavior and keep tests isolated from personal data and external effects.
+   Report unavailable selected gates as unexecuted; focused tests do not replace them.
 4. Delegate independent outcomes under the project's parallel-work rules.
    Keep shared-contract changes serial; the coordinator owns integration.
    Implement in complete slices. Run focused checks during editing; repair

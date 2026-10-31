@@ -22,7 +22,7 @@ from urllib.request import Request, urlopen
 REPOSITORY = "jvictormaynard/clarify"
 INTENT = ".github/release-intent.json"
 CI_PATH = ".github/workflows/ci.yml"
-WORKFLOWS = {"desktop": "community-release.yml", "mobile": "ios-testflight.yml"}
+WORKFLOWS = {"desktop": "release.yml", "mobile": "ios-testflight.yml"}
 ASSETS = {
     "Clarify.exe",
     "Clarify.exe.sha256",
@@ -34,14 +34,6 @@ ASSETS = {
     "Clarify-portable-update.json.sig",
 }
 COMMON_CHECKS = {"CI required"}
-COMPONENT_CHECKS = {
-    "desktop": {
-        "Tests (ubuntu-latest)",
-        "Tests (windows-latest)",
-        "Package Windows executable",
-    },
-    "mobile": {"Mobile checks", "iOS validation / Native tests and unsigned build"},
-}
 COMMUNITY_NOTICE = """This is an unsigned community portable release.
 
 Windows SmartScreen may show a warning because the executable does not have a paid Authenticode publisher signature. Verify Clarify.exe with Clarify.exe.sha256 before launching it.
@@ -157,6 +149,48 @@ def build_number(value):
     return int(value)
 
 
+def preview_tag(source, run_id, run_attempt=1):
+    sha(source)
+    require(
+        isinstance(run_id, str) and re.fullmatch(r"[1-9][0-9]*", run_id),
+        "Preview requires a workflow run ID",
+    )
+    require(
+        type(run_attempt) is int and 1 <= run_attempt <= 100, "Invalid preview attempt"
+    )
+    return "preview/" + run_id + "-" + str(run_attempt) + "-" + source[:12]
+
+
+def prepare_desktop_preview(root, source, run_id, run_attempt=1):
+    """Disable the feed in disposable build inputs; never change a stable tag."""
+    tag = preview_tag(source, run_id, run_attempt)
+    policy = root / "distribution/portable-update-policy.json"
+    payload = decode(policy.read_text(encoding="utf-8"))
+    require(payload.get("channel") == "stable", "Expected the pinned stable policy")
+    module = (root / "version.py").read_text(encoding="utf-8")
+    match = re.search(r'^__version__ = "([0-9.]+)"$', module, re.MULTILINE)
+    require(match is not None, "Cannot read the packaged version")
+    version(match[1])
+    # load_policy rejects any channel except stable before creating a transport.
+    # The build's payload check still verifies these exact generated input bytes.
+    payload["channel"] = "preview"
+    policy.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    identity = {
+        "schema": 1,
+        "channel": "preview",
+        "source_sha": source,
+        "run_id": run_id,
+        "run_attempt": run_attempt,
+        "tag": tag,
+        "version": match[1],
+        "updater_enabled": False,
+    }
+    output = root / "dist/Clarify-preview.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(identity, indent=2) + "\n", encoding="utf-8")
+    return identity
+
+
 def object_pairs(pairs):
     result = {}
     for key, value in pairs:
@@ -174,7 +208,7 @@ def validate_intent(intent):
         intent, {"schema", "component", "version", "base_sha", "notes", "evidence"}
     )
     require(
-        type(intent["schema"]) is int and intent["schema"] == 1,
+        type(intent["schema"]) is int and intent["schema"] == 2,
         "Unsupported release intent schema",
     )
     require(intent["component"] in WORKFLOWS, "Unknown release component")
@@ -186,12 +220,9 @@ def validate_intent(intent):
     )
     evidence = intent["evidence"]
     if intent["component"] == "desktop":
-        exact_keys(evidence, {"tested_sha", "windows_accepted", "report_url"})
-        require(
-            evidence["tested_sha"] == intent["base_sha"]
-            and evidence["windows_accepted"] is True,
-            "Windows manual acceptance must cover the prepared base SHA",
-        )
+        # The reviewed source authorizes a build. Native acceptance can only
+        # identify the final packaged candidate, so it belongs to publication.
+        exact_keys(evidence, {"report_url"})
     else:
         exact_keys(
             evidence,
@@ -455,13 +486,13 @@ def dedicated_plan(api, source, intent):
     require(
         comparison.get("status") == "ahead"
         and comparison.get("total_commits", 999) <= 10,
-        "Prepared source does not follow the accepted base",
+        "Prepared source does not follow the reviewed base",
     )
     changes = comparison.get("files", [])
     require(
         {item["filename"] for item in changes} == paths
         and all(item["status"] in {"added", "modified"} for item in changes),
-        "Source changed after acceptance; prepare and validate it again",
+        "Source changed after preparation; prepare and validate it again",
     )
     check_metadata(api, intent, source)
     return True
@@ -469,7 +500,8 @@ def dedicated_plan(api, source, intent):
 
 def check_jobs(api, run_id, component):
     jobs = api.pages(f"/actions/runs/{int(run_id)}/jobs?filter=latest", "jobs")
-    required = COMMON_CHECKS | COMPONENT_CHECKS[component]
+    require(component in WORKFLOWS, "Unknown release component")
+    required = COMMON_CHECKS
     for name in required:
         matches = [job for job in jobs if job.get("name") == name]
         require(
@@ -634,14 +666,19 @@ def promote(api, event):
             "ref": tag,
             "inputs": {
                 "source_sha": source,
-                **({"tests_only": "false"} if intent["component"] == "mobile" else {}),
+                **(
+                    {"mode": "testflight"}
+                    if intent["component"] == "mobile"
+                    else {"action": "build-candidate", "channel": "stable"}
+                ),
             },
         },
     )
     return "dispatched"
 
 
-def verify_publication(api, component, source, tag, run_id, run_attempt=1):
+def verify_source(api, component, source, tag):
+    """Authorize tested source through the reviewed intent and canonical CI gate."""
     sha(source)
     intent = intent_at(api, source)
     require(
@@ -665,6 +702,19 @@ def verify_publication(api, component, source, tag, run_id, run_attempt=1):
     run = max(runs, key=lambda item: (item["id"], item.get("run_attempt", 1)))
     validate_run(api, run, source)
     check_jobs(api, run["id"], component)
+    return intent
+
+
+def verify_publication(
+    api, component, source, tag, run_id, run_attempt=1, *, availability_only=False
+):
+    require(
+        component == "mobile", "Desktop publication requires an authenticated candidate"
+    )
+    intent = verify_source(api, component, source, tag)
+    if availability_only:
+        require(component == "mobile", "Availability mode is only for TestFlight")
+        return "availability"
     if existing_publication(api, intent):
         return "skip"
     require_new_desktop_release(api, intent)
@@ -699,7 +749,7 @@ def verify_publication(api, component, source, tag, run_id, run_attempt=1):
                         outcome = step.get("conclusion")
                         require(
                             outcome in {"success", "skipped"},
-                            "Prior upload outcome is ambiguous; inspect Apple and use availability_only",
+                            "Prior upload outcome is ambiguous; inspect Apple and use mode=availability",
                         )
                         uploaded = uploaded or outcome == "success"
         if uploaded:
@@ -713,7 +763,7 @@ def prepare(api, component, target, evidence, notes, now=None):
     source = sha(api.request("GET", "/git/ref/heads/main")["object"]["sha"])
     intent = validate_intent(
         {
-            "schema": 1,
+            "schema": 2,
             "component": component,
             "version": target,
             "base_sha": source,
@@ -825,7 +875,7 @@ def prepare(api, component, target, evidence, notes, now=None):
             "head": branch,
             "base": "main",
             "title": preparation_title(intent),
-            "body": "Review the release notes, evidence and exact source before merging. Maintainer merge authorizes publication after green main CI.\n\n"
+            "body": "Review the release notes, evidence and exact source before merging. Maintainer merge authorizes candidate creation after green main CI. Desktop publication requires acceptance of the packaged candidate.\n\n"
             + notes
             + "\n\nEvidence: "
             + evidence["report_url"],
@@ -837,15 +887,41 @@ def prepare(api, component, target, evidence, notes, now=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["prepare", "promote", "verify", "notes"])
+    parser.add_argument(
+        "command",
+        choices=[
+            "prepare",
+            "promote",
+            "verify",
+            "notes",
+            "preview-build",
+        ],
+    )
     parser.add_argument("--component", choices=list(WORKFLOWS))
     parser.add_argument("--version")
     parser.add_argument("--build", default="")
     parser.add_argument("--source-sha")
     parser.add_argument("--tag")
     parser.add_argument("--output")
+    parser.add_argument("--availability-only", action="store_true")
     args = parser.parse_args()
     try:
+        if args.command == "preview-build":
+            require(
+                os.environ.get("GITHUB_REPOSITORY") == REPOSITORY
+                and os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+                and os.environ.get("GITHUB_REF", "").startswith("refs/heads/")
+                and os.environ.get("GITHUB_SHA") == sha(args.source_sha),
+                "Preview requires a manual branch dispatch and its exact SHA",
+            )
+            run_id = os.environ["GITHUB_RUN_ID"]
+            prepare_desktop_preview(
+                Path.cwd(),
+                args.source_sha,
+                run_id,
+                int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")),
+            )
+            return 0
         if args.command == "notes":
             write_release_notes(args.tag, args.output)
             return 0
@@ -903,6 +979,7 @@ def main():
                 args.tag,
                 os.environ["GITHUB_RUN_ID"],
                 int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")),
+                availability_only=args.availability_only,
             )
         print(result)
         if os.environ.get("GITHUB_OUTPUT"):

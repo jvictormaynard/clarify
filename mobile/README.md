@@ -215,7 +215,7 @@ copy confirmation. Both use the same test build. Each profile must execute its
 selected test; a successful command with zero tests fails acceptance. Swift
 contracts run before these app flows. Keyboard and installed-extension tests
 remain separate.
-For a focused retry, `tests_only=true` and `app_ui_compact_only=true` run only
+For a focused retry, `mode=validate` and `app_ui_compact_only=true` run only
 the compact app profile. Its summary marks full app acceptance as incomplete.
 Signed publication ignores this diagnostic selector and runs both profiles.
 Pending reservations remain separate from consumed quota. It uses no user account, microphone or real provider. The signed
@@ -319,7 +319,7 @@ same fixed height as Auto Layout fitting. Regression tests cover temporary
 oversized proposals and repeated presentation through a real `UITextField`
 input host. The actual WhatsApp extension transition still needs iPhone
 acceptance. These fixtures do not prove that the device-reported jump is gone.
-Use the direct workflow's `tests_only` input to run native checks without signing
+Use the direct workflow's `mode=validate` input to run native checks without signing
 or uploading an existing build number. Uploads retain the full check sequence.
 Mobile versions are independent of the Windows release tags.
 
@@ -359,7 +359,7 @@ reported physical iOS 26.6.2 device.
 This is an observation, not a confirmed root cause or a validated fix.
 
 Run `node scripts/test-keyboard-extension.cjs --check-opening-height` from
-`mobile/` on macOS, or select both `tests_only` and `extension_diagnostic` in
+`mobile/` on macOS, or select `mode=validate` and `extension_diagnostic=true` in
 the iOS workflow. The generated
 UIKit host installs the real extension sources, tests the system keyboard as
 a control, and checks initial switching plus four dismiss/reopen cycles. It
@@ -371,7 +371,7 @@ text, with no microphone, provider key or user profile.
 The current extension is expected to fail the height assertion. The workflow
 retains traces, screenshots, video and the result bundle for investigation.
 Passing the separate in-process UIKit tests does not resolve this open gate.
-No new signing or upload occurs when `tests_only` is selected.
+No new signing or upload occurs when `mode=validate` is selected.
 Selecting both diagnostic inputs runs the installed-extension fixture directly;
 regular tests-only runs and every signed upload retain all product checks.
 
@@ -477,15 +477,26 @@ upload. `.github/workflows/ios-testflight.yml` supports manual tests, diagnostic
 status and availability work. Main pushes do not upload. The old remote
 `codex/ios-testflight` branch can still upload on a push until its workflow is
 updated to this guarded version. Update that workflow before pushing mobile
-source there. Select `tests_only` for manual validation without signing or upload.
+source there. Select `mode=validate` (the default) for manual validation without signing or upload.
 
 Use [client release automation](../docs/release-automation.md) for a future
 TestFlight build. Check all App Store Connect builds, pending submissions and
 reservations before choosing an unused build. Record that evidence in the
 preparation PR; do not increment blindly. Review and merge the dedicated PR,
 then green main CI can promote its exact source when promotion is enabled.
-Signed upload dispatches the immutable reviewed `ios/vX.Y.Z-buildN` tag with its
-exact SHA. App Store distribution remains a separate step.
+Signed upload uses `mode=testflight` on the immutable reviewed
+`ios/vX.Y.Z-buildN` tag with its exact SHA. `mode=status` reads Apple state;
+`mode=availability` completes only the existing build after the source gate.
+App Store review submission and public release are separate manual actions.
+Use the [verified-build handoff](../docs/release-automation.md#manual-app-store-promotion)
+to reuse the same signed TestFlight build. The handoff neither rebuilds nor calls
+Apple. Select the completed TestFlight run/current attempt, immutable candidate
+artifact ID and SHA-256 digest, and the exact Apple build UUID. The authenticated
+evidence bundle contains the signed IPA verification, confirmed upload receipt,
+Apple availability receipt and source/run/attempt-bound file manifest. Historical
+PR179 QA receipts cannot satisfy this gate. Native acceptance, metadata and
+store-policy clearance remain required. The handoff does not claim submission,
+public release or regional availability.
 
 `expo.ios.buildNumber` stays aligned in the container, keyboard and activity.
 The upload workflow checks JavaScript, Swift and UIKit simulator contracts before
@@ -499,7 +510,11 @@ The existing distribution certificate, three profiles and App Store Connect API
 key are stored in GitHub Actions secrets prefixed `CLARIFY_IOS_` and `CLARIFY_ASC_`.
 The runner uses a temporary keychain and removes signing files after the job.
 Secrets are never committed or included in artifacts. The verified IPA, SHA-256
-and simulator results are retained for seven days. An upload alone does not
+and simulator results are retained for 90 days. The candidate evidence is sealed
+once after signed upload and internal availability. Its artifact name is
+`clarify-testflight-candidate-<run>-<attempt>`; the run summary records its ID and
+digest. Direct Xcode remains the signer for all three bundles. No EAS provisioning
+or OTA update path is added. An upload alone does not
 establish TestFlight availability; verify `VALID` and `IN_BETA_TESTING` in Apple.
 
 ### Short-speech provider harness
@@ -694,6 +709,25 @@ iPhone remain required before mobile acceptance.
 Use Node 22.21.1, the committed npm lockfile, and a native iOS build. Expo Go
 does not include the custom module or keyboard. No Android app is included.
 
+Expo SDK 57 provides Router, native project generation and Metro bundling.
+GitHub Actions and direct Xcode provide builds and delivery. EAS is not part of
+the current delivery path.
+
+The lockfile overrides `query-string` to 9.5.1 to use the patched URL decoder.
+`patches/expo-router+57.0.29.patch` changes four Router imports to use that
+package's default export. `npm ci` applies this patch through `patch-package`
+and fails if it cannot apply it. Keep install scripts enabled. Recheck or remove
+both the patch and override when updating Router. The regression suite tests
+real Router parsing, query round trips and malformed input with a time limit.
+
+Expo CLI uses the patched Zod 4.6.7 dependency. Its optional MCP tunnel is pinned
+to 0.3.1, which supports Zod 4 schema serialization. Keep these pins together;
+the tests validate plugin inputs and the complete advertised command schema
+without opening a tunnel. These changes preserve the Expo SDK and native ABI.
+See the [decoder advisory](https://github.com/advisories/GHSA-qr28-fpjm-wq7f),
+[Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) and
+[patch-package instructions](https://github.com/ds300/patch-package#readme).
+
 Run commands from `mobile/`. Select checks for the affected contract as defined
 in [CI delivery](../docs/ci-delivery.md#selected-checks). Mobile JavaScript or
 TypeScript changes need `npm run check` and the iOS JavaScript bundle. Native
@@ -711,7 +745,7 @@ npx expo export --platform ios
 ```
 
 For the complete native check sequence, use the repository's iOS validation
-workflow or the `tests_only` path in
+workflow or the `mode=validate` path in
 [`ios-testflight.yml`](../.github/workflows/ios-testflight.yml). Signed archive,
 upload and Apple verification follow [Direct TestFlight delivery](#direct-testflight-delivery).
 
@@ -748,14 +782,12 @@ invalid key; 429; audio interruptions; headphones; session expiration; switching
 fields during processing; repeated appearance without duplicate insertion;
 light/dark themes; VoiceOver and large text. App Store review is a separate step.
 
-The Expo 57 dependency tree has npm audit findings in build tools,
-including `braces`, `node-forge` and `uuid`. Adding Router also introduces a
-`decode-uri-component` advisory for malformed URL decoding. Native system URLs
-are restricted to short, known routes and UUID activation tokens before reaching
-the Router decoder; arbitrary paths and query parameters are discarded. This
-does not remove the dependency advisory. Do not force incompatible SDK
-downgrades or suppress advisories. Recheck compatible official fixes before
-public distribution; record the actual audit with each candidate.
+Run `npm audit --audit-level=high` against the locked dependencies. The workflow
+fails for high and critical findings. The dependency pins and Router patch above
+repair the decoder and Zod findings without an SDK upgrade. Record remaining
+findings with each candidate and recheck compatible upstream fixes. Do not
+suppress advisories. Native system URLs remain restricted to known routes and
+UUID activation tokens before they reach Router.
 
 ## Delivery evidence — 2026-10-08
 

@@ -43,22 +43,20 @@ for native Settings builds. On Windows, prepare the locked Python environment:
 .\scripts\setup.ps1 -Dev
 cd desktop
 npm ci
-npm run build
-$env:CLARIFY_TEST_PYTHON = (Resolve-Path ..\.venv\Scripts\python.exe).Path
-$env:CLARIFY_TEST_FIXTURE = (Resolve-Path ..\tests\web_settings_fixture.py).Path
-$env:CLARIFY_TEST_BROWSER = 'chromium'
 npx --no-install playwright install chromium
-npm test
+cd ..
+.\.venv\Scripts\python.exe scripts/ci.py --task settings_unit
+.\.venv\Scripts\python.exe scripts/ci.py --task settings_browser
 ```
 
-When running tests in multiple worktrees, assign each run a different
-`CLARIFY_TEST_PORT` (the default is `1420`). The test server fails if that port
-is occupied. Each worktree keeps its own dependencies and build outputs.
+The test wrapper selects a free local port for each run. Set `CLARIFY_TEST_PORT`
+to use an explicit port; the server fails if that port is occupied. Each worktree
+keeps its own dependencies and build outputs.
 
 The browser tests use a temporary Python controller with fake providers. They
 need no user profile, account, provider key, microphone or native executable.
 Linux contributors can use the same checks with the Linux lock and interpreter;
-see the `settings` job in [CI](.github/workflows/ci.yml) for runtime packages and
+see the `settings_browser` job in [CI](.github/workflows/ci.yml) for runtime packages and
 `playwright install --with-deps chromium`. Record screenshots for visual changes.
 
 ### Python, QML or native Windows behavior
@@ -71,7 +69,7 @@ cd clarify
 .\scripts\setup.ps1 -Dev
 .\scripts\build-settings.ps1
 $env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
-.\.venv\Scripts\python.exe scripts/run_tests.py discover -s tests -v
+.\.venv\Scripts\python.exe scripts/run_tests.py -v
 .\.venv\Scripts\python.exe clarify\desktop\qml_app.py
 ```
 
@@ -113,13 +111,22 @@ Use clear commit messages. Conventional prefixes such as `fix:`, `feat:`,
 
 ## Checks for your change
 
-CI selects checks from the complete PR diff. No special branch prefix, label,
+Prepare the locked Python environment and CI tool dependencies as described in
+[local validation](docs/ci-delivery.md#local-validation). Run `npm run ci:plan`
+to inspect the selected checks and `npm run ci` to execute local checks.
+Use `npm run ci:full` to select every component. These commands use the
+same component policy as CI and include committed and uncommitted changes.
+They do not install dependencies. Unavailable database, remote or native gates
+are reported as unexecuted, with exit code 2.
+
+PR CI selects checks from the complete diff. Main pushes run full standard
+validation; scheduled and manual runs add extended checks. No special branch prefix, label,
 paid service or secret is required. Pushes to a branch with an open PR run one
 PR workflow. Maintainers may need to approve a first-time fork's workflow run.
 
 - Documentation: run `python scripts/check_agent_skills.py` when changing agent
   guidance, and `git diff --check`. No product build is needed.
-- Settings design: run the frontend build and isolated browser tests above.
+- Settings design: run the shared Settings validation tasks above.
   Rust and the portable EXE are not required for a frontend-only PR.
 - Python or QML: run the Python suite and relevant QML checks. CI tests Python
   behavior on Linux and Windows.
@@ -133,7 +140,7 @@ PR workflow. Maintainers may need to approve a first-time fork's workflow run.
 For Python changes, use the configured interpreter:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/run_tests.py discover -s tests -v
+.\.venv\Scripts\python.exe scripts/run_tests.py -v
 ```
 
 The runner creates a temporary process profile before test discovery, removes
@@ -186,9 +193,9 @@ Review is collaborative, and specific technical disagreement is welcome when it
 stays respectful and evidence-based.
 
 `main` requires a pull request, resolved review conversations, and passing checks
-against the current base. The selective workflow reports `CI required`; see the
-[protection migration](docs/ci-delivery.md#branch-protection-migration) when the
-repository still requires the previous three unconditional Desktop checks. Force pushes and branch deletion are disabled,
+against the current base. Keep `CI required` as the aggregate. Verify live
+[protection settings](docs/ci-delivery.md#branch-protection-migration) before a
+merge or an authorized settings change. Force pushes and branch deletion are disabled,
 including for administrators. A second person's approval is not required for
 this single-maintainer repository; this does not replace the release gates.
 

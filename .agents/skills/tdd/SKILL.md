@@ -16,7 +16,12 @@ For each useful behavior:
 4. Run the test again.
 5. Refactor when it improves the design, then rerun the affected tests.
 
-Use `unittest` for Python and the existing Playwright/Python fixture for Settings. Use fake HTTP, clocks, schedulers, clipboard gateways, secret stores, and temporary profiles. Keep real provider keys, microphones, and personal audio outside tests.
+Use `unittest` for Python, Vitest for headless Settings units, and the existing
+Playwright/Python fixture for browser, bridge and production boot checks. Follow
+the [test boundaries](../../../docs/ci-delivery.md#ownership-and-commands).
+Use fake HTTP, clocks, schedulers, clipboard gateways, secret stores, and
+temporary profiles. Keep real provider keys, microphones, and personal audio
+outside tests.
 
 Assert observable contracts. Internal tests are appropriate when a private synchronization or platform contract is the only way to prove a real invariant; explain that choice. Call order and counts matter when they prove once-only publication, retry bounds, or ownership.
 

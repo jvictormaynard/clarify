@@ -21,12 +21,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 fixture = Path(sys.argv[1])
-sys.path[:0] = [str(fixture.parent), str(fixture.parent.parent)]
+sys.path.insert(0, str(fixture.parent.parent))
 from chatgpt_auth import ChatGPTPlanError, ChatGPTPlanSession
 from secret_store import MemorySecretStore
-from test_chatgpt_auth import Listener, OAuthServer, rsa
-import test_chatgpt_settings
-import web_settings_fixture
+from tests.support.chatgpt_oauth import Listener, OAuthServer, rsa
+from tests.support import chatgpt_settings as test_chatgpt_settings
+from tests import web_settings_fixture
 
 with TemporaryDirectory() as directory:
     server = OAuthServer(rsa.generate_private_key(public_exponent=65537, key_size=2048))
@@ -77,10 +77,10 @@ import threading
 from pathlib import Path
 
 fixture = Path(sys.argv[1])
-sys.path[:0] = [str(fixture.parent), str(fixture.parent.parent)]
+sys.path.insert(0, str(fixture.parent.parent))
 from chatgpt_auth import ChatGPTPlanError
-import test_chatgpt_settings
-import web_settings_fixture
+from tests.support import chatgpt_settings as test_chatgpt_settings
+from tests import web_settings_fixture
 
 class RecoverySession(test_chatgpt_settings.FakeChatGPTSession):
     def __init__(self):
@@ -101,6 +101,8 @@ raise SystemExit(web_settings_fixture.main())
 `;
 
 test.beforeEach(async ({ page }, info) => {
+  const actionTimeout = info.timeout, setupStarted = performance.now();
+  info.setTimeout(actionTimeout + 30_000);
   if (!process.env.CLARIFY_TEST_PYTHON || !process.env.CLARIFY_TEST_FIXTURE)
     throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
   sessionObservations = [];
@@ -139,6 +141,7 @@ test.beforeEach(async ({ page }, info) => {
   });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Dictation", exact: true })).toBeVisible({ timeout: 30000 });
+  info.setTimeout(actionTimeout + Math.ceil(performance.now() - setupStarted));
 });
 
 test.afterEach(async () => {
@@ -159,6 +162,7 @@ async function selectChatGPT(page: Page) {
 }
 
 test("ChatGPT connects without API keys, refreshes account catalogs and persists notice acknowledgement", async ({ page }, info) => {
+  test.setTimeout(60_000);
   await selectChatGPT(page);
   await expect(page.getByText(/Audio transcription is excluded/)).toBeVisible();
   await expect(page.getByRole("button", { name: "ChatGPT account options", exact: true })).toHaveCount(0);

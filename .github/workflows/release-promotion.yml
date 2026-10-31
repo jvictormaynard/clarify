@@ -35,7 +35,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - name: Validate merged preparation and dispatch exact source
+      - name: Validate merged preparation and dispatch candidate creation
         env:
           GH_TOKEN: ${{ github.token }}
           CLARIFY_RELEASE_PROMOTION_ENABLED: ${{ vars.CLARIFY_RELEASE_PROMOTION_ENABLED }}

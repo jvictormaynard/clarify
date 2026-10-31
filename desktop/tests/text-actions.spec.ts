@@ -204,7 +204,9 @@ test("text actions: duplicate has a new ID and no shortcut; disable and delete p
   expect(saved.find(action => action.id === original.id)).toEqual(original);
   const enabled = row.getByRole("switch", { name: "Ativar Reescrita", exact: true });
   await enabled.click(); await expect(enabled).not.toBeChecked();
-  await page.reload(); await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
   await expect(enabled).not.toBeChecked();
   const copyRow = page.locator(`#text-action-${copy.id}`);
   await copyRow.getByRole("button", { name: "Mais opções de Cópia de teste", exact: true }).click();
@@ -216,7 +218,9 @@ test("text actions: duplicate has a new ID and no shortcut; disable and delete p
   await page.getByRole("menuitem", { name: "Excluir", exact: true }).click();
   await confirmation.getByRole("button", { name: "Excluir", exact: true }).click();
   await expect(copyRow).toHaveCount(0);
-  await page.reload(); await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
   await expect(copyRow).toHaveCount(0);
   expect((await settingsFixture.rpc("snapshot")).textActions!.map(action => action.id)).toEqual(["rewrite", "translation"]);
 });

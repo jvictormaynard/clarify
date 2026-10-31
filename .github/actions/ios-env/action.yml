@@ -1,0 +1,31 @@
+name: Prepare unsigned iOS validation
+description: Install locked JavaScript and CocoaPods inputs for native validation.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      with:
+        node-version: 22.21.1
+        cache: npm
+        cache-dependency-path: mobile/package-lock.json
+    - name: Install locked mobile dependencies
+      shell: bash
+      working-directory: mobile
+      run: npm ci --no-fund
+    - name: Generate the app and extension project
+      shell: bash
+      working-directory: mobile
+      run: npx --no-install expo prebuild --clean --platform ios --no-install
+    - name: Restore CocoaPods downloads
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: |
+          ~/Library/Caches/CocoaPods
+          ~/.cocoapods/repos
+        key: ios-pods-v2-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-${{ hashFiles('mobile/package-lock.json', 'mobile/app.json', 'mobile/plugins/**') }}
+        restore-keys: |
+          ios-pods-v2-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-
+    - name: Install native dependencies
+      shell: bash
+      working-directory: mobile
+      run: pod install --project-directory=ios

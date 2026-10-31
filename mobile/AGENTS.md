@@ -29,12 +29,18 @@ Keep tests isolated from user accounts, microphones, keys and recordings.
 
 The repository uses GitHub Actions and Xcode for signed TestFlight delivery.
 Follow [direct delivery](README.md#direct-testflight-delivery) and
-[ios-testflight.yml](../.github/workflows/ios-testflight.yml). Use `tests_only`
+[ios-testflight.yml](../.github/workflows/ios-testflight.yml). Use `mode=validate`
 for manual validation without signing or upload. Signed publication requires
 the reviewed immutable tag, exact source SHA and release authorization. EAS
 commands in dated delivery records describe historical work.
 
 Verify the signed IPA, upload, Apple processing and internal-group availability
 separately. Source versions and a successful upload do not prove availability
-or physical-iPhone acceptance. The optional direct-provider short-speech harness
+or physical-iPhone acceptance. TestFlight is the production-identity candidate;
+App Store handoff must authenticate its run/current attempt and immutable
+evidence artifact ID/digest, then reuse the exact verified Apple build UUID.
+Never rebuild it for store promotion or accept historical PR179 QA receipts.
+The handoff prepares a manual Apple action and claims no submission or public
+availability. Keep direct Xcode signing; no EAS provisioning or OTA update
+contract is introduced. The optional direct-provider short-speech harness
 has the [coverage limit documented here](README.md#short-speech-provider-harness).

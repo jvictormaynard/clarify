@@ -7,20 +7,18 @@ on:
         description: Exact reviewed source SHA (required for signed upload on an ios/v tag)
         type: string
         default: ''
-      tests_only:
-        description: Run checks without signing or upload
-        type: boolean
-        default: false
+      mode:
+        description: Validation, internal TestFlight upload, read-only status or existing-build availability
+        type: choice
+        options: [validate, testflight, status, availability]
+        default: validate
+        required: true
       extension_diagnostic:
         description: Also enforce the unresolved opening-height diagnostic (tests only)
         type: boolean
         default: false
       app_ui_compact_only:
         description: Diagnose only the compact app UI profile (tests only; incomplete acceptance)
-        type: boolean
-        default: false
-      status_only:
-        description: Read Apple build and group status without building or uploading
         type: boolean
         default: false
       short_dictation_acceptance:
@@ -31,10 +29,6 @@ on:
         description: Validate snippets with the live native client and temporary test accounts
         type: boolean
         default: false
-      availability_only:
-        description: Complete internal TestFlight delivery of the already uploaded build
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -42,7 +36,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: clarify-ios-${{ inputs.tests_only && github.run_id || 'testflight' }}
+  group: clarify-ios-${{ inputs.mode == 'validate' && github.run_id || 'testflight' }}
   queue: max
   cancel-in-progress: false
 
@@ -50,7 +44,7 @@ jobs:
   release_gate:
     if: >-
       github.repository == 'jvictormaynard/clarify' &&
-      !inputs.tests_only && !inputs.status_only && !inputs.availability_only
+      (inputs.mode == 'testflight' || inputs.mode == 'availability')
     runs-on: ubuntu-latest
     outputs:
       result: ${{ steps.gate.outputs.result }}
@@ -68,14 +62,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SOURCE: ${{ inputs.source_sha }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: python scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
+          RELEASE_MODE: ${{ inputs.mode }}
+        run: |
+          flags=()
+          if [ "$RELEASE_MODE" = availability ]; then flags+=(--availability-only); fi
+          python scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG" "${flags[@]}"
 
   availability:
     name: Verify the uploaded TestFlight build
     needs: release_gate
     if: >-
-      always() && !inputs.status_only && !inputs.tests_only &&
-      (inputs.availability_only || needs.release_gate.outputs.result == 'availability')
+      always() && github.repository == 'jvictormaynard/clarify' &&
+      needs.release_gate.outputs.result == 'availability'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -99,16 +97,17 @@ jobs:
           name: clarify-testflight-${{ github.sha }}
           path: mobile/test-results/testflight-availability.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90
   publish:
     name: Test, sign and upload iOS
     needs: release_gate
     if: >-
       always() && github.repository == 'jvictormaynard/clarify' &&
-      !inputs.availability_only && !inputs.status_only &&
-      (inputs.tests_only || needs.release_gate.outputs.result == 'publish')
+      (inputs.mode == 'validate' ||
+       (inputs.mode == 'testflight' && needs.release_gate.outputs.result == 'publish'))
     runs-on: macos-26
     timeout-minutes: 120
+    environment: ${{ inputs.mode == 'testflight' && 'ios-testflight' || 'ios-validation' }}
     defaults:
       run:
         working-directory: mobile
@@ -130,7 +129,7 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - name: Recheck upload history before signing or retrying
         id: resume
-        if: ${{ !inputs.tests_only }}
+        if: ${{ inputs.mode == 'testflight' }}
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
@@ -142,22 +141,22 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Check prompts, types, lint and JavaScript contracts
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
         run: npm run check
       - name: Check Expo configuration
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
         run: npx --yes expo-doctor
       - name: Generate native project
         run: npx expo prebuild --clean --platform ios --no-install
       - name: Install CocoaPods dependencies
         run: pod install --project-directory=ios
       - name: Test Swift contracts
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
         run: npm run test:native
       - name: Test first launch and navigation in the containing app
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
         env:
-          CLARIFY_APP_UI_COMPACT_ONLY: ${{ inputs.tests_only && inputs.app_ui_compact_only }}
+          CLARIFY_APP_UI_COMPACT_ONLY: ${{ inputs.mode == 'validate' && inputs.app_ui_compact_only }}
         run: node scripts/test-app-ui.cjs
       - name: Validate short speech with the live mobile client
         if: ${{ inputs.short_dictation_acceptance }}
@@ -170,13 +169,13 @@ jobs:
           CLARIFY_SNIPPETS_ACCEPTANCE: ${{ secrets.CLARIFY_SNIPPETS_ACCEPTANCE }}
         run: node scripts/test-snippets-acceptance.cjs
       - name: Test keyboard on iPhone simulator
-        if: ${{ !inputs.tests_only || !inputs.extension_diagnostic }}
+        if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
         env:
           CLARIFY_NATIVE_TESTS: '1'
         run: node scripts/test-keyboard-ui.cjs
       - name: Test installed keyboard typing and activation
         env:
-          STRICT_OPENING_HEIGHT: ${{ inputs.tests_only && inputs.extension_diagnostic }}
+          STRICT_OPENING_HEIGHT: ${{ inputs.mode == 'validate' && inputs.extension_diagnostic }}
         run: |
           if [[ "$STRICT_OPENING_HEIGHT" == 'true' ]]; then
             node scripts/test-keyboard-extension.cjs --check-opening-height
@@ -195,9 +194,9 @@ jobs:
             mobile/test-results/installed-keyboard-*
             mobile/test-results/short-dictation-acceptance.json
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 90
       - name: Build the containing app without signing
-        if: ${{ inputs.tests_only }}
+        if: ${{ inputs.mode == 'validate' }}
         run: |
           set -euo pipefail
           xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
@@ -205,17 +204,17 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/ClarifyValidation" \
             CODE_SIGNING_ALLOWED=NO build | xcbeautify
       - name: Install existing Apple signing credentials
-        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
+        if: ${{ inputs.mode == 'testflight' && steps.resume.outputs.result == 'publish' }}
         env:
           CLARIFY_IOS_CERTIFICATE_BASE64: ${{ secrets.CLARIFY_IOS_CERTIFICATE_BASE64 }}
           CLARIFY_IOS_CERTIFICATE_PASSWORD: ${{ secrets.CLARIFY_IOS_CERTIFICATE_PASSWORD }}
           CLARIFY_IOS_PROFILES_GZIP_BASE64: ${{ secrets.CLARIFY_IOS_PROFILES_GZIP_BASE64 }}
         run: python3 scripts/ios-signing.py install
       - name: Apply signing to generated app and extension targets
-        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
+        if: ${{ inputs.mode == 'testflight' && steps.resume.outputs.result == 'publish' }}
         run: ruby scripts/ios-signing.rb
       - name: Archive and export signed IPA
-        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
+        if: ${{ inputs.mode == 'testflight' && steps.resume.outputs.result == 'publish' }}
         run: |
           set -euo pipefail
           xcodebuild -workspace ios/Clarify.xcworkspace -scheme Clarify \
@@ -226,10 +225,10 @@ jobs:
             -exportOptionsPlist "$RUNNER_TEMP/clarify-signing/ExportOptions.plist" \
             -exportPath "$RUNNER_TEMP/clarify-export" 2>&1 | tee "$RUNNER_TEMP/clarify-export.log" | xcbeautify
       - name: Verify signed app and both extensions
-        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
+        if: ${{ inputs.mode == 'testflight' && steps.resume.outputs.result == 'publish' }}
         run: python3 scripts/verify-ios-ipa.py "$RUNNER_TEMP/clarify-export/Clarify.ipa"
       - name: Upload directly to App Store Connect
-        if: ${{ !inputs.tests_only && steps.resume.outputs.result == 'publish' }}
+        if: ${{ inputs.mode == 'testflight' && steps.resume.outputs.result == 'publish' }}
         env:
           CLARIFY_ASC_KEY_P8: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
           CLARIFY_ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
@@ -270,7 +269,7 @@ jobs:
           PY
           exit "$upload_exit"
       - name: Preserve verified IPA and checksum
-        if: success() && !inputs.tests_only && steps.resume.outputs.result == 'publish'
+        if: success() && inputs.mode == 'testflight' && steps.resume.outputs.result == 'publish'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: clarify-ios-${{ github.sha }}
@@ -279,24 +278,41 @@ jobs:
             ${{ runner.temp }}/clarify-export/Clarify.ipa.sha256
             ${{ runner.temp }}/clarify-export/verification.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90
       - name: Verify processing and publish to the existing internal group
-        if: success() && !inputs.tests_only
+        if: success() && inputs.mode == 'testflight'
         env:
           CLARIFY_ASC_KEY_P8: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
           CLARIFY_ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
           CLARIFY_ASC_ISSUER_ID: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
         run: node scripts/publish-testflight.cjs
-      - name: Preserve TestFlight availability evidence
-        if: success() && !inputs.tests_only
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - name: Seal TestFlight candidate evidence
+        if: success() && inputs.mode == 'testflight' && steps.resume.outputs.result == 'publish'
+        working-directory: .
+        run: |
+          cp mobile/test-results/testflight-availability.json "$RUNNER_TEMP/clarify-export/testflight-availability.json"
+          python3 scripts/app_store_handoff.py seal-evidence \
+            --source-sha "$GITHUB_SHA" --tag "$GITHUB_REF_NAME" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --evidence-directory "$RUNNER_TEMP/clarify-export" --output "$RUNNER_TEMP/testflight-candidate"
+      - name: Preserve TestFlight candidate evidence
+        id: candidate
+        if: success() && inputs.mode == 'testflight' && steps.resume.outputs.result == 'publish'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: clarify-testflight-${{ github.sha }}
-          path: mobile/test-results/testflight-availability.json
+          name: clarify-testflight-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/testflight-candidate/*
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90
+          overwrite: false
+      - name: Record the production-identity candidate selector
+        if: success() && inputs.mode == 'testflight' && steps.resume.outputs.result == 'publish'
+        env:
+          CANDIDATE_ARTIFACT: ${{ steps.candidate.outputs.artifact-id }}
+          CANDIDATE_DIGEST: ${{ steps.candidate.outputs.artifact-digest }}
+        run: echo "TestFlight candidate run $GITHUB_RUN_ID attempt $GITHUB_RUN_ATTEMPT, artifact $CANDIDATE_ARTIFACT, digest sha256:${CANDIDATE_DIGEST#sha256:}. App Store submission remains manual." >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve signing and upload evidence
-        if: always() && !inputs.tests_only
+        if: always() && inputs.mode == 'testflight'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: clarify-ios-delivery-${{ github.sha }}-${{ github.run_attempt }}
@@ -306,12 +322,12 @@ jobs:
             ${{ runner.temp }}/clarify-export/verification.json
             ${{ runner.temp }}/clarify-export/upload-receipt.json
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 90
       - name: Remove temporary signing credentials
-        if: always() && !inputs.tests_only
+        if: always() && inputs.mode == 'testflight'
         run: python3 scripts/ios-signing.py clean
   apple_status:
-    if: ${{ inputs.status_only }}
+    if: ${{ inputs.mode == 'status' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

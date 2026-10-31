@@ -1,22 +1,11 @@
-name: Desktop dependency audit
+name: Dependency audit
 on:
   workflow_call:
     inputs:
-      trusted_qa:
-        type: boolean
-        default: false
-      source_sha:
+      linux-runner:
         type: string
-        default: ""
-      base_sha:
-        type: string
-        default: ""
-      trusted_sha:
-        type: string
-        default: ""
+        default: ubuntu-24.04
   workflow_dispatch: null
-  schedule:
-    - cron: 23 4 * * *
 permissions:
   contents: read
 jobs:
@@ -28,177 +17,40 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             lock: requirements-lock-linux.txt
-          - os: windows-latest
+          - os: windows-2025
             lock: requirements-lock-windows.txt
     steps:
-      - name: Check out trusted MAIN controls
-        if: ${{ inputs.trusted_qa }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: trusted
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check out the exact candidate source
-        if: ${{ inputs.trusted_qa }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ inputs.source_sha }}
-          path: source
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Set up QA controller Python
-        if: ${{ inputs.trusted_qa }}
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-        with:
-          python-version: "3.12"
-      - name: Set up pinned QA Node
-        if: ${{ inputs.trusted_qa }}
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: 22.21.1
-      - name: Authenticate trusted controls
-        if: ${{ inputs.trusted_qa }}
-        working-directory: ${{ github.workspace }}
-        run: python trusted/scripts/trusted_ci.py authenticate
-      - name: Verify source checkout
-        if: ${{ inputs.trusted_qa }}
-        working-directory: ${{ github.workspace }}
-        run: python trusted/scripts/trusted_ci.py prepare
-        id: qa_source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-        if: ${{ !inputs.trusted_qa }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: ${{ matrix.lock }}
-        if: ${{ !inputs.trusted_qa }}
       - run: python scripts/install_bootstrap_tools.py --lock-file "${{ matrix.lock }}"
-        if: ${{ !inputs.trusted_qa }}
       - run: python -m pip install --disable-pip-version-check pip-audit -c "${{ matrix.lock }}"
-        if: ${{ !inputs.trusted_qa }}
       - run: python scripts/dependency_audit.py
-        if: ${{ !inputs.trusted_qa }}
-      - name: Audit candidate Python dependencies
-        if: ${{ inputs.trusted_qa }}
-        working-directory: ${{ github.workspace }}
-        run: python trusted/scripts/trusted_ci.py run --recipe audit-python
-      - name: Verify source checkout after execution
-        if: ${{ always() && inputs.trusted_qa && steps.qa_source.outcome == 'success' }}
-        working-directory: ${{ github.workspace }}
-        run: python trusted/scripts/trusted_ci.py verify-source
-      - name: Verify trusted controls after execution
-        if: ${{ always() && inputs.trusted_qa && steps.qa_source.outcome == 'success' }}
-        working-directory: ${{ github.workspace }}
-        run: python trusted/scripts/trusted_ci.py verify-controls
-      - name: Retain QA observations and inert diagnostic logs
-        if: ${{ always() && inputs.trusted_qa }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: trusted-ci-observations-${{ env.QA_COMPONENT_KEY }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |-
-            ${{ runner.temp }}/clarify-trusted-ci/
-            execution/mobile/test-results/
-            execution/desktop/test-results/
-          if-no-files-found: ignore
-          retention-days: 7
-          overwrite: false
-    env:
-      QA_SOURCE_SHA: ${{ inputs.source_sha }}
-      QA_BASE_SHA: ${{ inputs.base_sha }}
-      QA_TRUSTED_SHA: ${{ inputs.trusted_sha }}
-      QA_WORKFLOW_SHA: ${{ github.workflow_sha }}
-      QA_COMPONENT_KEY: ${{ matrix.os == 'windows-latest' && 'audit_python_windows' || 'audit_python_linux' }}
-      QA_TRUSTED_MODE: ${{ inputs.trusted_qa }}
-  settings:
-    name: Settings dependency audit
-    runs-on: ubuntu-latest
+  javascript:
+    name: JavaScript audit (${{ matrix.component }})
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [ci, desktop, mobile]
+    runs-on: ${{ inputs.linux-runner || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
-      - name: Check out trusted MAIN controls
-        if: ${{ inputs.trusted_qa }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: trusted
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check out the exact candidate source
-        if: ${{ inputs.trusted_qa }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ inputs.source_sha }}
-          path: source
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Set up QA controller Python
-        if: ${{ inputs.trusted_qa }}
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-        with:
-          python-version: "3.12"
-      - name: Set up pinned QA Node
-        if: ${{ inputs.trusted_qa }}
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: 22.21.1
-      - name: Authenticate trusted controls
-        if: ${{ inputs.trusted_qa }}
-        working-directory: ${{ github.workspace }}
-        run: python trusted/scripts/trusted_ci.py authenticate
-      - name: Verify source checkout
-        if: ${{ inputs.trusted_qa }}
-        working-directory: ${{ github.workspace }}
-        run: python trusted/scripts/trusted_ci.py prepare
-        id: qa_source
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-        if: ${{ !inputs.trusted_qa }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22.21.1
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
-        if: ${{ !inputs.trusted_qa }}
+          cache-dependency-path: ${{ matrix.component }}/package-lock.json
       - run: npm ci --ignore-scripts --no-fund
-        working-directory: desktop
-        if: ${{ !inputs.trusted_qa }}
+        working-directory: ${{ matrix.component }}
       - run: npm audit --include=dev --audit-level=high
-        working-directory: desktop
-        if: ${{ !inputs.trusted_qa }}
-      - name: Audit candidate Settings dependencies
-        if: ${{ inputs.trusted_qa }}
-        working-directory: ${{ github.workspace }}
-        run: python trusted/scripts/trusted_ci.py run --recipe audit-settings
-      - name: Verify source checkout after execution
-        if: ${{ always() && inputs.trusted_qa && steps.qa_source.outcome == 'success' }}
-        working-directory: ${{ github.workspace }}
-        run: python trusted/scripts/trusted_ci.py verify-source
-      - name: Verify trusted controls after execution
-        if: ${{ always() && inputs.trusted_qa && steps.qa_source.outcome == 'success' }}
-        working-directory: ${{ github.workspace }}
-        run: python trusted/scripts/trusted_ci.py verify-controls
-      - name: Retain QA observations and inert diagnostic logs
-        if: ${{ always() && inputs.trusted_qa }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: trusted-ci-observations-${{ env.QA_COMPONENT_KEY }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |-
-            ${{ runner.temp }}/clarify-trusted-ci/
-            execution/mobile/test-results/
-            execution/desktop/test-results/
-          if-no-files-found: ignore
-          retention-days: 7
-          overwrite: false
-    env:
-      QA_SOURCE_SHA: ${{ inputs.source_sha }}
-      QA_BASE_SHA: ${{ inputs.base_sha }}
-      QA_TRUSTED_SHA: ${{ inputs.trusted_sha }}
-      QA_WORKFLOW_SHA: ${{ github.workflow_sha }}
-      QA_COMPONENT_KEY: audit_settings
-      QA_TRUSTED_MODE: ${{ inputs.trusted_qa }}
+        working-directory: ${{ matrix.component }}

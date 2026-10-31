@@ -9,7 +9,8 @@ Read the existing fixture and test module before creating another one.
 | Configuration apply | A temporary `LocalConfigRepository` and fake SecretStore; read back persisted state and rollback after failure |
 | Provider request/response | `ProviderRegistry` with fake HTTP; verify typed outcomes, capability rejection, and cancellation |
 | Recording or local-ASR cleanup | Existing session/backend fixtures; observe owned resource cleanup and process state |
-| Settings draft/save | Existing Playwright fixture plus the Python controller; observe UI state and persistence |
+| Settings values and state decisions | Headless Vitest units with controlled inputs |
+| Settings draft/save and bridge | Existing Playwright fixture plus the Python controller; observe UI state and persistence |
 | Native focus/hotkey/DPI | Relevant QML smoke checks plus the real packaged Windows interaction where required |
 
 A literal expected value or worked example must come from the contract. Do not
