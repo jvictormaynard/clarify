@@ -73,7 +73,10 @@ final class KeyboardOpeningDiagnosticTests: XCTestCase {
     stage("ten-openings-started")
     XCTAssertNotNil(screen.report)
     let done = expectation(for: NSPredicate { _, _ in screen.report?.outcome != "running" }, evaluatedWith: nil)
-    await fulfillment(of: [done], timeout: 35)
+    // Each presentation has a closing phase and an opening phase. The overall
+    // wait must cover every phase allowed by the diagnostic's own deadline.
+    let runTimeout = Double(2 * KeyboardOpeningDiagnostic.openingCount) * KeyboardOpeningDiagnostic.phaseTimeout
+    await fulfillment(of: [done], timeout: runTimeout)
     stage("ten-openings-finished")
     let report = try XCTUnwrap(screen.report)
     // Keep the measured phase and frame timings before an assertion can stop

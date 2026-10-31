@@ -2,8 +2,30 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <os/log.h>
+#include <string.h>
 
 static IMP originalInsert, originalText, originalAttributed, originalReplace, originalEnabled, originalShouldChange;
+static IMP originalDefaults, originalFabric, nativeComparison;
+static Ivar backedInputIvar, comingFromJSIvar;
+
+static NSDictionary *Attributes(NSDictionary *attributes)
+{
+  NSMutableDictionary *result = [NSMutableDictionary new];
+  for (NSString *key in attributes) {
+    NSString *value = [key isEqualToString:@"EventEmitter"] ? @"<present>" : [attributes[key] description];
+    result[key] = value.length > 512 ? [value substringToIndex:512] : value;
+  }
+  return result;
+}
+
+static NSArray *Runs(NSAttributedString *text)
+{
+  NSMutableArray *result = [NSMutableArray new];
+  [text enumerateAttributesInRange:NSMakeRange(0, text.length) options:0 usingBlock:^(NSDictionary *attributes, NSRange range, BOOL *stop) {
+    [result addObject:@{ @"range": NSStringFromRange(range), @"attributes": Attributes(attributes) }];
+  }];
+  return result;
+}
 
 static void Record(UITextField *field, NSString *event, NSString *incoming, NSDictionary *extra = nil)
 {
@@ -48,9 +70,47 @@ static void Text(id field, SEL selector, NSString *text)
 
 static void Attributed(id field, SEL selector, NSAttributedString *text)
 {
-  Record(field, @"attributed.before", text.string);
+  if ([field window]) Record(field, @"attributed.before", text.string, @{
+    @"stack": [NSThread callStackSymbols],
+    @"incomingRuns": Runs(text), @"currentRuns": Runs([field attributedText])
+  });
   ((void (*)(id, SEL, NSAttributedString *))originalAttributed)(field, selector, text);
   Record(field, @"attributed.after", text.string);
+}
+
+static void Defaults(id field, SEL selector, NSDictionary *attributes)
+{
+  if ([field window]) Record(field, @"defaults.before", nil, @{
+    @"attributes": Attributes(attributes), @"stack": [NSThread callStackSymbols]
+  });
+  ((void (*)(id, SEL, NSDictionary *))originalDefaults)(field, selector, attributes);
+  Record(field, @"defaults.after", nil);
+}
+
+static void FabricAttributed(id component, SEL selector, NSAttributedString *text)
+{
+  id backing = object_getIvar(component, backedInputIvar);
+  UITextField *field = [backing isKindOfClass:UITextField.class] ? backing : nil;
+  if (field.window) {
+    BOOL comingFromJS = NO;
+    BOOL flagKnown = comingFromJSIvar && strcmp(ivar_getTypeEncoding(comingFromJSIvar), @encode(BOOL)) == 0;
+    if (flagKnown) memcpy(&comingFromJS, (const char *)(__bridge const void *)component + ivar_getOffset(comingFromJSIvar), sizeof(comingFromJS));
+    NSAttributedString *current = [field.attributedText copy];
+    NSMutableAttributedString *incomingComparison = [text mutableCopy];
+    NSMutableAttributedString *currentComparison = [current mutableCopy];
+    [incomingComparison removeAttribute:@"EventEmitter" range:NSMakeRange(0, incomingComparison.length)];
+    [currentComparison removeAttribute:@"EventEmitter" range:NSMakeRange(0, currentComparison.length)];
+    SEL compare = NSSelectorFromString(@"_textOf:equals:");
+    BOOL originalEqual = ((BOOL (*)(id, SEL, NSAttributedString *, NSAttributedString *))nativeComparison)(component, compare, text, current);
+    BOOL withoutEmitterEqual = ((BOOL (*)(id, SEL, NSAttributedString *, NSAttributedString *))nativeComparison)(component, compare, incomingComparison, currentComparison);
+    Record(field, @"fabric.before", text.string, @{
+      @"comingFromJSKnown": @(flagKnown), @"comingFromJS": @(comingFromJS),
+      @"originalEqual": @(originalEqual), @"withoutEmitterEqual": @(withoutEmitterEqual),
+      @"stack": [NSThread callStackSymbols], @"incomingRuns": Runs(text), @"currentRuns": Runs(current)
+    });
+  }
+  ((void (*)(id, SEL, NSAttributedString *))originalFabric)(component, selector, text);
+  Record(field, @"fabric.after", text.string);
 }
 
 static void Replace(id field, SEL selector, UITextRange *range, NSString *text)
@@ -108,6 +168,17 @@ static BOOL Hook(Class type, SEL selector, IMP replacement, IMP *original)
   Hook(type, @selector(setAttributedText:), (IMP)Attributed, &originalAttributed);
   Hook(type, @selector(replaceRange:withText:), (IMP)Replace, &originalReplace);
   Hook(type, @selector(setEnabled:), (IMP)Enabled, &originalEnabled);
+  Hook(type, @selector(setDefaultTextAttributes:), (IMP)Defaults, &originalDefaults);
+  Class component = NSClassFromString(@"RCTTextInputComponentView");
+  Method comparison = component ? class_getInstanceMethod(component, NSSelectorFromString(@"_textOf:equals:")) : nullptr;
+  backedInputIvar = component ? class_getInstanceVariable(component, "_backedTextInputView") : nullptr;
+  comingFromJSIvar = component ? class_getInstanceVariable(component, "_comingFromJS") : nullptr;
+  nativeComparison = comparison ? method_getImplementation(comparison) : nullptr;
+  if (comparison && backedInputIvar && ivar_getTypeEncoding(backedInputIvar)[0] == '@' && Hook(component, NSSelectorFromString(@"_setAttributedString:"), (IMP)FabricAttributed, &originalFabric)) {
+    os_log(OS_LOG_DEFAULT, "CLARIFY_INPUT_NATIVE fabric installed");
+  } else {
+    os_log(OS_LOG_DEFAULT, "CLARIFY_INPUT_NATIVE fabric unavailable");
+  }
   Class adapter = NSClassFromString(@"RCTBackedTextFieldDelegateAdapter");
   if (adapter && Hook(adapter, @selector(textField:shouldChangeCharactersInRange:replacementString:), (IMP)ShouldChange, &originalShouldChange)) {
     os_log(OS_LOG_DEFAULT, "CLARIFY_INPUT_NATIVE delegate installed");
