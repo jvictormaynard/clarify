@@ -1,81 +1,81 @@
 # Contributor and agent guide
 
-- Use ASD-STE100 Simplified Technical English with João Victor. When he writes
-  Portuguese, use simple controlled Portuguese with the same technical precision.
-- Read and apply `.agents/skills/humanizer/SKILL.md` whenever you write, edit,
-  translate, or review prose for this project. This is required for public and
-  user-facing text, including application copy, emails, websites, documentation,
-  release notes, support replies, and project communications. Apply it in every
-  language, including short text changes. Preserve facts, technical meaning, and
-  localization placeholders.
+Use ASD-STE100 Simplified Technical English with João Victor. When he writes
+Portuguese, use simple controlled Portuguese with the same technical precision.
+Read and apply [humanizer](.agents/skills/humanizer/SKILL.md) when writing, editing,
+translating, or reviewing project prose, including short copy and communications.
+Preserve facts, technical meaning, and localization placeholders.
 
-- Production Qt code and QML assets: `clarify/desktop/`.
-- React/Tauri Settings: `desktop/`.
-- Before creating or changing any desktop UI, read the
-  [desktop design system](docs/desktop-design-system.md), the sole visual
-  specification. Inspect and reuse the shared tokens and components. Apply the
-  approved style to new and existing pages without repeated user instructions.
-  Verify the visual result, responsive layout, keyboard focus and relevant states.
-  Keep Qt/QML native contracts and shell behavior within the guide's scope.
-- Provider, storage, and workflow contracts: focused Python modules at the root.
-- `app.py` and `spikes/` support legacy compatibility and historical measurements;
-  do not add product features there or remove persisted-data migrations blindly.
-- Read `CONTRIBUTING.md` and `docs/architecture.md` before structural changes.
-- Use the pinned requirements and npm/Cargo lockfiles. Runtime Qt needs
+## Work from the affected contract
+
+- Production Qt/QML lives in `clarify/desktop/`; React/Tauri Settings in `desktop/`.
+  Focused root Python modules own providers, storage, and workflows.
+- `app.py` and `spikes/` retain legacy compatibility and measurements. Do not add
+  product features there or remove persisted-data migrations without evidence.
+- Read [architecture](docs/architecture.md) and [contribution guidance](CONTRIBUTING.md)
+  before changing ownership, interfaces, or dependencies.
+- Before desktop UI work, read [the desktop design system](docs/desktop-design-system.md).
+  Reuse its tokens and components. Verify the rendered result, responsive layout,
+  keyboard focus, and affected states. It also defines native Qt/QML shell limits.
+- Trace every affected entry point, client, provider route, persisted state, and
+  reverse action. A path that works in one UI does not prove the shared feature.
+
+## Deliver the requested work
+
+Use [clarify-delivery](.agents/skills/clarify-delivery/SKILL.md) for an authorized
+feature, fix, or refactor. The [engineering workflow](docs/agents/workflow.md) owns
+scope, worktrees, test selection, file retention, review, and completion.
+
+- Inspect source and existing tests first. Decide routine reversible details.
+  Ask only when missing information changes behavior, compatibility, data, or scope.
+- Preserve the starting branch, unrelated edits, user profiles, and demo artifacts.
+  Use an isolated linked worktree from freshly fetched `origin/main`; reuse a
+  valid assigned task worktree. Stage only explicit authorized paths.
+- Delegate independent implementation outcomes when supported, with one worktree
+  per writer and bounded ownership. Keep dependent work serial. The coordinator
+  integrates and validates; reviewers inspect the fixed candidate read-only.
+- Use the pinned requirements and npm/Cargo lockfiles. Qt needs
   `PySide6-Essentials`, not the full `PySide6`/Addons distribution.
-- Keep tests isolated from real profiles, microphones, provider keys and audio.
-- Use `scripts/ci.py` and the shared validation plan in `docs/ci-delivery.md`.
-  Keep Python test modules in their owned `tests/<suite>/` directory and shared
-  fakes in `tests/support/`. Python behavior needs the Python suite. Settings
-  changes need unit, browser/bridge and production boot checks. Packaging changes
-  also need the Windows build and embedded-payload checks.
-- Never include `.env`, local configuration, keys or recordings in commits.
-- A passing CI is not manual Windows acceptance. Follow the repository release
-  procedure and document open gates before publishing.
+- Use `scripts/ci.py --plan` and the [shared validation plan](docs/ci-delivery.md).
+  Run focused checks during implementation and selected checks on the final
+  candidate. Tests use isolated profiles and fake providers, keys, and audio.
+- Keep a test only for a distinct regression risk. Extend existing cases before
+  adding files. One-time checks do not need permanent test scripts.
+- Keep PR-only captures, logs, runtime state, and scratch files outside Git.
+  Attach visual evidence to the PR. Follow [file retention](docs/agents/workflow.md#files-and-evidence)
+  before adding documentation, tests, or evidence files.
+- Commit, push, PR creation, merge, tracker writes, deployment, and publication
+  follow the user's request and prior authorization. Skills grant no permissions.
+- Passing CI is not manual Windows acceptance or a release. Report open gates
+  before publication; never commit secrets, local profiles, keys, or recordings.
 
-## Delivery workflow
+## Load a skill when its method is needed
 
-- For an authorized feature, fix, or refactor, read
-  `.agents/skills/clarify-delivery/SKILL.md` and follow
-  `docs/agents/workflow.md`. Complete implementation, applicable checks, repair,
-  and review before reporting completion.
-- Inspect source and existing tests before asking for technical facts. Decide
-  routine reversible implementation details autonomously. Ask only for missing
-  decisions that affect product behavior, compatibility, data, or task scope.
-- Preserve the starting branch, unrelated edits, user profiles, and existing
-  demo artifacts. Stage only files belonging to an authorized Git operation.
-- Start every implementation in a distinct linked worktree from freshly fetched
-  `origin/main`. Verify its directory, task branch, and current-base ancestry
-  before edits and delivery. Never use stale local `main` or silently continue
-  after a failed fetch. Use native Git as defined in `docs/agents/workflow.md`.
-- Commit, push, PR, merge, tracker writes, and publication follow the user's
-  request and prior authorization. A skill does not grant those permissions.
-- For independent implementation tasks, delegate to parallel subagents when
-  supported. Give every writer its own worktree and bounded ownership. The
-  coordinator owns integration and final validation. Keep dependent tasks serial.
-  Follow the review requirements in `docs/agents/workflow.md`. If delegation is
-  unavailable, report the limitation and use sequential self-review passes.
+Do not run a chain of skills as a checklist. Read only the relevant entrypoint
+and the conditional reference that resolves the current question.
 
-## Project skills
-
-Skills are versioned regular files in `.agents/skills/` and apply only to Clarify.
-Keep installation, configuration, and updates inside this repository.
-
-| Work | Read when needed |
+| Work | Route |
 | --- | --- |
-| Interface, ownership, or dependency changes | `.agents/skills/codebase-design/SKILL.md` and `docs/architecture.md` |
-| Changed behavior or regression | `.agents/skills/tdd/SKILL.md` |
-| Unclear or intermittent failure | `.agents/skills/diagnosing-bugs/SKILL.md` |
-| Final change review or review-only request | `.agents/skills/code-review/SKILL.md` |
-| Requested architecture survey | `.agents/skills/improve-codebase-architecture/SKILL.md` |
-| Terminology or durable design decision | `.agents/skills/domain-modeling/SKILL.md` and `docs/agents/domain.md` |
-| Issue/spec/ticket work | `docs/agents/issue-tracker.md` and the matching local skill |
-| Desktop release, tag, or publication | `.agents/skills/clarify-release/SKILL.md` |
-| CI/CD, native Railway autodeploy, or release automation | `docs/ci-delivery.md`, then `docs/server-delivery.md` or `docs/release-automation.md` |
-| iOS build or TestFlight publication | `mobile/README.md` and `.github/workflows/ios-testflight.yml` |
-| Agent guidance or upstream skill update | `.agents/skills/writing-for-agents/SKILL.md` and `docs/agents/skill-audit.md` |
+| Feature, fix, or refactor | `clarify-delivery` |
+| Unclear failure or measured regression | `diagnosing-bugs` |
+| Changed behavior with a useful regression test | `tdd` |
+| Interface or dependency design | `codebase-design` and `docs/architecture.md` |
+| Final review or review-only request | `code-review` |
+| Requested architecture survey | `improve-codebase-architecture` |
+| Product ambiguity or requested design interview | `grilling`; `domain-modeling` for durable decisions |
+| Large effort with unresolved decisions | `wayfinder` |
+| Spec, issue, ticket, or questionnaire request | Matching `to-*` or `triage` skill and `docs/agents/issue-tracker.md` |
+| Uncertain external fact or experiment | `research` or `prototype` |
+| PR description or continuation | `pr` or `handoff` |
+| Merge/rebase conflict | `resolving-merge-conflicts` |
+| Required manual setup | `wizard` |
+| Agent guidance, upstream skills, or hooks | `writing-for-agents`, `setup-matt-pocock-skills`, or `setup-pre-commit` |
+| Requested retrospective or repeated delivery failure | `retro` |
+| Desktop release, tag, or publication | `clarify-release` |
+| CI/CD or server/client release automation | `docs/ci-delivery.md`, then `docs/server-delivery.md` or `docs/release-automation.md` |
+| iOS build or TestFlight | `mobile/README.md` and `.github/workflows/ios-testflight.yml` |
 
-Load only the skills relevant to the task. Use `ask-matt` when workflow selection
-is unclear. `python scripts/check_agent_skills.py` checks local metadata,
-references, scope, attribution, and the upstream inventory; CI runs it in the
-`policy` job. This check does not prove an agent's judgment or native UI acceptance.
+Skills are regular versioned files in `.agents/skills/`. Keep changes inside this
+repository. `python scripts/check_agent_skills.py` checks their metadata, links,
+scope, attribution, and inventory. The [source audit](docs/agents/skill-audit.md)
+records adaptation decisions. These checks do not prove agent judgment or UI acceptance.

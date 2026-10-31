@@ -49,6 +49,7 @@ inventory without duplicate collection. Temporary profiles and removal of
 provider credentials precede product imports. Qt uses the Basic style. Personal
 keys, accounts, microphones and recordings are not test fixtures.
 
+<a id="selected-checks"></a>
 ## Selection and terminal results
 
 PR selection compares the tested merge with its base, including both paths of
@@ -116,6 +117,10 @@ reports through `CLARIFY_CI_DURATIONS_DIR`. Use measurements to balance shards.
 Caches hold tool downloads and compiler output. Passing tests are not cached.
 Qt screenshots use `CLARIFY_TEST_ARTIFACTS_DIR` and stay with CI evidence.
 Without an explicit artifact path, tests use temporary output directories.
+PR-only captures and diagnostic reports follow [file retention](agents/workflow.md#files-and-evidence).
+Upload them as PR attachments or CI artifacts; do not commit them. The repository
+policy check rejects tracked files in reserved evidence/runtime output directories.
+It does not judge test value or block maintained product and documentation assets.
 
 ## Runners
 

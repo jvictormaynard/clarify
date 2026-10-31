@@ -1,6 +1,6 @@
 ---
 name: grilling
-description: "Clarify a consequential product or design ambiguity that source inspection cannot resolve."
+description: "Resolve consequential product ambiguity or stress-test a design when the user requests an interview."
 ---
 
 Follow the [project workflow](../../../docs/agents/workflow.md); it defines scope, authorization, validation, and completion.
@@ -8,6 +8,9 @@ Follow the [project workflow](../../../docs/agents/workflow.md); it defines scop
 # Resolve consequential ambiguity
 
 Inspect the repository and current request before asking questions. Finding technical facts, choosing a focused test boundary, and making routine implementation decisions are the agent's work.
+
+For a requested design interview, test assumptions against concrete project scenarios.
+Use `domain-modeling` only when an accepted decision needs a durable record.
 
 Name the unresolved decision and explain how each answer changes behavior, data, compatibility, scope, or a costly architecture choice. Provide a recommendation supported by evidence. Ask a small set of independent questions; use the available user-input tool when it helps.
 

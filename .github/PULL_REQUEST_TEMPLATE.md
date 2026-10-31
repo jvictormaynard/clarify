@@ -14,13 +14,15 @@
 
 - Checks run:
 - Results:
-- Screenshots or recording for visual changes:
+- Uploaded before/after captures for visual changes (recording for motion/timing):
 - Native checks performed, not applicable, or left for maintainer acceptance:
 
 ## Safety and privacy
 
 - [ ] No API keys, private transcripts, selected text, personal paths, or config files are included
-- [ ] Documentation and tests were updated when behavior changed
+- [ ] Retained tests protect distinct regression risks; existing cases were reused where possible
+- [ ] Documentation changes have a lasting user, operational, or design purpose
+- [ ] PR-only evidence, scratch files, runtime state, and local reports are outside the diff
 - [ ] New third-party code or assets have compatible licenses and are documented
 
 ## Notes for reviewers

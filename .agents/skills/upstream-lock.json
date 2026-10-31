@@ -16,9 +16,9 @@
       "name": "ask-matt",
       "bucket": "engineering",
       "source_path": "skills/engineering/ask-matt",
-      "decision": "adapted",
-      "local_skill": "ask-matt",
-      "reason": "Keep a small task router; remove mandatory interview/spec/context-reset chains.",
+      "decision": "excluded",
+      "local_skill": null,
+      "reason": "AGENTS.md owns task routing; a separate router adds no specialized method.",
       "source_files": {
         "agents/openai.yaml": "bdffbc5a0a99ed1b6ef3253d251d755fd18162b9845972e380007f844b09b05c",
         "PHASE-BOUNDARIES.md": "a8aa20158609ef39e2b308b6ba0660c91066838d07a867202e63a7744a88a3ed",
@@ -82,9 +82,9 @@
       "name": "grill-with-docs",
       "bucket": "engineering",
       "source_path": "skills/engineering/grill-with-docs",
-      "decision": "adapted",
-      "local_skill": "grill-with-docs",
-      "reason": "Resolve material uncertainty and record accepted decisions; omit exhaustive interviews and repeated approvals.",
+      "decision": "excluded",
+      "local_skill": null,
+      "reason": "Use grilling for ambiguity and domain-modeling for accepted durable decisions.",
       "source_files": {
         "agents/openai.yaml": "94cd0ab161fb468a836349f5ed482ba58ce8e709a05c57ce533d739dbd35cca9",
         "SKILL.md": "7de372c13488f1ee96cc11cd8907b56b6809cc93eef776eeddd37de6b6cbe3fe"
@@ -94,9 +94,9 @@
       "name": "implement",
       "bucket": "engineering",
       "source_path": "skills/engineering/implement",
-      "decision": "adapted",
-      "local_skill": "implement",
-      "reason": "Coordinate complete local delivery; remove unconditional commits and mandatory test-seam approval.",
+      "decision": "excluded",
+      "local_skill": null,
+      "reason": "Consolidated into clarify-delivery, which owns the implementation method.",
       "source_files": {
         "agents/openai.yaml": "8970a8596ade0c28ab427f41a4ea242d6bdf6186c59ebf55e1238dbecaab79dc",
         "SKILL.md": "6d3fd9e83b8f36e5213854779db49b256a457a7ebb4a503e53fa7dcff696adc3"
@@ -410,9 +410,9 @@
       "name": "grill-me",
       "bucket": "productivity",
       "source_path": "skills/productivity/grill-me",
-      "decision": "adapted",
-      "local_skill": "grill-me",
-      "reason": "Keep a focused project interview; avoid turning the product checkout into a personal planning workspace.",
+      "decision": "excluded",
+      "local_skill": null,
+      "reason": "Consolidated into grilling for requested design interviews and consequential ambiguity.",
       "source_files": {
         "agents/openai.yaml": "c061e39c3e0f9d865fb1b97556d485704af2a8a58f4b8221a8917a5c2074a32b",
         "SKILL.md": "caaf8b8de1684f96e26b28f3c29189db5c89cce4b73e1c93d86164f66ef88637"
@@ -474,9 +474,9 @@
       "name": "wait-what",
       "bucket": "productivity",
       "source_path": "skills/productivity/wait-what",
-      "decision": "adapted",
-      "local_skill": "wait-what",
-      "reason": "Use simple English or Portuguese and resume the active objective after explaining.",
+      "decision": "excluded",
+      "local_skill": null,
+      "reason": "Language and active-task clarification rules belong in AGENTS.md and the shared workflow.",
       "source_files": {
         "agents/openai.yaml": "b41faadf741d51e4ea184148b2d1854d93f947aaf754c7844f70a00f04194999",
         "SKILL.md": "e3f44e3ccbc0e7b62f20ba70b295fc9c9f4aa3f96c77168faee1c71bacbf4215"

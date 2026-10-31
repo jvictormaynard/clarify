@@ -98,9 +98,11 @@ and integration.
 
 1. Fork the repository and create a focused branch from the default branch.
 2. Keep unrelated refactors out of the same pull request.
-3. Add or update tests when behavior changes.
-4. Update user documentation when installation, shortcuts, providers, privacy,
-   or configuration changes.
+3. Check the changed behavior. Retain tests for distinct regression risks and
+   extend existing cases first; follow [test selection](docs/agents/workflow.md#tests-worth-retaining).
+4. Update user docs when how to use the product changes. Follow
+   [documentation rules](docs/agents/workflow.md#documentation-that-lasts); a cosmetic edit
+   or implementation detail does not automatically need a new test or document.
 5. Run the checks below.
 6. For native integration changes, build and test the Windows executable when
    your environment supports it. Report unavailable platform checks in the PR.
@@ -183,10 +185,17 @@ A useful pull request:
 - explains the user-visible problem and solution;
 - links the related issue when one exists;
 - lists the exact validation performed;
-- includes screenshots or a short recording for visual changes;
+- links uploaded before/after screenshots for visual changes, with a recording
+  when motion or timing matters;
 - calls out platform-specific limitations;
 - contains no secrets or personal user data;
-- keeps generated executables, `.env`, and local config files out of Git.
+- keeps generated executables, `.env`, and local config files out of Git;
+- keeps PR-only evidence, diagnostic scripts, runtime state, and planning drafts
+  outside the committed change; see [file retention](docs/agents/workflow.md#files-and-evidence).
+
+Upload visual evidence as PR attachments. If upload is unavailable, retain the
+local captures and state that limit. Do not commit them as a fallback. Shipped
+assets and images used by maintained documentation can still belong in Git.
 
 Maintainers may ask for a smaller scope when a change mixes unrelated concerns.
 Review is collaborative, and specific technical disagreement is welcome when it
