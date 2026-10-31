@@ -66,7 +66,10 @@ function createAppUIService({ record = () => {}, heartbeatMs = 1000 } = {}) {
       if (value.writing_style) Object.assign(result, { writing_style_requested: value.writing_style, writing_style_applied: value.writing_style, writing_style_status: 'applied' });
       send(200, result); return;
     }
-    if (method === 'POST' && route === '/_allauth/app/v1/auth/continue') send(401, { meta: { session_token: 'isolated-e2e-session', is_authenticated: false } });
+    if (method === 'POST' && route === '/_allauth/app/v1/auth/continue') {
+      if (value.email !== user.email) { send(400, { errors: [{ param: 'email', code: 'invalid' }] }); return; }
+      send(401, { meta: { session_token: 'isolated-e2e-session', is_authenticated: false } });
+    }
     else if (method === 'POST' && route === '/_allauth/app/v1/auth/code/confirm') send(value.code === '123456' ? 200 : 401, { meta: { session_token: 'isolated-e2e-session', is_authenticated: value.code === '123456' } });
     else if (method === 'GET' && route === '/v1/account') send(200, user);
     else if (['GET', 'PUT'].includes(method) && route in libraries) {
