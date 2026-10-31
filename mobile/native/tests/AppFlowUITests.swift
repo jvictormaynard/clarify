@@ -271,7 +271,15 @@ final class AppFlowUITests: XCTestCase {
       XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
       email.typeText("\n")
       XCTAssertTrue(app.textFields["account.code"].waitForExistence(timeout: 15), "Return submits the native field's complete email")
+      enter("000000", in: app.textFields["account.code"], name: "invalid-code")
+      pressWithKeyboard("account.verifyCode", field: app.textFields["account.code"], value: "000000")
+      let alert = app.alerts["Clarify"].firstMatch
+      XCTAssertTrue(alert.waitForExistence(timeout: 15))
+      alert.buttons.firstMatch.tap()
+      XCTAssertFalse(app.buttons["account.verifyCode"].isEnabled, "A rejected attempt clears the submitted code")
+      capture("login-code-reset-after-rejection")
     }
+    // Enter without replacing so a stale native code also fails the first read.
     enter("123456", in: app.textFields["account.code"], name: "code")
     capture("login-code-keyboard-visible")
     pressWithKeyboard("account.verifyCode", field: app.textFields["account.code"], value: "123456")
