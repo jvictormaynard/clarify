@@ -6,14 +6,21 @@
 static NSString *TracePath;
 static NSUInteger Sequence;
 
-static BOOL Target(UITextField *field) {
-  return [field.placeholder isEqualToString:@"Nome ou termo"];
+static BOOL Target(id field) {
+  return [field isKindOfClass:NSClassFromString(@"RCTUITextField")] ||
+    [field isKindOfClass:NSClassFromString(@"RCTUITextView")];
 }
 
-static NSDictionary *Snapshot(UITextField *field) {
+static BOOL InputEnabled(UIView<UITextInput> *field) {
+  return [field isKindOfClass:UITextView.class] ? [(UITextView *)field isEditable] : [(UITextField *)field isEnabled];
+}
+
+static NSDictionary *Snapshot(UIView<UITextInput> *field) {
   UITextRange *selection = field.selectedTextRange;
   return @{@"identity": [NSString stringWithFormat:@"%p", field],
-    @"text": field.text ?: @"", @"enabled": @(field.enabled),
+    @"kind": NSStringFromClass(field.class), @"placeholder": [(id)field placeholder] ?: @"",
+    @"identifier": field.accessibilityIdentifier ?: @"", @"label": field.accessibilityLabel ?: @"",
+    @"text": [(id)field text] ?: @"", @"enabled": @(InputEnabled(field)),
     @"focused": @(field.isFirstResponder),
     @"selection": selection ? @[@([field offsetFromPosition:field.beginningOfDocument toPosition:selection.start]),
       @([field offsetFromPosition:field.beginningOfDocument toPosition:selection.end])] : @[]};
@@ -47,42 +54,57 @@ static void Install(void) {
   if (![endpoint.scheme isEqualToString:@"http"] || ![@[@"127.0.0.1", @"localhost"] containsObject:endpoint.host]) return;
   TracePath = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject
     stringByAppendingPathComponent:@"clarify-input-trace.jsonl"];
-  Class adapter = NSClassFromString(@"RCTBackedTextFieldDelegateAdapter");
-  SEL change = NSSelectorFromString(@"textField:shouldChangeCharactersInRange:replacementString:");
-  BOOL replacements = Hook(adapter, change, ^IMP(IMP original) {
-    return imp_implementationWithBlock(^BOOL(id owner, UITextField *field, NSRange range, NSString *text) {
-      BOOL target = Target(field);
-      if (target) Trace(@"replace-before", @{@"field": Snapshot(field), @"range": @[@(range.location), @(range.length)], @"replacement": text ?: @""});
-      BOOL accepted = ((BOOL (*)(id, SEL, UITextField *, NSRange, NSString *))original)(owner, change, field, range, text);
-      if (target) Trace(@"replace-return", @{@"field": Snapshot(field), @"accepted": @(accepted)});
-      return accepted;
+  NSMutableDictionary *hooks = [NSMutableDictionary dictionary];
+  for (NSDictionary *config in @[
+    @{@"adapter": @"RCTBackedTextFieldDelegateAdapter", @"input": @"RCTUITextField", @"prefix": @"single",
+      @"change": @"textField:shouldChangeCharactersInRange:replacementString:", @"availability": @"setEnabled:"},
+    @{@"adapter": @"RCTBackedTextViewDelegateAdapter", @"input": @"RCTUITextView", @"prefix": @"multi",
+      @"change": @"textView:shouldChangeTextInRange:replacementText:", @"availability": @"setEditable:"}
+  ]) {
+    Class adapter = NSClassFromString(config[@"adapter"]);
+    SEL change = NSSelectorFromString(config[@"change"]);
+    BOOL replacements = Hook(adapter, change, ^IMP(IMP original) {
+      return imp_implementationWithBlock(^BOOL(id owner, UIView<UITextInput> *field, NSRange range, NSString *text) {
+        BOOL target = Target(field);
+        if (target) Trace(@"replace-before", @{@"field": Snapshot(field), @"range": @[@(range.location), @(range.length)], @"replacement": text ?: @""});
+        BOOL accepted = ((BOOL (*)(id, SEL, id, NSRange, NSString *))original)(owner, change, field, range, text);
+        if (target) Trace(@"replace-return", @{@"field": Snapshot(field), @"accepted": @(accepted)});
+        return accepted;
+      });
     });
-  });
-  Class fieldClass = NSClassFromString(@"RCTUITextField");
-  SEL attributed = @selector(setAttributedText:);
-  BOOL writes = Hook(fieldClass, attributed, ^IMP(IMP original) {
-    return imp_implementationWithBlock(^(UITextField *field, NSAttributedString *value) {
-      BOOL target = Target(field);
-      if (target) Trace(@"attributed-before", @{@"field": Snapshot(field), @"incoming": value.string ?: @"",
-        @"stack": [NSThread.callStackSymbols subarrayWithRange:NSMakeRange(0, MIN(10, NSThread.callStackSymbols.count))]});
-      ((void (*)(id, SEL, NSAttributedString *))original)(field, attributed, value);
-      if (target) Trace(@"attributed-after", @{@"field": Snapshot(field)});
+    Class input = NSClassFromString(config[@"input"]);
+    SEL attributed = @selector(setAttributedText:);
+    BOOL writes = Hook(input, attributed, ^IMP(IMP original) {
+      return imp_implementationWithBlock(^(UIView<UITextInput> *field, NSAttributedString *value) {
+        BOOL target = Target(field);
+        if (target) {
+          NSArray *stack = NSThread.callStackSymbols;
+          Trace(@"attributed-before", @{@"field": Snapshot(field), @"incoming": value.string ?: @"",
+            @"stack": [stack subarrayWithRange:NSMakeRange(0, MIN(10, stack.count))]});
+        }
+        ((void (*)(id, SEL, NSAttributedString *))original)(field, attributed, value);
+        if (target) Trace(@"attributed-after", @{@"field": Snapshot(field)});
+      });
     });
-  });
-  SEL enabled = @selector(setEnabled:);
-  BOOL enabledChanges = Hook(fieldClass, enabled, ^IMP(IMP original) {
-    return imp_implementationWithBlock(^(UITextField *field, BOOL value) {
-      if (Target(field) && field.enabled != value) Trace(@"enabled", @{@"field": Snapshot(field), @"incoming": @(value)});
-      ((void (*)(id, SEL, BOOL))original)(field, enabled, value);
+    SEL availability = NSSelectorFromString(config[@"availability"]);
+    BOOL enabledChanges = Hook(input, availability, ^IMP(IMP original) {
+      return imp_implementationWithBlock(^(UIView<UITextInput> *field, BOOL value) {
+        if (Target(field) && InputEnabled(field) != value) Trace(@"enabled", @{@"field": Snapshot(field), @"incoming": @(value)});
+        ((void (*)(id, SEL, BOOL))original)(field, availability, value);
+      });
     });
-  });
-  for (NSNotificationName name in @[UITextFieldTextDidBeginEditingNotification, UITextFieldTextDidEndEditingNotification, UITextFieldTextDidChangeNotification]) {
+    hooks[[config[@"prefix"] stringByAppendingString:@".replacements"]] = @(replacements);
+    hooks[[config[@"prefix"] stringByAppendingString:@".writes"]] = @(writes);
+    hooks[[config[@"prefix"] stringByAppendingString:@".availability"]] = @(enabledChanges);
+  }
+  for (NSNotificationName name in @[UITextFieldTextDidBeginEditingNotification, UITextFieldTextDidEndEditingNotification,
+    UITextFieldTextDidChangeNotification, UITextViewTextDidBeginEditingNotification,
+    UITextViewTextDidEndEditingNotification, UITextViewTextDidChangeNotification]) {
     [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
-      UITextField *field = [note.object isKindOfClass:UITextField.class] ? note.object : nil;
-      if (field && Target(field)) Trace(name, @{@"field": Snapshot(field)});
+      if (Target(note.object)) Trace(name, @{@"field": Snapshot(note.object)});
     }];
   }
-  Trace(@"installed", @{@"replacements": @(replacements), @"attributedWrites": @(writes), @"enabledChanges": @(enabledChanges)});
+  Trace(@"installed", hooks);
 }
 
 __attribute__((constructor)) static void PrepareInputTrace(void) {

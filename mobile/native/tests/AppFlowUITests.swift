@@ -113,9 +113,13 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
     if replacing { field.typeKey("a", modifierFlags: .command) }
     print("APP_UI_INPUT_BEFORE \(name) \(field.debugDescription)")
+    let sentAt = ProcessInfo.processInfo.systemUptime
     field.typeText(value)
     // Read once after typing. Preserve that observation before diagnostics.
+    let readStarted = ProcessInfo.processInfo.systemUptime
     let actual = field.value as? String
+    let readFinished = ProcessInfo.processInfo.systemUptime
+    print("APP_UI_INPUT_FIRST_READ \(name) sent=\(sentAt) readStarted=\(readStarted) readFinished=\(readFinished) expected=\(String(reflecting: value)) actual=\(String(reflecting: actual))")
     guard actual == value else {
       print("APP_UI_INPUT_FAILURE \(name) expected=\(String(reflecting: value)) actual=\(String(reflecting: actual)) frame=\(field.frame) hittable=\(field.isHittable)")
       diagnose("typing-\(name)")

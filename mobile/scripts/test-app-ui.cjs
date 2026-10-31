@@ -118,7 +118,8 @@ async function main() {
           fs.copyFileSync(trace, path.join(output, `${scenario.name}-native-input.jsonl`));
           const records = fs.readFileSync(trace, 'utf8').trim().split('\n').map(line => JSON.parse(line));
           const installed = records.filter(record => record.event === 'installed');
-          if (!installed.length || installed.some(record => !record.replacements || !record.attributedWrites || !record.enabledChanges)) throw new Error('Native input trace hooks were not installed.');
+          const hooks = ['single.replacements', 'single.writes', 'single.availability', 'multi.replacements', 'multi.writes', 'multi.availability'];
+          if (!installed.length || installed.some(record => hooks.some(key => record[key] !== true))) throw new Error('Native input trace hooks were not installed.');
         } catch (error) { inputTraceErrors.push(error.message); console.error(`Input trace: ${error.message}`); }
       }
       if (inputTraceErrors.length) throw new Error('Native input trace is incomplete.');
