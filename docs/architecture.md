@@ -54,7 +54,13 @@ definition before processing, and responses must echo the same identity.
 cross-process file-coordination transaction changes one field without replacing
 another field's concurrent change. Recording and text operations freeze these
 preferences at acceptance. The containing app keeps discovery and processing
-under its existing task and cancellation owner. Output language is independent
+under its existing task and cancellation owner. Hosted text can reserve its UUID
+while an automatic account refresh is active, then wait for that refresh during
+preparation. Cancelling text leaves the account refresh active. Explicit account
+changes and computer connection work still block text acceptance. The operation
+pins its account identity and credential before the preparation task starts and
+checks them after discovery, so a waiting operation cannot adopt another session.
+Output language is independent
 of recognition language. Explicit choices enter operation fingerprints and
 require advertised service support; unsupported choices remain saved and return
 an update-required error. Requested/applied/status metadata distinguishes applied
