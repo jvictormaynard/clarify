@@ -101,8 +101,6 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/ios-env
       - name: Test the containing app on an isolated simulator service
-        env:
-          CLARIFY_APP_UI_INPUT_TRACE: "true"
         run: node scripts/test-app-ui.cjs
       - name: Retain containing-app test evidence
         if: always()

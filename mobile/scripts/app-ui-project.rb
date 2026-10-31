@@ -7,11 +7,6 @@ project_path = File.join(fixture, 'Clarify.xcodeproj')
 project = Xcodeproj::Project.open(project_path)
 app = project.targets.find { |target| target.name == 'Clarify' }
 raise 'Containing app target is missing' unless app
-if ENV['CLARIFY_APP_UI_INPUT_TRACE'] == 'true'
-  trace = File.join(fixture, 'AppInputTrace.mm')
-  FileUtils.cp(File.join(root, 'native/tests/AppInputTrace.mm'), trace)
-  app.source_build_phase.add_file_reference(project.main_group.new_file(trace))
-end
 tests = project.new_target(:ui_test_bundle, 'ClarifyAppFlowTests', :ios, '16.4')
 tests.add_dependency(app)
 tests.build_configurations.each do |configuration|
