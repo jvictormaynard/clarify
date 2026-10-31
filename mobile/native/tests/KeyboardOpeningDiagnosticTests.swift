@@ -73,10 +73,18 @@ final class KeyboardOpeningDiagnosticTests: XCTestCase {
     stage("ten-openings-started")
     XCTAssertNotNil(screen.report)
     let done = expectation(for: NSPredicate { _, _ in screen.report?.outcome != "running" }, evaluatedWith: nil)
-    await fulfillment(of: [done], timeout: 35)
+    // Each presentation has a closing phase and an opening phase. The overall
+    // wait must cover every phase allowed by the diagnostic's own deadline.
+    let runTimeout = Double(2 * KeyboardOpeningDiagnostic.openingCount) * KeyboardOpeningDiagnostic.phaseTimeout
+    await fulfillment(of: [done], timeout: runTimeout)
     stage("ten-openings-finished")
     let report = try XCTUnwrap(screen.report)
-    XCTAssertEqual(report.outcome, "completed")
+    // Keep the measured phase and frame timings before an assertion can stop
+    // the test process. A terminal outcome alone cannot explain a timeout.
+    let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    let attachment = XCTAttachment(data: try encoder.encode(report), uniformTypeIdentifier: "public.json")
+    attachment.name = "keyboard-opening-report"; attachment.lifetime = .keepAlways; add(attachment)
+    XCTAssertEqual(report.outcome, "completed", "Last sample: \(String(describing: report.frames.last))")
     XCTAssertEqual(report.openings.map(\.index), Array(1...10))
     XCTAssertTrue(report.frames.contains { $0.phase == "closing" })
     for opening in 1...10 {

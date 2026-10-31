@@ -148,6 +148,9 @@ final class CloudAccount {
     locked { lastSyncAttempt = -.infinity; lastRefreshAttempt = -.infinity }
   }
   var isBusy: Bool { locked { busy } }
+  // Text preparation can wait for automatic work under its own cancelable UUID.
+  // Explicit account changes must still exclude new operations.
+  var textStartBlocked: Bool { locked { busy && !automatic } }
   var configured: Bool { locked { hosted && readCredential() != nil } }
   func snapshot() -> [String: Any] {
     locked {
@@ -365,12 +368,12 @@ final class CloudAccount {
     }
   }
   @MainActor func refreshTextActions() async throws {
-    let identity = captureHistory()
+    let identity = captureTextIdentity()
     try await waitForAutomaticRefresh()
-    guard configured, acceptsHistory(identity) else { throw CancellationError() }
+    guard acceptsTextIdentity(identity) else { throw CancellationError() }
     try begin(); defer { end() }
     try await refresh()
-    guard acceptsHistory(identity) else { throw CancellationError() }
+    guard acceptsTextIdentity(identity) else { throw CancellationError() }
     try await loadTextActions()
   }
   // Social requests deliberately bypass perform(): only a validated one-use

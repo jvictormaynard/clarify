@@ -192,12 +192,115 @@ final class MobileActionsTests: XCTestCase {
       } else { raw = [:] }
       return (try JSONSerialization.data(withJSONObject: raw), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
     }
-    func cleanup() { suspended?.resume(); defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
-    func prepare(_ action: String = "text_action", language: String = "auto", preferences: OutputPreferences = OutputPreferences()) async throws -> PreparedTextOperation {
+    func resume() { pausePath = nil; suspended?.resume(); suspended = nil }
+    func cleanup() { resume(); defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+    func prepare(_ action: String = "text_action", language: String = "auto", preferences: OutputPreferences = OutputPreferences(),
+      accountIdentity: TextAccountIdentity? = nil) async throws -> PreparedTextOperation {
       try await destination.prepareText(action, actionID: action == "text_action" ? "summary" : nil,
-        revision: action == "text_action" ? "9223372036854775807" : nil, language: language, context: destination.historyContext, preferences: preferences)
+        revision: action == "text_action" ? "9223372036854775807" : nil, language: language, context: destination.historyContext,
+        preferences: preferences, accountIdentity: accountIdentity)
     }
     var posts: [URLRequest] { requests.filter { $0.httpMethod == "POST" } }
+  }
+
+  @MainActor func testTextStartCanWaitForAutomaticAccountWorkButNotExplicitOrComputerWork() async throws {
+    for command in ["auto", "refresh", "computer"] {
+      let f = try Fixture(computer: command == "computer"); defer { f.cleanup() }
+      let library = try LocalLibrary(root: f.root.appendingPathComponent("library"))
+      f.pausePath = command == "computer" ? "/v1/computer/status" : "/v1/text-actions"
+      let held = expectation(description: "Destination work suspended")
+      f.onRequest = { held.fulfill() }
+      let work = Task { @MainActor in
+        if command == "computer" { try await f.computer.refresh() }
+        else { _ = try await f.account.command(command, value: "", library: library) }
+      }
+      await fulfillment(of: [held], timeout: 2)
+      XCTAssertTrue(f.destination.isBusy)
+      XCTAssertEqual(f.destination.textStartBlocked, command != "auto")
+      XCTAssertThrowsError(try f.destination.select("hosted"), "Text admission must not enable destination changes")
+      f.resume(); try await work.value
+      XCTAssertFalse(f.destination.textStartBlocked)
+    }
+  }
+
+  @MainActor func testTextPreparationWaitsForAutomaticRefreshAndKeepsItsAcceptedIdentity() async throws {
+    let f = try Fixture(); defer { f.cleanup() }
+    let library = try LocalLibrary(root: f.root.appendingPathComponent("library"))
+    f.pausePath = "/v1/text-actions"
+    let held = expectation(description: "Automatic catalog suspended")
+    f.onRequest = { held.fulfill() }
+    let automatic = Task { try await f.account.command("auto", value: "", library: library) }
+    await fulfillment(of: [held], timeout: 2)
+    let identity = try XCTUnwrap(f.destination.captureTextIdentity())
+    let entered = expectation(description: "Text preparation entered")
+    let preparing = Task { @MainActor in
+      entered.fulfill(); return try await f.prepare(accountIdentity: identity)
+    }
+    await fulfillment(of: [entered], timeout: 2)
+    XCTAssertTrue(f.account.isBusy); XCTAssertTrue(f.posts.isEmpty)
+    XCTAssertEqual(f.requests.filter { $0.url?.path == "/v1/text-actions" }.count, 1)
+    f.resume(); _ = try await automatic.value
+    let prepared = try await preparing.value
+    XCTAssertEqual(prepared.accountIdentity, identity)
+    let result = try await f.destination.processText(UUID().uuidString, prepared: prepared, text: "Retained draft")
+    XCTAssertEqual(result.text, "Changed"); XCTAssertEqual(f.posts.count, 1)
+  }
+
+  @MainActor func testCancellingTextPreparationLeavesAutomaticRefreshRunningWithoutProcessing() async throws {
+    let f = try Fixture(); defer { f.cleanup() }
+    let library = try LocalLibrary(root: f.root.appendingPathComponent("library"))
+    f.pausePath = "/v1/text-actions"
+    let held = expectation(description: "Automatic catalog suspended")
+    f.onRequest = { held.fulfill() }
+    let automatic = Task { try await f.account.command("auto", value: "", library: library) }
+    await fulfillment(of: [held], timeout: 2)
+    let identity = try XCTUnwrap(f.destination.captureTextIdentity())
+    let entered = expectation(description: "Cancelable preparation entered")
+    let preparing = Task { @MainActor in
+      entered.fulfill(); return try await f.prepare(accountIdentity: identity)
+    }
+    await fulfillment(of: [entered], timeout: 2)
+    preparing.cancel()
+    do { _ = try await preparing.value; XCTFail("Cancelled preparation returned") } catch is CancellationError {}
+    XCTAssertTrue(f.account.isBusy); XCTAssertNotNil(f.suspended)
+    XCTAssertTrue(f.account.acceptsTextIdentity(identity)); XCTAssertTrue(f.posts.isEmpty)
+    f.resume(); _ = try await automatic.value
+    XCTAssertFalse(f.account.isBusy); XCTAssertTrue(f.posts.isEmpty)
+  }
+
+  @MainActor func testTextCannotAdoptAReplacedCredentialBeforePreparationOrDuringAutomaticRefresh() async throws {
+    for stage in ["accepted", "waiting"] {
+      let f = try Fixture(); defer { f.cleanup() }
+      let identity = try XCTUnwrap(f.destination.captureTextIdentity())
+      if stage == "accepted" {
+        f.token = "replacement-session"
+        do { _ = try await f.prepare(accountIdentity: identity); XCTFail("Replaced accepted identity adopted") }
+        catch is CancellationError {}
+        XCTAssertTrue(f.requests.isEmpty)
+      } else {
+        let library = try LocalLibrary(root: f.root.appendingPathComponent("library"))
+        f.pausePath = "/v1/text-actions"
+        let held = expectation(description: "Automatic catalog suspended")
+        f.onRequest = { held.fulfill() }
+        let automatic = Task { try await f.account.command("auto", value: "", library: library) }
+        await fulfillment(of: [held], timeout: 2)
+        let entered = expectation(description: "Bound preparation entered")
+        let preparing = Task { @MainActor in
+          entered.fulfill(); return try await f.prepare(accountIdentity: identity)
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        let discoveryPaths = ["/v1/account", "/v1/text-actions"]
+        let before = f.requests.filter { discoveryPaths.contains($0.url!.path) }.count
+        f.token = "replacement-session"
+        f.resume(); _ = try await automatic.value
+        do { _ = try await preparing.value; XCTFail("Waiting preparation adopted replacement credential") }
+        catch is CancellationError {}
+        XCTAssertEqual(f.requests.filter { discoveryPaths.contains($0.url!.path) }.count, before,
+          "No text discovery may use the replacement session; automatic library sync retains its owner")
+      }
+      XCTAssertEqual(f.token, "replacement-session"); XCTAssertTrue(f.posts.isEmpty)
+      XCTAssertFalse(f.account.isBusy)
+    }
   }
 
   @MainActor func testSavedActionsFreezeDefinitionAndUseIntegerRevisionIndependentOfDictation() async throws {

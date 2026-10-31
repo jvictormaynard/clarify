@@ -78,9 +78,9 @@ become `identity_proof_failed`; their contents are never logged.
 
 ```python
 client = ComputerRelayClient(relay_host, identity, target_port, relay_port=443)
-client.start()                 # Starts one background worker; does not await TLS.
+client.start()  # Starts one background worker; does not await TLS.
 available = client.connected  # Thread-safe snapshot; status is a fixed string.
-drained = client.stop(5.0)     # False means shutdown could not be confirmed.
+drained = client.stop(5.0)  # False means shutdown could not be confirmed.
 ```
 
 The client owns its event loop, sockets and stream tasks. Reconnect uses capped

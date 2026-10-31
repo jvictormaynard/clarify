@@ -54,6 +54,8 @@ struct KeyboardOpeningReport: Encodable {
 
 @MainActor
 final class KeyboardOpeningDiagnostic: UIViewController {
+  static let openingCount = 10
+  static let phaseTimeout: CFTimeInterval = 10
   private let field = UITextField()
   private let choice = UISegmentedControl(items: ["Apple", "Clarify", "Wispr Flow"])
   private let status = UILabel()
@@ -187,7 +189,7 @@ final class KeyboardOpeningDiagnostic: UIViewController {
       phase: phase, displayElapsed: display.timestamp - started, targetElapsed: display.targetTimestamp - started,
       guideHeight: Double(guide), composerHeight: Double(composer))
     guard report?.append(frame) == true else { stop("sample-limit"); return }
-    if time - phaseStarted > 10 { stop("timeout"); return }
+    if time - phaseStarted > Self.phaseTimeout { stop("timeout"); return }
     let steady = abs(previousGuide - guide) < 0.5 && abs(previousComposer - composer) < 0.5
     previousGuide = guide; previousComposer = composer
     let closed = guide <= view.safeAreaInsets.bottom + 2 && composer <= view.safeAreaInsets.bottom + 2
@@ -200,7 +202,7 @@ final class KeyboardOpeningDiagnostic: UIViewController {
       guard field.becomeFirstResponder() else { stop("focus-failed"); return }
     } else {
       report?.completeOpening(opening)
-      if opening == 10 { stop("completed"); return }
+      if opening == Self.openingCount { stop("completed"); return }
       phase = "closing"; resetPhase(); field.resignFirstResponder()
     }
   }

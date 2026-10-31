@@ -727,6 +727,9 @@ for (const [localTerm, correctedTerm] of [["Desktop Term", "Desktop Term"], ["St
 });
 
 test.beforeEach(async ({ page }, testInfo) => {
+  const actionTimeout = testInfo.timeout, setupStarted = performance.now();
+  // Fixture startup has its own budget. Keep the full action budget after it.
+  testInfo.setTimeout(actionTimeout + 30_000);
   if (!process.env.CLARIFY_TEST_PYTHON || !process.env.CLARIFY_TEST_FIXTURE) throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
   const onboarding = testInfo.title.startsWith("onboarding:");
   const quota = testInfo.title.startsWith("quota:");
@@ -774,6 +777,7 @@ test.beforeEach(async ({ page }, testInfo) => {
     testInfo.title.startsWith("quota: styles") || testInfo.title.startsWith("quota: cleanup")) {
     await navigate(page, locale === "en" ? "Style" : "Estilo");
   }
+  testInfo.setTimeout(actionTimeout + Math.ceil(performance.now() - setupStarted));
 });
 test.afterEach(async () => { child?.stdin.end(JSON.stringify({ method: "quit" }) + "\n"); pending.clear(); });
 

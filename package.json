@@ -4,12 +4,15 @@
   "private": true,
   "scripts": {
     "build:settings": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-settings.ps1",
-    "test": "python3 scripts/run_tests.py",
-    "check": "python3 -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py portable_updates.py portable_update_windows.py clarify/desktop/qml_updates.py scripts/create_portable_update_manifest.py scripts/test_portable_update.py scripts/portable_crypto_inventory.py repositories.py secret_store.py version.py windows_hotkeys.py windows_clipboard.py provider_types.py workflow_provider.py provider_adapters.py provider_http.py provider_registry.py local_asr.py local_asr_product.py dictionary_snippets.py microphone_controls.py audio_file_batch.py audio_file_batch_ui.py history_store.py workflow_config.py workflow_settings.py workflows.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests && python3 -c \"from pathlib import Path; qml = Path('clarify/desktop/qml'); assert qml.is_dir() and (qml / 'Main.qml').is_file() and any(qml.glob('*.qml'))\" && python3 scripts/check_agent_skills.py",
+    "test": "python scripts/run_tests.py",
+    "check": "python scripts/ci.py --task static",
     "setup-hooks": "git config core.hooksPath .githooks",
     "build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/build.ps1",
     "installer": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-installer.ps1",
     "setup": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/setup.ps1 -Dev",
-    "deploy": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/deploy.ps1"
+    "deploy": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/deploy.ps1",
+    "ci": "python scripts/ci.py",
+    "ci:plan": "python scripts/ci.py --plan",
+    "ci:full": "python scripts/ci.py --full"
   }
 }

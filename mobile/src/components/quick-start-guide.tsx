@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { Keyboard, Linking, Text, type TextInput, View } from 'react-native';
-import { DraftInput } from './draft-input';
+import { Keyboard, Linking, Text, View, type TextInput } from 'react-native';
+import { DraftTextInput } from './draft-text-input';
 import { t } from '../i18n';
 import { guideCompletion, guideTransition, initialGuide, type GuideAction, type GuideExit } from '../quick-start';
 import { isBusy, report, useClarify } from '../state/clarify';
@@ -18,6 +18,7 @@ export function QuickStartGuide({ onFinish, busy = false, replay = false }: {
   const blocked = busy || finishing || activating || isBusy(state);
   const step = progress.step === 'keyboard' ? 0 : progress.step === 'microphone' ? 1 : 2;
   function move(action: GuideAction) {
+    practiceInput.current?.clear();
     setPracticeText('');
     Keyboard.dismiss();
     setProgress(current => guideTransition(current, action, state.sessionActive));
@@ -29,8 +30,8 @@ export function QuickStartGuide({ onFinish, busy = false, replay = false }: {
     setFinishing(true);
     try {
       await onFinish(confirmed);
-      setPracticeText('');
       practiceInput.current?.clear();
+      setPracticeText('');
       Keyboard.dismiss();
     }
     catch (error) { report(error); }
@@ -59,7 +60,7 @@ export function QuickStartGuide({ onFinish, busy = false, replay = false }: {
       </> : <>
         <Title>{t('Experimente um ditado')}</Title>
         <Text style={[ui.body, { color: c.text }]}>{t('Toque no campo e escolha o teclado Clarify pelo globo.')}</Text>
-        <DraftInput ref={practiceInput} testID="onboarding.practiceInput" accessibilityLabel={t('Texto de teste')}
+        <DraftTextInput inputRef={practiceInput} testID="onboarding.practiceInput" accessibilityLabel={t('Texto de teste')}
           initialValue={practiceText} onChangeText={setPracticeText} editable={!finishing} multiline
           placeholder={t('Oi, tudo bem?')} placeholderTextColor={c.muted} selectionColor={c.text}
           style={[ui.input, { color: c.text, borderColor: c.controlBorder, backgroundColor: c.card, minHeight: 112, maxHeight: 180, textAlignVertical: 'top' }]} />

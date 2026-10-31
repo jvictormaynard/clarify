@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtCore import QCoreApplication, QObject, Signal, Qt, Slot, QTimer
 from types import SimpleNamespace
-from test_pyside6_qml_settings import _repositories, _MicrophoneBackend
+from tests.support.settings import _repositories, _MicrophoneBackend
 from microphone_controls import MicrophoneInventory, MicrophoneDevice
 from local_asr_product import LocalASRProductState
 from clarify.desktop.qml_settings import QmlSettingsController
@@ -412,7 +412,7 @@ def main():
         chatgpt = None
         fixtures = ExitStack()
         if "--chatgpt" in sys.argv:
-            from test_chatgpt_settings import (
+            from tests.support.chatgpt_settings import (
                 FakeChatGPTAdapter,
                 FakeChatGPTSession,
             )
@@ -496,7 +496,7 @@ def main():
                 account=settings._account,
                 text_actions=settings._text_actions,
             )
-        from practice_settings_fixture import bind_practice
+        from tests.support.practice_settings_fixture import bind_practice
 
         bind_practice(settings, app)
         from clarify.desktop.qml_computer import QmlComputerController

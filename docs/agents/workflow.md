@@ -138,17 +138,19 @@ optional Local Whisper. A local route has no implicit cloud fallback.
 
 ## Validation by affected contract
 
-Use the highest applicable row. Read the current commands and tool versions in
-[Contributing](../../CONTRIBUTING.md), [Development](../development.md),
-`package.json`, and `.github/workflows/ci.yml`; those files own the executable
-checks. Do not duplicate their complete command lists in each skill.
+Use the highest applicable row and the shared plan in
+[CI delivery](../ci-delivery.md#local-validation). `ci/impact.py` selects tasks;
+`ci/tasks.py` owns their shared commands. Workflows own runner setup, services
+and artifacts. Read [Contributing](../../CONTRIBUTING.md) and
+[Development](../development.md) for dependencies and platform setup. Do not
+duplicate complete command lists in each skill.
 
 | Change | Validation |
 | --- | --- |
 | Instructions, docs, or skill metadata | Skill validator, references, attribution, `git diff --check`; no new product test for wording alone |
 | Python behavior or internal refactor | Focused behavior/contract tests during work; final Python suite and relevant compile/lint/type checks |
 | Qt/QML visual or interaction behavior | Python and QML checks for the affected contract; screenshots or a recording; Windows acceptance for native interaction and before publication |
-| Settings or Python-to-Settings bridge | Frontend build/type check and isolated Playwright fixture; Python suite for Python changes; native build for Rust, dependencies or packaging; Windows acceptance for native integration and before publication |
+| Settings or Python-to-Settings bridge | Shared `settings_unit` and `settings_browser` tasks: types, headless units, production build/boot, browser behavior and isolated Python bridge; Python suite for Python changes; native build for Rust, dependencies or packaging; Windows acceptance for native integration and before publication |
 | Persistence, credentials, provider routing, workflow concurrency, clipboard, audio, or ASR lifecycle | Regression evidence for affected failure/cancellation/compatibility paths, full Python suite, relevant Settings/Windows checks, and focused architecture review |
 | Dependencies, CI, or packaging | Applicable Python/Settings checks, pinned lock and audit rules, Windows build and embedded-payload checks when build inputs changed |
 | Desktop publication | Existing `clarify-release` contract, exact source/tag/CI alignment, track-specific assets, downloaded hashes and provenance |
@@ -209,23 +211,25 @@ Desktop and mobile versions are independent. Publication still follows the
 user's authorization; integrating instructions alone does not request a release.
 
 For desktop, use [clarify-release](../../.agents/skills/clarify-release/SKILL.md).
-The coordinator owns SemVer, changelog, release PR, green post-merge CI, immutable
-tag, and the selected release track. Verify downloaded assets, checksums, update
-metadata and provenance before reporting availability.
+The coordinator owns SemVer, changelog, release PR, exact green main source,
+immutable tag and candidate identity. Build the final candidate once. Windows
+acceptance must cover that source and artifact digest. Publish those verified
+bytes through the separate publication action. Verify downloads, checksums,
+update metadata and provenance before reporting availability.
 
 For iOS, follow [the mobile guide](../../mobile/README.md) and
 [the iOS workflow](../../.github/workflows/ios-testflight.yml). Check the existing
 App Store Connect build numbers and pending submissions before reserving a new
 `expo.ios.buildNumber` in `mobile/app.json`. Keep the app and extensions aligned.
-Use `tests_only` for validation without signing/upload. For publication, run the
+Use `mode=validate` for validation without signing/upload. For publication, run the
 workflow on the immutable reviewed `ios/vX.Y.Z-buildN` tag and pass its exact
-source SHA. The guarded workflow no longer uploads on delivery-branch pushes.
-An older remote `codex/ios-testflight` workflow can still upload until that branch
-receives the guarded workflow; avoid source pushes there before this update.
+source SHA. Signed uploads are explicit actions with production app identity.
 Uploads, Apple processing, and group availability share a serialized workflow
 group; this does not reserve build numbers or prove availability.
 Verify the signed IPA and upload, then Apple processing and the intended
-TestFlight group separately. App Store distribution is a separate delivery scope.
+TestFlight group separately. The public App Store handoff reuses the exact
+verified Apple build ID. Submission, review and public availability remain
+separate verified Apple actions. Do not rebuild a tested candidate for handoff.
 
 ## Review and completion
 
@@ -268,7 +272,7 @@ check, pending CI job, incomplete build, or unverified publication as complete.
 The [skill audit](skill-audit.md) records every upstream decision and its pinned
 source. Update adapted skills deliberately; never run an unattended upstream
 overwrite. Use `python scripts/check_agent_skills.py` and the creator's validator
-when available. The repository checks job validates local integrity on Linux.
+when available. The `policy` job validates local integrity on Linux.
 
 The validator checks packaging and provenance, not architectural judgment. Walk
 through realistic tasks after a behavior-changing skill edit and measure actual

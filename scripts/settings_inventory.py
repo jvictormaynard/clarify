@@ -274,7 +274,16 @@ def main() -> None:
     npm_cli = Path(node).parent / "node_modules/npm/bin/npm-cli.js"
     npm_command = [node, str(npm_cli)] if npm_cli.is_file() else [shutil.which("npm")]
     npm = command_json(
-        [*npm_command, "sbom", "--omit=dev", "--sbom-format", "cyclonedx"], desktop
+        # Each application owns its inventory, independent of other workspaces.
+        [
+            *npm_command,
+            "sbom",
+            "--workspaces=false",
+            "--omit=dev",
+            "--sbom-format",
+            "cyclonedx",
+        ],
+        desktop,
     )
     cargo = command_json(
         [

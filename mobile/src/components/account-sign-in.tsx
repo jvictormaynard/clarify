@@ -1,7 +1,7 @@
 import { t } from "../i18n";
 import { useRef, useState } from 'react';
 import { Text, type TextInput } from 'react-native';
-import { DraftInput } from './draft-input';
+import { DraftTextInput } from './draft-text-input';
 import { Button, TextButton, ui, usePalette } from './ui';
 import type { AccountSnapshot } from '../../modules/clarify-core';
 import { report } from '../state/clarify';
@@ -47,7 +47,7 @@ export function AccountSignIn({ account, busy, command }: {
   };
   return account.pending ? <>
     <Text style={[ui.small, { color: c.muted }]}>{t("Digite o código enviado para {v0}. O código vale por 10 minutos.", { v0: account.email })}</Text>
-    <DraftInput ref={codeInput} selectionColor={c.text} testID="account.code" accessibilityLabel={t("Código da conta Clarify")} initialValue={code} onChangeText={changeCode} editable={!busy} textContentType="oneTimeCode" keyboardType="number-pad" maxLength={16} placeholder={t("Código")} placeholderTextColor={c.muted} style={[ui.input, input]} />
+    <DraftTextInput inputRef={codeInput} selectionColor={c.text} testID="account.code" accessibilityLabel={t("Código da conta Clarify")} initialValue={code} onChangeText={changeCode} editable={!busy} textContentType="oneTimeCode" keyboardType="number-pad" maxLength={16} placeholder={t("Código")} placeholderTextColor={c.muted} style={[ui.input, input]} />
     <Button primary testID="account.verifyCode" loading={busy} disabled={!code.trim()} onPress={confirm}>{t("Confirmar código")}</Button>
     <TextButton testID="account.backToEmail" disabled={busy} onPress={() => run('logout')}>{t("Voltar")}</TextButton>
   </> : <>
@@ -59,7 +59,7 @@ export function AccountSignIn({ account, busy, command }: {
       <TextButton disabled={cancelling} onPress={cancel}>{t("Cancelar")}</TextButton>
     </>}
     <Text style={[ui.small, { color: c.muted, textAlign: 'center' }]}>{t("Ou continue com seu e-mail")}</Text>
-    <DraftInput selectionColor={c.text} testID="account.email" accessibilityLabel={t("E-mail da conta Clarify")} initialValue={emailSeed} onChangeText={changeEmail} editable={!blocked} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" returnKeyType="go" onSubmitEditing={event => send(event.nativeEvent.text)} maxLength={254} placeholder={t("E-mail")} placeholderTextColor={c.muted} style={[ui.input, input]} />
+    <DraftTextInput selectionColor={c.text} testID="account.email" accessibilityLabel={t("E-mail da conta Clarify")} initialValue={emailSeed} onChangeText={changeEmail} editable={!blocked} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" returnKeyType="go" onSubmitEditing={event => send(event.nativeEvent.text)} maxLength={254} placeholder={t("E-mail")} placeholderTextColor={c.muted} style={[ui.input, input]} />
     <Button primary testID="account.requestCode" loading={busy && !social} disabled={blocked || !hasEmail || !account.endpoint} onPress={() => send()}>{t("Continuar")}</Button>
     <Text style={[ui.small, { color: c.muted }]}>{t("Enviaremos um código para entrar ou criar sua conta. Você não precisa de senha.")}</Text>
   </>;

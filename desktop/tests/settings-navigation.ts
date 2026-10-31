@@ -3,6 +3,7 @@ import { expect, type Page } from "@playwright/test";
 export const settingsDialog = (page: Page) => page.getByRole("dialog", { name: /^(Configurações|Settings|Ajustes)$/ });
 
 export async function openSettings(page: Page, section: string) {
+  await expect(page.locator("main .page-content")).toBeVisible({ timeout: 30000 });
   await expect(page.locator(".settings-dialog[data-ending-style]")).toHaveCount(0);
   const dialog = settingsDialog(page);
   if (!await dialog.isVisible()) {
@@ -21,6 +22,7 @@ export async function closeSettings(page: Page) {
 }
 
 export async function navigate(page: Page, destination: string) {
+  await expect(page.locator("main .page-content")).toBeVisible({ timeout: 30000 });
   if (["Geral", "Dispositivos", "Modelos e serviços", "Atalhos", "Privacidade", "Conta Clarify",
     "General", "Devices", "Dispositivos", "Models and services", "Shortcuts", "Privacy", "Clarify account", "Cuenta Clarify"].includes(destination)) {
     await openSettings(page, destination);

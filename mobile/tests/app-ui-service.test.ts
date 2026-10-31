@@ -2,7 +2,20 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
 const { createAppUIService } = createRequire(import.meta.url)('./app-ui-service.cjs');
-const { requirePassedTest } = createRequire(import.meta.url)('../scripts/test-app-ui.cjs');
+const { requirePassedTest, requirePassedNativeTests, nativeMethods } = createRequire(import.meta.url)('../scripts/test-app-ui.cjs');
+
+test('native text state gate rejects missing, duplicate, unknown and failing cases', () => {
+  const lines = nativeMethods.flatMap((method: string) => [
+    `Test Case '-[ClarifyTextInputTests ${method}]' started.`,
+    `Test Case '-[ClarifyTextInputTests ${method}]' passed (0.1 seconds).`,
+  ]);
+  assert.doesNotThrow(() => requirePassedNativeTests(lines));
+  for (const invalid of [[], lines.slice(0, -2), [...lines, ...lines.slice(0, 2)],
+    lines.map((line: string) => line.replace(nativeMethods[0], 'testUnknown')),
+    lines.map((line: string) => line.replace('passed', 'failed'))]) {
+    assert.throws(() => requirePassedNativeTests(invalid));
+  }
+});
 
 test('account fixture checks the complete email sent by the native client', async () => {
   const f = createAppUIService();
