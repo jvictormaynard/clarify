@@ -381,7 +381,7 @@ final class ClarifyAudioSession: NSObject {
     context: String, actionID: String? = nil, revision: String? = nil, preferences: OutputPreferences? = nil,
     legacyComputer: Bool = false) async throws -> String {
     let destination = ProcessingDestination.shared
-    guard !state.phase.busy, !destination.isBusy else { throw ComputerFailure.busy }
+    guard !state.phase.busy, !destination.textStartBlocked else { throw ComputerFailure.busy }
     guard destination.configured,
       cancellations.acceptsStart(id, now: Date().timeIntervalSince1970), store?.isCancelled(id) != true,
       UUID(uuidString: id) != nil, !text.contains("\0"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -390,6 +390,7 @@ final class ClarifyAudioSession: NSObject {
         language.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || $0 == 45 }))) else { throw ComputerFailure.notReady }
     let frozen = preferences ?? store?.outputPreferences() ?? OutputPreferences()
     let owner = destination.captureHistory()
+    let accountIdentity = destination.captureTextIdentity()
     // Reserve the operation before discovery can suspend. The keyboard can then
     // acknowledge and cancel preparation through the same existing task owner.
     state.operationID = id; state.textOperation = true; state.text = nil; state.message = nil
@@ -408,7 +409,7 @@ final class ClarifyAudioSession: NSObject {
           guard let legacy else { throw ComputerFailure.notReady }; prepared = legacy
         } else {
           prepared = try await destination.prepareText(action, actionID: actionID, revision: revision,
-            language: language, context: context, preferences: frozen)
+            language: language, context: context, preferences: frozen, accountIdentity: accountIdentity)
         }
         try Task.checkCancellation()
         guard self.state.operationID == id, self.state.phase == .rewriting,

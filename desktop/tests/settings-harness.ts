@@ -60,7 +60,7 @@ export const test = base.extend<{ uiLanguage: string; signedIn: boolean; setting
   settingsFixture: [async ({ page, uiLanguage, signedIn }, use) => {
     const fixture = await startFixture(page, uiLanguage, signedIn);
     try { await use(fixture); } finally { await fixture.close(); }
-  }, { auto: true }],
+  }, { auto: true, timeout: 45_000 }],
 });
 export { expect };
 

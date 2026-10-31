@@ -102,7 +102,11 @@ QML is retained only as a launch-failure fallback and for QML-only builds.
 
 ## Tests
 
-- `tests/test_web_settings.py`: RPC allowlist, secret exclusion, real draft/save/
+- `desktop/unit-tests/`: hook, queue and React operation ownership. Run
+  `npm run test:unit` without Python or a browser.
+- `desktop/boot-tests/`: production bundle boot. Run `npm run build` and
+  `npm run test:boot`.
+- `tests/qt/test_web_settings.py`: RPC allowlist, secret exclusion, real draft/save/
   discard, lifecycle and explicit activation.
 - `desktop/tests/settings.spec.ts`: real React UI with an isolated Qt controller;
   keyboard/model search, persistence, invalid input, microphone test lifecycle
@@ -110,7 +114,10 @@ QML is retained only as a launch-failure fallback and for QML-only builds.
 - `desktop/scripts/native-smoke.mjs`: real Tauri and QProcess pipes, model save,
   unsaved close/cancel/discard and process termination.
 
-Browser tests use installed Edge. Set `CLARIFY_TEST_PYTHON` to a Python with
+`npm test` runs unit and browser tests. Use `npm run test:browser` for the browser
+and bridge cases alone. Local and CI browser tests use locked Chromium by default.
+Set `CLARIFY_TEST_BROWSER=msedge` to check an installed Edge browser explicitly.
+Set `CLARIFY_TEST_PYTHON` to a Python with
 PySide6, and `CLARIFY_TEST_FIXTURE` to the absolute `tests/web_settings_fixture.py`
 path, then run `npm test` from the staged desktop directory. The native test also
 needs `CLARIFY_SETTINGS_EXECUTABLE` and `CLARIFY_TEST_OUTPUT`. Its remote-debugging

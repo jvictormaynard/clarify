@@ -103,15 +103,15 @@ QML Settings fallback. This is not evidence that the new Settings were built.
 Run the same core checks used in CI:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/run_tests.py discover -s tests -v
-.\.venv\Scripts\python.exe -m compileall -q clarify\desktop\qml_app.py clarify\desktop\qml_bridge.py clarify\desktop\qml_runtime.py clarify\desktop\qml_settings.py clarify\desktop\qml_audio_batch.py clarify\desktop\qml_clipboard.py clarify\desktop\qml_voice_translation.py clarify\desktop\qt_shell.py workflows.py repositories.py workflow_config.py workflow_settings.py voice_translation.py voice_translation_runtime.py dictionary_snippets.py dictionary_settings.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests
+.\.venv\Scripts\python.exe scripts/run_tests.py -v
+.\.venv\Scripts\python.exe scripts/ci.py --task static
 ```
 
 From Linux or WSL with the dependencies installed:
 
 ```bash
-python3 scripts/run_tests.py discover -s tests -v
-python3 -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py workflows.py repositories.py workflow_config.py workflow_settings.py voice_translation.py voice_translation_runtime.py dictionary_snippets.py dictionary_settings.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests
+python3 scripts/run_tests.py -v
+python3 scripts/ci.py --task static
 ```
 
 Use the configured interpreter from the locked environment. `scripts/run_tests.py`
@@ -120,23 +120,23 @@ credentials and sets `CLARIFY_SKIP_DOTENV=1`. It accepts the same arguments as
 `unittest`; no arguments run full discovery. For a focused Windows check:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/run_tests.py discover -s tests -p test_clipboard.py -v
+.\.venv\Scripts\python.exe scripts/run_tests.py --suite windows -v
 ```
 
 Standalone isolated fixture commands retain their own setup.
 
 Choose local checks by the affected contract. A Settings-only design change
-needs its frontend build and isolated browser tests, without Rust or an EXE
-build. Documentation needs repository checks. Python behavior needs the Python
-suite. Native integration and release candidates still need Windows acceptance.
+needs the shared `settings_unit` and `settings_browser` tasks, without Rust or
+an EXE build. Documentation needs repository checks. Python behavior needs the
+Python suite. Native integration and release candidates still need Windows acceptance.
 See [CI selection](ci-delivery.md) and [Contributing](../CONTRIBUTING.md).
 
-Repository-specific tests live in `tests/test_repositories.py` and
-`tests/test_workflow_config.py`. They cover legacy file loading, the ordered
+Repository-specific tests live in `tests/unit/test_repositories.py` and
+`tests/compatibility/test_workflow_config.py` and `tests/contract/test_workflow_config.py`. They cover legacy file loading, the ordered
 flat-to-workflow migration, independent routes, canonical model IDs,
 capability/custom-endpoint validation, future/unknown fields, atomic writes,
 and rollback when a secret backend cannot be verified. The backend contract and
-corrupted-entry handling are covered in `tests/test_secret_store.py`.
+corrupted-entry handling are covered in `tests/compatibility/test_secret_store.py` and `tests/integration/test_secret_store.py` and `tests/windows/test_secret_store.py`.
 
 Workflow settings are persisted below the `workflows` key in `config.json`:
 
@@ -230,15 +230,15 @@ Delete the disposable `$dataRoot` after the evidence is captured. This manual
 matrix is still required before closing security issue #14 because CI cannot
 provide the real-user UI/restart/request evidence.
 
-Headless orchestration tests live in `tests/test_workflows.py`. They exercise
+Headless orchestration tests live in `tests/compatibility/test_workflows.py` and `tests/contract/test_workflows.py`. They exercise
 dictation, rewrite, translation, overlap prevention, focus-safe target capture,
 publication ordering, shutdown cancellation, and stale-worker rejection without
 constructing Tk widgets. A small app-level harness also verifies Escape cannot
 reset the UI while a terminal publication is blocked.
 
 The dedicated voice-translation contract is covered by
-`tests/test_voice_translation.py`; its recording bridge is covered by
-`tests/test_voice_translation_runtime.py`. These tests use fake provider,
+`tests/contract/test_voice_translation.py`; its recording bridge is covered by
+`tests/contract/test_voice_translation_runtime.py`. These tests use fake provider,
 clipboard, recording, and monotonic-clock seams to verify language/config
 round trips, capability validation, the state sequence, raw-transcript
 fallback, copy-only focus and clipboard decisions, cancellation/publication
@@ -343,7 +343,9 @@ installs the hook on Windows. CI keeps the format check as the final guard.
 
 ## Automated quality and supply-chain checks
 
-CI selects checks from the complete change range. `CI required` validates the
+PR CI selects checks from the complete change range. Every main push runs the
+full standard set. Scheduled and manual CI add extended checks. `CI required`
+validates the
 selected jobs, including failures, cancellation and incorrect skips. See
 [CI selection and branch protection](ci-delivery.md) for the current policy.
 
@@ -421,7 +423,7 @@ post-release verification.
 The signed installer/update contract, Azure OIDC configuration, manual
 acceptance matrix, rotation, and revocation procedure are documented in
 [Windows distribution and update security](windows-distribution.md). The
-community release workflow is the no-cost path: it publishes only an unsigned
+desktop release workflow is the no-cost path: it publishes only an unsigned
 portable EXE, checksum, SBOM, ZIP, SoX and Qt/PySide source archives, and provenance.
 From v0.5.0 it also publishes Ed25519 portable update metadata using the
 protected `portable-updates` environment. Do not publish an MSI or Authenticode
@@ -445,16 +447,16 @@ not install it. The build requires a .NET SDK because
 
    ```bash
    python3 .agents/skills/clarify-release/scripts/release_preflight.py \
-     --repo . --version X.Y.Z --track community
+     --repo . --version X.Y.Z --channel stable
    ```
 
 4. Review the metadata, scope and Windows evidence. Merge the preparation PR only
    after all PR checks pass. No second-person approval is required.
 5. With promotion enabled, successful post-merge CI creates an immutable tag on
-   that exact current main commit and explicitly dispatches Community Release.
+   that exact current main commit and explicitly dispatches Desktop Release.
    Ordinary code pushes do not publish. Promotion is inactive when
    `CLARIFY_RELEASE_PROMOTION_ENABLED` is false or unset.
-6. Community Release builds the unsigned portable EXE, runtime-lock CycloneDX
+6. Desktop Release builds the unsigned portable EXE, runtime-lock CycloneDX
    SBOM, checksum, ZIP, SoX and Qt/PySide source archives, and provenance
    attestations, plus portable update metadata and its detached Ed25519 signature.
    It publishes no MSI or Authenticode CAB manifest. The signing secret must
@@ -463,13 +465,14 @@ not install it. The build requires a .NET SDK because
    signature/source SHA, and SBOM/ZIP contents, inspect attestations, and confirm
    that `/releases/latest` resolves to the new version.
 
-The signed workflow remains blocked and manual-only. Repairing that path needs a
-separate authorized change; do not dispatch a competing publication workflow.
-When promotion is disabled, a maintainer can create the immutable tag on the green
-preparation merge. A human-pushed tag starts Community Release. Check for that
-run first. Explicit tag dispatch with the same SHA is needed for a
-`GITHUB_TOKEN` tag push or recovery when no run started.
+The single portable publisher has explicit preview/stable channels. The blocked
+signed publisher has been removed; MSI/runtime compatibility and acceptance gates
+remain. When promotion is disabled, a maintainer can create the immutable tag on
+the green preparation merge, then manually dispatch Desktop Release on that tag
+with `channel=stable` and the exact SHA. Tag pushes do not publish.
 The publication workflow still requires the reviewed preparation intent.
+Manual branch previews are prereleases, never latest, and have no update feed or
+metadata. See [release automation](release-automation.md#desktop-preview).
 
 ## Interface localization
 

@@ -17,6 +17,17 @@ function requirePassedTest(lines, method) {
   }
 }
 
+const nativeMethods = ['testInitialNativeRestoration', 'testNativeAcknowledgementPreservesNewerText', 'testDeclarativeTextAndStyleUpdates', 'testStaleStateSelectionAndExplicitClear'];
+function requirePassedNativeTests(lines) {
+  const names = nativeMethods.map(method => `ClarifyTextInputTests ${method}`);
+  const events = lines.map(line => line.match(/^Test Case '-\[([^\]]+)\]' (started|passed|failed)\b/));
+  if (events.length !== names.length * 2 || events.some(event => !event || !names.includes(event[1]) || event[2] === 'failed')
+      || names.some(name => events.filter(event => event[1] === name && event[2] === 'started').length !== 1
+        || events.filter(event => event[1] === name && event[2] === 'passed').length !== 1)) {
+    throw new Error(`Expected every native text state regression to pass exactly once. Observed: ${lines.join('\n')}`);
+  }
+}
+
 async function runXcode(args, method) {
   const lines = [];
   await new Promise((resolve, reject) => {
@@ -30,7 +41,8 @@ async function runXcode(args, method) {
     child.once('error', reject);
     child.once('close', code => code === 0 ? resolve() : reject(new Error(`App UI xcodebuild failed (${code}).`)));
   });
-  if (method) requirePassedTest(lines, method);
+  if (method === 'native') requirePassedNativeTests(lines);
+  else if (method) requirePassedTest(lines, method);
 }
 
 async function main() {
@@ -63,6 +75,7 @@ async function main() {
   const compactOnly = process.env.CLARIFY_APP_UI_COMPACT_ONLY === 'true';
   const derivedData = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-app-ui-derived-'));
   let testRun, buildSeconds;
+  let nativeTextInputAcceptance = false;
   let exitCode = 1;
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -105,6 +118,10 @@ async function main() {
         if (manifests.length !== 1) throw new Error(`Expected one App UI test manifest, found ${manifests.length}.`);
         const manifest = path.join(products, manifests[0]);
         testRun = { path: manifest, sha256: fingerprint(manifest) };
+        const nativeResult = path.join(output, 'NativeTextInput.xcresult');
+        results.push({ path: nativeResult, name: 'NativeTextInput' });
+        await runXcode(['test-without-building', '-xctestrun', testRun.path, '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-resultBundlePath', nativeResult, '-only-testing:ClarifyTextInputTests'], 'native');
+        nativeTextInputAcceptance = true;
       }
       if (fingerprint(testRun.path) !== testRun.sha256) throw new Error('App UI test manifest changed between profiles.');
       const started = Date.now();
@@ -121,7 +138,7 @@ async function main() {
   } catch (error) { console.error(error.message); } finally {
     for (const result of results) if (fs.existsSync(result.path)) spawnSync('xcrun', ['xcresulttool', 'export', 'attachments', '--path', result.path, '--output-path', path.join(output, 'captures', result.name)], { stdio: 'inherit' });
     for (const [name, hash] of preserved) if (fingerprint(path.join(original, name)) !== hash) { console.error('Production generated project changed during app UI testing.'); exitCode = 1; }
-    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, completeAppAcceptance: exitCode === 0 && !compactOnly, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
+    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, nativeTextInputAcceptance, completeAppAcceptance: exitCode === 0 && !compactOnly && nativeTextInputAcceptance, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
     service.release();
     await new Promise(resolve => server.close(resolve));
     if (simulator) { spawnSync('xcrun', ['simctl', 'shutdown', simulator]); spawnSync('xcrun', ['simctl', 'delete', simulator]); }
@@ -130,5 +147,5 @@ async function main() {
   }
 }
 
-module.exports = { requirePassedTest };
+module.exports = { requirePassedTest, requirePassedNativeTests, nativeMethods };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

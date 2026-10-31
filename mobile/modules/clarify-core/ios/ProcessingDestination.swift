@@ -42,6 +42,8 @@ final class ProcessingDestination {
   }
   var configured: Bool { computerMode ? computer.configured : account.configured }
   var isBusy: Bool { computerMode ? computer.busy : account.isBusy }
+  var textStartBlocked: Bool { computerMode ? computer.busy : account.textStartBlocked }
+  func captureTextIdentity() -> TextAccountIdentity? { computerMode ? nil : account.captureTextIdentity() }
   var textActions: TextActionCatalog { computerMode ? computer.textActions : account.textActions }
   var outputPreferencesSupported: Bool { computerMode ? computer.outputPreferencesSupported : account.outputPreferencesSupported }
   var legacyRewriteReady: Bool { computerMode ? computer.isReady(for: "rewrite") : account.configured }
@@ -103,14 +105,18 @@ final class ProcessingDestination {
     try start()
   }
   @MainActor func prepareText(_ action: String, actionID: String? = nil, revision: String? = nil,
-    language: String, context: String, preferences: OutputPreferences) async throws -> PreparedTextOperation {
+    language: String, context: String, preferences: OutputPreferences,
+    accountIdentity: TextAccountIdentity? = nil) async throws -> PreparedTextOperation {
     guard configured, context == historyContext, ["rewrite", "translate", "text_action"].contains(action),
       OutputLanguage(rawValue: language) != nil, action != "translate" || language != "auto" else { throw ComputerFailure.notReady }
     let owner = captureHistory()
+    let identity = accountIdentity ?? captureTextIdentity()
+    if let identity, !account.acceptsTextIdentity(identity) { throw CancellationError() }
     if computerMode { try await computer.refresh() }
     else { try await account.refreshTextActions() }
     try Task.checkCancellation()
     guard acceptsHistory(owner), context == historyContext else { throw CancellationError() }
+    if let identity, !account.acceptsTextIdentity(identity) { throw CancellationError() }
     let saved: TextActionDescriptor?
     if action == "text_action" {
       guard let actionID, let revision else { throw ComputerFailure.invalidResponse }
@@ -124,7 +130,7 @@ final class ProcessingDestination {
     }
     _ = try preferences.requestFields(supported: outputPreferencesSupported, dictation: false)
     return PreparedTextOperation(owner: owner, action: action, language: action == "rewrite" || saved?.kind == "rewrite" ? "auto" : language,
-      savedAction: saved, preferences: preferences, accountIdentity: computerMode ? nil : account.captureTextIdentity())
+      savedAction: saved, preferences: preferences, accountIdentity: identity)
   }
   @MainActor func withActivation(prepare: @MainActor () async throws -> Void, activate: @MainActor () throws -> Void) async throws {
     let capture = captureHistory()

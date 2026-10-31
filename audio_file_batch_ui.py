@@ -34,7 +34,9 @@ class AudioImportProviderOption:
     execution: str
 
 
-def audio_import_provider_options(registry, execution: str) -> tuple[AudioImportProviderOption, ...]:
+def audio_import_provider_options(
+    registry, execution: str
+) -> tuple[AudioImportProviderOption, ...]:
     """Return transcription-capable providers for the selected route.
 
     ``local`` is intentionally limited to the installed Local ASR provider;
@@ -53,11 +55,13 @@ def audio_import_provider_options(registry, execution: str) -> tuple[AudioImport
             continue
         if not metadata.supports(ProviderCapability.AUDIO_TRANSCRIPTION):
             continue
-        options.append(AudioImportProviderOption(
-            provider_id=provider_id,
-            display_name=metadata.display_name,
-            execution=provider_execution,
-        ))
+        options.append(
+            AudioImportProviderOption(
+                provider_id=provider_id,
+                display_name=metadata.display_name,
+                execution=provider_execution,
+            )
+        )
     return tuple(options)
 
 
@@ -98,8 +102,8 @@ def _service_fallback_path(path: str | os.PathLike[str] | Path) -> Path:
 
 
 def deduplicate_audio_paths(
-        paths: Iterable[str | os.PathLike[str] | Path],
-        ) -> tuple[Path, ...]:
+    paths: Iterable[str | os.PathLike[str] | Path],
+) -> tuple[Path, ...]:
     """Keep a finite picker result ordered while removing duplicate paths."""
 
     result: list[Path] = []
@@ -135,11 +139,11 @@ class AudioFileImportController:
     """
 
     def __init__(
-            self,
-            service: AudioFileBatchService,
-            *,
-            on_update: ProgressListener | None = None,
-            ) -> None:
+        self,
+        service: AudioFileBatchService,
+        *,
+        on_update: ProgressListener | None = None,
+    ) -> None:
         self.service = service
         self._on_update = on_update
         self._lock = threading.RLock()
@@ -179,8 +183,11 @@ class AudioFileImportController:
 
     @property
     def failed_paths(self) -> tuple[Path, ...]:
-        return tuple(item.path for item in self.snapshot()
-                     if item.status is AudioFileStatus.FAILED)
+        return tuple(
+            item.path
+            for item in self.snapshot()
+            if item.status is AudioFileStatus.FAILED
+        )
 
     def snapshot(self) -> tuple[AudioFileResult, ...]:
         self._synchronize_finished_job()
@@ -199,19 +206,19 @@ class AudioFileImportController:
             )
 
     def start(
-            self,
-            paths: Iterable[str | os.PathLike[str] | Path],
-            selection: FileTranscriptionSelection,
-            ) -> AudioBatchJob:
+        self,
+        paths: Iterable[str | os.PathLike[str] | Path],
+        selection: FileTranscriptionSelection,
+    ) -> AudioBatchJob:
         """Start a new selection, replacing any previous result snapshot."""
 
         selected = deduplicate_audio_paths(paths)
         return self._start(selected, selection, preserve_existing=False)
 
     def retry_failed(
-            self,
-            selection: FileTranscriptionSelection | None = None,
-            ) -> AudioBatchJob:
+        self,
+        selection: FileTranscriptionSelection | None = None,
+    ) -> AudioBatchJob:
         """Retry only failed files and retain successful/other terminal rows."""
 
         self._synchronize_finished_job()
@@ -219,7 +226,8 @@ class AudioFileImportController:
             if self._job is None:
                 raise RuntimeError("No audio import has been started")
             failed = tuple(
-                path for path in self._paths
+                path
+                for path in self._paths
                 if self._results[path].status is AudioFileStatus.FAILED
             )
             chosen_selection = selection or self._selection
@@ -249,12 +257,12 @@ class AudioFileImportController:
         return result
 
     def _start(
-            self,
-            selected: tuple[Path, ...],
-            selection: FileTranscriptionSelection,
-            *,
-            preserve_existing: bool,
-            ) -> AudioBatchJob:
+        self,
+        selected: tuple[Path, ...],
+        selection: FileTranscriptionSelection,
+        *,
+        preserve_existing: bool,
+    ) -> AudioBatchJob:
         if not selected:
             raise ValueError("At least one local audio file is required")
         with self._lock:
@@ -265,8 +273,7 @@ class AudioFileImportController:
             if preserve_existing:
                 paths = self._paths
                 for path in selected:
-                    self._results[path] = AudioFileResult(
-                        path, AudioFileStatus.PENDING)
+                    self._results[path] = AudioFileResult(path, AudioFileStatus.PENDING)
             else:
                 paths = selected
                 self._paths = paths
@@ -280,12 +287,10 @@ class AudioFileImportController:
             self._submission_paths = selected
             self._fallback_paths_by_key = {}
             for path in selected:
-                fallback_key = _canonical_audio_path_key(
-                    _service_fallback_path(path))
+                fallback_key = _canonical_audio_path_key(_service_fallback_path(path))
                 if fallback_key == _canonical_audio_path_key(path):
                     continue
-                self._fallback_paths_by_key.setdefault(
-                    fallback_key, []).append(path)
+                self._fallback_paths_by_key.setdefault(fallback_key, []).append(path)
             self._selection = selection
             pending = tuple(self._results[path] for path in selected)
             self._job = None
@@ -339,16 +344,17 @@ class AudioFileImportController:
 
         with self._lock:
             current_job = self._job
-            if (current_job is None or not current_job.done
-                    or (job is not None and current_job is not job)):
+            if (
+                current_job is None
+                or not current_job.done
+                or (job is not None and current_job is not job)
+            ):
                 return
             finished = current_job.result
             if finished is None:
                 return
-            for original_path, item in zip(
-                    self._submission_paths, finished.files):
-                self._results[original_path] = replace(
-                    item, path=original_path)
+            for original_path, item in zip(self._submission_paths, finished.files):
+                self._results[original_path] = replace(item, path=original_path)
 
     def _notify(self, item: AudioFileResult) -> None:
         if self._on_update is None:

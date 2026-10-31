@@ -108,8 +108,8 @@ meeting capture, diarization, cloud sync, or persistent background queue.
 
 ## Acceptance evidence
 
-Deterministic tests in `tests/test_audio_file_batch.py` and
-`tests/test_audio_file_batch_ui.py` cover the extension allowlist, URL and
+Deterministic tests in `tests/integration/test_audio_file_batch.py` and
+`tests/contract/test_audio_file_batch_ui.py` cover the extension allowlist, URL and
 malformed-path rejection, typed registry reuse, partial failures, immutable
 retry snapshots, bounded concurrency, cooperative cancellation, source
 preservation, converter termination, temporary conversion cleanup, provider

@@ -23,13 +23,21 @@ first launch. A metadata signature authenticates the exact portable executable
 for later in-app updates; it does not add an Authenticode publisher signature.
 The MSI contract below remains the target for a future sponsored release.
 
+The single publisher is `release.yml`. Its stable channel follows the reviewed
+release intent. Manual previews are prereleases and never latest; they contain
+no update manifest/signature. Their generated build policy disables the update
+transport. The blocked Authenticode publication workflow has been removed.
+The MSI/CAB runtime contract and installer/signature validation helpers below
+remain for compatibility and future acceptance. No signing infrastructure is
+activated by this cleanup.
+
 ## Authenticated portable updates
 
 The packaged `distribution/portable-update-policy.json` pins the Ed25519 public
 key, canonical repository, stable channel, and 256 MiB download limit. The
 private key is the `CLARIFY_UPDATE_SIGNING_KEY` secret in the GitHub
 `portable-updates` environment. Only `v*` tags can use this environment. The
-community workflow requires the tag's exact commit to belong to canonical
+Desktop Release stable channel requires the tag's exact commit to belong to canonical
 `main`, checks that the packaged version matches the tag, and refuses a signing
 key that differs from the packaged pin. Release publication still requires
 green PR and main tests/packaging before tagging. No paid signing service is
@@ -76,7 +84,7 @@ SBOM, and attest both metadata assets with the EXE and ZIP.
 a generated test key. It tests actual one-file process exit, file replacement,
 restart receipt, failed-startup rollback, and tamper rejection. It does not
 read user profiles, start microphones, register hotkeys, or touch an existing
-Clarify installation. CI and the community release run this acceptance gate.
+Clarify installation. CI and Desktop Release run this acceptance gate.
 
 For planned key rotation, first ship an update that trusts both old and new
 pins while signing with the old key, then switch signing, then remove the old
@@ -211,8 +219,10 @@ uninstall must remove it. It also creates and parses the release manifest and
 CAB. These automated checks do not substitute for signed-artifact or real-user
 manual acceptance.
 
-The community tag workflow is separate from the signed workflow and does not
-use Azure credentials. It publishes only the portable assets described above.
+The manual `release.yml` workflow publishes unsigned portable assets. Its
+preview channel disables packaged updates and cannot become the latest release.
+Its stable channel requires the reviewed tag and signed update metadata. No
+active workflow publishes the future signed-installer track.
 
 `scripts/test-installer.ps1` is intentionally destructive and must never be run
 on a developer workstation or a shared Clarify installation. It fails
@@ -223,7 +233,7 @@ Clarify path and registry value is initially absent. Use only a disposable
 VM for the separate manual lifecycle procedure. This script itself is restricted
 to the hosted runner; do not bypass its guards.
 
-The signed release workflow must fail unless it can:
+A future signed-installer workflow must fail unless it can:
 
 1. run Azure OIDC login and Artifact Signing actions only from reviewed,
    immutable full commit SHAs, never mutable tags;

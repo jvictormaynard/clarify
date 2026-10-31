@@ -1,21 +1,102 @@
-name: Release
+name: Desktop Release
 
 on:
   workflow_dispatch:
+    inputs:
+      action:
+        description: Build a candidate or publish an existing verified candidate
+        type: choice
+        options: [build-candidate, publish-candidate]
+        default: build-candidate
+        required: true
+      channel:
+        description: Final candidate channel
+        type: choice
+        options: [preview, stable]
+        default: preview
+        required: true
+      source_sha:
+        description: Exact source SHA (stable builds dispatch the reviewed vX.Y.Z tag)
+        type: string
+        required: true
+
+      candidate_run_id:
+        description: Publish only - completed successful candidate run ID
+        type: string
+      candidate_attempt:
+        description: Publish only - exact current successful attempt
+        type: string
+      artifact_id:
+        description: Publish only - immutable candidate artifact ID
+        type: string
+      artifact_digest:
+        description: Publish only - sha256 digest from the candidate artifact
+        type: string
+      version:
+        description: Publish only - exact final packaged X.Y.Z version
+        type: string
+      acceptance:
+        description: Stable publication only - fresh candidate acceptance JSON
+        type: string
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: desktop-release
+  queue: max
+  cancel-in-progress: false
 
 jobs:
-  release:
-    name: Build Windows release
+  build_gate:
+    if: github.repository == 'jvictormaynard/clarify' && github.event_name == 'workflow_dispatch' && inputs.action == 'build-candidate'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: Authorize candidate creation without publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE: ${{ inputs.source_sha }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        run: python scripts/release_candidate.py build-gate --channel "$RELEASE_CHANNEL" --source-sha "$RELEASE_SOURCE"
+
+  build_candidate:
+    needs: build_gate
+    if: inputs.action == 'build-candidate'
+    name: Build desktop candidate
     runs-on: windows-latest
-    environment: release-signing
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
+      attestations: write
+    environment: ${{ inputs.channel == 'stable' && 'portable-updates' || 'desktop-preview' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require a release tag on canonical main
+        if: inputs.channel == 'stable'
+        shell: pwsh
+        run: |
+          git fetch origin main
+          if ($LASTEXITCODE -ne 0) { throw "Unable to verify main." }
+          git merge-base --is-ancestor "${{ github.sha }}" origin/main
+          if ($LASTEXITCODE -ne 0) { throw "The release commit must belong to main." }
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -43,52 +124,16 @@ jobs:
       - name: Check runtime pins match build lock
         run: python scripts/check_runtime_lock.py
 
-      - name: Run Ruff lint
-        run: >-
-          ruff check scripts/run_tests.py tests/test_test_environment.py desktop_state.py windows_hotkeys.py scripts/dependency_audit.py
-          clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py
-          workflow_provider.py tests/test_workflow_provider.py
-          clarify/desktop/qml_settings.py clarify/desktop/qml_status.py clarify/desktop/qml_audio_batch.py
-          clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py
-          clarify/desktop/qt_shell.py tests/test_repository.py tests/test_pyside6_qml.py
-          tests/test_pyside6_qml_runtime.py tests/test_pyside6_qml_audio_batch.py
-          tests/test_pyside6_qml_clipboard.py tests/test_pyside6_qml_voice_translation.py
-          tests/test_pyside6_qt_shell.py
+      - name: Test preview Python contracts
+        if: inputs.channel == 'preview'
+        run: python scripts/run_tests.py --suite policy --suite unit --suite contract --suite integration --suite qt --suite windows --suite compatibility
 
-      - name: Run Ruff format check
-        run: >-
-          ruff format --check scripts/run_tests.py tests/test_test_environment.py scripts/dependency_audit.py tests/test_dependency_lock.py
-          tests/test_repository.py clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py
-          clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py
-          workflow_provider.py tests/test_workflow_provider.py
-          clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py
-          clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py
-          tests/test_pyside6_qml.py tests/test_pyside6_qml_runtime.py
-          tests/test_pyside6_qml_audio_batch.py tests/test_pyside6_qml_clipboard.py
-          tests/test_pyside6_qml_voice_translation.py tests/test_pyside6_qt_shell.py
-
-      - name: Run targeted type checks
-        run: mypy desktop_state.py windows_hotkeys.py
-
+      # The gate verifies exact main CI, including desktop tests and packaging.
       - name: Audit dependencies
         run: python scripts/dependency_audit.py
 
-      - name: Run unit tests
-        run: python scripts/run_tests.py discover -s tests -v
-
-      - name: Compile Python sources
-        run: >-
-          python -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py
-          clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_status.py
-          clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py
-          clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py
-          desktop_state.py version.py windows_hotkeys.py audio_file_batch.py
-          audio_file_batch_ui.py history_store.py workflow_settings.py tests scripts
-
-      - name: Validate QML assets
-        run: >-
-          python -c "from pathlib import Path; qml = Path('clarify/desktop/qml');
-          assert qml.is_dir() and (qml / 'Main.qml').is_file() and any(qml.glob('*.qml'))"
+      - name: Compile release scripts
+        run: python -m compileall -q scripts
 
       - name: Validate and build Settings
         uses: ./.github/actions/settings-build
@@ -96,12 +141,24 @@ jobs:
           python: ${{ env.pythonLocation }}/python.exe
           audit: 'true'
 
+      - name: Prepare preview inputs without an update feed
+        if: inputs.channel == 'preview'
+        env:
+          RELEASE_SOURCE: ${{ inputs.source_sha }}
+        run: python scripts/release_delivery.py preview-build --source-sha "$env:RELEASE_SOURCE"
+
       - name: Build portable executable
         shell: pwsh
         run: .\scripts\build.ps1 -SettingsExecutable dist\clarify-settings.exe
 
       - name: Generate runtime SBOM
         run: cyclonedx-py requirements requirements-lock-runtime-windows.txt --of JSON -o dist\Clarify.sbom.json
+
+      - name: Include portable crypto attribution and OpenSSL in SBOM
+        run: python scripts/portable_crypto_inventory.py --output-dir dist --bom dist/Clarify.sbom.json
+
+      - name: Verify frozen portable replacement and recovery
+        run: python scripts/test_portable_update.py
 
       - name: Add bundled SoX to SBOM
         run: python scripts/add_sbom_component.py --bom-file dist\Clarify.sbom.json --runtime-root extra\sox-14.4.2 --manifest scripts\sox-runtime-manifest.json
@@ -119,64 +176,11 @@ jobs:
           }
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - name: Sign in to Azure with GitHub OIDC
-        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Sign portable executable
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\dist
-          files-folder-filter: exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: Clarify
-          description-url: https://github.com/jvictormaynard/clarify
-
-      - name: Verify portable publisher signature
-        shell: pwsh
-        run: .\scripts\verify-signature.ps1 -Path dist\Clarify.exe
-
-      - name: Build installer from signed executable
-        shell: pwsh
-        run: |
-          .\scripts\build-installer.ps1 `
-            -Version "${{ steps.release.outputs.version }}" `
-            -SourceExe dist\Clarify.exe `
-            -OutputPath dist\Clarify-windows-x64.msi
-
-      - name: Sign installer
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\dist
-          files-folder-filter: msi
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: Clarify Windows Installer
-          description-url: https://github.com/jvictormaynard/clarify
-
-      - name: Verify installer publisher signature
-        shell: pwsh
-        run: .\scripts\verify-signature.ps1 -Path dist\Clarify-windows-x64.msi
-
-      - name: Create release assets
+      - name: Create unsigned community assets
         shell: pwsh
         run: |
           $hash = (Get-FileHash dist\Clarify.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  Clarify.exe" | Set-Content -Encoding ascii dist\Clarify.exe.sha256
-          $msiHash = (Get-FileHash dist\Clarify-windows-x64.msi -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$msiHash  Clarify-windows-x64.msi" | Set-Content -Encoding ascii dist\Clarify-windows-x64.msi.sha256
           $soxSource = "dist\sox-14.4.2-source.tar.gz"
           & curl.exe `
             --fail `
@@ -191,88 +195,96 @@ jobs:
           if ($soxHash -ne "b45f598643ffbd8e363ff24d61166ccec4836fea6d3888881b8df53e3bb55f6c") {
             throw "The downloaded SoX source archive did not match the expected SHA-256."
           }
-          Compress-Archive -Path dist\Clarify.exe, dist\Clarify.sbom.json, LICENSE, THIRD_PARTY_NOTICES.md, dist\Clarify-settings-NOTICES.txt, dist\Clarify-qt-NOTICES.txt -DestinationPath dist\Clarify-windows-x64.zip -Force
-          python .\scripts\create_release_manifest.py `
-            --version "${{ steps.release.outputs.version }}" `
-            --installer dist\Clarify-windows-x64.msi `
-            --output dist\release-manifest.json
-          .\scripts\build-manifest-container.ps1 `
-            -Manifest dist\release-manifest.json `
-            -OutputPath dist\Clarify-release-manifest.cab
+          Compress-Archive `
+            -Path dist\Clarify.exe, dist\Clarify.exe.sha256, dist\Clarify.sbom.json, LICENSE, THIRD_PARTY_NOTICES.md, dist\Clarify-settings-NOTICES.txt, dist\Clarify-qt-NOTICES.txt, dist\Clarify-crypto-NOTICES.txt `
+            -DestinationPath dist\Clarify-windows-x64.zip `
+            -Force
 
-      - name: Sign authenticated release manifest
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\dist
-          files-folder-filter: cab
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: Clarify Release Manifest
-          description-url: https://github.com/jvictormaynard/clarify
-
-      - name: Verify all signed release identities
-        shell: pwsh
-        run: |
-          .\scripts\verify-signature.ps1 -Path `
-            dist\Clarify.exe, `
-            dist\Clarify-windows-x64.msi, `
-            dist\Clarify-release-manifest.cab
-          $cabHash = (Get-FileHash dist\Clarify-release-manifest.cab -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$cabHash  Clarify-release-manifest.cab" | Set-Content -Encoding ascii dist\Clarify-release-manifest.cab.sha256
-
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: Clarify-windows-${{ github.ref_name }}
-          path: |
-            dist/Clarify.exe
-            dist/Clarify.exe.sha256
-            dist/Clarify.sbom.json
-            dist/Clarify-windows-x64.msi
-            dist/Clarify-windows-x64.msi.sha256
-            dist/Clarify-release-manifest.cab
-            dist/Clarify-release-manifest.cab.sha256
-            dist/Clarify-windows-x64.zip
-            dist/sox-14.4.2-source.tar.gz
-            dist/Clarify-qt-sources.zip
-          if-no-files-found: error
-
-      - name: Attest release artifact provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: |
-            dist/Clarify.exe
-            dist/Clarify.exe.sha256
-            dist/Clarify.sbom.json
-            dist/Clarify-windows-x64.msi
-            dist/Clarify-windows-x64.msi.sha256
-            dist/Clarify-release-manifest.cab
-            dist/Clarify-release-manifest.cab.sha256
-            dist/Clarify-windows-x64.zip
-            dist/sox-14.4.2-source.tar.gz
-            dist/Clarify-qt-sources.zip
-
-      - name: Publish tagged GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: pwsh
+      - name: Recheck candidate source before signing
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE: ${{ inputs.source_sha }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        run: python scripts/release_candidate.py build-gate --channel "$env:RELEASE_CHANNEL" --source-sha "$env:RELEASE_SOURCE"
+
+      - name: Sign portable update metadata
+        if: inputs.channel == 'stable'
+        env:
+          CLARIFY_UPDATE_SIGNING_KEY: ${{ secrets.CLARIFY_UPDATE_SIGNING_KEY }}
+        run: python scripts/create_portable_update_manifest.py --source-sha ${{ github.sha }}
+
+      - name: Seal desktop candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE: ${{ inputs.source_sha }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        run: python scripts/release_candidate.py seal --channel "$env:RELEASE_CHANNEL" --source-sha "$env:RELEASE_SOURCE"
+
+      - name: Attest candidate provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: candidate/*
+
+      - name: Upload desktop candidate
+        id: candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: desktop-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: candidate/*
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: false
+
+      - name: Record candidate selector for acceptance and publication
+        shell: pwsh
+        env:
+          ARTIFACT_ID: ${{ steps.candidate.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.candidate.outputs.artifact-digest }}
         run: |
-          gh release create "${{ github.ref_name }}" `
-            dist\Clarify.exe `
-            dist\Clarify.exe.sha256 `
-            dist\Clarify.sbom.json `
-            dist\Clarify-windows-x64.msi `
-            dist\Clarify-windows-x64.msi.sha256 `
-            dist\Clarify-release-manifest.cab `
-            dist\Clarify-release-manifest.cab.sha256 `
-            dist\Clarify-windows-x64.zip `
-            dist\sox-14.4.2-source.tar.gz `
-            dist\Clarify-qt-sources.zip `
-            --verify-tag `
-            --generate-notes `
-            --title "Clarify ${{ github.ref_name }}"
+          $digest = $env:ARTIFACT_DIGEST
+          if (-not $digest.StartsWith('sha256:')) { $digest = "sha256:$digest" }
+          "Candidate run $env:GITHUB_RUN_ID attempt $env:GITHUB_RUN_ATTEMPT, artifact $env:ARTIFACT_ID, digest $digest. No release was published." >> $env:GITHUB_STEP_SUMMARY
+          Get-Content candidate/Clarify-candidate.json >> $env:GITHUB_STEP_SUMMARY
+
+  publish_candidate:
+    if: >-
+      github.repository == 'jvictormaynard/clarify' &&
+      github.event_name == 'workflow_dispatch' && inputs.action == 'publish-candidate' &&
+      vars.CLARIFY_RELEASE_PUBLICATION_ENABLED == 'true' &&
+      github.ref == 'refs/heads/main'
+    name: Publish existing desktop candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: desktop-publication
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: read
+      attestations: read
+    steps:
+      - name: Check out trusted publisher (never candidate build inputs)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: Verify and publish the existing bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_SOURCE: ${{ inputs.source_sha }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+          CANDIDATE_ATTEMPT: ${{ inputs.candidate_attempt }}
+          CANDIDATE_ARTIFACT: ${{ inputs.artifact_id }}
+          CANDIDATE_DIGEST: ${{ inputs.artifact_digest }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+          CANDIDATE_ACCEPTANCE: ${{ inputs.acceptance }}
+          CLARIFY_RELEASE_PUBLICATION_ENABLED: ${{ vars.CLARIFY_RELEASE_PUBLICATION_ENABLED }}
+        run: >-
+          python scripts/release_candidate.py publish
+          --channel "$RELEASE_CHANNEL" --source-sha "$RELEASE_SOURCE"
+          --run-id "$CANDIDATE_RUN" --attempt "$CANDIDATE_ATTEMPT"
+          --artifact-id "$CANDIDATE_ARTIFACT" --artifact-digest "$CANDIDATE_DIGEST"
+          --version "$CANDIDATE_VERSION"

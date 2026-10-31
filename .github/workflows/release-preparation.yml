@@ -17,7 +17,7 @@ on:
         type: string
         default: ''
       evidence:
-        description: Acceptance or Apple reservation JSON (see docs/release-automation.md)
+        description: Source review or Apple reservation JSON (see docs/release-automation.md)
         type: string
         required: true
       notes:

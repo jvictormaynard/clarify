@@ -194,7 +194,7 @@ when traffic stays on the old image. Prefer a forward fix when old code cannot
 use the migrated database; database restore needs a separate recovery plan.
 Repeat the SHA, health, and database checks after recovery.
 
-The manual **Shared account** `publish_server_image` path remains a separate
+The manual **Server recovery image** `publish_server_image` path remains a separate
 recovery tool pinned to `ced75d817decd55e7ed6f350e34e008b59f9cb26`. Its registry
 image is not the native GitHub delivery path. Do not change that pin or switch
 the Railway source as part of routine CI activation.

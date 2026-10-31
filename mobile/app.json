@@ -48,6 +48,7 @@
       }
     },
     "plugins": [
+      "./plugins/with-patched-react-native.cjs",
       "./plugins/with-clarify-keyboard.cjs",
       "./plugins/with-clarify-activity.cjs",
       "./plugins/with-computer-link-privacy.cjs",

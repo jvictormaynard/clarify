@@ -54,7 +54,13 @@ definition before processing, and responses must echo the same identity.
 cross-process file-coordination transaction changes one field without replacing
 another field's concurrent change. Recording and text operations freeze these
 preferences at acceptance. The containing app keeps discovery and processing
-under its existing task and cancellation owner. Output language is independent
+under its existing task and cancellation owner. Hosted text can reserve its UUID
+while an automatic account refresh is active, then wait for that refresh during
+preparation. Cancelling text leaves the account refresh active. Explicit account
+changes and computer connection work still block text acceptance. The operation
+pins its account identity and credential before the preparation task starts and
+checks them after discovery, so a waiting operation cannot adopt another session.
+Output language is independent
 of recognition language. Explicit choices enter operation fingerprints and
 require advertised service support; unsupported choices remain saved and return
 an update-required error. Requested/applied/status metadata distinguishes applied
@@ -737,7 +743,7 @@ launch. It does not own UI confirmation and never runs an installer by itself.
 
 The unit suite tests provider routing, URL construction, configuration,
 clipboard safety, workflow state, usage statistics, and geometry calculations.
-`tests/test_workflows.py` is deliberately separate from the provider suite and
+`tests/compatibility/test_workflows.py` and `tests/contract/test_workflows.py` is deliberately separate from the provider suite and
 runs the core application services without importing or constructing Tk.
 Windows UI acceptance still requires a real packaged build because mocked tests
 cannot reveal transparency, focus, DPI, or hotkey integration defects.
@@ -908,3 +914,14 @@ updating an existing local installation from WSL; contributors normally use
 
 The incomplete Electron prototype was removed from the checkout. It remains
 available in Git history and is not part of current development or distribution.
+
+
+## Validation ownership
+
+`ci/` owns task selection and execution. Component runners own their tests;
+workflow YAML owns runner setup, services, permissions and artifacts. Python
+suites are separated by contract and platform under `tests/`, with reusable
+fixtures under `tests/support/`. Settings unit tests run without a browser;
+Playwright owns browser behavior and production bundle boot checks. Native iOS
+and Windows packaging are separate from source tests. See
+[validation and delivery](ci-delivery.md) for the dependency map and commands.
