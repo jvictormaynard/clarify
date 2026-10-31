@@ -6,7 +6,7 @@ from scripts.test_suites import SUITES
 
 
 def suite_tree(directory):
-    root = Path(directory)
+    root = Path(directory).resolve()
     tests = root / "tests"
     tests.mkdir()
     (tests / "__init__.py").touch()

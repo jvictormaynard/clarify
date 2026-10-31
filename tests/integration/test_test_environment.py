@@ -87,6 +87,20 @@ raise SystemExit(runner["main"](sys.argv[3:]))
                 Path(data["records"][0]["file"]), root / "tests/unit/test_probe.py"
             )
 
+    def test_fixture_alias_keeps_selected_suite_ownership(self):
+        from tests.support.suite_tree import suite_tree
+
+        with TemporaryDirectory() as directory:
+            alias = Path(directory) / "alias"
+            alias.mkdir()
+            root = suite_tree(alias / "..")
+            result = self.run_tree(root, "--suite", "unit", "--list", "--json")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            rows = json.loads(result.stdout)["tests"]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["suite"], "unit")
+            self.assertEqual(rows[0]["file"], "tests/unit/test_probe.py")
+
     def test_discovery_keeps_policy_named_modules_and_product_failures(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

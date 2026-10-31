@@ -42,7 +42,7 @@ test("a child inherits an isolated profile without keys; disposal also works aft
     const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
       import assert from 'node:assert/strict';
       import { homedir } from 'node:os';
-      assert.equal(homedir(), process.env.USERPROFILE || process.env.HOME);
+      assert.equal(homedir(), process.platform === 'win32' ? process.env.USERPROFILE : process.env.HOME);
       for (const key of ['GEMINI_API_KEY','GROQ_API_KEY','OPENAI_API_KEY','API_KEY','EXAMPLE_TOKEN','EXAMPLE_SECRET','PYTHONPATH','PYTHONHOME'])
         assert.equal(process.env[key], undefined);
       assert.equal(process.env.CLARIFY_SKIP_DOTENV, '1');
