@@ -122,6 +122,11 @@ test('native iOS validation includes app, keyboard, library and unsigned compila
   assert.ok(ios.jobs.native.steps.some(step => step.run?.includes('test-keyboard-ui.cjs')));
   assert.ok(ios.jobs.build.steps.some(step => step.run?.includes('CODE_SIGNING_ALLOWED=NO')));
   assert.ok(ios.jobs.app.steps.some(step => step.run === 'node scripts/test-app-ui.cjs'));
+  assert.deepEqual(ios.jobs.app.strategy?.matrix.profile, ['regular', 'compact']);
+  assert.equal(ios.jobs.app.strategy['fail-fast'], false);
+  assert.equal(ios.jobs.app.env.CLARIFY_APP_UI_PROFILE, '$' + '{{ matrix.profile }}');
+  const appEvidence = ios.jobs.app.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'));
+  assert.ok(appEvidence.with.name.includes('$' + '{{ matrix.profile }}'));
   assert.deepEqual(ios.permissions, { contents: 'read' });
   assert.deepEqual(new Set(ios.jobs.validate.needs), new Set(['native', 'build', 'app']));
 });
@@ -179,6 +184,10 @@ test('TestFlight and App Store use separate explicit actions and one Apple build
   assert.deepEqual(Object.keys(flight.on), ['workflow_dispatch']);
   assert.deepEqual(flight.on.workflow_dispatch.inputs.mode.options, ['validate', 'testflight', 'status', 'availability']);
   assert.equal(flight.on.workflow_dispatch.inputs.mode.default, 'validate');
+  const appFlow = Object.values(flight.jobs).flatMap(job => job.steps || [])
+    .find(step => step.run === 'node scripts/test-app-ui.cjs');
+  assert.equal(appFlow.env.CLARIFY_APP_UI_PROFILE,
+    "$" + "{{ inputs.mode == 'validate' && inputs.app_ui_compact_only && 'compact' || 'all' }}");
   const store = workflows.get('ios-app-store.yml');
   assert.deepEqual(Object.keys(store.on), ['workflow_dispatch']);
   assert.deepEqual(store.on.workflow_dispatch.inputs.action.options, ['prepare-submission', 'prepare-release']);

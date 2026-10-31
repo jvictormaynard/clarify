@@ -211,10 +211,16 @@ Account and back navigation, Settings, explicit guide replay and logout/relaunch
 It builds the isolated app once. The standard iPhone runs the complete functional
 flow. A compact iPhone with the largest accessibility text size runs a shorter
 flow for keyboard access, scrolling, dialogs, draft retention, cancellation and
-copy confirmation. Both use the same test build. Each profile must execute its
-selected test; a successful command with zero tests fails acceptance. Swift
-contracts run before these app flows. Keyboard and installed-extension tests
-remain separate.
+copy confirmation. Default local validation and signed publication run both
+profiles from the same test build. PR CI runs them in separate required matrix
+jobs, each with its own build and 60-minute budget. This avoids spending one
+job's budget on the cold build and both UI flows; it uses two app builds.
+Each profile must execute its selected test; a successful command with zero
+tests fails acceptance. Single-profile summaries report incomplete app acceptance.
+The CI aggregate requires both profile jobs, native tests and the unsigned build
+to pass. Each CI profile job runs native text-input regressions before its UI
+test. Swift library, keyboard and installed-extension checks remain separate
+required gates.
 For a focused retry, `mode=validate` and `app_ui_compact_only=true` run only
 the compact app profile. Its summary marks full app acceptance as incomplete.
 Signed publication ignores this diagnostic selector and runs both profiles.

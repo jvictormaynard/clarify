@@ -84,9 +84,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
   app:
-    name: Containing app UI tests
+    name: Containing app UI tests (${{ matrix.profile }})
     runs-on: macos-26
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [regular, compact]
     defaults:
       run:
         working-directory: mobile
@@ -95,6 +99,7 @@ jobs:
       EXPO_NO_TELEMETRY: "1"
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       CLARIFY_IOS_RUNTIME: iOS-26-5
+      CLARIFY_APP_UI_PROFILE: ${{ matrix.profile }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -106,7 +111,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ios-app-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ios-app-tests-${{ matrix.profile }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: mobile/test-results/app-ui/
           if-no-files-found: error
           retention-days: 7

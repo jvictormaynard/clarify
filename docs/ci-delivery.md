@@ -31,6 +31,11 @@ Component runners own collection and assertions.
 The full standard set includes every task except `installer`. An affected
 installer change requires that task on its PR. Required native Windows and iOS
 coverage stays in CI. Full main validation is the backstop for selection errors.
+Containing-app UI validation runs regular and compact iPhone profiles in separate
+required matrix jobs with distinct evidence artifacts. Each keeps its 60-minute
+budget and runs native text-input regressions; the iOS aggregate requires both
+profiles, keyboard/library tests and the unsigned app build. Full local app
+validation and signed publication retain the two-profile run on one test build.
 
 Python test modules have explicit suite ownership under `tests/`. Shared fakes
 belong in `tests/support/`. Tests must not import another test-case module as a
