@@ -278,15 +278,16 @@ test("ChatGPT reauthorizes a connected saved account with the same client after 
   await expect(reconnect).toBeEnabled();
   await reconnect.click();
   await expect.poll(() => sessionObservations.length).toBe(2);
-  await expect(menu).toBeEnabled();
   expect(sessionObservations[1]).toEqual({
     clientId: saved.clientId, authorizationClientId: saved.clientId, accountId: saved.accountId,
     accountCount: 1, refreshPending: false, planNoticeSeen: true,
   });
-  expect((await snapshot(page)).chatgptState).toMatchObject({
+  // The session reports saved credentials before the controller finishes its command.
+  await expect.poll(async () => (await snapshot(page)).chatgptState).toMatchObject({
     connected: true, planEnabled: true, busy: false, accountId: before.accountId,
     accounts: before.accounts, planNoticeSeen: true,
   });
+  await expect(menu).toBeEnabled();
   await expect(notice).toBeHidden();
   await page.screenshot({ path: info.outputPath("chatgpt-reconnect-synthetic.png"), fullPage: true });
 });
