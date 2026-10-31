@@ -1,5 +1,0 @@
-interface:
-  display_name: "Implement"
-  short_description: "Implement and validate an authorized change"
-policy:
-  allow_implicit_invocation: true

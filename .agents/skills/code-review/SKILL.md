@@ -19,6 +19,8 @@ Check `CONTRIBUTING.md`, `docs/architecture.md`, and relevant release or privacy
 
 Treat duplication, scattered changes, oversized interfaces, and unnecessary indirection as evidence to investigate, not automatic violations. Small adapters and compatibility code can be necessary. Check concrete bugs before style preferences. Formatting enforced by tooling does not need a duplicate review comment.
 
+Apply the workflow's [test retention](../../../docs/agents/workflow.md#tests-worth-retaining), [file retention](../../../docs/agents/workflow.md#files-and-evidence), and [documentation](../../../docs/agents/workflow.md#documentation-that-lasts) rules. Request a test only for a named missing regression risk. Flag duplicate tests, implementation mirrors, PR-only assets, scratch files, and docs with no lasting purpose. Give a concrete repair: extend a case, keep the useful layer, remove output, or update the existing owner.
+
 Use the review level in the project workflow. For independent review, give each fresh read-only reviewer the original request, the same fixed source state, its review axis, applicable rules, and observed check results. Reviewers do not write, run mutating checks, or delegate again. The coordinator consolidates findings and repairs the candidate. If delegation is unavailable, describe sequential passes as self-review and state that independent review was unavailable.
 
 Report actionable findings with severity, file and line, failure scenario, and a repair direction. Keep requirement and engineering conclusions distinct. State test evidence and any open validation limit. For implementation tasks, repair confirmed in-scope findings and rerun affected checks. For a review-only request, report findings without editing the code.

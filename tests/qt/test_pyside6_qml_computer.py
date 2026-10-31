@@ -4,12 +4,12 @@ import json
 import os
 from pathlib import Path
 import threading
-import time
 import unittest
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 from PySide6.QtNetwork import QHostAddress, QNetworkInterface
+from PySide6.QtTest import QSignalSpy
 
 from PySide6.QtWidgets import QApplication
 
@@ -102,12 +102,13 @@ class ComputerControllerTests(unittest.TestCase):
 
     def wait(self, controller=None):
         controller = controller or self.controller
-        deadline = time.monotonic() + 3
-        while (
-            controller.snapshot()["busy"] or controller._refreshing
-        ) and time.monotonic() < deadline:
-            self.app.processEvents()
-            time.sleep(0.005)
+        while controller.snapshot()["busy"] or controller._refreshing:
+            # The serial barrier finishes disk work before the Qt result wait.
+            controller._worker.submit(lambda: None).result()
+            changed = QSignalSpy(controller.changed)
+            self.assertTrue(
+                changed.wait(3000), "Completed worker result was not delivered"
+            )
         self.assertFalse(controller.snapshot()["busy"])
         self.assertFalse(controller._refreshing)
 
