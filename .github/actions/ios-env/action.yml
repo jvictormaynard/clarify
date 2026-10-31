@@ -29,3 +29,7 @@ runs:
       shell: bash
       working-directory: mobile
       run: pod install --project-directory=ios
+    - name: Verify patched native source targets
+      shell: bash
+      working-directory: mobile
+      run: node scripts/verify-react-native-source.cjs

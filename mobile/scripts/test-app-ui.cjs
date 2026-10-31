@@ -17,10 +17,21 @@ function requirePassedTest(lines, method) {
   }
 }
 
+const nativeMethods = ['testInitialNativeRestoration', 'testNativeAcknowledgementPreservesNewerText', 'testDeclarativeTextAndStyleUpdates', 'testStaleStateSelectionAndExplicitClear'];
+function requirePassedNativeTests(lines) {
+  const names = nativeMethods.map(method => `ClarifyTextInputTests ${method}`);
+  const events = lines.map(line => line.match(/^Test Case '-\[([^\]]+)\]' (started|passed|failed)\b/));
+  if (events.length !== names.length * 2 || events.some(event => !event || !names.includes(event[1]) || event[2] === 'failed')
+      || names.some(name => events.filter(event => event[1] === name && event[2] === 'started').length !== 1
+        || events.filter(event => event[1] === name && event[2] === 'passed').length !== 1)) {
+    throw new Error(`Expected every native text state regression to pass exactly once. Observed: ${lines.join('\n')}`);
+  }
+}
+
 async function runXcode(args, method) {
   const lines = [];
   await new Promise((resolve, reject) => {
-    const child = spawn('xcodebuild', args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, RCT_NO_LAUNCH_PACKAGER: '1', EXPO_NO_TELEMETRY: '1', EXPO_PUBLIC_CLARIFY_INPUT_TRACE: process.env.CLARIFY_APP_UI_INPUT_TRACE === 'true' ? '1' : '0' } });
+    const child = spawn('xcodebuild', args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, RCT_NO_LAUNCH_PACKAGER: '1', EXPO_NO_TELEMETRY: '1' } });
     for (const [stream, destination] of [[child.stdout, process.stdout], [child.stderr, process.stderr]]) {
       stream.pipe(destination, { end: false });
       readline.createInterface({ input: stream }).on('line', line => {
@@ -30,7 +41,8 @@ async function runXcode(args, method) {
     child.once('error', reject);
     child.once('close', code => code === 0 ? resolve() : reject(new Error(`App UI xcodebuild failed (${code}).`)));
   });
-  if (method) requirePassedTest(lines, method);
+  if (method === 'native') requirePassedNativeTests(lines);
+  else if (method) requirePassedTest(lines, method);
 }
 
 async function main() {
@@ -58,13 +70,12 @@ async function main() {
   const service = createAppUIService({ record });
   const { server, requests, unexpected } = service;
   let simulator;
-  let inputTrace;
   const results = [];
   const scenarios = [];
   const compactOnly = process.env.CLARIFY_APP_UI_COMPACT_ONLY === 'true';
-  const diagnosticInputTrace = process.env.CLARIFY_APP_UI_INPUT_TRACE === 'true';
   const derivedData = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-app-ui-derived-'));
   let testRun, buildSeconds;
+  let nativeTextInputAcceptance = false;
   let exitCode = 1;
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -107,19 +118,15 @@ async function main() {
         if (manifests.length !== 1) throw new Error(`Expected one App UI test manifest, found ${manifests.length}.`);
         const manifest = path.join(products, manifests[0]);
         testRun = { path: manifest, sha256: fingerprint(manifest) };
+        const nativeResult = path.join(output, 'NativeTextInput.xcresult');
+        results.push({ path: nativeResult, name: 'NativeTextInput' });
+        await runXcode(['test-without-building', '-xctestrun', testRun.path, '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-resultBundlePath', nativeResult, '-only-testing:ClarifyTextInputTests'], 'native');
+        nativeTextInputAcceptance = true;
       }
       if (fingerprint(testRun.path) !== testRun.sha256) throw new Error('App UI test manifest changed between profiles.');
-      if (diagnosticInputTrace) {
-        const descriptor = fs.openSync(path.join(output, scenario.name + '-input-trace.log'), 'wx');
-        try {
-          inputTrace = spawn('xcrun', ['simctl', 'spawn', simulator, 'log', 'stream', '--style', 'compact', '--level', 'debug', '--predicate', 'eventMessage CONTAINS "CLARIFY_INPUT_"'], { stdio: ['ignore', descriptor, descriptor] });
-          inputTrace.on('error', error => console.error('Input trace collector:', error.message));
-        } finally { fs.closeSync(descriptor); }
-      }
       const started = Date.now();
       await runXcode(['test-without-building', '-xctestrun', testRun.path, '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-resultBundlePath', result, `-only-testing:ClarifyAppFlowTests/AppFlowUITests/${scenario.method}`], scenario.method);
       scenarios.at(-1).testSeconds = (Date.now() - started) / 1000;
-      if (inputTrace) { inputTrace.kill('SIGTERM'); inputTrace = undefined; }
       run('xcrun', ['simctl', 'shutdown', simulator]);
       run('xcrun', ['simctl', 'delete', simulator]);
       simulator = undefined;
@@ -129,11 +136,9 @@ async function main() {
     if (requests.some(item => ['/v1/text', '/v1/text-actions/execute'].includes(item.route) && ['cancel', 'off', 'a\nb\nc'].includes(item.value.text))) throw new Error('Cancelled or deactivated discovery sent a late processing POST.');
     exitCode = 0;
   } catch (error) { console.error(error.message); } finally {
-    if (inputTrace) inputTrace.kill('SIGTERM');
     for (const result of results) if (fs.existsSync(result.path)) spawnSync('xcrun', ['xcresulttool', 'export', 'attachments', '--path', result.path, '--output-path', path.join(output, 'captures', result.name)], { stdio: 'inherit' });
     for (const [name, hash] of preserved) if (fingerprint(path.join(original, name)) !== hash) { console.error('Production generated project changed during app UI testing.'); exitCode = 1; }
-    if (diagnosticInputTrace && exitCode === 0) { console.error('Diagnostic trace collected. A normal run must pass before acceptance.'); exitCode = 1; }
-    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, diagnosticInputTrace, completeAppAcceptance: exitCode === 0 && !compactOnly && !diagnosticInputTrace, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
+    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, nativeTextInputAcceptance, completeAppAcceptance: exitCode === 0 && !compactOnly && nativeTextInputAcceptance, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
     service.release();
     await new Promise(resolve => server.close(resolve));
     if (simulator) { spawnSync('xcrun', ['simctl', 'shutdown', simulator]); spawnSync('xcrun', ['simctl', 'delete', simulator]); }
@@ -142,5 +147,5 @@ async function main() {
   }
 }
 
-module.exports = { requirePassedTest };
+module.exports = { requirePassedTest, requirePassedNativeTests, nativeMethods };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

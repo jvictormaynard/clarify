@@ -781,6 +781,20 @@ completion retains the draft. Headless tests check buffer ownership and
 explicit resets. Bulk typing, keyboard behavior and exact native values still
 require the containing-app XCTest scenarios.
 
+React Native 0.86.3 also replays native text acknowledgements through Fabric.
+UIKit can receive further edits while that attributed-text write is active.
+The tracked `patches/react-native+0.86.3.patch` keeps native acknowledgements
+from writing back after mount. Initial restoration and React text/style updates
+still apply. The native regression bundle exercises those paths, stale event
+counts, selection and explicit clear against the actual Fabric component.
+
+`with-patched-react-native.cjs` forces React core to compile from the patched
+source. Other dependency binaries keep their normal configuration. Installation
+checks the exact patched source and version; CI and TestFlight also verify the
+resolved CocoaPods targets. Reassess the patch and its native tests before a
+React Native upgrade. A source patch applied to a prebuilt React binary would
+not change the application.
+
 ## TestFlight and acceptance
 
 The app bundle ID is `com.jvictormaynard.clarify`; the keyboard and activity

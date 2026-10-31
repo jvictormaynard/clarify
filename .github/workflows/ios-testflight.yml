@@ -150,6 +150,8 @@ jobs:
         run: npx expo prebuild --clean --platform ios --no-install
       - name: Install CocoaPods dependencies
         run: pod install --project-directory=ios
+      - name: Verify patched native source targets
+        run: node scripts/verify-react-native-source.cjs
       - name: Test Swift contracts
         if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
         run: npm run test:native

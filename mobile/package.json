@@ -36,7 +36,7 @@
     "@expo/mcp-tunnel": "$@expo/mcp-tunnel"
   },
   "scripts": {
-    "postinstall": "patch-package --error-on-fail",
+    "postinstall": "patch-package --error-on-fail && node scripts/verify-react-native-source.cjs --source-only",
     "start": "expo start",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
