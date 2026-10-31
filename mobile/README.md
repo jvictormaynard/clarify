@@ -763,6 +763,24 @@ container and fake HTTP; they never use real keys, microphones or profiles.
 The iOS workflow also runs UIKit tests against the production keyboard sources
 and exports light/dark key-preview captures as build artifacts.
 
+### Native text drafts
+
+`src/components/draft-text-input.tsx` owns the native edit buffer for local text
+drafts. `initialValue` seeds each mount; later snapshot renders do not replace
+typed text. Parent models consume change events for readiness and submission.
+For an object ref, use `inputRef.current?.clear()` and reset the parent draft
+for a deliberate clear. Start
+a different editor draft through its existing unmount/remount boundary. Do not
+derive mount keys from text, busy state or periodic snapshots.
+
+Account confirmation clears both buffers after taking the submitted code.
+Library editors retain failed edits and unmount on cancel or successful save.
+The Actions composer preserves its draft across context and action changes.
+The practice guide clears on a step change or successful completion; a failed
+completion retains the draft. Headless tests check buffer ownership and
+explicit resets. Bulk typing, keyboard behavior and exact native values still
+require the containing-app XCTest scenarios.
+
 ## TestFlight and acceptance
 
 The app bundle ID is `com.jvictormaynard.clarify`; the keyboard and activity

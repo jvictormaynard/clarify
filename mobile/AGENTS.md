@@ -12,6 +12,7 @@ extension. No Android app is included. Expo Go cannot load these native parts.
   Expo or React Native API. Use `npx expo install <package>` for SDK compatibility.
 - `src/app/` owns Expo Router screens and layouts. Keep shared components and
   state outside that directory.
+- For editable text, follow [native text drafts](README.md#native-text-drafts).
 - `modules/clarify-core/ios/` owns account processing, audio and storage.
   `native/keyboard/` owns keyboard interaction and insertion.
 - `app.json` and `plugins/` own generated native configuration. Generate the
