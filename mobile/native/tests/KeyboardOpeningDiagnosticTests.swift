@@ -76,7 +76,12 @@ final class KeyboardOpeningDiagnosticTests: XCTestCase {
     await fulfillment(of: [done], timeout: 35)
     stage("ten-openings-finished")
     let report = try XCTUnwrap(screen.report)
-    XCTAssertEqual(report.outcome, "completed")
+    // Keep the measured phase and frame timings before an assertion can stop
+    // the test process. A terminal outcome alone cannot explain a timeout.
+    let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    let attachment = XCTAttachment(data: try encoder.encode(report), uniformTypeIdentifier: "public.json")
+    attachment.name = "keyboard-opening-report"; attachment.lifetime = .keepAlways; add(attachment)
+    XCTAssertEqual(report.outcome, "completed", "Last sample: \(String(describing: report.frames.last))")
     XCTAssertEqual(report.openings.map(\.index), Array(1...10))
     XCTAssertTrue(report.frames.contains { $0.phase == "closing" })
     for opening in 1...10 {
