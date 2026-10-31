@@ -59,6 +59,7 @@ async function main() {
   const { server, requests, unexpected } = service;
   let simulator;
   const results = [];
+  const inputTraceErrors = [];
   const scenarios = [];
   const compactOnly = process.env.CLARIFY_APP_UI_COMPACT_ONLY === 'true';
   const derivedData = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-app-ui-derived-'));
@@ -108,7 +109,19 @@ async function main() {
       }
       if (fingerprint(testRun.path) !== testRun.sha256) throw new Error('App UI test manifest changed between profiles.');
       const started = Date.now();
-      await runXcode(['test-without-building', '-xctestrun', testRun.path, '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-resultBundlePath', result, `-only-testing:ClarifyAppFlowTests/AppFlowUITests/${scenario.method}`], scenario.method);
+      try {
+        await runXcode(['test-without-building', '-xctestrun', testRun.path, '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-resultBundlePath', result, `-only-testing:ClarifyAppFlowTests/AppFlowUITests/${scenario.method}`], scenario.method);
+      } finally {
+        try {
+          const container = run('xcrun', ['simctl', 'get_app_container', simulator, 'com.jvictormaynard.clarify', 'data'], { encoding: 'utf8', stdio: 'pipe' }).trim();
+          const trace = path.join(container, 'Library/Caches/clarify-input-trace.jsonl');
+          fs.copyFileSync(trace, path.join(output, `${scenario.name}-native-input.jsonl`));
+          const records = fs.readFileSync(trace, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+          const installed = records.filter(record => record.event === 'installed');
+          if (!installed.length || installed.some(record => !record.replacements || !record.attributedWrites || !record.enabledChanges)) throw new Error('Native input trace hooks were not installed.');
+        } catch (error) { inputTraceErrors.push(error.message); console.error(`Input trace: ${error.message}`); }
+      }
+      if (inputTraceErrors.length) throw new Error('Native input trace is incomplete.');
       scenarios.at(-1).testSeconds = (Date.now() - started) / 1000;
       run('xcrun', ['simctl', 'shutdown', simulator]);
       run('xcrun', ['simctl', 'delete', simulator]);
@@ -121,7 +134,7 @@ async function main() {
   } catch (error) { console.error(error.message); } finally {
     for (const result of results) if (fs.existsSync(result.path)) spawnSync('xcrun', ['xcresulttool', 'export', 'attachments', '--path', result.path, '--output-path', path.join(output, 'captures', result.name)], { stdio: 'inherit' });
     for (const [name, hash] of preserved) if (fingerprint(path.join(original, name)) !== hash) { console.error('Production generated project changed during app UI testing.'); exitCode = 1; }
-    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, completeAppAcceptance: exitCode === 0 && !compactOnly, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
+    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, diagnosticInputTrace: true, inputTraceErrors, completeAppAcceptance: false, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
     service.release();
     await new Promise(resolve => server.close(resolve));
     if (simulator) { spawnSync('xcrun', ['simctl', 'shutdown', simulator]); spawnSync('xcrun', ['simctl', 'delete', simulator]); }

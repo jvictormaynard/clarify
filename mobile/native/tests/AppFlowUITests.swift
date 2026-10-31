@@ -112,6 +112,7 @@ final class AppFlowUITests: XCTestCase {
     field.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
     if replacing { field.typeKey("a", modifierFlags: .command) }
+    print("APP_UI_INPUT_BEFORE \(name) \(field.debugDescription)")
     field.typeText(value)
     // Read once after typing. Preserve that observation before diagnostics.
     let actual = field.value as? String

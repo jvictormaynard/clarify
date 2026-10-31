@@ -23,6 +23,9 @@ end
 file = File.join(fixture, 'ClarifyAppFlowTests.swift')
 FileUtils.cp(File.join(root, 'native/tests/AppFlowUITests.swift'), file)
 tests.source_build_phase.add_file_reference(project.main_group.new_file(file))
+trace = File.join(fixture, 'AppInputTrace.m')
+FileUtils.cp(File.join(root, 'native/tests/AppInputTrace.m'), trace)
+app.source_build_phase.add_file_reference(project.main_group.new_file(trace))
 project.save
 scheme = Xcodeproj::XCScheme.new
 scheme.add_build_target(app)
