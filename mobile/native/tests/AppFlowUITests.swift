@@ -113,9 +113,13 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
     if replacing { field.typeKey("a", modifierFlags: .command) }
     field.typeText(value)
-    // Read once after typing. Preserve that observation before diagnostics.
+    // Keep the first observation; event synthesis can finish before UIKit input delivery.
+    let firstRead = field.value as? String
+    print("APP_UI_INPUT_FIRST_READ \(name) expected=\(String(reflecting: value)) actual=\(String(reflecting: firstRead))")
+    let complete = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: field)
+    let received = firstRead == value || XCTWaiter.wait(for: [complete], timeout: 10) == .completed
     let actual = field.value as? String
-    guard actual == value else {
+    guard received && actual == value else {
       print("APP_UI_INPUT_FAILURE \(name) expected=\(String(reflecting: value)) actual=\(String(reflecting: actual)) frame=\(field.frame) hittable=\(field.isHittable)")
       diagnose("typing-\(name)")
       XCTFail("Input did not retain the typed characters: \(name); expected \(String(reflecting: value)), actual \(String(reflecting: actual))")
