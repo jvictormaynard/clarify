@@ -39,8 +39,8 @@ scope, worktrees, test selection, file retention, review, and completion.
 - Use `scripts/ci.py --plan` and the [shared validation plan](docs/ci-delivery.md).
   Run focused checks during implementation and selected checks on the final
   candidate. Tests use isolated profiles and fake providers, keys, and audio.
-- Keep a test only for a distinct regression risk. Extend existing cases before
-  adding files. One-time checks do not need permanent test scripts.
+- Apply [test retention](docs/agents/workflow.md#tests-worth-retaining): keep only
+  necessary regression coverage, reuse cases, and leave one-time probes temporary.
 - Keep PR-only captures, logs, runtime state, and scratch files outside Git.
   Attach visual evidence to the PR. Follow [file retention](docs/agents/workflow.md#files-and-evidence)
   before adding documentation, tests, or evidence files.

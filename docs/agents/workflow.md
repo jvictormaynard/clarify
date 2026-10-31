@@ -114,16 +114,21 @@ gates; repair in-scope failures and report unrelated failures with evidence.
 
 ## Tests worth retaining
 
-Before adding a test, name the concrete future regression it will catch. Use
-one independent expected result at the lowest boundary that reaches the defect.
-Extend an existing case, table, or fixture before adding a new case or file.
-A unit and an integration test may both be useful when they protect different
-contracts; do not duplicate the same assertion through wrappers and clients.
+Keep the smallest suite that protects meaningful behavior. A distinct scenario
+alone does not justify a permanent test. Before adding or expanding a test,
+identify the important failure it catches and the coverage missing from existing
+tests. If removing it leaves no meaningful coverage gap, omit or consolidate it.
+Consider runtime, fixture setup, and maintenance cost when material.
 
-Keep coverage for routing, permissions, persistence, migrations, parsing,
-cancellation, concurrency, resource ownership, and other behavior that can fail.
-Logic/data/state fixes need a regression that fails for the reported symptom
-before the fix and passes afterward. An import or environment error is not red
+Use an independent expected result at the cheapest reliable boundary that detects
+the failure. Extend an existing case, table, or fixture first; add a new case only
+when none fits. A unit and an integration test can both be necessary when they
+protect different contracts. Do not repeat a case through wrappers or clients.
+
+Protect affected routing, permissions, persistence, migrations, parsing,
+cancellation, concurrency, and resource ownership. Logic/data/state fixes need
+the fewest regression cases that fail for the reported symptom before the fix
+and pass afterward. An import or environment error is not red
 evidence. Prefer controlled clocks, barriers, and observable milestones to sleeps.
 
 Do not retain tests that only restate types, implementation steps, trivial
@@ -132,8 +137,9 @@ changes normally use captures; focus, keyboard, state, and persistence changes
 can need behavior tests. Smoke runs and diagnostic experiments can be necessary
 during implementation without becoming repository test files.
 
-Keep existing tests until their distinct risk is accounted for. Remove or merge
-a redundant test when equivalent coverage remains; explain the covered risk.
+Review the tests affected by the change. Remove or consolidate redundant or
+obsolete cases once their required coverage is accounted for. Preserve necessary
+coverage when reducing cost; passing CI alone does not establish a test's value.
 Platform, migration, and security checks can justify internal assertions. Call
 counts matter when they prove a real contract such as once-only publication.
 

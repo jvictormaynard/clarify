@@ -20,7 +20,7 @@
 ## Safety and privacy
 
 - [ ] No API keys, private transcripts, selected text, personal paths, or config files are included
-- [ ] Retained tests protect distinct regression risks; existing cases were reused where possible
+- [ ] Retained tests add necessary coverage; affected redundant tests were removed or consolidated
 - [ ] Documentation changes have a lasting user, operational, or design purpose
 - [ ] PR-only evidence, scratch files, runtime state, and local reports are outside the diff
 - [ ] New third-party code or assets have compatible licenses and are documented

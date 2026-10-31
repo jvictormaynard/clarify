@@ -98,7 +98,7 @@ and integration.
 
 1. Fork the repository and create a focused branch from the default branch.
 2. Keep unrelated refactors out of the same pull request.
-3. Check the changed behavior. Retain tests for distinct regression risks and
+3. Check the changed behavior. Retain only necessary regression coverage and
    extend existing cases first; follow [test selection](docs/agents/workflow.md#tests-worth-retaining).
 4. Update user docs when how to use the product changes. Follow
    [documentation rules](docs/agents/workflow.md#documentation-that-lasts); a cosmetic edit
