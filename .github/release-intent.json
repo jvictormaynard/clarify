@@ -2,13 +2,13 @@
   "schema": 1,
   "component": "mobile",
   "version": "0.13.0",
-  "base_sha": "6b742c8f7a1570073ccf8afba1aca0e62809c19e",
-  "notes": "Prepare the integrated mobile navigation, saved text actions and permanent keyboard output control for an internal TestFlight acceptance build before the public App Store update. Preserve keyboard activation, return to the source app and the existing sign-in providers.\n\nComplete Apple inventory run 41139466023, attempt 1, ended at 2026-10-30T22:38:51.726Z with 32 builds and 32 uploads, maximum 48, and no pending upload or review. Artifact, JSON and collector hashes were independently checked. Remote tags, preparation refs, open PRs and iOS workflow runs were checked at 2026-10-31T01:26:57Z; no build 49 reservation was found. Recheck before merge.\n\nCloudflare now uses the production account API. Readback confirmed an enabled Worker, a free allocation lock, one ready computer and no uncertain operation. The existing administrative token expires at 2026-11-28T22:59:59Z; renew it before that date.\n\nNative CI, signed IPA verification, upload, Apple processing and internal-group availability remain delivery gates. Physical iPhone acceptance and production-account WAN processing remain open before App Store submission. This preparation does not submit the app for public review.",
+  "base_sha": "4b71f852e20afab8d3046d2e3d7f5f744ccc4b38",
+  "notes": "Prepare iOS 0.13.0 (50) with the reviewed input-test repair from PR206. Build49 failed before signing credentials, archive and upload; its immutable tag is retained. Keep the mobile navigation, saved actions, permanent keyboard output control, keyboard activation, return to the source app and current sign-in providers.\n\nThe complete authenticated Apple inventory from run41139466023, attempt1, ended at 2026-10-30T22:38:51.726Z: 32 builds and32 uploads, highest48, with uploads and review submissions complete. Its JSON hash was verified. The remote reservation check at 2026-10-31T04:09:30Z found highest49, no build50 ref or open preparation PR, and no active iOS workflow. The linked report records both observations; they are not an atomic snapshot.\n\nNative CI, full containing-app tests, signed IPA verification, upload, Apple processing and internal-group availability remain required. Physical iPhone and production-account WAN acceptance remain open before App Store submission. This preparation does not submit the app for public review.",
   "evidence": {
-    "build": "49",
-    "highest_build": "48",
+    "build": "50",
+    "highest_build": "49",
     "pending_builds_checked": true,
     "checked_at": "2026-10-30T22:38:51Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41139466023"
+    "report_url": "https://github.com/jvictormaynard/clarify/pull/206#build50-reservation-check"
   }
 }
