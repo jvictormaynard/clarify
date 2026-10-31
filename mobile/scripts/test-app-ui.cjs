@@ -6,6 +6,12 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 const readline = require('node:readline');
+const diagnosticAnimationTrace = process.env.CLARIFY_APP_UI_ANIMATION_TRACE === '1';
+let animationObserver;
+let diagnosticStopped = false;
+const animationTraceErrors = [];
+let captureQueue = Promise.resolve();
+let primaryFailureObserved = false;
 
 // A successful xcodebuild with a stale selector can execute zero tests.
 function requirePassedTest(lines, method) {
@@ -36,6 +42,8 @@ async function runXcode(args, method) {
       stream.pipe(destination, { end: false });
       readline.createInterface({ input: stream }).on('line', line => {
         if (line.startsWith("Test Case '")) lines.push(line);
+        if (line.includes(' error: ') || (line.startsWith("Test Case '") && line.includes(' failed ('))) primaryFailureObserved = true;
+        animationObserver?.(child, line);
       });
     }
     child.once('error', reject);
@@ -77,6 +85,14 @@ async function main() {
   let testRun, buildSeconds;
   let nativeTextInputAcceptance = false;
   let exitCode = 1;
+  async function preserveAnimationTrace() {
+    if (!diagnosticAnimationTrace || !simulator) return;
+    await captureQueue;
+    try {
+      const container = run('xcrun', ['simctl', 'get_app_container', simulator, 'com.jvictormaynard.clarify', 'data'], { encoding: 'utf8', stdio: 'pipe', timeout: 5000 }).trim();
+      fs.copyFileSync(path.join(container, 'Library/Caches/clarify-animation-trace.jsonl'), path.join(output, 'animation-native.jsonl'));
+    } catch (error) { animationTraceErrors.push(error.message); }
+  }
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const endpoint = `http://127.0.0.1:${server.address().port}`;
@@ -93,10 +109,61 @@ async function main() {
     const regular = types.find(item => item.name === 'iPhone 17 Pro') || types.find(item => item.name.startsWith('iPhone'));
     const compact = types.find(item => item.name === 'iPhone 13 mini') || types.find(item => item.name === 'iPhone SE (3rd generation)');
     if (!compact) throw new Error('Compact iPhone simulator is unavailable.');
+    async function captureAnimations(reason) {
+      const expires = Date.now() + 12000;
+      const command = args => run('xcrun', args, { encoding: 'utf8', stdio: 'pipe', timeout: Math.max(1, expires - Date.now()) });
+      const container = command(['simctl', 'get_app_container', simulator, 'com.jvictormaynard.clarify', 'data']).trim();
+      const trace = path.join(container, 'Library/Caches/clarify-animation-trace.jsonl');
+      const before = fs.readFileSync(trace, 'utf8');
+      if (!before.split('\n').some(line => line && JSON.parse(line).event === 'installed')) throw new Error('Animation trace installation marker missing.');
+      await new Promise((resolve, reject) => {
+        let watcher;
+        const finish = error => { clearTimeout(deadline); watcher?.close(); error ? reject(error) : resolve(); };
+        const deadline = setTimeout(() => finish(new Error('Animation capture exceeded its 12 second deadline.')), Math.max(1, expires - Date.now()));
+        const inspect = () => {
+          try {
+            const added = fs.readFileSync(trace, 'utf8').slice(before.length).split('\n').filter(Boolean);
+            if (added.some(line => JSON.parse(line).event === 'capture')) {
+              finish();
+            }
+          } catch { /* A file event can arrive before the complete JSON record. */ }
+        };
+        try {
+          watcher = fs.watch(trace, inspect);
+          watcher.once('error', finish);
+          command(['simctl', 'spawn', simulator, 'notifyutil', '-p', 'com.clarify.fixture.animation-capture']);
+          inspect();
+        } catch (error) { finish(error); }
+      });
+      fs.copyFileSync(trace, path.join(output, 'animation-native.jsonl'));
+      console.log('APP_UI_ANIMATION_CAPTURE', reason);
+    }
+    if (diagnosticAnimationTrace) {
+      // The test waits for this local response before sending Cmd+A.
+      const handlers = server.listeners('request');
+      server.removeAllListeners('request');
+      server.on('request', (request, response) => {
+        if (request.method !== 'GET' || request.url !== '/__fixture/animation-capture') {
+          for (const handler of handlers) handler.call(server, request, response);
+          return;
+        }
+        captureQueue = captureQueue.then(() => captureAnimations('before-replace'))
+          .then(() => { response.writeHead(200, { 'Content-Type': 'application/json' }); response.end(JSON.stringify({ captured: true })); })
+          .catch(error => { animationTraceErrors.push(error.message); response.writeHead(500); response.end('{}'); });
+      });
+      animationObserver = (child, line) => {
+        if (line.includes('App animations complete notification not received') && !diagnosticStopped && !primaryFailureObserved) {
+          diagnosticStopped = true;
+          captureQueue = captureQueue.then(() => captureAnimations('first-animation-idle-timeout'))
+            .catch(error => { animationTraceErrors.push(error.message); })
+            .finally(() => { child.kill('SIGINT'); });
+        }
+      };
+    }
     for (const scenario of [
       { name: 'AppFlow', device: regular, appearance: 'dark', text: 'large', method: 'testFirstPresentationAccountNavigationAndExplicitReplay' },
       { name: 'AppFlow-compact-light', device: compact, appearance: 'light', text: 'accessibility-extra-extra-extra-large', method: 'testCompactKeyboardAndActionLayout' },
-    ].filter(scenario => !compactOnly || scenario.name === 'AppFlow-compact-light')) {
+    ].filter(scenario => diagnosticAnimationTrace ? scenario.name === 'AppFlow' : !compactOnly || scenario.name === 'AppFlow-compact-light')) {
       const device = scenario.device;
       scenarios.push({ ...scenario, device: device?.name });
       await fetch(endpoint + '/__fixture/control', { method: 'POST', body: JSON.stringify({ catalog: 'ready', revision: 1, release: true }) });
@@ -127,6 +194,7 @@ async function main() {
       const started = Date.now();
       await runXcode(['test-without-building', '-xctestrun', testRun.path, '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-resultBundlePath', result, `-only-testing:ClarifyAppFlowTests/AppFlowUITests/${scenario.method}`], scenario.method);
       scenarios.at(-1).testSeconds = (Date.now() - started) / 1000;
+      await preserveAnimationTrace();
       run('xcrun', ['simctl', 'shutdown', simulator]);
       run('xcrun', ['simctl', 'delete', simulator]);
       simulator = undefined;
@@ -136,9 +204,17 @@ async function main() {
     if (requests.some(item => ['/v1/text', '/v1/text-actions/execute'].includes(item.route) && ['cancel', 'off', 'a\nb\nc'].includes(item.value.text))) throw new Error('Cancelled or deactivated discovery sent a late processing POST.');
     exitCode = 0;
   } catch (error) { console.error(error.message); } finally {
+    await preserveAnimationTrace();
+    if (diagnosticAnimationTrace) {
+      try {
+        const records = fs.readFileSync(path.join(output, 'animation-native.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+        if (!records.some(record => record.event === 'installed') || !records.some(record => record.event === 'capture')) throw new Error('Animation diagnostic evidence is incomplete.');
+      } catch (error) { animationTraceErrors.push(error.message); }
+      if (animationTraceErrors.length) exitCode = 1;
+    }
     for (const result of results) if (fs.existsSync(result.path)) spawnSync('xcrun', ['xcresulttool', 'export', 'attachments', '--path', result.path, '--output-path', path.join(output, 'captures', result.name)], { stdio: 'inherit' });
     for (const [name, hash] of preserved) if (fingerprint(path.join(original, name)) !== hash) { console.error('Production generated project changed during app UI testing.'); exitCode = 1; }
-    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, nativeTextInputAcceptance, completeAppAcceptance: exitCode === 0 && !compactOnly && nativeTextInputAcceptance, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
+    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, diagnosticAnimationTrace, diagnosticStopped, animationTraceErrors, nativeTextInputAcceptance, completeAppAcceptance: !diagnosticAnimationTrace && exitCode === 0 && !compactOnly && nativeTextInputAcceptance, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
     service.release();
     await new Promise(resolve => server.close(resolve));
     if (simulator) { spawnSync('xcrun', ['simctl', 'shutdown', simulator]); spawnSync('xcrun', ['simctl', 'delete', simulator]); }

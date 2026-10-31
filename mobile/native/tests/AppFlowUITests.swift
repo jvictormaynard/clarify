@@ -106,7 +106,11 @@ final class AppFlowUITests: XCTestCase {
     reveal(field, identifier: field.identifier.isEmpty ? field.label : field.identifier)
     field.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
-    if replacing { field.typeKey("a", modifierFlags: .command) }
+    if replacing {
+      XCTAssertEqual(fixture("/__fixture/animation-capture")["captured"] as? Bool, true)
+      print("APP_UI_ANIMATION_BEFORE_REPLACE \(name)")
+      field.typeKey("a", modifierFlags: .command)
+    }
     field.typeText(value)
     // Keep the first observation; event synthesis can finish before UIKit input delivery.
     let firstRead = field.value as? String

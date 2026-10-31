@@ -61,6 +61,12 @@ File.write(swift_file, <<~SWIFT)
   import Foundation
 SWIFT
 native.source_build_phase.add_file_reference(project.main_group.new_file(swift_file))
+if ENV['CLARIFY_APP_UI_ANIMATION_TRACE'] == '1'
+  trace_file = File.join(fixture, 'AppAnimationTrace.m')
+  FileUtils.cp(File.join(root, 'native/tests/AppAnimationTrace.m'), trace_file)
+  app.source_build_phase.add_file_reference(project.main_group.new_file(trace_file))
+  app.add_system_framework('QuartzCore')
+end
 project.save
 scheme = Xcodeproj::XCScheme.new
 scheme.add_build_target(app)
