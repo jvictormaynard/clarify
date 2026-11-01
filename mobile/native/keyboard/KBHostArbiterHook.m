@@ -244,12 +244,18 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
     return bid;
 }
 
-+ (void)invalidateCache {
++ (uint64_t)beginCaptureGeneration {
     os_unfair_lock_lock(&sHookLock);
     sLastCapturedBundleId = nil;
     sCaptureGeneration += 1;
     sInvalidationGeneration = sCaptureGeneration;
+    uint64_t generation = sCaptureGeneration;
     os_unfair_lock_unlock(&sHookLock);
+    return generation;
+}
+
++ (void)invalidateCache {
+    [self beginCaptureGeneration];
 }
 
 @end

@@ -590,6 +590,26 @@ final class KeyboardUITests: XCTestCase {
       window.isHidden = true
     }
   }
+  func testActivationSourceScopeKeepsOnlyTheCurrentPresentationAndDocument() {
+    let document = UUID()
+    let scope = HostActivationScope(document: document, generation: 7)
+    var queried: UInt64?
+    let currentHost: (UInt64) -> String? = { queried = $0; return "com.clarify.fixture.host" }
+    // Generation 8 arrived after presentation began, before the button tap.
+    // The tap must retain baseline 7, so the native freshness check can use it.
+    XCTAssertEqual(scope.source(scope, document: document, read: currentHost), "com.clarify.fixture.host")
+    XCTAssertEqual(queried, 7)
+    for (current, selectedDocument) in [(scope, UUID()), (HostActivationScope(document: document, generation: 10), document)] {
+      queried = nil
+      XCTAssertNil(scope.source(current, document: selectedDocument, read: currentHost))
+      XCTAssertNil(queried, "A different document or presentation must not read the previous origin")
+    }
+    queried = nil
+    XCTAssertNil(scope.source(nil, document: document, read: currentHost))
+    XCTAssertNil(queried, "Disappearance cancels a suspended request")
+    XCTAssertNil(scope.source(scope, document: document, read: { _ in nil }),
+      "Native invalidation or an invalid destination must stay rejected")
+  }
   func testLegacySourceLookupFailsClosedWhenDetachedOrTheOSParentHasChanged() async {
     await MainActor.run {
       let keyboard = KeyboardViewController()

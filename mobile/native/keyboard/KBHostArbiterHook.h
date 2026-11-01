@@ -40,6 +40,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// invalid/empty events) or explicit invalidation advances this generation.
 + (uint64_t)captureGeneration;
 
+/// Clears the previous observation and returns the new request generation under
+/// one lock. A callback arriving after this operation stays newer than its scope.
++ (uint64_t)beginCaptureGeneration;
+
 /// Atomically returns a valid capture only if an event was observed after
 /// the supplied generation. Explicit invalidation cancels older queries even
 /// if another valid event follows. An invalid latest event also returns nil.

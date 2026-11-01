@@ -3,26 +3,55 @@ import UIKit
 import KeyboardHostSupport
 #endif
 
+struct HostActivationScope {
+  let id = UUID()
+  let document: UUID
+  let generation: UInt64
+
+  func matches(_ current: Self?, document: UUID) -> Bool {
+    current?.id == id && self.document == document
+  }
+  func source(_ current: Self?, document: UUID, read: (UInt64) -> String?) -> String? {
+    guard matches(current, document: document) else { return nil }
+    return read(generation)
+  }
+}
+
 extension KeyboardViewController {
+  func beginActivationSourceScope() {
+    activationSourceScope = HostActivationScope(document: textDocumentProxy.documentIdentifier,
+      generation: KBHostArbiterHook.beginCaptureGeneration())
+  }
+  func refreshActivationDocument() {
+    guard let scope = activationSourceScope,
+          scope.document != textDocumentProxy.documentIdentifier else { return }
+    beginActivationSourceScope()
+    if viewIfLoaded?.window != nil { KBHostArbiterHook.activeArbiterCheck() }
+  }
   func activationURL() async -> URL? {
     guard !Task.isCancelled, isViewLoaded, view.window != nil else { return nil }
+    refreshActivationDocument()
+    guard let scope = activationSourceScope else { return nil }
     var source: String?
     if #available(iOS 26.4, *) {
-      let generation = KBHostArbiterHook.captureGeneration()
       KBHostArbiterHook.activeArbiterCheck()
       let clock = ContinuousClock(), deadline = clock.now.advanced(by: .milliseconds(400))
       // Yield the main actor so UIKit can deliver its destination callback.
       // A nested run loop inside the button action cannot drain a queued main
       // dispatch block while the current block is still executing.
       while view.window != nil, !Task.isCancelled {
-        source = KBHostArbiterHook.hostBundleId(capturedAfter: generation)
+        guard scope.matches(activationSourceScope, document: textDocumentProxy.documentIdentifier) else { return nil }
+        source = scope.source(activationSourceScope, document: textDocumentProxy.documentIdentifier) {
+          KBHostArbiterHook.hostBundleId(capturedAfter: $0)
+        }
         if source != nil || clock.now >= deadline { break }
         do { try await Task.sleep(nanoseconds: 20_000_000) } catch { return nil }
       }
     } else {
       source = KBHostArbiterHook.legacyHostBundleID(for: self)
     }
-    guard !Task.isCancelled, view.window != nil else { return nil }
+    guard !Task.isCancelled, view.window != nil,
+          scope.matches(activationSourceScope, document: textDocumentProxy.documentIdentifier) else { return nil }
     // Unknown source is handled by the system navigation fallback in the app.
     let request = ActivationRequest(sourceBundleID: source)
     guard let store = store, (try? store.write(request, to: "activation.json")) != nil else {
@@ -32,5 +61,8 @@ extension KeyboardViewController {
     url.queryItems = [URLQueryItem(name: "token", value: request.token)]
     return url.url!
   }
-  func invalidateActivationSource() { KBHostArbiterHook.invalidateCache() }
+  func invalidateActivationSource() {
+    activationSourceScope = nil
+    KBHostArbiterHook.invalidateCache()
+  }
 }
