@@ -42,6 +42,10 @@ jobs:
           CLARIFY_IOS_UI_DERIVED_DATA: ${{ runner.temp }}/ClarifyKeyboardUI
           CLARIFY_IOS_UI_FIXTURE_ROOT: ${{ runner.temp }}/ClarifyKeyboardUIFixture
         run: node scripts/test-keyboard-ui.cjs
+      - name: Verify the installed-keyboard fixture toolchain
+        run: ruby -rxcodeproj -e 'abort "Expected xcodeproj 1.27.0" unless Xcodeproj::VERSION == "1.27.0"'
+      - name: Test installed keyboard typing and activation
+        run: node scripts/test-keyboard-extension.cjs
       - name: Retain native test results
         if: ${{ (always()) }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

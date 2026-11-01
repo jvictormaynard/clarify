@@ -43,7 +43,7 @@ Component runners own collection and assertions.
 | `installer` | Disposable Windows install, upgrade, repair, rollback and removal |
 | `server` | PostgreSQL behavior, migrations, container startup and database health |
 | `mobile` | Types, lint, contracts, locale/prompt synchronization, iOS JavaScript bundle |
-| `ios` | Swift library, keyboard simulator, containing-app UI, unsigned app/extension build |
+| `ios` | Swift library, keyboard simulator, installed keyboard typing/activation, containing-app UI, unsigned app/extension build |
 | `audit` | Locked Python and JavaScript dependency audits |
 
 The full standard set includes every task except `installer`. An affected
@@ -54,6 +54,17 @@ required matrix jobs with distinct evidence artifacts. Each keeps its 60-minute
 budget and runs native text-input regressions; the iOS aggregate requires both
 profiles, keyboard/library tests and the unsigned app build. Full local app
 validation and signed publication retain the two-profile run on one test build.
+
+The native job also runs the installed-keyboard fixture, including both activation
+and return attempts. Its Ruby dependency is `xcodeproj` 1.27.0. This scenario must
+pass in ordinary CI before release preparation; it also remains in the signed
+workflow. The existing native artifact retains its receipts, captures and logs.
+
+Use the first failed step and its retained evidence to choose the repair. A
+fixture assertion is a native acceptance failure; runner or tool setup is an
+environment failure. Credential, archive and Apple upload failures require their
+own signing or Apple evidence. Passing one layer does not clear another layer's
+failure. An uncertain upload requires Apple reconciliation before another upload.
 
 Python test modules have explicit suite ownership under `tests/`. Shared fakes
 belong in `tests/support/`. Tests must not import another test-case module as a

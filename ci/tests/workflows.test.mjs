@@ -121,6 +121,8 @@ test('native iOS validation includes app, keyboard, library and unsigned compila
   assert.match(ios.jobs.native['runs-on'], /CLARIFY_IOS_RUNNER/);
   assert.ok(ios.jobs.native.steps.some(step => step.run?.includes('swift test')));
   assert.ok(ios.jobs.native.steps.some(step => step.run?.includes('test-keyboard-ui.cjs')));
+  assert.ok(ios.jobs.native.steps.some(step => step.run === 'node scripts/test-keyboard-extension.cjs'),
+    'Installed typing and repeated activation must run before release preparation');
   assert.ok(ios.jobs.build.steps.some(step => step.run?.includes('CODE_SIGNING_ALLOWED=NO')));
   assert.ok(ios.jobs.app.steps.some(step => step.run === 'node scripts/test-app-ui.cjs'));
   assert.deepEqual(ios.jobs.app.strategy?.matrix.profile, ['regular', 'compact']);
