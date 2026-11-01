@@ -2,11 +2,11 @@
   "schema": 2,
   "component": "mobile",
   "version": "0.13.0",
-  "base_sha": "88544670767b0371e1a6a2a2f5009ff311df8a1b",
-  "notes": "Prepare TestFlight 0.13.0 (51) from PR208 merged source88544670767b0371e1a6a2a2f5009ff311df8a1b. Preserve keyboard activation, return to the source app, social sign-ins and user profiles. Only the mobile build number and reviewed release intent change.\n\nFresh complete Apple inventory41276547438/1 finished2026-11-01T05:20:29.633Z:32 builds and32 uploads, highest48; all upload/review collections complete, no pending review submission. Git reservations were checked separately: published tags and preparation refs through50; no51 ref, no open preparation PR and no active signed iOS run. These observations are not atomic. Tags49/50 and their failed signed runs remain untouched.\n\nRequire exact-source CI, signed IPA verification, upload confirmation, Apple processing VALID and availability in the existing Clarify internal group. Physical-iPhone and production-account WAN acceptance remain pending before App Store submission. This TestFlight preparation does not authorize App Store submission.",
+  "base_sha": "265dc0e8e89459b8a3f0f296be14d00fe4a52e5a",
+  "notes": "Prepare TestFlight 0.13.0 (52) from main source 265dc0e8e89459b8a3f0f296be14d00fe4a52e5a after reviewed Bitrise routing PR232. Canonical main CI41287562103/1 passed the required aggregate, native keyboard/library tests, both app UI profiles and unsigned app/extensions build on real Bitrise Macs. Product behavior is unchanged from the merged PR208 source. Preserve keyboard activation, return to the source app, social sign-ins and user profiles. This preparation changes only the mobile build number and release intent.\n\nComplete Apple inventory41276547438/1 finished 2026-11-01T05:20:29.633Z: 32 builds and 32 uploads, highest48; upload and review collections complete, no errors or pending review submission. Git reservations were checked separately before preparation: tags through50 and preparation refs through51; no52 ref or tag, no open preparation PR and no active signed iOS run. Build51 remains reserved and unuploaded; its old intent cannot authorize the changed workflow source. These observations are not atomic. Tags49/50 and all earlier signed/native/diagnostic runs remain untouched.\n\nRequire exact-source CI, signed IPA verification for the container and both extensions, confirmed upload, Apple processing VALID and availability in the existing internal group. Upload alone is not TestFlight availability. Physical-iPhone and production-account WAN acceptance remain pending before any App Store submission. The user authorized TestFlight testing only.",
   "evidence": {
-    "build": "51",
-    "highest_build": "50",
+    "build": "52",
+    "highest_build": "51",
     "pending_builds_checked": true,
     "checked_at": "2026-11-01T05:20:29Z",
     "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41276547438"
