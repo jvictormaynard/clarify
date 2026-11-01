@@ -211,6 +211,13 @@ that identity. Signed TestFlight dispatch uses the tag, exact SHA and
 cannot install signing credentials, archive a production IPA or upload it.
 Direct Xcode remains the signing owner. Validation is the default.
 
+For an explicitly authorized internal test, `internal_testing=true` keeps the
+native tests, original installed-keyboard typing and two-return checks, signing,
+IPA verification, upload and Apple availability checks. It defers the repeated
+full app UI run in the upload job. Ordinary CI retains its app profiles. The
+retained testing-scope receipt records incomplete full app acceptance; this mode
+does not establish App Store acceptance. The default upload still runs all tests.
+
 The TestFlight run verifies the signed IPA and both extensions, uploads that
 exact IPA, verifies Apple processing and existing internal-group availability,
 then seals `verification.json`, confirmed `upload-receipt.json`, availability

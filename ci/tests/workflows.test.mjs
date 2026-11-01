@@ -185,10 +185,26 @@ test('TestFlight and App Store use separate explicit actions and one Apple build
   assert.deepEqual(Object.keys(flight.on), ['workflow_dispatch']);
   assert.deepEqual(flight.on.workflow_dispatch.inputs.mode.options, ['validate', 'testflight', 'status', 'availability']);
   assert.equal(flight.on.workflow_dispatch.inputs.mode.default, 'validate');
+  assert.equal(flight.on.workflow_dispatch.inputs.internal_testing.default, false);
   const appFlow = Object.values(flight.jobs).flatMap(job => job.steps || [])
     .find(step => step.run === 'node scripts/test-app-ui.cjs');
   assert.equal(appFlow.env.CLARIFY_APP_UI_PROFILE,
     "$" + "{{ inputs.mode == 'validate' && inputs.app_ui_compact_only && 'compact' || 'all' }}");
+  for (const mode of ['validate', 'testflight', 'status', 'availability']) {
+    for (const internal of [false, true]) for (const diagnostic of [false, true]) {
+      const inputs = { mode, internal_testing: internal, extension_diagnostic: diagnostic };
+      assert.equal(runInNewContext(appFlow.if.slice(3, -2), { inputs }, { timeout: 100 }),
+        mode === 'testflight' ? !internal : mode === 'validate' && !diagnostic);
+    }
+  }
+  const flightSteps = Object.values(flight.jobs).flatMap(job => job.steps || []);
+  assert.equal(flightSteps.find(step => step.name === 'Test installed keyboard typing and activation').if, undefined);
+  for (const name of ['Verify signed app and both extensions', 'Upload directly to App Store Connect',
+    'Verify processing and publish to the existing internal group']) {
+    const matching = flightSteps.filter(step => step.name === name);
+    assert.ok(matching.length > 0, name);
+    assert.ok(matching.every(step => !(step.if || '').includes('internal_testing')), name);
+  }
   const store = workflows.get('ios-app-store.yml');
   assert.deepEqual(Object.keys(store.on), ['workflow_dispatch']);
   assert.deepEqual(store.on.workflow_dispatch.inputs.action.options, ['prepare-submission', 'prepare-release']);
