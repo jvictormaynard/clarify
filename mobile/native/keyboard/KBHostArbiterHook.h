@@ -66,7 +66,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// No-op on iOS < 26.4.
 + (void)activeArbiterCheck;
 
-/// Fresh host lookup for iOS versions before 26.4. No process-wide cache.
+/// Fresh current-controller host lookup; also a fallback for a missing arbiter
+/// capture on newer iOS versions. No process-wide cache.
 /// Private PKService/XPC compatibility path; exceptions and missing APIs return nil.
 + (nullable NSString *)legacyHostBundleIDForController:(UIInputViewController *)controller
     NS_SWIFT_NAME(legacyHostBundleID(for:));

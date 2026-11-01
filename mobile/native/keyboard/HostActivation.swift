@@ -52,7 +52,10 @@ extension KeyboardViewController {
         if source != nil || clock.now >= deadline { break }
         do { try await Task.sleep(nanoseconds: 20_000_000) } catch { return nil }
       }
-    } else {
+    }
+    if source == nil {
+      // Resolve the current controller's live host connection when the arbiter
+      // has not delivered a fresh destination. Never use a historical capture.
       source = KBHostArbiterHook.legacyHostBundleID(for: self)
     }
     guard !Task.isCancelled, view.window != nil,
