@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
@@ -117,7 +118,7 @@ test('destructive installer tests stay on disposable GitHub Windows', () => {
 
 test('native iOS validation includes app, keyboard, library and unsigned compilation', () => {
   const ios = workflows.get('ios-validation.yml');
-  assert.equal(ios.jobs.native['runs-on'], 'macos-26');
+  assert.match(ios.jobs.native['runs-on'], /CLARIFY_IOS_RUNNER/);
   assert.ok(ios.jobs.native.steps.some(step => step.run?.includes('swift test')));
   assert.ok(ios.jobs.native.steps.some(step => step.run?.includes('test-keyboard-ui.cjs')));
   assert.ok(ios.jobs.build.steps.some(step => step.run?.includes('CODE_SIGNING_ALLOWED=NO')));
@@ -199,4 +200,46 @@ test('TestFlight and App Store use separate explicit actions and one Apple build
   assert.equal(flight.concurrency.queue, 'max');
   assert.equal(flight.concurrency['cancel-in-progress'], false);
   assert.equal(store.concurrency.group, 'clarify-ios-testflight');
+});
+
+// Exercise the trust boundary and toolchain pair, not only a label's presence.
+test('optional Bitrise iOS routing isolates forks and selects the matching Xcode', () => {
+  function value(expression, github, setting) {
+    return runInNewContext(expression.slice(3, -2), { github, vars: { CLARIFY_IOS_RUNNER: setting } }, { timeout: 100 });
+  }
+  const canonical = 'jvictormaynard/clarify';
+  const context = (event, repository = canonical, head = canonical, ref = 'refs/heads/main') => ({
+    repository, event_name: event, ref, event: { pull_request: { head: { repo: { full_name: head } } } },
+  });
+  const validation = workflows.get('ios-validation.yml');
+  for (const job of [validation.jobs.native, validation.jobs.build, validation.jobs.app]) {
+    for (const [github, setting, bitrise] of [
+      [context('push'), 'bitrise', true],
+      [context('pull_request'), 'bitrise', true],
+      [context('workflow_dispatch'), 'bitrise', true],
+      [context('pull_request', canonical, 'external/fork'), 'bitrise', false],
+      [context('pull_request_target'), 'bitrise', false],
+      [context('push', canonical, canonical, 'refs/heads/other'), 'bitrise', false],
+      [context('workflow_dispatch', 'external/fork'), 'bitrise', false],
+      [context('push'), '', false],
+      [context('push'), 'unknown', false],
+    ]) {
+      assert.equal(value(job['runs-on'], github, setting), bitrise ? 'bitrise-runner-clarify-ios-validation' : 'macos-26');
+      assert.equal(value(job.env.DEVELOPER_DIR, github, setting), bitrise ? '/Applications/Xcode-26.6.0.app/Contents/Developer' : '/Applications/Xcode_26.6.app/Contents/Developer');
+    }
+  }
+  const publish = workflows.get('ios-testflight.yml').jobs.publish;
+  for (const [github, setting, bitrise] of [
+    [context('workflow_dispatch'), 'bitrise', true],
+    [context('workflow_dispatch', 'external/fork'), 'bitrise', false],
+    [context('pull_request'), 'bitrise', false],
+    [context('workflow_dispatch'), '', false],
+  ]) {
+    assert.equal(value(publish['runs-on'], github, setting), bitrise ? 'bitrise-runner-clarify-ios-validation' : 'macos-26');
+    assert.equal(value(publish.env.DEVELOPER_DIR, github, setting), bitrise ? '/Applications/Xcode-26.6.0.app/Contents/Developer' : '/Applications/Xcode_26.6.app/Contents/Developer');
+  }
+  const cache = validation.jobs.native.steps.find(step => step.id === 'native-cache');
+  assert.match(cache.with.key, /ios-tests-v2-/);
+  assert.ok(cache.with.key.includes('env.DEVELOPER_DIR'));
+  assert.ok(cache.with['restore-keys'].includes('env.DEVELOPER_DIR'));
 });
