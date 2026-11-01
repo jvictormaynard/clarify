@@ -134,6 +134,24 @@ test('native iOS validation includes app, keyboard, library and unsigned compila
   assert.deepEqual(new Set(ios.jobs.validate.needs), new Set(['native', 'build', 'app']));
 });
 
+test('focused installed-keyboard validation is manual and cannot report full acceptance', () => {
+  const ios = workflows.get('ios-validation.yml');
+  assert.equal(ios.on.workflow_dispatch.inputs.activation_only.type, 'boolean');
+  assert.equal(ios.on.workflow_dispatch.inputs.activation_only.default, false);
+  const full = "github.event_name != 'workflow_dispatch' || inputs.activation_only != true";
+  for (const id of ['build', 'app']) assert.equal(ios.jobs[id].if, full);
+  assert.equal(ios.jobs.validate.if, `always() && (${full})`);
+  const steps = ios.jobs.native.steps;
+  for (const step of steps.filter(step => /swift test|test-keyboard-ui.cjs/.test(step.run || ''))) {
+    assert.equal(step.if, full);
+  }
+  const installed = steps.find(step => step.run === 'node scripts/test-keyboard-extension.cjs');
+  assert.equal(installed.if, undefined);
+  assert.ok(steps.some(step => step.run?.includes('REVIEWED_SOURCE') && step.run.includes('GITHUB_SHA')));
+  assert.deepEqual(ios.permissions, { contents: 'read' });
+  assert.deepEqual(ios.on.workflow_call, {});
+});
+
 test('desktop publication consumes a sealed candidate across a permission boundary', () => {
   const release = workflows.get('release.yml');
   assert.deepEqual(Object.keys(release.on), ['workflow_dispatch']);

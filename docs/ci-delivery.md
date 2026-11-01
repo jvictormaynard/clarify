@@ -60,6 +60,13 @@ and return attempts. Its Ruby dependency is `xcodeproj` 1.27.0. This scenario mu
 pass in ordinary CI before release preparation; it also remains in the signed
 workflow. The existing native artifact retains its receipts, captures and logs.
 
+For an activation regression, the manual `ios-validation.yml` run accepts
+`activation_only=true` with the exact reviewed `source_sha`. It runs the original
+installed-keyboard fixture first, with a 20-minute job limit and required
+evidence. The containing-app profiles, unsigned build and full iOS aggregate
+are skipped in this focused mode. This result proves only the installed-keyboard
+scenario; ordinary PR/main CI and signed publication retain their full checks.
+
 Use the first failed step and its retained evidence to choose the repair. A
 fixture assertion is a native acceptance failure; runner or tool setup is an
 environment failure. Credential, archive and Apple upload failures require their
