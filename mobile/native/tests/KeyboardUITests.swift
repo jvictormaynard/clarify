@@ -1146,6 +1146,8 @@ final class KeyboardUITests: XCTestCase {
           window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
         }
         var state = store.snapshot(); state.computerMode = computerMode
+        // Window setup does not run the containing app's heartbeat producer.
+        state.heartbeat = Date().timeIntervalSince1970
         state.processingContext = computerMode ? "computer-fixture" : "account-fixture"
         try store.write(state, to: "state.json"); keyboard.refreshFromStore()
         keyboard.field.before = "Prefix "; keyboard.field.selectedText = "Original selection"
