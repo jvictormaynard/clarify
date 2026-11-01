@@ -203,6 +203,7 @@ final class KeyboardExtensionTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: URL(fileURLWithPath: root).appendingPathComponent("container-ready.json").path),
                   "The isolated containing app must initialize before testing its activation URL")
     let receipt = URL(fileURLWithPath: root).appendingPathComponent("return-trace.json")
+    let manualReturn = Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyInternalManualReturn") as? Bool == true
     for attempt in 0..<2 {
       if FileManager.default.fileExists(atPath: receipt.path) { try FileManager.default.removeItem(at: receipt) }
       XCTAssertTrue(start.waitForExistence(timeout: 5), app.debugDescription)
@@ -216,8 +217,18 @@ final class KeyboardExtensionTests: XCTestCase {
       diagnostic.name = "activation-return-\(attempt)"; diagnostic.lifetime = .keepAlways; add(diagnostic)
       let values = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: receipt))
       XCTAssertEqual(values["nonceConsumed"], "true", "The real activation request must be consumed")
+      if manualReturn && values["source"] == "unknown" {
+        XCTAssertEqual(values["opened"], "false", "Only the known unavailable automatic return is deferred")
+        XCTAssertEqual(values["navigationAction"], "nil")
+        let visible = expectation(for: NSPredicate { _, _ in container.state == .runningForeground }, evaluatedWith: nil)
+        wait(for: [visible], timeout: 5)
+        let screen = XCTAttachment(screenshot: container.screenshot())
+        screen.name = "internal-manual-return-\(attempt)"; screen.lifetime = .keepAlways; add(screen)
+        app.activate()
+      } else {
       XCTAssertEqual(values["source"], "com.clarify.fixture.host", "Resolve the current origin, not an old app")
       XCTAssertEqual(values["opened"], "true", "The production return bridge must accept the source")
+      }
       let back = expectation(for: NSPredicate { _, _ in
         app.state == .runningForeground && container.state != .runningForeground
       }, evaluatedWith: nil)

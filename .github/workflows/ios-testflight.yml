@@ -13,6 +13,10 @@ on:
         options: [validate, testflight, status, availability]
         default: validate
         required: true
+      internal_testing:
+        description: Internal TestFlight testing; keep installed keyboard checks and defer repeated full app UI acceptance
+        type: boolean
+        default: false
       extension_diagnostic:
         description: Also enforce the unresolved opening-height diagnostic (tests only)
         type: boolean
@@ -156,7 +160,7 @@ jobs:
         if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
         run: npm run test:native
       - name: Test first launch and navigation in the containing app
-        if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
+        if: ${{ (inputs.mode == 'testflight' && !inputs.internal_testing) || (inputs.mode == 'validate' && !inputs.extension_diagnostic) }}
         env:
           CLARIFY_APP_UI_COMPACT_ONLY: ${{ inputs.mode == 'validate' && inputs.app_ui_compact_only }}
           CLARIFY_APP_UI_PROFILE: ${{ inputs.mode == 'validate' && inputs.app_ui_compact_only && 'compact' || 'all' }}
@@ -178,6 +182,7 @@ jobs:
         run: node scripts/test-keyboard-ui.cjs
       - name: Test installed keyboard typing and activation
         env:
+          CLARIFY_INTERNAL_MANUAL_RETURN: ${{ inputs.mode == 'testflight' && inputs.internal_testing && '1' || '0' }}
           STRICT_OPENING_HEIGHT: ${{ inputs.mode == 'validate' && inputs.extension_diagnostic }}
         run: |
           if [[ "$STRICT_OPENING_HEIGHT" == 'true' ]]; then
@@ -185,6 +190,23 @@ jobs:
           else
             node scripts/test-keyboard-extension.cjs
           fi
+      - name: Record TestFlight testing scope
+        if: ${{ inputs.mode == 'testflight' }}
+        env:
+          INTERNAL_TESTING: ${{ inputs.internal_testing }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const internalTesting = process.env.INTERNAL_TESTING === 'true';
+          const completeAppAcceptance = !internalTesting &&
+            JSON.parse(fs.readFileSync('test-results/app-ui/summary.json', 'utf8')).completeAppAcceptance === true;
+          fs.writeFileSync('test-results/testflight-testing-scope.json', JSON.stringify({
+            source: process.env.GITHUB_SHA, internalTesting, completeAppAcceptance,
+            automaticReturnAccepted: !internalTesting,
+            knownLimitations: internalTesting ? ['automatic_return_requires_manual_app_switching'] : [],
+            appStoreAcceptance: false
+          }, null, 2));
+          NODE
       - name: Preserve simulator results
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -196,6 +218,7 @@ jobs:
             !mobile/test-results/app-ui/AppFlow.xcresult/Staging/**
             mobile/test-results/installed-keyboard-*
             mobile/test-results/short-dictation-acceptance.json
+            mobile/test-results/testflight-testing-scope.json
           if-no-files-found: ignore
           retention-days: 90
       - name: Build the containing app without signing

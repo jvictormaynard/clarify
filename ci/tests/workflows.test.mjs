@@ -121,6 +121,8 @@ test('native iOS validation includes app, keyboard, library and unsigned compila
   assert.match(ios.jobs.native['runs-on'], /CLARIFY_IOS_RUNNER/);
   assert.ok(ios.jobs.native.steps.some(step => step.run?.includes('swift test')));
   assert.ok(ios.jobs.native.steps.some(step => step.run?.includes('test-keyboard-ui.cjs')));
+  assert.ok(ios.jobs.native.steps.some(step => step.run === 'node scripts/test-keyboard-extension.cjs'),
+    'Installed fixture must remain available for explicit acceptance');
   assert.ok(ios.jobs.build.steps.some(step => step.run?.includes('CODE_SIGNING_ALLOWED=NO')));
   assert.ok(ios.jobs.app.steps.some(step => step.run === 'node scripts/test-app-ui.cjs'));
   assert.deepEqual(ios.jobs.app.strategy?.matrix.profile, ['regular', 'compact']);
@@ -130,6 +132,26 @@ test('native iOS validation includes app, keyboard, library and unsigned compila
   assert.ok(appEvidence.with.name.includes('$' + '{{ matrix.profile }}'));
   assert.deepEqual(ios.permissions, { contents: 'read' });
   assert.deepEqual(new Set(ios.jobs.validate.needs), new Set(['native', 'build', 'app']));
+});
+
+test('focused installed-keyboard validation is manual and cannot report full acceptance', () => {
+  const ios = workflows.get('ios-validation.yml');
+  assert.equal(ios.on.workflow_dispatch.inputs.activation_only.type, 'boolean');
+  assert.equal(ios.on.workflow_dispatch.inputs.activation_only.default, false);
+  const full = "github.event_name != 'workflow_dispatch' || inputs.activation_only != true";
+  for (const id of ['build', 'app']) assert.equal(ios.jobs[id].if, full);
+  assert.equal(ios.jobs.validate.if, `always() && (${full})`);
+  const steps = ios.jobs.native.steps;
+  for (const step of steps.filter(step => /swift test|test-keyboard-ui.cjs/.test(step.run || ''))) {
+    assert.equal(step.if, full);
+  }
+  const installed = steps.find(step => step.run === 'node scripts/test-keyboard-extension.cjs');
+  assert.equal(installed.if, "github.event_name == 'workflow_dispatch' && inputs.activation_only == true");
+  assert.equal(ios.on.workflow_dispatch.inputs.manual_return.default, false);
+  assert.equal(installed.env.CLARIFY_INTERNAL_MANUAL_RETURN, "$" + "{{ inputs.manual_return && '1' || '0' }}");
+  assert.ok(steps.some(step => step.run?.includes('REVIEWED_SOURCE') && step.run.includes('GITHUB_SHA')));
+  assert.deepEqual(ios.permissions, { contents: 'read' });
+  assert.deepEqual(ios.on.workflow_call, {});
 });
 
 test('desktop publication consumes a sealed candidate across a permission boundary', () => {
@@ -185,10 +207,31 @@ test('TestFlight and App Store use separate explicit actions and one Apple build
   assert.deepEqual(Object.keys(flight.on), ['workflow_dispatch']);
   assert.deepEqual(flight.on.workflow_dispatch.inputs.mode.options, ['validate', 'testflight', 'status', 'availability']);
   assert.equal(flight.on.workflow_dispatch.inputs.mode.default, 'validate');
+  assert.equal(flight.on.workflow_dispatch.inputs.internal_testing.default, false);
   const appFlow = Object.values(flight.jobs).flatMap(job => job.steps || [])
     .find(step => step.run === 'node scripts/test-app-ui.cjs');
   assert.equal(appFlow.env.CLARIFY_APP_UI_PROFILE,
     "$" + "{{ inputs.mode == 'validate' && inputs.app_ui_compact_only && 'compact' || 'all' }}");
+  for (const mode of ['validate', 'testflight', 'status', 'availability']) {
+    for (const internal of [false, true]) for (const diagnostic of [false, true]) {
+      const inputs = { mode, internal_testing: internal, extension_diagnostic: diagnostic };
+      assert.equal(runInNewContext(appFlow.if.slice(3, -2), { inputs }, { timeout: 100 }),
+        mode === 'testflight' ? !internal : mode === 'validate' && !diagnostic);
+    }
+  }
+  const flightSteps = Object.values(flight.jobs).flatMap(job => job.steps || []);
+  assert.equal(flightSteps.find(step => step.name === 'Test installed keyboard typing and activation').if, undefined);
+  const manual = flightSteps.find(step => step.name === 'Test installed keyboard typing and activation').env.CLARIFY_INTERNAL_MANUAL_RETURN;
+  for (const mode of ['validate', 'testflight', 'status', 'availability']) for (const internal_testing of [true, false]) {
+    assert.equal(runInNewContext(manual.slice(3, -2), {inputs: {mode, internal_testing}}),
+      mode === 'testflight' && internal_testing ? '1' : '0');
+  }
+  for (const name of ['Verify signed app and both extensions', 'Upload directly to App Store Connect',
+    'Verify processing and publish to the existing internal group']) {
+    const matching = flightSteps.filter(step => step.name === name);
+    assert.ok(matching.length > 0, name);
+    assert.ok(matching.every(step => !(step.if || '').includes('internal_testing')), name);
+  }
   const store = workflows.get('ios-app-store.yml');
   assert.deepEqual(Object.keys(store.on), ['workflow_dispatch']);
   assert.deepEqual(store.on.workflow_dispatch.inputs.action.options, ['prepare-submission', 'prepare-release']);
