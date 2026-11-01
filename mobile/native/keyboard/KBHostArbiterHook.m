@@ -124,6 +124,11 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
 
 @implementation KBHostArbiterHook
 
++ (nullable NSUUID *)documentIdentifierForProxy:(id<UITextDocumentProxy>)proxy {
+    id identifier = proxy.documentIdentifier;
+    return [identifier isKindOfClass:[NSUUID class]] ? identifier : nil;
+}
+
 + (nullable NSString *)legacyHostBundleIDForController:(UIInputViewController *)controller {
     if (!NSThread.isMainThread || !controller.isViewLoaded || !controller.view.window) return nil;
     @try {

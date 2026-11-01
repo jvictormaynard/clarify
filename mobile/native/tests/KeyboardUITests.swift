@@ -609,6 +609,28 @@ final class KeyboardUITests: XCTestCase {
     XCTAssertNil(queried, "Disappearance cancels a suspended request")
     XCTAssertNil(scope.source(scope, document: document, read: { _ in nil }),
       "Native invalidation or an invalid destination must stay rejected")
+    queried = nil
+    XCTAssertNil(scope.source(scope, document: nil, read: currentHost))
+    let unavailable = HostActivationScope(document: nil, generation: 12)
+    XCTAssertNil(unavailable.source(unavailable, document: nil, read: currentHost))
+    XCTAssertNil(unavailable.source(unavailable, document: document, read: currentHost))
+    XCTAssertNil(queried, "An unavailable document must never authorize a cached origin")
+  }
+  func testActivationSourceHandlesAnUnattachedUIKitDocument() async {
+    await MainActor.run {
+      let keyboard = KeyboardViewController()
+      keyboard.beginActivationSourceScope()
+      keyboard.refreshActivationDocument()
+      let document = KBHostArbiterHook.documentIdentifier(for: keyboard.textDocumentProxy)
+      let scope = keyboard.activationSourceScope!
+      XCTAssertEqual(scope.document, document)
+      XCTAssertEqual(scope.matches(scope, document: document), document != nil)
+      let field = Field()
+      XCTAssertEqual(KBHostArbiterHook.documentIdentifier(for: field), field.documentIdentifier)
+      keyboard.invalidateActivationSource()
+      keyboard.refreshActivationDocument()
+      XCTAssertNil(keyboard.activationSourceScope, "A late document callback must not restart a dismissed scope")
+    }
   }
   func testLegacySourceLookupFailsClosedWhenDetachedOrTheOSParentHasChanged() async {
     await MainActor.run {

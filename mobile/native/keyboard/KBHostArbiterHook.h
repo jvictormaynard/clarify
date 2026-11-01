@@ -13,6 +13,7 @@
 
 #import <Foundation/Foundation.h>
 @class UIInputViewController;
+@protocol UITextDocumentProxy;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -27,6 +28,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// should fall back to the legacy PKService path (see `LegacyHostResolver`).
 /// Installation retries when a query initializes a lazily loaded UIKit class.
 @interface KBHostArbiterHook : NSObject
+
+/// UIKit can return nil during attachment despite its nonnull declaration.
+/// Keep that absence optional before Swift bridges the document UUID.
++ (nullable NSUUID *)documentIdentifierForProxy:(id<UITextDocumentProxy>)proxy
+    NS_SWIFT_NAME(documentIdentifier(for:));
 
 /// Returns the most recent host Bundle ID observed by the swizzle in the
 /// current process, or `nil` if the hook has not fired yet (or is disabled
