@@ -159,6 +159,7 @@ jobs:
         if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
         env:
           CLARIFY_APP_UI_COMPACT_ONLY: ${{ inputs.mode == 'validate' && inputs.app_ui_compact_only }}
+          CLARIFY_APP_UI_PROFILE: ${{ inputs.mode == 'validate' && inputs.app_ui_compact_only && 'compact' || 'all' }}
         run: node scripts/test-app-ui.cjs
       - name: Validate short speech with the live mobile client
         if: ${{ inputs.short_dictation_acceptance }}

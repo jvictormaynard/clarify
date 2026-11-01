@@ -1,4 +1,5 @@
 import json
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -9,6 +10,26 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class RepositorySafetyTests(unittest.TestCase):
+    def test_validation_outputs_are_not_tracked(self):
+        tracked = (
+            subprocess.run(
+                ["git", "-C", str(ROOT), "ls-files", "-z"],
+                check=True,
+                capture_output=True,
+                timeout=10,
+            )
+            .stdout.decode("utf-8", errors="surrogateescape")
+            .split("\0")
+        )
+        reserved = (".artifacts/", ".plans/", ".t3/", ".github/pr-assets/")
+        generated = {"test-results", "playwright-report", "__screenshots__"}
+        rejected = [
+            name
+            for name in tracked
+            if name.startswith(reserved) or generated.intersection(Path(name).parts)
+        ]
+        self.assertEqual(rejected, [], "Keep validation output outside Git")
+
     def test_dependabot_uses_versioning_strategy_only_where_supported(self):
         config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
         pip_section, actions_section = config.split(

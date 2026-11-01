@@ -11,6 +11,6 @@ Define the question, its decision, and the time sensitivity. Inspect the project
 
 Separate verified facts, source-based inference, and unknowns. Cite the exact source URL or file and the version or date where it matters. Compare relevant alternatives against Clarify's architecture, runtime size, Windows support, tests, and licensing.
 
-Write a concise note under `docs/agents/research/` only when the result will be reused; otherwise include the evidence in the current answer or PR. Keep credentials, transcripts, recordings, and personal paths out of notes.
+Keep findings in the answer, PR, or an OS temporary file. Retain an accepted durable constraint in its existing documentation owner under [documentation rules](../../../docs/agents/workflow.md#documentation-that-lasts); expected reuse alone does not justify a tracked research log. Keep credentials, transcripts, recordings, and personal paths out of notes.
 
 Research runs locally by default. Delegate only when the user explicitly requested agents and the environment permits them. A research result is not permission to add a dependency, provision a service, or perform publication.

@@ -1,32 +1,29 @@
 ---
 name: tdd
-description: "Implement changed behavior or regressions through isolated red, green, and refactor cycles."
+description: "Implement behavior changes with useful regression tests through isolated red, green, and refactor cycles."
 ---
-
-Follow the [project workflow](../../../docs/agents/workflow.md); it defines scope, authorization, validation, and completion.
 
 # Test changed Clarify behavior
 
-Choose the public contract from the code and the acceptance criteria. Prefer existing tests and fixtures. Explain the selected boundary briefly; technical test choices do not require a new user approval.
+Apply [tests worth retaining](../../../docs/agents/workflow.md#tests-worth-retaining)
+before choosing TDD. Inspect the real contract and existing tests. Name the
+regression risk, choose the lowest useful boundary, and extend an existing case
+or table where it fits. Test-boundary choices do not require user approval.
 
-For each useful behavior:
-1. Write a focused test with an independent expected result.
-2. Run it and confirm it fails for the target behavior, not an import or environment error.
-3. Make the smallest coherent implementation.
-4. Run the test again.
-5. Refactor when it improves the design, then rerun the affected tests.
+For each distinct risk:
 
-Use `unittest` for Python, Vitest for headless Settings units, and the existing
-Playwright/Python fixture for browser, bridge and production boot checks. Follow
-the [test boundaries](../../../docs/ci-delivery.md#ownership-and-commands).
-Use fake HTTP, clocks, schedulers, clipboard gateways, secret stores, and
-temporary profiles. Keep real provider keys, microphones, and personal audio
-outside tests.
+1. Add an independent expected result that can detect the actual symptom.
+2. Run it before the fix. Confirm failure comes from behavior, not the environment.
+3. Make the smallest coherent implementation and confirm the test passes.
+4. Refactor when useful, then rerun affected checks. Do not repeat the final suite
+   without a new change, failure, or unresolved concern.
 
-Assert observable contracts. Internal tests are appropriate when a private synchronization or platform contract is the only way to prove a real invariant; explain that choice. Call order and counts matter when they prove once-only publication, retry bounds, or ownership.
+Use the existing unittest, Vitest, and Playwright/Python fixtures under the
+[shared test boundaries](../../../docs/ci-delivery.md#ownership-and-commands).
+Keep external effects fake and profiles temporary. Internal assertions and call
+counts are useful when they protect an actual platform, security, concurrency,
+or once-only effect contract.
 
-Cover the cases that can change the outcome: success, failure, cancellation, stale operation, and compatibility where relevant. Do not write a test for each implementation line. Documentation-only and reversible cosmetic changes usually need validation, not new product tests.
-
-Preserve old tests until their behavioral coverage is replaced and any platform, migration, or security evidence is accounted for. A passing unit test does not prove native Windows interaction.
-
-Read [Clarify test examples](references/test-examples.md) if the contract or fixture choice is unclear.
+Pure cosmetic/copy edits and one-time smoke checks can use direct validation
+without new retained tests. Do not discard distinct existing coverage.
+Read [test examples](references/test-examples.md) only when a boundary is unclear.
