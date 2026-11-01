@@ -64,5 +64,5 @@ jobs:
         run: |
           id
           ps -axo pid,ppid,user,comm | grep -E '(CoreSimulator|Simulator|simdiskimaged)' || true
-          launchctl print "gui/$(id -u)" | head -40 || true
+          launchctl print "gui/$(id -u)" | grep -E '(type =|state =|active count =|CoreSimulator)' | head -40 || true
           log show --last 2m --style compact --predicate 'subsystem BEGINSWITH "com.apple.CoreSimulator"' 2>/dev/null | tail -120 || true
