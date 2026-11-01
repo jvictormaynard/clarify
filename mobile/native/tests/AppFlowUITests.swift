@@ -44,6 +44,10 @@ final class AppFlowUITests: XCTestCase {
     guard XCTWaiter.wait(for: [reachable], timeout: 5) == .completed else {
       diagnose("unreachable-\(identifier)"); XCTFail("Unreachable action: \(identifier)"); return
     }
+    if identifier == "actions.cancel" {
+      XCTAssertEqual(fixture("/__fixture/animation-before-cancel")["captured"] as? Bool, true)
+      print("APP_UI_ANIMATION_BEFORE_CANCEL")
+    }
     button.tap()
   }
   func tab(_ label: String) {
@@ -56,6 +60,9 @@ final class AppFlowUITests: XCTestCase {
       guard proceed.waitForExistence(timeout: 5) && proceed.isHittable else {
         diagnose("keyboard-introduction-blocked"); XCTFail("Cannot finish the system keyboard introduction"); return
       }
+      XCTAssertEqual(fixture("/__fixture/animation-before-keyboard-continue")["captured"] as? Bool, true)
+      print("APP_UI_KEYBOARD_INTRO_BEFORE_CONTINUE exists=\(introduction.exists) hittable=\(proceed.isHittable)")
+      capture("diagnostic-before-keyboard-continue")
       proceed.tap()
       let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: introduction)
       guard XCTWaiter.wait(for: [closed], timeout: 5) == .completed else {
@@ -111,7 +118,11 @@ final class AppFlowUITests: XCTestCase {
     reveal(field, identifier: field.identifier.isEmpty ? field.label : field.identifier)
     field.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
-    if replacing { field.typeKey("a", modifierFlags: .command) }
+    if replacing {
+      XCTAssertEqual(fixture("/__fixture/animation-capture")["captured"] as? Bool, true)
+      print("APP_UI_ANIMATION_BEFORE_REPLACE \(name)")
+      field.typeKey("a", modifierFlags: .command)
+    }
     field.typeText(value)
     // Keep the first observation; event synthesis can finish before UIKit input delivery.
     let firstRead = field.value as? String
