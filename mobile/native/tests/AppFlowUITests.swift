@@ -16,8 +16,12 @@ final class AppFlowUITests: XCTestCase {
     print("APP_UI_DIAGNOSTIC \(name)\n\(app.debugDescription)")
   }
   func reveal(_ element: XCUIElement, identifier: String) {
-    for _ in 0..<6 where !element.isHittable {
+    for _ in 0..<6 {
       let page = app.scrollViews.containing(element.elementType, identifier: identifier).firstMatch
+      let viewport = page.exists ? page.frame.intersection(app.frame) : app.frame
+      let center = CGPoint(x: element.frame.midX, y: element.frame.midY)
+      // Require the target inside the scroll viewport even when AX reports hittable.
+      if element.isHittable && viewport.contains(center) { return }
       if page.exists && page.frame.height > 0 && page.frame.intersects(app.frame) {
         let down = element.frame.midY < page.frame.midY
         let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: down ? 0.2 : 0.8))
@@ -36,7 +40,8 @@ final class AppFlowUITests: XCTestCase {
       diagnose("disabled-\(identifier)"); XCTFail("Disabled action: \(identifier)"); return
     }
     if allowScroll { reveal(button, identifier: identifier) }
-    guard button.isHittable else {
+    let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
+    guard XCTWaiter.wait(for: [reachable], timeout: 5) == .completed else {
       diagnose("unreachable-\(identifier)"); XCTFail("Unreachable action: \(identifier)"); return
     }
     button.tap()
