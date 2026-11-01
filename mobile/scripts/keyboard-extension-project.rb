@@ -1,6 +1,8 @@
 require 'xcodeproj'
 root, fixture, strict_opening_height = ARGV
 height_diagnostics = ENV['CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS'] == '1'
+host_trace = ENV['CLARIFY_HOST_ACTIVATION_TRACE'] == '1'
+raise 'Host trace must not enable height instrumentation' if host_trace && height_diagnostics
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
@@ -63,6 +65,10 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
 
     + (void)activeArbiterCheck
     OBJC
+  end
+  if host_trace && %w[HostActivation.swift KBHostArbiterHook.m].include?(name)
+    source = File.join(fixture, name)
+    raise 'Host trace generation failed' unless system('node', File.join(root, 'scripts/host-activation-trace.cjs'), File.join(root, 'native/keyboard', name), source)
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end

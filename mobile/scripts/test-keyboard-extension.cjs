@@ -4,6 +4,8 @@ const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const strictOpeningHeight = process.argv.includes('--check-opening-height');
 const keyboardHeightDiagnostics = process.env.CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS === '1';
+const diagnosticHostTrace = process.env.CLARIFY_HOST_ACTIVATION_TRACE === '1';
+const hostTraceErrors = [];
 if (process.argv.slice(2).some(argument => argument !== '--check-opening-height')) throw new Error('Unknown installed keyboard test argument.');
 if (process.platform !== 'darwin') throw new Error('The installed extension diagnostic requires macOS.');
 const root = process.cwd();
@@ -83,8 +85,31 @@ try {
   }
   const projectFile = path.join(fixture, 'KeyboardExtension.xcodeproj/project.pbxproj');
   if (fs.existsSync(projectFile)) fs.copyFileSync(projectFile, path.join(results, 'generated-project.pbxproj'));
+  if (diagnosticHostTrace) {
+    try {
+      for (const name of ['HostActivation.swift', 'KBHostArbiterHook.m']) {
+        fs.copyFileSync(path.join(fixture, name), path.join(results, 'trace-' + name));
+      }
+      if (logs.status !== 0) throw new Error('Native log harvest failed or was truncated.');
+      const trace = fs.readFileSync(path.join(results, 'extension-log.txt'), 'utf8');
+      for (const marker of ['installed queue=1 handled=1 enabled=1', 'query after=']) {
+        if (!trace.includes(marker)) hostTraceErrors.push('Missing native trace marker: ' + marker);
+      }
+      const counts = ['begin uptime=', 'deadline-created uptime=', 'resolved uptime='].map(marker =>
+        (trace.match(new RegExp('ClarifyHostTrace ' + marker, 'g')) || []).length);
+      if (counts[0] < 1 || counts.some(count => count !== counts[0]) || (exitCode === 0 && counts[0] !== 2)) {
+        hostTraceErrors.push('Incomplete Swift activation intervals: ' + counts.join('/'));
+      }
+    } catch (error) {
+      hostTraceErrors.push(error.message);
+    }
+    if (hostTraceErrors.length) {
+      console.error('Host trace evidence errors:', JSON.stringify(hostTraceErrors));
+      if (exitCode === 0) exitCode = 1;
+    }
+  }
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
-  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, exitCode }, null, 2));
+  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, diagnosticHostTrace, hostTraceErrors, completeKeyboardAcceptance: false, exitCode }, null, 2));
 }
 process.exitCode = exitCode;
