@@ -7,7 +7,7 @@ permissions:
 jobs:
   native:
     name: Native keyboard and library tests
-    runs-on: macos-26
+    runs-on: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch') && 'bitrise-runner-clarify-ios-validation' || 'macos-26' }}
     timeout-minutes: 60
     defaults:
       run:
@@ -15,7 +15,7 @@ jobs:
     env:
       CI: "1"
       EXPO_NO_TELEMETRY: "1"
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch') && '/Applications/Xcode-26.6.0.app/Contents/Developer' || '/Applications/Xcode_26.6.app/Contents/Developer' }}
       CLARIFY_IOS_RUNTIME: iOS-26-5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -32,9 +32,9 @@ jobs:
             mobile/modules/clarify-core/.build
             ${{ runner.temp }}/ClarifyKeyboardUI
             ${{ runner.temp }}/ClarifyKeyboardUIFixture
-          key: ios-tests-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-${{ hashFiles('mobile/modules/clarify-core/Package.swift', 'mobile/modules/clarify-core/Package.resolved', 'mobile/modules/clarify-core/ios/**/*.swift', 'mobile/modules/clarify-core/tests/**/*.swift', 'mobile/native/keyboard/**', 'mobile/native/tests/**', 'mobile/scripts/test-keyboard-ui.cjs') }}
+          key: ios-tests-v2-${{ env.DEVELOPER_DIR == '/Applications/Xcode-26.6.0.app/Contents/Developer' && 'bitrise' || 'github' }}-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-${{ hashFiles('mobile/modules/clarify-core/Package.swift', 'mobile/modules/clarify-core/Package.resolved', 'mobile/modules/clarify-core/ios/**/*.swift', 'mobile/modules/clarify-core/tests/**/*.swift', 'mobile/native/keyboard/**', 'mobile/native/tests/**', 'mobile/scripts/test-keyboard-ui.cjs') }}
           restore-keys: |
-            ios-tests-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-
+            ios-tests-v2-${{ env.DEVELOPER_DIR == '/Applications/Xcode-26.6.0.app/Contents/Developer' && 'bitrise' || 'github' }}-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-
       - run: swift test --package-path modules/clarify-core
       - name: Test native keyboard and library integration
         env:
@@ -52,7 +52,7 @@ jobs:
           retention-days: 7
   build:
     name: Unsigned app and extensions build
-    runs-on: macos-26
+    runs-on: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch') && 'bitrise-runner-clarify-ios-validation' || 'macos-26' }}
     timeout-minutes: 60
     defaults:
       run:
@@ -60,7 +60,7 @@ jobs:
     env:
       CI: "1"
       EXPO_NO_TELEMETRY: "1"
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch') && '/Applications/Xcode-26.6.0.app/Contents/Developer' || '/Applications/Xcode_26.6.app/Contents/Developer' }}
       CLARIFY_IOS_RUNTIME: iOS-26-5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -85,7 +85,7 @@ jobs:
           retention-days: 7
   app:
     name: Containing app UI tests (${{ matrix.profile }})
-    runs-on: macos-26
+    runs-on: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch') && 'bitrise-runner-clarify-ios-validation' || 'macos-26' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -97,7 +97,7 @@ jobs:
     env:
       CI: "1"
       EXPO_NO_TELEMETRY: "1"
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch') && '/Applications/Xcode-26.6.0.app/Contents/Developer' || '/Applications/Xcode_26.6.app/Contents/Developer' }}
       CLARIFY_IOS_RUNTIME: iOS-26-5
       CLARIFY_APP_UI_PROFILE: ${{ matrix.profile }}
     steps:

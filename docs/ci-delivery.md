@@ -6,6 +6,24 @@ manual runs add extended checks, including the disposable installer lifecycle.
 Contribution-branch pushes do not start a duplicate run. Validation does not
 publish a desktop or mobile release. Fork PRs need no signing or provider keys.
 
+## Optional Bitrise macOS capacity
+
+Set repository variable `CLARIFY_IOS_RUNNER=bitrise` to use the existing
+`bitrise-runner-clarify-ios-validation` pool for canonical main pushes, same-repo
+PRs and manual iOS runs. Fork PRs and unrecognized events keep GitHub-hosted
+`macos-26`. Removing the variable restores that default.
+
+The Bitrise pool uses Xcode 26.6 at
+`/Applications/Xcode-26.6.0.app/Contents/Developer`; GitHub uses
+`/Applications/Xcode_26.6.app/Contents/Developer`. Native build caches are
+separated by host. Test commands, regular/compact profiles, budgets and required
+checks are the same. Manual TestFlight runs retain the reviewed tag/source gate,
+protected signing environment, temporary keychain cleanup and IPA/upload checks.
+
+The pool needs active Bitrise capacity. The current Build Hub trial ends on
+2026-11-15 and does not renew automatically. No paid plan or RDE beta is enabled
+by this variable. This runner selection does not enable release promotion.
+
 ## Ownership and commands
 
 `ci/impact.py` owns dependency selection. `ci/tasks.py` owns component commands.
@@ -137,8 +155,9 @@ An organization repository can set `CI_RUNNER_PROVIDER=blacksmith` to route
 eligible Linux jobs to `blacksmith-4vcpu-ubuntu-2404`. Invalid values fail. The
 planner rejects Blacksmith on personal repositories. Clarify is currently under
 a personal account, so this option is inactive. Install and verify the
-organization integration before changing the variable. Windows packaging and
-Xcode remain on GitHub runners. See [Blacksmith setup](https://docs.blacksmith.sh/introduction/quickstart)
+organization integration before changing the variable. Xcode routing uses the
+separate optional Bitrise setting above. Windows packaging
+remains on GitHub runners. See [Blacksmith setup](https://docs.blacksmith.sh/introduction/quickstart)
 and [runner images](https://docs.blacksmith.sh/blacksmith-runners/overview).
 
 ## Delivery and reference

@@ -105,7 +105,7 @@ jobs:
       always() && github.repository == 'jvictormaynard/clarify' &&
       (inputs.mode == 'validate' ||
        (inputs.mode == 'testflight' && needs.release_gate.outputs.result == 'publish'))
-    runs-on: macos-26
+    runs-on: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && github.event_name == 'workflow_dispatch' && 'bitrise-runner-clarify-ios-validation' || 'macos-26' }}
     timeout-minutes: 120
     environment: ${{ inputs.mode == 'testflight' && 'ios-testflight' || 'ios-validation' }}
     defaults:
@@ -115,7 +115,7 @@ jobs:
     env:
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && github.event_name == 'workflow_dispatch' && '/Applications/Xcode-26.6.0.app/Contents/Developer' || '/Applications/Xcode_26.6.app/Contents/Developer' }}
       CLARIFY_IOS_RUNTIME: iOS-26-5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
