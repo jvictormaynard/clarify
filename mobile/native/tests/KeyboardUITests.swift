@@ -590,48 +590,6 @@ final class KeyboardUITests: XCTestCase {
       window.isHidden = true
     }
   }
-  func testActivationSourceScopeKeepsOnlyTheCurrentPresentationAndDocument() {
-    let document = UUID()
-    let scope = HostActivationScope(document: document, generation: 7)
-    var queried: UInt64?
-    let currentHost: (UInt64) -> String? = { queried = $0; return "com.clarify.fixture.host" }
-    // Generation 8 arrived after presentation began, before the button tap.
-    // The tap must retain baseline 7, so the native freshness check can use it.
-    XCTAssertEqual(scope.source(scope, document: document, read: currentHost), "com.clarify.fixture.host")
-    XCTAssertEqual(queried, 7)
-    for (current, selectedDocument) in [(scope, UUID()), (HostActivationScope(document: document, generation: 10), document)] {
-      queried = nil
-      XCTAssertNil(scope.source(current, document: selectedDocument, read: currentHost))
-      XCTAssertNil(queried, "A different document or presentation must not read the previous origin")
-    }
-    queried = nil
-    XCTAssertNil(scope.source(nil, document: document, read: currentHost))
-    XCTAssertNil(queried, "Disappearance cancels a suspended request")
-    XCTAssertNil(scope.source(scope, document: document, read: { _ in nil }),
-      "Native invalidation or an invalid destination must stay rejected")
-    queried = nil
-    XCTAssertNil(scope.source(scope, document: nil, read: currentHost))
-    let unavailable = HostActivationScope(document: nil, generation: 12)
-    XCTAssertNil(unavailable.source(unavailable, document: nil, read: currentHost))
-    XCTAssertNil(unavailable.source(unavailable, document: document, read: currentHost))
-    XCTAssertNil(queried, "An unavailable document must never authorize a cached origin")
-  }
-  func testActivationSourceHandlesAnUnattachedUIKitDocument() async {
-    await MainActor.run {
-      let keyboard = KeyboardViewController()
-      keyboard.beginActivationSourceScope()
-      keyboard.refreshActivationDocument()
-      let document = KBHostArbiterHook.documentIdentifier(for: keyboard.textDocumentProxy)
-      let scope = keyboard.activationSourceScope!
-      XCTAssertEqual(scope.document, document)
-      XCTAssertEqual(scope.matches(scope, document: document), document != nil)
-      let field = Field()
-      XCTAssertEqual(KBHostArbiterHook.documentIdentifier(for: field), field.documentIdentifier)
-      keyboard.invalidateActivationSource()
-      keyboard.refreshActivationDocument()
-      XCTAssertNil(keyboard.activationSourceScope, "A late document callback must not restart a dismissed scope")
-    }
-  }
   func testLegacySourceLookupFailsClosedWhenDetachedOrTheOSParentHasChanged() async {
     await MainActor.run {
       let keyboard = KeyboardViewController()

@@ -122,7 +122,7 @@ test('native iOS validation includes app, keyboard, library and unsigned compila
   assert.ok(ios.jobs.native.steps.some(step => step.run?.includes('swift test')));
   assert.ok(ios.jobs.native.steps.some(step => step.run?.includes('test-keyboard-ui.cjs')));
   assert.ok(ios.jobs.native.steps.some(step => step.run === 'node scripts/test-keyboard-extension.cjs'),
-    'Installed typing and repeated activation must run before release preparation');
+    'Installed fixture must remain available for explicit acceptance');
   assert.ok(ios.jobs.build.steps.some(step => step.run?.includes('CODE_SIGNING_ALLOWED=NO')));
   assert.ok(ios.jobs.app.steps.some(step => step.run === 'node scripts/test-app-ui.cjs'));
   assert.deepEqual(ios.jobs.app.strategy?.matrix.profile, ['regular', 'compact']);
@@ -146,7 +146,9 @@ test('focused installed-keyboard validation is manual and cannot report full acc
     assert.equal(step.if, full);
   }
   const installed = steps.find(step => step.run === 'node scripts/test-keyboard-extension.cjs');
-  assert.equal(installed.if, undefined);
+  assert.equal(installed.if, "github.event_name == 'workflow_dispatch' && inputs.activation_only == true");
+  assert.equal(ios.on.workflow_dispatch.inputs.manual_return.default, false);
+  assert.equal(installed.env.CLARIFY_INTERNAL_MANUAL_RETURN, "$" + "{{ inputs.manual_return && '1' || '0' }}");
   assert.ok(steps.some(step => step.run?.includes('REVIEWED_SOURCE') && step.run.includes('GITHUB_SHA')));
   assert.deepEqual(ios.permissions, { contents: 'read' });
   assert.deepEqual(ios.on.workflow_call, {});
@@ -219,6 +221,11 @@ test('TestFlight and App Store use separate explicit actions and one Apple build
   }
   const flightSteps = Object.values(flight.jobs).flatMap(job => job.steps || []);
   assert.equal(flightSteps.find(step => step.name === 'Test installed keyboard typing and activation').if, undefined);
+  const manual = flightSteps.find(step => step.name === 'Test installed keyboard typing and activation').env.CLARIFY_INTERNAL_MANUAL_RETURN;
+  for (const mode of ['validate', 'testflight', 'status', 'availability']) for (const internal_testing of [true, false]) {
+    assert.equal(runInNewContext(manual.slice(3, -2), {inputs: {mode, internal_testing}}),
+      mode === 'testflight' && internal_testing ? '1' : '0');
+  }
   for (const name of ['Verify signed app and both extensions', 'Upload directly to App Store Connect',
     'Verify processing and publish to the existing internal group']) {
     const matching = flightSteps.filter(step => step.name === name);

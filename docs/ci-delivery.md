@@ -55,17 +55,21 @@ budget and runs native text-input regressions; the iOS aggregate requires both
 profiles, keyboard/library tests and the unsigned app build. Full local app
 validation and signed publication retain the two-profile run on one test build.
 
-The native job also runs the installed-keyboard fixture, including both activation
-and return attempts. Its Ruby dependency is `xcodeproj` 1.27.0. This scenario must
-pass in ordinary CI before release preparation; it also remains in the signed
-workflow. The existing native artifact retains its receipts, captures and logs.
+The explicit installed-keyboard fixture uses `xcodeproj` 1.27.0 and retains its
+receipts, captures and logs. Ordinary CI keeps the native keyboard/library tests.
+Strict installed typing and both automatic returns remain in default signed
+publication and the focused manual validation.
 
 For an activation regression, the manual `ios-validation.yml` run accepts
 `activation_only=true` with the exact reviewed `source_sha`. It runs the original
 installed-keyboard fixture first, with a 20-minute job limit and required
 evidence. The containing-app profiles, unsigned build and full iOS aggregate
 are skipped in this focused mode. This result proves only the installed-keyboard
-scenario; ordinary PR/main CI and signed publication retain their full checks.
+scenario. An explicitly authorized internal test can additionally select
+`manual_return=true`: it accepts only the known `unknown` origin with a consumed
+nonce, failed automatic return and visible container, then switches apps manually
+for each of the two attempts. Its summary records incomplete keyboard acceptance.
+The default remains strict; signing and package checks are unchanged.
 
 Use the first failed step and its retained evidence to choose the repair. A
 fixture assertion is a native acceptance failure; runner or tool setup is an

@@ -166,7 +166,6 @@ private struct ActivationLink: View {
 }
 
 class KeyboardViewController: UIInputViewController {
-  var activationSourceScope: HostActivationScope?
   var store = SharedState()
   private let mic = RecordControl()
   private let glyph = RecordingGlyph()
@@ -368,13 +367,10 @@ class KeyboardViewController: UIInputViewController {
   }
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
-    refreshActivationDocument()
-    KBHostArbiterHook.activeArbiterCheck()
     ClarifyKeyboardHeightDidAppear(self)
   }
   override func textDidChange(_ textInput: UITextInput?) {
     super.textDidChange(textInput)
-    refreshActivationDocument()
     // Context is used only locally for casing; it is never saved or sent to Groq.
     let proxy = textDocumentProxy
     let appearance: UIUserInterfaceStyle = proxy.keyboardAppearance == .dark ? .dark : (proxy.keyboardAppearance == .light ? .light : .unspecified)
@@ -400,20 +396,12 @@ class KeyboardViewController: UIInputViewController {
   }
   override func selectionDidChange(_ textInput: UITextInput?) {
     super.selectionDidChange(textInput)
-    refreshActivationDocument()
     updateCapitalization()
     updateSuggestions()
   }
   override func viewWillAppear(_ animated: Bool) {
-    // Start before presentation callbacks, then keep this document's query
-    // through the tap. A new tap must not discard its already fresh response.
-    beginActivationSourceScope()
     super.viewWillAppear(animated); attached = true; feedback.prepare(); refreshFromStore(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
     timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.refreshFromStore() }
-  }
-  override func viewWillDisappear(_ animated: Bool) {
-    invalidateActivationSource()
-    super.viewWillDisappear(animated)
   }
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated); attached = false; timer?.invalidate(); timer = nil

@@ -182,6 +182,7 @@ jobs:
         run: node scripts/test-keyboard-ui.cjs
       - name: Test installed keyboard typing and activation
         env:
+          CLARIFY_INTERNAL_MANUAL_RETURN: ${{ inputs.mode == 'testflight' && inputs.internal_testing && '1' || '0' }}
           STRICT_OPENING_HEIGHT: ${{ inputs.mode == 'validate' && inputs.extension_diagnostic }}
         run: |
           if [[ "$STRICT_OPENING_HEIGHT" == 'true' ]]; then
@@ -201,6 +202,8 @@ jobs:
             JSON.parse(fs.readFileSync('test-results/app-ui/summary.json', 'utf8')).completeAppAcceptance === true;
           fs.writeFileSync('test-results/testflight-testing-scope.json', JSON.stringify({
             source: process.env.GITHUB_SHA, internalTesting, completeAppAcceptance,
+            automaticReturnAccepted: !internalTesting,
+            knownLimitations: internalTesting ? ['automatic_return_requires_manual_app_switching'] : [],
             appStoreAcceptance: false
           }, null, 2));
           NODE

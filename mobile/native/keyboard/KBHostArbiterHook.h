@@ -13,7 +13,6 @@
 
 #import <Foundation/Foundation.h>
 @class UIInputViewController;
-@protocol UITextDocumentProxy;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -29,11 +28,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// Installation retries when a query initializes a lazily loaded UIKit class.
 @interface KBHostArbiterHook : NSObject
 
-/// UIKit can return nil during attachment despite its nonnull declaration.
-/// Keep that absence optional before Swift bridges the document UUID.
-+ (nullable NSUUID *)documentIdentifierForProxy:(id<UITextDocumentProxy>)proxy
-    NS_SWIFT_NAME(documentIdentifier(for:));
-
 /// Returns the most recent host Bundle ID observed by the swizzle in the
 /// current process, or `nil` if the hook has not fired yet (or is disabled
 /// because the running iOS is < 26.4).
@@ -45,10 +39,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// Snapshot before pinging the arbiter. Each destination event (including
 /// invalid/empty events) or explicit invalidation advances this generation.
 + (uint64_t)captureGeneration;
-
-/// Clears the previous observation and returns the new request generation under
-/// one lock. A callback arriving after this operation stays newer than its scope.
-+ (uint64_t)beginCaptureGeneration;
 
 /// Atomically returns a valid capture only if an event was observed after
 /// the supplied generation. Explicit invalidation cancels older queries even
@@ -66,8 +56,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// No-op on iOS < 26.4.
 + (void)activeArbiterCheck;
 
-/// Fresh current-controller host lookup; also a fallback for a missing arbiter
-/// capture on newer iOS versions. No process-wide cache.
+/// Fresh host lookup for iOS versions before 26.4. No process-wide cache.
 /// Private PKService/XPC compatibility path; exceptions and missing APIs return nil.
 + (nullable NSString *)legacyHostBundleIDForController:(UIInputViewController *)controller
     NS_SWIFT_NAME(legacyHostBundleID(for:));
