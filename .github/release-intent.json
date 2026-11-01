@@ -1,14 +1,14 @@
 {
-  "schema": 1,
+  "schema": 2,
   "component": "mobile",
   "version": "0.13.0",
-  "base_sha": "4b71f852e20afab8d3046d2e3d7f5f744ccc4b38",
-  "notes": "Prepare iOS 0.13.0 (50) with the reviewed input-test repair from PR206. Build49 failed before signing credentials, archive and upload; its immutable tag is retained. Keep the mobile navigation, saved actions, permanent keyboard output control, keyboard activation, return to the source app and current sign-in providers.\n\nThe complete authenticated Apple inventory from run41139466023, attempt1, ended at 2026-10-30T22:38:51.726Z: 32 builds and32 uploads, highest48, with uploads and review submissions complete. Its JSON hash was verified. The remote reservation check at 2026-10-31T04:09:30Z found highest49, no build50 ref or open preparation PR, and no active iOS workflow. The linked report records both observations; they are not an atomic snapshot.\n\nNative CI, full containing-app tests, signed IPA verification, upload, Apple processing and internal-group availability remain required. Physical iPhone and production-account WAN acceptance remain open before App Store submission. This preparation does not submit the app for public review.",
+  "base_sha": "88544670767b0371e1a6a2a2f5009ff311df8a1b",
+  "notes": "Prepare TestFlight 0.13.0 (51) from PR208 merged source88544670767b0371e1a6a2a2f5009ff311df8a1b. Preserve keyboard activation, return to the source app, social sign-ins and user profiles. Only the mobile build number and reviewed release intent change.\n\nFresh complete Apple inventory41276547438/1 finished2026-11-01T05:20:29.633Z:32 builds and32 uploads, highest48; all upload/review collections complete, no pending review submission. Git reservations were checked separately: published tags and preparation refs through50; no51 ref, no open preparation PR and no active signed iOS run. These observations are not atomic. Tags49/50 and their failed signed runs remain untouched.\n\nRequire exact-source CI, signed IPA verification, upload confirmation, Apple processing VALID and availability in the existing Clarify internal group. Physical-iPhone and production-account WAN acceptance remain pending before App Store submission. This TestFlight preparation does not authorize App Store submission.",
   "evidence": {
-    "build": "50",
-    "highest_build": "49",
+    "build": "51",
+    "highest_build": "50",
     "pending_builds_checked": true,
-    "checked_at": "2026-10-30T22:38:51Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/pull/206#build50-reservation-check"
+    "checked_at": "2026-11-01T05:20:29Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41276547438"
   }
 }
