@@ -124,6 +124,11 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
 
 @implementation KBHostArbiterHook
 
++ (nullable NSUUID *)documentIdentifierForProxy:(id<UITextDocumentProxy>)proxy {
+    id identifier = proxy.documentIdentifier;
+    return [identifier isKindOfClass:[NSUUID class]] ? identifier : nil;
+}
+
 + (nullable NSString *)legacyHostBundleIDForController:(UIInputViewController *)controller {
     if (!NSThread.isMainThread || !controller.isViewLoaded || !controller.view.window) return nil;
     @try {
@@ -244,12 +249,18 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
     return bid;
 }
 
-+ (void)invalidateCache {
++ (uint64_t)beginCaptureGeneration {
     os_unfair_lock_lock(&sHookLock);
     sLastCapturedBundleId = nil;
     sCaptureGeneration += 1;
     sInvalidationGeneration = sCaptureGeneration;
+    uint64_t generation = sCaptureGeneration;
     os_unfair_lock_unlock(&sHookLock);
+    return generation;
+}
+
++ (void)invalidateCache {
+    [self beginCaptureGeneration];
 }
 
 @end
