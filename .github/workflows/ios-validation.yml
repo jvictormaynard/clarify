@@ -37,7 +37,8 @@ jobs:
                   break
           assert selected, 'Pinned Xcode26.6 is unavailable'
           env = dict(os.environ, DEVELOPER_DIR=selected)
-          runtimes = json.loads(subprocess.check_output(['xcrun','simctl','list','runtimes','--json'], env=env, text=True, timeout=30))
+          print(json.dumps({'selected_xcode': selected}), flush=True)
+          runtimes = json.loads(subprocess.check_output(['xcrun','simctl','list','runtimes','--json'], env=env, text=True, timeout=120))
           runtime = next((r for r in runtimes['runtimes'] if r.get('isAvailable') and r['identifier']=='com.apple.CoreSimulator.SimRuntime.iOS-26-5'), None)
           assert runtime, 'Pinned iOS26.5 simulator runtime is unavailable'
           print(json.dumps({'developer_dir':selected,'runtime':runtime['identifier'],'distribution_signing':False,'publication':False}))
@@ -57,3 +58,11 @@ jobs:
           ruby -rxcodeproj -e 'puts Xcodeproj::VERSION'
           command -v xcbeautify
           xcrun simctl list devices available
+      - name: Preserve simulator startup diagnostics
+        if: always()
+        shell: bash
+        run: |
+          id
+          ps -axo pid,ppid,user,comm | grep -E '(CoreSimulator|Simulator|simdiskimaged)' || true
+          launchctl print "gui/$(id -u)" | head -40 || true
+          log show --last 2m --style compact --predicate 'subsystem BEGINSWITH "com.apple.CoreSimulator"' 2>/dev/null | tail -120 || true
