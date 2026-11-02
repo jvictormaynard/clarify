@@ -379,10 +379,17 @@ retains traces, screenshots, video and the result bundle for investigation.
 Passing the separate in-process UIKit tests does not resolve this open gate.
 No new signing or upload occurs when `mode=validate` is selected.
 Selecting both diagnostic inputs runs the installed-extension fixture directly;
-regular tests-only runs and every signed upload retain all product checks.
+regular tests-only runs and default signed uploads retain all product checks.
 
-Every signed upload runs the installed typing, casing and two-return checks
-against production sources. It also records all five opening traces and requires
+Default signed uploads run the installed typing, casing and two-return checks
+against production sources. Internal uploads reuse successful exact-source
+canonical CI, including the same installed fixture with two fresh activations
+and the authorized manual return. The gate rejects missing, failed or skipped
+proof and records the CI run, attempt and jobs in its evidence. Internal uploads
+still install dependencies and patches, generate the project, install Pods,
+sign, verify the IPA and both extensions, upload and verify Apple availability.
+Full app, automatic-return and App Store acceptance remain false for this scope.
+The installed fixture also records all five opening traces and requires
 the final keyboard height and bottom row to be usable. The transient overshoot
 assertion remains in the strict diagnostic above; the user explicitly deferred
 that known defect to test the other improvements in build 25. This exception does

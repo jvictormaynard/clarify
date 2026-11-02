@@ -616,6 +616,93 @@ class ReleaseDeliveryTests(unittest.TestCase):
                         delivery.verify_source(self.api, component, SOURCE, tag)
                     self.assertEqual(self.mutations(), [])
 
+    def test_internal_reuse_requires_exact_canonical_ci_and_installed_proof(self):
+        steps = [
+            "Test Swift contracts",
+            "Test installed keyboard typing and activation",
+            "Test native keyboard and library integration",
+        ]
+        jobs = [
+            {
+                "id": 100,
+                "name": "ios validation / Native keyboard and library tests",
+                "status": "completed",
+                "conclusion": "success",
+                "steps": [
+                    {"name": name, "status": "completed", "conclusion": "success"}
+                    for name in steps
+                ],
+            }
+        ]
+        jobs.extend(
+            [
+                {
+                    "id": 101,
+                    "name": "Mobile checks",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "steps": [
+                        {
+                            "name": "Check Expo configuration",
+                            "status": "completed",
+                            "conclusion": "success",
+                        }
+                    ],
+                },
+                {
+                    "id": 102,
+                    "name": "CI required",
+                    "status": "completed",
+                    "conclusion": "success",
+                },
+            ]
+        )
+        self.routes["/actions/runs/42/attempts/1/jobs"] = {"jobs": jobs}
+        receipt = delivery.internal_ci_proof(self.api, self.run, SOURCE)
+        self.assertEqual(receipt["source"], SOURCE)
+        self.assertEqual(receipt["run_id"], 42)
+        for change in (
+            {"head_sha": BASE},
+            {"conclusion": "failure"},
+            {"head_branch": "feature"},
+            {"repository": {"full_name": "fork/repo"}},
+        ):
+            with self.subTest(change=change), self.assertRaises(delivery.ReleaseError):
+                delivery.internal_ci_proof(self.api, dict(self.run, **change), SOURCE)
+        self.mobile()
+        self.tag = SOURCE
+        proof = {}
+        self.assertEqual(
+            delivery.verify_publication(
+                self.api,
+                "mobile",
+                SOURCE,
+                "ios/v0.9.2-build33",
+                1000,
+                reuse_proof=proof,
+            ),
+            "publish",
+        )
+        self.assertEqual(proof, receipt)
+        for outcome in ("missing", "failure", "skipped", "cancelled"):
+            with self.subTest(outcome=outcome):
+                broken = deepcopy(jobs)
+                if outcome == "missing":
+                    broken[0]["steps"].pop(1)
+                else:
+                    broken[0]["steps"][1]["conclusion"] = outcome
+                self.routes["/actions/runs/42/attempts/1/jobs"] = {"jobs": broken}
+                with self.assertRaises(delivery.ReleaseError):
+                    delivery.verify_publication(
+                        self.api,
+                        "mobile",
+                        SOURCE,
+                        "ios/v0.9.2-build33",
+                        1000,
+                        reuse_proof={},
+                    )
+        self.assertEqual(self.mutations(), [])
+
     def test_release_consumer_does_not_duplicate_the_ci_component_inventory(self):
         self.jobs[:] = [job for job in self.jobs if job["name"] == "CI required"]
         self.tag = SOURCE

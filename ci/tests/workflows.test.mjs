@@ -146,9 +146,16 @@ test('focused installed-keyboard validation is manual and cannot report full acc
     assert.equal(step.if, full);
   }
   const installed = steps.find(step => step.run === 'node scripts/test-keyboard-extension.cjs');
-  assert.equal(installed.if, "github.event_name == 'workflow_dispatch' && inputs.activation_only == true");
+  assert.equal(installed.if, undefined);
   assert.equal(ios.on.workflow_dispatch.inputs.manual_return.default, false);
-  assert.equal(installed.env.CLARIFY_INTERNAL_MANUAL_RETURN, "$" + "{{ inputs.manual_return && '1' || '0' }}");
+  for (const manual_return of [false, true]) {
+    assert.equal(runInNewContext(installed.env.CLARIFY_INTERNAL_MANUAL_RETURN.slice(3, -2), {
+      github: {event_name: 'workflow_dispatch'}, inputs: {activation_only: true, manual_return},
+    }), manual_return ? '1' : '0');
+  }
+  assert.equal(runInNewContext(installed.env.CLARIFY_INTERNAL_MANUAL_RETURN.slice(3, -2), {
+    github: {event_name: 'workflow_dispatch'}, inputs: {activation_only: false, manual_return: false},
+  }), '0');
   assert.ok(steps.some(step => step.run?.includes('REVIEWED_SOURCE') && step.run.includes('GITHUB_SHA')));
   assert.deepEqual(ios.permissions, { contents: 'read' });
   assert.deepEqual(ios.on.workflow_call, {});
@@ -220,7 +227,28 @@ test('TestFlight and App Store use separate explicit actions and one Apple build
     }
   }
   const flightSteps = Object.values(flight.jobs).flatMap(job => job.steps || []);
-  assert.equal(flightSteps.find(step => step.name === 'Test installed keyboard typing and activation').if, undefined);
+  const repeated = ['npm run check', 'npx --yes expo-doctor', 'npm run test:native',
+    'node scripts/test-keyboard-ui.cjs'];
+  const installed = flightSteps.find(step => step.name === 'Test installed keyboard typing and activation');
+  for (const step of [...flightSteps.filter(step => repeated.includes(step.run)), installed]) {
+    for (const reuse_ci of [undefined, 'false', 'true']) {
+      for (const mode of ['validate', 'testflight']) {
+        const expression = step.if.slice(3, -2);
+        assert.equal(runInNewContext(expression, {
+          inputs: {mode, extension_diagnostic: false}, steps: {resume: {outputs: {reuse_ci}}},
+        }), reuse_ci !== 'true');
+      }
+    }
+  }
+  const resume = flightSteps.find(step => step.id === 'resume');
+  assert.ok(resume.run.includes('--reuse-internal-ci'));
+  const native = workflows.get('ios-validation.yml').jobs.native;
+  const coverage = native.steps.find(step => step.name === installed.name);
+  assert.equal(coverage.if, undefined);
+  assert.equal(coverage.run, 'node scripts/test-keyboard-extension.cjs');
+  assert.equal(runInNewContext(coverage.env.CLARIFY_INTERNAL_MANUAL_RETURN.slice(3, -2), {
+    github: {event_name: 'push'}, inputs: {},
+  }), '1');
   const manual = flightSteps.find(step => step.name === 'Test installed keyboard typing and activation').env.CLARIFY_INTERNAL_MANUAL_RETURN;
   for (const mode of ['validate', 'testflight', 'status', 'availability']) for (const internal_testing of [true, false]) {
     assert.equal(runInNewContext(manual.slice(3, -2), {inputs: {mode, internal_testing}}),
