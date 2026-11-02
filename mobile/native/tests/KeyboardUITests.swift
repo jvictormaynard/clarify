@@ -1124,6 +1124,11 @@ final class KeyboardUITests: XCTestCase {
               XCTAssertEqual(capsule.accessibilityLabel, L("Saída do ditado") + ": Русский, " + OutputStyle.very_casual.title)
               XCTAssertTrue(keyboard.view.bounds.contains(capsule.frame)); XCTAssertGreaterThanOrEqual(capsule.bounds.height, 44)
               XCTAssertEqual(keyboard.view.bounds.height, 278); XCTAssertFalse(capsule.hasAmbiguousLayout)
+              let title = try XCTUnwrap(capsule.titleLabel)
+              let titleRect = title.textRect(forBounds: CGRect(x: 0, y: 0, width: title.bounds.width,
+                height: .greatestFiniteMagnitude), limitedToNumberOfLines: 0)
+              XCTAssertLessThanOrEqual(ceil(titleRect.height), ceil(title.font.lineHeight) + 1,
+                "The output style must stay on one line after width, selection and text-size changes")
               let capture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) })
               capture.name = "output-capsule-\(Int(width))-\(appearance == .dark ? "dark" : "light")-\(selected ? "selection" : "no-selection")-\(expanded ? "expanded" : "normal")"
               capture.lifetime = .keepAlways; self.add(capture)

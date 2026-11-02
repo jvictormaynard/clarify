@@ -680,6 +680,7 @@ class KeyboardViewController: UIInputViewController {
       configuration.title = title; configuration.image = wand ? UIImage(systemName: "wand.and.stars") : nil
       configuration.subtitle = setupTitle
       configuration.titleAlignment = .center
+      configuration.titleLineBreakMode = .byTruncatingTail
       configuration.imagePlacement = .trailing; configuration.imagePadding = 8
       configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12)
       configuration.baseBackgroundColor = .label; configuration.baseForegroundColor = .systemBackground
