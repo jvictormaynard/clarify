@@ -21,7 +21,10 @@ from provider_http import CancellationToken
 from provider_registry import PROVIDER_REGISTRY, ProviderRegistry
 from provider_types import ProviderError
 from repositories import AppConfig
-from shared.output_preferences import output_language as parse_output_language
+from shared.output_preferences import (
+    output_language as parse_output_language,
+    output_language_outcome,
+)
 from shared.writing_style_policy import (
     WritingStyle,
     writing_style as parse_writing_style,
@@ -322,6 +325,7 @@ class ComputerProcessor:
             "rewritten": result.text != prepared.text,
             "successful": True,
             **style_outcome(prepared.writing_style, refined=True),
+            **output_language_outcome(prepared.language, refined=True),
         }
 
     def process_text(
@@ -351,6 +355,11 @@ class ComputerProcessor:
             "rewritten": result.text != text,
             "successful": True,
             **style_outcome(style, refined=True),
+            **(
+                output_language_outcome(language, refined=True)
+                if language in TEXT_LANGUAGES
+                else {}
+            ),
         }
 
     def process_dictation(

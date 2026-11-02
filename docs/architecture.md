@@ -64,10 +64,15 @@ The desktop toolbar globe preserves the source languages, including mixed-langua
 text. A flag selects the output language for dictation and saved text actions.
 Operations freeze this choice at acceptance; changing the toolbar affects the next
 operation. The persisted `ui_language` field retains the toolbar choice for
-compatibility. Output language is independent of recognition language. Explicit choices enter operation fingerprints and
+compatibility. Output language is independent of recognition language. Explicit
+choices enter operation fingerprints and
 require advertised service support; unsupported choices remain saved and return
-an update-required error. Requested/applied/status metadata distinguishes applied
-editing from a recoverable original. Exact standalone snippets bypass editing.
+an update-required error. Text and dictation responses use the shared
+`output_language_requested`, `output_language_applied` and `output_language_status`
+outcome. Clients require confirmation for explicit text-language choices; an older
+service cannot silently report source-language text as an applied choice. This
+metadata distinguishes applied editing from a recoverable original. Exact
+standalone snippets bypass editing.
 The existing cleanup policy and Local ASR cloud-refinement permission still
 control whether refinement can run.
 

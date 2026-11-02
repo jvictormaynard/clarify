@@ -1651,13 +1651,22 @@ class ComputerHost:
                     result = self.processor.process_text(
                         body["action"], value, language, work.token, **preferences
                     )
+                result_preferences = dict(preferences)
+                if (
+                    route == "text"
+                    and isinstance(result, dict)
+                    and "output_language_requested" in result
+                ):
+                    result_preferences["output_language"] = parse_output_language(
+                        language
+                    )
                 if (
                     not isinstance(result, dict)
                     or set(result)
                     != {"transcript", "text", "rewritten", "successful"}
                     | {
                         prefix + suffix
-                        for prefix in preferences
+                        for prefix in result_preferences
                         for suffix in ("_requested", "_applied", "_status")
                     }
                     or not isinstance(result["transcript"], str)
@@ -1669,7 +1678,7 @@ class ComputerHost:
                     or type(result["successful"]) is not bool
                 ):
                     raise ValueError("Invalid computer processing result")
-                for prefix, requested in preferences.items():
+                for prefix, requested in result_preferences.items():
                     status = result[prefix + "_status"]
                     applied = result[prefix + "_applied"]
                     if (

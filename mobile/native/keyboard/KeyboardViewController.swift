@@ -453,8 +453,9 @@ class KeyboardViewController: UIInputViewController {
     let id = UUID().uuidString
     guard recordingRequest.submit("start", operationID: id, now: Date().timeIntervalSince1970) else { return }
     do {
+      let preferences = try store.setOutputPreference("language", value: language)
       try store.send(action, operationID: id, context: state.processingContext, text: selection.text, language: language,
-        actionID: savedAction?.id, actionRevision: savedAction?.revision)
+        actionID: savedAction?.id, actionRevision: savedAction?.revision, preferences: preferences)
       operationID = id; documentID = selection.document
       textOperationID = id; textSelection = selection; dictationEdit = nil
       feedback.type()
@@ -769,14 +770,6 @@ class KeyboardViewController: UIInputViewController {
         func choice(_ target: String, title: String) -> UIAction {
           UIAction(title: title, attributes: enabled && captured.enabled ? [] : .disabled) { [weak self] _ in
             guard let self, self.menuIsCurrent(captured), captured.enabled, self.hasFullAccess else { return }
-            do {
-              _ = try self.store?.setOutputPreference("language", value: target)
-              self.outputPreferenceError = nil
-            } catch {
-              self.outputPreferenceError = L("Não foi possível salvar a preferência de saída. Tente novamente.")
-              UIAccessibility.post(notification: .announcement, argument: self.outputPreferenceError)
-              self.updateToolbar(); self.updateRecordingPanel(); return
-            }
             self.processSelection(saved == nil ? kind : "text_action", language: target, savedAction: saved)
           }
         }

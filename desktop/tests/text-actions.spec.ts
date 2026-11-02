@@ -111,7 +111,9 @@ test("after dictation: basic processing stays available without an action catalo
   expect((await settingsFixture.rpc("snapshot")).dictationCleanupLevel).toBe("preserve");
 });
 
-test("text actions: saved preview uses the latest sample and requires a translation target", async ({ page, settingsFixture }, testInfo) => {
+test("text actions: saved preview uses the latest sample and the shared output language", async ({ page, settingsFixture }, testInfo) => {
+  await settingsFixture.rpc("savePreference", "setLanguage", ["auto"]);
+  await page.reload();
   await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
   await page.locator("#text-action-rewrite").getByRole("button", { name: "Editar ação", exact: true }).click();
   let dialog = page.getByRole("dialog", { name: "Editar ação", exact: true });
@@ -130,12 +132,13 @@ test("text actions: saved preview uses the latest sample and requires a translat
   await page.locator("#text-action-translation").getByRole("button", { name: "Editar ação", exact: true }).click();
   dialog = page.getByRole("dialog", { name: "Editar ação", exact: true });
   await dialog.getByRole("textbox", { name: "Texto de exemplo", exact: true }).fill("Target sample");
-  await expect(dialog.getByRole("button", { name: "Testar", exact: true })).toBeDisabled();
-  await dialog.getByRole("combobox", { name: "Idioma de destino", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Testar", exact: true })).toBeEnabled();
+  await dialog.getByRole("combobox", { name: "Idioma de saída", exact: true }).click();
   await page.getByRole("option", { name: "Inglês", exact: true }).click();
   await dialog.getByRole("button", { name: "Testar", exact: true }).click();
   await expect(dialog.getByRole("status")).toContainText("Preview (en): Target sample");
   expect((await settingsFixture.rpc("snapshot")).dirty).toBe(false);
+  expect((await settingsFixture.rpc("snapshot")).language).toBe("en");
 });
 
 test("settings dialog: unsaved privacy changes stay local and the task remains selected", async ({ page }, testInfo) => {

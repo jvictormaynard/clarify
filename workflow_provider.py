@@ -341,6 +341,7 @@ class WorkflowProviderService:
                 text,
                 target if target is not None else language,
                 cancel=cancel,
+                **({"output_language": target} if target not in (None, "auto") else {}),
             )
             result = RewriteResult(value, "clarify", "openai/gpt-oss-20b")
         elif route is None or self._uses_account():

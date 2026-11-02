@@ -321,7 +321,9 @@ class ComputerProcessorTests(unittest.TestCase):
             "Use the saved rewrite instruction.",
             self.registry.rewrite.call_args.args[1].instruction,
         )
-        self.assertEqual(set(result), {"transcript", "text", "rewritten", "successful"})
+        self.assertEqual(result["output_language_requested"], "en")
+        self.assertEqual(result["output_language_applied"], "en")
+        self.assertEqual(result["output_language_status"], "applied")
         self.current = replace(
             self.current, text_actions=replace(self.current.text_actions, actions=())
         )

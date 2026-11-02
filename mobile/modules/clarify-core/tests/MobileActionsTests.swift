@@ -117,9 +117,12 @@ final class MobileActionsTests: XCTestCase {
     XCTAssertEqual(try preferences.requestFields(supported: true, dictation: true), ["output_language": "es", "writing_style": "formal"])
     XCTAssertEqual(try preferences.requestFields(supported: true, dictation: false), ["writing_style": "formal"])
     XCTAssertFalse(preferences.applied(in: [:], dictation: true))
+    XCTAssertThrowsError(try OutputPreferences(language: .es).requestFields(supported: false, dictation: false))
+    XCTAssertFalse(OutputPreferences(language: .es).applied(in: [:], dictation: false))
     var raw: [String: Any] = ["output_language_requested": "es", "output_language_applied": "es", "output_language_status": "applied",
       "writing_style_requested": "formal", "writing_style_applied": "formal", "writing_style_status": "applied"]
     XCTAssertTrue(preferences.applied(in: raw, dictation: true))
+    XCTAssertTrue(preferences.applied(in: raw, dictation: false))
     raw["writing_style_status"] = "refinement_failed"
     XCTAssertFalse(preferences.applied(in: raw, dictation: true))
     raw["writing_style_status"] = "standalone"; raw["writing_style_applied"] = NSNull()
@@ -374,7 +377,8 @@ final class MobileActionsTests: XCTestCase {
       let body = try JSONSerialization.jsonObject(with: f.posts[0].httpBody!) as! [String: Any]
       XCTAssertEqual(body["language"] as? String, "de"); XCTAssertEqual(body["writing_style"] as? String, "formal")
       XCTAssertNil(body["output_language"], "Text operations carry the frozen output choice in language")
-      f.provenance = ["writing_style_requested": "formal", "writing_style_applied": "formal", "writing_style_status": "applied"]
+      f.provenance = ["writing_style_requested": "formal", "writing_style_applied": "formal", "writing_style_status": "applied",
+        "output_language_requested": "de", "output_language_applied": "de", "output_language_status": "applied"]
       let applied = try await f.destination.processText(UUID().uuidString, prepared: prepared, text: "Original")
       XCTAssertTrue(applied.successful); XCTAssertEqual(applied.text, "Changed")
     }

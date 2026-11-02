@@ -148,7 +148,12 @@ def text_operation(
         system = with_output_language(system, language)
     outcome = transform(source, system, cost_budget=cost_budget, authorize=authorize)
     return replace(
-        outcome, result={**outcome.result, **style_outcome(style, refined=True)}
+        outcome,
+        result={
+            **outcome.result,
+            **style_outcome(style, refined=True),
+            **output_language_outcome(language, refined=True),
+        },
     )
 
 
@@ -162,7 +167,12 @@ def action_operation(
         source = "Target language: " + text_actions.LANGUAGES[language] + ".\n" + source
     outcome = transform(source, system, cost_budget=cost_budget, authorize=authorize)
     return Outcome(
-        {**outcome.result, **action.metadata(), **style_outcome(style, refined=True)},
+        {
+            **outcome.result,
+            **action.metadata(),
+            **style_outcome(style, refined=True),
+            **output_language_outcome(language, refined=True),
+        },
         outcome.cost,
         outcome.input_tokens,
         outcome.output_tokens,

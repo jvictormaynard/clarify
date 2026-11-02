@@ -306,6 +306,9 @@ class ExecutionTests(TestCase):
         )
         response = self.send(action_revision=2, language="de")
         self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["output_language_requested"], "de")
+        self.assertEqual(response.json()["output_language_applied"], "de")
+        self.assertEqual(response.json()["output_language_status"], "applied")
         messages = provider.call_args.kwargs["json"]["messages"]
         self.assertIn("German", messages[0]["content"])
         self.assertIn("{unknown}", messages[0]["content"])

@@ -11,13 +11,13 @@ struct OutputPreferences: Codable, Equatable {
     var fields: [String: String] = [:]
     if dictation, language != .auto { fields["output_language"] = language.rawValue }
     if style != .default { fields["writing_style"] = style.rawValue }
-    guard fields.isEmpty || supported else {
+    guard supported || (fields.isEmpty && (dictation || language == .auto)) else {
       throw ClarifyError(L("Atualize o serviço para usar estas preferências de saída."), code: "output_preferences_unsupported")
     }
     return fields
   }
   func applied(in raw: [String: Any], dictation: Bool) -> Bool {
-    let explicit = (dictation && language != .auto ? [("output_language", language.rawValue)] : []) +
+    let explicit = (language != .auto ? [("output_language", language.rawValue)] : []) +
       (style != .default ? [("writing_style", style.rawValue)] : [])
     if explicit.contains(where: { raw[$0.0 + "_status"] as? String == "standalone" }) {
       return dictation && raw["rewritten"] as? Bool == false && explicit.allSatisfy {
@@ -30,7 +30,7 @@ struct OutputPreferences: Codable, Equatable {
       let status = raw[prefix + "_status"] as? String
       return status == "applied" && raw[prefix + "_applied"] as? String == requested
     }
-    return (!dictation || language == .auto || applied("output_language", language.rawValue)) &&
+    return (language == .auto || applied("output_language", language.rawValue)) &&
       (style == .default || applied("writing_style", style.rawValue))
   }
   func hasDictationFallback(in raw: [String: Any]) -> Bool {
@@ -208,11 +208,11 @@ struct SharedState {
     return updated
   }
   func send(_ action: String, operationID: String, context: String?, text: String? = nil, language: String? = nil,
-    actionID: String? = nil, actionRevision: String? = nil) throws {
+    actionID: String? = nil, actionRevision: String? = nil, preferences: OutputPreferences? = nil) throws {
     // The caller supplies the context that authorized this action. Reading a
     // newer snapshot here could retarget text to another processing owner.
     let command = DictationCommand(action, operationID: operationID, text: text, language: language, context: context,
-      actionID: actionID, actionRevision: actionRevision, outputPreferences: outputPreferences())
+      actionID: actionID, actionRevision: actionRevision, outputPreferences: preferences ?? outputPreferences())
     // Persist intent before command delivery. App acknowledgement, command
     // expiry and controller replacement must not restore a cancelled result.
     if action == "cancel" {

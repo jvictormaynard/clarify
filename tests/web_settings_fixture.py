@@ -201,7 +201,9 @@ class OnboardingAccount:
         self._action_library = {"revision": expected_revision + 1, "actions": values}
         return self.text_actions()
 
-    def execute_text_action(self, snapshot, text, language, *, cancel=None):
+    def execute_text_action(
+        self, snapshot, text, language, *, cancel=None, output_language=None
+    ):
         return f"Preview ({language}): {text}"
 
     def begin_change(self):
@@ -464,6 +466,7 @@ def main():
                     openai=replace(config.openai, api_key="fixture-only"),
                 )
             )
+            settings._replace_loaded_config(repositories.config.load())
             registry = Mock(spec=ProviderRegistry)
             registry.describe.side_effect = PROVIDER_REGISTRY.describe
             registry.connection_for_route.side_effect = (

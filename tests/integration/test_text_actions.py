@@ -123,6 +123,30 @@ class HostedServiceTests(HostedServiceFixture, unittest.TestCase):
             provider.transform_text_action(snapshot, "Source")
         registry.rewrite.assert_not_called()
 
+    def test_old_text_service_cannot_claim_an_explicit_output_language(self):
+        from shared.output_preferences import output_language_outcome
+
+        snapshot = self.service.resolve("rewrite")
+        response = {
+            "text": "Original language",
+            "action_id": snapshot.action.id,
+            "action_name": snapshot.action.name,
+            "action_revision": snapshot.action.revision,
+        }
+        with patch.object(self.account, "_request", return_value=(200, response)):
+            with self.assertRaises(AccountError) as failure:
+                self.account.execute_text_action(
+                    snapshot, "Source", "es", output_language="es"
+                )
+            self.assertEqual(failure.exception.code, "output_preferences_unapplied")
+            response.update(output_language_outcome("es", refined=True))
+            self.assertEqual(
+                self.account.execute_text_action(
+                    snapshot, "Source", "es", output_language="es"
+                ),
+                "Original language",
+            )
+
     def test_managed_expired_context_rejects_without_personal_route(self):
         self.account._state.pop("user_id")
         self.account._generation += 1

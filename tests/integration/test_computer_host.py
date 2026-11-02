@@ -328,6 +328,9 @@ class ComputerHostTests(ComputerHostFixture, unittest.TestCase):
                     "text": "Saved summary.",
                     "rewritten": True,
                     "successful": True,
+                    "output_language_requested": "pt",
+                    "output_language_applied": "pt",
+                    "output_language_status": "applied",
                 },
             ),
         )
