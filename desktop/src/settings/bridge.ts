@@ -113,6 +113,7 @@ export interface Settings {
   microphoneTestStatus: string;
   recordingControls: RecordingControls;
   dictationCleanupLevel?: DictationCleanupLevel | "";
+  dictationWritingStyle?: WritingStyle | "";
   applicationWritingStyles?: ApplicationWritingStyle[];
   applicationStyleTarget?: string;
   applicationStyleRefinementAllowed?: boolean;
@@ -189,6 +190,8 @@ export type SettingsArguments = {
   setDictionaryEntries: [entries: DictionaryEntry[], context?: string, expectedEntries?: DictionaryEntry[]];
   setMode: [value: string];
   setDictationCleanupLevel: [value: DictationCleanupLevel | ""];
+  setDictationWritingStyle: [value: WritingStyle | ""];
+  setDictationPostProcessing: [mode: string, actionId: string, language: string, context: string, revision: string];
   setApplicationWritingStyle: [executable: string, style: WritingStyle | ""];
   setAutostart: [value: boolean];
   setAutomaticUpdates: [value: boolean];
@@ -238,6 +241,7 @@ export type SettingsArguments = {
 export type SettingsMethod = keyof SettingsArguments;
 
 export const preferenceMethods = [
+  "setDictationWritingStyle",
   "setDictationCleanupLevel",
   "setApplicationWritingStyle",
   "setMode", "setLanguage", "setAutostart", "setHistoryEnabled", "setAutomaticUpdates",
@@ -254,6 +258,7 @@ export class SettingsOperationError extends Error {
 }
 
 const textActionWrites = new Set<SettingsMethod>([
+  "setDictationPostProcessing",
   "saveTextAction", "deleteTextAction", "duplicateTextAction", "saveTextActionProfile", "setAfterDictationTextAction",
 ]);
 async function invokeSettings<M extends SettingsMethod>(method: M, args: SettingsArguments[M]): Promise<Settings> {

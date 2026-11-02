@@ -7718,5 +7718,70 @@
     "pt": "Entre ou crie sua conta Clarify.",
     "en": "Sign in or create your Clarify account.",
     "es": "Inicia sesión o crea tu cuenta de Clarify."
+  },
+  "Processamento do texto": {
+    "pt": "Processamento do texto",
+    "en": "Text processing",
+    "es": "Procesamiento del texto"
+  },
+  "Aplicar ação de texto": {
+    "pt": "Aplicar ação de texto",
+    "en": "Apply a text action",
+    "es": "Aplicar una acción de texto"
+  },
+  "Mantém suas instruções atuais de ditado, sem uma ação adicional.": {
+    "pt": "Mantém suas instruções atuais de ditado, sem uma ação adicional.",
+    "en": "Keeps your current dictation instructions, with no additional action.",
+    "es": "Mantiene las instrucciones actuales de dictado, sin una acción adicional."
+  },
+  "Aplica a ação escolhida no lugar da revisão padrão, antes de inserir o texto.": {
+    "pt": "Aplica a ação escolhida no lugar da revisão padrão, antes de inserir o texto.",
+    "en": "Applies the selected action instead of standard revision, before inserting the text.",
+    "es": "Aplica la acción elegida en lugar de la revisión estándar, antes de insertar el texto."
+  },
+  "Nenhuma ação salva. Crie uma em Ações de texto.": {
+    "pt": "Nenhuma ação salva. Crie uma em Ações de texto.",
+    "en": "No saved actions. Create one in Text actions.",
+    "es": "No hay acciones guardadas. Crea una en Acciones de texto."
+  },
+  "A ação selecionada está indisponível. Escolha outra ação.": {
+    "pt": "A ação selecionada está indisponível. Escolha outra ação.",
+    "en": "The selected action is unavailable. Choose another action.",
+    "es": "La acción seleccionada no está disponible. Elige otra acción."
+  },
+  "Escolha uma ação para salvar. Até lá, a configuração anterior continua ativa.": {
+    "pt": "Escolha uma ação para salvar. Até lá, a configuração anterior continua ativa.",
+    "en": "Choose an action to save. Until then, the previous setting remains active.",
+    "es": "Elige una acción para guardar. Hasta entonces, la configuración anterior sigue activa."
+  },
+  "Estilo geral": {
+    "pt": "Estilo geral",
+    "en": "General style",
+    "es": "Estilo general"
+  },
+  "Define o tom do texto. Regras por aplicativo têm prioridade.": {
+    "pt": "Define o tom do texto. Regras por aplicativo têm prioridade.",
+    "en": "Sets the tone of the text. Application rules take priority.",
+    "es": "Define el tono del texto. Las reglas por aplicación tienen prioridad."
+  },
+  "Natural mantém suas instruções atuais, sem impor um tom.": {
+    "pt": "Natural mantém suas instruções atuais, sem impor um tom.",
+    "en": "Natural keeps your current instructions without imposing a tone.",
+    "es": "Natural mantiene las instrucciones actuales sin imponer un tono."
+  },
+  "Sem regra, usa o estilo geral. A regra vale para o próximo ditado.": {
+    "pt": "Sem regra, usa o estilo geral. A regra vale para o próximo ditado.",
+    "en": "Without a rule, uses the general style. Rules apply to the next dictation.",
+    "es": "Sin una regla, usa el estilo general. Las reglas se aplican al próximo dictado."
+  },
+  "Todos os aplicativos usam o estilo geral.": {
+    "pt": "Todos os aplicativos usam o estilo geral.",
+    "en": "All applications use the general style.",
+    "es": "Todas las aplicaciones usan el estilo general."
+  },
+  "Estilo: Natural": {
+    "pt": "Estilo: Natural",
+    "en": "Style: Natural",
+    "es": "Estilo: Natural"
   }
 }

@@ -19,6 +19,22 @@ EDITOR = r"C:\Program Files\Editor\Editor.exe"
 
 
 class ApplicationWritingStyleTests(unittest.TestCase):
+    def test_general_style_round_trips_and_app_rules_override_it(self):
+        rules = ApplicationWritingStyles.from_mapping(
+            {"rules": [], "default_style": "formal"}
+        )
+        captured = rules.resolve(None)
+        rules = rules.with_rule(EDITOR, WritingStyle.CASUAL)
+        self.assertIs(captured.requested_style, WritingStyle.FORMAL)
+        self.assertIs(rules.resolve(EDITOR).requested_style, WritingStyle.CASUAL)
+        self.assertIs(
+            rules.with_rule(EDITOR, None).resolve(EDITOR).requested_style,
+            WritingStyle.FORMAL,
+        )
+        self.assertEqual(
+            ApplicationWritingStyles.from_mapping(rules.to_mapping()), rules
+        )
+
     def test_absent_unknown_and_unmatched_apps_use_default(self):
         rules = ApplicationWritingStyles().with_rule(EDITOR, WritingStyle.INFORMAL)
         for executable in (None, "editor.exe", r"C:\Other\Editor.exe"):

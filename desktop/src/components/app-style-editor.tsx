@@ -29,8 +29,9 @@ export function AppStyleEditor({ controller: c }: SettingsPageProps) {
           <Row title={t("Estilo de escrita")} hint={t(descriptions[editor.style])}>
             <Picker label={t("Estilo de escrita")} value={editor.style}
               options={[
+                { id: "natural", label: t("Natural") },
                 { id: "formal", label: t("Formal") }, { id: "casual", label: t("Casual") }, { id: "very_casual", label: t("Muito casual") },
-                ...(["natural", "informal", "organized"].includes(editor.style) ? [{ id: editor.style, label: t(({ natural: "Natural", informal: "Informal", organized: "Organizado" } as Record<string, string>)[editor.style]) }] : []),
+                ...(["informal", "organized"].includes(editor.style) ? [{ id: editor.style, label: t(({ informal: "Informal", organized: "Organizado" } as Record<string, string>)[editor.style]) }] : []),
               ]}
               onChange={style => a.change({ style: style as WritingStyle })} />
           </Row>

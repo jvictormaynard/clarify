@@ -954,7 +954,12 @@ class QmlSettingsController(QObject):
             if self._config.workflow(scope) == before.workflow(scope):
                 routes = routes.with_route(scope, current.workflow(scope))
         self._config = self._sync_legacy_route_actions(
-            replace(self._config, workflows=routes, text_actions=current.text_actions),
+            replace(
+                self._config,
+                workflows=routes,
+                text_actions=current.text_actions,
+                dictation_cleanup_level=current.dictation_cleanup_level,
+            ),
             current,
         )
         if selected_before != self._config.workflow(self._selected_scope):
@@ -1402,6 +1407,19 @@ class QmlSettingsController(QObject):
     ):
         return self._text_action_write(
             self._text_actions.set_after, actionId, language, context, expectedRevision
+        )
+
+    @Slot(str, str, str, str, str, result=bool)
+    def setDictationPostProcessing(
+        self, mode, actionId, language, context, expectedRevision
+    ):
+        return self._text_action_write(
+            self._text_actions.set_after_mode,
+            mode,
+            actionId,
+            language,
+            context,
+            expectedRevision,
         )
 
     @Slot(result=bool)
@@ -2199,6 +2217,11 @@ class QmlSettingsController(QObject):
     @Property("QVariantList", notify=configChanged)
     def applicationWritingStyles(self):
         return self._config.application_writing_styles.to_mapping()["rules"]
+
+    @Property(str, notify=configChanged)
+    def dictationWritingStyle(self):
+        style = self._config.application_writing_styles.default_style
+        return style.value if style is not None else ""
 
     @Property(bool, notify=configChanged)
     def applicationStyleRefinementAllowed(self):
@@ -4411,6 +4434,9 @@ class QmlSettingsController(QObject):
                     return False
             if (
                 self._hotkey_applier is not None
+                # Clearing an optional dictation action does not change bindings
+                # and must also work while the account catalog is unavailable.
+                and method != "setDictationCleanupLevel"
                 and (hotkey_method or candidate.text_actions != before.text_actions)
                 and (
                     candidate.hotkeys != before.hotkeys
@@ -4470,6 +4496,7 @@ class QmlSettingsController(QObject):
             "setRecordingVadEnabled",
         }
         text_methods = {
+            "setDictationWritingStyle",
             "setDictationCleanupLevel",
             "setMode",
             "setLanguage",
@@ -4516,7 +4543,20 @@ class QmlSettingsController(QObject):
             from shared.dictation_policy import cleanup_level
 
             level = cleanup_level(args[0] or None)
-            return lambda config: replace(config, dictation_cleanup_level=level)
+            return lambda config: replace(
+                self._text_actions.without_after_action(config),
+                dictation_cleanup_level=level,
+            )
+        if method == "setDictationWritingStyle":
+            from shared.writing_style_policy import writing_style
+
+            style = writing_style(args[0] or None)
+            return lambda config: replace(
+                config,
+                application_writing_styles=replace(
+                    config.application_writing_styles, default_style=style
+                ),
+            )
         if method == "setApplicationWritingStyle":
             from shared.writing_style_policy import writing_style
 
