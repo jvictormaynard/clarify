@@ -2,13 +2,13 @@
   "schema": 2,
   "component": "mobile",
   "version": "0.13.0",
-  "base_sha": "d77e05619e8aa357d5675c7c3eb72318db0d7e15",
-  "notes": "Internal TestFlight 0.13.0 (53), based on merged PR234 source d77e05619e8aa357d5675c7c3eb72318db0d7e15. The user explicitly accepted the known automatic-return defect and will switch apps manually. Do not describe automatic return as fixed. Production keyboard sources match the previous main candidate; ineffective activation experiments were removed.\n\nExact PR CI41350492434/1 passed all26checks at0e58e57786f4c6b38e9e8b54920480ac8aa8ef52. Focused installed-keyboard run41350498181/1 passed3tests including typing, opening/finalheight andtwoactivationattempts: firstautomaticreturn, secondexplicitmanualswitch withnonceconsumed andvisiblecontainer. Verifiedartifact13101292754 SHA2567ff63b51c2cd18d20af04e061c15fec16c1cf77dd726aef9d33ddb46594429ee. This is limited internal acceptance, not complete automatic-return or App Store acceptance.\n\nComplete Apple inventory41276547438/1 checked2026-11-01T05:20:29Z:32builds/32uploads, highest48, allcollectionscomplete/noerrors. Fresh Git reservations before this preparation end at52; no competing open mobilepreparation oractive signedtagrun. Build52 is immutably tagged and its failedsignedrun never reached signing/archive/upload; build51 was never uploaded. Choose53 without moving or reusing49/50/52. Recheck conflicts before effect; observations are not atomic.\n\nRequire canonical exact-source green mainCI before publication. Signed dispatch must use mode=testflight internal_testing=true on the new reviewedtag. Keep native checks, installedinternalmanual scenario, signedIPA/container+2extensions, confirmedupload, AppleVALID andexistingClarifyInternoIN_BETA_TESTING/installability. Full app/automaticreturn/AppStore acceptance remains incomplete. No App Store submission authorized; physicaliPhone andproduction-accountWAN acceptance later.",
+  "base_sha": "7210663221e2904b12042503cc34c3e01ff6fd24",
+  "notes": "Internal TestFlight correction based on merged PR236 at 7210663221e2904b12042503cc34c3e01ff6fd24. Refresh missing output-language/style capability from the selected destination and keep the keyboard style title on one line. Exact PR CI41372445758/1 passed native71, regular/compact app profiles and unsigned app/extensions. The capsule test passed with24captures; compact normal/expanded title captures were reviewed. Canonical mainCI41374421148/1 is green. Production hosted server already supports output preferences; no server change. Recording and automatic return are unchanged. The user explicitly accepted manual app switching when automatic return fails. This is internal testing only, not fullApp/automaticReturn/AppStore acceptance. Use mode=testflight internal_testing=true; preserve installed keyboard/native/sign/archive/IPA2extensions/upload/AppleVALID and existing ClarifyInterno availability. Complete Apple inventory41376167173/1 checked 2026-11-02T02:09:39.215Z shows33builds/33uploads/highest53, allcollections complete/noerrors, uploads and reviewsubmissions COMPLETE. Git reservations max53 with no competing preparation or active signedtagrun. Recheck before effects. Never move/reuse old tags or reupload old builds. No App Store submission authorized.",
   "evidence": {
-    "build": "53",
-    "highest_build": "52",
+    "build": "54",
+    "highest_build": "53",
     "pending_builds_checked": true,
-    "checked_at": "2026-11-01T05:20:29Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41276547438"
+    "checked_at": "2026-11-02T02:09:39Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41376167173"
   }
 }
