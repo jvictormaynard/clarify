@@ -109,6 +109,7 @@ class QmlWorkflowBridge(QObject):
         "error": "The dictation could not be completed",
         "no_audio": "No usable audio was captured",
         "refinement_failed": "Refinement failed. Original text is available.",
+        "output_language_not_applied": "The output language was not applied. Original text was preserved.",
         "transcription_network": "Could not connect to the transcription service",
         "no_selection": "No text selected. Select text and try again.",
         "rewrite_failed": "Could not rewrite the selected text. Try again.",
@@ -297,7 +298,8 @@ class QmlWorkflowBridge(QObject):
         return (
             not self._finishing
             and self._state.phase is WorkflowPhase.COMPLETED
-            and self._state.status_key == "refinement_failed"
+            and self._state.status_key
+            in {"refinement_failed", "output_language_not_applied"}
         )
 
     @Property(str, notify=resultChanged)

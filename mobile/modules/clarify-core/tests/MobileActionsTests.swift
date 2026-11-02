@@ -372,8 +372,8 @@ final class MobileActionsTests: XCTestCase {
       let result = try await f.destination.processText(UUID().uuidString, prepared: prepared, text: "Original")
       XCTAssertFalse(result.successful); XCTAssertTrue(result.outputPreferenceFailed); XCTAssertEqual(result.text, "Original")
       let body = try JSONSerialization.jsonObject(with: f.posts[0].httpBody!) as! [String: Any]
-      XCTAssertEqual(body["language"] as? String, "auto"); XCTAssertEqual(body["writing_style"] as? String, "formal")
-      XCTAssertNil(body["output_language"], "Selected-text language is separate from dictation output")
+      XCTAssertEqual(body["language"] as? String, "de"); XCTAssertEqual(body["writing_style"] as? String, "formal")
+      XCTAssertNil(body["output_language"], "Text operations carry the frozen output choice in language")
       f.provenance = ["writing_style_requested": "formal", "writing_style_applied": "formal", "writing_style_status": "applied"]
       let applied = try await f.destination.processText(UUID().uuidString, prepared: prepared, text: "Original")
       XCTAssertTrue(applied.successful); XCTAssertEqual(applied.text, "Changed")

@@ -319,7 +319,15 @@ class WorkflowProviderService:
         ):
             raise ValueError("Paired text input requires personal processing")
         validate_input(text, language, policy=self.text_action_input_policy)
-        target = parse_output_language(output_language)
+        target = parse_output_language(
+            output_language
+            if output_language is not None
+            else None
+            if snapshot.action.kind == "translation"
+            else language
+            if language in {"auto", "pt", "en", "es", "de", "ru"}
+            else None
+        )
         if target not in (None, "auto") and snapshot.action.kind == "translation":
             language = target
         if not self.text_action_is_current(snapshot):
@@ -329,12 +337,15 @@ class WorkflowProviderService:
         action, route = snapshot.action, snapshot.route
         if snapshot.account_context is not None:
             value = self.account.execute_text_action(
-                snapshot, text, language, cancel=cancel
+                snapshot,
+                text,
+                target if target is not None else language,
+                cancel=cancel,
             )
             result = RewriteResult(value, "clarify", "openai/gpt-oss-20b")
         elif route is None or self._uses_account():
             raise RuntimeError("Text action account context changed")
-        elif action.kind == "translation":
+        elif action.kind == "translation" and target != "auto":
             if not language or language == "auto":
                 raise ValueError("Select a translation language")
             label = _language_display_name(language)
@@ -370,7 +381,14 @@ class WorkflowProviderService:
                 if action.kind == "rewrite"
                 else _action_writing_style
             )(_workflow_instruction(base, action.prompt), writing_style)
-            instruction = with_output_language(instruction, target)
+            instruction = with_output_language(
+                instruction.replace(
+                    "{lang}", _language_display_name(target or language)
+                )
+                if action.kind == "translation"
+                else instruction,
+                target,
+            )
             request = RewriteRequest(
                 text=text,
                 model=route.model_id,
@@ -478,7 +496,9 @@ class WorkflowProviderService:
                 options["expected_identity"] = dictation_snapshot.account_context
             result = self.account.transcribe(
                 audio_source,
-                selection.language if selection is not None else language,
+                selection.language
+                if selection is not None and output_language is None
+                else language,
                 self.dictionary_service,
                 **options,
             )
@@ -529,6 +549,9 @@ class WorkflowProviderService:
             )
         ).format(lang=language_label)
         prompt = instruction if recognition_only else route.prompt or instruction
+        if target == "auto":
+            instruction = with_output_language(instruction, target)
+            prompt = with_output_language(prompt, target)
         if inline_style:
             instruction = with_writing_style(instruction, style)
             prompt = with_writing_style(prompt, style)

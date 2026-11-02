@@ -299,8 +299,10 @@ class ExecutionTests(TestCase):
             },
             format="json",
         )
-        self.assertEqual(
-            self.send(action_revision=2).json()["code"], "text_action_language_required"
+        self.assertEqual(self.send(action_revision=2).status_code, 200)
+        self.assertIn(
+            "multiple languages",
+            provider.call_args.kwargs["json"]["messages"][0]["content"],
         )
         response = self.send(action_revision=2, language="de")
         self.assertEqual(response.status_code, 200, response.content)

@@ -360,8 +360,9 @@ class QtAudioFileGateway:
                     request.audio_path, request.audio_bytes, cancel_token
                 ),
                 "prompt",
-                selection.language,
+                "auto",
                 selection=selection,
+                output_language=selection.language,
             )
         finally:
             if managed:

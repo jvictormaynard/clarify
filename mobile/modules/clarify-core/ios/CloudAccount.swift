@@ -893,8 +893,7 @@ final class CloudAccount {
     ]
     if let savedAction {
       guard savedAction.valid, savedAction.enabled, savedAction.ready,
-        let revision = TextActionDescriptor.wireRevision(savedAction.revision),
-        savedAction.kind != "translation" || language != "auto" else { throw ComputerFailure.notReady }
+        let revision = TextActionDescriptor.wireRevision(savedAction.revision) else { throw ComputerFailure.notReady }
       fields.removeValue(forKey: "action"); fields["action_id"] = savedAction.id; fields["action_revision"] = revision
     }
     for (key, value) in try preferences.requestFields(supported: outputPreferencesSupported, dictation: false) { fields[key] = value }

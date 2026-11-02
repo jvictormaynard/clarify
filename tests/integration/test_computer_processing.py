@@ -195,6 +195,7 @@ class ComputerProcessorTests(unittest.TestCase):
         result = self.processor.process_text("rewrite", source, "en", self.token)
         self.assertEqual(result["transcript"], source)
         self.assertEqual(self.registry.rewrite.call_args.args[1].text, source)
+        self.processor.process_text("rewrite", "Source", "en-US", self.token)
         self.registry.rewrite.reset_mock()
         with self.assertRaises(ValueError):
             self.processor.process_text("rewrite", source + "é", "en", self.token)
@@ -348,9 +349,9 @@ class ComputerProcessorTests(unittest.TestCase):
         self.registry.rewrite.assert_not_called()
         self.registry.translate.assert_not_called()
 
-    def test_saved_translation_requires_explicit_supported_language(self):
+    def test_saved_translation_accepts_globe_and_supported_output_language(self):
         self.saved_actions(kind="translation")
-        for language in ("auto", "", "fr", "pt-BR"):
+        for language in ("", "fr", "pt-BR"):
             with self.subTest(language=language), self.assertRaises(ValueError):
                 self.processor.prepare_text_action("summary", 3, "Source", language)
         prepared = self.processor.prepare_text_action("summary", 3, "Source", "pt")
@@ -359,6 +360,11 @@ class ComputerProcessorTests(unittest.TestCase):
         self.assertEqual(request.target_language, "pt")
         self.assertIn("Summarize in two sentences.", request.instruction)
         self.registry.rewrite.assert_not_called()
+        prepared = self.processor.prepare_text_action("summary", 3, "Source", "auto")
+        self.processor.process_text_action(prepared, self.token)
+        self.assertIn(
+            "multiple languages", self.registry.rewrite.call_args.args[1].instruction
+        )
 
     def test_saved_action_cancellation_before_and_after_provider(self):
         self.saved_actions()

@@ -217,7 +217,7 @@ class PySide6QmlFrontendTests(unittest.TestCase):
         self.assertIn("Layout.preferredWidth: 26", main_source)
         self.assertNotIn("#72a7ff", qml_source)
         self.assertNotIn("#4f83e8", qml_source)
-        self.assertIn('source: "flags/" + workflow.language + ".svg"', main_source)
+        self.assertIn('"flags/" + workflow.language + ".svg"', main_source)
         self.assertIn('iconSource: "icons/settings.svg"', main_source)
         self.assertIn('iconSource: "icons/x.svg"', main_source)
         self.assertNotIn('text: "☰"', main_source)
@@ -240,10 +240,10 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             self.assertIn('viewBox="0 0 640 480"', flag_source)
             self.assertIn('id="flag-icons-', flag_source)
             self.assertNotIn('id="clarify-rounded"', flag_source)
-        self.assertIn('Accessible.name: "Language: "', main_source)
+        self.assertIn('Accessible.name: "Output language: "', main_source)
         self.assertIn(
             "readonly property var supportedLanguages: [\n"
-            '                                "en", "pt", "es", "de", "ru"\n'
+            '                                "auto", "en", "pt", "es", "de", "ru"\n'
             "                            ]",
             main_source,
         )

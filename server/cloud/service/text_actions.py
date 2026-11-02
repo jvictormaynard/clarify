@@ -192,8 +192,6 @@ def resolve(user, action_id, revision, language):
         raise Rejected("text_action_stale", 409)
     if not item["enabled"]:
         raise Rejected("text_action_disabled", 409)
-    if item["kind"] == "translation" and language == "auto":
-        raise Rejected("text_action_language_required", 400)
     return Snapshot(**item)
 
 

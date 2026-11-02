@@ -167,6 +167,9 @@ class WorkflowState:
     writing_style_requested: str | None = None
     writing_style_applied: str | None = None
     writing_style_status: str | None = None
+    output_language_requested: str | None = None
+    output_language_applied: str | None = None
+    output_language_status: str | None = None
     text_action_id: str | None = None
     text_action_name: str | None = None
     text_action_revision: int | None = None
@@ -610,6 +613,9 @@ class WorkflowService:
         writing_style_requested: str | None = None,
         writing_style_applied: str | None = None,
         writing_style_status: str | None = None,
+        output_language_requested: str | None = None,
+        output_language_applied: str | None = None,
+        output_language_status: str | None = None,
         text_action_id: str | None = None,
         text_action_name: str | None = None,
         text_action_revision: int | None = None,
@@ -639,6 +645,9 @@ class WorkflowService:
                 or session.writing_style,
                 writing_style_applied=writing_style_applied,
                 writing_style_status=writing_style_status,
+                output_language_requested=output_language_requested,
+                output_language_applied=output_language_applied,
+                output_language_status=output_language_status,
                 text_action_id=session.text_action.action.id
                 if session.text_action
                 else text_action_id,
@@ -804,7 +813,9 @@ class WorkflowService:
         try:
             if session.recording is None:
                 raise RuntimeError("Recording session was not created")
-            session.recording.transcription_language = session.language
+            session.recording.transcription_language = (
+                "auto" if session.dictation_snapshot is not None else session.language
+            )
             session.recording.start()
             prepare = getattr(self._provider, "prepare_dictation", None)
             if callable(prepare) and self._is_current(session.operation_id):
@@ -921,17 +932,25 @@ class WorkflowService:
             provider_options = {}
             if session.dictation_snapshot is not None:
                 provider_options["dictation_snapshot"] = session.dictation_snapshot
+                provider_options["output_language"] = session.language
             if session.writing_style is not None:
                 provider_result = self._provider.transcribe(
                     audio_source,
                     session.mode,
-                    session.language,
+                    "auto"
+                    if session.dictation_snapshot is not None
+                    else session.language,
                     writing_style=session.writing_style,
                     **provider_options,
                 )
             else:
                 provider_result = self._provider.transcribe(
-                    audio_source, session.mode, session.language, **provider_options
+                    audio_source,
+                    session.mode,
+                    "auto"
+                    if session.dictation_snapshot is not None
+                    else session.language,
+                    **provider_options,
                 )
             session.timings_ms.update(
                 safe_timings(getattr(provider_result, "timings_ms", {}))
@@ -958,7 +977,12 @@ class WorkflowService:
                 WorkflowPhase.COMPLETED,
                 result_text=result,
                 status_key=(
-                    "refinement_failed" if provider_result.refinement_failed else None
+                    "output_language_not_applied"
+                    if getattr(provider_result, "output_language_status", None)
+                    in {"refinement_failed", "refinement_not_allowed"}
+                    else "refinement_failed"
+                    if provider_result.refinement_failed
+                    else None
                 ),
                 source_text=(
                     getattr(provider_result, "raw_text", None)
@@ -991,6 +1015,15 @@ class WorkflowService:
                 ),
                 writing_style_status=getattr(
                     provider_result, "writing_style_status", None
+                ),
+                output_language_requested=getattr(
+                    provider_result, "output_language_requested", None
+                ),
+                output_language_applied=getattr(
+                    provider_result, "output_language_applied", None
+                ),
+                output_language_status=getattr(
+                    provider_result, "output_language_status", None
                 ),
                 after_delivery=lambda: self._scheduler.run_in_background(
                     lambda: self._write_dictation_if_current(session, result, elapsed)
@@ -1281,7 +1314,10 @@ class WorkflowService:
                 return
             provider_result = (
                 self._provider.transform_text_action(
-                    session.text_action, capture.text, cancel=session.cancel_token
+                    session.text_action,
+                    capture.text,
+                    output_language=session.text_action.config.ui.language,
+                    cancel=session.cancel_token,
                 )
                 if session.text_action is not None
                 else self._provider.rewrite(capture.text)
@@ -1384,6 +1420,10 @@ class WorkflowService:
                     return
                 session.selection = capture
             self._transition(session, WorkflowPhase.TRANSLATION_PICKER)
+            if session.text_action is not None:
+                self._choose_translation_language(
+                    session.text_action.config.ui.language
+                )
         except Exception as error:
             self._transition(
                 session,
@@ -1433,6 +1473,7 @@ class WorkflowService:
                     session.text_action,
                     selection.text,
                     session.target_language,
+                    output_language=session.text_action.config.ui.language,
                     cancel=session.cancel_token,
                 )
                 if session.text_action is not None

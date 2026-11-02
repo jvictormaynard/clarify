@@ -60,8 +60,11 @@ preparation. Cancelling text leaves the account refresh active. Explicit account
 changes and computer connection work still block text acceptance. The operation
 pins its account identity and credential before the preparation task starts and
 checks them after discovery, so a waiting operation cannot adopt another session.
-Output language is independent
-of recognition language. Explicit choices enter operation fingerprints and
+The desktop toolbar globe preserves the source languages, including mixed-language
+text. A flag selects the output language for dictation and saved text actions.
+Operations freeze this choice at acceptance; changing the toolbar affects the next
+operation. The persisted `ui_language` field retains the toolbar choice for
+compatibility. Output language is independent of recognition language. Explicit choices enter operation fingerprints and
 require advertised service support; unsupported choices remain saved and return
 an update-required error. Requested/applied/status metadata distinguishes applied
 editing from a recoverable original. Exact standalone snippets bypass editing.

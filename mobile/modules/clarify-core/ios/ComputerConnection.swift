@@ -303,7 +303,7 @@ final class ComputerConnection {
       json["action"] = action; json["text"] = text
       if let savedAction {
         guard let revision = TextActionDescriptor.wireRevision(savedAction.revision),
-          OutputLanguage(rawValue: language) != nil, savedAction.kind != "translation" || language != "auto" else { throw ComputerFailure.invalidResponse }
+          OutputLanguage(rawValue: language) != nil else { throw ComputerFailure.invalidResponse }
         json["action_id"] = savedAction.id; json["action_revision"] = revision
       }
     } else if let wav { try ComputerWAV.validate(wav); json["audio_wav"] = wav.base64EncodedString() }

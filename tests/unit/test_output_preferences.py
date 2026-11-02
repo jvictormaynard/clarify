@@ -13,8 +13,8 @@ class OutputPreferencePolicyTests(unittest.TestCase):
         self.assertEqual(
             with_output_language("Original instruction", None), "Original instruction"
         )
-        self.assertEqual(
-            with_output_language("Original instruction", "auto"), "Original instruction"
+        self.assertIn(
+            "multiple languages", with_output_language("Original instruction", "auto")
         )
         self.assertEqual(
             with_writing_style("Original instruction", None), "Original instruction"

@@ -144,6 +144,8 @@ def text_operation(
     system = (with_writing_style if action == "rewrite" else with_action_style)(
         system, style
     )
+    if action != "translate":
+        system = with_output_language(system, language)
     outcome = transform(source, system, cost_budget=cost_budget, authorize=authorize)
     return replace(
         outcome, result={**outcome.result, **style_outcome(style, refined=True)}
@@ -155,6 +157,7 @@ def action_operation(
 ):
     style = parse_writing_style(writing_style)
     system = with_action_style(text_actions.instruction(action, language), style)
+    system = with_output_language(system, language)
     if action.kind == "translation":
         source = "Target language: " + text_actions.LANGUAGES[language] + ".\n" + source
     outcome = transform(source, system, cost_budget=cost_budget, authorize=authorize)
