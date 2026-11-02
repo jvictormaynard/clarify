@@ -153,7 +153,7 @@ text actions. Custom actions use the same editor and execution contract.
 | Destination | Contents and order |
 | --- | --- |
 | Dictation | Microphone, recording mode and limits, transcription route and practice entry |
-| Style | Cleanup level, optional action after dictation, application styles, then advanced review routing and instructions |
+| Style | Unified processing after dictation, general writing style, application overrides, then advanced review routing and instructions |
 | Text actions | Named actions, state, shortcut, edit, duplicate and delete |
 | Dictionary / Snippets / History | Separate content destinations with their existing filters and account guards |
 | Settings: General | Output language, startup, updates and practice entry |
@@ -166,7 +166,7 @@ When local dictation is selected, put local-model setup first instead of the
 cloud connection. This also keeps local onboarding on its chosen setup path.
 Keep installation and activation visible beside local-model status. Put
 streaming, optimization and removal in advanced options. Keep recording mode
-with microphone and recording limits. Cleanup level belongs to Style. A disabled
+with microphone and recording limits. Processing after dictation belongs to Style. The single selector offers Natural, preserve words, minimal changes, clarity revision and a saved text action. Choosing an action saves its revision mode and action together. Natural retains existing dictation instructions and clears the optional action. General writing style offers Natural, Formal, Casual and Very casual. Natural adds no style instruction; application rules override the general style. A disabled
 cleanup route links to the matching cloud or local context in Style without changing a setting
 automatically.
 
@@ -185,8 +185,8 @@ Duplicate starts a new draft with a new ID and no shortcut. Preview uses a saved
 action and explicit sample text, and never publishes through the clipboard.
 Translation requires its own target language.
 
-New application writing rules offer Formal, Casual and Very casual. Existing
-Natural, Informal and Organized rules retain their names and processing meaning
+New application writing rules offer Natural, Formal, Casual and Very casual. Existing
+Informal and Organized rules retain their names and processing meaning
 until the user selects a new tone. Editing an existing legacy rule keeps its
 current choice available. A tone change remains a draft until Save and does not
 enable a disabled refinement route.

@@ -776,7 +776,7 @@ class TextActionService:
                 return False
         return bool(getattr(config, route.provider_id).api_key)
 
-    def set_after(self, action_id, language, context, revision):
+    def set_after(self, action_id, language, context, revision, *, config_change=None):
         from text_actions import TEXT_LANGUAGES
 
         if (
@@ -804,7 +804,36 @@ class TextActionService:
             ] = {"id": action_id, "language": language}
             return replace(settings, after_dictation=after), actions
 
-        return self._transaction(mutate, context, revision)
+        return self._transaction(mutate, context, revision, config_change=config_change)
+
+    def set_after_mode(self, mode, action_id, language, context, revision):
+        levels = {
+            "natural": None,
+            "preserve": "preserve",
+            "light": "light",
+            "clarity": "clarity",
+            "action": "clarity",
+        }
+        if mode not in levels or (mode == "action") != bool(action_id):
+            raise ValueError("Invalid post-dictation mode")
+        level = cleanup_level(levels[mode])
+        return self.set_after(
+            action_id,
+            language,
+            context,
+            revision,
+            config_change=lambda config: replace(config, dictation_cleanup_level=level),
+        )
+
+    def without_after_action(self, config):
+        """Clear this destination's optional action without loading its catalog."""
+        settings = settings_for(config)
+        after = {key: dict(value) for key, value in settings.after_dictation.items()}
+        after.setdefault(self._device_key(), {})[self.dictation_context(config)] = {
+            "id": "",
+            "language": "auto",
+        }
+        return replace(config, text_actions=replace(settings, after_dictation=after))
 
     def resolve(self, action_id):
         account_guard = getattr(self.account, "_lock", None) or nullcontext()

@@ -346,7 +346,7 @@ test("Clarify account keeps personal provider controls hidden", async ({ page })
   await navigate(page, "Clarify account");
   await expect(page.getByRole("button", { name: "Models and services", exact: true })).toHaveCount(0);
   await navigate(page, "Style");
-  await expect(page.getByRole("combobox", { name: "Cleanup level", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "After dictation", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Review model and instructions", exact: true })).toHaveCount(0);
 });
 

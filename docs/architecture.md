@@ -271,6 +271,11 @@ migrates effective schema-4 rewrite/translation prompts, enabled state, routes,
 ChatGPT account bindings and shortcuts. An intentionally empty catalog remains
 empty. Older readers reject schema 5; newer unknown schemas remain read-only.
 
+Schema 6 adds the general writing style. Application rules override that style;
+Natural adds no style instruction. Schema-5 readers cannot save schema-6 files,
+so an older desktop cannot silently erase this preference. The existing action
+catalog and personal instructions remain unchanged during migration.
+
 `text_action_service.py` owns catalog transactions, account-context guards,
 definition revisions, local shortcut registration and rollback. Personal
 definitions remain on the device. Hosted definitions belong to the authenticated
