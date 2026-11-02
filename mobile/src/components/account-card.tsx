@@ -5,6 +5,7 @@ import { Button, Card, ui, usePalette } from './ui';
 import { isBusy, report, useClarify } from '../state/clarify';
 import { formatUsageReset, usageProgress } from '../usage';
 import { AccountSignIn } from './account-sign-in';
+import { AccountEndpointRecovery } from './account-endpoint-recovery';
 
 export function AccountCard({ children }: { children?: ReactNode }) {
   const c = usePalette();
@@ -39,6 +40,7 @@ export function AccountCard({ children }: { children?: ReactNode }) {
       {action === name && <ActivityIndicator size="small" color={destructive ? c.danger : c.accent} />}
     </Pressable>;
   return <View style={{ gap: 20 }}>
+    {account.endpointRecovery && <Card><AccountEndpointRecovery account={account} busy={!!busy} command={accountCommand} /></Card>}
     <Card style={{ gap: 8 }}>
       <Text style={[ui.small, { color: c.muted }]}>{t("Conta Clarify")}</Text>
       <Text selectable style={{ fontSize: 18, fontWeight: '600', color: c.text }}>{account.email}</Text>

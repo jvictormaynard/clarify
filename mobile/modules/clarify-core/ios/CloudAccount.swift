@@ -152,12 +152,18 @@ final class CloudAccount {
   // Explicit account changes must still exclude new operations.
   var textStartBlocked: Bool { locked { busy && !automatic } }
   var configured: Bool { locked { hosted && readCredential() != nil } }
+  private var endpointRecovery: String {
+    guard (try? Self.validateEndpoint(state.endpoint)) == "https://clarify-api-dev-dev.up.railway.app",
+      let bundled = connectAccountEndpoint(),
+      (try? Self.validateEndpoint(bundled)) == "https://clarify-api.victormaynard.com" else { return "" }
+    return "https://clarify-api.victormaynard.com"
+  }
   func snapshot() -> [String: Any] {
     locked {
       var result: [String: Any] = ["endpoint": state.endpoint, "signedIn": configured, "managed": managed, "email": state.email,
       "pending": state.pending, "hosted": hosted, "syncEnabled": state.sync,
       "busy": busy, "error": syncError, "dictionaryConflict": dictionaryConflict, "usage": usage, "historyAccount": historyScope != nil, "historyContext": historyContext,
-      "outputPreferencesSupported": outputPreferencesSupported]
+      "outputPreferencesSupported": outputPreferencesSupported, "endpointRecovery": endpointRecovery]
       result.merge(textActions.snapshot) { _, new in new }; return result
     }
   }
@@ -543,7 +549,7 @@ final class CloudAccount {
     }
   }
   @MainActor func command(_ action: String, value: String, library: LocalLibrary, connectionOnly: Bool = false) async throws -> Bool {
-    if connectionOnly && !["login", "signup", "confirm", "social", "cancel-social", "configure", "logout", "delete", "refresh"].contains(action) {
+    if connectionOnly && !["login", "signup", "confirm", "social", "cancel-social", "configure", "recover-endpoint", "logout", "delete", "refresh"].contains(action) {
       throw ComputerFailure.invalidResponse
     }
     // Cancellation must reach the retained browser while the original command
@@ -572,6 +578,21 @@ final class CloudAccount {
     try begin(); defer { end() }
     locked { automatic = action == "auto" }
     switch action {
+    case "recover-endpoint":
+      let endpoint = locked { endpointRecovery }
+      guard !endpoint.isEmpty else { throw ComputerFailure.invalidResponse }
+      // Explicit recovery never sends the old credential to either server.
+      // Clear the identity, including historyUserID, before selecting the new
+      // origin. SQLite records keep their original endpoint/account owner.
+      try saveCredential(nil)
+      try locked {
+        generation &+= 1; state = CloudAccountState(); state.endpoint = endpoint
+        clearTextCapabilities(); usage = [:]; syncError = ""; dictionaryConflict = false
+        lastRefreshAttempt = -.infinity; lastSyncAttempt = -.infinity
+        lastHistoryAttempt = -.infinity; historyFailed = false
+        try persist()
+      }
+      sessionInvalidated?()
     case "configure":
       guard locked({ state.userID == nil }) else { throw ClarifyError(L("Saia da conta antes de alterar o servidor.")) }
       let endpoint = try Self.validateEndpoint(value)
