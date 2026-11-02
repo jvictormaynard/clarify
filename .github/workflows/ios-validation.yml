@@ -57,7 +57,8 @@ jobs:
           key: ios-tests-v2-${{ env.DEVELOPER_DIR == '/Applications/Xcode-26.6.0.app/Contents/Developer' && 'bitrise' || 'github' }}-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-${{ hashFiles('mobile/modules/clarify-core/Package.swift', 'mobile/modules/clarify-core/Package.resolved', 'mobile/modules/clarify-core/ios/**/*.swift', 'mobile/modules/clarify-core/tests/**/*.swift', 'mobile/native/keyboard/**', 'mobile/native/tests/**', 'mobile/scripts/test-keyboard-ui.cjs') }}
           restore-keys: |
             ios-tests-v2-${{ env.DEVELOPER_DIR == '/Applications/Xcode-26.6.0.app/Contents/Developer' && 'bitrise' || 'github' }}-${{ runner.os }}-${{ runner.arch }}-xcode-26.6-ios-26.5-
-      - if: github.event_name != 'workflow_dispatch' || inputs.activation_only != true
+      - name: Test Swift contracts
+        if: github.event_name != 'workflow_dispatch' || inputs.activation_only != true
         run: swift test --package-path modules/clarify-core
       - name: Test native keyboard and library integration
         if: github.event_name != 'workflow_dispatch' || inputs.activation_only != true
@@ -67,12 +68,10 @@ jobs:
           CLARIFY_IOS_UI_FIXTURE_ROOT: ${{ runner.temp }}/ClarifyKeyboardUIFixture
         run: node scripts/test-keyboard-ui.cjs
       - name: Verify the installed-keyboard fixture toolchain
-        if: github.event_name == 'workflow_dispatch' && inputs.activation_only == true
         run: ruby -rxcodeproj -e 'abort "Expected xcodeproj 1.27.0" unless Xcodeproj::VERSION == "1.27.0"'
       - name: Test installed keyboard typing and activation
-        if: github.event_name == 'workflow_dispatch' && inputs.activation_only == true
         env:
-          CLARIFY_INTERNAL_MANUAL_RETURN: ${{ inputs.manual_return && '1' || '0' }}
+          CLARIFY_INTERNAL_MANUAL_RETURN: ${{ (github.event_name != 'workflow_dispatch' || inputs.manual_return) && '1' || '0' }}
         run: node scripts/test-keyboard-extension.cjs
       - name: Retain native test results
         if: ${{ (always()) }}
@@ -80,7 +79,7 @@ jobs:
         with:
           name: ios-native-tests-${{ github.run_id }}-${{ github.run_attempt }}
           path: mobile/test-results/
-          if-no-files-found: ${{ github.event_name == 'workflow_dispatch' && inputs.activation_only == true && 'error' || 'ignore' }}
+          if-no-files-found: error
           retention-days: 7
   build:
     name: Unsigned app and extensions build

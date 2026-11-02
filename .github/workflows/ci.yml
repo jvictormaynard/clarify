@@ -234,6 +234,8 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci --no-fund
       - run: python ../scripts/ci.py --task mobile
+      - name: Check Expo configuration
+        run: npx --yes expo-doctor
   package:
     name: Package Windows executable
     needs: plan

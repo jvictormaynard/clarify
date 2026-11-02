@@ -53,12 +53,18 @@ Containing-app UI validation runs regular and compact iPhone profiles in separat
 required matrix jobs with distinct evidence artifacts. Each keeps its 60-minute
 budget and runs native text-input regressions; the iOS aggregate requires both
 profiles, keyboard/library tests and the unsigned app build. Full local app
-validation and signed publication retain the two-profile run on one test build.
+validation and default signed publication retain the two-profile run on one test build.
 
 The explicit installed-keyboard fixture uses `xcodeproj` 1.27.0 and retains its
-receipts, captures and logs. Ordinary CI keeps the native keyboard/library tests.
+receipts, captures and logs. Ordinary required CI runs this same fixture after
+native keyboard/library tests, including typing, opening/final height and two
+fresh activation attempts. It permits the authorized internal manual return
+below. This does not establish automatic-return or App Store acceptance.
+The mobile CI job also runs Expo Doctor. Internal publication can reuse this
+proof only from successful canonical main CI at its exact source SHA and run
+attempt. Missing, failed or skipped installed coverage blocks reuse.
 Strict installed typing and both automatic returns remain in default signed
-publication and the focused manual validation.
+publication and the default focused manual validation.
 
 For an activation regression, the manual `ios-validation.yml` run accepts
 `activation_only=true` with the exact reviewed `source_sha`. It runs the original
