@@ -5,6 +5,7 @@ import { DraftTextInput } from './draft-text-input';
 import { Button, TextButton, ui, usePalette } from './ui';
 import type { AccountSnapshot } from '../../modules/clarify-core';
 import { report } from '../state/clarify';
+import { AccountEndpointRecovery } from './account-endpoint-recovery';
 
 export function AccountSignIn({ account, busy, command }: {
   account: AccountSnapshot; busy: boolean;
@@ -45,6 +46,7 @@ export function AccountSignIn({ account, busy, command }: {
     setCancelling(true);
     void command('cancel-social').catch(error => { setCancelling(false); report(error); });
   };
+  if (account.endpointRecovery) return <AccountEndpointRecovery account={account} busy={blocked} command={command} />;
   return account.pending ? <>
     <Text style={[ui.small, { color: c.muted }]}>{t("Digite o código enviado para {v0}. O código vale por 10 minutos.", { v0: account.email })}</Text>
     <DraftTextInput inputRef={codeInput} selectionColor={c.text} testID="account.code" accessibilityLabel={t("Código da conta Clarify")} initialValue={code} onChangeText={changeCode} editable={!busy} textContentType="oneTimeCode" keyboardType="number-pad" maxLength={16} placeholder={t("Código")} placeholderTextColor={c.muted} style={[ui.input, input]} />

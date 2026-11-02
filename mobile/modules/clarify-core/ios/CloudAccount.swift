@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 private final class CloudTransport: NSObject, URLSessionTaskDelegate {
   func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
@@ -120,7 +121,17 @@ final class CloudAccount {
   func setSessionInvalidationHandler(_ handler: @escaping () -> Void) { locked { sessionInvalidated = handler } }
   var hosted: Bool { locked { state.userID != nil } }
   var managed: Bool { locked { state.userID != nil || state.hosted } }
-  var scope: String? { locked { state.userID } }
+  // The local vocabulary owner can differ from the server's user UUID after
+  // explicit origin recovery. The same owner also isolates queued keyboard words.
+  var scope: String? { locked { state.userID.map { vocabularyOwner(for: $0) } } }
+  private func vocabularyOwner(for userID: String) -> String {
+    let key = "clarify.account.vocabularyNamespace." + state.endpoint
+    guard let namespace = defaults.string(forKey: key), UUID(uuidString: namespace) != nil else { return userID }
+    var bytes = Array(SHA256.hash(data: Data((namespace + "|" + userID.lowercased()).utf8)).prefix(16))
+    bytes[6] = (bytes[6] & 0x0f) | 0x80; bytes[8] = (bytes[8] & 0x3f) | 0x80
+    return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+      bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15])).uuidString
+  }
   var snippetScope: String? {
     locked {
       guard let user = state.userID, UUID(uuidString: user) != nil,
@@ -152,12 +163,18 @@ final class CloudAccount {
   // Explicit account changes must still exclude new operations.
   var textStartBlocked: Bool { locked { busy && !automatic } }
   var configured: Bool { locked { hosted && readCredential() != nil } }
+  private var endpointRecovery: String {
+    guard (try? Self.validateEndpoint(state.endpoint)) == "https://clarify-api-dev-dev.up.railway.app",
+      let bundled = connectAccountEndpoint(),
+      (try? Self.validateEndpoint(bundled)) == "https://clarify-api.victormaynard.com" else { return "" }
+    return "https://clarify-api.victormaynard.com"
+  }
   func snapshot() -> [String: Any] {
     locked {
       var result: [String: Any] = ["endpoint": state.endpoint, "signedIn": configured, "managed": managed, "email": state.email,
       "pending": state.pending, "hosted": hosted, "syncEnabled": state.sync,
       "busy": busy, "error": syncError, "dictionaryConflict": dictionaryConflict, "usage": usage, "historyAccount": historyScope != nil, "historyContext": historyContext,
-      "outputPreferencesSupported": outputPreferencesSupported]
+      "outputPreferencesSupported": outputPreferencesSupported, "endpointRecovery": endpointRecovery]
       result.merge(textActions.snapshot) { _, new in new }; return result
     }
   }
@@ -543,7 +560,7 @@ final class CloudAccount {
     }
   }
   @MainActor func command(_ action: String, value: String, library: LocalLibrary, connectionOnly: Bool = false) async throws -> Bool {
-    if connectionOnly && !["login", "signup", "confirm", "social", "cancel-social", "configure", "logout", "delete", "refresh"].contains(action) {
+    if connectionOnly && !["login", "signup", "confirm", "social", "cancel-social", "configure", "recover-endpoint", "logout", "delete", "refresh"].contains(action) {
       throw ComputerFailure.invalidResponse
     }
     // Cancellation must reach the retained browser while the original command
@@ -572,6 +589,25 @@ final class CloudAccount {
     try begin(); defer { end() }
     locked { automatic = action == "auto" }
     switch action {
+    case "recover-endpoint":
+      let endpoint = locked { endpointRecovery }
+      guard !endpoint.isEmpty else { throw ComputerFailure.invalidResponse }
+      // Explicit recovery never sends the old credential to either server.
+      // Clear the identity, including historyUserID, before selecting the new
+      // origin. SQLite records keep their original endpoint/account owner.
+      try saveCredential(nil)
+      try locked {
+        // Persist before changing origin. A crash can leave the former session
+        // signed out, but must never expose its vocabulary to the new origin.
+        let key = "clarify.account.vocabularyNamespace." + endpoint
+        if defaults.string(forKey: key) == nil { defaults.set(UUID().uuidString, forKey: key) }
+        generation &+= 1; state = CloudAccountState(); state.endpoint = endpoint
+        clearTextCapabilities(); usage = [:]; syncError = ""; dictionaryConflict = false
+        lastRefreshAttempt = -.infinity; lastSyncAttempt = -.infinity
+        lastHistoryAttempt = -.infinity; historyFailed = false
+        try persist()
+      }
+      sessionInvalidated?()
     case "configure":
       guard locked({ state.userID == nil }) else { throw ClarifyError(L("Saia da conta antes de alterar o servidor.")) }
       let endpoint = try Self.validateEndpoint(value)
@@ -615,7 +651,7 @@ final class CloudAccount {
       try await syncImpl(library, prefer: action == "sync-local" ? "local" : action == "sync-remote" ? "remote" : nil)
     case "logout", "delete":
       clearTextCapabilities()
-      let userID = locked { state.userID }
+      let dictionaryOwner = scope
       let oldHistoryScope = historyScope
       // Invalidate in-flight history before the first suspension. It must not
       // restore a token, quota or cache after this explicit account transition.
@@ -627,7 +663,7 @@ final class CloudAccount {
       try saveCredential(nil)
       try locked { generation &+= 1; let endpoint = state.endpoint; state = CloudAccountState(); state.endpoint = endpoint; usage = [:]; dictionaryConflict = false; lastHistoryAttempt = -.infinity; historyFailed = false; try persist() }
       // End the local session even if the atomic cache purge fails.
-      if action == "delete" { try library.deleteCloudAccount(dictionaryScope: userID, historyScope: oldHistoryScope) }
+      if action == "delete" { try library.deleteCloudAccount(dictionaryScope: dictionaryOwner, historyScope: oldHistoryScope) }
     default: throw ClarifyError(L("Ação de conta inválida."))
     }
     return true
@@ -733,7 +769,7 @@ final class CloudAccount {
   }
   @MainActor private func syncImpl(_ library: LocalLibrary, prefer: String? = nil) async throws {
     lastSyncAttempt = ProcessInfo.processInfo.systemUptime
-    guard let userID = locked({ state.userID }) else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
+    guard let userID = scope else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
     let cached = try library.cloudDictionary(userID)
     let local = cached.revision == nil ? try library.dictionary() : cached.entries
     var (code, remote) = try await perform("GET", "/v1/dictionary")
@@ -779,13 +815,14 @@ final class CloudAccount {
     dictionaryChanged()
   }
   func prepareLibrary(_ library: LocalLibrary) throws {
-    guard let userID = scope else { return }
+    guard let userID = locked({ state.userID }) else { return }
     try prepareLibrary(library, for: userID)
   }
   private func prepareLibrary(_ library: LocalLibrary, for userID: String) throws {
-    let cached = try library.cloudDictionary(userID)
+    let owner = locked { vocabularyOwner(for: userID) }
+    let cached = try library.cloudDictionary(owner)
     if cached.revision == nil {
-      try library.saveCloudDictionary(CloudDictionary(entries: library.dictionary(), base: [], revision: -1), scope: userID)
+      try library.saveCloudDictionary(CloudDictionary(entries: library.dictionary(), base: [], revision: -1), scope: owner)
     }
   }
   @MainActor private func syncQuietly(_ library: LocalLibrary) async {

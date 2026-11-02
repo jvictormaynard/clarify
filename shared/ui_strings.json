@@ -1,4 +1,24 @@
 {
+  "Usar o servidor de produção?": {
+    "pt": "Usar o servidor de produção?",
+    "en": "Use the production server?",
+    "es": "¿Usar el servidor de producción?"
+  },
+  "Será necessário entrar novamente. O histórico do servidor anterior será mantido separado neste iPhone.": {
+    "pt": "Será necessário entrar novamente. O histórico do servidor anterior será mantido separado neste iPhone.",
+    "en": "You must sign in again. History from the previous server will stay separate on this iPhone.",
+    "es": "Debes iniciar sesión de nuevo. El historial del servidor anterior se mantendrá separado en este iPhone."
+  },
+  "Usar servidor de produção": {
+    "pt": "Usar servidor de produção",
+    "en": "Use production server",
+    "es": "Usar servidor de producción"
+  },
+  "Esta conta usa o servidor de desenvolvimento: {v0}.": {
+    "pt": "Esta conta usa o servidor de desenvolvimento: {v0}.",
+    "en": "This account uses the development server: {v0}.",
+    "es": "Esta cuenta usa el servidor de desarrollo: {v0}."
+  },
   "A operação de ações mudou. Atualize e tente novamente.": {
     "pt": "A operação de ações mudou. Atualize e tente novamente.",
     "en": "The action operation changed. Refresh and try again.",

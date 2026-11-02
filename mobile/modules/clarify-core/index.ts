@@ -51,7 +51,7 @@ export interface TextActionCatalog {
 export interface ComputerSnapshot extends TextActionCatalog { paired: boolean; computerID: string; computerName: string; status: string; ready: boolean; busy: boolean; actionReadiness?: ComputerActionReadiness; remoteStatus?: string; remoteAvailable?: boolean }
 export interface AccountSnapshot extends TextActionCatalog {
   mode?: 'hosted' | 'computer'; processingConfigured?: boolean; computer?: ComputerSnapshot;
-  endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
+  endpoint: string; endpointRecovery?: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
   hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
   dictionaryConflict?: boolean;
   historyAccount?: boolean;
