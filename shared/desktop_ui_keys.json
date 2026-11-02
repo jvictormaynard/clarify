@@ -167,5 +167,18 @@
   "Dispositivos",
   "Usa linguagem profissional e frases completas, sem acrescentar informações.",
   "Usa linguagem natural e conversacional, mantendo o sentido do texto.",
-  "Usa linguagem descontraída e direta, sem inventar gírias ou emojis."
+  "Usa linguagem descontraída e direta, sem inventar gírias ou emojis.",
+  "Processamento do texto",
+  "Aplicar ação de texto",
+  "Mantém suas instruções atuais de ditado, sem uma ação adicional.",
+  "Aplica a ação escolhida no lugar da revisão padrão, antes de inserir o texto.",
+  "Nenhuma ação salva. Crie uma em Ações de texto.",
+  "A ação selecionada está indisponível. Escolha outra ação.",
+  "Escolha uma ação para salvar. Até lá, a configuração anterior continua ativa.",
+  "Estilo geral",
+  "Define o tom do texto. Regras por aplicativo têm prioridade.",
+  "Natural mantém suas instruções atuais, sem impor um tom.",
+  "Sem regra, usa o estilo geral. A regra vale para o próximo ditado.",
+  "Todos os aplicativos usam o estilo geral.",
+  "Estilo: Natural"
 ]

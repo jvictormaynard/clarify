@@ -327,6 +327,42 @@ class MigrationTests(unittest.TestCase):
 
 
 class LocalServiceTests(LocalServiceFixture, unittest.TestCase):
+    def test_after_mode_commits_action_and_cleanup_together_without_enabling_routes(
+        self,
+    ):
+        before = self.repo.load()
+
+        def save(mode, action="", language="auto"):
+            state = self.service.projection()
+            return self.service.set_after_mode(
+                mode,
+                action,
+                language,
+                state["textActionContext"],
+                state["textActionsRevision"],
+            )
+
+        save("preserve")
+        with self.assertRaises(ValueError):
+            save("action", "translation")
+        self.assertEqual(self.repo.load().dictation_cleanup_level, "preserve")
+        self.assertEqual(self.service.projection()["afterDictationTextActionId"], "")
+        save("action", "translation", "en")
+        self.assertEqual(self.repo.load().dictation_cleanup_level, "clarity")
+        self.assertEqual(
+            self.service.projection()["afterDictationTextActionId"], "translation"
+        )
+        self.assertEqual(self.repo.load().workflows, before.workflows)
+        self.assertEqual(
+            self.repo.load().local_asr_cloud_refinement,
+            before.local_asr_cloud_refinement,
+        )
+        save("light")
+        self.assertEqual(self.repo.load().dictation_cleanup_level, "light")
+        self.assertEqual(self.service.projection()["afterDictationTextActionId"], "")
+        save("natural")
+        self.assertIsNone(self.repo.load().dictation_cleanup_level)
+
     def test_save_duplicate_disable_delete_and_stale_guard(self):
         first = self.service.projection()
         state = self.save(

@@ -75,7 +75,7 @@ __all__ = [
 ]
 
 
-CONFIG_SCHEMA_VERSION = 5
+CONFIG_SCHEMA_VERSION = 6
 STATS_SCHEMA_VERSION = 1
 SUPPORTED_PROVIDERS = PROVIDER_IDS
 PROVIDER_SECRET_KEYS = {
@@ -1116,12 +1116,18 @@ def _migrate_v4_to_v5(payload: dict[str, Any]) -> dict[str, Any]:
     return {**payload, "schema_version": 5}
 
 
+def _migrate_v5_to_v6(payload: dict[str, Any]) -> dict[str, Any]:
+    # Older readers must not erase the general writing-style preference.
+    return {**payload, "schema_version": 6}
+
+
 CONFIG_MIGRATIONS = {
     0: _migrate_legacy_to_v1,
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
     4: _migrate_v4_to_v5,
+    5: _migrate_v5_to_v6,
 }
 
 
