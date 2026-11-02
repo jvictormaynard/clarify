@@ -144,8 +144,7 @@ def text_operation(
     system = (with_writing_style if action == "rewrite" else with_action_style)(
         system, style
     )
-    if action != "translate":
-        system = with_output_language(system, language)
+    system = with_output_language(system, language)
     outcome = transform(source, system, cost_budget=cost_budget, authorize=authorize)
     return replace(
         outcome,
