@@ -76,7 +76,7 @@ jobs:
     name: Verify the uploaded TestFlight build
     needs: release_gate
     if: >-
-      always() && github.repository == 'jvictormaynard/clarify' &&
+      !cancelled() && github.repository == 'jvictormaynard/clarify' &&
       needs.release_gate.outputs.result == 'availability'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -106,7 +106,7 @@ jobs:
     name: Test, sign and upload iOS
     needs: release_gate
     if: >-
-      always() && github.repository == 'jvictormaynard/clarify' &&
+      !cancelled() && github.repository == 'jvictormaynard/clarify' &&
       (inputs.mode == 'validate' ||
        (inputs.mode == 'testflight' && needs.release_gate.outputs.result == 'publish'))
     runs-on: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && github.event_name == 'workflow_dispatch' && 'bitrise-runner-clarify-ios-validation' || 'macos-26' }}

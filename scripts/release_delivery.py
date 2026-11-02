@@ -398,6 +398,13 @@ def internal_ci_proof(api, run, source):
                 "Internal CI proof step is not green: " + step_name,
             )
         evidence.append({"job_id": job["id"], "name": name, "steps": steps})
+    current = api.request("GET", f"/actions/runs/{int(run['id'])}")
+    require(
+        current.get("id") == run["id"]
+        and int(current.get("run_attempt", 1)) == attempt,
+        "Internal CI proof attempt changed during verification",
+    )
+    validate_run(api, current, source)
     return {
         "source": source,
         "run_id": run["id"],

@@ -658,9 +658,24 @@ class ReleaseDeliveryTests(unittest.TestCase):
             ]
         )
         self.routes["/actions/runs/42/attempts/1/jobs"] = {"jobs": jobs}
+        self.routes["/actions/runs/42"] = self.run
         receipt = delivery.internal_ci_proof(self.api, self.run, SOURCE)
         self.assertEqual(receipt["source"], SOURCE)
         self.assertEqual(receipt["run_id"], 42)
+        for change in (
+            {"run_attempt": 2, "status": "in_progress", "conclusion": None},
+            {"run_attempt": 2},
+            {"status": "in_progress", "conclusion": None},
+            {"id": 43},
+            {"head_sha": BASE},
+        ):
+            self.routes["/actions/runs/42"] = dict(self.run, **change)
+            with (
+                self.subTest(current_run=change),
+                self.assertRaises(delivery.ReleaseError),
+            ):
+                delivery.internal_ci_proof(self.api, self.run, SOURCE)
+        self.routes["/actions/runs/42"] = self.run
         for change in (
             {"head_sha": BASE},
             {"conclusion": "failure"},

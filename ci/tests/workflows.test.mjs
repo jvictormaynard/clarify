@@ -215,6 +215,18 @@ test('TestFlight and App Store use separate explicit actions and one Apple build
   assert.deepEqual(flight.on.workflow_dispatch.inputs.mode.options, ['validate', 'testflight', 'status', 'availability']);
   assert.equal(flight.on.workflow_dispatch.inputs.mode.default, 'validate');
   assert.equal(flight.on.workflow_dispatch.inputs.internal_testing.default, false);
+  for (const [job, mode, result] of [
+    ['publish', 'testflight', 'publish'], ['publish', 'validate', ''],
+    ['availability', 'availability', 'availability'],
+  ]) {
+    for (const isCancelled of [false, true]) {
+      assert.equal(runInNewContext(flight.jobs[job].if, {
+        github: { repository: 'jvictormaynard/clarify' }, inputs: { mode },
+        needs: { release_gate: { outputs: { result } } },
+        always: () => true, cancelled: () => isCancelled,
+      }), !isCancelled, `${job} must stop after cancellation and allow its normal path`);
+    }
+  }
   const appFlow = Object.values(flight.jobs).flatMap(job => job.steps || [])
     .find(step => step.run === 'node scripts/test-app-ui.cjs');
   assert.equal(appFlow.env.CLARIFY_APP_UI_PROFILE,
