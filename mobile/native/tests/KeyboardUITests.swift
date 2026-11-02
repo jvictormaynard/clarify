@@ -1091,6 +1091,8 @@ final class KeyboardUITests: XCTestCase {
       keyboard.processSelection("translate", language: "es")
       let command = try XCTUnwrap(store.commands().last?.1)
       XCTAssertEqual(command.action, "translate"); XCTAssertEqual(command.language, "es")
+        XCTAssertEqual(command.outputPreferences?.language, .es)
+        XCTAssertEqual(store.outputPreferences().language, .es)
       XCTAssertEqual(command.text, "Selected text with several words"); XCTAssertEqual(command.context, context)
       state.operationID = command.operationID; state.textOperation = true; state.phase = .rewriting
       state.heartbeat = Date().timeIntervalSince1970
@@ -1175,6 +1177,8 @@ final class KeyboardUITests: XCTestCase {
         choice.sendActions(for: .primaryActionTriggered)
         let command = try XCTUnwrap(store.commands().last?.1)
         XCTAssertEqual(command.action, "translate"); XCTAssertEqual(command.language, "es")
+        XCTAssertEqual(command.outputPreferences?.language, .es)
+        XCTAssertEqual(store.outputPreferences().language, .es)
         XCTAssertEqual(command.text, "Original selection"); XCTAssertEqual(command.context, state.processingContext)
         state.operationID = command.operationID; state.textOperation = true; state.phase = .rewriting
         try store.write(state, to: "state.json"); keyboard.refreshFromStore()
@@ -1202,7 +1206,7 @@ final class KeyboardUITests: XCTestCase {
       self.invoke(german); XCTAssertEqual(store.outputPreferences().language, .de)
       keyboard.field.selectedText = "Original"; keyboard.selectionDidChange(nil)
       let translation = try XCTUnwrap(self.menuElements(capsule.menu).compactMap { $0 as? UIMenu }.first { $0.title == L("Traduzir") })
-      XCTAssertEqual(translation.children.compactMap { ($0 as? UIAction)?.title }, OutputLanguage.allCases.filter { $0 != .auto }.map(\.menuTitle))
+      XCTAssertEqual(translation.children.compactMap { ($0 as? UIAction)?.title }, OutputLanguage.allCases.map(\.menuTitle))
       let spanish = try XCTUnwrap(translation.children.compactMap { $0 as? UIAction }.first { $0.title == "🇪🇸 Español" })
       keyboard.field.selectedText = "Changed before poll"
       self.invoke(spanish); XCTAssertTrue(store.commands().isEmpty, "A retained closure cannot adopt a changed selection")
@@ -1222,7 +1226,7 @@ final class KeyboardUITests: XCTestCase {
       let command = try XCTUnwrap(store.commands().last?.1)
       XCTAssertEqual(command.action, "text_action"); XCTAssertEqual(command.actionID, custom.id); XCTAssertEqual(command.actionRevision, custom.revision)
       XCTAssertEqual(command.outputPreferences?.language, .de)
-      XCTAssertEqual(command.language, "auto"); XCTAssertEqual(store.outputPreferences().language, .de)
+      XCTAssertEqual(command.language, "de"); XCTAssertEqual(store.outputPreferences().language, .de)
     }
   }
   func testAccountSelectedTextMenuPreservesDictionaryAndRejectsSecureOrOversizedSelections() async throws {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { actionChoices, composerResult, ownedTextResult, ownsTextOperation, targetLanguages, TextComposerSession } from '../src/text-actions.ts';
 import { outputStyleLabel, visibleOutputStyle } from '../src/output-preferences.ts';
-import type { AccountSnapshot, Snapshot } from '../modules/clarify-core';
+import type { AccountSnapshot, Snapshot, OutputLanguage } from '../modules/clarify-core';
 
 const account = (values: Partial<AccountSnapshot> = {}): AccountSnapshot => ({
   signedIn: true, mode: 'hosted', endpoint: 'https://example.test', email: 'a@example.test', historyContext: 'scope',
@@ -57,20 +57,29 @@ function fixture(start: () => Promise<string> = async () => op.id) {
     processText: async (...args) => { calls.push(['legacy', ...args]); return start(); },
     processTextAction: async (...args) => { calls.push(['saved', ...args]); return start(); },
     command: async (...args) => { calls.push(args); },
+    setOutputPreference: async (key, language) => { calls.push([key, language]); return { language: language as OutputLanguage, style: 'default' }; },
   }, 'de');
   model.setContext('scope'); model.setDraft('Retain my draft'); model.select(choice.key);
   return { model, calls };
 }
 
-test('accepted start freezes draft, revision, explicit translation target and context', async () => {
+test('accepted start freezes draft, revision, output language and context', async () => {
   const pending = deferred<string>(); const { model, calls } = fixture(() => pending.promise);
-  const request = model.start({ ...choice, translation: true });
+  const request = model.start(choice);
   model.setDraft('Later edit'); model.setLanguage('ru');
   assert.equal(model.getState().operation, null);
   assert.deepEqual(calls, [['saved', 'rewrite', '9223372036854775807', 'Retain my draft', 'de', 'scope']]);
   pending.resolve(op.id); await request;
   assert.deepEqual(model.getState().operation, { ...op, selection: choice.key, language: 'de' });
   assert.equal(model.getState().draft, 'Later edit');
+});
+
+test('saving the globe updates the shared preference before the next action', async () => {
+  const { model, calls } = fixture();
+  assert.equal(await model.saveLanguage('auto'), true);
+  await model.start(choice);
+  assert.deepEqual(calls.slice(0, 2), [['language', 'auto'], ['saved', 'rewrite', '9223372036854775807', 'Retain my draft', 'auto', 'scope']]);
+  assert.equal(model.getState().draft, 'Retain my draft');
 });
 
 test('preparation failure preserves the draft and never adopts global result text', async () => {

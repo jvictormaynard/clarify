@@ -768,14 +768,22 @@ class KeyboardViewController: UIInputViewController {
       func action(_ title: String, kind: String, saved: TextActionDescriptor? = nil, enabled: Bool) -> UIMenuElement {
         func choice(_ target: String, title: String) -> UIAction {
           UIAction(title: title, attributes: enabled && captured.enabled ? [] : .disabled) { [weak self] _ in
-            guard let self, self.menuIsCurrent(captured), captured.enabled else { return }
+            guard let self, self.menuIsCurrent(captured), captured.enabled, self.hasFullAccess else { return }
+            do {
+              _ = try self.store?.setOutputPreference("language", value: target)
+              self.outputPreferenceError = nil
+            } catch {
+              self.outputPreferenceError = L("Não foi possível salvar a preferência de saída. Tente novamente.")
+              UIAccessibility.post(notification: .announcement, argument: self.outputPreferenceError)
+              self.updateToolbar(); self.updateRecordingPanel(); return
+            }
             self.processSelection(saved == nil ? kind : "text_action", language: target, savedAction: saved)
           }
         }
         if kind == "translate" {
-          return UIMenu(title: title, children: OutputLanguage.allCases.filter { $0 != .auto }.map { choice($0.rawValue, title: $0.menuTitle) })
+          return UIMenu(title: title, children: OutputLanguage.allCases.map { choice($0.rawValue, title: $0.menuTitle) })
         }
-        return choice("auto", title: title)
+        return choice(captured.preferences.language.rawValue, title: title)
       }
       if captured.catalog.status == .ready {
         for saved in captured.catalog.actions {

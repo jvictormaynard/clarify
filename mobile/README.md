@@ -23,7 +23,9 @@ dictation output, microphone and keyboard, and history and privacy.
 The keyboard always shows the output-language flag and writing style. Its menu
 changes dictation output when no text is selected. With selected text, the same
 control shows a wand and offers rewrite, translation and saved text actions.
-Translation targets do not change the output language for later dictations.
+The language picker in Actions and the keyboard translation menu update the same
+output preference as dictation. The globe preserves the source languages; a flag
+sets the output language. Each operation keeps its accepted preference snapshot.
 
 Choose **Meu computador** on the sign-in page or under **Ajustes > Processamento**, then scan the QR
 inside Clarify. The computer must have its iPhone connection enabled. Direct LAN

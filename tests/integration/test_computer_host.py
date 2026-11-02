@@ -436,7 +436,7 @@ class ComputerHostTests(ComputerHostFixture, unittest.TestCase):
             )
         registry.rewrite.assert_not_called()
 
-    def test_saved_translation_rejects_auto_before_provider_work(self):
+    def test_saved_translation_accepts_globe_with_source_language_policy(self):
         registry = self.saved_processor()
         settings = self.saved_config.value.text_actions
         self.saved_config.value = replace(
@@ -446,14 +446,16 @@ class ComputerHostTests(ComputerHostFixture, unittest.TestCase):
             ),
         )
         _, session = self.pair()
-        self.assertEqual(
-            self.request(
-                "POST",
-                "/v1/computer/text",
-                self.saved_text(language="auto"),
-                session["session_token"],
-            ),
-            (400, {"error": "invalid_request"}),
+        status, result = self.request(
+            "POST",
+            "/v1/computer/text",
+            self.saved_text(language="auto"),
+            session["session_token"],
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["action_id"], "summary")
+        self.assertIn(
+            "multiple languages", registry.rewrite.call_args.args[1].instruction
         )
         self.assertEqual(
             self.request(
@@ -465,7 +467,7 @@ class ComputerHostTests(ComputerHostFixture, unittest.TestCase):
             200,
         )
         self.assertEqual(registry.translate.call_count, 1)
-        registry.rewrite.assert_not_called()
+        registry.rewrite.assert_called_once()
 
     def test_saved_action_freezes_definition_between_admission_and_provider(self):
         registry = self.saved_processor()

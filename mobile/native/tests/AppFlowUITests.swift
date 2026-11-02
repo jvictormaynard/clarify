@@ -355,9 +355,9 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
     verifyActions()
     tab("Ajustes"); press("settings.output")
-    let unchangedLanguage = app.descendants(matching: .any)["output.language.de"].firstMatch
-    XCTAssertTrue(unchangedLanguage.waitForExistence(timeout: 15))
-    XCTAssertTrue(unchangedLanguage.isSelected, "Translation target does not change dictation output")
+    let sharedLanguage = app.descendants(matching: .any)["output.language.ru"].firstMatch
+    XCTAssertTrue(sharedLanguage.waitForExistence(timeout: 15))
+    XCTAssertTrue(sharedLanguage.isSelected, "Text actions and dictation use the same output language")
     press("output.close"); press("settings.account")
     press("account.logout")
     XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
