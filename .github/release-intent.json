@@ -2,13 +2,13 @@
   "schema": 2,
   "component": "mobile",
   "version": "0.13.0",
-  "base_sha": "7210663221e2904b12042503cc34c3e01ff6fd24",
-  "notes": "Internal TestFlight correction based on merged PR236 at 7210663221e2904b12042503cc34c3e01ff6fd24. Refresh missing output-language/style capability from the selected destination and keep the keyboard style title on one line. Exact PR CI41372445758/1 passed native71, regular/compact app profiles and unsigned app/extensions. The capsule test passed with24captures; compact normal/expanded title captures were reviewed. Canonical mainCI41374421148/1 is green. Production hosted server already supports output preferences; no server change. Recording and automatic return are unchanged. The user explicitly accepted manual app switching when automatic return fails. This is internal testing only, not fullApp/automaticReturn/AppStore acceptance. Use mode=testflight internal_testing=true; preserve installed keyboard/native/sign/archive/IPA2extensions/upload/AppleVALID and existing ClarifyInterno availability. Complete Apple inventory41376167173/1 checked 2026-11-02T02:09:39.215Z shows33builds/33uploads/highest53, allcollections complete/noerrors, uploads and reviewsubmissions COMPLETE. Git reservations max53 with no competing preparation or active signedtagrun. Recheck before effects. Never move/reuse old tags or reupload old builds. No App Store submission authorized.",
+  "base_sha": "544ee36803fd5777ab7523e25bb76cfdf5b1bcdf",
+  "notes": "Internal TestFlight endpoint recovery from merged PR239 at 544ee36803fd5777ab7523e25bb76cfdf5b1bcdf. Explicitly recover only the known old DEV endpoint to bundled production, clear the old credential before origin change, and require a new login. Preserve DEV history, vocabulary and pending keyboard words under their old owners; production vocabulary uses a persistent isolated owner. Custom endpoints and localhost remain unchanged. The exact saved endpoint on the user phone was not observed. Exact PR CI41394088611/1 atb5e8e7f and canonical mainCI41400684892/1 passed; native222Swift(one existing skip),71integration,3installed tests and both app UI profiles/unsigned app plus extensions passed. Both independent reviews found the vocabulary isolation gap; coordinator repaired it and the native regression with normal confirm/sync passed. Use mode=testflight internal_testing=true with exact-source canonical CI reuse; retain signing/archive/IPA with two extensions, upload, sealing and Apple group availability. The user approved manual app switching when automatic return fails. Full app, automatic return and App Store acceptance remain false. No App Store submission is authorized. Complete read-only Apple inventory41403490581/1 checked 2026-11-02T07:00:58.249Z shows34builds/34uploads/highest54, all collections complete/errors empty and uploads/review submissions COMPLETE; pinned collector and artifact digest verified. Git reservations max54, no conflicting preparation, build55 tag or active/prior build55 signed run. Recheck conflicts before effects. Never move/reuse old tags or retry/reupload old builds.",
   "evidence": {
-    "build": "54",
-    "highest_build": "53",
+    "build": "55",
+    "highest_build": "54",
     "pending_builds_checked": true,
-    "checked_at": "2026-11-02T02:09:39Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41376167173"
+    "checked_at": "2026-11-02T07:00:58Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41403490581"
   }
 }
