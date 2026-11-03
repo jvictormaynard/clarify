@@ -56,6 +56,36 @@ private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
 }
 
 final class KeyboardUITests: XCTestCase {
+  func testInactiveMicrophoneErrorLeavesTypingAvailableAcrossKeyboardOpenings() async throws {
+    try await MainActor.run {
+      let (original, store, window) = try self.makeDictationFixture()
+      var keyboard = original
+      defer {
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+        window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+      }
+      for expiredHeartbeat in [false, true] {
+        var state = store.snapshot(); state.phase = .error
+        state.message = L("O áudio foi interrompido. Abra o Clarify para reativar o microfone.")
+        state.sessionActive = expiredHeartbeat
+        state.heartbeat = Date().timeIntervalSince1970 - (expiredHeartbeat ? 4 : 0)
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+        for _ in 0..<2 {
+          keyboard = try self.replaceKeyboard(keyboard, store: store, window: window)
+          keyboard.refreshFromStore(); keyboard.view.layoutIfNeeded()
+          let panel = try XCTUnwrap(self.descendants(keyboard.view).first { $0.accessibilityIdentifier == "clarify.keyboard.recording-panel" })
+          let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+          XCTAssertTrue(panel.isHidden, "An inactive microphone must not require dismissing an error")
+          XCTAssertFalse(grid.isHidden)
+          let key = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.currentTitle?.lowercased() == "a" })
+          let before = keyboard.field.before
+          key.sendActions(for: .touchUpInside)
+          XCTAssertEqual(keyboard.field.before.lowercased(), before.lowercased() + "a")
+          XCTAssertTrue(store.commands().isEmpty, "Typing must not start dictation")
+        }
+      }
+    }
+  }
   func testErrorCauseRemainsVisibleBesidePermanentCapsuleAndRecoverableText() async throws {
     try await MainActor.run {
       let (keyboard, store, window) = try self.makeDictationFixture()
