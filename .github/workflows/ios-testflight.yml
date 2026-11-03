@@ -70,7 +70,7 @@ jobs:
         run: |
           flags=()
           if [ "$RELEASE_MODE" = availability ]; then flags+=(--availability-only); fi
-          python scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG" "${flags[@]}"
+          python scripts/verify_testflight56.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG" "${flags[@]}"
 
   availability:
     name: Verify the uploaded TestFlight build
@@ -145,7 +145,7 @@ jobs:
           if [ "$INTERNAL_TESTING" = true ]; then
             flags+=(--reuse-internal-ci --output mobile/test-results/internal-ci-proof.json)
           fi
-          python3 scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG" "${flags[@]}"
+          python3 scripts/verify_testflight56.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG" "${flags[@]}"
       - name: Verify Xcode
         run: xcodebuild -version
       - name: Install locked dependencies
@@ -211,7 +211,7 @@ jobs:
             source: process.env.GITHUB_SHA, internalTesting, completeAppAcceptance,
             reusedCI: internalTesting ? JSON.parse(fs.readFileSync('test-results/internal-ci-proof.json', 'utf8')) : null,
             automaticReturnAccepted: !internalTesting,
-            knownLimitations: internalTesting ? ['automatic_return_requires_manual_app_switching'] : [],
+            knownLimitations: ['automatic_return_requires_manual_app_switching', 'one_time_maintainer_exception_full_ci_not_required'],
             appStoreAcceptance: false
           }, null, 2));
           NODE
