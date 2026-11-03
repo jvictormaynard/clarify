@@ -162,7 +162,7 @@ extension TextActionCatalog {
   func resolve(_ id: String, revision: String, language: String) throws -> TextActionDescriptor {
     guard status == .ready, TextActionDescriptor.wireRevision(revision) != nil,
       let action = actions.first(where: { $0.id == id && $0.revision == revision }), action.enabled, action.ready,
-      OutputLanguage(rawValue: language) != nil, action.kind != "translation" || language != "auto" else {
+      OutputLanguage(rawValue: language) != nil else {
       throw ClarifyError(L("A ação mudou ou está indisponível. Atualize a lista e tente novamente."), code: "text_action_unavailable")
     }
     return action

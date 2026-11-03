@@ -2,6 +2,7 @@ import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Picker, Row, Section, Toggle } from "../components/ui";
 const languageNames: Record<string, string> = {
+  auto: t("Idioma original"),
   en: "English",
   pt: "Portuguese",
   es: "Spanish",

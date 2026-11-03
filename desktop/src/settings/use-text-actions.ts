@@ -44,7 +44,7 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
   const [deleting, setDeleting] = useState<{ action: TextAction; context: string; revision: string } | null>(null);
   const [sample, renderSample] = useState("");
   const sampleRef = useRef(sample);
-  const [sampleLanguage, renderSampleLanguage] = useState("");
+  const sampleLanguage = state?.language ?? "auto";
   const [preview, setPreview] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const previewRequest = useRef<{ actionId: string; revision: number; context: string; sample: string; generation?: number } | null>(null);
@@ -81,7 +81,7 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
     const draft = duplicate ? { ...value, id: crypto.randomUUID(), name: t("Cópia de {name}", { name: value.name }), shortcut: null } : value;
     setEditor({ action: draft, baseline: duplicate ? null : value, context: snapshot.textActionContext,
       revision: snapshot.textActionsRevision ?? "", savedRevision: !action || duplicate ? 0 : action.revision, isNew: !action || duplicate });
-    setError(""); setDiscardRequested(false); renderSample(""); sampleRef.current = ""; renderSampleLanguage("");
+    setError(""); setDiscardRequested(false); renderSample(""); sampleRef.current = "";
     setConflict(null);
     setPreview(""); setPreviewing(false); previewRequest.current = null;
   };
@@ -226,11 +226,13 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
   const setSample = (value: string) => {
     sampleRef.current = value; renderSample(value); invalidatePreview();
   };
-  const setSampleLanguage = (value: string) => { renderSampleLanguage(value); invalidatePreview(); };
+  const setSampleLanguage = async (value: string) => {
+    invalidatePreview();
+    if (!await run("savePreference", "setLanguage", [value])) setError(t("Não foi possível salvar a preferência de saída. Tente novamente."));
+  };
   const test = async () => {
     const value = editorRef.current;
-    if (!value || isDirty(value) || !sampleRef.current.trim() || previewing || current.current?.textActionPreview?.busy ||
-      (value.action.kind === "translation" && !sampleLanguage)) return;
+    if (!value || isDirty(value) || !sampleRef.current.trim() || previewing || current.current?.textActionPreview?.busy) return;
     const request: NonNullable<typeof previewRequest.current> = { actionId: value.action.id, revision: value.savedRevision, context: value.context, sample: sampleRef.current };
     previewRequest.current = request; setPreviewing(true); setError(""); setPreview("");
     const result = await run("previewTextAction", request.actionId, request.sample, request.context, request.revision, sampleLanguage || "auto");

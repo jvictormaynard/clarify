@@ -15,20 +15,26 @@ final class AppFlowUITests: XCTestCase {
     capture(name)
     print("APP_UI_DIAGNOSTIC \(name)\n\(app.debugDescription)")
   }
-  func reveal(_ element: XCUIElement, identifier: String) {
-    for _ in 0..<6 {
+  @discardableResult func reveal(_ element: XCUIElement, identifier: String) -> Bool {
+    for attempt in 0...12 {
       let page = app.scrollViews.containing(element.elementType, identifier: identifier).firstMatch
       let viewport = page.exists ? page.frame.intersection(app.frame) : app.frame
-      let center = CGPoint(x: element.frame.midX, y: element.frame.midY)
+      let frame = element.frame
+      let located = !frame.isNull && !frame.isInfinite && frame.width > 0 && frame.height > 0
+      let center = CGPoint(x: frame.midX, y: frame.midY)
       // Require the target inside the scroll viewport even when AX reports hittable.
-      if element.isHittable && viewport.contains(center) { return }
+      if located && element.isHittable && viewport.contains(center) { return true }
+      if attempt == 12 { break }
       if page.exists && page.frame.height > 0 && page.frame.intersects(app.frame) {
-        let down = element.frame.midY < page.frame.midY
+        // Clipped React Native elements can have an infinite AX frame. Search
+        // toward the top first, then the bottom until a usable frame appears.
+        let down = located ? frame.midY < page.frame.midY : attempt < 6
         let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: down ? 0.2 : 0.8))
         let finish = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: down ? 0.8 : 0.2))
         start.press(forDuration: 0.1, thenDragTo: finish)
-      } else if element.frame.midY < app.frame.midY { app.swipeDown() } else { app.swipeUp() }
+      } else if (located ? frame.midY < app.frame.midY : attempt < 6) { app.swipeDown() } else { app.swipeUp() }
     }
+    diagnose("unreachable-\(identifier)"); XCTFail("Cannot reveal element: \(identifier)"); return false
   }
   func press(_ identifier: String, allowScroll: Bool = true) {
     let button = app.descendants(matching: .any)[identifier].firstMatch
@@ -39,7 +45,7 @@ final class AppFlowUITests: XCTestCase {
     guard XCTWaiter.wait(for: [enabled], timeout: 15) == .completed else {
       diagnose("disabled-\(identifier)"); XCTFail("Disabled action: \(identifier)"); return
     }
-    if allowScroll { reveal(button, identifier: identifier) }
+    if allowScroll && !reveal(button, identifier: identifier) { return }
     let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
     guard XCTWaiter.wait(for: [reachable], timeout: 5) == .completed else {
       diagnose("unreachable-\(identifier)"); XCTFail("Unreachable action: \(identifier)"); return
@@ -108,7 +114,7 @@ final class AppFlowUITests: XCTestCase {
   }
   func enter(_ value: String, in field: XCUIElement, name: String, replacing: Bool = false) {
     XCTAssertTrue(field.waitForExistence(timeout: 15))
-    reveal(field, identifier: field.identifier.isEmpty ? field.label : field.identifier)
+    guard reveal(field, identifier: field.identifier.isEmpty ? field.label : field.identifier) else { return }
     field.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
     if replacing { field.typeKey("a", modifierFlags: .command) }
@@ -355,9 +361,9 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
     verifyActions()
     tab("Ajustes"); press("settings.output")
-    let unchangedLanguage = app.descendants(matching: .any)["output.language.de"].firstMatch
-    XCTAssertTrue(unchangedLanguage.waitForExistence(timeout: 15))
-    XCTAssertTrue(unchangedLanguage.isSelected, "Translation target does not change dictation output")
+    let sharedLanguage = app.descendants(matching: .any)["output.language.ru"].firstMatch
+    XCTAssertTrue(sharedLanguage.waitForExistence(timeout: 15))
+    XCTAssertTrue(sharedLanguage.isSelected, "Text actions and dictation use the same output language")
     press("output.close"); press("settings.account")
     press("account.logout")
     XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))

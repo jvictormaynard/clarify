@@ -1467,8 +1467,7 @@ class QmlSettingsController(QObject):
             ):
                 raise ValueError("A ação mudou. Salve e tente novamente.")
             validate_input(sampleText, language)
-            if snapshot.action.kind == "translation" and language == "auto":
-                raise ValueError("Selecione o idioma da tradução.")
+            target_language = self.repositories.config.load().ui.language
             self.cancelTextActionPreview()
             token = self._text_action_preview_token = CancellationToken()
             generation = self._text_action_preview_generation
@@ -1486,7 +1485,11 @@ class QmlSettingsController(QObject):
                 result, error = "", ""
                 try:
                     result = provider.transform_text_action(
-                        snapshot, sampleText, language, cancel=token
+                        snapshot,
+                        sampleText,
+                        target_language,
+                        output_language=target_language,
+                        cancel=token,
                     ).text
                 except Exception:
                     error = "Não foi possível testar a ação. Tente novamente."

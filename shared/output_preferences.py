@@ -19,8 +19,15 @@ def output_language(value: object) -> str | None:
 
 def with_output_language(instruction: str, language: str | None) -> str:
     language = output_language(language)
-    if language in (None, "auto"):
+    if language is None:
         return instruction
+    if language == "auto":
+        return (
+            instruction
+            + "\n\nKeep the source language, including multiple languages in the same text. "
+            "Do not translate the source. This output choice takes precedence over "
+            "other language instructions. Return only the transformed text."
+        )
     label = LANGUAGES[language]
     return (
         instruction

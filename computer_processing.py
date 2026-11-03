@@ -21,7 +21,10 @@ from provider_http import CancellationToken
 from provider_registry import PROVIDER_REGISTRY, ProviderRegistry
 from provider_types import ProviderError
 from repositories import AppConfig
-from shared.output_preferences import output_language as parse_output_language
+from shared.output_preferences import (
+    output_language as parse_output_language,
+    output_language_outcome,
+)
 from shared.writing_style_policy import (
     WritingStyle,
     writing_style as parse_writing_style,
@@ -292,8 +295,6 @@ class ComputerProcessor:
         validate_input(text, language, policy=TextActionInputPolicy.PAIRED_COMPUTER)
         if language not in TEXT_LANGUAGES:
             raise ValueError("Invalid saved computer action language")
-        if action.kind == "translation" and language == "auto":
-            raise ValueError("Select a translation language")
         if not self._action_ready(current, action_id):
             raise ComputerActionNotReady("Computer action is not configured")
         dictionary = self._dictionary()
@@ -313,6 +314,7 @@ class ComputerProcessor:
             prepared.snapshot,
             prepared.text,
             prepared.language,
+            output_language=prepared.language,
             cancel=cancel_token,
             writing_style=prepared.writing_style,
         )
@@ -323,6 +325,7 @@ class ComputerProcessor:
             "rewritten": result.text != prepared.text,
             "successful": True,
             **style_outcome(prepared.writing_style, refined=True),
+            **output_language_outcome(prepared.language, refined=True),
         }
 
     def process_text(
@@ -341,7 +344,7 @@ class ComputerProcessor:
         result = service.transform_text_action(
             service.snapshot_text_action(_LEGACY_ACTIONS[action]),
             text,
-            language if action == "translate" else "auto",
+            language,
             cancel=cancel_token,
             writing_style=style,
         )
@@ -352,6 +355,11 @@ class ComputerProcessor:
             "rewritten": result.text != text,
             "successful": True,
             **style_outcome(style, refined=True),
+            **(
+                output_language_outcome(language, refined=True)
+                if language in TEXT_LANGUAGES
+                else {}
+            ),
         }
 
     def process_dictation(

@@ -453,8 +453,9 @@ class KeyboardViewController: UIInputViewController {
     let id = UUID().uuidString
     guard recordingRequest.submit("start", operationID: id, now: Date().timeIntervalSince1970) else { return }
     do {
+      let preferences = try store.setOutputPreference("language", value: language)
       try store.send(action, operationID: id, context: state.processingContext, text: selection.text, language: language,
-        actionID: savedAction?.id, actionRevision: savedAction?.revision)
+        actionID: savedAction?.id, actionRevision: savedAction?.revision, preferences: preferences)
       operationID = id; documentID = selection.document
       textOperationID = id; textSelection = selection; dictationEdit = nil
       feedback.type()
@@ -768,14 +769,14 @@ class KeyboardViewController: UIInputViewController {
       func action(_ title: String, kind: String, saved: TextActionDescriptor? = nil, enabled: Bool) -> UIMenuElement {
         func choice(_ target: String, title: String) -> UIAction {
           UIAction(title: title, attributes: enabled && captured.enabled ? [] : .disabled) { [weak self] _ in
-            guard let self, self.menuIsCurrent(captured), captured.enabled else { return }
+            guard let self, self.menuIsCurrent(captured), captured.enabled, self.hasFullAccess else { return }
             self.processSelection(saved == nil ? kind : "text_action", language: target, savedAction: saved)
           }
         }
         if kind == "translate" {
-          return UIMenu(title: title, children: OutputLanguage.allCases.filter { $0 != .auto }.map { choice($0.rawValue, title: $0.menuTitle) })
+          return UIMenu(title: title, children: OutputLanguage.allCases.map { choice($0.rawValue, title: $0.menuTitle) })
         }
-        return choice("auto", title: title)
+        return choice(captured.preferences.language.rawValue, title: title)
       }
       if captured.catalog.status == .ready {
         for saved in captured.catalog.actions {

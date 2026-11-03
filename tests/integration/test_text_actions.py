@@ -123,6 +123,30 @@ class HostedServiceTests(HostedServiceFixture, unittest.TestCase):
             provider.transform_text_action(snapshot, "Source")
         registry.rewrite.assert_not_called()
 
+    def test_old_text_service_cannot_claim_an_explicit_output_language(self):
+        from shared.output_preferences import output_language_outcome
+
+        snapshot = self.service.resolve("rewrite")
+        response = {
+            "text": "Original language",
+            "action_id": snapshot.action.id,
+            "action_name": snapshot.action.name,
+            "action_revision": snapshot.action.revision,
+        }
+        with patch.object(self.account, "_request", return_value=(200, response)):
+            with self.assertRaises(AccountError) as failure:
+                self.account.execute_text_action(
+                    snapshot, "Source", "es", output_language="es"
+                )
+            self.assertEqual(failure.exception.code, "output_preferences_unapplied")
+            response.update(output_language_outcome("es", refined=True))
+            self.assertEqual(
+                self.account.execute_text_action(
+                    snapshot, "Source", "es", output_language="es"
+                ),
+                "Original language",
+            )
+
     def test_managed_expired_context_rejects_without_personal_route(self):
         self.account._state.pop("user_id")
         self.account._generation += 1
@@ -591,6 +615,35 @@ class LocalServiceTests(LocalServiceFixture, unittest.TestCase):
 
 
 class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
+    def test_selected_output_language_is_frozen_before_text_capture(self):
+        from workflows import RunTextAction
+
+        for language in ("es", "auto"):
+            with self.subTest(language=language):
+                self.repo.apply(
+                    replace(
+                        self.repo.load(),
+                        ui=replace(self.repo.load().ui, language=language),
+                    )
+                )
+                provider, registry = self.provider()
+                workflow = self.workflow(provider)
+                workflow.dispatch(
+                    RunTextAction("rewrite", self.clipboard.capture_target())
+                )
+                self.repo.apply(
+                    replace(
+                        self.repo.load(), ui=replace(self.repo.load().ui, language="de")
+                    )
+                )
+                self.drain()
+                request = registry.rewrite.call_args.args[1]
+                self.assertEqual(request.language, language)
+                self.assertIn(
+                    "Spanish" if language == "es" else "multiple languages",
+                    request.instruction,
+                )
+
     def test_run_by_id_snapshots_before_capture_and_publishes_once(self):
         from workflows import RunTextAction, WorkflowPhase
 
@@ -650,8 +703,8 @@ class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
         self.assertEqual(self.statistics.rewrites, [])
         self.assertEqual(workflow.state.phase, WorkflowPhase.FAILED)
 
-    def test_translation_kind_keeps_picker_for_arbitrary_id(self):
-        from workflows import RunTextAction, WorkflowPhase, ChooseTranslationLanguage
+    def test_translation_kind_uses_selected_output_for_arbitrary_id(self):
+        from workflows import RunTextAction, WorkflowPhase
 
         self.save(
             TextAction(
@@ -668,10 +721,7 @@ class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
         workflow = self.workflow(provider)
         workflow.dispatch(RunTextAction("translate-custom"))
         self.drain()
-        self.assertEqual(workflow.state.phase, WorkflowPhase.TRANSLATION_PICKER)
-        registry.translate.assert_not_called()
-        workflow.dispatch(ChooseTranslationLanguage("en"))
-        self.drain()
+        self.assertEqual(workflow.state.phase, WorkflowPhase.COMPLETED)
         self.assertIn(
             "Output MUST be in English",
             registry.translate.call_args.args[1].instruction,
@@ -793,6 +843,8 @@ class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
             "Summarize this text.", registry.rewrite.call_args.args[1].instruction
         )
         self.assertEqual(workflow.state.text_action_revision, 1)
+        self.assertEqual(registry.transcribe.call_args.args[1].language, "")
+        self.assertIn("English", registry.rewrite.call_args.args[1].instruction)
 
 
 if __name__ == "__main__":

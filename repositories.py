@@ -84,7 +84,7 @@ PROVIDER_SECRET_KEYS = {
     "groq": "groq_api_key",
 }
 SUPPORTED_UI_MODES = ("prompt",)
-SUPPORTED_LANGUAGES = ("en", "pt", "es", "de", "ru")
+SUPPORTED_LANGUAGES = ("auto", "en", "pt", "es", "de", "ru")
 
 
 def environment_defaults(

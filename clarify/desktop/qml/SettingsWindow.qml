@@ -1114,8 +1114,8 @@ ApplicationWindow {
                             caption: qsTr("Language")
                             searchPlaceholder: qsTr("Search languages")
                             options: settings.languages.map(function(id) {
-                                var names = {"en": qsTr("English"), "pt": qsTr("Portuguese"), "es": qsTr("Spanish"), "de": qsTr("German"), "ru": qsTr("Russian")}
-                                return {id: id, label: names[id] || id.toUpperCase(), icon: "flags/" + id + ".svg"}
+                                var names = {"auto": qsTr("Original language"), "en": qsTr("English"), "pt": qsTr("Portuguese"), "es": qsTr("Spanish"), "de": qsTr("German"), "ru": qsTr("Russian")}
+                                return {id: id, label: names[id] || id.toUpperCase(), icon: id === "auto" ? "icons/globe.svg" : "flags/" + id + ".svg"}
                             })
                             value: settings.language
                             onActivated: function(value) { settings.setLanguage(value) }

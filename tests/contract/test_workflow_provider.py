@@ -65,6 +65,13 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
         )
         self.service.transcribe(self.audio, "prompt", "pt", selection=selection)
         account.transcribe.assert_called_once_with(self.audio, "pt", self.dictionary)
+        account.transcribe.reset_mock()
+        self.service.transcribe(
+            self.audio, "prompt", "auto", selection=selection, output_language="es"
+        )
+        account.transcribe.assert_called_once_with(
+            self.audio, "auto", self.dictionary, output_language="es"
+        )
         self.registry.transcribe.assert_not_called()
         self.registry.transcribe.reset_mock()
         self.service.account = Mock(hosted=False)

@@ -108,7 +108,7 @@ final class ProcessingDestination {
     language: String, context: String, preferences: OutputPreferences,
     accountIdentity: TextAccountIdentity? = nil) async throws -> PreparedTextOperation {
     guard configured, context == historyContext, ["rewrite", "translate", "text_action"].contains(action),
-      OutputLanguage(rawValue: language) != nil, action != "translate" || language != "auto" else { throw ComputerFailure.notReady }
+      OutputLanguage(rawValue: language) != nil else { throw ComputerFailure.notReady }
     let owner = captureHistory()
     let identity = accountIdentity ?? captureTextIdentity()
     if let identity, !account.acceptsTextIdentity(identity) { throw CancellationError() }
@@ -120,7 +120,7 @@ final class ProcessingDestination {
     let saved: TextActionDescriptor?
     if action == "text_action" {
       guard let actionID, let revision else { throw ComputerFailure.invalidResponse }
-      saved = try textActions.resolve(actionID, revision: revision, language: language)
+      saved = try textActions.resolve(actionID, revision: revision, language: preferences.language.rawValue)
     } else {
       // Only an advertised old service permits fixed-action fallback. An empty
       // or failed saved catalog cannot silently enable a different definition.
@@ -129,7 +129,7 @@ final class ProcessingDestination {
       saved = nil
     }
     _ = try preferences.requestFields(supported: outputPreferencesSupported, dictation: false)
-    return PreparedTextOperation(owner: owner, action: action, language: action == "rewrite" || saved?.kind == "rewrite" ? "auto" : language,
+    return PreparedTextOperation(owner: owner, action: action, language: preferences.language.rawValue,
       savedAction: saved, preferences: preferences, accountIdentity: identity)
   }
   @MainActor func withActivation(prepare: @MainActor () async throws -> Void, activate: @MainActor () throws -> Void) async throws {

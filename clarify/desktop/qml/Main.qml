@@ -383,9 +383,10 @@ ApplicationWindow {
                             id: languageButton
                             objectName: "languageButton"
                             readonly property var supportedLanguages: [
-                                "en", "pt", "es", "de", "ru"
+                                "auto", "en", "pt", "es", "de", "ru"
                             ]
                             readonly property var languageNames: ({
+                                "auto": qsTr("Original language"),
                                 "en": qsTr("English"),
                                 "pt": qsTr("Portuguese"),
                                 "es": qsTr("Spanish"),
@@ -399,7 +400,8 @@ ApplicationWindow {
                             checked: languageMenu.visible
                             Layout.preferredWidth: 36
                             Layout.preferredHeight: 26
-                            Accessible.name: qsTr("Language: ")
+                            iconSource: workflow.language === "auto" ? "icons/globe.svg" : ""
+                            Accessible.name: qsTr("Output language: ")
                                               + languageNames[workflow.language]
 
                             RoundedFlag {
@@ -407,7 +409,8 @@ ApplicationWindow {
                                 anchors.centerIn: parent
                                 width: 21.333
                                 height: 16
-                                source: "flags/" + workflow.language + ".svg"
+                                visible: workflow.language !== "auto"
+                                source: visible ? "flags/" + workflow.language + ".svg" : ""
                             }
                             function openLanguages() {
                                 languageMenu.keepOpen()
