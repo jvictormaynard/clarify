@@ -551,7 +551,8 @@ class KeyboardViewController: UIInputViewController {
   }
   private func updateRecordingPanel() {
     let pending = recordingRequest.action
-    let error = outputPreferenceError != nil || (state.phase == .error && state.message != nil && dismissedError != errorIdentity)
+    // A saved audio interruption must not cover the keys after the session ends.
+    let error = outputPreferenceError != nil || (state.isLive && state.phase == .error && state.message != nil && dismissedError != errorIdentity)
     let visible = hasFullAccess && ((state.isLive && (state.phase.busy || pending != nil)) || error)
     let recording = [.recording, .locked].contains(state.phase) && pending != "cancel"
     let processing = [.transcribing, .rewriting].contains(state.phase) || pending == "finish"
