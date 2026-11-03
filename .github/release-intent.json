@@ -2,13 +2,13 @@
   "schema": 2,
   "component": "mobile",
   "version": "0.13.0",
-  "base_sha": "544ee36803fd5777ab7523e25bb76cfdf5b1bcdf",
-  "notes": "Internal TestFlight endpoint recovery from merged PR239 at 544ee36803fd5777ab7523e25bb76cfdf5b1bcdf. Explicitly recover only the known old DEV endpoint to bundled production, clear the old credential before origin change, and require a new login. Preserve DEV history, vocabulary and pending keyboard words under their old owners; production vocabulary uses a persistent isolated owner. Custom endpoints and localhost remain unchanged. The exact saved endpoint on the user phone was not observed. Exact PR CI41394088611/1 atb5e8e7f and canonical mainCI41400684892/1 passed; native222Swift(one existing skip),71integration,3installed tests and both app UI profiles/unsigned app plus extensions passed. Both independent reviews found the vocabulary isolation gap; coordinator repaired it and the native regression with normal confirm/sync passed. Use mode=testflight internal_testing=true with exact-source canonical CI reuse; retain signing/archive/IPA with two extensions, upload, sealing and Apple group availability. The user approved manual app switching when automatic return fails. Full app, automatic return and App Store acceptance remain false. No App Store submission is authorized. Complete read-only Apple inventory41403490581/1 checked 2026-11-02T07:00:58.249Z shows34builds/34uploads/highest54, all collections complete/errors empty and uploads/review submissions COMPLETE; pinned collector and artifact digest verified. Git reservations max54, no conflicting preparation, build55 tag or active/prior build55 signed run. Recheck conflicts before effects. Never move/reuse old tags or retry/reupload old builds.",
+  "base_sha": "ab44e1e2893b2d61a2a3447012e27b367e0ec781",
+  "notes": "Internal TestFlight build for the keyboard typing fix merged in PR #243. Saved dictation errors no longer cover typing keys when the microphone session is inactive or expired. Active-session and output-preference errors remain visible. PR CI 41598595690 passed, including the new UIKit regression (0.162 seconds), both app UI profiles, unsigned app/extensions, and installed keyboard tests. The user explicitly requested internal TestFlight delivery for physical-device testing with no extra test passes. Use internal_testing=true to reuse eligible exact-source canonical main CI. Retain signing, IPA and two-extension verification, confirmed upload, Apple processing and internal-group availability. Device acceptance and screenshots/video remain pending user testing; no App Store submission is authorized. Complete read-only Apple inventory 41602988031/1 has 35 builds and 35 uploads, highest build 55; all collections complete, uploads and review submissions COMPLETE, errors empty. Source collector and artifact SHA-256 verified. Git tags/reservations and open PRs show no build 56 conflict. Recheck conflicts before publication.",
   "evidence": {
-    "build": "55",
-    "highest_build": "54",
+    "build": "56",
+    "highest_build": "55",
     "pending_builds_checked": true,
-    "checked_at": "2026-11-02T07:00:58Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41403490581"
+    "checked_at": "2026-11-03T08:24:30Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41602988031"
   }
 }
