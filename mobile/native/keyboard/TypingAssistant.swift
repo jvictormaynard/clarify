@@ -9,6 +9,10 @@ final class TypingAssistant {
     var context: TypingContext
     var undo = false
   }
+  var autocorrectionEnabled: Bool {
+    didSet { if oldValue != autocorrectionEnabled { correction.reset() } }
+  }
+  init(autocorrectionEnabled: Bool = true) { self.autocorrectionEnabled = autocorrectionEnabled }
   private let checker = UITextChecker()
   private var correction = TypingCorrection()
   private var protectedWords = Set<String>()
@@ -35,7 +39,7 @@ final class TypingAssistant {
       after: proxy.documentContextAfterInput ?? "", hasSelection: proxy.selectedText?.isEmpty == false)
   }
   private func enabled(_ proxy: UITextDocumentProxy) -> Bool {
-    guard proxy.autocorrectionType != .no, proxy.spellCheckingType != .no,
+    guard autocorrectionEnabled, proxy.autocorrectionType != .no, proxy.spellCheckingType != .no,
           proxy.isSecureTextEntry != true else { return false }
     return [.default, .alphabet, .twitter].contains(proxy.keyboardType ?? .default)
   }

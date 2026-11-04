@@ -72,6 +72,13 @@ public class ClarifyCoreModule: Module {
         }
       }
     }.runOnQueue(.main)
+    AsyncFunction("getKeyboardAutocorrectEnabled") { () -> Bool in
+      SharedState()?.keyboardAutocorrectEnabled() ?? false
+    }.runOnQueue(.main)
+    AsyncFunction("setKeyboardAutocorrectEnabled") { (enabled: Bool) in
+      guard let store = SharedState() else { throw ClarifyError(L("Não foi possível acessar os dados do teclado.")) }
+      try store.setKeyboardAutocorrectEnabled(enabled)
+    }.runOnQueue(.main)
     AsyncFunction("getOutputPreferences") { () -> [String: String] in
       (SharedState()?.outputPreferences() ?? OutputPreferences()).snapshot
     }.runOnQueue(.main)
