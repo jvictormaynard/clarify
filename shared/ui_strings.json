@@ -7783,5 +7783,15 @@
     "pt": "Estilo: Natural",
     "en": "Style: Natural",
     "es": "Estilo: Natural"
+  },
+  "Correção automática": {
+    "pt": "Correção automática",
+    "en": "Autocorrect",
+    "es": "Autocorrección"
+  },
+  "Mostra sugestões e corrige palavras ao digitar no teclado Clarify.": {
+    "pt": "Mostra sugestões e corrige palavras ao digitar no teclado Clarify.",
+    "en": "Shows suggestions and corrects words when typing with the Clarify keyboard.",
+    "es": "Muestra sugerencias y corrige palabras al escribir con el teclado Clarify."
   }
 }

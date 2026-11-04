@@ -75,6 +75,8 @@ export default requireNativeModule<{
   processComputerText(action: 'rewrite' | 'translate', text: string, language: string, context: string): Promise<void>;
   processText(action: 'rewrite' | 'translate', text: string, language: string, context: string): Promise<string>;
   processTextAction(actionID: string, actionRevision: string, text: string, language: string, context: string): Promise<string>;
+  getKeyboardAutocorrectEnabled(): Promise<boolean>;
+  setKeyboardAutocorrectEnabled(enabled: boolean): Promise<void>;
   getOutputPreferences(): Promise<OutputPreferences>;
   setOutputPreference(key: 'language' | 'style', value: string): Promise<OutputPreferences>;
   activate(): Promise<MicrophoneActivation>;

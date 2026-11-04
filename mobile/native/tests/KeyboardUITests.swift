@@ -56,6 +56,43 @@ private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
 }
 
 final class KeyboardUITests: XCTestCase {
+  func testAutocorrectIsOptInAndKeepsTheOutputCapsuleVisible() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer { window.isHidden = true; try? FileManager.default.removeItem(at: store.root) }
+      XCTAssertFalse(store.keyboardAutocorrectEnabled())
+      let assistant = TypingAssistant(autocorrectionEnabled: store.keyboardAutocorrectEnabled())
+      let field = Field(); field.before = "I would say helllo"
+      XCTAssertTrue(assistant.suggestions(field).isEmpty)
+      assistant.insert(" ", into: field)
+      XCTAssertEqual(field.before, "I would say helllo ")
+      let row = try XCTUnwrap(self.descendants(keyboard.view).first { $0.accessibilityIdentifier == "clarify.keyboard.suggestions" })
+      keyboard.refreshFromStore(); XCTAssertTrue(row.isHidden)
+      try store.setKeyboardAutocorrectEnabled(true)
+      XCTAssertTrue(SharedState(root: store.root).keyboardAutocorrectEnabled())
+      keyboard.field.before = "I would say helllo"
+      keyboard.refreshFromStore()
+      let capsule = try self.outputCapsule(keyboard)
+      for button in (row as? UIStackView)?.arrangedSubviews.compactMap({ $0 as? UIButton }) ?? [] {
+        button.setTitle("extraordinarilylongsuggestion", for: .normal)
+      }
+      for width in [CGFloat(320), 393, 430] {
+        keyboard.view.frame.size.width = width; keyboard.view.layoutIfNeeded()
+        XCTAssertFalse(row.isHidden)
+        XCTAssertGreaterThanOrEqual(capsule.bounds.width, 175)
+        XCTAssertLessThanOrEqual(capsule.frame.maxX, row.frame.minX)
+      }
+      assistant.autocorrectionEnabled = true
+      field.before = "I would say helllo"; assistant.insert(" ", into: field)
+      XCTAssertEqual(field.before, "I would say hello ")
+      assistant.autocorrectionEnabled = false
+      assistant.delete(in: field)
+      XCTAssertEqual(field.before, "I would say hello", "Disabling must discard correction undo state")
+      try store.setKeyboardAutocorrectEnabled(false)
+      keyboard.refreshFromStore(); XCTAssertTrue(row.isHidden)
+      XCTAssertFalse(SharedState(root: store.root).keyboardAutocorrectEnabled())
+    }
+  }
   func testInactiveMicrophoneErrorLeavesTypingAvailableAcrossKeyboardOpenings() async throws {
     try await MainActor.run {
       let (original, store, window) = try self.makeDictationFixture()
