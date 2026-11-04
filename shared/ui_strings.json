@@ -7783,5 +7783,65 @@
     "pt": "Estilo: Natural",
     "en": "Style: Natural",
     "es": "Estilo: Natural"
+  },
+  "Gerenciar ações": {
+    "pt": "Gerenciar ações",
+    "en": "Manage actions",
+    "es": "Gestionar acciones"
+  },
+  "Gerencie estas ações no computador pareado.": {
+    "pt": "Gerencie estas ações no computador pareado.",
+    "en": "Manage these actions on the paired computer.",
+    "es": "Gestiona estas acciones en el ordenador vinculado."
+  },
+  "Não foi possível salvar ou carregar as ações. Seu rascunho foi mantido.": {
+    "pt": "Não foi possível salvar ou carregar as ações. Seu rascunho foi mantido.",
+    "en": "Could not save or load actions. Your draft was kept.",
+    "es": "No se pudieron guardar o cargar las acciones. Se conservó tu borrador."
+  },
+  "Adicionar ação": {
+    "pt": "Adicionar ação",
+    "en": "Add action",
+    "es": "Añadir acción"
+  },
+  "Duplicar ação": {
+    "pt": "Duplicar ação",
+    "en": "Duplicate action",
+    "es": "Duplicar acción"
+  },
+  "A conta ou o destino mudou. Seu rascunho foi mantido.": {
+    "pt": "A conta ou o destino mudou. Seu rascunho foi mantido.",
+    "en": "The account or destination changed. Your draft was kept.",
+    "es": "La cuenta o el destino cambió. Se conservó tu borrador."
+  },
+  "Recarregar a lista?": {
+    "pt": "Recarregar a lista?",
+    "en": "Reload the list?",
+    "es": "¿Recargar la lista?"
+  },
+  "O rascunho será mantido. Revise as ações atuais antes de salvar.": {
+    "pt": "O rascunho será mantido. Revise as ações atuais antes de salvar.",
+    "en": "Your draft will be kept. Review the current actions before saving.",
+    "es": "Se conservará tu borrador. Revisa las acciones actuales antes de guardar."
+  },
+  "Recarregar e manter rascunho": {
+    "pt": "Recarregar e manter rascunho",
+    "en": "Reload and keep draft",
+    "es": "Recargar y conservar borrador"
+  },
+  "Current server version": {
+    "pt": "Versão atual no servidor",
+    "en": "Current server version",
+    "es": "Versión actual en el servidor"
+  },
+  "A tradução usa o idioma de saída acima. Selecione um idioma antes de escolher a ação.": {
+    "pt": "A tradução usa o idioma de saída acima. Selecione um idioma antes de escolher a ação.",
+    "en": "Translation uses the output language above. Select a language before choosing the action.",
+    "es": "La traducción usa el idioma de salida de arriba. Selecciona un idioma antes de elegir la acción."
+  },
+  "Usar configuração do destino": {
+    "pt": "Usar configuração do destino",
+    "en": "Use destination settings",
+    "es": "Usar la configuración del destino"
   }
 }

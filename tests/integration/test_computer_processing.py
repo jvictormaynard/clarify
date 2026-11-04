@@ -238,6 +238,107 @@ class ComputerProcessorTests(unittest.TestCase):
         )
         return action
 
+    def test_explicit_dictation_policy_clears_legacy_action_and_cleanup(self):
+        self.saved_actions(
+            after={"personal": {"cloud": {"id": "summary", "language": "auto"}}}
+        )
+        self.current = replace(
+            self.current,
+            dictation_cleanup_level="clarity",
+            workflows=replace(
+                self.current.workflows, refinement=WorkflowRoute("groq", "cleanup")
+            ),
+        )
+        for options, requested, applied in (
+            ({"dictation_policy": "natural"}, None, None),
+            ({"cleanup_level": "preserve"}, "preserve", "preserve"),
+            ({"cleanup_level": "light"}, "light", "light"),
+        ):
+            with self.subTest(options=options):
+                result = self.processor.process_dictation(
+                    wav_bytes(), "auto", self.token, **options
+                )
+                self.assertEqual(result["cleanup_level_requested"], requested)
+                self.assertEqual(result["cleanup_level_applied"], applied)
+                self.assertEqual(
+                    result["text"],
+                    "Edited words."
+                    if options.get("dictation_policy") == "natural"
+                    else "Recognized words.",
+                )
+        self.registry.rewrite.assert_called_once()
+        self.assertEqual(self.current.dictation_cleanup_level, "clarity")
+
+    def test_successful_refinement_is_reported_even_when_the_text_is_unchanged(self):
+        self.current = replace(
+            self.current,
+            workflows=replace(
+                self.current.workflows, refinement=WorkflowRoute("groq", "cleanup")
+            ),
+        )
+        self.registry.rewrite.return_value = RewriteResult(
+            "Recognized words.", "groq", "cleanup"
+        )
+        result = self.processor.process_dictation(wav_bytes(), "auto", self.token)
+        self.assertEqual(result["text"], result["transcript"])
+        self.assertTrue(result["successful"])
+        self.assertTrue(result["rewritten"])
+
+    def test_dictation_action_freezes_config_dictionary_and_revision_before_processing(
+        self,
+    ):
+        selected = self.saved_actions()
+        prepared = self.processor.prepare_dictation(
+            text_action_id="summary", text_action_revision=3
+        )
+        self.current = replace(
+            self.current, groq=ProviderConfig(), text_actions=TextActionSettings()
+        )
+        result = self.processor.process_dictation(
+            wav_bytes(), "auto", self.token, prepared=prepared
+        )
+        self.assertEqual(result["text"], "Edited words.")
+        self.assertEqual(
+            (
+                result["text_action_id"],
+                result["text_action_revision"],
+                result["text_action_name"],
+            ),
+            (selected.id, selected.revision, selected.name),
+        )
+        self.assertEqual(result["cleanup_level_requested"], "clarity")
+        self.assertEqual(result["cleanup_level_applied"], "clarity")
+        self.assertEqual(self.registry.rewrite.call_args.args[2].api_key, "other")
+
+    def test_dictation_action_admission_rejects_stale_disabled_and_invalid_selection(
+        self,
+    ):
+        from computer_processing import ComputerActionChanged, ComputerActionNotReady
+
+        self.saved_actions()
+        with self.assertRaises(ComputerActionChanged):
+            self.processor.prepare_dictation(
+                text_action_id="summary", text_action_revision=2
+            )
+        self.saved_actions(enabled=False)
+        with self.assertRaises(ComputerActionNotReady):
+            self.processor.prepare_dictation(
+                text_action_id="summary", text_action_revision=3
+            )
+        for options in (
+            {"dictation_policy": "natural", "cleanup_level": "clarity"},
+            {
+                "cleanup_level": "clarity",
+                "text_action_id": "summary",
+                "text_action_revision": 3,
+            },
+            {"text_action_language": "en"},
+        ):
+            with self.assertRaises(ValueError):
+                self.processor.prepare_dictation(**options)
+        self.registry.transcribe.assert_not_called()
+        self.registry.rewrite.assert_not_called()
+
     def test_discovery_exports_only_bounded_descriptors_without_provider_work(self):
         self.saved_actions()
         self.assertEqual(
@@ -777,6 +878,7 @@ class ComputerProcessorTests(unittest.TestCase):
         result = self.processor.process_dictation(wav_bytes(), "en", self.token)
         self.assertEqual(result["transcript"], "signature")
         self.assertEqual(result["text"], "Regards, PC owner.")
+        self.assertFalse(result["rewritten"])
         self.registry.rewrite.assert_not_called()
 
     def test_optional_refinement_failure_returns_usable_transcript(self):

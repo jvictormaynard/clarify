@@ -16,12 +16,14 @@ from workflow_config import (
     DEFAULT_WORKFLOW_PROMPTS,
 )
 
+from shared.processing_contract import CONTRACT
+
 MAX_ACTIONS = 64
 MAX_LIBRARY_BYTES = 256 * 1024
-MAX_INPUT_BYTES = 16000
-MAX_OUTPUT_BYTES = 64000
+MAX_INPUT_BYTES = CONTRACT["limits"]["account"]["text_input_bytes"]
+MAX_OUTPUT_BYTES = CONTRACT["limits"]["account"]["text_output_bytes"]
 MAX_REVISION = (1 << 63) - 1
-TEXT_LANGUAGES = frozenset({"auto", "pt", "en", "es", "de", "ru"})
+TEXT_LANGUAGES = frozenset(CONTRACT["output_languages"])
 DEFINITION_FIELDS = frozenset({"id", "name", "prompt", "kind", "enabled"})
 _ID = re.compile(r"[A-Za-z0-9_-]{1,64}\Z", re.ASCII)
 _COMPUTER_LANGUAGE = re.compile(r"[A-Za-z-]{1,32}\Z", re.ASCII)
@@ -36,7 +38,9 @@ def validate_input(text, language="auto", *, policy=TextActionInputPolicy.STANDA
     if not isinstance(policy, TextActionInputPolicy):
         raise ValueError("Invalid text action input policy")
     maximum = (
-        32768 if policy is TextActionInputPolicy.PAIRED_COMPUTER else MAX_INPUT_BYTES
+        CONTRACT["limits"]["computer"]["text_input_bytes"]
+        if policy is TextActionInputPolicy.PAIRED_COMPUTER
+        else MAX_INPUT_BYTES
     )
     if type(text) is not str or not text.strip() or len(text.encode("utf-8")) > maximum:
         raise ValueError(f"Text action input must contain 1 to {maximum} UTF-8 bytes")

@@ -43,6 +43,7 @@ function fixture(preferences, { supported = true, fail = false, mode = 'hosted',
     if (name === '../errors') return { errorMessage: error => error.message };
     if (name === '../output-preferences') return { outputStyleLabel, outputStyles, visibleOutputStyle };
     if (name === '../text-actions') return { targetLanguages };
+    if (name === '../components/dictation-policy') return { DictationPolicyControls: 'DictationPolicyControls' };
     if (name === '../i18n') return { t: text => text };
     if (name === '../../modules/clarify-core') return { __esModule: true, default: {
       getOutputPreferences: async () => ({ ...preferences }),
@@ -108,6 +109,7 @@ test('opening preserves legacy style; one language save does not rewrite it', as
   f.find('output.language.de').props.onPress(); await f.flush();
   assert.deepEqual(f.calls, [['language', 'de']]);
   assert.equal(f.find('output.language.de').props.selected, true);
+  assert.equal(f.render().find(node => node.type === 'DictationPolicyControls').props.outputLanguage, 'de', 'Saved translation actions use the same output language');
   assert.ok(f.render().some(node => node.props?.title === 'Organizado' && node.props.selected));
 });
 

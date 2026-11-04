@@ -35,8 +35,9 @@ struct CloudDictation: Codable {
   let rewritten: Bool
   let snippetExpanded: Bool?
   var outputPreferenceFailed = false
+  var policyApplied = false
   enum CodingKeys: String, CodingKey { case transcript, text, rewritten; case snippetExpanded = "snippet_expanded" }
-  var successful: Bool { !outputPreferenceFailed && (rewritten || snippetExpanded == true) }
+  var successful: Bool { !outputPreferenceFailed && (rewritten || snippetExpanded == true || policyApplied) }
 }
 
 private struct VocabularyConflict: Error {}
@@ -52,10 +53,12 @@ final class CloudAccount {
   private var lastSyncAttempt = -Double.infinity
   private var usage: [String: Any] = [:]
   private var actionCatalog = TextActionCatalog.unavailable
+  private var actionManagementLease: (token: String, identity: TextAccountIdentity, revision: Int64, context: String)?
   private var preferencesSupported = false
+  private(set) var processingCapabilities = ProcessingCapabilities.unavailable
   var textActions: TextActionCatalog { locked { configured ? actionCatalog : .unavailable } }
   var outputPreferencesSupported: Bool { locked { configured && preferencesSupported } }
-  func clearTextCapabilities() { locked { actionCatalog = .unavailable; preferencesSupported = false } }
+  func clearTextCapabilities() { locked { actionCatalog = .unavailable; actionManagementLease = nil; preferencesSupported = false; processingCapabilities = .unavailable } }
   private var busy = false
   private var automatic = false
   private var syncError = ""
@@ -173,7 +176,7 @@ final class CloudAccount {
     locked {
       var result: [String: Any] = ["endpoint": state.endpoint, "signedIn": configured, "managed": managed, "email": state.email,
       "pending": state.pending, "hosted": hosted, "syncEnabled": state.sync,
-      "busy": busy, "error": syncError, "dictionaryConflict": dictionaryConflict, "usage": usage, "historyAccount": historyScope != nil, "historyContext": historyContext,
+      "processingContract": processingCapabilities.value, "busy": busy, "error": syncError, "dictionaryConflict": dictionaryConflict, "usage": usage, "historyAccount": historyScope != nil, "historyContext": historyContext,
       "outputPreferencesSupported": outputPreferencesSupported, "endpointRecovery": endpointRecovery]
       result.merge(textActions.snapshot) { _, new in new }; return result
     }
@@ -356,9 +359,11 @@ final class CloudAccount {
     guard let userID = result["id"] as? String, UUID(uuidString: userID) != nil,
       let email = result["email"] as? String else { throw ClarifyError(L("A sessão expirou. Entre na conta novamente.")) }
     if result["output_preferences_supported"] != nil, ComputerJSON.boolean(result["output_preferences_supported"]) == nil { throw ComputerFailure.invalidResponse }
+    let capabilities = try ProcessingCapabilities(result["processing_contract"])
     try locked {
       if state.userID != userID { clearTextCapabilities(); generation &+= 1; lastHistoryAttempt = -.infinity; historyFailed = false }
       preferencesSupported = ComputerJSON.boolean(result["output_preferences_supported"]) == true
+      processingCapabilities = capabilities
       state.userID = userID; state.email = email; state.pending = ""; state.hosted = true
       state.historyUserID = userID
       usage = result["usage"] as? [String: Any] ?? [:]
@@ -392,6 +397,38 @@ final class CloudAccount {
     try await refresh()
     guard acceptsTextIdentity(identity) else { throw CancellationError() }
     try await loadTextActions()
+  }
+  // The opaque lease binds the editor to the account generation and exact read.
+  // The server remains authoritative for library CAS and per-action revisions.
+  @MainActor func getAccountTextActions(context: String) async throws -> [String: Any] {
+    let identity = captureTextIdentity()
+    try await waitForAutomaticRefresh()
+    guard acceptsTextIdentity(identity) else { throw CancellationError() }
+    try begin(); defer { end() }
+    let (code, raw) = try await perform("GET", "/v1/text-actions")
+    guard acceptsTextIdentity(identity) else { throw CancellationError() }
+    guard code == 200 else { throw Self.processingFailure(code, result: raw, operationID: "") }
+    let library = try AccountTextActions(raw), token = UUID().uuidString
+    locked { actionManagementLease = (token, identity, library.revision, context); actionCatalog = library.catalog }
+    return library.snapshot(lease: token, context: context)
+  }
+  @MainActor func saveAccountTextActions(_ rows: [[String: Any]], revision: String, lease: String,
+    context: String) async throws -> [String: Any] {
+    guard let owner = locked({ actionManagementLease }), owner.token == lease, owner.context == context,
+      String(owner.revision) == revision, acceptsTextIdentity(owner.identity) else { throw ComputerFailure.notReady }
+    let actions = try AccountTextActions.replacement(rows)
+    try await waitForAutomaticRefresh()
+    guard acceptsTextIdentity(owner.identity), locked({ actionManagementLease?.token }) == lease else { throw CancellationError() }
+    try begin(); defer { end() }
+    let (code, raw) = try await perform("PUT", "/v1/text-actions", json: ["expected_revision": owner.revision, "actions": actions])
+    guard acceptsTextIdentity(owner.identity) else { throw CancellationError() }
+    guard code == 200 else {
+      // Do not adopt the conflict payload or retry a whole-library replacement.
+      throw Self.processingFailure(code, result: raw, operationID: "")
+    }
+    let library = try AccountTextActions(raw), token = UUID().uuidString
+    locked { actionManagementLease = (token, owner.identity, library.revision, context); actionCatalog = library.catalog }
+    return library.snapshot(lease: token, context: context)
   }
   // Social requests deliberately bypass perform(): only a validated one-use
   // poll result can be adopted. Error payloads must never rotate the Keychain.
@@ -837,6 +874,7 @@ final class CloudAccount {
       "transcription_failed": "Não foi possível transcrever o áudio. Tente novamente.",
       "text_processing_failed": "Não foi possível processar o texto. Tente novamente.",
       "text_action_not_found": "A ação mudou ou está indisponível. Atualize a lista e tente novamente.",
+      "text_action_missing": "A ação mudou ou está indisponível. Atualize a lista e tente novamente.",
       "text_action_stale": "A ação mudou ou está indisponível. Atualize a lista e tente novamente.",
       "text_action_disabled": "A ação mudou ou está indisponível. Atualize a lista e tente novamente.",
       "text_action_language_required": "A ação mudou ou está indisponível. Atualize a lista e tente novamente.",
@@ -881,13 +919,14 @@ final class CloudAccount {
     guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
     guard UUID(uuidString: operationID) != nil, ["rewrite", "translate", "text_action"].contains(action), (action == "text_action") == (savedAction != nil),
       ["auto", "pt", "en", "es", "de", "ru"].contains(language),
-      !text.contains("\0"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 16_000 else {
+      !text.contains("\0"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= ProcessingContractData.accountTextInputBytes else {
       throw ClarifyError(L("Selecione um texto válido para processar."), code: "invalid_text_request")
     }
     let identity = captureTextIdentity()
     try await waitForAutomaticRefresh()
     guard acceptsTextIdentity(identity) else { throw CancellationError() }
     try begin(); defer { end() }
+    try processingCapabilities.validate(preferences)
     var fields: [String: Any] = [
       "operation_id": operationID, "action": action, "text": text, "language": language
     ]
@@ -900,7 +939,7 @@ final class CloudAccount {
     let (code, result) = try await perform("POST", savedAction == nil ? "/v1/text" : "/v1/text-actions/execute", json: fields)
     guard code == 200 else { throw Self.processingFailure(code, result: result, operationID: operationID) }
     guard let output = result["text"] as? String,
-      !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, output.utf8.count <= 64_000 else {
+      !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, output.utf8.count <= ProcessingContractData.accountTextOutputBytes else {
       throw ClarifyError(L("O Clarify retornou um resultado inválido."))
     }
     if result["operation_id"] != nil {
@@ -914,7 +953,7 @@ final class CloudAccount {
     return ProcessingText(text: applied ? output : text, successful: applied, outputPreferenceFailed: !applied)
   }
   @MainActor func dictate(_ audio: URL, operationID: String, library: LocalLibrary,
-    preferences: OutputPreferences = OutputPreferences()) async throws -> CloudDictation {
+    preferences: OutputPreferences = OutputPreferences(), policy: DictationPolicy = .legacy) async throws -> CloudDictation {
     guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
     let identity = captureTextIdentity()
     try await waitForAutomaticRefresh()
@@ -930,6 +969,8 @@ final class CloudAccount {
     }
     guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
     guard acceptsTextIdentity(identity) else { throw CancellationError() }
+    try processingCapabilities.validate(preferences)
+    let policyFields = try policy.fields(capabilities: processingCapabilities, catalog: textActions, computer: false)
     let bytes = try Data(contentsOf: audio)
     guard bytes.count <= 24 * 1024 * 1024, UUID(uuidString: operationID) != nil else { throw ClarifyError(L("Grave um trecho menor.")) }
     let boundary = "Clarify-\(UUID().uuidString)"
@@ -937,6 +978,9 @@ final class CloudAccount {
     func append(_ value: String) { body.append(Data(value.utf8)) }
     append("--\(boundary)\r\nContent-Disposition: form-data; name=\"operation_id\"\r\n\r\n\(operationID)\r\n")
     for (key, value) in try preferences.requestFields(supported: outputPreferencesSupported, dictation: true).sorted(by: { $0.key < $1.key }) {
+      append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(key)\"\r\n\r\n\(value)\r\n")
+    }
+    for (key, value) in policyFields.sorted(by: { $0.key < $1.key }) {
       append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(key)\"\r\n\r\n\(value)\r\n")
     }
     append("--\(boundary)\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"clip.m4a\"\r\nContent-Type: audio/mp4\r\n\r\n")
@@ -950,7 +994,8 @@ final class CloudAccount {
       !outcome.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
       outcome.text.utf8.count <= 32_768, outcome.transcript.utf8.count <= 32_768 else { throw ClarifyError(L("O Clarify retornou um resultado inválido.")) }
     guard acceptsTextIdentity(identity) else { throw CancellationError() }
-    if !preferences.applied(in: result, dictation: true) {
+    guard policy.accepts(result) else { throw ComputerFailure.invalidResponse }
+    if !preferences.applied(in: result, dictation: true, requireOriginalConfirmation: processingCapabilities.available) {
       let preserveFallback = !outcome.rewritten && preferences.hasDictationFallback(in: result)
       return CloudDictation(transcript: outcome.transcript, text: preserveFallback ? outcome.text : outcome.transcript, rewritten: false,
         snippetExpanded: preserveFallback && outcome.snippetExpanded == true, outputPreferenceFailed: true)
@@ -958,6 +1003,10 @@ final class CloudAccount {
     // Hosted processing substitutes snippets before rewriting. This is the
     // terminal text, including the expanded fallback when rewriting fails;
     // applying the local library again would recursively alter saved content.
+    if [.preserve, .light].contains(policy.mode) {
+      return CloudDictation(transcript: outcome.transcript, text: outcome.text, rewritten: outcome.rewritten,
+        snippetExpanded: outcome.snippetExpanded, policyApplied: true)
+    }
     return outcome
   }
 }

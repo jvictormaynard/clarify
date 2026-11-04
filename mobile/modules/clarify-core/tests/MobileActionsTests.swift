@@ -3,6 +3,48 @@ import XCTest
 @testable import ClarifyContracts
 
 final class MobileActionsTests: XCTestCase {
+  func testSharedOutputOutcomeVectorsAndCapabilityBounds() throws {
+    let cases = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(ProcessingOutcomeCases.json.utf8)) as? [[String: Any]])
+    let known = ProcessingContractData.value
+    var advertised = known.filter { !["limits", "errors"].contains($0.key) }
+    advertised["text_input_bytes"] = 16_000; advertised["text_output_bytes"] = 64_000
+    let capabilities = try ProcessingCapabilities(advertised)
+    XCTAssertEqual(known["output_languages"] as? [String], OutputLanguage.allCases.map(\.rawValue))
+    XCTAssertEqual(known["writing_styles"] as? [String], OutputStyle.allCases.filter { $0 != .default }.map(\.rawValue))
+    XCTAssertEqual(try OutputPreferences().requestFields(supported: true, dictation: true)["output_language"], "auto")
+    for vector in cases {
+      let preference = OutputPreferences(language: try XCTUnwrap(OutputLanguage(rawValue: try XCTUnwrap(vector["language"] as? String))))
+      var raw = try XCTUnwrap(vector["outcome"] as? [String: Any]); raw["rewritten"] = false
+      XCTAssertEqual(preference.applied(in: raw, dictation: true, requireOriginalConfirmation: capabilities.available), vector["accepted"] as? Bool)
+    }
+    XCTAssertFalse(OutputPreferences().applied(in: [:], dictation: true, requireOriginalConfirmation: true))
+    advertised["output_languages"] = ["auto", "unknown"]
+    XCTAssertThrowsError(try ProcessingCapabilities(advertised))
+  }
+  func testDictationPolicyIsScopedFrozenAndRejectsStaleActions() throws {
+    let suite = "clarify.policy." + UUID().uuidString, defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let store = DictationPolicyStore(defaults: defaults)
+    let action = TextActionDescriptor(id: "saved", revision: "2", name: "Saved", kind: "custom", enabled: true, ready: true)
+    let catalog = TextActionCatalog(status: .ready, actions: [action])
+    var advertised = ProcessingContractData.value.filter { !["limits", "errors"].contains($0.key) }
+    advertised["text_input_bytes"] = 32_768; advertised["text_output_bytes"] = 32_768
+    let capabilities = try ProcessingCapabilities(advertised)
+    let selected = DictationPolicy(mode: .action, actionID: "saved", actionRevision: "2")
+    try store.save(selected, scope: "account-a")
+    let frozen = store.read(scope: "account-a")
+    try store.save(DictationPolicy(mode: .preserve), scope: "account-a")
+    XCTAssertEqual(store.read(scope: "account-b"), DictationPolicy())
+    XCTAssertEqual(try frozen.fields(capabilities: capabilities, catalog: catalog, computer: true)["text_action_revision"] as? Int64, 2)
+    XCTAssertThrowsError(try frozen.fields(capabilities: capabilities, catalog: .unavailable, computer: true))
+    XCTAssertThrowsError(try frozen.fields(capabilities: .unavailable, catalog: catalog, computer: true))
+    XCTAssertFalse(frozen.accepts(["text_action_id": "saved", "text_action_revision": 3]))
+    XCTAssertEqual(try DictationPolicy(mode: .natural).fields(capabilities: capabilities, catalog: catalog, computer: true)["dictation_policy"] as? String, "natural")
+    XCTAssertEqual(ClarifyError("fixture", code: "text_action_stale").recovery, "refresh_actions")
+    let missing = CloudAccount.processingFailure(404, result: ["code": "text_action_missing"], operationID: "")
+    XCTAssertEqual(missing.code, "text_action_missing"); XCTAssertEqual(missing.recovery, "refresh_actions")
+    XCTAssertNil(ClarifyError("fixture", code: "provider_body").recovery)
+  }
   func testDestinationDefaultDoesNotClaimAnExplicitCasualStyle() {
     XCTAssertEqual(OutputStyle.default.title, L("Padrão"))
     XCTAssertNotEqual(OutputStyle.default.title, OutputStyle.casual.title)

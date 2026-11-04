@@ -1,5 +1,6 @@
 import { requireNativeModule } from 'expo';
 import type { RecordingAction } from '../../src/press-to-talk';
+import type { ContractOutputLanguage, ContractOutputStyle } from '../../../shared/processing-contract';
 
 export interface Snapshot {
   sessionActive: boolean;
@@ -8,6 +9,8 @@ export interface Snapshot {
   operationID?: string;
   text?: string;
   message?: string;
+  errorCode?: string;
+  errorRecovery?: string;
   configured: boolean;
   computerMode?: boolean;
   processingContext?: string;
@@ -35,9 +38,15 @@ export interface HistoryEntry {
 export interface HistoryPage { entries: HistoryEntry[]; nextCursor?: string; context: string }
 export interface MicrophoneActivation { active: boolean; message?: string }
 export interface ComputerActionReadiness { dictate: boolean; rewrite: boolean; translate: boolean }
-export type OutputLanguage = 'auto' | 'pt' | 'en' | 'es' | 'de' | 'ru';
-export type OutputStyle = 'default' | 'formal' | 'casual' | 'very_casual' | 'natural' | 'informal' | 'organized';
+export type OutputLanguage = ContractOutputLanguage;
+export type OutputStyle = 'default' | ContractOutputStyle;
 export interface OutputPreferences { language: OutputLanguage; style: OutputStyle }
+export interface DictationPolicy { mode: 'legacy' | 'natural' | 'preserve' | 'light' | 'clarity' | 'action'; actionID: string; actionRevision: string; language: OutputLanguage }
+export interface ProcessingCapabilities {
+  schema_version: 1; output_languages: OutputLanguage[]; writing_styles: ContractOutputStyle[];
+  cleanup_levels: string[]; dictation_actions: boolean; explicit_dictation_policy: boolean;
+  text_input_bytes: number; text_output_bytes: number;
+}
 export interface ComputerTextAction {
   id: string; revision: string; name: string;
   kind: 'rewrite' | 'translation' | 'custom'; enabled: boolean; ready: boolean;
@@ -47,6 +56,7 @@ export interface TextActionCatalog {
   textActions: ComputerTextAction[];
   textActionsStatus: 'unavailable' | 'loading' | 'ready' | 'unsupported';
   outputPreferencesSupported: boolean;
+  processingContract?: ProcessingCapabilities;
 }
 export interface ComputerSnapshot extends TextActionCatalog { paired: boolean; computerID: string; computerName: string; status: string; ready: boolean; busy: boolean; actionReadiness?: ComputerActionReadiness; remoteStatus?: string; remoteAvailable?: boolean }
 export interface AccountSnapshot extends TextActionCatalog {
@@ -60,6 +70,14 @@ export interface AccountSnapshot extends TextActionCatalog {
   usage: unknown;
 }
 
+export interface AccountTextActionDefinition {
+  id: string; name: string; prompt: string; kind: 'rewrite' | 'translation' | 'custom'; enabled: boolean;
+}
+export interface AccountTextActionLibrary {
+  revision: string; lease: string; context: string;
+  actions: (AccountTextActionDefinition & { revision: string })[];
+}
+
 export default requireNativeModule<{
   readonly uiLanguage: string;
   readonly keyboardDiagnosticAvailable: boolean;
@@ -69,14 +87,17 @@ export default requireNativeModule<{
   markOnboardingPresented(): Promise<void>;
   completeOnboarding(): Promise<void>;
   getSnapshot(): Promise<Snapshot>;
+  getAccountTextActions(context: string): Promise<AccountTextActionLibrary>;
+  saveAccountTextActions(actions: AccountTextActionDefinition[], revision: string, lease: string, context: string): Promise<AccountTextActionLibrary>;
   getAccount(): Promise<AccountSnapshot>;
   accountCommand(action: string, value: string): Promise<AccountSnapshot>;
   computerCommand(action: 'computer' | 'hosted' | 'scan' | 'refresh' | 'disconnect'): Promise<AccountSnapshot>;
-  processComputerText(action: 'rewrite' | 'translate', text: string, language: string, context: string): Promise<void>;
   processText(action: 'rewrite' | 'translate', text: string, language: string, context: string): Promise<string>;
   processTextAction(actionID: string, actionRevision: string, text: string, language: string, context: string): Promise<string>;
   getOutputPreferences(): Promise<OutputPreferences>;
   setOutputPreference(key: 'language' | 'style', value: string): Promise<OutputPreferences>;
+  getDictationPolicy(): Promise<DictationPolicy>;
+  setDictationPolicy(mode: DictationPolicy['mode'], actionID: string, revision: string, language: OutputLanguage, context: string): Promise<DictationPolicy>;
   activate(): Promise<MicrophoneActivation>;
   deactivate(): Promise<void>;
   returnToSource(token: string): Promise<boolean>;

@@ -423,7 +423,7 @@ struct ComputerResult: Decodable {
   static func decode(_ data: Data, operationID: String) throws -> Self {
     guard let result = try? JSONDecoder().decode(Self.self, from: data), result.operationID == UUID(uuidString: operationID),
       !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      result.text.utf8.count <= 32_768, result.transcript.utf8.count <= 32_768 else { throw ComputerFailure.invalidResponse }
+      result.text.utf8.count <= ProcessingContractData.computerTextOutputBytes, result.transcript.utf8.count <= 32_768 else { throw ComputerFailure.invalidResponse }
     return result
   }
   func checkingPreferences(_ applied: Bool, original: String) -> Self {

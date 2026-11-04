@@ -32,7 +32,9 @@ import tempfile
 import threading
 import time
 from typing import Any, Callable, Protocol
+from shared.processing_contract import CONTRACT, capabilities as processing_capabilities
 from shared.output_preferences import output_language as parse_output_language
+from shared.dictation_policy import cleanup_level as parse_cleanup_level
 from shared.writing_style_policy import writing_style as parse_writing_style
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
@@ -48,6 +50,7 @@ from computer_processing import (
     ComputerActionChanged,
     ComputerActionNotReady,
     PreparedTextAction,
+    PreparedDictation,
 )
 import computer_cloudflare as cloudflare
 from computer_relay_protocol import RelayIdentity, dns_name, namespace, port_number
@@ -57,7 +60,7 @@ from text_actions import MAX_REVISION, TEXT_LANGUAGES, identity
 
 
 MAX_BODY_BYTES = 16 * 1024 * 1024
-MAX_TEXT_BYTES = 32768
+MAX_TEXT_BYTES = CONTRACT["limits"]["computer"]["text_input_bytes"]
 MAX_DEVICES = 32
 MAX_OPERATIONS = 4096
 OPERATION_SECONDS = 7200
@@ -116,6 +119,8 @@ class ComputerProcessing(Protocol):
         self, prepared: PreparedTextAction, cancel_token: CancellationToken
     ) -> dict: ...
 
+    def prepare_dictation(self, **options) -> PreparedDictation: ...
+
     def process_dictation(
         self,
         audio_wav: bytes,
@@ -124,6 +129,7 @@ class ComputerProcessing(Protocol):
         *,
         writing_style: str | None = None,
         output_language: str | None = None,
+        prepared: PreparedDictation | None = None,
     ) -> dict: ...
 
     def process_text(
@@ -1229,6 +1235,7 @@ class ComputerHost:
             self._require_started()
             actions = self.processor.action_readiness
             result = {
+                "processing_contract": processing_capabilities("computer"),
                 "schema_version": 1,
                 "computer_id": self._identity["computer_id"],
                 "computer_name": self.computer_name,
@@ -1512,7 +1519,15 @@ class ComputerHost:
         if saved_action:
             fields |= {"action_id", "action_revision"}
         optional = (
-            {"writing_style", "output_language"}
+            {
+                "writing_style",
+                "output_language",
+                "cleanup_level",
+                "dictation_policy",
+                "text_action_id",
+                "text_action_revision",
+                "text_action_language",
+            }
             if route == "dictations"
             else {"writing_style"}
         )
@@ -1531,6 +1546,37 @@ class ComputerHost:
                 raise ValueError()
         except (ValueError, TypeError):
             raise _APIError(400, "invalid_request") from None
+        if route == "dictations":
+            try:
+                has_action = "text_action_id" in body or "text_action_revision" in body
+                if (
+                    "cleanup_level" in body
+                    and parse_cleanup_level(body["cleanup_level"]) is None
+                ):
+                    raise ValueError()
+                if "dictation_policy" in body and (
+                    body["dictation_policy"] != "natural"
+                    or has_action
+                    or "cleanup_level" in body
+                ):
+                    raise ValueError()
+                if has_action:
+                    identity(body.get("text_action_id"))
+                    revision = body.get("text_action_revision")
+                    if (
+                        type(revision) is not int
+                        or not 1 <= revision <= MAX_REVISION
+                        or "cleanup_level" in body
+                    ):
+                        raise ValueError()
+                if "text_action_language" in body and (
+                    not has_action
+                    or type(body["text_action_language"]) is not str
+                    or body["text_action_language"] not in TEXT_LANGUAGES
+                ):
+                    raise ValueError()
+            except (ValueError, TypeError):
+                raise _APIError(400, "invalid_request") from None
         operation_id = _uuid(body["operation_id"])
         language = body["language"]
         if not isinstance(language, str) or not _LANGUAGE.fullmatch(language):
@@ -1623,6 +1669,29 @@ class ComputerHost:
                     raise _APIError(503, "not_ready") from None
                 except ValueError:
                     raise _APIError(400, "invalid_request") from None
+            elif route == "dictations":
+                try:
+                    prepared = self.processor.prepare_dictation(
+                        **{
+                            name: body[name]
+                            for name in (
+                                "writing_style",
+                                "output_language",
+                                "cleanup_level",
+                                "dictation_policy",
+                                "text_action_id",
+                                "text_action_revision",
+                                "text_action_language",
+                            )
+                            if name in body
+                        }
+                    )
+                except ComputerActionChanged:
+                    raise _APIError(409, "action_changed") from None
+                except ComputerActionNotReady:
+                    raise _APIError(503, "not_ready") from None
+                except ValueError:
+                    raise _APIError(400, "invalid_request") from None
             elif not self.processor.action_readiness.get(action, False):
                 raise _APIError(503, "not_ready")
             self._require_operation_capacity(window)
@@ -1643,13 +1712,21 @@ class ComputerHost:
             try:
                 if route == "dictations":
                     result = self.processor.process_dictation(
-                        value, language, work.token, **preferences
+                        value,
+                        language,
+                        work.token,
+                        **preferences,
+                        **({"prepared": prepared} if prepared is not None else {}),
                     )
                 elif prepared is not None:
                     result = self.processor.process_text_action(prepared, work.token)
                 else:
                     result = self.processor.process_text(
-                        body["action"], value, language, work.token, **preferences
+                        body["action"],
+                        value,
+                        language,
+                        work.token,
+                        **preferences,
                     )
                 result_preferences = dict(preferences)
                 if (
@@ -1660,10 +1737,24 @@ class ComputerHost:
                     result_preferences["output_language"] = parse_output_language(
                         language
                     )
+                policy_fields = set()
+                if isinstance(prepared, PreparedDictation):
+                    if prepared.explicit_policy:
+                        policy_fields |= {
+                            "cleanup_level_requested",
+                            "cleanup_level_applied",
+                        }
+                    if prepared.explicit_action:
+                        policy_fields |= {
+                            "text_action_id",
+                            "text_action_revision",
+                            "text_action_name",
+                        }
                 if (
                     not isinstance(result, dict)
                     or set(result)
                     != {"transcript", "text", "rewritten", "successful"}
+                    | policy_fields
                     | {
                         prefix + suffix
                         for prefix in result_preferences
@@ -1706,8 +1797,32 @@ class ComputerHost:
                         )
                     ):
                         raise ValueError("Invalid output preference provenance")
+                if isinstance(prepared, PreparedDictation):
+                    if prepared.explicit_policy:
+                        requested = prepared.snapshot.config.dictation_cleanup_level
+                        applied_level = result["cleanup_level_applied"]
+                        allowed = {
+                            None: (None,),
+                            "preserve": ("preserve",),
+                            "light": ("light", "preserve"),
+                            "clarity": ("clarity", "preserve"),
+                        }[requested]
+                        if (
+                            result["cleanup_level_requested"] != requested
+                            or applied_level not in allowed
+                        ):
+                            raise ValueError("Invalid cleanup provenance")
+                    if prepared.explicit_action:
+                        selected = prepared.snapshot.action.action
+                        if (
+                            result["text_action_id"] != selected.id
+                            or type(result["text_action_revision"]) is not int
+                            or result["text_action_revision"] != selected.revision
+                            or result["text_action_name"] != selected.name
+                        ):
+                            raise ValueError("Invalid dictation action identity")
                 result = {"operation_id": operation, **result}
-                if prepared is not None:
+                if prepared is not None and route == "text":
                     result.update(
                         action_id=body["action_id"],
                         action_revision=body["action_revision"],

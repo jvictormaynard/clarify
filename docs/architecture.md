@@ -76,6 +76,19 @@ standalone snippets bypass editing.
 The existing cleanup policy and Local ASR cloud-refinement permission still
 control whether refinement can run.
 
+The versioned processing contract owns supported choices, wire limits and error
+recovery categories for both clients. Its generated Python, Swift and TypeScript
+constants and shared outcome cases are checked by the mobile validation command.
+Services advertise their supported choices; older services cannot silently accept
+a new dictation policy. The iOS app stores the policy per account or paired
+computer and freezes it when recording starts. Explicit natural mode removes the
+computer's selected post-dictation action and cleanup override while retaining
+its normal processing route. History records the actual rewrite flag independently
+of successful snippet expansion. Account action editing uses the same revision
+contract as desktop; full definitions and edit leases stay in the containing app.
+Existing mobile installations retain the destination's policy until an explicit
+choice is saved. Translation actions use the common output-language control.
+
 The iOS keyboard receives a nonsecret App Group vocabulary projection with an
 opaque account scope. A tap on a one- or two-word selection writes a separate
 atomic inbox file before confirming Saved. The containing app imports these

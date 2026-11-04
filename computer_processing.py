@@ -21,6 +21,7 @@ from provider_http import CancellationToken
 from provider_registry import PROVIDER_REGISTRY, ProviderRegistry
 from provider_types import ProviderError
 from repositories import AppConfig
+from shared.dictation_policy import cleanup_level as parse_cleanup_level
 from shared.output_preferences import (
     output_language as parse_output_language,
     output_language_outcome,
@@ -36,6 +37,7 @@ from text_actions import (
     TEXT_LANGUAGES,
     MAX_REVISION,
     TextActionSnapshot,
+    DictationTextActionSnapshot,
     identity,
     settings_for,
     validate_input,
@@ -82,6 +84,16 @@ class PreparedTextAction:
     text: str
     language: str
     writing_style: WritingStyle | None = None
+
+
+@dataclass(frozen=True)
+class PreparedDictation:
+    snapshot: DictationTextActionSnapshot
+    dictionary: DictionarySnippetService
+    writing_style: WritingStyle | None
+    output_language: str | None
+    explicit_policy: bool
+    explicit_action: bool
 
 
 class _OperationRegistry:
@@ -362,6 +374,80 @@ class ComputerProcessor:
             ),
         }
 
+    def prepare_dictation(
+        self,
+        *,
+        writing_style=None,
+        output_language=None,
+        cleanup_level=None,
+        dictation_policy=None,
+        text_action_id=None,
+        text_action_revision=None,
+        text_action_language=None,
+    ) -> PreparedDictation:
+        style = parse_writing_style(writing_style)
+        target = parse_output_language(output_language)
+        level = parse_cleanup_level(cleanup_level)
+        has_action = text_action_id is not None or text_action_revision is not None
+        explicit = has_action or level is not None or dictation_policy is not None
+        if (
+            (dictation_policy is not None and dictation_policy != "natural")
+            or (dictation_policy is not None and (has_action or level is not None))
+            or (has_action and level is not None)
+        ):
+            raise ValueError("Conflicting dictation policy")
+        if text_action_language is not None and not has_action:
+            raise ValueError("Action language requires an action")
+        current = self._current()
+        if not self._ready_for(current, "dictate"):
+            raise ComputerActionNotReady("Computer action is not configured")
+        if explicit:
+            current = TextActionService(_ConfigSnapshot(current)).without_after_action(
+                current
+            )
+            current = replace(
+                current, dictation_cleanup_level="clarity" if has_action else level
+            )
+        dictionary = self._dictionary()
+        service = self._workflow_service(current, dictionary)
+        snapshot = service.snapshot_dictation()
+        if has_action:
+            identity(text_action_id)
+            if (
+                type(text_action_revision) is not int
+                or not 1 <= text_action_revision <= MAX_REVISION
+            ):
+                raise ValueError("Invalid text action revision")
+            action = settings_for(current).action(text_action_id)
+            if action is None or action.revision != text_action_revision:
+                raise ComputerActionChanged("Saved action changed")
+            language = (
+                text_action_language if text_action_language is not None else "auto"
+            )
+            validate_input(
+                "dictation", language, policy=TextActionInputPolicy.PAIRED_COMPUTER
+            )
+            if not self._action_ready(current, text_action_id):
+                raise ComputerActionNotReady("Computer action is not configured")
+            if (
+                current.workflow(WorkflowScope.TRANSCRIPTION).provider_id == "local_asr"
+                and not current.local_asr_cloud_refinement
+            ):
+                raise ComputerActionNotReady("Local ASR review is not enabled")
+            selected = service.snapshot_text_action(text_action_id)
+            if selected.action.kind == "translation" and language == "auto":
+                raise ValueError("Select a translation language")
+            snapshot = replace(
+                snapshot, action=selected, language=language, action_error=""
+            )
+        elif snapshot.action is not None and not self._action_ready(
+            current, snapshot.action.action.id
+        ):
+            snapshot = replace(snapshot, action=None, action_error="not_ready")
+        return PreparedDictation(
+            snapshot, dictionary, style, target, explicit, has_action
+        )
+
     def process_dictation(
         self,
         audio_wav: bytes,
@@ -370,15 +456,28 @@ class ComputerProcessor:
         *,
         writing_style: str | None = None,
         output_language: str | None = None,
+        cleanup_level: str | None = None,
+        dictation_policy: str | None = None,
+        text_action_id: str | None = None,
+        text_action_revision: int | None = None,
+        text_action_language: str | None = None,
+        prepared: PreparedDictation | None = None,
     ) -> dict[str, Any]:
-        style = parse_writing_style(writing_style)
-        target = parse_output_language(output_language)
-        service = self._service(cancel_token, "dictate")
-        snapshot = service.snapshot_dictation()
-        if snapshot.action is not None and not self._action_ready(
-            snapshot.config, snapshot.action.action.id
-        ):
-            snapshot = replace(snapshot, action=None, action_error="not_ready")
+        cancel_token.raise_if_cancelled()
+        prepared = prepared or self.prepare_dictation(
+            writing_style=writing_style,
+            output_language=output_language,
+            cleanup_level=cleanup_level,
+            dictation_policy=dictation_policy,
+            text_action_id=text_action_id,
+            text_action_revision=text_action_revision,
+            text_action_language=text_action_language,
+        )
+        style, target = prepared.writing_style, prepared.output_language
+        snapshot = prepared.snapshot
+        service = self._workflow_service(
+            snapshot.config, prepared.dictionary, cancel_token
+        )
         # The adapter owns this file until the synchronous provider call ends.
         # The bytes snapshot also supports adapters that do not open the file.
         with tempfile.TemporaryDirectory(prefix="clarify-computer-") as directory:
@@ -403,6 +502,17 @@ class ComputerProcessor:
                 if requested is not None
                 for suffix in ("_requested", "_applied", "_status")
             }
+            if prepared.explicit_policy:
+                provenance.update(
+                    cleanup_level_requested=result.cleanup_level_requested,
+                    cleanup_level_applied=result.cleanup_level_applied,
+                )
+            if prepared.explicit_action:
+                provenance.update(
+                    text_action_id=result.text_action_id,
+                    text_action_revision=result.text_action_revision,
+                    text_action_name=result.text_action_name,
+                )
             applied = all(
                 provenance[prefix + "_status"] in ("applied", "unchanged", "standalone")
                 for prefix, requested in (
@@ -414,7 +524,8 @@ class ComputerProcessor:
             return {
                 "transcript": transcript,
                 "text": result.text,
-                "rewritten": transcript != result.text,
+                "rewritten": result.refinement_provider_id is not None
+                and not result.refinement_failed,
                 "successful": not result.refinement_failed and applied,
                 **provenance,
             }

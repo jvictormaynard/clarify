@@ -8,6 +8,7 @@ import { errorMessage } from '../errors';
 import { outputStyleLabel, outputStyles, visibleOutputStyle } from '../output-preferences';
 import { targetLanguages } from '../text-actions';
 import { t } from '../i18n';
+import { DictationPolicyControls } from '../components/dictation-policy';
 
 export default function Output() {
   const c = usePalette();
@@ -84,6 +85,7 @@ export default function Output() {
       </Section>
     </>}
     {pending && <ActivityIndicator accessibilityLabel={t('Salvando…')} />}
+    <DictationPolicyControls outputLanguage={preferences?.language} />
     <Button testID="output.close" onPress={() => router.back()}>{t('Fechar')}</Button>
   </ScrollView>;
 }
