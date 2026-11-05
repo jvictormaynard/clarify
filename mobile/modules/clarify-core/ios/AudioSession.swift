@@ -24,6 +24,7 @@ final class ClarifyAudioSession: NSObject {
   private var hasTap = false
   private var backgroundTask = UIBackgroundTaskIdentifier.invalid
   private lazy var libraryResult = Result { try LocalLibrary.openDefault() }
+  private var clipPolicy = DictationPolicy.legacy
   private var clipPreferences = OutputPreferences()
   private var clipHistory = ProcessingDestination.shared.captureHistory()
   private(set) var state = DictationSnapshot()
@@ -169,7 +170,7 @@ final class ClarifyAudioSession: NSObject {
       hasTap = true
       engine.prepare(); try engine.start()
       state.sessionActive = true
-      if state.phase == .error { state.phase = .idle; state.message = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil }
+      if state.phase == .error { state.phase = .idle; state.message = nil; state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil }
       timer?.invalidate()
       timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.tick() }
       publish()
@@ -275,6 +276,10 @@ final class ClarifyAudioSession: NSObject {
     }
     let frozenPreferences = preferences ?? store?.outputPreferences() ?? OutputPreferences()
     _ = try frozenPreferences.requestFields(supported: ProcessingDestination.shared.outputPreferencesSupported, dictation: true)
+    let policy = DictationPolicyStore().read(scope: ProcessingDestination.shared.historyScope ?? "")
+    _ = try ProcessingDestination.shared.dictationFields(policy)
+    try ProcessingDestination.shared.processingCapabilities.validate(frozenPreferences)
+    clipPolicy = policy
     clipPreferences = frozenPreferences
     try? importKeyboardVocabulary()
     clipHistory = ProcessingDestination.shared.captureHistory()
@@ -295,7 +300,7 @@ final class ClarifyAudioSession: NSObject {
     state.operationID = id
     state.textOperation = false
     state.phase = locked ? .locked : .recording
-    state.text = nil; state.message = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
+    state.text = nil; state.message = nil; state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
     publish()
   }
   private func closeFile(finalize: Bool = false) -> URL? {
@@ -321,6 +326,7 @@ final class ClarifyAudioSession: NSObject {
     let recordedAt = startedAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
     let historyOwner = clipHistory
     let preferences = clipPreferences
+    let policy = clipPolicy
     startedAt = nil
     guard let url = closeFile(finalize: true) else { fail(L("Não foi possível gravar o áudio.")); return }
     playCue(starting: false)
@@ -348,7 +354,7 @@ final class ClarifyAudioSession: NSObject {
         self.endBackgroundTask(backgroundID)
       }
       do {
-        let outcome = try await ProcessingDestination.shared.dictate(url, operationID: id, library: self.library(), preferences: preferences)
+        let outcome = try await ProcessingDestination.shared.dictate(url, operationID: id, library: self.library(), preferences: preferences, policy: policy)
         guard !Task.isCancelled, self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(historyOwner) else { return }
         let transcript = outcome.transcript
         self.state.text = outcome.text
@@ -361,7 +367,7 @@ final class ClarifyAudioSession: NSObject {
         do {
           try self.library().record(HistoryEntry(id: id, createdAt: recordedAt,
             transcript: transcript, text: self.state.text ?? transcript,
-            rewritten: ProcessingDestination.shared.computerMode ? outcome.rewritten : self.state.phase == .ready), scope: historyOwner.scope)
+            rewritten: outcome.rewritten), scope: historyOwner.scope)
           self.state.libraryRevision += 1
           self.syncHistory(force: true)
         } catch {
@@ -378,39 +384,26 @@ final class ClarifyAudioSession: NSObject {
     }
   }
   @MainActor func startText(_ action: String, id: String = UUID().uuidString, text: String, language: String,
-    context: String, actionID: String? = nil, revision: String? = nil, preferences: OutputPreferences? = nil,
-    legacyComputer: Bool = false) async throws -> String {
+    context: String, actionID: String? = nil, revision: String? = nil, preferences: OutputPreferences? = nil) async throws -> String {
     let destination = ProcessingDestination.shared
     guard !state.phase.busy, !destination.textStartBlocked else { throw ComputerFailure.busy }
     guard destination.configured,
       cancellations.acceptsStart(id, now: Date().timeIntervalSince1970), store?.isCancelled(id) != true,
       UUID(uuidString: id) != nil, !text.contains("\0"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      text.utf8.count <= (destination.computerMode ? 32_768 : 16_000), context == destination.historyContext,
-      (OutputLanguage(rawValue: language) != nil || (legacyComputer && !language.isEmpty && language.utf8.count <= 32 &&
-        language.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || $0 == 45 }))) else { throw ComputerFailure.notReady }
+      text.utf8.count <= (destination.computerMode ? ProcessingContractData.computerTextInputBytes : ProcessingContractData.accountTextInputBytes), context == destination.historyContext,
+      OutputLanguage(rawValue: language) != nil else { throw ComputerFailure.notReady }
     let frozen = preferences ?? store?.outputPreferences() ?? OutputPreferences()
     let owner = destination.captureHistory()
     let accountIdentity = destination.captureTextIdentity()
     // Reserve the operation before discovery can suspend. The keyboard can then
     // acknowledge and cancel preparation through the same existing task owner.
     state.operationID = id; state.textOperation = true; state.text = nil; state.message = nil
-    state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil; state.phase = .rewriting; publish()
+    state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil; state.phase = .rewriting; publish()
     task = Task { @MainActor [weak self] in
       guard let self else { return }
       do {
-        let prepared: PreparedTextOperation
-        if legacyComputer {
-          var legacy: PreparedTextOperation?
-          try await destination.withComputerText(action, context: context) {
-            _ = try frozen.requestFields(supported: destination.outputPreferencesSupported, dictation: false)
-            legacy = PreparedTextOperation(owner: owner, action: action, language: language,
-              savedAction: nil, preferences: frozen)
-          }
-          guard let legacy else { throw ComputerFailure.notReady }; prepared = legacy
-        } else {
-          prepared = try await destination.prepareText(action, actionID: actionID, revision: revision,
-            language: language, context: context, preferences: frozen, accountIdentity: accountIdentity)
-        }
+        let prepared = try await destination.prepareText(action, actionID: actionID, revision: revision,
+          language: language, context: context, preferences: frozen, accountIdentity: accountIdentity)
         try Task.checkCancellation()
         guard self.state.operationID == id, self.state.phase == .rewriting,
           destination.acceptsHistory(owner), destination.acceptsHistory(prepared.owner),
@@ -444,7 +437,7 @@ final class ClarifyAudioSession: NSObject {
   }
   func clearResult(publish: Bool = true) {
     state.operationID = nil; state.textOperation = false; state.text = nil; state.phase = .idle; state.message = nil
-    state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
+    state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
     if publish { self.publish() }
   }
   func destinationChanged() {
@@ -466,7 +459,7 @@ final class ClarifyAudioSession: NSObject {
     if let url = closeFile() { try? FileManager.default.removeItem(at: url) }
     if state.phase.busy {
       state.operationID = nil; state.phase = .idle; state.text = nil; state.message = nil
-      state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
+      state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
     }
     endBackgroundTask()
     publish()
@@ -478,7 +471,7 @@ final class ClarifyAudioSession: NSObject {
     if let url = closeFile() { try? FileManager.default.removeItem(at: url) }
     endBackgroundTask()
     state.phase = .error; state.message = message
-    state.errorCode = diagnostics?.code; state.errorPhase = diagnostics?.phase; state.errorStatus = diagnostics?.status
+    state.errorRecovery = diagnostics?.recovery; state.errorCode = diagnostics?.code; state.errorPhase = diagnostics?.phase; state.errorStatus = diagnostics?.status
     publish()
   }
   private func playCue(starting: Bool) {

@@ -8,19 +8,14 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework.exceptions import PermissionDenied
 
+from shared.output_preferences import LANGUAGES as OUTPUT_LANGUAGES
+
 from .ledger import Rejected
 from .models import TextActionLibrary, TextActionRevision
 
 MAX_REVISION = 2**63 - 1
 MAX_LIBRARY_BYTES = 256 * 1024
-LANGUAGES = {
-    "auto": "the source language",
-    "pt": "Portuguese",
-    "en": "English",
-    "es": "Spanish",
-    "de": "German",
-    "ru": "Russian",
-}
+LANGUAGES = {"auto": "the source language", **OUTPUT_LANGUAGES}
 FIELDS = {"id", "name", "prompt", "kind", "enabled"}
 
 

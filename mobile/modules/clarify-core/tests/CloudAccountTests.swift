@@ -613,10 +613,11 @@ final class CloudAccountTests: XCTestCase {
       XCTAssertTrue(outcome.successful); XCTAssertEqual(outcome.rewritten, didRewrite)
       XCTAssertEqual(outcome.transcript, raw); XCTAssertEqual(outcome.text, text)
       XCTAssertFalse(outcome.text.contains("RECURSION SHOULD NOT RUN")); XCTAssertEqual(dictations, 1)
-      let entry = HistoryEntry(id: operationID, createdAt: 1000, transcript: outcome.transcript, text: outcome.text, rewritten: outcome.successful)
+      let entry = HistoryEntry(id: operationID, createdAt: 1000, transcript: outcome.transcript, text: outcome.text, rewritten: outcome.rewritten)
       try library.record(entry, scope: account.historyScope)
       let reopened = try LocalLibrary(root: root)
       XCTAssertEqual(try reopened.history(scope: account.historyScope).entries, [entry])
+      XCTAssertEqual(try reopened.history(scope: account.historyScope).entries.first?.rewritten, didRewrite)
       XCTAssertEqual(try reopened.snippets(scope: account.snippetScope), snippets)
       XCTAssertEqual(try reopened.snippets(), [guest])
     }

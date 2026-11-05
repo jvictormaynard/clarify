@@ -36,7 +36,7 @@ from dictionary_snippets import (
 )
 from provider_http import ProviderCancelledError
 from provider_registry import PROVIDER_REGISTRY, ProviderRegistry
-from provider_types import RewriteResult, TranslationResult
+from provider_types import RewriteResult, TranslationResult, TranscriptionResult
 from repositories import AppConfig, ProviderConfig
 from secret_store import MemorySecretStore
 from text_actions import TextAction, TextActionProfile, TextActionSettings
@@ -228,6 +228,137 @@ class HostRelayLoopbackTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ComputerHostTests(ComputerHostFixture, unittest.TestCase):
+    def test_dictation_policy_admission_replay_and_contract(self):
+        registry = self.saved_processor()
+        self.saved_config.value = replace(
+            self.saved_config.value,
+            workflows=WorkflowConfig(
+                transcription=WorkflowRoute("groq", "whisper-large-v3-turbo")
+            ),
+        )
+        registry.transcribe.return_value = TranscriptionResult(
+            "Spoken.", "groq", "whisper-large-v3-turbo"
+        )
+        _, session = self.pair()
+        token = session["session_token"]
+        status = self.request("GET", "/v1/computer/status", token=token)[1]
+        self.assertEqual(
+            status["processing_contract"],
+            {
+                "schema_version": 1,
+                "output_languages": ["auto", "pt", "en", "es", "de", "ru"],
+                "writing_styles": [
+                    "formal",
+                    "casual",
+                    "very_casual",
+                    "natural",
+                    "informal",
+                    "organized",
+                ],
+                "cleanup_levels": ["preserve", "light", "clarity"],
+                "dictation_actions": True,
+                "explicit_dictation_policy": True,
+                "text_input_bytes": 32768,
+                "text_output_bytes": 32768,
+            },
+        )
+        body = {
+            "operation_id": self.operation(),
+            "language": "auto",
+            "audio_wav": audio(),
+            "text_action_id": "summary",
+            "text_action_revision": 3,
+        }
+        for change, expected in (
+            ({"text_action_revision": 2}, (409, {"error": "action_changed"})),
+            ({"text_action_revision": "3"}, (400, {"error": "invalid_request"})),
+            ({"cleanup_level": "clarity"}, (400, {"error": "invalid_request"})),
+            ({"dictation_policy": "natural"}, (400, {"error": "invalid_request"})),
+            ({"text_action_language": None}, (400, {"error": "invalid_request"})),
+        ):
+            self.assertEqual(
+                self.request(
+                    "POST", "/v1/computer/dictations", {**body, **change}, token
+                ),
+                expected,
+            )
+        registry.transcribe.assert_not_called()
+        process = self.host.processor.process_dictation
+
+        def edit_before_provider(*args, **kwargs):
+            self.saved_config.value = replace(
+                self.saved_config.value, text_actions=TextActionSettings()
+            )
+            return process(*args, **kwargs)
+
+        with patch.object(
+            self.host.processor, "process_dictation", side_effect=edit_before_provider
+        ):
+            response = self.request("POST", "/v1/computer/dictations", body, token)
+        self.assertEqual(response[0], 200, response)
+        self.assertEqual(response[1]["text_action_revision"], 3)
+        self.assertEqual(response[1]["text_action_name"], "Summary")
+        self.assertEqual(response[1]["cleanup_level_requested"], "clarity")
+        self.saved_config.value = replace(
+            self.saved_config.value, text_actions=TextActionSettings()
+        )
+        self.assertEqual(
+            self.request("POST", "/v1/computer/dictations", body, token), response
+        )
+        registry.transcribe.assert_called_once()
+        self.assertEqual(
+            self.request(
+                "POST",
+                "/v1/computer/dictations",
+                {**body, "text_action_language": "pt"},
+                token,
+            ),
+            (409, {"error": "operation_conflict"}),
+        )
+
+    def test_dictation_rejects_forged_policy_and_action_response(self):
+        registry = self.saved_processor()
+        self.saved_config.value = replace(
+            self.saved_config.value,
+            workflows=WorkflowConfig(
+                transcription=WorkflowRoute("groq", "whisper-large-v3-turbo")
+            ),
+        )
+        registry.transcribe.return_value = TranscriptionResult(
+            "Spoken.", "groq", "whisper-large-v3-turbo"
+        )
+        _, session = self.pair()
+        token = session["session_token"]
+        process = self.host.processor.process_dictation
+        for forged in (
+            {"cleanup_level_requested": "light"},
+            {"cleanup_level_applied": "invalid"},
+            {"text_action_revision": True},
+            {"text_action_name": "Other"},
+        ):
+
+            def corrupt(*args, **kwargs):
+                return {**process(*args, **kwargs), **forged}
+
+            with patch.object(
+                self.host.processor, "process_dictation", side_effect=corrupt
+            ):
+                self.assertEqual(
+                    self.request(
+                        "POST",
+                        "/v1/computer/dictations",
+                        {
+                            "operation_id": self.operation(),
+                            "language": "auto",
+                            "audio_wav": audio(),
+                            "text_action_id": "summary",
+                            "text_action_revision": 3,
+                        },
+                        token,
+                    ),
+                    (502, {"error": "processing_failed"}),
+                )
+
     def test_saved_action_style_is_bounded_reported_and_part_of_replay_identity(self):
         registry = self.saved_processor()
         _, session = self.pair()
@@ -1152,8 +1283,11 @@ class ComputerHostTests(ComputerHostFixture, unittest.TestCase):
         _, session = self.pair()
         path = "/v1/computer/status"
         self.assertEqual(self.request("GET", path)[0], 401)
+        response = self.request("GET", path, token=session["session_token"])
+        self.assertIn("processing_contract", response[1])
+        response[1].pop("processing_contract")
         self.assertEqual(
-            self.request("GET", path, token=session["session_token"]),
+            response,
             (
                 200,
                 {

@@ -83,6 +83,8 @@ export function ComputerText() {
       <Button testID="actions.cancel" loading={model.cancelling} onPress={() => void session.cancel().then(refresh).catch(report)}>{t('Cancelar')}</Button>
     </View>}
     {!!(model.error || (own && state.phase === 'error' && state.message)) && <Text testID="actions.error" accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(model.error || state.message!)}</Text>}
+    {own && state.phase === 'error' && state.errorRecovery === 'refresh_actions' && <Button
+      testID="actions.recover-refresh" disabled={refreshing || accountBusy || busy} onPress={() => void reload()}>{t('Atualizar ações')}</Button>}
     {result !== null && <Card><Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t('Resultado')}</Text>
       <Text testID="actions.result" selectable style={[ui.body, { color: c.text }]}>{result}</Text>
       <Button testID="actions.copy" onPress={() => void copy()}>{t('Copiar texto')}</Button>

@@ -45,6 +45,10 @@ final class ProcessingDestination {
   var textStartBlocked: Bool { computerMode ? computer.busy : account.textStartBlocked }
   func captureTextIdentity() -> TextAccountIdentity? { computerMode ? nil : account.captureTextIdentity() }
   var textActions: TextActionCatalog { computerMode ? computer.textActions : account.textActions }
+  var processingCapabilities: ProcessingCapabilities { computerMode ? computer.processingCapabilities : account.processingCapabilities }
+  func dictationFields(_ policy: DictationPolicy) throws -> [String: Any] {
+    try policy.fields(capabilities: processingCapabilities, catalog: textActions, computer: computerMode)
+  }
   var outputPreferencesSupported: Bool { computerMode ? computer.outputPreferencesSupported : account.outputPreferencesSupported }
   var legacyRewriteReady: Bool { computerMode ? computer.isReady(for: "rewrite") : account.configured }
   var legacyTranslateReady: Bool { computerMode ? computer.isReady(for: "translate") : account.configured }
@@ -66,6 +70,7 @@ final class ProcessingDestination {
     result["historyAccount"] = !computerMode && account.historyScope != nil
     result.merge(textActions.snapshot) { _, new in new }
     result["outputPreferencesSupported"] = outputPreferencesSupported
+    result["processingContract"] = processingCapabilities.value
     if computerMode { result["syncEnabled"] = false; result["busy"] = computer.busy; result["error"] = ""; result["dictionaryConflict"] = false }
     return result
   }
@@ -93,16 +98,6 @@ final class ProcessingDestination {
   @MainActor func syncHistory(_ library: LocalLibrary, force: Bool = false) async -> Bool {
     guard !computerMode else { return false }
     return await account.syncHistory(library, force: force)
-  }
-  @MainActor func withComputerText(_ action: String, context: String, start: @MainActor () throws -> Void) async throws {
-    guard ["rewrite", "translate"].contains(action) else { throw ComputerFailure.invalidResponse }
-    guard computerMode, configured, context == historyContext else { throw ComputerFailure.notReady }
-    let capture = captureHistory()
-    try await computer.refresh()
-    try Task.checkCancellation()
-    guard computerMode, acceptsHistory(capture), context == historyContext else { throw CancellationError() }
-    guard computer.isReady(for: action) else { throw ComputerFailure.notReady }
-    try start()
   }
   @MainActor func prepareText(_ action: String, actionID: String? = nil, revision: String? = nil,
     language: String, context: String, preferences: OutputPreferences,
@@ -150,16 +145,16 @@ final class ProcessingDestination {
     }
   }
   @MainActor func dictate(_ url: URL, operationID: String, library: LocalLibrary,
-    preferences: OutputPreferences = OutputPreferences()) async throws -> ProcessingDictation {
+    preferences: OutputPreferences = OutputPreferences(), policy: DictationPolicy = .legacy) async throws -> ProcessingDictation {
     if !computerMode {
-      let result = try await account.dictate(url, operationID: operationID, library: library, preferences: preferences)
+      let result = try await account.dictate(url, operationID: operationID, library: library, preferences: preferences, policy: policy)
       return ProcessingDictation(transcript: result.transcript, text: result.text, rewritten: result.rewritten, successful: result.successful,
         outputPreferenceFailed: result.outputPreferenceFailed)
     }
     let capture = captureHistory()
     let wav = try await ComputerAudio.convert(url)
     guard computerMode, acceptsHistory(capture) else { throw CancellationError() }
-    let result = try await computer.process(operationID, wav: wav, language: "auto", preferences: preferences)
+    let result = try await computer.process(operationID, wav: wav, language: "auto", preferences: preferences, policy: policy)
     guard computerMode, acceptsHistory(capture), !result.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CancellationError() }
     return ProcessingDictation(transcript: result.transcript, text: result.text, rewritten: result.rewritten, successful: result.successful,
       outputPreferenceFailed: result.outputPreferenceFailed)
@@ -181,10 +176,5 @@ final class ProcessingDestination {
     try Task.checkCancellation()
     guard acceptsHistory(capture) else { throw CancellationError() }
     return result
-  }
-  // Retain the original internal legacy entrypoint for existing callers/tests.
-  @MainActor func processText(_ operationID: String, action: String, text: String, language: String) async throws -> ProcessingText {
-    try await processText(operationID, prepared: PreparedTextOperation(owner: captureHistory(), action: action,
-      language: language, savedAction: nil, preferences: OutputPreferences()), text: text)
   }
 }

@@ -17,6 +17,7 @@ final class ComputerConnection {
   private(set) var actionReadiness = ComputerActionReadiness.unavailable
   private(set) var textActions = TextActionCatalog.unavailable
   private(set) var outputPreferencesSupported = false
+  private(set) var processingCapabilities = ProcessingCapabilities.unavailable
   private(set) var status = "unpaired"
   private(set) var remoteStatus = "unavailable"
   private var activeRoute: ComputerRoute?
@@ -48,7 +49,7 @@ final class ComputerConnection {
       "computerName": credential?.computerName ?? "", "status": status, "ready": ready, "busy": busy,
       "actionReadiness": actionReadiness.snapshot, "remoteStatus": remoteStatus,
       "remoteAvailable": credential?.routes.contains(where: { $0.hpkePublicKey != nil }) == true,
-      "outputPreferencesSupported": outputPreferencesSupported]
+      "outputPreferencesSupported": outputPreferencesSupported, "processingContract": processingCapabilities.value]
     result.merge(textActions.snapshot) { _, new in new }; return result
   }
   func isReady(for action: String) -> Bool { actionReadiness.allows(action) }
@@ -121,7 +122,7 @@ final class ComputerConnection {
     try credential.validate(); try save(credential)
     self.credential = credential; generation &+= 1; activeRoute = route; ready = false; status = "offline"
     actionReadiness = .unavailable
-    textActions = .unavailable; outputPreferencesSupported = false
+    textActions = .unavailable; outputPreferencesSupported = false; processingCapabilities = .unavailable
     remoteStatus = credential.routes.contains(where: { $0.hpkePublicKey != nil }) ? "registered" : "unavailable"
     if let previous, let previousRoute = previous.routes.first {
       Task { @MainActor in _ = try? await self.send("DELETE", path: "/v1/computer/session", route: previousRoute, token: previous.sessionToken, timeout: 2) }
@@ -201,11 +202,11 @@ final class ComputerConnection {
     guard !busy else { throw ComputerFailure.busy }
     let owner = generation; busy = true; ready = false; activeRoute = nil; status = "offline"
     actionReadiness = .unavailable
-    textActions = .loading; outputPreferencesSupported = false
+    textActions = .loading; outputPreferencesSupported = false; processingCapabilities = .unavailable
     defer { busy = false }
     var refreshed = false
     defer {
-      if !refreshed { textActions = .unavailable; outputPreferencesSupported = false; actionReadiness = .unavailable; ready = false; activeRoute = nil }
+      if !refreshed { textActions = .unavailable; outputPreferencesSupported = false; processingCapabilities = .unavailable; actionReadiness = .unavailable; ready = false; activeRoute = nil }
     }
     for route in credential.routes {
       try Task.checkCancellation()
@@ -227,6 +228,7 @@ final class ComputerConnection {
           reply.action_readiness == nil || reply.action_readiness?.dictate == reply.ready else { throw ComputerFailure.invalidResponse }
         // Older hosts advertise only dictation. Text needs an explicit capability.
         actionReadiness = reply.action_readiness ?? ComputerActionReadiness(dictate: reply.ready, rewrite: false, translate: false)
+        processingCapabilities = try ProcessingCapabilities(raw["processing_contract"])
         textActions = catalog; outputPreferencesSupported = ComputerJSON.boolean(raw["output_preferences_supported"]) == true
         activeRoute = route; ready = reply.ready; status = (actionReadiness.available || catalog.actions.contains { $0.enabled && $0.ready }) ? "ready" : "not_ready"
         if route.isLAN {
@@ -255,7 +257,7 @@ final class ComputerConnection {
     credential = nil; activeRoute = nil; ready = false; status = "revoked"; generation &+= 1
     remoteStatus = "unavailable"
     actionReadiness = .unavailable
-    textActions = .unavailable; outputPreferencesSupported = false
+    textActions = .unavailable; outputPreferencesSupported = false; processingCapabilities = .unavailable
     invalidated?()
     try save(nil)
   }
@@ -272,7 +274,7 @@ final class ComputerConnection {
     generation &+= 1; ready = false; activeRoute = nil
     if remoteStatus == "registering" { remoteStatus = "cancelled" }
     actionReadiness = .unavailable
-    textActions = .unavailable; outputPreferencesSupported = false
+    textActions = .unavailable; outputPreferencesSupported = false; processingCapabilities = .unavailable
     if configured { status = "offline" }
   }
   @MainActor func cancelOperation(_ id: String) {
@@ -284,7 +286,7 @@ final class ComputerConnection {
   }
   @MainActor func process(_ operationID: String, action: String? = nil, text: String? = nil, wav: Data? = nil,
     language: String = ClarifyLocale.language, savedAction: TextActionDescriptor? = nil,
-    preferences: OutputPreferences = OutputPreferences()) async throws -> ComputerResult {
+    preferences: OutputPreferences = OutputPreferences(), policy: DictationPolicy = .legacy) async throws -> ComputerResult {
     try Task.checkCancellation()
     guard let localID = UUID(uuidString: operationID) else { throw ComputerFailure.notReady }
     let key = localID.uuidString
@@ -295,11 +297,12 @@ final class ComputerConnection {
       language.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || $0 == 45 }) else { throw ComputerFailure.invalidResponse }
     guard operations[key] == nil else { throw ComputerFailure.busy }
     let owner = generation
+    try processingCapabilities.validate(preferences)
     var json: [String: Any] = ["language": language]
     for (key, value) in try preferences.requestFields(supported: outputPreferencesSupported, dictation: action == nil) { json[key] = value }
     if let action, let text {
       guard ["rewrite", "translate", "text_action"].contains(action), (action == "text_action") == (savedAction != nil),
-        !text.contains("\0"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 32_768 else { throw ComputerFailure.invalidResponse }
+        !text.contains("\0"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= ProcessingContractData.computerTextInputBytes else { throw ComputerFailure.invalidResponse }
       json["action"] = action; json["text"] = text
       if let savedAction {
         guard let revision = TextActionDescriptor.wireRevision(savedAction.revision),
@@ -308,6 +311,9 @@ final class ComputerConnection {
       }
     } else if let wav { try ComputerWAV.validate(wav); json["audio_wav"] = wav.base64EncodedString() }
     else { throw ComputerFailure.invalidAudio }
+    if action == nil {
+      for (key, value) in try policy.fields(capabilities: processingCapabilities, catalog: textActions, computer: true) { json[key] = value }
+    }
     let wireID = try newOperationID()
     json["operation_id"] = wireID.uuidString
     operations[key] = (credential, route, wireID)
@@ -321,7 +327,11 @@ final class ComputerConnection {
         // Only stable local messages are exposed. Provider error bodies remain
         // outside snapshots, logs and the keyboard extension.
         let raw = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        let messages = ["invalid_audio": "Grave um áudio válido de até 5 minutos.",
+        let messages = ["action_changed": "A ação mudou. Atualize as ações.",
+          "text_action_missing": "A ação não existe. Atualize as ações.",
+          "text_action_stale": "A ação mudou. Atualize as ações.",
+          "text_action_disabled": "A ação está desativada.",
+          "invalid_audio": "Grave um áudio válido de até 5 minutos.",
           "not_ready": "Configure o processamento no Clarify do computador.",
           "busy": "Já existe um processamento em andamento.", "operation_in_progress": "Já existe um processamento em andamento.",
           "processing_failed": "Não foi possível concluir o processamento. Tente novamente.",
@@ -333,7 +343,10 @@ final class ComputerConnection {
           "operation_history_full": "Limite atingido. Revogue no computador o acesso de um celular ou deste iPhone. Leia outro QR.",
           "result_unavailable": "Esta solicitação não pode ser repetida. Inicie uma nova ação."]
         let message = (raw?["error"] as? String).flatMap { messages[$0] } ?? (code == 429 ? "Muitas solicitações. Aguarde um momento." : "Não foi possível concluir o processamento. Tente novamente.")
-        throw ClarifyError(message, code: "computer_processing_failed", phase: action == nil ? "transcribing" : "rewriting", operationID: operationID, status: code)
+        let wireCode = raw?["error"] as? String
+        let known = ProcessingContractData.value["errors"] as? [String: String] ?? [:]
+        let stableCode = wireCode.flatMap { known[$0] != nil ? $0 : nil } ?? "computer_processing_failed"
+        throw ClarifyError(message, code: stableCode, phase: action == nil ? "transcribing" : "rewriting", operationID: operationID, status: code)
       }
       let result = try ComputerResult.decode(data, operationID: wireID.uuidString)
       let raw = try ComputerJSON.object(data, maximum: ComputerProtocolLimits.maximumResponseBytes)
@@ -341,7 +354,8 @@ final class ComputerConnection {
         guard raw["action_id"] as? String == savedAction.id,
           ComputerJSON.integer(raw["action_revision"]).map({ String($0) }) == savedAction.revision else { throw ComputerFailure.invalidResponse }
       }
-      let applied = preferences.applied(in: raw, dictation: action == nil)
+      if action == nil, !policy.accepts(raw) { throw ComputerFailure.invalidResponse }
+      let applied = preferences.applied(in: raw, dictation: action == nil, requireOriginalConfirmation: processingCapabilities.available)
       let fallback = action == nil && !result.successful && preferences.hasDictationFallback(in: raw)
         ? result.text : text ?? result.transcript
       return ComputerResult(operationID: localID, transcript: result.transcript, text: result.text,
@@ -350,7 +364,7 @@ final class ComputerConnection {
       if Task.isCancelled { cancelOperation(operationID); throw CancellationError() }
       guard accepts(owner), operations[key]?.wireID == wireID else { throw CancellationError() }
       if error as? ComputerFailure == .offline {
-        ready = false; actionReadiness = .unavailable; textActions = .unavailable; outputPreferencesSupported = false; status = "offline"
+        ready = false; actionReadiness = .unavailable; textActions = .unavailable; outputPreferencesSupported = false; processingCapabilities = .unavailable; status = "offline"
       }
       throw error
     }

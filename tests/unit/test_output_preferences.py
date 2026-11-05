@@ -1,4 +1,7 @@
 import unittest
+import json
+from pathlib import Path
+
 
 from shared.output_preferences import (
     output_language,
@@ -9,6 +12,20 @@ from shared.writing_style_policy import WritingStyle, with_writing_style, writin
 
 
 class OutputPreferencePolicyTests(unittest.TestCase):
+    def test_shared_contract_options_and_outcomes(self):
+        cases = json.loads(
+            (
+                Path(__file__).resolve().parents[2]
+                / "shared/processing_outcome_cases.json"
+            ).read_text()
+        )
+        for case in cases:
+            with self.subTest(language=case["language"], options=case["options"]):
+                self.assertEqual(
+                    output_language_outcome(case["language"], **case["options"]),
+                    case["outcome"],
+                )
+
     def test_absent_choices_keep_the_existing_instruction(self):
         self.assertEqual(
             with_output_language("Original instruction", None), "Original instruction"
@@ -49,18 +66,4 @@ class OutputPreferencePolicyTests(unittest.TestCase):
         self.assertNotEqual(
             with_writing_style("Source task", WritingStyle.FORMAL),
             with_writing_style("Source task", WritingStyle.ORGANIZED),
-        )
-
-    def test_unapplied_or_standalone_choices_never_claim_the_target(self):
-        for options, status in (
-            ({}, "refinement_not_allowed"),
-            ({"attempted": True}, "refinement_failed"),
-            ({"standalone": True}, "standalone"),
-        ):
-            result = output_language_outcome("en", **options)
-            self.assertEqual(result["output_language_requested"], "en")
-            self.assertIsNone(result["output_language_applied"])
-            self.assertEqual(result["output_language_status"], status)
-        self.assertEqual(
-            output_language_outcome("en", refined=True)["output_language_applied"], "en"
         )

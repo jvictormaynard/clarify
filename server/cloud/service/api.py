@@ -21,6 +21,7 @@ from dictionary_snippets import (
     DictionarySnippets,
     Snippet,
 )
+from shared.processing_contract import CONTRACT, capabilities as processing_capabilities
 from . import audio, groq, history, ledger, text_actions
 from .middleware import take_rate
 from .models import Dictionary, Operation, SnippetLibrary
@@ -114,6 +115,7 @@ class AccountView(ServiceView):
                 "email": request.user.email,
                 "usage": ledger.usage(request.user),
                 "output_preferences_supported": True,
+                "processing_contract": processing_capabilities("account"),
             }
         )
 
@@ -551,7 +553,8 @@ class TextView(ServiceView):
             if (
                 not isinstance(source, str)
                 or not source.strip()
-                or len(source.encode()) > 16000
+                or len(source.encode())
+                > CONTRACT["limits"]["account"]["text_input_bytes"]
             ):
                 raise ValueError()
             fingerprint = hashlib.sha256(
