@@ -2,13 +2,13 @@
   "schema": 2,
   "component": "mobile",
   "version": "0.13.0",
-  "base_sha": "ab44e1e2893b2d61a2a3447012e27b367e0ec781",
-  "notes": "Internal TestFlight build for the keyboard typing fix merged in PR #243. Saved dictation errors no longer cover typing keys when the microphone session is inactive or expired. Active-session and output-preference errors remain visible. PR CI 41598595690 passed, including the new UIKit regression (0.162 seconds), both app UI profiles, unsigned app/extensions, and installed keyboard tests. The user explicitly requested internal TestFlight delivery for physical-device testing with no extra test passes. Use internal_testing=true to reuse eligible exact-source canonical main CI. Retain signing, IPA and two-extension verification, confirmed upload, Apple processing and internal-group availability. Device acceptance and screenshots/video remain pending user testing; no App Store submission is authorized. Complete read-only Apple inventory 41602988031/1 has 35 builds and 35 uploads, highest build 55; all collections complete, uploads and review submissions COMPLETE, errors empty. Source collector and artifact SHA-256 verified. Git tags/reservations and open PRs show no build 56 conflict. Recheck conflicts before publication.",
+  "base_sha": "5b67fe76b8ec6fba3e147b325e08d6434caf33f0",
+  "notes": "Internal TestFlight 0.13.0 (57) for physical-device testing of optional keyboard autocorrect from PR #246. Suggestions and automatic replacement are off by default; Settings can enable them, and the language/formality capsule keeps its width. Include current merged main. The user requested immediate internal publication and no repeated manual test suite. Use internal_testing=true to reuse eligible canonical exact-source CI during the upload. Required release metadata CI runs automatically. Preserve signing, app and extension identity checks, upload-history guards, Apple processing, existing internal-group availability and sealed candidate evidence. No App Store submission. Complete read-only Apple inventory 41981631443/1: 36 builds and uploads, highest 56, collections complete, no errors; upload and review submissions COMPLETE. Git tags, reservation branches and open PRs have no build 57 conflict. Device acceptance and captures remain pending user testing.",
   "evidence": {
-    "build": "56",
-    "highest_build": "55",
-    "pending_builds_checked": true,
-    "checked_at": "2026-11-03T08:24:30Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41602988031"
+    "highest_build": "56",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/41981631443",
+    "checked_at": "2026-11-05T06:39:24Z",
+    "build": "57",
+    "pending_builds_checked": true
   }
 }
