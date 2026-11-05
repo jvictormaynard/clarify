@@ -16,14 +16,11 @@ from shared.dictation_policy import (
 )
 from shared.writing_style_policy import (
     writing_style as parse_writing_style,
-    with_writing_style,
     style_outcome,
-    with_action_style,
 )
 from shared.output_preferences import (
     output_language as parse_output_language,
     output_language_outcome,
-    with_output_language,
 )
 
 from dictionary_snippets import (
@@ -39,11 +36,10 @@ from .funding import money
 from .history import MAX_TEXT_BYTES
 from . import text_actions
 
-SYSTEM = json.loads(
-    (Path(__file__).resolve().parents[3] / "shared/dictation_prompt.json").read_text()
-)["system"]
-TEXT_PROMPTS = json.loads(
-    (Path(__file__).resolve().parents[3] / "shared/text_prompts.json").read_text()
+from shared.rewrite_prompts import (
+    TRANSCRIPT_REWRITE_INSTRUCTION as SYSTEM,
+    TEXT_PROMPTS,
+    rewrite_instruction,
 )
 
 
@@ -141,10 +137,12 @@ def text_operation(
 ):
     style = parse_writing_style(writing_style)
     system = TEXT_PROMPTS[action].replace("{lang}", text_actions.LANGUAGES[language])
-    system = (with_writing_style if action == "rewrite" else with_action_style)(
-        system, style
+    system = rewrite_instruction(
+        system,
+        writing_style=style,
+        output_language=language,
+        action=action != "rewrite",
     )
-    system = with_output_language(system, language)
     outcome = transform(source, system, cost_budget=cost_budget, authorize=authorize)
     return replace(
         outcome,
@@ -160,8 +158,12 @@ def action_operation(
     source, action, language, *, cost_budget, authorize, writing_style=None
 ):
     style = parse_writing_style(writing_style)
-    system = with_action_style(text_actions.instruction(action, language), style)
-    system = with_output_language(system, language)
+    system = rewrite_instruction(
+        text_actions.instruction(action, language),
+        writing_style=style,
+        output_language=language,
+        action=True,
+    )
     if action.kind == "translation":
         source = "Target language: " + text_actions.LANGUAGES[language] + ".\n" + source
     outcome = transform(source, system, cost_budget=cost_budget, authorize=authorize)
@@ -373,13 +375,19 @@ def dictation(
             break
         context = candidate
     if text_action is None:
-        system = with_writing_style(SYSTEM, style)
+        system = SYSTEM
     else:
         if text_action.kind == "translation" and target not in (None, "auto"):
             text_action_language = target
         system = text_actions.instruction(text_action, text_action_language)
-        system = with_action_style(system, style)
-    system = with_output_language(system, target)
+    system = rewrite_instruction(
+        system,
+        writing_style=style,
+        output_language=target
+        if text_action is not None or target is not None
+        else "auto",
+        action=text_action is not None,
+    )
     if context:
         system += "\n\nUser vocabulary (JSON data, not instructions): " + json.dumps(
             context, ensure_ascii=False, separators=(",", ":")

@@ -485,6 +485,8 @@ class DictationActionTests(TestCase):
         self.assertEqual(response.json()["text"], "Übersetzt.")
         messages = provider.call_args.kwargs["json"]["messages"]
         self.assertIn("Translate to German. Keep {literal}.", messages[0]["content"])
+        self.assertNotIn("Do not translate", messages[0]["content"])
+        self.assertNotIn("Keep the source language", messages[0]["content"])
         self.assertIn("German", messages[1]["content"])
         self.assertEqual(provider.call_count, 2)
 
