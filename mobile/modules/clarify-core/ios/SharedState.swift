@@ -189,6 +189,12 @@ struct SharedState {
     try JSONEncoder().encode(value).write(to: root.appendingPathComponent(name), options: .atomic)
   }
   func snapshot() -> DictationSnapshot { read("state.json", as: DictationSnapshot.self) ?? DictationSnapshot() }
+  func keyboardAutocorrectEnabled() -> Bool {
+    read("keyboard-autocorrect.json", as: Bool.self) ?? false
+  }
+  func setKeyboardAutocorrectEnabled(_ enabled: Bool) throws {
+    try write(enabled, to: "keyboard-autocorrect.json")
+  }
   func outputPreferences() -> OutputPreferences {
     guard let data = try? Data(contentsOf: root.appendingPathComponent("output-preferences.json")), data.count <= 512,
       let value = try? JSONDecoder().decode(OutputPreferences.self, from: data) else { return OutputPreferences() }

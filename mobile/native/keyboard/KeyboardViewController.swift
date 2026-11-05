@@ -190,7 +190,7 @@ class KeyboardViewController: UIInputViewController {
   private var recordingPanelVisible = false
   private var recordingError: String?
   private let keys = KeyGridView()
-  private let typing = TypingAssistant()
+  private let typing = TypingAssistant(autocorrectionEnabled: false)
   private var typingVocabularyRevision = -1
   private var typingVocabularyCheckedAt = Date.distantPast
   private let suggestions = UIStackView()
@@ -298,6 +298,8 @@ class KeyboardViewController: UIInputViewController {
       else { self?.advanceToNextInputMode() }
     }
     suggestions.axis = .horizontal; suggestions.distribution = .fillEqually
+    suggestions.clipsToBounds = true
+    suggestions.accessibilityIdentifier = "clarify.keyboard.suggestions"
     addToDictionary.accessibilityIdentifier = "clarify.output-preferences"
     addToDictionary.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
     addToDictionary.titleLabel?.adjustsFontSizeToFitWidth = true
@@ -335,6 +337,9 @@ class KeyboardViewController: UIInputViewController {
       undoDictation.centerYAnchor.constraint(equalTo: mic.centerYAnchor),
       undoDictation.widthAnchor.constraint(equalToConstant: 44), undoDictation.heightAnchor.constraint(equalToConstant: 44)
     ])
+    let capsuleWidth = addToDictionary.widthAnchor.constraint(equalToConstant: 176)
+    capsuleWidth.priority = UILayoutPriority(999)
+    capsuleWidth.isActive = true
     dictionaryTrailing = addToDictionary.trailingAnchor.constraint(lessThanOrEqualTo: mic.leadingAnchor, constant: -8)
     capsuleLeading = addToDictionary.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10)
     NSLayoutConstraint.activate([
@@ -467,6 +472,11 @@ class KeyboardViewController: UIInputViewController {
   // The lifecycle and timer share this state refresh. It does not simulate a
   // UIKit appearance transition when a snapshot or microphone meter changes.
   func refreshFromStore() {
+    let autocorrect = store?.keyboardAutocorrectEnabled() ?? false
+    if typing.autocorrectionEnabled != autocorrect {
+      typing.autocorrectionEnabled = autocorrect
+      updateSuggestions()
+    }
     let previousContext = state.processingContext
     state = store?.snapshot() ?? DictationSnapshot()
     if previousContext != state.processingContext {
@@ -720,7 +730,7 @@ class KeyboardViewController: UIInputViewController {
     // Suggestions use the remaining toolbar width. The existing recording panel
     // also shows complete errors without changing the keyboard's fixed height.
     let showingError = hasFullAccess && state.isLive && state.phase == .error
-    suggestions.isHidden = selection != nil || showEdit || !insert.isHidden || !available || showingError || !state.isLive
+    suggestions.isHidden = !typing.autocorrectionEnabled || selection != nil || showEdit || !insert.isHidden || !available || showingError || !state.isLive
     status.isHidden = true; detail.isHidden = true
     if showingError { addToDictionary.accessibilityHint = state.message }
     if let outputPreferenceError { addToDictionary.accessibilityHint = outputPreferenceError }

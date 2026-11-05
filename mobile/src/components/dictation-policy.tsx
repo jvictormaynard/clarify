@@ -48,7 +48,7 @@ export function DictationPolicyControls({ outputLanguage }: { outputLanguage?: O
     {modes.map(mode => <ChoiceRow key={mode.value} testID={`output.policy.${mode.value}`} title={t(mode.label)}
       selected={(choosing ? 'action' : policy?.mode) === mode.value}
       disabled={!policy || pending || (mode.value === 'legacy' ? false : mode.value === 'natural' ? account?.mode === 'computer' && !capabilities?.explicit_dictation_policy
-        : mode.value === 'action' ? !capabilities?.dictation_actions : !capabilities?.cleanup_levels.includes(mode.value))}
+        : mode.value === 'action' ? !capabilities?.dictation_actions : !capabilities?.cleanup_levels?.includes(mode.value))}
       onPress={() => { if (mode.value === 'action') setChoosing(true); else void save(mode.value); }} />)}
     {(choosing || policy?.mode === 'action') && <>
       {catalog?.textActions.filter(action => action.enabled).map(action => <ChoiceRow key={action.id} testID={`output.policy.action.${action.id}`}
