@@ -2,13 +2,13 @@
   "schema": 2,
   "component": "mobile",
   "version": "0.13.0",
-  "base_sha": "9dd6646ba3985577619e5c2a25894ebf44072410",
-  "notes": "Internal TestFlight 0.13.0 (58) for the keyboard capsule sizing fix merged in PR #250. The language/formality button fits its label, expands for the wand when text is selected, and shrinks when selection clears. Required toolbar space constrains long labels; correction suggestions cannot compress the capsule. PR CI 41995705611 passed mobile checks, native keyboard/library and installed-keyboard tests, both app UI profiles and unsigned app/extensions. User authorized TestFlight publication for physical-device testing. Use internal_testing=true to reuse eligible canonical exact-source CI during upload, with no additional manual suite. Required release metadata CI runs automatically. Preserve signing, app/two-extension identity, IPA verification, upload history, Apple processing and existing internal-group availability. Complete Apple inventory 42001048578/1 has highest build 57 and no build 58, all collections complete, no errors or pending uploads/review submissions; Git tags/reservations and open PRs show no build 58 conflict. Device acceptance and captures remain pending. No App Store submission.",
+  "base_sha": "5710c2718b0275c3d9b0fedff9ea41d1b42708bf",
+  "notes": "Internal TestFlight 0.13.0 (60) for the compact keyboard language/formality capsule and Expo patch alignment merged in PRs #250 and #252. The capsule fits its label, expands for the selected-text wand and shrinks when selection clears. Expo 57.0.32, Constants 57.0.23 and Router 57.0.30 pass compatibility validation; Router and React Native patches are retained. PR CI 42089734312 passed native keyboard/library and installed-keyboard checks, both app UI profiles, unsigned app/extensions, mobile checks, audits and CI required. User approved replacing the blocked build58 source and publishing a new reviewed internal candidate. Use internal_testing=true to reuse eligible exact-source canonical main CI during upload. Retain signing, IPA/app/two-extension identity, upload-history guards, Apple processing, existing internal-group availability and sealed evidence. Complete Apple inventory 42094882734/1 finished 2026-11-05T19:32:58Z, 37 builds/uploads, highest Apple build57, all collections complete and error-free, upload/review states COMPLETE, collector hash verified. Git has reservations through59, including a separate Apple rewrite prototype tag ios/v0.13.0-build59 and queued run42095996681; it is not this candidate and is not modified. No build60 tag, branch or preparation PR exists at reservation check. Build60 exceeds highest reservation59 and checked-in58. Device acceptance and screenshots/video remain open; no App Store submission.",
   "evidence": {
-    "highest_build": "57",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42001048578",
-    "checked_at": "2026-11-05T09:18:22Z",
-    "build": "58",
+    "highest_build": "59",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42094882734",
+    "checked_at": "2026-11-05T19:40:34Z",
+    "build": "60",
     "pending_builds_checked": true
   }
 }
