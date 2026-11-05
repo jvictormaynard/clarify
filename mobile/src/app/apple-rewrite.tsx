@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { useFocusEffect } from 'expo-router';
-import { AppState, Text, View } from 'react-native';
+import { Stack, useFocusEffect } from 'expo-router';
+import { AppState, Keyboard, Pressable, Text, View } from 'react-native';
+import { SymbolView } from 'expo-symbols';
 import Core, { type AppleRewriteAvailability, type OutputStyle } from '../../modules/clarify-core';
 import { AppleRewriteSession } from '../apple-rewrite';
 import { DraftTextInput } from '../components/draft-text-input';
@@ -19,8 +20,14 @@ export default function AppleRewrite() {
   const [availability, setAvailability] = useState<AppleRewriteAvailability>();
   const [loadError, setLoadError] = useState('');
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(() => Keyboard.isVisible());
   const availabilityGeneration = useRef(0);
   const [sheet, setSheet] = useState<'language' | 'style' | null>(null);
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => { shown.remove(); hidden.remove(); };
+  }, []);
   const refreshAvailability = useCallback(async () => {
     const request = ++availabilityGeneration.current;
     setAvailability(undefined); setLoadError('');
@@ -46,7 +53,13 @@ export default function AppleRewrite() {
   }, [refreshAvailability, session]));
   const language = model.preferences.language;
   const languageLabel = targetLanguages.find(item => item.value === language)?.label ?? t('Manter idioma original');
-  return <KeyboardPage>
+  return <>
+    <Stack.Screen options={{ headerRight: () => keyboardVisible ? <Pressable testID="apple.dismiss-keyboard"
+      accessibilityRole="button" accessibilityLabel={t('Concluir')} onPress={Keyboard.dismiss}
+      style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+      <SymbolView name="keyboard.chevron.compact.down" size={22} tintColor={c.text} accessible={false} />
+    </Pressable> : null }} />
+    <KeyboardPage>
     <ScreenHeader title={t('Teste do Apple Intelligence')} subtitle={t('Cole uma transcrição curta para testar a reescrita neste iPhone.')} />
     <Card>
       <Text style={[ui.body, { color: c.text }]}>{t('Este teste usa somente o modelo da Apple no dispositivo. O texto não é salvo no histórico. Revise o resultado antes de usar.')}</Text>
@@ -78,5 +91,6 @@ export default function AppleRewrite() {
         : [{ value: 'auto' as const, label: t('Manter idioma original') }, ...targetLanguages].map(item => <ChoiceRow key={item.value} testID={`apple.language.${item.value}`} title={item.label} selected={language === item.value}
           onPress={() => { session.setPreferences({ ...model.preferences, language: item.value }); setSheet(null); }} />)}
     </NativeSheet>
-  </KeyboardPage>;
+    </KeyboardPage>
+  </>;
 }

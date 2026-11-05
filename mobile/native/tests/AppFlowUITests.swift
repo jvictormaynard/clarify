@@ -334,6 +334,10 @@ final class AppFlowUITests: XCTestCase {
     let source = app.textViews["apple.source"]
     let draft = "Send 5 copies to Ana. Do not delete the backup."
     enter(draft, in: source, name: "apple-rewrite-source")
+    capture("apple-rewrite-editing")
+    press("apple.dismiss-keyboard", allowScroll: false)
+    absent(app.keyboards.firstMatch)
+    XCTAssertEqual(source.value as? String, draft, "Finishing editing must keep the complete source")
     press("apple.style"); press("apple.style.formal")
     press("apple.language"); press("apple.language.en")
     press("apple.refresh")
