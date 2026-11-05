@@ -682,6 +682,17 @@ activity is ended at the next app launch; stale content asks to open Clarify.
 Live Activities must be enabled on the device. iOS controls placement and priority.
 This does not replace the system's microphone icon or orange privacy indicator.
 
+Settings includes an **Apple Intelligence test** screen for short transcripts.
+Paste the source text, choose a language and writing style, then run the rewrite.
+This prototype uses Apple's on-device model on compatible devices with iOS 26 or
+later. It checks model and language availability and accepts up to 2,000 UTF-8
+bytes. An unavailable model, unsupported language, context limit or refusal
+returns an error and preserves the source. It has no cloud fallback and does not
+save text to history or change normal dictation processing. Leaving the screen,
+backgrounding the app, editing the source or changing a preference cancels the
+current test. Review the output before use; physical iPhone model evaluation and
+native UI acceptance are still required.
+
 The rewrite rules are generated from the desktop's canonical dictation prompt,
 including spoken self-corrections, faithful editing and source-data boundaries.
 Run `python3 scripts/sync-prompts.py` after changing the desktop rules; `npm run

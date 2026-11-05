@@ -4,6 +4,8 @@ import UIKit
 
 public class ClarifyCoreModule: Module {
   private var computerScanning = false
+  private var appleRewriteTask: Task<Void, Never>?
+  private var appleRewriteID: String?
   public func definition() -> ModuleDefinition {
     Name("ClarifyCore")
     Constant("uiLanguage") { ClarifyLocale.language }
@@ -81,6 +83,42 @@ public class ClarifyCoreModule: Module {
     }.runOnQueue(.main)
     AsyncFunction("getOutputPreferences") { () -> [String: String] in
       (SharedState()?.outputPreferences() ?? OutputPreferences()).snapshot
+    }.runOnQueue(.main)
+    AsyncFunction("getAppleRewriteAvailability") { () -> [String: Any] in
+      AppleRewriteEngine.availability()
+    }.runOnQueue(.main)
+    AsyncFunction("rewriteWithApple") { (id: String, source: String, language: String, style: String, promise: Promise) in
+      guard UUID(uuidString: id) != nil, let language = OutputLanguage(rawValue: language),
+        let style = OutputStyle(rawValue: style) else {
+        promise.reject("APPLE_REWRITE", L("The rewrite request is invalid.")); return
+      }
+      guard self.appleRewriteTask == nil, !self.computerScanning,
+        !ClarifyAudioSession.shared.state.phase.busy, !ProcessingDestination.shared.isBusy,
+        UIApplication.shared.applicationState == .active else {
+        promise.reject("APPLE_REWRITE", L("Finish the current operation before testing Apple Intelligence.")); return
+      }
+      self.appleRewriteID = id
+      let preferences = OutputPreferences(language: language, style: style)
+      self.appleRewriteTask = Task { @MainActor in
+        defer {
+          if self.appleRewriteID == id { self.appleRewriteID = nil; self.appleRewriteTask = nil }
+        }
+        do {
+          let result = try await AppleRewriteEngine.rewrite(source, preferences: preferences)
+          try Task.checkCancellation()
+          guard self.appleRewriteID == id, UIApplication.shared.applicationState == .active else { throw CancellationError() }
+          promise.resolve(result)
+        } catch is CancellationError {
+          promise.reject("APPLE_REWRITE", L("Cancelled"))
+        } catch {
+          promise.reject("APPLE_REWRITE", error.localizedDescription)
+        }
+      }
+    }.runOnQueue(.main)
+    AsyncFunction("cancelAppleRewrite") { (id: String, promise: Promise) in
+      guard self.appleRewriteID == id, let task = self.appleRewriteTask else { promise.resolve(nil); return }
+      task.cancel()
+      Task { @MainActor in await task.value; promise.resolve(nil) }
     }.runOnQueue(.main)
     AsyncFunction("setOutputPreference") { (key: String, value: String) -> [String: String] in
       guard let store = SharedState() else { throw ClarifyError(L("Não foi possível acessar os dados do teclado.")) }

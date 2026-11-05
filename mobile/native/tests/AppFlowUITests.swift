@@ -328,6 +328,27 @@ final class AppFlowUITests: XCTestCase {
     capture("snippets-editor-keyboard-dirty")
     press("Cancelar"); back()
   }
+  func verifyAppleRewriteLab() {
+    press("settings.apple-rewrite")
+    XCTAssertTrue(app.staticTexts["apple.status"].waitForExistence(timeout: 15))
+    let source = app.textViews["apple.source"]
+    let draft = "Send 5 copies to Ana. Do not delete the backup."
+    enter(draft, in: source, name: "apple-rewrite-source")
+    press("apple.style"); press("apple.style.formal")
+    press("apple.language"); press("apple.language.en")
+    press("apple.refresh")
+    XCTAssertEqual(source.value as? String, draft, "Availability refresh must preserve the source")
+    press("apple.style")
+    XCTAssertTrue(app.descendants(matching: .any)["apple.style.formal"].firstMatch.isSelected)
+    press("Fechar")
+    capture("apple-rewrite-local-draft")
+    back()
+    press("settings.output")
+    XCTAssertTrue(app.descendants(matching: .any)["output.language.de"].firstMatch.isSelected)
+    XCTAssertTrue(app.descendants(matching: .any)["output.style.very_casual"].firstMatch.isSelected,
+      "The Apple test must not change dictation output preferences")
+    press("output.close")
+  }
   func testFirstPresentationAccountNavigationAndExplicitReplay() {
     signIn(checkPersistence: true)
     XCTAssertFalse(app.buttons["home.account"].exists)
@@ -353,6 +374,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(german.waitForExistence(timeout: 15))
     XCTAssertTrue(german.isSelected)
     press("output.close")
+    verifyAppleRewriteLab()
     press("settings.microphone"); capture("microphone-keyboard"); back()
     press("settings.privacy"); capture("privacy"); back()
     press("settings.guide")
@@ -383,6 +405,7 @@ final class AppFlowUITests: XCTestCase {
     press("settings.output")
     press("output.language.de"); press("output.style.very_casual")
     capture("compact-output"); press("output.close")
+    verifyAppleRewriteLab()
     tab("Ações")
     let text = app.textViews["actions.text"], draft = "a\nb\nc"
     enter(draft, in: text, name: "compact-composer")

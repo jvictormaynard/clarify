@@ -41,6 +41,9 @@ export interface ComputerActionReadiness { dictate: boolean; rewrite: boolean; t
 export type OutputLanguage = ContractOutputLanguage;
 export type OutputStyle = 'default' | ContractOutputStyle;
 export interface OutputPreferences { language: OutputLanguage; style: OutputStyle }
+export interface AppleRewriteAvailability {
+  available: boolean; reason: string; message: string; supportedLanguages: string[]; maxInputBytes: number;
+}
 export interface DictationPolicy { mode: 'legacy' | 'natural' | 'preserve' | 'light' | 'clarity' | 'action'; actionID: string; actionRevision: string; language: OutputLanguage }
 export interface ProcessingCapabilities {
   schema_version: 1; output_languages: OutputLanguage[]; writing_styles: ContractOutputStyle[];
@@ -97,6 +100,9 @@ export default requireNativeModule<{
   getKeyboardAutocorrectEnabled(): Promise<boolean>;
   setKeyboardAutocorrectEnabled(enabled: boolean): Promise<void>;
   getOutputPreferences(): Promise<OutputPreferences>;
+  getAppleRewriteAvailability(): Promise<AppleRewriteAvailability>;
+  rewriteWithApple(id: string, source: string, language: string, style: string): Promise<string>;
+  cancelAppleRewrite(id: string): Promise<void>;
   setOutputPreference(key: 'language' | 'style', value: string): Promise<OutputPreferences>;
   getDictationPolicy(): Promise<DictationPolicy>;
   setDictationPolicy(mode: DictationPolicy['mode'], actionID: string, revision: string, language: OutputLanguage, context: string): Promise<DictationPolicy>;
