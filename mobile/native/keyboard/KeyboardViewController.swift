@@ -308,7 +308,8 @@ class KeyboardViewController: UIInputViewController {
     addToDictionary.imageEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: -10)
     addToDictionary.layer.cornerRadius = 22
     addToDictionary.showsMenuAsPrimaryAction = true
-    addToDictionary.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    addToDictionary.setContentHuggingPriority(UILayoutPriority(999), for: .horizontal)
+    addToDictionary.setContentCompressionResistancePriority(UILayoutPriority(999), for: .horizontal)
     undoDictation.accessibilityIdentifier = "clarify.undo-dictation"
     undoDictation.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 22, weight: .medium), forImageIn: .normal)
     undoDictation.tintColor = .label; undoDictation.isHidden = true
@@ -337,13 +338,10 @@ class KeyboardViewController: UIInputViewController {
       undoDictation.centerYAnchor.constraint(equalTo: mic.centerYAnchor),
       undoDictation.widthAnchor.constraint(equalToConstant: 44), undoDictation.heightAnchor.constraint(equalToConstant: 44)
     ])
-    let capsuleWidth = addToDictionary.widthAnchor.constraint(equalToConstant: 176)
-    capsuleWidth.priority = UILayoutPriority(999)
-    capsuleWidth.isActive = true
     dictionaryTrailing = addToDictionary.trailingAnchor.constraint(lessThanOrEqualTo: mic.leadingAnchor, constant: -8)
     capsuleLeading = addToDictionary.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10)
     NSLayoutConstraint.activate([
-      capsuleLeading!, addToDictionary.widthAnchor.constraint(lessThanOrEqualToConstant: 176),
+      capsuleLeading!,
       dictionaryTrailing!, addToDictionary.centerYAnchor.constraint(equalTo: mic.centerYAnchor),
       addToDictionary.heightAnchor.constraint(equalToConstant: 44)
     ])

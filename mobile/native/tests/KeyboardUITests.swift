@@ -73,14 +73,27 @@ final class KeyboardUITests: XCTestCase {
       keyboard.field.before = "I would say helllo"
       keyboard.refreshFromStore()
       let capsule = try self.outputCapsule(keyboard)
-      for button in (row as? UIStackView)?.arrangedSubviews.compactMap({ $0 as? UIButton }) ?? [] {
-        button.setTitle("extraordinarilylongsuggestion", for: .normal)
-      }
       for width in [CGFloat(320), 393, 430] {
+        for button in (row as? UIStackView)?.arrangedSubviews.compactMap({ $0 as? UIButton }) ?? [] {
+          button.setTitle("extraordinarilylongsuggestion", for: .normal)
+        }
         keyboard.view.frame.size.width = width; keyboard.view.layoutIfNeeded()
         XCTAssertFalse(row.isHidden)
-        XCTAssertGreaterThanOrEqual(capsule.bounds.width, 175)
+        XCTAssertEqual(capsule.bounds.width, capsule.intrinsicContentSize.width, accuracy: 1,
+          "Long suggestions must not compress the capsule or add empty side space")
         XCTAssertLessThanOrEqual(capsule.frame.maxX, row.frame.minX)
+        let compactWidth = capsule.bounds.width
+        keyboard.field.selectedText = "Clarify"; keyboard.selectionDidChange(nil)
+        keyboard.view.layoutIfNeeded(); capsule.layoutIfNeeded()
+        XCTAssertNotNil(capsule.configuration?.image)
+        XCTAssertGreaterThan(capsule.bounds.width, compactWidth,
+          "Selecting text must expand the capsule to fit the wand")
+        XCTAssertEqual(capsule.bounds.width, capsule.intrinsicContentSize.width, accuracy: 1)
+        keyboard.field.selectedText = nil; keyboard.selectionDidChange(nil)
+        keyboard.view.layoutIfNeeded(); capsule.layoutIfNeeded()
+        XCTAssertNil(capsule.configuration?.image)
+        XCTAssertEqual(capsule.bounds.width, compactWidth, accuracy: 1,
+          "Clearing selection must restore the compact width")
       }
       assistant.autocorrectionEnabled = true
       field.before = "I would say helllo"; assistant.insert(" ", into: field)
@@ -1184,12 +1197,19 @@ final class KeyboardUITests: XCTestCase {
         for appearance in [UIUserInterfaceStyle.light, .dark] {
           keyboard.overrideUserInterfaceStyle = appearance
           for width in [CGFloat(320), 375, 430] {
+            var plainWidth: CGFloat = 0
             for selected in [false, true] {
               keyboard.field.selectedText = selected ? "Clarify" : nil; keyboard.selectionDidChange(nil)
               keyboard.view.frame.size.width = width; keyboard.view.layoutIfNeeded(); capsule.layoutIfNeeded()
               XCTAssertFalse(capsule.isHidden); XCTAssertTrue(capsule.showsMenuAsPrimaryAction)
               XCTAssertEqual(capsule.configuration?.title, "🇷🇺 " + OutputStyle.very_casual.title)
               XCTAssertEqual(capsule.configuration?.image != nil, selected)
+              if !selected { plainWidth = capsule.bounds.width }
+              else if capsule.intrinsicContentSize.width < width - 80 {
+                XCTAssertGreaterThan(capsule.bounds.width, plainWidth)
+                XCTAssertEqual(capsule.bounds.width, capsule.intrinsicContentSize.width, accuracy: 1,
+                  "A long label and wand must fit when toolbar space is available")
+              }
               XCTAssertEqual(capsule.accessibilityLabel, L("Saída do ditado") + ": Русский, " + OutputStyle.very_casual.title)
               XCTAssertTrue(keyboard.view.bounds.contains(capsule.frame)); XCTAssertGreaterThanOrEqual(capsule.bounds.height, 44)
               XCTAssertEqual(keyboard.view.bounds.height, 278); XCTAssertFalse(capsule.hasAmbiguousLayout)
