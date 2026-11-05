@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    'pt-BR': `Clarify ${version} (${build}): em Prefer\u00eancias, abra Teste do Apple Intelligence. Cole uma transcri\u00e7\u00e3o curta, escolha o estilo e o idioma e compare o resultado. Requer iPhone compat\u00edvel com Apple Intelligence, iOS 26 e modelo dispon\u00edvel. Inclui o ajuste de largura do bot\u00e3o de idioma. Testes de CI n\u00e3o foram repetidos nesta vers\u00e3o, conforme solicitado.`,
+    'en-US': `Clarify ${version} (${build}): open Apple Intelligence test in Preferences. Paste a short transcript, select the style and language, and compare the result. Requires an Apple Intelligence-compatible iPhone, iOS 26, and an available model. Includes the language button width fix. CI tests were not repeated for this build, as requested.`,
+    'es-ES': `Clarify ${version} (${build}): en Preferencias, abra Prueba de Apple Intelligence. Pegue una transcripci\u00f3n corta, elija el estilo y el idioma y compare el resultado. Requiere un iPhone compatible con Apple Intelligence, iOS 26 y un modelo disponible. Incluye el ajuste de ancho del bot\u00f3n de idioma. No se repitieron las pruebas de CI para esta versi\u00f3n, seg\u00fan lo solicitado.`,
   };
 }
 

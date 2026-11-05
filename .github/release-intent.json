@@ -2,13 +2,13 @@
   "schema": 2,
   "component": "mobile",
   "version": "0.13.0",
-  "base_sha": "9dd6646ba3985577619e5c2a25894ebf44072410",
-  "notes": "Internal TestFlight 0.13.0 (58) for the keyboard capsule sizing fix merged in PR #250. The language/formality button fits its label, expands for the wand when text is selected, and shrinks when selection clears. Required toolbar space constrains long labels; correction suggestions cannot compress the capsule. PR CI 41995705611 passed mobile checks, native keyboard/library and installed-keyboard tests, both app UI profiles and unsigned app/extensions. User authorized TestFlight publication for physical-device testing. Use internal_testing=true to reuse eligible canonical exact-source CI during upload, with no additional manual suite. Required release metadata CI runs automatically. Preserve signing, app/two-extension identity, IPA verification, upload history, Apple processing and existing internal-group availability. Complete Apple inventory 42001048578/1 has highest build 57 and no build 58, all collections complete, no errors or pending uploads/review submissions; Git tags/reservations and open PRs show no build 58 conflict. Device acceptance and captures remain pending. No App Store submission.",
+  "base_sha": "5eec960bf5b2ee8c67a5ca21850da1e5a3424250",
+  "notes": "One-time internal TestFlight 0.13.0 (59) for the separate Apple Intelligence rewrite screen. Includes current main 62888a9 and preserves its keyboard capsule fix. User explicitly authorized publication and skipped repeat CI tests on 2026-11-05. Prior feature CI 41998469412 and keyboard-main CI 42001045877 passed. No exact-source CI is claimed. The branch-only workflow retains immutable source, complete fresh Apple inventory, first-attempt upload history, signing, IPA app/two-extension verification, receipt, Apple processing and existing internal-group availability. Build 58 remains reserved by main. Not for merge to main. Physical iPhone model quality is pending. No App Store submission.",
   "evidence": {
     "highest_build": "57",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42001048578",
-    "checked_at": "2026-11-05T09:18:22Z",
-    "build": "58",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42094882734",
+    "checked_at": "2026-11-05T19:32:58Z",
+    "build": "59",
     "pending_builds_checked": true
   }
 }
