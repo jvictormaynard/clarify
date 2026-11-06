@@ -62,6 +62,8 @@ class OutputPreferenceTests(TestCase):
         system = provider.call_args_list[1].kwargs["json"]["messages"][0]["content"]
         self.assertIn("requested output language is English", system)
         self.assertIn("Formal presentation", system)
+        self.assertNotIn("Output MUST be in the same language", system)
+        self.assertNotIn("Keep the source language", system)
         replay = self.send(
             operation, language="auto", output_language="en", writing_style="formal"
         )

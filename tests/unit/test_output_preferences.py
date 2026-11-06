@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 from shared.output_preferences import (
+    LANGUAGES,
     output_language,
     output_language_outcome,
     with_output_language,
@@ -12,6 +13,63 @@ from shared.writing_style_policy import WritingStyle, with_writing_style, writin
 
 
 class OutputPreferencePolicyTests(unittest.TestCase):
+    def test_saved_language_authority_and_exact_legacy_default(self):
+        from shared.rewrite_prompts import (
+            SELECTED_TEXT_REWRITE_INSTRUCTION,
+            rewrite_instruction,
+        )
+
+        custom = "Translate into German. Preserve the source language in quotations."
+        self.assertEqual(rewrite_instruction(custom, action=True), custom)
+        explicit = rewrite_instruction(custom, action=True, output_language="en")
+        self.assertIn(custom, explicit)
+        self.assertIn("requested output language is English", explicit)
+        legacy = SELECTED_TEXT_REWRITE_INSTRUCTION.replace(
+            "Return ONLY the rewritten source text,",
+            "Preserve the source language. Return ONLY the rewritten source text,",
+        )
+        self.assertNotIn(
+            "Preserve the source language",
+            rewrite_instruction(legacy, output_language="en"),
+        )
+        self.assertIn(
+            "Do not translate", rewrite_instruction(custom, output_language="auto")
+        )
+
+    def test_rewrite_language_is_independent_of_every_writing_style(self):
+        from shared.rewrite_prompts import (
+            TRANSCRIPT_REWRITE_INSTRUCTION,
+            rewrite_instruction,
+        )
+
+        for style in (None, *WritingStyle):
+            for language in ("auto", "en", "pt", "es", "de", "ru"):
+                with self.subTest(style=style, language=language):
+                    instruction = rewrite_instruction(
+                        TRANSCRIPT_REWRITE_INSTRUCTION,
+                        output_language=language,
+                        writing_style=style,
+                        legacy_language="Brazilian Portuguese",
+                    )
+                    self.assertNotIn(
+                        "Output MUST be in Brazilian Portuguese", instruction
+                    )
+                    if language == "auto":
+                        self.assertIn("Do not translate the source", instruction)
+                        self.assertIn("multiple languages", instruction)
+                    else:
+                        self.assertNotIn("Keep the source language", instruction)
+                        self.assertNotIn(
+                            "Output MUST be in the same language", instruction
+                        )
+                        self.assertIn(
+                            "Return the complete transformed result in", instruction
+                        )
+                        self.assertIn(
+                            f"Translate source prose in other languages into {LANGUAGES[language]}",
+                            instruction,
+                        )
+
     def test_shared_contract_options_and_outcomes(self):
         cases = json.loads(
             (
