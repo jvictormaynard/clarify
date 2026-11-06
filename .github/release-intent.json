@@ -1,14 +1,14 @@
 {
   "schema": 2,
   "component": "mobile",
-  "version": "0.13.0",
-  "base_sha": "5710c2718b0275c3d9b0fedff9ea41d1b42708bf",
-  "notes": "Internal TestFlight 0.13.0 (60) for the compact keyboard language/formality capsule and Expo patch alignment merged in PRs #250 and #252. The capsule fits its label, expands for the selected-text wand and shrinks when selection clears. Expo 57.0.32, Constants 57.0.23 and Router 57.0.30 pass compatibility validation; Router and React Native patches are retained. PR CI 42089734312 passed native keyboard/library and installed-keyboard checks, both app UI profiles, unsigned app/extensions, mobile checks, audits and CI required. User approved replacing the blocked build58 source and publishing a new reviewed internal candidate. Use internal_testing=true to reuse eligible exact-source canonical main CI during upload. Retain signing, IPA/app/two-extension identity, upload-history guards, Apple processing, existing internal-group availability and sealed evidence. Complete Apple inventory 42094882734/1 finished 2026-11-05T19:32:58Z, 37 builds/uploads, highest Apple build57, all collections complete and error-free, upload/review states COMPLETE, collector hash verified. Git has reservations through59, including a separate Apple rewrite prototype tag ios/v0.13.0-build59 and queued run42095996681; it is not this candidate and is not modified. No build60 tag, branch or preparation PR exists at reservation check. Build60 exceeds highest reservation59 and checked-in58. Device acceptance and screenshots/video remain open; no App Store submission.",
+  "version": "0.14.0",
+  "base_sha": "b7346f3092bc57182c0712edf0b7257918f7569f",
+  "notes": "Official App Store candidate consolidating current main and PR #248, including the shared output-language prompt correction, mobile/desktop processing-policy parity, saved text-action management, opt-in keyboard autocorrect, the adaptive keyboard language/formality capsule from PR #250, and Expo SDK 57 patch alignment from PR #252. Public baseline is App Store 0.8.1; the latest internal TestFlight build is 0.13.0 (60). PR #248 passed all applicable checks, including PostgreSQL/container, Windows packaging and native iOS validation, before merge. Build 61 exceeds all Apple builds and Git reservations through 60. Complete GET-only Apple inventory 42147156765/1 finished 2026-11-06T01:57:21.819Z with no errors; review submissions are complete. The user explicitly authorized one combined official App Store release. Use the standard signed validation path with internal_testing=false. Preserve exact-source canonical CI, app and extension identity, signed IPA verification, upload-history guards, Apple processing, availability and sealed evidence. App Store metadata, native/device acceptance and store-policy review must be established for this exact candidate before submission; preparation is not Apple approval or public availability.",
   "evidence": {
-    "highest_build": "59",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42094882734",
-    "checked_at": "2026-11-05T19:40:34Z",
-    "build": "60",
+    "highest_build": "60",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42147156765",
+    "checked_at": "2026-11-06T02:29:31Z",
+    "build": "61",
     "pending_builds_checked": true
   }
 }
