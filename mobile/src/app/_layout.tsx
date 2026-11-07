@@ -29,6 +29,7 @@ function Navigation() {
       <Stack.Screen name="snippets" options={{ headerShown: true, title: t('Snippets'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="processing" options={{ headerShown: true, title: t('Processamento'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="output" options={{ headerShown: true, title: t('Saída do ditado'), presentation: 'formSheet', animation: reducedMotion ? 'none' : 'slide_from_bottom' }} />
+      <Stack.Screen name="apple-rewrite" options={{ headerShown: true, title: t('Teste do Apple Intelligence'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="microphone" options={{ headerShown: true, title: t('Microfone e teclado'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="privacy" options={{ headerShown: true, title: t('Histórico e privacidade'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="settings" options={{ headerShown: true, title: t("Ajustes"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />

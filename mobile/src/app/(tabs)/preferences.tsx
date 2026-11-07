@@ -33,6 +33,7 @@ export default function Preferences() {
       <NavigationRow testID="settings.processing" title={t('Processamento')} detail={t(destinationLabel(account))} icon="cpu" onPress={() => router.push('/processing')} />
       <NavigationRow testID="settings.account" title={t('Conta')} detail={account?.signedIn ? account.email : t('Entrar ou criar conta')} icon="person.crop.circle" onPress={() => router.push('/account')} />
       <NavigationRow testID="settings.output" title={t('Saída do ditado')} icon="textformat" onPress={() => router.push('/output')} />
+      <NavigationRow testID="settings.apple-rewrite" title={t('Teste do Apple Intelligence')} icon="cpu" onPress={() => router.push('/apple-rewrite')} />
     </Card>
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 }}>

@@ -1,4 +1,139 @@
 {
+  "Apple Intelligence did not translate the text into the selected language. The source was preserved.": {
+    "pt": "O Apple Intelligence não traduziu o texto para o idioma selecionado. O original foi preservado.",
+    "en": "Apple Intelligence did not translate the text into the selected language. The source was preserved.",
+    "es": "Apple Intelligence no tradujo el texto al idioma seleccionado. Se conservó el original."
+  },
+  "Atualizar disponibilidade": {
+    "pt": "Atualizar disponibilidade",
+    "en": "Refresh availability",
+    "es": "Actualizar disponibilidad"
+  },
+  "Teste do Apple Intelligence": {
+    "pt": "Teste do Apple Intelligence",
+    "en": "Apple Intelligence test",
+    "es": "Prueba de Apple Intelligence"
+  },
+  "Cole uma transcrição curta para testar a reescrita neste iPhone.": {
+    "pt": "Cole uma transcrição curta para testar a reescrita neste iPhone.",
+    "en": "Paste a short transcript to test rewriting on this iPhone.",
+    "es": "Pega una transcripción corta para probar la reescritura en este iPhone."
+  },
+  "Este teste usa somente o modelo da Apple no dispositivo. O texto não é salvo no histórico. Revise o resultado antes de usar.": {
+    "pt": "Este teste usa somente o modelo da Apple no dispositivo. O texto não é salvo no histórico. Revise o resultado antes de usar.",
+    "en": "This test uses only Apple's on-device model. Text is not saved to history. Review the result before use.",
+    "es": "Esta prueba usa solo el modelo de Apple en el dispositivo. El texto no se guarda en el historial. Revisa el resultado antes de usarlo."
+  },
+  "Verificando disponibilidade…": {
+    "pt": "Verificando disponibilidade…",
+    "en": "Checking availability…",
+    "es": "Comprobando disponibilidad…"
+  },
+  "Limite do teste: {v0} bytes de texto.": {
+    "pt": "Limite do teste: {v0} bytes de texto.",
+    "en": "Test limit: {v0} bytes of text.",
+    "es": "Límite de la prueba: {v0} bytes de texto."
+  },
+  "Reescrever com Apple Intelligence": {
+    "pt": "Reescrever com Apple Intelligence",
+    "en": "Rewrite with Apple Intelligence",
+    "es": "Reescribir con Apple Intelligence"
+  },
+  "Tempo: {v0} ms.": {
+    "pt": "Tempo: {v0} ms.",
+    "en": "Time: {v0} ms.",
+    "es": "Tiempo: {v0} ms."
+  },
+  "Apple Intelligence requires iOS 26 or later and a compatible device.": {
+    "pt": "O Apple Intelligence requer iOS 26 ou posterior e um dispositivo compatível.",
+    "en": "Apple Intelligence requires iOS 26 or later and a compatible device.",
+    "es": "Apple Intelligence requiere iOS 26 o posterior y un dispositivo compatible."
+  },
+  "Apple Intelligence is ready for a local rewrite.": {
+    "pt": "O Apple Intelligence está pronto para reescrever neste dispositivo.",
+    "en": "Apple Intelligence is ready for a local rewrite.",
+    "es": "Apple Intelligence está listo para reescribir en este dispositivo."
+  },
+  "Enable Apple Intelligence in Settings and wait for its model download to finish.": {
+    "pt": "Ative o Apple Intelligence nos Ajustes e aguarde o download do modelo.",
+    "en": "Enable Apple Intelligence in Settings and wait for its model download to finish.",
+    "es": "Activa Apple Intelligence en Ajustes y espera a que termine la descarga del modelo."
+  },
+  "This device does not support Apple Intelligence.": {
+    "pt": "Este dispositivo não é compatível com o Apple Intelligence.",
+    "en": "This device does not support Apple Intelligence.",
+    "es": "Este dispositivo no es compatible con Apple Intelligence."
+  },
+  "Enter text to rewrite.": {
+    "pt": "Digite o texto para reescrever.",
+    "en": "Enter text to rewrite.",
+    "es": "Escribe el texto que deseas reescribir."
+  },
+  "Use a shorter text for the Apple Intelligence prototype.": {
+    "pt": "Use um texto menor neste teste do Apple Intelligence.",
+    "en": "Use a shorter text for the Apple Intelligence prototype.",
+    "es": "Usa un texto más corto en esta prueba de Apple Intelligence."
+  },
+  "Apple Intelligence is not available on this device.": {
+    "pt": "O Apple Intelligence não está disponível neste dispositivo.",
+    "en": "Apple Intelligence is not available on this device.",
+    "es": "Apple Intelligence no está disponible en este dispositivo."
+  },
+  "The source language could not be identified. Use a longer sample.": {
+    "pt": "Não foi possível identificar o idioma de origem. Use uma amostra maior.",
+    "en": "The source language could not be identified. Use a longer sample.",
+    "es": "No se pudo identificar el idioma de origen. Usa una muestra más larga."
+  },
+  "Apple Intelligence does not support a language in this request.": {
+    "pt": "O Apple Intelligence não é compatível com um dos idiomas deste pedido.",
+    "en": "Apple Intelligence does not support a language in this request.",
+    "es": "Apple Intelligence no admite uno de los idiomas de esta solicitud."
+  },
+  "Apple Intelligence did not return a complete rewrite. The source was preserved.": {
+    "pt": "O Apple Intelligence não retornou uma reescrita completa. O texto original foi mantido.",
+    "en": "Apple Intelligence did not return a complete rewrite. The source was preserved.",
+    "es": "Apple Intelligence no devolvió una reescritura completa. Se conservó el texto original."
+  },
+  "The rewrite removed too much text. The source was preserved.": {
+    "pt": "A reescrita removeu texto demais. O texto original foi mantido.",
+    "en": "The rewrite removed too much text. The source was preserved.",
+    "es": "La reescritura eliminó demasiado texto. Se conservó el texto original."
+  },
+  "The text exceeds the Apple Intelligence context limit. The source was preserved.": {
+    "pt": "O texto excede o limite de contexto do Apple Intelligence. O texto original foi mantido.",
+    "en": "The text exceeds the Apple Intelligence context limit. The source was preserved.",
+    "es": "El texto supera el límite de contexto de Apple Intelligence. Se conservó el texto original."
+  },
+  "Apple Intelligence declined this text. The source was preserved.": {
+    "pt": "O Apple Intelligence recusou este texto. O texto original foi mantido.",
+    "en": "Apple Intelligence declined this text. The source was preserved.",
+    "es": "Apple Intelligence rechazó este texto. Se conservó el texto original."
+  },
+  "Apple Intelligence is busy. Try again later.": {
+    "pt": "O Apple Intelligence está ocupado. Tente novamente mais tarde.",
+    "en": "Apple Intelligence is busy. Try again later.",
+    "es": "Apple Intelligence está ocupado. Inténtalo de nuevo más tarde."
+  },
+  "Apple Intelligence could not rewrite this text. The source was preserved.": {
+    "pt": "O Apple Intelligence não conseguiu reescrever este texto. O texto original foi mantido.",
+    "en": "Apple Intelligence could not rewrite this text. The source was preserved.",
+    "es": "Apple Intelligence no pudo reescribir este texto. Se conservó el texto original."
+  },
+  "The rewrite request is invalid.": {
+    "pt": "O pedido de reescrita é inválido.",
+    "en": "The rewrite request is invalid.",
+    "es": "La solicitud de reescritura no es válida."
+  },
+  "Finish the current operation before testing Apple Intelligence.": {
+    "pt": "Finalize a operação atual antes de testar o Apple Intelligence.",
+    "en": "Finish the current operation before testing Apple Intelligence.",
+    "es": "Finaliza la operación actual antes de probar Apple Intelligence."
+  },
+  "Cancelled": {
+    "pt": "Cancelado",
+    "en": "Cancelled",
+    "es": "Cancelado"
+  },
   "Usar o servidor de produção?": {
     "pt": "Usar o servidor de produção?",
     "en": "Use the production server?",

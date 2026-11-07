@@ -682,6 +682,39 @@ activity is ended at the next app launch; stale content asks to open Clarify.
 Live Activities must be enabled on the device. iOS controls placement and priority.
 This does not replace the system's microphone icon or orange privacy indicator.
 
+Settings includes an **Apple Intelligence test** screen for short transcripts.
+Paste the source text, choose a language and writing style, then run the rewrite.
+This prototype uses Apple's on-device model on compatible devices with iOS 26 or
+later. It checks model and language availability and accepts up to 2,000 UTF-8
+bytes. An unavailable model, unsupported language, context limit or refusal
+returns an error and preserves the source. It has no cloud fallback and does not
+save text to history or change normal dictation processing. Leaving the screen,
+backgrounding the app, editing the source or changing a preference cancels the
+current test. Review the output before use; physical iPhone model evaluation and
+native UI acceptance are still required.
+
+The Apple test uses a focused editorial prompt with examples for first-person
+speech, commands, questions and self-corrections. Its language and writing-style
+instructions come from the shared policy. The shorter prompt is an experiment;
+it does not establish output quality on a physical iPhone.
+The test offers Default, Formal and Casual. When it copies saved preferences,
+Natural and Organized map to Default; Informal and Very casual map to Casual.
+These local choices never change saved dictation preferences.
+The Apple test uses the framework's `permissiveContentTransformations` mode for
+string-to-string editing. Apple documents this mode for transforming existing
+text that may contain sensitive material. It does not guarantee instruction
+following: the model can still return a refusal in prose. Keep failed rewrites
+separate from successful output when evaluating quality and elapsed time.
+Language and editorial instructions stay in the model's instruction message;
+the user message contains only the original transcript, without wrapper commands
+or delimiters. Explicit output languages use an example in the selected language.
+Results that add our former transcript boundary markers are rejected; the app
+does not strip these markers and silently accept the remaining text.
+An unchanged passage of at least eight words
+is rejected when its detected source language differs from the requested output
+language. This check catches untranslated copies, not all language or editing
+errors. Names and short identifiers can remain unchanged.
+
 The rewrite rules are generated from the desktop's canonical dictation prompt,
 including spoken self-corrections, faithful editing and source-data boundaries.
 Run `python3 scripts/sync-prompts.py` after changing the desktop rules; `npm run
