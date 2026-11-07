@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    'pt-BR': `Clarify ${version} (${build}): teste de reescrita Apple adaptado do código público do OpenWhispr. Usa o prompt de limpeza e os limites de contexto, com cancelamento por tempo. Em Preferências, abra Teste do Apple Intelligence. Primeiro use Manter idioma original e Padrão; depois compare Inglês e Padrão. Confira se perguntas são reescritas, sem respostas ou informações novas, e anote o tempo. Tradução e estilo são extensões do Clarify. A qualidade ainda precisa ser verificada. Testes de CI não foram executados, conforme solicitado.`,
+    'en-US': `Clarify ${version} (${build}): Apple rewrite test adapted from OpenWhispr's public cleanup code, with context budgets and a cancelling generation deadline. Open Apple Intelligence test in Preferences. First use Keep original language + Default; then compare English + Default. Check that questions are rewritten without answers or new information, and record the elapsed time. Translation and style are Clarify extensions. Output quality still requires review. CI tests were skipped as requested.`,
+    'es-ES': `Clarify ${version} (${build}): prueba de reescritura Apple adaptada del código público de OpenWhispr, con límites de contexto y cancelación por tiempo. En Preferencias, abra Prueba de Apple Intelligence. Primero use Mantener idioma original y Predeterminado; luego compare Inglés y Predeterminado. Compruebe que las preguntas se reescriben sin respuestas ni datos nuevos y registre el tiempo. La traducción y el estilo son extensiones de Clarify. La calidad sigue pendiente de revisión. Se omitieron las pruebas de CI, según lo solicitado.`,
   };
 }
 
