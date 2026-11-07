@@ -700,8 +700,12 @@ it does not establish output quality on a physical iPhone.
 The test offers Default, Formal and Casual. When it copies saved preferences,
 Natural and Organized map to Default; Informal and Very casual map to Casual.
 These local choices never change saved dictation preferences.
-Explicit output languages are repeated in the transcript request and use an
-example in the selected language. An unchanged passage of at least eight words
+Language and editorial instructions stay in the model's instruction message;
+the user message contains only the original transcript, without wrapper commands
+or delimiters. Explicit output languages use an example in the selected language.
+Results that add our former transcript boundary markers are rejected; the app
+does not strip these markers and silently accept the remaining text.
+An unchanged passage of at least eight words
 is rejected when its detected source language differs from the requested output
 language. This check catches untranslated copies, not all language or editing
 errors. Names and short identifiers can remain unchanged.

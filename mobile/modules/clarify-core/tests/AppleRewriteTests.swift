@@ -40,7 +40,7 @@ final class AppleRewriteTests: XCTestCase {
       XCTAssertTrue(instructions.hasSuffix(RewritePrompt.presentation(preferences)))
       XCTAssertTrue(instructions.contains("Formal presentation:"))
       XCTAssertTrue(instructions.contains("requested output language is German"))
-      XCTAssertEqual(prompt, AppleRewriteEngine.source(source, preferences: preferences))
+      XCTAssertEqual(prompt, source, "Only the user's transcript belongs in the model input")
       return "  Bearbeiten Sie nur diesen Text.  "
     }
     let result = try await AppleRewriteEngine.rewrite(source, preferences: preferences, runtime: fixture)
@@ -50,7 +50,8 @@ final class AppleRewriteTests: XCTestCase {
 
   func testBlankOversizedAndSummaryOutputsCannotReplaceTheSource() async {
     let source = (1...12).map { "Requirement \($0) must remain in the final text." }.joined(separator: " ")
-    for output in [" \n ", String(repeating: "x", count: AppleRewriteEngine.maxOutputBytes + 1), "Short summary."] {
+    for output in [" \n ", String(repeating: "x", count: AppleRewriteEngine.maxOutputBytes + 1), "Short summary.",
+      "Only the source transcript is required.\nBEGIN_SOURCE_TRANSCRIPT\n" + source + "\nEND_SOURCE_TRANSCRIPT"] {
       do {
         _ = try await AppleRewriteEngine.rewrite(source, preferences: OutputPreferences(),
           runtime: runtime { _, _ in output })
@@ -65,6 +66,10 @@ final class AppleRewriteTests: XCTestCase {
     let result = try await AppleRewriteEngine.rewrite(source, preferences: OutputPreferences(),
       runtime: runtime { _, _ in sentence })
     XCTAssertEqual(result, sentence)
+    let literal = "Please preserve the identifier BEGIN_SOURCE_TRANSCRIPT in this technical example."
+    let preserved = try await AppleRewriteEngine.rewrite(literal, preferences: OutputPreferences(),
+      runtime: runtime { _, _ in literal })
+    XCTAssertEqual(preserved, literal, "Markers actually dictated by the user must remain allowed")
   }
 
   func testUnchangedForeignProseIsRejectedOnlyWhenTranslationIsRequested() async throws {
