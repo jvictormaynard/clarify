@@ -1,10 +1,43 @@
 # Validation and delivery
 
 `CI` is the validation entry point. Pull requests to `main` run affected tasks.
-Every push to `main` runs the full standard set. Daily runs at 03:17 UTC and
+Every push to `main` requires the full standard set. Exact merged PR evidence can
+satisfy selected components under the rules below. Daily runs at 03:17 UTC and
 manual runs add extended checks, including the disposable installer lifecycle.
 Contribution-branch pushes do not start a duplicate run. Validation does not
 publish a desktop or mobile release. Fork PRs need no signing or provider keys.
+
+## Reuse successful PR validation on main
+
+`ci/evidence.py` owns read-only PR evidence authentication. Successful PR
+`CI required` emits schema-1 `proof.json`, then uploads it as its last step.
+A failed emission or upload fails the aggregate. The proof records CI selection
+and results, repository, workflow, run/current attempt, PR event base/head, and
+the checked-out synthetic merge SHA, tree and ordered parents.
+
+Canonical main pushes can reuse only selected successful components from the
+latest canonical same-repository PR CI, which must be successful and within
+24 hours. Authentication
+requires one merged nonfork PR, an actual two-parent integration, matching tested
+tree and ordered base/head parents, successful `CI required`, and the immutable
+artifact ID and GitHub SHA-256 digest. It checks the producer attempt again after
+reading the artifact. It does not depend on the run's `pull_requests` array or
+confuse the run's PR head SHA with the tested synthetic merge SHA.
+
+Planning uncertainty runs ordinary main CI. The main aggregate reauthenticates
+the same artifact and recomputes the original plan minus verified coverage;
+authentication failure or a changed selection fails the aggregate. Policy always
+runs fresh. Mobile and iOS also run fresh so internal TestFlight proof still
+contains the required native jobs and steps in the main run. Installer remains
+fresh, and package remains fresh when installer needs its main-SHA artifact.
+No artifact transfer or release evidence contract changes are included.
+
+CI control changes (including `ci/`, `.github/`, scripts, policy tests and shared
+classifier inputs) disable reuse for the integration. Bootstrap therefore runs
+ordinary main CI. Direct pushes, squash/rebase integrations, changed base,
+foreign/fork PRs, absent or expired artifacts, scheduled and manual runs also
+use ordinary CI. Main runs never emit reusable evidence. Hosted validation of
+the workflow and artifact transport remains separate from local fake-API tests.
 
 ## Optional Bitrise macOS capacity
 
@@ -48,7 +81,8 @@ Component runners own collection and assertions.
 
 The full standard set includes every task except `installer`. An affected
 installer change requires that task on its PR. Required native Windows and iOS
-coverage stays in CI. Full main validation is the backstop for selection errors.
+coverage stays in CI. Main requires every standard component, including
+components not selected by PR CI.
 Containing-app UI validation runs regular and compact iPhone profiles in separate
 required matrix jobs with distinct evidence artifacts. Each keeps its 60-minute
 budget and runs native text-input regressions; the iOS aggregate requires both
