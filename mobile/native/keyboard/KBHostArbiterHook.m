@@ -165,6 +165,17 @@ static void TraceHostConnection(id connection) {
     }
 }
 
+static void TraceHostState(id state) {
+    NSLog(@"ClarifyHostRuntime current state=%@", state);
+    TraceHostClass([state class]);
+    for (NSString *key in @[@"processIdentifier", @"hostProcessIdentifier", @"sourceBundleIdentifier", @"hostBundleIdentifier"]) {
+        @try {
+            id value = [state valueForKey:key];
+            NSLog(@"ClarifyHostIdentity %@ type=%@ value=%@", key, NSStringFromClass([value class]), [value isKindOfClass:NSNumber.class] || [value isKindOfClass:NSString.class] ? value : @"unknown");
+        } @catch (__unused NSException *error) { NSLog(@"ClarifyHostIdentity %@ unavailable", key); }
+    }
+}
+
 @implementation KBHostArbiterHook
 
 + (nullable NSString *)legacyHostBundleIDForController:(UIInputViewController *)controller {
@@ -183,6 +194,7 @@ static void TraceHostConnection(id connection) {
     @try {
         id pid = [controller.parentViewController valueForKey:@"_hostPID"];
         NSLog(@"ClarifyHostRuntime parent pid=%@", pid);
+        TraceHostState(ObjectResult(ObjectResult(NSClassFromString(kArbiterClientClassName), kAutoSharedSelectorName), @"currentClientState"));
         if (![pid isKindOfClass:NSNumber.class] || [pid intValue] <= 0) return nil;
         id service = ObjectResult(NSClassFromString(@"PKService"), @"defaultService");
         id personalities = ObjectResult(service, @"personalities");
@@ -285,8 +297,7 @@ static void TraceHostConnection(id connection) {
       pingMsg(client, ping);
       NSLog(@"ClarifyActivationTrace ping end");
       id state = ObjectResult(client, @"currentClientState");
-      NSLog(@"ClarifyHostRuntime current state=%@", state);
-      TraceHostClass([state class]);
+      TraceHostState(state);
       TraceHostConnection(ObjectResult(client, @"connection"));
       TraceHostConnection(ObjectResult(client, @"arbiterConnection"));
     } @catch (__unused NSException *error) { /* Unknown runtime: use manual return. */ }
