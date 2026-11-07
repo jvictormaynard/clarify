@@ -2,13 +2,13 @@
   "schema": 2,
   "component": "mobile",
   "version": "0.14.0",
-  "base_sha": "b7346f3092bc57182c0712edf0b7257918f7569f",
-  "notes": "Official App Store candidate consolidating current main and PR #248, including the shared output-language prompt correction, mobile/desktop processing-policy parity, saved text-action management, opt-in keyboard autocorrect, the adaptive keyboard language/formality capsule from PR #250, and Expo SDK 57 patch alignment from PR #252. Public baseline is App Store 0.8.1; the latest internal TestFlight build is 0.13.0 (60). PR #248 passed all applicable checks, including PostgreSQL/container, Windows packaging and native iOS validation, before merge. Build 61 exceeds all Apple builds and Git reservations through 60. Complete GET-only Apple inventory 42147156765/1 finished 2026-11-06T01:57:21.819Z with no errors; review submissions are complete. The user explicitly authorized one combined official App Store release. Use the standard signed validation path with internal_testing=false. Preserve exact-source canonical CI, app and extension identity, signed IPA verification, upload-history guards, Apple processing, availability and sealed evidence. App Store metadata, native/device acceptance and store-policy review must be established for this exact candidate before submission; preparation is not Apple approval or public availability.",
+  "base_sha": "bc46feb9ff80bcd0ad1b7877b1fe2abda98216d8",
+  "notes": "Official App Store 0.14.0 build 66 consolidates current main, including the shared output-language prompt correction, shared processing policy, saved text actions, opt-in keyboard autocorrect, language/style controls, Expo SDK 57 alignment and PR #261. The source-app lookup now matches UIKit current-state identity to the attached keyboard owner without accepting the historical source cache. PR #261 passed CI run 42338966853: 226 Swift tests (one existing skip), 74 UIKit tests including identity guards, both app UI profiles and unsigned native compilation. Strict run 42338475967 passed both automatic returns with manual return disabled; its verified artifact records complete keyboard acceptance. The merged base has the same reviewed source tree. Complete read-only Apple inventory 42341027468 finished at 2026-11-07T05:03:06.674Z with no errors: 43 builds/uploads, highest build 65 and completed review submissions. Git reservations also reached 65, with no competing preparation. Preserve the failed build 61 tag; builds 62 through 65 are separate internal experiments and are excluded from this source. Use the standard signed path with internal_testing=false. Require exact-source canonical CI, signed app/two-extension verification, confirmed upload, Apple processing, internal-group availability and sealed evidence. Exact-candidate physical acceptance and final metadata, privacy, screenshots, export and store-policy review remain required before App Store submission. Preparation is not submission or public availability.",
   "evidence": {
-    "highest_build": "60",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42147156765",
-    "checked_at": "2026-11-06T02:29:31Z",
-    "build": "61",
-    "pending_builds_checked": true
+    "build": "66",
+    "highest_build": "65",
+    "pending_builds_checked": true,
+    "checked_at": "2026-11-07T05:07:25Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42341027468"
   }
 }
