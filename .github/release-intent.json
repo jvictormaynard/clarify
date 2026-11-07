@@ -2,13 +2,13 @@
   "schema": 2,
   "component": "mobile",
   "version": "0.14.0",
-  "base_sha": "b7346f3092bc57182c0712edf0b7257918f7569f",
-  "notes": "Official App Store candidate consolidating current main and PR #248, including the shared output-language prompt correction, mobile/desktop processing-policy parity, saved text-action management, opt-in keyboard autocorrect, the adaptive keyboard language/formality capsule from PR #250, and Expo SDK 57 patch alignment from PR #252. Public baseline is App Store 0.8.1; the latest internal TestFlight build is 0.13.0 (60). PR #248 passed all applicable checks, including PostgreSQL/container, Windows packaging and native iOS validation, before merge. Build 61 exceeds all Apple builds and Git reservations through 60. Complete GET-only Apple inventory 42147156765/1 finished 2026-11-06T01:57:21.819Z with no errors; review submissions are complete. The user explicitly authorized one combined official App Store release. Use the standard signed validation path with internal_testing=false. Preserve exact-source canonical CI, app and extension identity, signed IPA verification, upload-history guards, Apple processing, availability and sealed evidence. App Store metadata, native/device acceptance and store-policy review must be established for this exact candidate before submission; preparation is not Apple approval or public availability.",
+  "base_sha": "ce1883635f97bb732ba2aaa3d8ac09e98dd977fa",
+  "notes": "Internal TestFlight 0.14.0 (65) changes only the Apple model configuration from default guardrails to Apple-documented permissiveContentTransformations for string-to-string editing. Prompt, source framing, output validation and Default/Formal/Casual remain as in build 64, enabling a one-factor comparison. User reported build 64 answered the source instead of rewriting it and took 14 seconds; this is a failed-result timing, not a successful speed baseline. Apple documents this configuration from iOS 26.0 and notes the model may still refuse in prose. No quality or speed improvement is claimed before physical-device evaluation. Complete TestFlight publication continues under the existing user authorization, with no test suites. The immutable tag-bound branch-only workflow retains source compatibility, fresh complete Apple inventory, first-run/attempt history protection, signing and app/two-extension verification, IPA checksum/upload receipt, credential cleanup, Apple processing and existing internal-group availability. No exact-source CI acceptance. Do not merge this release branch. No App Store submission.",
   "evidence": {
-    "highest_build": "60",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42147156765",
-    "checked_at": "2026-11-06T02:29:31Z",
-    "build": "61",
+    "highest_build": "64",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42338057756",
+    "checked_at": "2026-11-07T04:21:17.187Z",
+    "build": "65",
     "pending_builds_checked": true
   }
 }
