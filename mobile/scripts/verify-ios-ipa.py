@@ -142,6 +142,11 @@ def verify_ipa(ipa_value=None):
             license_path.read_bytes() == license_source.read_bytes(),
             "Bundled third-party license differs from source",
         )
+        require(
+            (app / "PlugIns/ClarifyKeyboard.appex/OpenWhispr.LICENSE").read_bytes()
+            == Path("third-party/OpenWhispr/LICENSE").read_bytes(),
+            "Bundled OpenWhispr license differs from source",
+        )
     digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
     ipa.with_suffix(".ipa.sha256").write_text(digest + "  " + ipa.name + "\n")
     result = {"sha256": digest, "bytes": ipa.stat().st_size, "bundles": verified}

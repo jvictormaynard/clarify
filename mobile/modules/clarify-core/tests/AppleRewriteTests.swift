@@ -36,11 +36,11 @@ final class AppleRewriteTests: XCTestCase {
     var calls = 0
     let fixture = runtime { instructions, prompt in
       calls += 1
-      XCTAssertEqual(instructions, AppleRewriteEngine.instructions(preferences))
+      XCTAssertEqual(instructions, AppleRewritePrompt.instructions(preferences))
       XCTAssertTrue(instructions.hasSuffix(RewritePrompt.presentation(preferences)))
       XCTAssertTrue(instructions.contains("Formal presentation:"))
       XCTAssertTrue(instructions.contains("requested output language is German"))
-      XCTAssertEqual(prompt, source, "Only the user's transcript belongs in the model input")
+      XCTAssertEqual(prompt, "<transcript>\n" + source + "\n</transcript>\n\nOutput only the cleaned transcript.")
       return "  Bearbeiten Sie nur diesen Text.  "
     }
     let result = try await AppleRewriteEngine.rewrite(source, preferences: preferences, runtime: fixture)
@@ -51,7 +51,8 @@ final class AppleRewriteTests: XCTestCase {
   func testBlankOversizedAndSummaryOutputsCannotReplaceTheSource() async {
     let source = (1...12).map { "Requirement \($0) must remain in the final text." }.joined(separator: " ")
     for output in [" \n ", String(repeating: "x", count: AppleRewriteEngine.maxOutputBytes + 1), "Short summary.",
-      "Only the source transcript is required.\nBEGIN_SOURCE_TRANSCRIPT\n" + source + "\nEND_SOURCE_TRANSCRIPT"] {
+      "Only the source transcript is required.\nBEGIN_SOURCE_TRANSCRIPT\n" + source + "\nEND_SOURCE_TRANSCRIPT",
+      "<transcript>\n" + source + "\n</transcript>"] {
       do {
         _ = try await AppleRewriteEngine.rewrite(source, preferences: OutputPreferences(),
           runtime: runtime { _, _ in output })
@@ -105,5 +106,42 @@ final class AppleRewriteTests: XCTestCase {
     }
     do { _ = try await operation.value; XCTFail("Cancelled model result was published") }
     catch { XCTAssertTrue(error is CancellationError) }
+  }
+
+  func testTokenBudgetsRejectBeforeInferenceAndRejectCappedOutput() async throws {
+    for oversizedSource in [false, true] {
+      var called = false
+      var fixture = runtime { _, _ in called = true; return "Unexpected result." }
+      if oversizedSource { fixture.countTokens = { _ in 721 } }
+      else { fixture.contextSize = 1_024 }
+      do {
+        _ = try await AppleRewriteEngine.rewrite("Keep this source text.", preferences: OutputPreferences(), runtime: fixture)
+        XCTFail("Request outside the token budget reached the model")
+      } catch { XCTAssertEqual((error as? ClarifyError)?.code, "apple_rewrite_context_limit") }
+      XCTAssertFalse(called)
+    }
+    let output = "The reply reached its token cap."
+    var fixture = runtime { _, _ in output }
+    fixture.countTokens = { $0 == output ? 900 : 50 }
+    do {
+      _ = try await AppleRewriteEngine.rewrite("Keep this source text.", preferences: OutputPreferences(), runtime: fixture)
+      XCTFail("A capped response was published as complete")
+    } catch { XCTAssertEqual((error as? ClarifyError)?.code, "apple_rewrite_invalid_result") }
+  }
+
+  func testDeadlineCancelsInferenceBeforeReopeningAdmission() async {
+    var stopped = false
+    var fixture = runtime { _, _ in
+      defer { stopped = true }
+      // The injected deadline fires immediately; this wait ends by cancellation.
+      try await Task.sleep(nanoseconds: 60_000_000_000)
+      return "Unexpected late result."
+    }
+    fixture.waitForDeadline = { _ in }
+    do {
+      _ = try await AppleRewriteEngine.rewrite("Keep this source.", preferences: OutputPreferences(), runtime: fixture)
+      XCTFail("The deadline did not stop inference")
+    } catch { XCTAssertEqual((error as? ClarifyError)?.code, "apple_rewrite_timeout") }
+    XCTAssertTrue(stopped, "Returning before inference stops would admit overlapping model requests")
   }
 }

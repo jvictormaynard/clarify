@@ -19,6 +19,7 @@ module.exports = function withClarifyKeyboard(config) {
     const out = path.join(mod.modRequest.platformProjectRoot, targetName);
     fs.mkdirSync(out, { recursive: true });
     fs.copyFileSync(path.join(root, 'third-party/KeyboardHostBundleID/LICENSE'), path.join(out, 'KeyboardHostBundleID.LICENSE'));
+    fs.copyFileSync(path.join(root, 'third-party/OpenWhispr/LICENSE'), path.join(out, 'OpenWhispr.LICENSE'));
     for (const name of ['KeyboardViewController.swift', 'DictationEdit.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift', 'KBHostArbiterHook.m', 'KBHostArbiterHook.h', 'KeyboardHeightSync.m', 'KeyboardHeightSync.h', 'ClarifyKeyboard-Bridging-Header.h']) {
       fs.copyFileSync(path.join(root, 'native/keyboard', name), path.join(out, name));
     }
@@ -48,7 +49,7 @@ module.exports = function withClarifyKeyboard(config) {
     project.addToPbxGroup(pbxGroup.uuid, project.getFirstProject().firstProject.mainGroup);
     project.addBuildPhase(files.map((name) => `${targetName}/${name}`), 'PBXSourcesBuildPhase', 'Sources', target.uuid);
     project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
-    project.addBuildPhase([`${targetName}/KeyboardHostBundleID.LICENSE`], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
+    project.addBuildPhase([`${targetName}/KeyboardHostBundleID.LICENSE`, `${targetName}/OpenWhispr.LICENSE`], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
     for (const entry of Object.values(project.pbxXCBuildConfigurationSection())) {
       if (!entry?.buildSettings || entry.buildSettings.PRODUCT_NAME !== `"${targetName}"`) continue;
       Object.assign(entry.buildSettings, {

@@ -81,11 +81,12 @@ class IPAHelperTests(unittest.TestCase):
                 }
             )
         )
-        license_path = self.cwd / "third-party/KeyboardHostBundleID/LICENSE"
-        license_path.parent.mkdir(parents=True, exist_ok=True)
-        license_path.write_bytes(
-            (ROOT / "mobile/third-party/KeyboardHostBundleID/LICENSE").read_bytes()
-        )
+        for dependency in ["KeyboardHostBundleID", "OpenWhispr"]:
+            license_path = self.cwd / f"third-party/{dependency}/LICENSE"
+            license_path.parent.mkdir(parents=True, exist_ok=True)
+            license_path.write_bytes(
+                (ROOT / f"mobile/third-party/{dependency}/LICENSE").read_bytes()
+            )
 
     def write_ipa(self, *, extra=None, bundle_build="8", cloud=CLOUD):
         with zipfile.ZipFile(self.ipa, "w") as archive:
@@ -117,10 +118,11 @@ class IPAHelperTests(unittest.TestCase):
                 archive.writestr(
                     name + "/embedded.mobileprovision", b"synthetic profile"
                 )
-            archive.writestr(
-                "Payload/Clarify.app/PlugIns/ClarifyKeyboard.appex/KeyboardHostBundleID.LICENSE",
-                (ROOT / "mobile/third-party/KeyboardHostBundleID/LICENSE").read_bytes(),
-            )
+            for dependency in ["KeyboardHostBundleID", "OpenWhispr"]:
+                archive.writestr(
+                    f"Payload/Clarify.app/PlugIns/ClarifyKeyboard.appex/{dependency}.LICENSE",
+                    (ROOT / f"mobile/third-party/{dependency}/LICENSE").read_bytes(),
+                )
             if extra:
                 archive.writestr(*extra)
 
@@ -395,6 +397,11 @@ class IPAHelperTests(unittest.TestCase):
                 "Payload/Clarify.app/PlugIns/ClarifyKeyboard.appex/KeyboardHostBundleID.LICENSE",
                 FileNotFoundError,
                 "KeyboardHostBundleID\\.LICENSE",
+            ),
+            (
+                "Payload/Clarify.app/PlugIns/ClarifyKeyboard.appex/OpenWhispr.LICENSE",
+                FileNotFoundError,
+                "OpenWhispr\\.LICENSE",
             ),
         ]:
             self.write_ipa()

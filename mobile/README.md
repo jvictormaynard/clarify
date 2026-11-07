@@ -693,27 +693,39 @@ backgrounding the app, editing the source or changing a preference cancels the
 current test. Review the output before use; physical iPhone model evaluation and
 native UI acceptance are still required.
 
-The Apple test uses a focused editorial prompt with examples for first-person
-speech, commands, questions and self-corrections. Its language and writing-style
-instructions come from the shared policy. The shorter prompt is an experiment;
-it does not establish output quality on a physical iPhone.
-The test offers Default, Formal and Casual. When it copies saved preferences,
-Natural and Organized map to Default; Informal and Very casual map to Casual.
-These local choices never change saved dictation preferences.
-The Apple test uses the framework's `permissiveContentTransformations` mode for
-string-to-string editing. Apple documents this mode for transforming existing
-text that may contain sensitive material. It does not guarantee instruction
-following: the model can still return a refusal in prose. Keep failed rewrites
-separate from successful output when evaluating quality and elapsed time.
-Language and editorial instructions stay in the model's instruction message;
-the user message contains only the original transcript, without wrapper commands
-or delimiters. Explicit output languages use an example in the selected language.
-Results that add our former transcript boundary markers are rejected; the app
-does not strip these markers and silently accept the remaining text.
-An unchanged passage of at least eight words
-is rejected when its detected source language differs from the requested output
-language. This check catches untranslated copies, not all language or editing
-errors. Names and short identifiers can remain unchanged.
+The Apple test adapts the public OpenWhispr cleanup path at commit
+[`cb08c411`](https://github.com/OpenWhispr/openwhispr/tree/cb08c411dd008c57e4f0a8193756d6b5812479fd/openwhispr-mobile).
+`AppleRewritePrompt.swift` owns the attributed cleanup prompt and `<transcript>`
+framing. `AppleRewriteEngine` owns admission, the native model, token budgets,
+generation deadline, cancellation and result validation. The adapter uses the
+default Apple model and sampling, a fresh session and a 900-token response cap.
+It reserves 300 context tokens, admits at most 720 source tokens, and uses native
+token counts on iOS 26.4+ with a character-based estimate on older systems. The
+existing 2,000-byte source bound still applies. At the response cap, the source
+is preserved rather than accepting a possibly truncated result.
+
+Generation has a length-based deadline: at least 12 seconds, otherwise 5 seconds
+plus the source token count divided by 25 tokens/second. This is a deadline
+policy, not a measured speed claim. Timeout cancels the native request and waits
+for it to stop before admitting another operation. There is one local attempt;
+failures preserve the source and show an error, with no automatic cloud request.
+Responses introducing transcript boundary markers are rejected. These checks do
+not prove that arbitrary model prose is a faithful rewrite.
+
+Clarify's generated language/style suffixes extend that cleanup prompt. The test
+offers Default, Formal and Casual. Natural and Organized saved styles map to
+Default; Informal and Very casual map to Casual, without changing saved settings.
+OpenWhispr's normal local dictation path does not apply its keyboard tone, and
+its language context generally preserves the source language. Clarify's explicit
+translation and formality controls therefore require their own device acceptance.
+The public OpenWhispr source supports separate cleanup providers; local
+transcription alone does not prove that cleanup used Apple. Its App Store binary
+was not mapped to a verified Git commit in this investigation. Native routing
+unit tests with mocked Apple calls do not establish physical-model output quality.
+
+The OpenWhispr MIT notice is retained in source and bundled in the signed IPA.
+Physical-device quality and latency must still be evaluated on the actual source,
+output language and style before this prototype can replace normal rewriting.
 
 The rewrite rules are generated from the desktop's canonical dictation prompt,
 including spoken self-corrections, faithful editing and source-data boundaries.
