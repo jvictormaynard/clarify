@@ -19,7 +19,10 @@ extension KeyboardViewController {
         if source != nil || clock.now >= deadline { break }
         do { try await Task.sleep(nanoseconds: 20_000_000) } catch { return nil }
       }
-    } else {
+    }
+    // An already connected arbiter can produce no new destination event.
+    // Query this controller's current host directly instead of using its cache.
+    if source == nil {
       source = KBHostArbiterHook.legacyHostBundleID(for: self)
     }
     guard !Task.isCancelled, view.window != nil else { return nil }
