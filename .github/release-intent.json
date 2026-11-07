@@ -2,13 +2,13 @@
   "schema": 2,
   "component": "mobile",
   "version": "0.14.0",
-  "base_sha": "b7346f3092bc57182c0712edf0b7257918f7569f",
-  "notes": "Official App Store candidate consolidating current main and PR #248, including the shared output-language prompt correction, mobile/desktop processing-policy parity, saved text-action management, opt-in keyboard autocorrect, the adaptive keyboard language/formality capsule from PR #250, and Expo SDK 57 patch alignment from PR #252. Public baseline is App Store 0.8.1; the latest internal TestFlight build is 0.13.0 (60). PR #248 passed all applicable checks, including PostgreSQL/container, Windows packaging and native iOS validation, before merge. Build 61 exceeds all Apple builds and Git reservations through 60. Complete GET-only Apple inventory 42147156765/1 finished 2026-11-06T01:57:21.819Z with no errors; review submissions are complete. The user explicitly authorized one combined official App Store release. Use the standard signed validation path with internal_testing=false. Preserve exact-source canonical CI, app and extension identity, signed IPA verification, upload-history guards, Apple processing, availability and sealed evidence. App Store metadata, native/device acceptance and store-policy review must be established for this exact candidate before submission; preparation is not Apple approval or public availability.",
+  "base_sha": "3ee5fba6e6d485c09d8ae49fdebae25cdcf361db",
+  "notes": "One-time internal TestFlight 0.14.0 (64), publishing the build-63 wrapper repair. The Apple user message contains only the original transcript; language and editorial instructions remain separate. New leaked transcript markers are rejected. Includes target-language examples, unchanged-foreign-prose rejection, Default/Formal/Casual options and current main 9cc971c. User explicitly requested completing TestFlight publication and retained the no-test instruction. No exact-source CI or physical-model quality acceptance is claimed. The immutable tag-bound branch-only workflow retains compatibility, fresh complete Apple inventory before signing and upload, first-attempt history protection, app/two-extension verification, IPA checksum/upload receipt, credential cleanup, Apple processing and existing internal-group availability. Do not merge this branch. No App Store submission.",
   "evidence": {
-    "highest_build": "60",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42147156765",
-    "checked_at": "2026-11-06T02:29:31Z",
-    "build": "61",
+    "highest_build": "63",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42336394816",
+    "checked_at": "2026-11-07T03:59:28.938Z",
+    "build": "64",
     "pending_builds_checked": true
   }
 }
