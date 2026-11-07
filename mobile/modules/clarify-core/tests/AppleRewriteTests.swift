@@ -122,11 +122,20 @@ final class AppleRewriteTests: XCTestCase {
     }
     let output = "The reply reached its token cap."
     var fixture = runtime { _, _ in output }
+    fixture.responseTokenLimit = 900
     fixture.countTokens = { $0 == output ? 900 : 50 }
     do {
       _ = try await AppleRewriteEngine.rewrite("Keep this source text.", preferences: OutputPreferences(), runtime: fixture)
       XCTFail("A capped response was published as complete")
     } catch { XCTAssertEqual((error as? ClarifyError)?.code, "apple_rewrite_invalid_result") }
+    fixture.countTokens = nil
+    do {
+      _ = try await AppleRewriteEngine.rewrite("Keep this source text.", preferences: OutputPreferences(), runtime: fixture)
+      XCTFail("An estimated count cannot verify a capped response")
+    } catch { XCTAssertEqual((error as? ClarifyError)?.code, "apple_rewrite_invalid_result") }
+    fixture.responseTokenLimit = nil
+    let uncapped = try await AppleRewriteEngine.rewrite("Keep this source text.", preferences: OutputPreferences(), runtime: fixture)
+    XCTAssertEqual(uncapped, output, "Older systems can complete without an unverifiable hard token cap")
   }
 
   func testDeadlineCancelsInferenceBeforeReopeningAdmission() async {

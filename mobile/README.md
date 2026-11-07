@@ -698,11 +698,14 @@ The Apple test adapts the public OpenWhispr cleanup path at commit
 `AppleRewritePrompt.swift` owns the attributed cleanup prompt and `<transcript>`
 framing. `AppleRewriteEngine` owns admission, the native model, token budgets,
 generation deadline, cancellation and result validation. The adapter uses the
-default Apple model and sampling, a fresh session and a 900-token response cap.
+default Apple model and sampling and a fresh session. On iOS 26.4+ it uses a
+900-token response cap and verifies the untrimmed response with native counting.
 It reserves 300 context tokens, admits at most 720 source tokens, and uses native
 token counts on iOS 26.4+ with a character-based estimate on older systems. The
-existing 2,000-byte source bound still applies. At the response cap, the source
-is preserved rather than accepting a possibly truncated result.
+existing 2,000-byte source bound still applies. At the response cap, or when an
+exact response count fails, the source is preserved. Older systems omit the hard
+response cap and retain the generation deadline and output-byte bound; estimates
+are used for admission only, never as evidence that capped output finished.
 
 Generation has a length-based deadline: at least 12 seconds, otherwise 5 seconds
 plus the source token count divided by 25 tokens/second. This is a deadline

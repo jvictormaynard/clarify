@@ -14,6 +14,7 @@ struct AppleRewriteRuntime {
   var generate: (_ instructions: String, _ source: String) async throws -> String
   var contextSize: Int = 4_096
   var countTokens: ((String) async throws -> Int)? = nil
+  var responseTokenLimit: Int? = nil
   var waitForDeadline: (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
 }
 
@@ -27,7 +28,7 @@ enum AppleRewriteEngine {
   static let maxSourceTokens = 720
   static let contextSafetyTokens = 300
 
-  private static func tokens(_ text: String, runtime: AppleRewriteRuntime) async throws -> Int {
+  private static func exactTokens(_ text: String, runtime: AppleRewriteRuntime) async throws -> Int? {
     try Task.checkCancellation()
     if let count = runtime.countTokens {
       do {
@@ -38,6 +39,11 @@ enum AppleRewriteEngine {
       catch { /* Match the reference's estimate fallback when token counting fails. */ }
     }
     try Task.checkCancellation()
+    return nil
+  }
+
+  private static func tokens(_ text: String, runtime: AppleRewriteRuntime) async throws -> Int {
+    if let exact = try await exactTokens(text, runtime: runtime) { return exact }
     return Int(ceil(Double(text.utf16.count) / 3.5))
   }
 
@@ -123,9 +129,12 @@ enum AppleRewriteEngine {
     guard !result.isEmpty, result.utf8.count <= maxOutputBytes else {
       throw failure("Apple Intelligence did not return a complete rewrite. The source was preserved.", "invalid_result")
     }
-    let responseTokens = try await tokens(result, runtime: runtime)
-    guard responseTokens < maxResponseTokens else {
-      throw failure("Apple Intelligence did not return a complete rewrite. The source was preserved.", "invalid_result")
+    if let limit = runtime.responseTokenLimit {
+      // Count the untrimmed response. An estimate cannot establish that a capped
+      // generation completed; if exact counting fails, preserve the source.
+      guard let responseTokens = try await exactTokens(output, runtime: runtime), responseTokens < limit else {
+        throw failure("Apple Intelligence did not return a complete rewrite. The source was preserved.", "invalid_result")
+      }
     }
     let leakedMarkers = ["BEGIN_SOURCE_TRANSCRIPT", "END_SOURCE_TRANSCRIPT", "<transcript>", "</transcript>"].contains { marker in
       result.range(of: marker, options: .caseInsensitive) != nil &&
@@ -167,6 +176,9 @@ enum AppleRewriteEngine {
     if #available(iOS 26.0, macOS 26.0, *) {
       // Match the public OpenWhispr adapter: default model and default sampling.
       let model = SystemLanguageModel.default
+      let responseTokenLimit: Int?
+      if #available(iOS 26.4, macOS 26.4, *) { responseTokenLimit = maxResponseTokens }
+      else { responseTokenLimit = nil }
       var runtime = AppleRewriteRuntime(available: { isAvailable(model) },
         supportsLanguage: { model.supportsLocale(Locale(identifier: $0)) },
         detectedLanguages: sourceLanguages,
@@ -177,7 +189,7 @@ enum AppleRewriteEngine {
           let session = LanguageModelSession(model: model, instructions: instructions)
           do {
             let response = try await session.respond(to: source,
-              options: GenerationOptions(maximumResponseTokens: maxResponseTokens))
+              options: GenerationOptions(maximumResponseTokens: responseTokenLimit))
             try Task.checkCancellation()
             return response.content
           } catch is CancellationError { throw CancellationError() }
@@ -201,7 +213,7 @@ enum AppleRewriteEngine {
             try Task.checkCancellation()
             throw failure("Apple Intelligence could not rewrite this text. The source was preserved.", "failed")
           }
-        }, contextSize: model.contextSize)
+        }, contextSize: model.contextSize, responseTokenLimit: responseTokenLimit)
       if #available(iOS 26.4, macOS 26.4, *) {
         runtime.countTokens = { text in try await model.tokenCount(for: text) }
       }
