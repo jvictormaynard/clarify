@@ -693,6 +693,11 @@ backgrounding the app, editing the source or changing a preference cancels the
 current test. Review the output before use; physical iPhone model evaluation and
 native UI acceptance are still required.
 
+The Apple test uses a focused editorial prompt with examples for first-person
+speech, commands, questions and self-corrections. Its language and writing-style
+instructions come from the shared policy. The shorter prompt is an experiment;
+it does not establish output quality on a physical iPhone.
+
 The rewrite rules are generated from the desktop's canonical dictation prompt,
 including spoken self-corrections, faithful editing and source-data boundaries.
 Run `python3 scripts/sync-prompts.py` after changing the desktop rules; `npm run

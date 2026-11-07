@@ -50,7 +50,11 @@ enum RewritePrompt {
 %s
   ]
   static func instructions(_ preferences: OutputPreferences) -> String {
-    system + (styles[preferences.style.rawValue] ?? "") + (languages[preferences.language.rawValue] ?? "")
+    system + presentation(preferences)
+  }
+
+  static func presentation(_ preferences: OutputPreferences) -> String {
+    (styles[preferences.style.rawValue] ?? "") + (languages[preferences.language.rawValue] ?? "")
   }
 
   static func source(_ transcript: String) -> String {
