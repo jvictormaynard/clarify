@@ -9,6 +9,8 @@ extension KeyboardViewController {
     var source: String?
     if #available(iOS 26.4, *) {
       let generation = KBHostArbiterHook.captureGeneration()
+      let beganAt = Date.timeIntervalSinceReferenceDate
+      NSLog("ClarifyActivationTrace begin generation=%llu cached=%@", generation, KBHostArbiterHook.lastCapturedHostBundleId() ?? "unknown")
       KBHostArbiterHook.activeArbiterCheck()
       let clock = ContinuousClock(), deadline = clock.now.advanced(by: .milliseconds(400))
       // Yield the main actor so UIKit can deliver its destination callback.
@@ -19,6 +21,7 @@ extension KeyboardViewController {
         if source != nil || clock.now >= deadline { break }
         do { try await Task.sleep(nanoseconds: 20_000_000) } catch { return nil }
       }
+      NSLog("ClarifyActivationTrace end source=%@ elapsed=%.3f attached=%d cancelled=%d", source ?? "unknown", Date.timeIntervalSinceReferenceDate - beganAt, view.window != nil, Task.isCancelled)
     } else {
       source = KBHostArbiterHook.legacyHostBundleID(for: self)
     }

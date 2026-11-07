@@ -60,7 +60,10 @@ static void CommitHostBundleId(NSString *_Nullable bid) {
     // An unknown/invalid destination invalidates the previous host too.
     sLastCapturedBundleId = accepted;
     sCaptureGeneration += 1;
+    uint64_t generation = sCaptureGeneration;
+    uint64_t invalidation = sInvalidationGeneration;
     os_unfair_lock_unlock(&sHookLock);
+    NSLog(@"ClarifyActivationTrace capture generation=%llu invalidation=%llu source=%@", (unsigned long long)generation, (unsigned long long)invalidation, accepted ?: @"unknown");
 }
 
 #pragma mark - Trampolines
@@ -218,7 +221,9 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
       if (!pingSignature || pingSignature.numberOfArguments != 2
           || strcmp(pingSignature.methodReturnType, "v") != 0) return;
       void (*pingMsg)(id, SEL) = (void (*)(id, SEL))objc_msgSend;
+      NSLog(@"ClarifyActivationTrace ping begin");
       pingMsg(client, ping);
+      NSLog(@"ClarifyActivationTrace ping end");
     } @catch (__unused NSException *error) { /* Unknown runtime: use manual return. */ }
 }
 
@@ -239,8 +244,11 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
 + (nullable NSString *)hostBundleIdCapturedAfterGeneration:(uint64_t)generation {
     os_unfair_lock_lock(&sHookLock);
     BOOL fresh = sCaptureGeneration != generation && sInvalidationGeneration <= generation;
+    uint64_t current = sCaptureGeneration;
+    uint64_t invalidation = sInvalidationGeneration;
     NSString *bid = fresh ? [sLastCapturedBundleId copy] : nil;
     os_unfair_lock_unlock(&sHookLock);
+    NSLog(@"ClarifyActivationTrace query baseline=%llu current=%llu invalidation=%llu fresh=%d source=%@", (unsigned long long)generation, (unsigned long long)current, (unsigned long long)invalidation, fresh, bid ?: @"unknown");
     return bid;
 }
 
@@ -249,7 +257,9 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
     sLastCapturedBundleId = nil;
     sCaptureGeneration += 1;
     sInvalidationGeneration = sCaptureGeneration;
+    uint64_t generation = sCaptureGeneration;
     os_unfair_lock_unlock(&sHookLock);
+    NSLog(@"ClarifyActivationTrace invalidate generation=%llu", (unsigned long long)generation);
 }
 
 @end
