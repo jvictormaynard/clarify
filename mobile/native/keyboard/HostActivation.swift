@@ -22,6 +22,9 @@ extension KeyboardViewController {
         do { try await Task.sleep(nanoseconds: 20_000_000) } catch { return nil }
       }
       NSLog("ClarifyActivationTrace end source=%@ elapsed=%.3f attached=%d cancelled=%d", source ?? "unknown", Date.timeIntervalSinceReferenceDate - beganAt, view.window != nil, Task.isCancelled)
+      if source == nil {
+        NSLog("ClarifyHostRuntime direct lookup=%@", KBHostArbiterHook.legacyHostBundleID(for: self) ?? "unknown")
+      }
     } else {
       source = KBHostArbiterHook.legacyHostBundleID(for: self)
     }

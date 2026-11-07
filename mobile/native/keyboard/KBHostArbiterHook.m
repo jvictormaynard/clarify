@@ -125,22 +125,57 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
 
 #pragma mark - Install
 
+static void TraceHostClass(Class cls) {
+    for (NSUInteger depth = 0; cls && depth < 4; depth++, cls = class_getSuperclass(cls)) {
+        unsigned int count = 0;
+        Method *methods = class_copyMethodList(cls, &count);
+        for (unsigned int i = 0; i < count; i++) {
+            NSString *name = NSStringFromSelector(method_getName(methods[i]));
+            NSString *lower = name.lowercaseString;
+            if ([lower containsString:@"host"] || [lower containsString:@"connection"] || [lower containsString:@"destination"] || [lower containsString:@"request"] || [lower containsString:@"client"]) {
+                NSLog(@"ClarifyHostRuntime method %@ %@ %s", NSStringFromClass(cls), name, method_getTypeEncoding(methods[i]));
+            }
+        }
+        free(methods);
+        Ivar *ivars = class_copyIvarList(cls, &count);
+        for (unsigned int i = 0; i < count; i++) {
+            NSLog(@"ClarifyHostRuntime ivar %@ %s %s", NSStringFromClass(cls), ivar_getName(ivars[i]), ivar_getTypeEncoding(ivars[i]));
+        }
+        free(ivars);
+    }
+}
+
 @implementation KBHostArbiterHook
 
 + (nullable NSString *)legacyHostBundleIDForController:(UIInputViewController *)controller {
     if (!NSThread.isMainThread || !controller.isViewLoaded || !controller.view.window) return nil;
+    NSLog(@"ClarifyHostRuntime controller=%@ parent=%@", NSStringFromClass(controller.class), NSStringFromClass(controller.parentViewController.class));
+    TraceHostClass(controller.class);
+    TraceHostClass(controller.parentViewController.class);
+    for (id target in @[controller, controller.parentViewController ?: NSNull.null]) {
+        for (NSString *key in @[@"_hostPID", @"_hostProcessIdentifier", @"_hostBundleIdentifier"]) {
+            @try {
+                id value = [target valueForKey:key];
+                NSLog(@"ClarifyHostRuntime probe %@ %@ type=%@ number=%@", NSStringFromClass([target class]), key, NSStringFromClass([value class]), [value isKindOfClass:NSNumber.class] ? value : @"not-number");
+            } @catch (__unused NSException *error) { NSLog(@"ClarifyHostRuntime probe %@ %@ unavailable", NSStringFromClass([target class]), key); }
+        }
+    }
     @try {
         id pid = [controller.parentViewController valueForKey:@"_hostPID"];
+        NSLog(@"ClarifyHostRuntime parent pid=%@", pid);
         if (![pid isKindOfClass:NSNumber.class] || [pid intValue] <= 0) return nil;
         id service = ObjectResult(NSClassFromString(@"PKService"), @"defaultService");
         id personalities = ObjectResult(service, @"personalities");
+        NSLog(@"ClarifyHostRuntime service=%@ personalities=%@", NSStringFromClass([service class]), NSStringFromClass([personalities class]));
         if (![personalities isKindOfClass:NSDictionary.class]) return nil;
         NSString *ownID = NSBundle.mainBundle.bundleIdentifier;
         if (!ownID) return nil;
         id hosts = [personalities objectForKey:ownID];
+        NSLog(@"ClarifyHostRuntime personality keys=%@ own=%@ hosts=%@", [personalities allKeys], ownID, NSStringFromClass([hosts class]));
         if (![hosts isKindOfClass:NSDictionary.class]) return nil;
         id connection = ObjectResult([hosts objectForKey:pid], @"connection");
         id xpc = ObjectResult(connection, @"_xpcConnection");
+        NSLog(@"ClarifyHostRuntime host keys=%@ connection=%@ xpc=%@", [hosts allKeys], NSStringFromClass([connection class]), NSStringFromClass([xpc class]));
         if (!xpc) return nil;
         void *handle = dlopen("/usr/lib/system/libxpc.dylib", RTLD_NOW);
         if (!handle) return nil;
@@ -149,7 +184,7 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
         NSString *bundleID = value ? [NSString stringWithUTF8String:value] : nil;
         free(value); dlclose(handle);
         return IsAcceptableBundleId(bundleID) ? bundleID : nil;
-    } @catch (__unused NSException *error) { return nil; }
+    } @catch (NSException *error) { NSLog(@"ClarifyHostRuntime legacy exception=%@", error.name); return nil; }
 }
 
 + (void)load {
@@ -213,6 +248,8 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
       id (*getMsg)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
       id client = getMsg(cls, getter);
       if (!client) return; // lazy initialization not complete yet; try again later
+      static dispatch_once_t traced;
+      dispatch_once(&traced, ^{ TraceHostClass([client class]); TraceHostClass(NSClassFromString(kDestinationClassName)); });
       // UIKit may load the destination class after this image's +load.
       [self installHooks];
       SEL ping = NSSelectorFromString(kCheckConnSelectorName);
