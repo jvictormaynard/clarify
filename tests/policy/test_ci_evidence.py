@@ -253,6 +253,14 @@ class EvidenceTests(unittest.TestCase):
                 )
         for path in ["desktop/src/app.tsx", "mobile/src/foo.ts", "README.md"]:
             self.assertFalse(evidence.control_change([path]))
+        # Release intent is reviewed data, not a change to the CI mechanism.
+        self.paths = [".github/release-intent.json", "mobile/app.json"]
+        self.seal()
+        remaining, reference = evidence.plan(
+            Path("."), self.head, STANDARD, self.env, self
+        )
+        self.assertEqual(remaining, {"mobile", "ios"})
+        self.assertTrue(reference)
         for name in ["schedule", "workflow_dispatch", "pull_request"]:
             env = {**self.env, "GITHUB_EVENT_NAME": name}
             self.assertEqual(

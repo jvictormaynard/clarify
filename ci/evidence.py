@@ -98,7 +98,15 @@ def source(repo, sha):
 
 def control_change(paths):
     return any(
-        path.startswith(("ci/", ".github/", "scripts/", "tests/policy/"))
+        path.startswith(
+            (
+                "ci/",
+                ".github/workflows/",
+                ".github/actions/",
+                "scripts/",
+                "tests/policy/",
+            )
+        )
         or path in impact.FULL_INPUTS | impact.SHARED_INPUTS
         or path
         in {

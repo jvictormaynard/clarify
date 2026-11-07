@@ -32,12 +32,15 @@ contains the required native jobs and steps in the main run. Installer remains
 fresh, and package remains fresh when installer needs its main-SHA artifact.
 No artifact transfer or release evidence contract changes are included.
 
-CI control changes (including `ci/`, `.github/`, scripts, policy tests and shared
-classifier inputs) disable reuse for the integration. Bootstrap therefore runs
+CI control changes (including `ci/`, workflows/actions, scripts, policy tests and
+shared classifier inputs) disable reuse for the integration. Bootstrap therefore runs
 ordinary main CI. Direct pushes, squash/rebase integrations, changed base,
 foreign/fork PRs, absent or expired artifacts, scheduled and manual runs also
 use ordinary CI. Main runs never emit reusable evidence. Hosted validation of
 the workflow and artifact transport remains separate from local fake-API tests.
+
+Reviewed release-intent data and version/build metadata can use the same evidence
+rules. They do not change the CI mechanism or relax release authorization.
 
 ## Optional Bitrise macOS capacity
 
