@@ -9,11 +9,9 @@ Window {
                                                            Screen.devicePixelRatio)
     readonly property int designWidth: 168
     readonly property bool refinementWarning: workflow.refinementFailed === true
-    readonly property string styleCaption: workflow.writingStyleCaption || ""
     property bool styleFeedbackVisible: false
     property int styleFeedbackOperation: 0
     readonly property int designHeight: 50
-    readonly property int styleCaptionHeight: styleCaption ? 18 : 0
     readonly property bool feedback: workflow.feedbackVisible
     property string feedbackCaption: ""
     readonly property int horizontalInset: 6
@@ -26,7 +24,7 @@ Window {
         NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
     }
     width: Math.round(animatedWidth * dpiCompensation)
-    height: Math.round((designHeight + styleCaptionHeight) * dpiCompensation)
+    height: Math.round(designHeight * dpiCompensation)
     x: Screen.virtualX + (Screen.width - width) / 2
     y: Screen.virtualY + Screen.height - height - 80
     color: "transparent"
@@ -131,7 +129,7 @@ Window {
 
     Item {
         width: pill.animatedWidth
-        height: pill.designHeight + pill.styleCaptionHeight
+        height: pill.designHeight
         scale: pill.dpiCompensation
         transformOrigin: Item.TopLeft
 
@@ -144,21 +142,6 @@ Window {
             border.color: theme.border
             border.width: 1
             Accessible.name: qsTr(workflow.status)
-
-            Label {
-                objectName: "writingStyleCaption"
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 5
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width - 24
-                text: pill.styleCaption
-                visible: text.length > 0
-                horizontalAlignment: Text.AlignHCenter
-                elide: Text.ElideRight
-                font.pixelSize: 11
-                color: theme.text
-                Accessible.name: text
-            }
 
             Item {
                 x: pill.horizontalInset
