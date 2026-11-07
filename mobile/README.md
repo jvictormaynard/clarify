@@ -740,16 +740,16 @@ GitHub Actions and direct Xcode provide builds and delivery. EAS is not part of
 the current delivery path.
 
 The lockfile overrides `query-string` to 9.5.1 to use the patched URL decoder.
-`patches/expo-router+57.0.29.patch` changes four Router imports to use that
+`patches/expo-router+57.0.30.patch` changes four Router imports to use that
 package's default export. `npm ci` applies this patch through `patch-package`
 and fails if it cannot apply it. Keep install scripts enabled. Recheck or remove
 both the patch and override when updating Router. The regression suite tests
 real Router parsing, query round trips and malformed input with a time limit.
 
-Expo CLI uses the patched Zod 4.6.7 dependency. Its optional MCP tunnel is pinned
-to 0.3.1, which supports Zod 4 schema serialization. Keep these pins together;
-the tests validate plugin inputs and the complete advertised command schema
-without opening a tunnel. These changes preserve the Expo SDK and native ABI.
+The optional MCP tunnel is pinned to 0.3.1 with Zod 4.6.7 for schema
+serialization. Keep these pins together. The tests exercise Expo CLI's JSON
+Schema validation and the complete advertised MCP command schema without
+opening a tunnel.
 See the [decoder advisory](https://github.com/advisories/GHSA-qr28-fpjm-wq7f),
 [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) and
 [patch-package instructions](https://github.com/ds300/patch-package#readme).

@@ -98,6 +98,10 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
         self.assertNotIn("Rewrite everything", recognition.prompt)
         self.assertNotIn("English", recognition.instruction)
         self.assertEqual(self.registry.rewrite.call_args.args[1].language, "en")
+        instruction = self.registry.rewrite.call_args.args[1].instruction
+        self.assertNotIn("Output MUST be in Brazilian Portuguese", instruction)
+        self.assertNotIn("Keep the source language", instruction)
+        self.assertIn("requested output language is English", instruction)
         self.assertEqual(result.raw_text, self.raw)
         self.assertEqual(result.output_language_applied, "en")
         self.assertIsNone(result.writing_style_requested)

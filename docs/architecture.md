@@ -104,7 +104,12 @@ per-account/global admission. Clients cannot select arbitrary models, endpoints,
 credentials or owners. Account text-action definitions accept bounded saved
 instructions; execution supplies their ID and revision. A PostgreSQL lock
 serializes quota reservations and cost settlement.
-`shared/dictation_prompt.json` is generated from the canonical desktop prompt.
+`shared/rewrite_prompts.py` owns transformation prompts and the composition of
+writing style and output language for desktop and hosted processing. Base rewrite
+and style rules do not select a language. The selected output preference supplies
+the language instruction after the task policy. The generated Swift prompt
+is a compatibility projection of that owner; clients do not maintain separate
+prompt definitions.
 See [server operations and release gates](../server/README.md).
 
 Sponsored processing uses funded individual weekly quotas with a common Monday

@@ -2041,7 +2041,7 @@ class QtProviderGatewayTests(unittest.TestCase):
         self.assertIn("not a conversational assistant", registry.request.instruction)
         self.assertIn("If the source is a question", registry.request.instruction)
         self.assertIn("NEVER answer it", registry.request.instruction)
-        self.assertIn("Preserve the source language", registry.request.instruction)
+        self.assertIn("Do not translate the source", registry.request.instruction)
         self.assertIn("Workflow-specific instruction", registry.request.instruction)
         self.assertEqual(
             registry.request.source_message,

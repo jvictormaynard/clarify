@@ -1,14 +1,14 @@
 {
   "schema": 2,
   "component": "mobile",
-  "version": "0.13.0",
-  "base_sha": "9dd6646ba3985577619e5c2a25894ebf44072410",
-  "notes": "Internal TestFlight 0.13.0 (58) for the keyboard capsule sizing fix merged in PR #250. The language/formality button fits its label, expands for the wand when text is selected, and shrinks when selection clears. Required toolbar space constrains long labels; correction suggestions cannot compress the capsule. PR CI 41995705611 passed mobile checks, native keyboard/library and installed-keyboard tests, both app UI profiles and unsigned app/extensions. User authorized TestFlight publication for physical-device testing. Use internal_testing=true to reuse eligible canonical exact-source CI during upload, with no additional manual suite. Required release metadata CI runs automatically. Preserve signing, app/two-extension identity, IPA verification, upload history, Apple processing and existing internal-group availability. Complete Apple inventory 42001048578/1 has highest build 57 and no build 58, all collections complete, no errors or pending uploads/review submissions; Git tags/reservations and open PRs show no build 58 conflict. Device acceptance and captures remain pending. No App Store submission.",
+  "version": "0.14.0",
+  "base_sha": "b7346f3092bc57182c0712edf0b7257918f7569f",
+  "notes": "Official App Store candidate consolidating current main and PR #248, including the shared output-language prompt correction, mobile/desktop processing-policy parity, saved text-action management, opt-in keyboard autocorrect, the adaptive keyboard language/formality capsule from PR #250, and Expo SDK 57 patch alignment from PR #252. Public baseline is App Store 0.8.1; the latest internal TestFlight build is 0.13.0 (60). PR #248 passed all applicable checks, including PostgreSQL/container, Windows packaging and native iOS validation, before merge. Build 61 exceeds all Apple builds and Git reservations through 60. Complete GET-only Apple inventory 42147156765/1 finished 2026-11-06T01:57:21.819Z with no errors; review submissions are complete. The user explicitly authorized one combined official App Store release. Use the standard signed validation path with internal_testing=false. Preserve exact-source canonical CI, app and extension identity, signed IPA verification, upload-history guards, Apple processing, availability and sealed evidence. App Store metadata, native/device acceptance and store-policy review must be established for this exact candidate before submission; preparation is not Apple approval or public availability.",
   "evidence": {
-    "highest_build": "57",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42001048578",
-    "checked_at": "2026-11-05T09:18:22Z",
-    "build": "58",
+    "highest_build": "60",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42147156765",
+    "checked_at": "2026-11-06T02:29:31Z",
+    "build": "61",
     "pending_builds_checked": true
   }
 }
