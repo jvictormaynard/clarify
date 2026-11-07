@@ -700,6 +700,11 @@ it does not establish output quality on a physical iPhone.
 The test offers Default, Formal and Casual. When it copies saved preferences,
 Natural and Organized map to Default; Informal and Very casual map to Casual.
 These local choices never change saved dictation preferences.
+The Apple test uses the framework's `permissiveContentTransformations` mode for
+string-to-string editing. Apple documents this mode for transforming existing
+text that may contain sensitive material. It does not guarantee instruction
+following: the model can still return a refusal in prose. Keep failed rewrites
+separate from successful output when evaluating quality and elapsed time.
 Language and editorial instructions stay in the model's instruction message;
 the user message contains only the original transcript, without wrapper commands
 or delimiters. Explicit output languages use an example in the selected language.

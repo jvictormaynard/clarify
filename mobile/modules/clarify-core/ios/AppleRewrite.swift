@@ -86,7 +86,7 @@ enum AppleRewriteEngine {
       "supportedLanguages": [String](), "maxInputBytes": maxInputBytes]
     #if canImport(FoundationModels)
     if #available(iOS 26.0, macOS 26.0, *) {
-      let model = SystemLanguageModel.default
+      let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
       let available = isAvailable(model)
       snapshot["available"] = available
       snapshot["reason"] = available ? "available" : "model_unavailable"
@@ -171,7 +171,10 @@ enum AppleRewriteEngine {
   private static func systemRuntime() -> AppleRewriteRuntime? {
     #if canImport(FoundationModels)
     if #available(iOS 26.0, macOS 26.0, *) {
-      let model = SystemLanguageModel.default
+      // Apple's documented mode for editing existing text, including sensitive
+      // source material. Generation remains string-only; the model can still
+      // refuse in prose, so this configuration is not a quality guarantee.
+      let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
       return AppleRewriteRuntime(available: { isAvailable(model) },
         supportsLanguage: { model.supportsLocale(Locale(identifier: $0)) },
         detectedLanguages: sourceLanguages,
