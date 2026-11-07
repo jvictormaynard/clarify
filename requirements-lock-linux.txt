@@ -32,7 +32,7 @@ chardet==5.2.0
     # via cyclonedx-bom
 charset-normalizer==3.5.1
     # via requests
-click==8.4.2
+click==8.5.0
     # via pip-tools
 cryptography==50.0.2
     # via -r requirements.txt
