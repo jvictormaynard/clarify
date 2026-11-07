@@ -90,7 +90,7 @@ class ApplicationStyleSettingsTests(unittest.TestCase):
         finally:
             controller.timer.stop()
 
-    def test_real_capsule_shows_selection_and_confirmed_result_then_expires(self):
+    def test_real_capsule_keeps_compact_height_without_style_caption_then_expires(self):
         import subprocess
         import sys
 
