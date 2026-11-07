@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
-import { actionDisplayName } from "../settings/use-text-actions";
+import { actionDisplayName } from "../settings/display-labels";
 import { Button, Picker, Row, Section, SettingsDisclosure } from "./ui";
 import { Dialog, DialogPopup, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./primitives/dialog";
 

@@ -142,3 +142,26 @@ def rewrite_instruction(
     if output_language is None and legacy_language is not None:
         return instruction + f"\n\nOutput MUST be in {legacy_language}."
     return with_output_language(instruction, output_language)
+
+
+LANGUAGE_NAMES = {
+    "en": "English",
+    "pt": "Brazilian Portuguese",
+    "es": "Spanish",
+    "de": "German",
+    "ru": "Russian",
+}
+
+
+def language_display_name(value: str) -> str:
+    text = str(value or "").strip().replace("_", "-")
+    if not text:
+        return "English"
+    key = text.casefold()
+    if key == "auto":
+        return "the detected source language"
+    direct = LANGUAGE_NAMES.get(key)
+    if direct:
+        return direct
+    base = key.split("-", 1)[0]
+    return LANGUAGE_NAMES.get(base, text)

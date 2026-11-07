@@ -4,9 +4,9 @@ import type { SettingsPageProps } from "../settings/use-settings";
 import type { TextActionKind } from "../settings/bridge";
 import { Button, Confirm, Field, Input, Picker, Row, Section, SettingsDisclosure, TextArea, Toggle } from "./ui";
 import { Dialog, DialogPopup, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./primitives/dialog";
-import { actionDisplayName, hotkeyLabel } from "../settings/use-text-actions";
+import { actionDisplayName, hotkeyLabel } from "../settings/display-labels";
 import { textActionLanguages } from "./after-dictation-action";
-import { profileName } from "../settings/use-text-profile-editor";
+import { profileName } from "../settings/display-labels";
 
 export function TextActionEditor({ controller: c }: SettingsPageProps) {
   const a = c.textActions, editor = a.editor;

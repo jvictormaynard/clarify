@@ -399,6 +399,10 @@ class ChatGPTPlanSession:
         self._attempt = None
         self._local_signouts = set()
 
+    def snapshot_guard(self):
+        """Pin the active session while a processing profile is committed."""
+        return self._lock
+
     def _invalidate_locked(self):
         self._generation += 1
         if self._attempt is not None:

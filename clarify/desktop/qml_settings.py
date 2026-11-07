@@ -953,7 +953,7 @@ class QmlSettingsController(QObject):
         for scope in WORKFLOW_SCOPES:
             if self._config.workflow(scope) == before.workflow(scope):
                 routes = routes.with_route(scope, current.workflow(scope))
-        self._config = self._sync_legacy_route_actions(
+        self._config = self._text_actions.sync_legacy_routes(
             replace(
                 self._config,
                 workflows=routes,
@@ -1070,81 +1070,6 @@ class QmlSettingsController(QObject):
                 raise
             bindings = native_bindings(config, ())
         self._hotkey_applier(bindings)
-
-    def _sync_legacy_text_hotkeys(self, config, previous):
-        settings = settings_for(config)
-        changed = {
-            action_id: key
-            for action_id, key in (
-                ("rewrite", HotkeyAction.REWRITE),
-                ("translation", HotkeyAction.TRANSLATION),
-            )
-            if config.hotkeys.definition(key) != previous.hotkeys.definition(key)
-        }
-        if not changed:
-            return config
-        if self._text_actions.managed():
-            devices = {key: dict(value) for key, value in settings.devices.items()}
-            owner = self._text_actions._device_key()
-            prefs = devices.setdefault(owner, {})
-            for action_id, key in changed.items():
-                prefs[action_id] = {
-                    **prefs.get(action_id, {"processingProfileId": "default"}),
-                    "shortcut": config.hotkeys.definition(key).to_mapping(),
-                }
-            return replace(config, text_actions=replace(settings, devices=devices))
-        actions = []
-        for action in settings.actions:
-            key = {
-                "rewrite": HotkeyAction.REWRITE,
-                "translation": HotkeyAction.TRANSLATION,
-            }.get(action.id)
-            if key is not None and config.hotkeys.definition(
-                key
-            ) != previous.hotkeys.definition(key):
-                action = replace(action, shortcut=config.hotkeys.definition(key))
-            actions.append(action)
-        return replace(config, text_actions=replace(settings, actions=tuple(actions)))
-
-    def _sync_legacy_route_actions(self, config, previous):
-        if self._text_actions.managed():
-            return config
-        settings = settings_for(config)
-        actions = []
-        changed = False
-        revisions = dict(settings.action_revisions)
-        for action in settings.actions:
-            if action.id in {"rewrite", "translation"}:
-                before, after = previous.workflow(action.id), config.workflow(action.id)
-                changes = {}
-                if before.prompt != after.prompt:
-                    from workflow_config import DEFAULT_WORKFLOW_PROMPTS
-
-                    changes["prompt"] = (
-                        after.prompt or DEFAULT_WORKFLOW_PROMPTS[action.id]
-                    )
-                if before.enabled != after.enabled:
-                    changes["enabled"] = after.enabled
-                if changes:
-                    candidate = replace(action, **changes)
-                    if candidate.definition() != action.definition():
-                        action = replace(candidate, revision=action.revision + 1)
-                        revisions[action.id] = action.revision
-                        changed = True
-            actions.append(action)
-        return (
-            replace(
-                config,
-                text_actions=replace(
-                    settings,
-                    actions=tuple(actions),
-                    revision=settings.revision + 1,
-                    action_revisions=revisions,
-                ),
-            )
-            if changed
-            else config
-        )
 
     @Slot("QVariantMap", str, str, result=bool)
     def saveTextAction(self, action, context, expectedRevision):
@@ -4411,14 +4336,16 @@ class QmlSettingsController(QObject):
                 change = self._preference_change(method, args, before)
                 candidate = change(before)
                 draft = change(self._config)
-                candidate = self._sync_legacy_route_actions(candidate, before)
-                draft = self._sync_legacy_route_actions(draft, self._config)
+                candidate = self._text_actions.sync_legacy_routes(candidate, before)
+                draft = self._text_actions.sync_legacy_routes(draft, self._config)
                 if (
                     candidate.hotkeys != before.hotkeys
                     or draft.hotkeys != self._config.hotkeys
                 ):
-                    candidate = self._sync_legacy_text_hotkeys(candidate, before)
-                    draft = self._sync_legacy_text_hotkeys(draft, self._config)
+                    candidate = self._text_actions.sync_legacy_hotkeys(
+                        candidate, before
+                    )
+                    draft = self._text_actions.sync_legacy_hotkeys(draft, self._config)
             except (TypeError, ValueError):
                 self._set_error(ValueError("Invalid settings value"))
                 return False
@@ -5258,10 +5185,10 @@ class QmlSettingsController(QObject):
         self._set_error(None)
         if config == self._config:
             return True
-        config = self._sync_legacy_route_actions(config, self._config)
+        config = self._text_actions.sync_legacy_routes(config, self._config)
         hotkeys_changed = config.hotkeys != self._config.hotkeys
         if hotkeys_changed:
-            config = self._sync_legacy_text_hotkeys(config, self._config)
+            config = self._text_actions.sync_legacy_hotkeys(config, self._config)
         microphone_changed = (
             config.microphone != self._config.microphone
             or config.recording_controls != self._config.recording_controls

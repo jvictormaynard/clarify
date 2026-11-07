@@ -135,6 +135,19 @@ class AdminAnalyticsTests(TestCase):
         Budget.objects.create(
             month=self.now.date().replace(day=1), spent="4.2", reserved="0.3"
         )
+        previous_month = (self.now.date().replace(day=1) - timedelta(days=1)).replace(
+            day=1
+        )
+        running = self.operation(
+            self.user("rollover@example.test", days=40),
+            days=40,
+            state="running",
+            cost="0",
+        )
+        Operation.objects.filter(pk=running.pk).update(
+            month=previous_month, reserved_cost=Decimal("7")
+        )
+        Budget.objects.create(month=previous_month, spent="1", reserved="7")
         result = admin_analytics.overview(7)
         self.assertEqual(Decimal(result["budget"]["spent_usd"]), Decimal("4.2"))
         self.assertEqual(Decimal(result["budget"]["reserved_usd"]), Decimal("0.3"))

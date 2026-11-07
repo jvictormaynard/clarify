@@ -18,6 +18,7 @@ from shared.writing_style_policy import (
     writing_style as parse_writing_style,
     style_outcome,
 )
+from shared.processing_contract import CONTRACT
 from shared.output_preferences import (
     output_language as parse_output_language,
     output_language_outcome,
@@ -188,6 +189,18 @@ def transform(source, system, *, cost_budget, authorize):
         raise Rejected("allowance_exhausted")
     incoming_bound, outgoing_bound, ceiling = plan
     authorize(ceiling)
+    return _chat_completion(
+        system,
+        source,
+        incoming_bound,
+        outgoing_bound,
+        max_output_bytes=CONTRACT["limits"]["account"]["text_output_bytes"],
+    )
+
+
+def _chat_completion(
+    system, source, incoming_bound, outgoing_bound, *, max_output_bytes=None
+):
     answer = perform(
         "chat/completions",
         json={
@@ -215,7 +228,10 @@ def transform(source, system, *, cost_budget, authorize):
             choice.get("finish_reason") != "stop"
             or not isinstance(text, str)
             or not text.strip()
-            or len(text.encode()) > 64000
+            or (
+                max_output_bytes is not None
+                and len(text.encode("utf-8")) > max_output_bytes
+            )
         ):
             raise ProviderFailure(
                 cost=cost, input_tokens=incoming, output_tokens=outgoing
@@ -356,9 +372,6 @@ def dictation(
         # fit the existing history contract; the final result is checked by API.
         raise SnippetResultTooLarge()
 
-    def finish(result, cost, incoming=0, outgoing=0):
-        return Outcome(result, cost, incoming, outgoing)
-
     result = provenance(
         {"transcript": transcript, "text": rewrite_source, "rewritten": False}
     )
@@ -424,35 +437,26 @@ def dictation(
     input_tokens = output_tokens = 0
     usage_known = False
     try:
-        answer = perform(
-            "chat/completions",
-            json={
-                "model": "openai/gpt-oss-20b",
-                "temperature": 0.1,
-                "max_completion_tokens": outgoing_bound,
-                "reasoning_effort": "low",
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": source},
-                ],
-            },
-        )
-        input_tokens, output_tokens = token_usage(
-            answer, incoming_bound, outgoing_bound
-        )
-        # Completion usage includes reasoning tokens. No speculative cache discount.
-        cost += money(input_tokens * INPUT_RATE + output_tokens * OUTPUT_RATE, up=True)
+        try:
+            completion = _chat_completion(
+                system,
+                source,
+                incoming_bound,
+                outgoing_bound,
+                max_output_bytes=CONTRACT["limits"]["account"]["text_output_bytes"]
+                if text_action is not None
+                else None,
+            )
+        except ProviderFailure as error:
+            if error.cost is not None:
+                cost += error.cost
+                input_tokens, output_tokens = error.input_tokens, error.output_tokens
+                usage_known = True
+            raise
+        cost += completion.cost
+        input_tokens, output_tokens = completion.input_tokens, completion.output_tokens
         usage_known = True
-        choice = answer["choices"][0]
-        text = choice["message"]["content"]
-        if (
-            choice.get("finish_reason") != "stop"
-            or not isinstance(text, str)
-            or not text.strip()
-            or (text_action is not None and len(text.encode("utf-8")) > 64000)
-        ):
-            return finish(result, cost, input_tokens, output_tokens)
-        text = text.strip()
+        text = completion.result["text"]
 
         def normalized(value):
             return " ".join(value.casefold().split())
@@ -471,7 +475,7 @@ def dictation(
             and len(normalized(text)) * 4 < len(normalized(rewrite_source))
             and not exact_dedup
         ):
-            return finish(result, cost, input_tokens, output_tokens)
+            return Outcome(result, cost, input_tokens, output_tokens)
         result.update(text=text, rewritten=True)
         provenance(result, refined=True, attempted=True)
     except (ProviderFailure, AttributeError, KeyError, IndexError, TypeError):
@@ -483,4 +487,4 @@ def dictation(
             output_tokens if usage_known else 0,
             cost_estimated=not usage_known,
         )
-    return finish(result, cost, input_tokens, output_tokens)
+    return Outcome(result, cost, input_tokens, output_tokens)

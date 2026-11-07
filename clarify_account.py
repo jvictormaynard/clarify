@@ -299,6 +299,19 @@ class AccountService:
     def _save(self):
         _atomic_write_json(self.path, self._state)
 
+    def snapshot_guard(self):
+        """Pin the account while a collaborator checks and publishes its state."""
+        return self._lock
+
+    def context_stamp(self):
+        """Nonsecret session stamp, including personal-mode account changes."""
+        with self._lock:
+            return (
+                self._generation,
+                self.default_endpoint,
+                self._state.get("endpoint", ""),
+            )
+
     @property
     def busy(self):
         with self._lock:

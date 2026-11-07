@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { actionChoices, composerResult, ownedTextResult, ownsTextOperation, targetLanguages, TextComposerSession } from '../src/text-actions.ts';
-import { outputStyleLabel, visibleOutputStyle } from '../src/output-preferences.ts';
+import { outputStyleLabel } from '../src/output-preferences.ts';
 import type { AccountSnapshot, Snapshot, OutputLanguage } from '../modules/clarify-core';
 
 const account = (values: Partial<AccountSnapshot> = {}): AccountSnapshot => ({
@@ -131,10 +131,10 @@ test('another action or translation target cannot inherit an accepted result', a
 test('translation has all five flag and full-name targets; old style remains readable', () => {
   assert.deepEqual(targetLanguages.map(item => item.value), ['pt', 'en', 'es', 'de', 'ru']);
   assert.ok(targetLanguages.every(item => item.label.length > 5));
-  assert.equal(outputStyleLabel('default'), 'Padrão'); assert.equal(visibleOutputStyle('default'), 'default');
-  assert.equal(outputStyleLabel('casual'), 'Casual'); assert.equal(visibleOutputStyle('casual'), 'casual');
+  assert.equal(outputStyleLabel('default'), 'Padrão');
+  assert.equal(outputStyleLabel('casual'), 'Casual');
   assert.equal(outputStyleLabel('very_casual'), 'Muito casual');
   for (const style of ['natural', 'informal', 'organized'] as const) {
-    assert.equal(visibleOutputStyle(style), style); assert.ok(outputStyleLabel(style));
+    assert.ok(outputStyleLabel(style));
   }
 });

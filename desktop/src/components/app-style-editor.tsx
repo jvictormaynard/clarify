@@ -1,7 +1,7 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import type { WritingStyle } from "../settings/bridge";
-import { applicationName } from "../settings/use-app-style-editor";
+import { applicationName } from "../settings/display-labels";
 import { Button, Field, Picker, Row, Section, SettingsDisclosure } from "./ui";
 import { Dialog, DialogPopup, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./primitives/dialog";
 
