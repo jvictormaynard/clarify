@@ -697,6 +697,11 @@ The Apple test uses a focused editorial prompt with examples for first-person
 speech, commands, questions and self-corrections. Its language and writing-style
 instructions come from the shared policy. The shorter prompt is an experiment;
 it does not establish output quality on a physical iPhone.
+Explicit output languages are repeated in the transcript request and use an
+example in the selected language. An unchanged passage of at least eight words
+is rejected when its detected source language differs from the requested output
+language. This check catches untranslated copies, not all language or editing
+errors. Names and short identifiers can remain unchanged.
 
 The rewrite rules are generated from the desktop's canonical dictation prompt,
 including spoken self-corrections, faithful editing and source-data boundaries.

@@ -1,4 +1,9 @@
 {
+  "Apple Intelligence did not translate the text into the selected language. The source was preserved.": {
+    "pt": "O Apple Intelligence não traduziu o texto para o idioma selecionado. O original foi preservado.",
+    "en": "Apple Intelligence did not translate the text into the selected language. The source was preserved.",
+    "es": "Apple Intelligence no tradujo el texto al idioma seleccionado. Se conservó el original."
+  },
   "Atualizar disponibilidade": {
     "pt": "Atualizar disponibilidade",
     "en": "Refresh availability",

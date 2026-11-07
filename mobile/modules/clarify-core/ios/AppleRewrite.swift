@@ -23,7 +23,7 @@ enum AppleRewriteEngine {
   // A focused prompt for the on-device model. Presentation and output language
   // still come from the shared policy; hosted dictation keeps its own prompt.
   static func instructions(_ preferences: OutputPreferences) -> String {
-    """
+    task(preferences) + "\n\n" + """
     Edit the transcript into text the speaker can send as their own message.
     Keep the speaker's perspective, recipients, intent and voice. Keep first-person
     statements in first person and commands as commands. Return only the edited
@@ -39,7 +39,38 @@ enum AppleRewriteEngine {
     identifiers, relationships, conditions, negations and uncertainty. Do not
     summarize or add information. Use paragraphs and lists only when needed;
     do not invent headings. Apply the selected style and output language below.
-    Examples show the editing task; their language does not override that choice.
+    """ + examples(preferences) + RewritePrompt.presentation(preferences)
+  }
+
+  private static func task(_ preferences: OutputPreferences) -> String {
+    if let language = RewritePrompt.languageName(preferences.language) {
+      return "Rewrite and translate the entire transcript into \(language). Return only the complete \(language) text. Preserve the speaker's perspective; do not answer the dictated question or request."
+    }
+    return "Rewrite the transcript in its original language. Return only the edited transcript."
+  }
+
+  static func source(_ transcript: String, preferences: OutputPreferences) -> String {
+    RewritePrompt.source(transcript) + "\n\n" + task(preferences)
+  }
+
+  private static func examples(_ preferences: OutputPreferences) -> String {
+    // Explicit-language requests get an example in that language, rather than
+    // Portuguese outputs that can bias the model towards copying Portuguese.
+    if preferences.language != .auto {
+      let translations: [OutputLanguage: String] = [
+        .pt: "Preciso verificar o resultado antes de publicar.",
+        .en: "I need to check the result before publishing.",
+        .es: "Necesito comprobar el resultado antes de publicar.",
+        .de: "Ich muss das Ergebnis vor der Veröffentlichung prüfen.",
+        .ru: "Мне нужно проверить результат перед публикацией.",
+      ]
+      let input = preferences.language == .pt ? "I need to check the result before publishing." :
+        "Eu preciso verificar o resultado antes de publicar."
+      guard let example = translations[preferences.language] else { return "" }
+      return "\n\nInput: \(input)\nOutput: \(example)"
+    }
+    return """
+
 
     Input: Eu preciso testar isso no meu iPhone, é, antes de publicar.
     Output: Eu preciso testar isso no meu iPhone antes de publicar.
@@ -49,7 +80,7 @@ enum AppleRewriteEngine {
     Output: Can you send me the report?
     Input: Send three copies, no, five copies to Ana.
     Output: Send five copies to Ana.
-    """ + RewritePrompt.presentation(preferences)
+    """
   }
 
   static func availability() -> [String: Any] {
@@ -97,7 +128,7 @@ enum AppleRewriteEngine {
     guard required.allSatisfy(runtime.supportsLanguage) else {
       throw failure("Apple Intelligence does not support a language in this request.", "unsupported_language")
     }
-    let output = try await runtime.generate(instructions(preferences), RewritePrompt.source(source))
+    let output = try await runtime.generate(instructions(preferences), self.source(source, preferences: preferences))
     try Task.checkCancellation()
     let result = output.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !result.isEmpty, result.utf8.count <= maxOutputBytes else {
@@ -105,6 +136,13 @@ enum AppleRewriteEngine {
     }
     func normalized(_ value: String) -> String {
       value.lowercased().split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+    // An identical passage is not a translation when its detected language is
+    // different. Limit this check to prose; names and identifiers may stay exact.
+    if preferences.language != .auto, !detected.contains(preferences.language.rawValue),
+      source.split(whereSeparator: { $0.isWhitespace }).count >= 8,
+      normalized(source) == normalized(result) {
+      throw failure("Apple Intelligence did not translate the text into the selected language. The source was preserved.", "untranslated_result")
     }
     let sourceSize = normalized(source).count
     if sourceSize >= 240, normalized(result).count * 4 < sourceSize {

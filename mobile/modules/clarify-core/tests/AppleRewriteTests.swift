@@ -40,7 +40,7 @@ final class AppleRewriteTests: XCTestCase {
       XCTAssertTrue(instructions.hasSuffix(RewritePrompt.presentation(preferences)))
       XCTAssertTrue(instructions.contains("Formal presentation:"))
       XCTAssertTrue(instructions.contains("requested output language is German"))
-      XCTAssertEqual(prompt, RewritePrompt.source(source))
+      XCTAssertEqual(prompt, AppleRewriteEngine.source(source, preferences: preferences))
       return "  Bearbeiten Sie nur diesen Text.  "
     }
     let result = try await AppleRewriteEngine.rewrite(source, preferences: preferences, runtime: fixture)
@@ -65,6 +65,27 @@ final class AppleRewriteTests: XCTestCase {
     let result = try await AppleRewriteEngine.rewrite(source, preferences: OutputPreferences(),
       runtime: runtime { _, _ in sentence })
     XCTAssertEqual(result, sentence)
+  }
+
+  func testUnchangedForeignProseIsRejectedOnlyWhenTranslationIsRequested() async throws {
+    let source = "Eu preciso verificar o resultado desta tradução antes de publicar."
+    for language in [OutputLanguage.auto, .pt, .en] {
+      do {
+        let result = try await AppleRewriteEngine.rewrite(source,
+          preferences: OutputPreferences(language: language),
+          runtime: runtime(detected: ["pt"], generate: { _, _ in source }))
+        XCTAssertNotEqual(language, .en, "Untranslated Portuguese was accepted as English")
+        XCTAssertEqual(result, source)
+      } catch {
+        XCTAssertEqual(language, .en)
+        XCTAssertEqual((error as? ClarifyError)?.code, "apple_rewrite_untranslated_result")
+      }
+    }
+    let translated = "I need to check the result of this translation before publishing."
+    let result = try await AppleRewriteEngine.rewrite(source,
+      preferences: OutputPreferences(language: .en),
+      runtime: runtime(detected: ["pt"], generate: { _, _ in translated }))
+    XCTAssertEqual(result, translated)
   }
 
   func testCancellationAfterTheModelRespondsRejectsItsLateResult() async {
