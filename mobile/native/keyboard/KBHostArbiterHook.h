@@ -56,6 +56,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// No-op on iOS < 26.4.
 + (void)activeArbiterCheck;
 
+/// Reads UIKit's current state only when its process matches this attached
+/// controller's current host. Does not use the process-wide capture cache.
++ (nullable NSString *)currentHostBundleIDForController:(UIInputViewController *)controller
+    NS_SWIFT_NAME(currentHostBundleID(for:));
+
+/// Validates an OS state against an independently resolved current host PID.
+/// Missing fields, changed identity and unexpected getter signatures return nil.
++ (nullable NSString *)sourceBundleIDFromState:(nullable id)state matchingProcessID:(int)processID
+    NS_SWIFT_NAME(sourceBundleID(from:matchingProcessID:));
+
 /// Fresh host lookup for iOS versions before 26.4. No process-wide cache.
 /// Private PKService/XPC compatibility path; exceptions and missing APIs return nil.
 + (nullable NSString *)legacyHostBundleIDForController:(UIInputViewController *)controller
