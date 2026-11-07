@@ -126,13 +126,13 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
 #pragma mark - Install
 
 static void TraceHostClass(Class cls) {
-    for (NSUInteger depth = 0; cls && depth < 4; depth++, cls = class_getSuperclass(cls)) {
+    for (NSUInteger depth = 0; cls && cls != NSObject.class && depth < 4; depth++, cls = class_getSuperclass(cls)) {
         unsigned int count = 0;
         Method *methods = class_copyMethodList(cls, &count);
         for (unsigned int i = 0; i < count; i++) {
             NSString *name = NSStringFromSelector(method_getName(methods[i]));
             NSString *lower = name.lowercaseString;
-            if ([lower containsString:@"host"] || [lower containsString:@"connection"] || [lower containsString:@"destination"] || [lower containsString:@"request"] || [lower containsString:@"client"]) {
+            if ([lower containsString:@"host"] || [lower containsString:@"connection"] || [lower containsString:@"destination"] || [lower containsString:@"request"] || [lower containsString:@"client"] || [lower containsString:@"source"] || [lower containsString:@"bundle"] || [lower containsString:@"pid"] || [lower containsString:@"identifier"] || [lower containsString:@"state"] || [lower containsString:@"remote"] || [lower containsString:@"interface"]) {
                 NSLog(@"ClarifyHostRuntime method %@ %@ %s", NSStringFromClass(cls), name, method_getTypeEncoding(methods[i]));
             }
         }
@@ -142,6 +142,26 @@ static void TraceHostClass(Class cls) {
             NSLog(@"ClarifyHostRuntime ivar %@ %s %s", NSStringFromClass(cls), ivar_getName(ivars[i]), ivar_getTypeEncoding(ivars[i]));
         }
         free(ivars);
+    }
+}
+
+static void TraceHostProtocol(Protocol *protocol) {
+    if (!protocol) return;
+    for (NSUInteger required = 0; required < 2; required++) {
+        unsigned int count = 0;
+        struct objc_method_description *methods = protocol_copyMethodDescriptionList(protocol, required != 0, YES, &count);
+        for (unsigned int i = 0; i < count; i++) {
+            NSLog(@"ClarifyHostRuntime protocol %s %@ %s", protocol_getName(protocol), NSStringFromSelector(methods[i].name), methods[i].types ?: "missing");
+        }
+        free(methods);
+    }
+}
+
+static void TraceHostConnection(id connection) {
+    NSLog(@"ClarifyHostRuntime connection class=%@", NSStringFromClass([connection class]));
+    TraceHostClass([connection class]);
+    if ([connection isKindOfClass:NSXPCConnection.class]) {
+        TraceHostProtocol([(NSXPCConnection *)connection remoteObjectInterface].protocol);
     }
 }
 
@@ -173,7 +193,10 @@ static void TraceHostClass(Class cls) {
         id hosts = [personalities objectForKey:ownID];
         NSLog(@"ClarifyHostRuntime personality keys=%@ own=%@ hosts=%@", [personalities allKeys], ownID, NSStringFromClass([hosts class]));
         if (![hosts isKindOfClass:NSDictionary.class]) return nil;
-        id connection = ObjectResult([hosts objectForKey:pid], @"connection");
+        id host = [hosts objectForKey:pid];
+        NSLog(@"ClarifyHostRuntime host record=%@", NSStringFromClass([host class]));
+        TraceHostClass([host class]);
+        id connection = ObjectResult(host, @"connection");
         id xpc = ObjectResult(connection, @"_xpcConnection");
         NSLog(@"ClarifyHostRuntime host keys=%@ connection=%@ xpc=%@", [hosts allKeys], NSStringFromClass([connection class]), NSStringFromClass([xpc class]));
         if (!xpc) return nil;
@@ -261,6 +284,11 @@ static void TraceHostClass(Class cls) {
       NSLog(@"ClarifyActivationTrace ping begin");
       pingMsg(client, ping);
       NSLog(@"ClarifyActivationTrace ping end");
+      id state = ObjectResult(client, @"currentClientState");
+      NSLog(@"ClarifyHostRuntime current state=%@", state);
+      TraceHostClass([state class]);
+      TraceHostConnection(ObjectResult(client, @"connection"));
+      TraceHostConnection(ObjectResult(client, @"arbiterConnection"));
     } @catch (__unused NSException *error) { /* Unknown runtime: use manual return. */ }
 }
 
