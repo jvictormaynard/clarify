@@ -1,5 +1,11 @@
-import type { OutputPreferences } from '../modules/clarify-core';
+import type { OutputPreferences, OutputStyle } from '../modules/clarify-core';
 import { errorMessage } from './errors.ts';
+
+export const appleRewriteStyles = ['default', 'formal', 'casual'] as const;
+const labStyles: Record<OutputStyle, typeof appleRewriteStyles[number]> = {
+  default: 'default', formal: 'formal', casual: 'casual',
+  very_casual: 'casual', natural: 'default', informal: 'casual', organized: 'default',
+};
 
 interface Gateway {
   newOperationID(): string;
@@ -45,7 +51,7 @@ export class AppleRewriteSession {
   }
   setPreferences(preferences: OutputPreferences) {
     void this.cancel();
-    this.update({ preferences: { ...preferences } });
+    this.update({ preferences: { ...preferences, style: labStyles[preferences.style] } });
   }
   async run() {
     if (this.state.busy || !this.state.source.trim()) return;

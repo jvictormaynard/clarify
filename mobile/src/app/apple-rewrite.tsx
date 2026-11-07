@@ -2,16 +2,14 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { Stack, useFocusEffect } from 'expo-router';
 import { AppState, Keyboard, Pressable, Text, View } from 'react-native';
 import { SymbolView } from 'expo-symbols';
-import Core, { type AppleRewriteAvailability, type OutputStyle } from '../../modules/clarify-core';
-import { AppleRewriteSession } from '../apple-rewrite';
+import Core, { type AppleRewriteAvailability } from '../../modules/clarify-core';
+import { AppleRewriteSession, appleRewriteStyles } from '../apple-rewrite';
 import { DraftTextInput } from '../components/draft-text-input';
 import { Button, Card, ChoiceRow, KeyboardPage, NativeSheet, NavigationRow, ScreenHeader, ui, usePalette } from '../components/ui';
 import { errorMessage } from '../errors';
 import { t } from '../i18n';
 import { outputStyleLabel } from '../output-preferences';
 import { targetLanguages } from '../text-actions';
-
-const styles: OutputStyle[] = ['default', 'formal', 'casual', 'very_casual', 'natural', 'informal', 'organized'];
 
 export default function AppleRewrite() {
   const c = usePalette();
@@ -86,7 +84,7 @@ export default function AppleRewrite() {
       <Text style={[ui.small, { color: c.muted }]}>{t('Tempo: {v0} ms.', { v0: model.elapsedMS ?? 0 })}</Text>
     </View>}
     <NativeSheet visible={sheet !== null} title={t(sheet === 'style' ? 'Estilo de escrita' : 'Idioma de saída')} onClose={() => setSheet(null)}>
-      {sheet === 'style' ? styles.map(style => <ChoiceRow key={style} testID={`apple.style.${style}`} title={t(outputStyleLabel(style))} selected={model.preferences.style === style}
+      {sheet === 'style' ? appleRewriteStyles.map(style => <ChoiceRow key={style} testID={`apple.style.${style}`} title={t(outputStyleLabel(style))} selected={model.preferences.style === style}
         onPress={() => { session.setPreferences({ ...model.preferences, style }); setSheet(null); }} />)
         : [{ value: 'auto' as const, label: t('Manter idioma original') }, ...targetLanguages].map(item => <ChoiceRow key={item.value} testID={`apple.language.${item.value}`} title={item.label} selected={language === item.value}
           onPress={() => { session.setPreferences({ ...model.preferences, language: item.value }); setSheet(null); }} />)}

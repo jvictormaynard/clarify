@@ -16,6 +16,14 @@ function fixture() {
 
 test('the lab freezes source/preferences and rejects late results after editing or cancellation', async () => {
   const { session, requests, cancelled } = fixture();
+  const saved = { language: 'en', style: 'organized' } as const;
+  session.setPreferences(saved);
+  assert.equal(session.getState().preferences.style, 'default');
+  assert.equal(saved.style, 'organized', 'the lab must not change saved preferences');
+  for (const style of ['very_casual', 'informal'] as const) {
+    session.setPreferences({ language: 'en', style });
+    assert.equal(session.getState().preferences.style, 'casual');
+  }
   session.setSource('Send 5 copies to Ana.');
   session.setPreferences({ language: 'de', style: 'formal' });
   const first = session.run();

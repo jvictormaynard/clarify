@@ -697,6 +697,9 @@ The Apple test uses a focused editorial prompt with examples for first-person
 speech, commands, questions and self-corrections. Its language and writing-style
 instructions come from the shared policy. The shorter prompt is an experiment;
 it does not establish output quality on a physical iPhone.
+The test offers Default, Formal and Casual. When it copies saved preferences,
+Natural and Organized map to Default; Informal and Very casual map to Casual.
+These local choices never change saved dictation preferences.
 Explicit output languages are repeated in the transcript request and use an
 example in the selected language. An unchanged passage of at least eight words
 is rejected when its detected source language differs from the requested output
