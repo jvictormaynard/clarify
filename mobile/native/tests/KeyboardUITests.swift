@@ -3,6 +3,22 @@ import XCTest
 @testable import KeyboardUI
 import KeyboardHostSupport
 
+private final class SourceProcessState: NSObject {
+  var pid: Int32 = 5127
+  var source: Any? = "com.clarify.fixture.host"
+  var replacementPID: Int32?
+  @objc var processIdentifier: Int32 { pid }
+  @objc var sourceBundleIdentifier: Any? {
+    if let replacementPID { pid = replacementPID }
+    return source
+  }
+}
+
+private final class UnexpectedSourceProcessState: NSObject {
+  @objc var processIdentifier: String { "5127" }
+  @objc var sourceBundleIdentifier: String { "com.clarify.fixture.host" }
+}
+
 @MainActor
 private final class Field: NSObject, UITextDocumentProxy {
   var documentIdentifier = UUID()
@@ -674,13 +690,33 @@ final class KeyboardUITests: XCTestCase {
     await MainActor.run {
       let keyboard = KeyboardViewController()
       XCTAssertNil(KBHostArbiterHook.legacyHostBundleID(for: keyboard))
+      XCTAssertNil(KBHostArbiterHook.currentHostBundleID(for: keyboard))
       let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
       let host = UIViewController(); window.rootViewController = host; window.makeKeyAndVisible()
       host.addChild(keyboard); host.view.addSubview(keyboard.view); keyboard.didMove(toParent: host)
       // A plain parent has no _hostPID. KVC must not crash the extension.
       XCTAssertNil(KBHostArbiterHook.legacyHostBundleID(for: keyboard))
+      XCTAssertNil(KBHostArbiterHook.currentHostBundleID(for: keyboard))
       window.isHidden = true
     }
+  }
+  func testCurrentSourceStateRequiresTheCurrentHostProcess() throws {
+    let state = SourceProcessState()
+    XCTAssertEqual(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 5127), "com.clarify.fixture.host")
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 5128), "Reject a previous app's state")
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 0))
+    state.pid = 0
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 5127))
+    state.pid = 5127
+    let invalidSources: [Any] = ["", "unknown", NSNumber(value: 5127), try XCTUnwrap(Bundle.main.bundleIdentifier)]
+    for source in invalidSources {
+      state.source = source
+      XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 5127))
+    }
+    state.source = "com.clarify.fixture.host"; state.replacementPID = 5128
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 5127), "Reject identity changes during the read")
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: NSObject(), matchingProcessID: 5127))
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: UnexpectedSourceProcessState(), matchingProcessID: 5127), "Do not invoke an unexpected runtime signature")
   }
   func testTypingAndRecordingUseOneStandardImpactPerEvent() async {
     await MainActor.run {
