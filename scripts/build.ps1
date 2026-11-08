@@ -4,6 +4,7 @@ param(
     [ValidatePattern('^[a-z0-9][a-z0-9.-]{0,63}$')]
     [string]$PayloadIdentity,
     [string]$SettingsExecutable,
+    [string]$DesktopShellDirectory,
     [switch]$SkipGitHooks
 )
 
@@ -11,15 +12,22 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-if (-not $SettingsExecutable) {
-    $SettingsExecutable = Join-Path $repoRoot 'dist\clarify-settings.exe'
-    & (Join-Path $PSScriptRoot 'build-settings.ps1') -OutputPath $SettingsExecutable
+if ($SettingsExecutable -and $DesktopShellDirectory) { throw 'Choose either the Electron shell or the legacy Settings executable.' }
+if (-not $SettingsExecutable -and -not $DesktopShellDirectory) {
+    & (Join-Path $PSScriptRoot 'setup.ps1') -Dev -SkipGitHooks:$SkipGitHooks
+    & (Join-Path $PSScriptRoot 'build-desktop.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Desktop shell build failed.' }
+    $DesktopShellDirectory = Join-Path $repoRoot 'dist\desktop-shell'
 }
-if ($SettingsExecutable -and -not (Test-Path -LiteralPath $SettingsExecutable -PathType Leaf)) {
-    throw 'The requested settings executable does not exist.'
+if ($DesktopShellDirectory) {
+    $DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory).ProviderPath
+    if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'Clarify Desktop.exe') -PathType Leaf)) { throw 'Desktop shell is missing.' }
+    $presentationInput = $DesktopShellDirectory
+} else {
+    $SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath
+    $presentationInput = $SettingsExecutable
 }
-# PyInstaller resolves bundled inputs relative to its generated spec file.
-$SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath
+$presentationInputs = Split-Path -Parent $presentationInput
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repoRoot "dist"
 } elseif (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {
@@ -147,14 +155,17 @@ if ($PayloadIdentity) {
     # gets a valid but byte-distinct historical payload without mutating source.
     $pyInstallerArgs += @("--add-data", "${payloadIdentityFile};.")
 }
-if ($SettingsExecutable) {
-    & $python (Join-Path $PSScriptRoot 'qt_distribution.py') --output-dir (Split-Path $SettingsExecutable)
+if ($presentationInput) {
+    & $python (Join-Path $PSScriptRoot 'qt_distribution.py') --output-dir $presentationInputs
     if ($LASTEXITCODE -ne 0) { throw 'Qt source and notice verification failed.' }
-    & $python (Join-Path $PSScriptRoot 'portable_crypto_inventory.py') --output-dir (Split-Path $SettingsExecutable)
+    & $python (Join-Path $PSScriptRoot 'portable_crypto_inventory.py') --output-dir $presentationInputs
     if ($LASTEXITCODE -ne 0) { throw 'Crypto attribution verification failed.' }
-    $pyInstallerArgs += @('--add-binary', "${SettingsExecutable};.")
+    if ($DesktopShellDirectory) {
+        $pyInstallerArgs += @('--add-data', "${DesktopShellDirectory};desktop-shell")
+        $pyInstallerArgs += @('--add-data', "$(Join-Path $presentationInputs 'Clarify-desktop-payload.json');.")
+    } else { $pyInstallerArgs += @('--add-binary', "${SettingsExecutable};.") }
     foreach ($noticeName in @('Clarify-settings.sbom.json', 'Clarify-settings-NOTICES.txt', 'Clarify-qt-NOTICES.txt', 'Clarify-crypto-NOTICES.txt')) {
-        $noticePath = Join-Path (Split-Path $SettingsExecutable) $noticeName
+        $noticePath = Join-Path $presentationInputs $noticeName
         if (-not (Test-Path -LiteralPath $noticePath -PathType Leaf)) { throw "Missing Settings inventory: $noticeName" }
         $pyInstallerArgs += @('--add-data', "${noticePath};.")
     }
@@ -189,7 +200,7 @@ if (-not (Test-Path $executable)) {
 & $python (Join-Path $PSScriptRoot 'windows_version.py') --version-source $versionSource --check-pe $executable
 if ($LASTEXITCODE -ne 0) { throw 'Packaged Windows PE version verification failed.' }
 
-& $python (Join-Path $PSScriptRoot 'check_settings_payload.py') $executable $SettingsExecutable
+& $python (Join-Path $PSScriptRoot 'check_settings_payload.py') $executable $presentationInput
 if ($LASTEXITCODE -ne 0) { throw 'Packaged Settings payload verification failed.' }
 
 $smokeOutLog = Join-Path $workDir "smoke.stdout.log"

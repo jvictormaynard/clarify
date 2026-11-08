@@ -93,18 +93,41 @@ test('Settings unit tests need neither Qt nor a browser', () => {
   assert.equal(step.with.native, 'false');
 });
 
-test('Windows builds validate Settings and embed the resulting native executable', () => {
+test('Windows builds embed the complete Electron shell without a Rust toolchain', () => {
   const action = parseDocument(readFileSync(resolve(root, '.github/actions/settings-build/action.yml'), 'utf8')).toJS();
   const commands = action.runs.steps.map(step => step.run || '').join('\n');
   for (const command of ['npm ci', 'npm audit', 'npm run build',
     '../scripts/ci.py --task settings_unit', '../scripts/ci.py --task settings_browser',
-    'cargo build --locked']) assert.ok(commands.includes(command), command);
+    'build-desktop.ps1 -Python $env:BUILD_PYTHON -SkipInstall']) assert.ok(commands.includes(command), command);
   for (const job of [ci.jobs.package, workflows.get('release.yml').jobs.build_candidate]) {
     const settings = job.steps.findIndex(step => step.uses === './.github/actions/settings-build');
     const packaging = job.steps.findIndex(step => step.run?.includes('scripts\\build.ps1') || step.run?.includes('scripts/build.ps1'));
     assert.ok(settings >= 0 && settings < packaging);
-    assert.ok(job.steps[packaging].run.includes('-SettingsExecutable dist\\clarify-settings.exe'));
+    assert.ok(job.steps[packaging].run.includes('-DesktopShellDirectory dist\\desktop-shell'));
   }
+});
+
+test('Electron native validation is selected, isolated and retains failure evidence', () => {
+  const job = ci.jobs.desktop_shell;
+  assert.equal(job['runs-on'], 'windows-2025');
+  const cache = job.steps.findIndex(step => step.uses === './.github/actions/electron-runtime-cache');
+  const node = job.steps.findIndex(step => step.uses?.startsWith('actions/setup-node@'));
+  const install = job.steps.findIndex(step => step.run === 'npm ci --no-fund');
+  assert.ok(node >= 0 && node < cache && cache < install);
+  assert.ok(job.steps.some(step => step.uses === './.github/actions/python-env' && step.with.platform === 'windows' && step.with.qt === 'true'));
+  assert.ok(job.steps.some(step => step.run === 'npm ci --no-fund' && step['working-directory'] === 'desktop'));
+  assert.ok(job.steps.some(step => step.run === 'python scripts/ci.py --task desktop_shell'));
+  assert.equal(job.env.CLARIFY_TEST_ARTIFACTS_DIR, '$' + '{{ runner.temp }}/clarify-electron-evidence');
+  const evidence = job.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'));
+  assert.equal(evidence.if, 'always()');
+  assert.ok(evidence.with.path.includes('clarify-electron-evidence'));
+  const action = parseDocument(readFileSync(resolve(root, '.github/actions/settings-build/action.yml'), 'utf8')).toJS();
+  assert.ok(!action.runs.steps.some(step => /cargo|rustc|src-tauri/.test(step.run || JSON.stringify(step.with || {}))));
+  assert.ok(!action.runs.steps.some(step => /--task desktop_shell|npm run test:electron$/.test(step.run || '')));
+  assert.equal(ci.jobs.package.steps.find(step => step.uses === './.github/actions/settings-build').with.test, 'false');
+  const release = workflows.get('release.yml').jobs.build_candidate.steps.find(step => step.uses === './.github/actions/settings-build');
+  assert.equal(release.with.smoke, 'true');
+  assert.ok(action.runs.steps.some(step => step.if?.includes("inputs.smoke == 'true'") && step.run?.includes('npm run test:electron:smoke')));
 });
 
 test('destructive installer tests stay on disposable GitHub Windows', () => {

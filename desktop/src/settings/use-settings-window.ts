@@ -1,3 +1,4 @@
+import { electron, nativeWindow, windowAction } from "../platform";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -30,9 +31,9 @@ export function useSettingsWindow(
           return;
         }
         if (!canClose()) return;
-        if (isTauri()) {
+        if (nativeWindow()) {
           allowClose.current = true;
-          await getCurrentWindow().close();
+          await windowAction("closeAccepted");
         }
         setClosing(false);
       } catch (error) {
@@ -47,6 +48,10 @@ export function useSettingsWindow(
   }, [awaitAcceptedOperations, dirty, onError, setClosing]);
 
   useEffect(() => {
+    if (electron()) return electron()!.onWindow(event => {
+      if (event === "reopen") { allowClose.current = false; setClosing(false); }
+      if (event === "close") setClosing(true);
+    });
     if (!isTauri()) return;
     let live = true;
     const listener = getCurrentWindow().onCloseRequested((event) => {

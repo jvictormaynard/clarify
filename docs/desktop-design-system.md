@@ -1,10 +1,10 @@
 # Desktop design system
 
-The React/Tauri Settings window uses the approved T3 Code dark design and shared
+The React/Electron Settings window uses the approved T3 Code dark design and shared
 React controls. Its workspace includes dictation, style, text actions, dictionary,
 snippets and history. Application preferences and account access use a Settings
-dialog. The Qt/QML pill,
-quick menus and launch-failure Settings fallback retain their own theme and
+dialog. The compact pill,
+quick menus and Qt/QML recovery views retain their own theme and
 behavior. Mobile and the server are outside this system.
 
 ## Required use

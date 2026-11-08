@@ -216,7 +216,7 @@ Focus and selection safety check
     +---- changed ------> keep result in clipboard for manual paste
 ```
 
-The Qt/QML event loop owns the desktop surface. Provider calls, audio
+The Qt event loop owns desktop workflows. Provider calls, audio
 processing, and clipboard transactions run through scheduled workers so the
 floating window remains responsive.
 
@@ -250,9 +250,34 @@ certificate pinning, operation identity and open delivery evidence.
 
 ## Settings process boundary
 
+The desktop uses one retained Electron child for the React Settings
+window and the React pill. `qml_electron.py` adapts the existing Qt controllers
+to explicit workflow commands and property-change events over private pipes.
+The Python engine retains recording, provider, clipboard, account and storage
+ownership. Qt still supplies its event loop, native hotkeys and the file-import
+panel during this migration. The QML presentation remains a recovery path if
+the Electron child fails.
+
+The local pilot resolves `desktop-shell/Clarify Desktop.exe` beside the installed
+engine, or an absolute `CLARIFY_DESKTOP_EXECUTABLE` for source development. The
+shell directory is deployed beside the portable executable to avoid extracting
+Chromium on each engine launch. `scripts/deploy.ps1 -DesktopShellDirectory`
+installs it with a separate recoverable engine and shell backup. Public release
+packaging remains on the existing release contract until separately migrated.
+
+Settings close retains the renderer only after its save/discard guard accepts
+the close. Hiding it for a workflow retains the update block until an accepted
+close, because its local drafts can still be unsaved. The Electron executable
+is excluded from foreground target capture before the shell starts. Meter
+events use the small workflow snapshot; Settings events read notified fields
+and preserve the existing account and library ownership guards.
+
 `desktop/src/` contains the React/TypeScript Settings pages, Base UI controls,
-and styles. `desktop/src-tauri/` hosts them in a Tauri v2 WebView2 window. This is
-not Electron and does not replace the Python audio engine or QML pill.
+and styles. `desktop/src-tauri/` retains the explicitly selected legacy Tauri
+build. Default Windows packaging uses `scripts/build-desktop.ps1` and embeds the
+complete Electron app in the portable EXE. The payload manifest and SBOM bind
+the renderer, native runtime and license files to that build. The existing
+portable update signature therefore covers the complete desktop application.
 
 `clarify/desktop/qml_web_settings.py` starts the child with Qt `QProcess` and
 exchanges JSON messages over private standard input/output pipes. The Python
@@ -444,7 +469,8 @@ The old widget entrypoint is not used by `start.bat`, PyInstaller, CI, or
 release packaging. Root `app.py` remains for legacy compatibility tests; new
 features must not be added there. Production Qt adapters and assets live in
 `clarify/desktop/`; historical comparison tools remain under `spikes/`.
-The unused Electron implementation is available in Git history, not the checkout.
+The earlier Electron prototype remains in Git history. The retained desktop
+host described above is the current local migration pilot.
 
 ### Provider layer
 
@@ -943,8 +969,8 @@ updating an existing local installation from WSL; contributors normally use
 
 ## Legacy prototype
 
-The incomplete Electron prototype was removed from the checkout. It remains
-available in Git history and is not part of current development or distribution.
+The earlier incomplete Electron prototype remains in Git history. It is separate
+from the current retained desktop host and is not a distribution input.
 
 
 ## Validation ownership

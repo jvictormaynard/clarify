@@ -224,6 +224,7 @@ class StartTranslation:
 class RunTextAction:
     action_id: str
     target: SelectionTarget | None = None
+    choose_language: bool = False
 
 
 @dataclass(frozen=True)
@@ -1248,7 +1249,9 @@ class WorkflowService:
             )
         if snapshot.action.kind == "translation":
             return self._start_translation(
-                StartTranslation(command.target), snapshot=snapshot
+                StartTranslation(command.target),
+                snapshot=snapshot,
+                choose_language=command.choose_language,
             )
         return self._start_rewrite(StartRewrite(command.target), snapshot=snapshot)
 
@@ -1357,7 +1360,11 @@ class WorkflowService:
     # Translation
 
     def _start_translation(
-        self, command: StartTranslation | None = None, *, snapshot=None
+        self,
+        command: StartTranslation | None = None,
+        *,
+        snapshot=None,
+        choose_language=False,
     ) -> bool:
         target = command.target if command is not None else None
         target = target or self._clipboard.capture_target()
@@ -1373,10 +1380,12 @@ class WorkflowService:
         # The state is explicit even though the current presentation keeps this
         # preparation step visually silent until the picker is ready.
         self._transition(session, WorkflowPhase.PREPARING_TRANSLATION)
-        self._scheduler.run_in_background(lambda: self._prepare_translation(session))
+        self._scheduler.run_in_background(
+            lambda: self._prepare_translation(session, choose_language=choose_language)
+        )
         return True
 
-    def _prepare_translation(self, session: _Session) -> None:
+    def _prepare_translation(self, session: _Session, *, choose_language=False) -> None:
         capture = None
         capture_restored = False
         try:
@@ -1420,7 +1429,7 @@ class WorkflowService:
                     return
                 session.selection = capture
             self._transition(session, WorkflowPhase.TRANSLATION_PICKER)
-            if session.text_action is not None:
+            if session.text_action is not None and not choose_language:
                 self._choose_translation_language(
                     session.text_action.config.ui.language
                 )
@@ -1473,7 +1482,7 @@ class WorkflowService:
                     session.text_action,
                     selection.text,
                     session.target_language,
-                    output_language=session.text_action.config.ui.language,
+                    output_language=session.target_language,
                     cancel=session.cancel_token,
                 )
                 if session.text_action is not None

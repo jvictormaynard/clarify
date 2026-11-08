@@ -1,6 +1,6 @@
+import { electron, nativeWindow, windowAction } from "../platform";
 import { t } from "../i18n";
 import { useEffect, useState } from "react";
-import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, Copy, X } from "lucide-react";
 import { Button } from "./primitives/button";
@@ -19,28 +19,31 @@ export function Titlebar({
 }) {
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
-    if (!isTauri()) return;
-    const window = getCurrentWindow();
+    if (!nativeWindow()) return;
+    const window = electron() ? null : getCurrentWindow();
     let live = true;
     const sync = async () => {
       try {
-        const value = await window.isMaximized();
-        if (live) setMaximized(value);
+        const value = await windowAction("isMaximized");
+        if (live) setMaximized(!!value);
       } catch (error) {
         if (live) onError(String(error));
       }
     };
     void sync();
-    const listener = window.onResized(() => void sync());
+    const unsubscribe = electron()?.onWindow(event => { if (event === 'resized') void sync(); });
+    const listener = window?.onResized(() => void sync());
     return () => {
       live = false;
-      void listener.then((unlisten) => unlisten()).catch(() => {});
+      unsubscribe?.();
+      void listener?.then((unlisten) => unlisten()).catch(() => {});
     };
   }, [onError]);
   const action = async (command: "minimize" | "toggleMaximize") => {
-    if (!isTauri()) return;
+    if (!nativeWindow()) return;
     try {
-      await getCurrentWindow()[command]();
+      await windowAction(command);
+      setMaximized(!!(await windowAction("isMaximized")));
     } catch (error) {
       onError(String(error));
     }

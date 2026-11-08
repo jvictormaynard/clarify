@@ -8,7 +8,8 @@ Preserve facts, technical meaning, and localization placeholders.
 
 ## Work from the affected contract
 
-- Production Qt/QML lives in `clarify/desktop/`; React/Tauri Settings in `desktop/`.
+- Python/Qt workflow controllers and QML recovery views live in `clarify/desktop/`;
+  the Electron shell and React Settings/pill live in `desktop/`.
   Focused root Python modules own providers, storage, and workflows.
 - `app.py` and `spikes/` retain legacy compatibility and measurements. Do not add
   product features there or remove persisted-data migrations without evidence.

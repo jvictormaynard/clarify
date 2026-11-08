@@ -1,0 +1,258 @@
+"""Persistent desktop transport preserves the engine and Settings contracts."""
+
+import unittest
+import sys
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+from PySide6.QtCore import QEventLoop, QObject, Property, QTimer, Signal
+from PySide6.QtWidgets import QApplication
+
+from clarify.desktop.qml_bridge import QmlWorkflowBridge
+from clarify.desktop.qml_electron import ElectronDesktopProcess
+from clarify.desktop.qml_settings import QmlSettingsController
+from local_asr_product import LocalASRProductState
+from tests.support.settings import _repositories
+from workflows import WorkflowPhase, WorkflowState
+
+
+class _Status(QObject):
+    changed = Signal()
+
+    @Property(float, notify=changed)
+    def audioLevel(self):
+        return 0.25
+
+    @Property(bool, notify=changed)
+    def recordingReady(self):
+        return True
+
+    @Property(str, notify=changed)
+    def targetIcon(self):
+        return ""
+
+
+class ElectronDesktopTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.directory = TemporaryDirectory()
+        self.settings = QmlSettingsController(
+            _repositories(self.directory.name),
+            local_product=Mock(state=LocalASRProductState("missing"), busy=False),
+        )
+        self.bridge = QmlWorkflowBridge(
+            SimpleNamespace(state=WorkflowState(), subscribe=lambda callback: None)
+        )
+        self.status = _Status()
+        self.host = ElectronDesktopProcess(
+            self.settings, self.bridge, self.status, Mock(), Mock()
+        )
+        self.messages = []
+        self.host._send = self.messages.append
+
+    def tearDown(self):
+        self.host.shutdown()
+        self.host.flush_timer.stop()
+        self.settings.shutdown()
+        self.directory.cleanup()
+
+    def test_only_entering_picker_grants_foreground_permission_to_the_child(self):
+        self.host._ready = True
+        with patch.object(self.host, "_allow_picker_activation") as allow:
+            self.host._flush()
+            self.bridge._on_workflow_state(WorkflowState(phase=WorkflowPhase.RECORDING))
+            self.host._flush()
+            allow.assert_not_called()
+            self.bridge._on_workflow_state(
+                WorkflowState(phase=WorkflowPhase.TRANSLATION_PICKER)
+            )
+            self.host._flush()
+            allow.assert_called_once()
+            self.status.changed.emit()
+            self.host._flush()
+            allow.assert_called_once()
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows foreground API")
+    def test_native_activation_grant_is_limited_to_our_child(self):
+        with (
+            patch.object(self.host.process, "processId", return_value=1234),
+            patch("clarify.desktop.qml_electron.ctypes.WinDLL") as library,
+        ):
+            library.return_value.AllowSetForegroundWindow.return_value = 1
+            self.assertTrue(self.host._allow_picker_activation())
+            library.return_value.AllowSetForegroundWindow.assert_called_once_with(1234)
+
+    def test_workflow_rpc_rejects_reflection_and_wrong_argument_types(self):
+        for method, args in (
+            ("deleteLater", []),
+            ("dismissFeedback", [True]),
+            ("chooseTranslation", [12]),
+            ("setLanguage", ["en", "pt"]),
+        ):
+            reply = self.host.dispatch_workflow(
+                {"id": 1, "method": method, "args": args}
+            )
+            self.assertIn("error", reply)
+        reply = self.host.dispatch_workflow({"id": 2, "method": "snapshot", "args": []})
+        self.assertEqual(reply["result"]["surface"], "idle")
+        self.assertEqual(reply["result"]["level"], 0.25)
+        self.assertNotIn("settings", reply["result"])
+
+    def test_meter_push_does_not_read_or_serialize_settings_library(self):
+        self.host._ready = True
+        self.host._visible = True
+        self.host._workflow_dirty = False
+        with patch.object(
+            self.settings, "library_snapshot", side_effect=AssertionError
+        ):
+            self.status.changed.emit()
+            self.host._flush()
+        self.assertEqual(len(self.messages), 1)
+        self.assertEqual(self.messages[0]["event"], "workflow")
+        self.assertEqual(self.messages[0]["state"]["level"], 0.25)
+
+    def test_continuous_meter_notifications_publish_before_producer_stops(self):
+        self.host._ready = True
+        self.host._workflow_dirty = False
+        loop = QEventLoop()
+        producer = QTimer()
+        producer.setInterval(0)
+        producer.timeout.connect(self.status.changed.emit)
+        delivered_while_active = []
+
+        def receive(message):
+            self.messages.append(message)
+            delivered_while_active.append(producer.isActive())
+            loop.quit()
+
+        self.host._send = receive
+        deadline = QTimer()
+        deadline.setSingleShot(True)
+        deadline.timeout.connect(loop.quit)
+        producer.start()
+        deadline.start(2000)
+        try:
+            loop.exec()
+        finally:
+            producer.stop()
+            deadline.stop()
+        self.assertEqual(delivered_while_active, [True])
+
+    def test_preference_push_reads_only_notified_fields(self):
+        self.host._ready = True
+        self.host._visible = True
+        self.host._workflow_dirty = False
+        self.host._last_settings = {
+            "automaticUpdates": not self.settings.automaticUpdates
+        }
+        with patch.object(
+            self.settings, "library_snapshot", side_effect=AssertionError
+        ):
+            self.host._mark_settings({"automaticUpdates"})
+            self.host._flush()
+        self.assertEqual(
+            self.messages,
+            [
+                {
+                    "event": "settings",
+                    "state": {
+                        "automaticUpdates": self.settings.automaticUpdates,
+                    },
+                }
+            ],
+        )
+
+    def test_completion_push_restores_value_exposed_by_intermediate_reply(self):
+        self.host._ready = True
+        self.host._visible = True
+        self.host._workflow_dirty = False
+        self.host._publish_settings(full=True)
+        self.messages.clear()
+        self.settings._microphone_test_level = 0.75
+        self.host._receive(
+            {"id": 3, "channel": "settings", "method": "snapshot", "args": []}
+        )
+        self.assertEqual(self.messages[-1]["result"]["microphoneTestLevel"], 0.75)
+        self.settings._microphone_test_level = 0.0
+        self.host._mark_settings({"microphoneTestLevel"})
+        self.host._flush()
+        self.assertEqual(
+            self.messages[-1],
+            {"event": "settings", "state": {"microphoneTestLevel": 0.0}},
+        )
+
+    def test_context_notification_replaces_library_rows_atomically(self):
+        self.host._ready = True
+        self.host._visible = True
+        self.host._workflow_dirty = False
+        self.host._last_settings = {
+            "snippetContext": "old-owner",
+            "dictionaryContext": "old-owner",
+            "snippets": [{"trigger": "old phrase", "replacement": "old text"}],
+            "dictionaryEntries": [{"term": "old term"}],
+        }
+        library = {
+            "snippetContext": "new-owner",
+            "dictionaryContext": "new-owner",
+            "snippets": [],
+            "dictionaryEntries": [],
+        }
+        with patch.object(self.settings, "library_snapshot", return_value=library):
+            self.host._mark_settings({"snippetContext", "dictionaryContext"})
+            self.host._flush()
+        self.assertEqual(self.messages, [{"event": "settings", "state": library}])
+
+    def test_hidden_unaccepted_drafts_still_block_update(self):
+        self.host._visible = True
+        self.host._accepted_close = False
+        self.host.hide()
+        self.assertTrue(self.host.blocks_update())
+        self.host._receive({"event": "settings-hidden"})
+        self.assertFalse(self.host.blocks_update())
+        self.assertEqual(self.bridge.surface, "idle")
+        self.host._visible = True
+        self.host._accepted_close = False
+        self.assertTrue(self.host.blocks_update())
+        self.assertTrue(self.host._visible)
+        self.messages.clear()
+        self.host._receive({"event": "settings-hidden"})
+        self.assertFalse(
+            any(message.get("window") == "settings-hide" for message in self.messages)
+        )
+
+    def test_history_stamp_refresh_does_not_read_full_settings_library(self):
+        self.host._ready = True
+        self.host._visible = True
+        self.host._workflow_dirty = False
+        self.host._last_settings = {
+            "historyState": {"context": "owner", "revision": "old"}
+        }
+        revision = {"context": "owner", "revision": "new"}
+        view = SimpleNamespace(snapshot=lambda: revision)
+        with (
+            patch.object(self.settings, "_history_view", view),
+            patch.object(self.settings, "library_snapshot", side_effect=AssertionError),
+        ):
+            self.host._check_history()
+            self.host._flush()
+        self.assertEqual(
+            self.messages, [{"event": "settings", "state": {"historyState": revision}}]
+        )
+
+    def test_settings_channel_reuses_strict_existing_allowlist(self):
+        self.host._receive(
+            {"id": 7, "channel": "settings", "method": "repositories", "args": []}
+        )
+        self.assertIn("error", self.messages[-1])
+        self.host._receive(
+            {"id": 8, "channel": "untrusted", "method": "snapshot", "args": []}
+        )
+        self.assertEqual(self.messages[-1]["error"], "Unsupported desktop channel")
+
+
+if __name__ == "__main__":
+    unittest.main()

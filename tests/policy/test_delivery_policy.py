@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from ci import impact
-from ci.tasks import JOBS, STANDARD
+from ci.tasks import JOBS, STANDARD, commands
 
 
 class DeliveryPolicyTests(unittest.TestCase):
@@ -57,6 +57,7 @@ class DeliveryPolicyTests(unittest.TestCase):
                 "qt",
                 "settings_unit",
                 "settings_browser",
+                "desktop_shell",
                 "package",
                 "server",
                 "mobile",
@@ -69,6 +70,48 @@ class DeliveryPolicyTests(unittest.TestCase):
         self.assertEqual(
             impact.select_jobs(paths), impact.select_jobs(paths[::-1] + paths)
         )
+
+    def test_electron_selection_keeps_independent_lanes_out(self):
+        renderer = {"settings_unit", "settings_browser", "desktop_shell"}
+        cases = {
+            "desktop/src/WorkflowPill.tsx": renderer,
+            "desktop/public/icon.svg": renderer,
+            "desktop/electron/main.cjs": {"desktop_shell"},
+            "desktop/electron/preload.cjs": {"desktop_shell"},
+            "desktop/scripts/package-electron.mjs": {"desktop_shell"},
+            "desktop/scripts/test-electron.mjs": {"desktop_shell"},
+            "desktop/scripts/run-electron-smoke.mjs": {"desktop_shell"},
+            "clarify/desktop/qml_electron.py": {
+                "static",
+                "python",
+                "qt",
+                "desktop_shell",
+            },
+        }
+        for path, expected in cases.items():
+            with self.subTest(path=path):
+                self.assertEqual(impact.select_jobs([path]), expected)
+        for path in (
+            "clarify/desktop/qml_app.py",
+            "clarify/desktop/qt_shell.py",
+            "tests/qt/test_electron_desktop.py",
+            "scripts/build-desktop.ps1",
+            "shared/computer_connect.json",
+            "desktop/package-lock.json",
+            "scripts/build.ps1",
+        ):
+            with self.subTest(path=path):
+                self.assertIn("desktop_shell", impact.select_jobs([path]))
+
+    def test_electron_task_uses_native_package_and_smoke_or_reports_platform_gate(self):
+        with patch("ci.tasks.sys.platform", "win32"):
+            checks = commands("desktop_shell")
+        self.assertEqual(
+            [check["argv"][-1] for check in checks],
+            ["test:electron", "build:electron", "test:electron:smoke"],
+        )
+        with patch("ci.tasks.sys.platform", "linux"):
+            self.assertIn("reason", commands("desktop_shell")[0])
 
     def test_documentation_has_only_mandatory_policy(self):
         for path in ("README.md", "mobile/README.md", "docs/release.md", "AGENTS.md"):
@@ -146,13 +189,22 @@ class DeliveryPolicyTests(unittest.TestCase):
         with patch.object(
             impact.subprocess,
             "run",
-            return_value=subprocess.CompletedProcess([], 0, b"old.py\0new name.py\0"),
+            return_value=subprocess.CompletedProcess(
+                [], 0, b"desktop/electron/old.cjs\0docs/new name.md\0"
+            ),
         ) as run:
             self.assertEqual(
                 impact.changed_paths(Path("."), "a" * 40, "b" * 40),
-                ["old.py", "new name.py"],
+                ["desktop/electron/old.cjs", "docs/new name.md"],
             )
         self.assertIn("--no-renames", run.call_args.args[0])
+        self.assertEqual(
+            impact.select_jobs(["desktop/electron/old.cjs"]), {"desktop_shell"}
+        )
+        self.assertEqual(
+            impact.select_jobs(["desktop/electron/old.cjs", "docs/new name.md"]),
+            {"desktop_shell"},
+        )
 
     def test_uncertain_native_projection_retains_native_tests(self):
         with patch.object(impact.subprocess, "run", side_effect=OSError("unavailable")):
@@ -255,7 +307,7 @@ class NativeCatalogSelectionTests(unittest.TestCase):
         shared = self.root / "shared"
         shared.mkdir()
         catalog = {
-            "Shared": {"pt": "Comum", "en": "Shared", "es": "Común"},
+            "Shared": {"pt": "Comum", "en": "Shared", "es": "ComÃƒÂºn"},
             "Desktop": {"pt": "Desktop", "en": "Desktop", "es": "Desktop"},
         }
         path = shared / "ui_strings.json"
@@ -276,6 +328,7 @@ class NativeCatalogSelectionTests(unittest.TestCase):
                 "qt",
                 "settings_unit",
                 "settings_browser",
+                "desktop_shell",
                 "package",
                 "server",
                 "mobile",
@@ -286,7 +339,7 @@ class NativeCatalogSelectionTests(unittest.TestCase):
         shared = self.root / "shared"
         shared.mkdir()
         catalog = {
-            "Shared": {"pt": "Comum", "en": "Shared", "es": "Común"},
+            "Shared": {"pt": "Comum", "en": "Shared", "es": "ComÃƒÂºn"},
             "Desktop": {"pt": "Desktop", "en": "Desktop", "es": "Desktop"},
         }
         path = shared / "ui_strings.json"
@@ -299,7 +352,7 @@ class NativeCatalogSelectionTests(unittest.TestCase):
                 catalog[source] = {"pt": "Novo", "en": "New", "es": "Nuevo"}
                 path.write_text(json.dumps(catalog), encoding="utf-8")
                 self.assertIn("ios", self.select(self.commit()))
-        catalog["Shared"] = {"pt": "Comum", "en": "Shared", "es": "Común"}
+        catalog["Shared"] = {"pt": "Comum", "en": "Shared", "es": "ComÃƒÂºn"}
         del catalog["New"]
         catalog["Desktop"]["en"] = "Desktop settings"
         path.write_text(json.dumps(catalog), encoding="utf-8")

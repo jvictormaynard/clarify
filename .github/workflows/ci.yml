@@ -23,6 +23,7 @@ jobs:
       qt: ${{ steps.plan.outputs.qt }}
       settings_unit: ${{ steps.plan.outputs.settings_unit }}
       settings_browser: ${{ steps.plan.outputs.settings_browser }}
+      desktop_shell: ${{ steps.plan.outputs.desktop_shell }}
       package: ${{ steps.plan.outputs.package }}
       installer: ${{ steps.plan.outputs.installer }}
       server: ${{ steps.plan.outputs.server }}
@@ -189,6 +190,41 @@ jobs:
         with:
           python: ${{ env.pythonLocation }}/bin/python
           native: "false"
+  desktop_shell:
+    name: Windows Electron package and native smoke
+    needs: plan
+    if: needs.plan.outputs.desktop_shell == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QT_QUICK_CONTROLS_STYLE: Basic
+      CLARIFY_TEST_ARTIFACTS_DIR: ${{ runner.temp }}/clarify-electron-evidence
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/python-env
+        with:
+          platform: windows
+          qt: "true"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: ./.github/actions/electron-runtime-cache
+      - run: npm ci --no-fund
+        working-directory: desktop
+      - run: python scripts/ci.py --task desktop_shell
+      - name: Retain Electron native evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: Electron-native-${{ github.sha }}
+          path: ${{ runner.temp }}/clarify-electron-evidence/
+          if-no-files-found: warn
+          retention-days: 7
   server:
     name: server validation
     needs: plan
@@ -267,13 +303,13 @@ jobs:
           test: "false"
       - name: Build portable executable
         shell: pwsh
-        run: .\scripts\build.ps1 -SettingsExecutable dist\clarify-settings.exe
+        run: .\scripts\build.ps1 -DesktopShellDirectory dist\desktop-shell
       - name: Build installer baseline only when required
         if: ${{ (needs.plan.outputs.installer == 'true') }}
         shell: pwsh
         run: |
           .\scripts\build.ps1 `
-            -SettingsExecutable dist\clarify-settings.exe `
+            -DesktopShellDirectory dist\desktop-shell `
             -OutputDirectory dist\baseline `
             -PayloadIdentity baseline-msi-0.1.1
           $baselineHash = (Get-FileHash dist\baseline\Clarify.exe -Algorithm SHA256).Hash
@@ -295,13 +331,27 @@ jobs:
             $process = Start-Process -FilePath $executable `
               -ArgumentList @('--hidden') -WindowStyle Hidden -PassThru
             try {
-              Start-Sleep -Seconds 5
-              if ($process.HasExited) {
-                throw "Packaged QML entrypoint exited during hidden launch (exit code $($process.ExitCode))."
-              }
+              $deadline = [DateTime]::UtcNow.AddSeconds(90)
+              $frontend = $null
+              do {
+                if ($process.HasExited) { throw 'Packaged engine exited before starting Electron.' }
+                $snapshot = @(Get-CimInstance Win32_Process)
+                $parents = @($process.Id)
+                $owned = @()
+                while ($parents.Count -gt 0) {
+                  $children = @($snapshot | Where-Object { $_.ParentProcessId -in $parents })
+                  $owned += $children
+                  $parents = @($children | Select-Object -ExpandProperty ProcessId)
+                }
+                $frontend = $owned | Where-Object { $_.Name -eq 'Clarify Desktop.exe' -and $_.ExecutablePath -like '*\desktop-shell\Clarify Desktop.exe' } | Select-Object -First 1
+                if (-not $frontend) { Start-Sleep -Milliseconds 500 }
+              } while (-not $frontend -and [DateTime]::UtcNow -lt $deadline)
+              if (-not $frontend) { throw 'Portable executable did not start its embedded Electron shell.' }
+              Write-Host 'PASS: packaged engine started its embedded Electron shell.'
             } finally {
               if (-not $process.HasExited) {
-                Stop-Process -Id $process.Id -Force
+                $stop = Start-Process -FilePath taskkill.exe -ArgumentList @('/PID', $process.Id, '/T', '/F') -WindowStyle Hidden -Wait -PassThru
+                if ($stop.ExitCode -ne 0 -and -not $process.HasExited) { throw 'Packaged smoke cleanup failed.' }
               }
             }
           } finally {
@@ -377,7 +427,7 @@ jobs:
   required:
     name: CI required
     if: always()
-    needs: [plan, policy, static, python, qt, settings_unit, settings_browser, package, installer, server, mobile, ios, audit]
+    needs: [plan, policy, static, python, qt, settings_unit, settings_browser, desktop_shell, package, installer, server, mobile, ios, audit]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

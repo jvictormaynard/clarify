@@ -1,3 +1,4 @@
+import { electron } from "../platform";
 import { t, setUiLanguage } from "../i18n";
 import {
   useCallback, useEffect, useMemo, useRef, useState,
@@ -402,8 +403,9 @@ export function useSettings() {
         try {
           if (!current.current) {
             await settingsTransaction(async call => {
-              await call("snapshot");
+              const initial = await call("snapshot");
               if (!live) return;
+              acceptState(initial);
               await call("selectWorkflow", "transcription");
               if (!live) return;
               const snapshot = await call("loadRouteModels");
@@ -414,7 +416,7 @@ export function useSettings() {
             const snapshot = await call("snapshot");
             if (live) acceptState(snapshot);
             needsSnapshot = false;
-          } else {
+          } else if (!electron()) {
             const delta = await pollSettings();
             if (live) acceptState(delta);
           }
@@ -423,16 +425,21 @@ export function useSettings() {
           if (live) setError(String(e));
         } finally { pending.current -= 1; }
       }
-      if (live) timer = setTimeout(refresh, current.current?.microphoneTestBusy ? 100 : 1000);
+      if (live && (!electron() || needsSnapshot || !current.current)) timer = setTimeout(refresh, current.current?.microphoneTestBusy ? 100 : 1000);
     };
     const visibility = () => {
       if (document.hidden && current.current?.hotkeyCaptureAction && !actionsCaptureRef.current) void run("cancelHotkeyCapture");
       if (document.hidden && current.current?.microphoneTestBusy) void run("stopMicrophoneTest");
     };
+    const unsubscribe = electron()?.subscribe(message => {
+      if (live && current.current && message.event === "settings") acceptState(message.state as Partial<Settings>);
+    });
+    void electron()?.ready();
     document.addEventListener("visibilitychange", visibility);
     void refresh();
     return () => {
       live = false;
+      unsubscribe?.();
       lifetime.current += 1;
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", visibility);

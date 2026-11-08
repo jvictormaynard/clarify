@@ -51,6 +51,9 @@ def isolated_environment():
         )
         environment["CLARIFY_DATA_DIR"] = str(Path(directory) / "Clarify")
         environment["CLARIFY_SKIP_DOTENV"] = "1"
+        environment["PSModuleAnalysisCachePath"] = str(
+            Path(directory) / "powershell-module-cache"
+        )
         environment.setdefault("QT_QPA_PLATFORM", "offscreen")
         environment["QT_QUICK_CONTROLS_STYLE"] = "Basic"
         with patch.dict(os.environ, environment, clear=True):
