@@ -1,9 +1,9 @@
 {
   "schema": 2,
   "component": "desktop",
-  "version": "0.16.0",
-  "base_sha": "3add01594e5d672a4bb8e5aee1bae6fe061b0550",
-  "notes": "Desktop release after the reviewed dependency integration. Includes After dictation choices, general writing style, independent output language, shared prompt corrections, centered onboarding and the bundled Electron Settings/pill. Exact preparation-merge main CI, immutable stable candidate, Windows acceptance of its final digest and explicit publication remain required. No iOS signing or App Store publication is included.",
+  "version": "0.16.1",
+  "base_sha": "bc6aa82d9db8aacc0093a25a0e3b2729fe7712c6",
+  "notes": "Replacement desktop candidate after the immutable v0.16.0 build failed during Settings fixture startup before packaging/signing/sealing. Preserve that tag and failed run. Includes the reviewed desktop scope and dependency integration plus current main mobile catalog barrier. The Windows fixture startup cause remains unconfirmed; all checks stay enabled. Require exact preparation-merge canonical CI, one immutable stable candidate, native Windows acceptance of its digest and explicit publication. No iOS upload or App Store publication is included.",
   "evidence": {
     "report_url": "https://github.com/jvictormaynard/clarify/issues/279"
   }
