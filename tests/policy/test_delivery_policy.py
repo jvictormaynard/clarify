@@ -104,14 +104,34 @@ class DeliveryPolicyTests(unittest.TestCase):
                 self.assertIn("desktop_shell", impact.select_jobs([path]))
 
     def test_electron_task_uses_native_package_and_smoke_or_reports_platform_gate(self):
-        with patch("ci.tasks.sys.platform", "win32"):
-            checks = commands("desktop_shell")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            node = str(root / "node.exe")
+            npm = root / "npm.cmd"
+            cli = root / "node_modules/npm/bin/npm-cli.js"
+            cli.parent.mkdir(parents=True)
+            cli.touch()
+            # Do not let the simulated platform change shutil's host lookup.
+            with (
+                patch("ci.tasks.sys.platform", "win32"),
+                patch(
+                    "ci.tasks.shutil.which",
+                    side_effect={"node": node, "npm": str(npm)}.get,
+                ),
+            ):
+                checks = commands("desktop_shell")
+            for check in checks:
+                self.assertEqual(check["argv"][:3], [node, str(cli), "run"])
         self.assertEqual(
             [check["argv"][-1] for check in checks],
             ["test:electron", "build:electron", "test:electron:smoke"],
         )
-        with patch("ci.tasks.sys.platform", "linux"):
+        with (
+            patch("ci.tasks.sys.platform", "linux"),
+            patch("ci.tasks.shutil.which") as lookup,
+        ):
             self.assertIn("reason", commands("desktop_shell")[0])
+            lookup.assert_not_called()
 
     def test_documentation_has_only_mandatory_policy(self):
         for path in ("README.md", "mobile/README.md", "docs/release.md", "AGENTS.md"):
