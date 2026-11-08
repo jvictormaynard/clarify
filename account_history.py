@@ -8,6 +8,7 @@ No network or profile access occurs at import time.
 from __future__ import annotations
 
 from dataclasses import replace
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -85,6 +86,44 @@ class AccountHistory:
         self._sync_lock = threading.Lock()
         self._last_attempt = {}
         self._retry_after = {}
+
+    @contextmanager
+    def read_guard(self):
+        """Pin account and local cache state through reads and clipboard effects."""
+        with self.account.snapshot_guard(), self._lock, self.local.snapshot_guard():
+            yield
+
+    def snapshot_stamp(self, salt):
+        """Only stat files; regular Settings polling never parses transcripts."""
+        account = self.account
+        with account.snapshot_guard():
+            owner = account.history_identity()
+            identity = [salt, account.context_stamp(), repr(owner)]
+            context = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
+            paths = [self.local.path]
+            if owner:
+                paths.append(self._path(owner))
+            stamps = []
+            for path in paths:
+                try:
+                    stat = path.stat()
+                    stamps.append(
+                        [
+                            stat.st_mtime_ns,
+                            stat.st_ctime_ns,
+                            stat.st_size,
+                            stat.st_dev,
+                            stat.st_ino,
+                        ]
+                    )
+                except FileNotFoundError:
+                    stamps.append(None)
+                except OSError:
+                    stamps.append("unavailable")
+            revision = hashlib.sha256(
+                (context + json.dumps(stamps)).encode()
+            ).hexdigest()
+            return {"context": context, "revision": revision}
 
     def _path(self, owner):
         key = hashlib.sha256(
@@ -171,7 +210,7 @@ class AccountHistory:
     ):
         # Hold the account lock through persistence so sign-out cannot turn an
         # account result into a guest result or race account-cache deletion.
-        with self.account._lock, self._lock:
+        with self.account.snapshot_guard(), self._lock:
             if owner is None or owner != self.account.history_identity():
                 return False
             record = replace(record, source_device="desktop")
@@ -190,7 +229,7 @@ class AccountHistory:
             return True
 
     def list_items(self, *, display=False):
-        with self.account._lock, self._lock:
+        with self.account.snapshot_guard(), self._lock:
             owner = self.account.history_identity()
             records = []
             if owner:
@@ -217,7 +256,7 @@ class AccountHistory:
         return [record for _, record in self.list_items()]
 
     def delete(self, item_id):
-        with self.account._lock, self._lock:
+        with self.account.snapshot_guard(), self._lock:
             if item_id.startswith("local:"):
                 self.local.delete(item_id.removeprefix("local:"))
                 return
@@ -236,7 +275,7 @@ class AccountHistory:
             self._save(owner, state)
 
     def clear(self):
-        with self.account._lock, self._lock:
+        with self.account.snapshot_guard(), self._lock:
             owner = self.account.history_identity()
             if owner:
                 state = self._read(owner)
@@ -327,7 +366,7 @@ class AccountHistory:
                 return
             self._last_attempt[key] = now
             for _ in range(MAX_BURST):
-                with self.account._lock, self._lock:
+                with self.account.snapshot_guard(), self._lock:
                     if owner != self.account.history_identity():
                         raise AccountError("A conta mudou. O resultado foi descartado.")
                     batch = self._batch(self._read(owner))
@@ -337,7 +376,7 @@ class AccountHistory:
                 if code != 200:
                     raise AccountError("Não foi possível sincronizar o histórico.")
                 cursor, entries, deleted = self._page(result, batch["cursor"])
-                with self.account._lock, self._lock:
+                with self.account.snapshot_guard(), self._lock:
                     if owner != self.account.history_identity():
                         raise AccountError("A conta mudou. O resultado foi descartado.")
                     state = self._read(owner)

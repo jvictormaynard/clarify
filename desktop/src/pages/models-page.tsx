@@ -12,7 +12,7 @@ import {
 } from "../components/ui";
 import { Check, LoaderCircle, Download } from "lucide-react";
 import { ChatGPTPlan } from "../components/chatgpt-plan";
-import { profileName } from "../settings/use-text-profile-editor";
+import { profileName } from "../settings/display-labels";
 
 export function ModelsPage({ controller }: SettingsPageProps) {
   const {

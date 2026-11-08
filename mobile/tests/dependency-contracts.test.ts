@@ -5,13 +5,15 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 
 const require = createRequire(import.meta.url);
+const expoRequire = createRequire(require.resolve('expo/package.json'));
+const cliRoot = dirname(expoRequire.resolve('@expo/cli/package.json'));
+const cliRequire = createRequire(join(cliRoot, 'package.json'));
 const { getStateFromPath } = require('expo-router/build/react-navigation/core/getStateFromPath');
 const { getPathFromState } = require('expo-router/build/react-navigation/core/getPathFromState');
 const linking = { screens: { Action: 'actions' } };
 
 function cliModule(name: string) {
-  const root = dirname(require.resolve('@expo/cli/package.json'));
-  return require(join(root, 'build/src/start/server', name));
+  return cliRequire(join(cliRoot, 'build/src/start/server', name));
 }
 
 test('Router preserves Unicode, spaces, percent signs and repeated query parameters', () => {
@@ -39,18 +41,19 @@ test('Router decoding has a bounded response for many malformed percent runs', (
   assert.equal(result.status, 0, result.stderr);
 });
 
-test('Expo validates plugin inputs and outputs with the patched Zod dependency', () => {
-  const { PluginSchema, DevToolsPluginOutputSchema } = cliModule('DevToolsPlugin.schema.js');
+test('Expo validates plugin inputs and outputs with its schema validator', () => {
+  const { PluginSchema, DevToolsPluginOutputSchema } = cliModule('devtools/DevToolsPlugin.schema.js');
+  const { validate } = cliRequire('@expo/schema-utils');
   const plugin = { packageName: 'offline-test', packageRoot: '/fixture' };
-  assert.equal(PluginSchema.safeParse(plugin).success, true);
-  assert.equal(PluginSchema.safeParse({ ...plugin, packageName: 42 }).success, false);
-  assert.equal(DevToolsPluginOutputSchema.safeParse([{ type: 'text', text: 'offline', level: 'info' }]).success, true);
-  assert.equal(DevToolsPluginOutputSchema.safeParse([{ type: 'image', url: false }]).success, false);
+  assert.doesNotThrow(() => validate(PluginSchema, plugin));
+  assert.throws(() => validate(PluginSchema, { ...plugin, packageName: 42 }));
+  assert.doesNotThrow(() => validate(DevToolsPluginOutputSchema, [{ type: 'text', text: 'offline', level: 'info' }]));
+  assert.throws(() => validate(DevToolsPluginOutputSchema, [{ type: 'image', url: false }]));
 });
 
 test('Expo MCP advertises complete command schemas without starting a tunnel', async () => {
   const { TunnelMcpServerProxy } = await import('@expo/mcp-tunnel');
-  const { addMcpCapabilities } = cliModule('MCPDevToolsPluginCLIExtensions.js');
+  const { addMcpCapabilities } = cliModule('mcp/MCPDevToolsPluginCLIExtensions.js');
   const proxy = new TunnelMcpServerProxy('ws://127.0.0.1:1', {
     projectRoot: '/fixture', devServerUrl: 'http://127.0.0.1:1',
   });
@@ -66,7 +69,7 @@ test('Expo MCP advertises complete command schemas without starting a tunnel', a
     ] },
   };
   try {
-    await addMcpCapabilities(proxy, { devtoolsPluginManager: { queryPluginsAsync: async () => [plugin] } });
+    await addMcpCapabilities(proxy, { devtoolsPluginManager: { queryPluginsAsync: async () => [plugin] } }, require('zod').z);
     const tool = proxy.getRegisteredTools().get('offline-test');
     assert.ok(tool);
     const schema = tool.inputSchema as { required: string[]; properties: Record<string, any> };

@@ -13,4 +13,4 @@ Keep the experiment separate from production, with fake providers, in-memory sta
 
 Optimize for a quick, observable answer. Add only the checks needed to trust the experiment. Show relevant state and failure cases. Record the result and its limitations; transfer the validated decision into product code only within authorized implementation.
 
-Keep or remove the experiment according to the user's request and its value as evidence. Do not create a branch, commit, or publish an issue just to archive it.
+Keep temporary experiments outside the worktree under [file retention](../../../docs/agents/workflow.md#files-and-evidence). A requested repository prototype still follows isolation and review rules. Transfer only a proven product change or a fixture with a distinct regression purpose into the delivered diff; evidence alone does not justify keeping the harness.

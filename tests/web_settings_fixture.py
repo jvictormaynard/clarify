@@ -156,6 +156,13 @@ class OnboardingAccount:
     def snapshot(self):
         return dict(self.state)
 
+    def snapshot_guard(self):
+        return self._lock
+
+    def context_stamp(self):
+        with self._lock:
+            return self._generation, "", self.state.get("endpoint", "")
+
     @property
     def hosted(self):
         return self.state.get("hosted", False)
@@ -201,7 +208,9 @@ class OnboardingAccount:
         self._action_library = {"revision": expected_revision + 1, "actions": values}
         return self.text_actions()
 
-    def execute_text_action(self, snapshot, text, language, *, cancel=None):
+    def execute_text_action(
+        self, snapshot, text, language, *, cancel=None, output_language=None
+    ):
         return f"Preview ({language}): {text}"
 
     def begin_change(self):
@@ -302,6 +311,13 @@ class Dispatcher(QObject):
 
     @Slot(object)
     def dispatch(self, request):
+        if request.get("method") == "nativePillInput":
+            from tests.support.electron_native_input import native_pill_input
+
+            emit_fixture(
+                {"id": request["id"], "result": native_pill_input(request["args"][0])}
+            )
+            return
         if request.get("method") == "quit":
             QCoreApplication.quit()
             return
@@ -464,6 +480,7 @@ def main():
                     openai=replace(config.openai, api_key="fixture-only"),
                 )
             )
+            settings._replace_loaded_config(repositories.config.load())
             registry = Mock(spec=ProviderRegistry)
             registry.describe.side_effect = PROVIDER_REGISTRY.describe
             registry.connection_for_route.side_effect = (

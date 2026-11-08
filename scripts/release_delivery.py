@@ -362,6 +362,59 @@ def validate_run(api, run, expected_sha=None):
     return source
 
 
+def internal_ci_proof(api, run, source):
+    """Bind internal reuse to successful installed coverage in one CI attempt."""
+    validate_run(api, run, source)
+    attempt = int(run.get("run_attempt", 1))
+    jobs = api.pages(f"/actions/runs/{int(run['id'])}/attempts/{attempt}/jobs", "jobs")
+    coverage = {
+        "Mobile checks": ["Check Expo configuration"],
+        "ios validation / Native keyboard and library tests": [
+            "Test Swift contracts",
+            "Test native keyboard and library integration",
+            "Test installed keyboard typing and activation",
+        ],
+        "CI required": [],
+    }
+    evidence = []
+    for name, steps in coverage.items():
+        matches = [job for job in jobs if job.get("name") == name]
+        require(
+            len(matches) == 1, "Internal CI proof job missing or duplicated: " + name
+        )
+        job = matches[0]
+        require(
+            job.get("status") == "completed" and job.get("conclusion") == "success",
+            "Internal CI proof job is not green: " + name,
+        )
+        for step_name in steps:
+            found = [
+                step for step in job.get("steps", []) if step.get("name") == step_name
+            ]
+            require(
+                len(found) == 1
+                and found[0].get("status") == "completed"
+                and found[0].get("conclusion") == "success",
+                "Internal CI proof step is not green: " + step_name,
+            )
+        evidence.append({"job_id": job["id"], "name": name, "steps": steps})
+    current = api.request("GET", f"/actions/runs/{int(run['id'])}")
+    require(
+        current.get("id") == run["id"]
+        and int(current.get("run_attempt", 1)) == attempt,
+        "Internal CI proof attempt changed during verification",
+    )
+    validate_run(api, current, source)
+    return {
+        "source": source,
+        "run_id": run["id"],
+        "attempt": attempt,
+        "workflow": CI_PATH,
+        "jobs": evidence,
+        "internalManualReturn": True,
+    }
+
+
 def intent_at(api, source):
     data = api.file(INTENT, source, missing=True)
     return None if data is None else validate_intent(decode(data))
@@ -677,7 +730,7 @@ def promote(api, event):
     return "dispatched"
 
 
-def verify_source(api, component, source, tag):
+def verify_source(api, component, source, tag, *, reuse_proof=None):
     """Authorize tested source through the reviewed intent and canonical CI gate."""
     sha(source)
     intent = intent_at(api, source)
@@ -702,16 +755,27 @@ def verify_source(api, component, source, tag):
     run = max(runs, key=lambda item: (item["id"], item.get("run_attempt", 1)))
     validate_run(api, run, source)
     check_jobs(api, run["id"], component)
+    if reuse_proof is not None:
+        require(component == "mobile", "CI reuse is only for internal TestFlight")
+        reuse_proof.update(internal_ci_proof(api, run, source))
     return intent
 
 
 def verify_publication(
-    api, component, source, tag, run_id, run_attempt=1, *, availability_only=False
+    api,
+    component,
+    source,
+    tag,
+    run_id,
+    run_attempt=1,
+    *,
+    availability_only=False,
+    reuse_proof=None,
 ):
     require(
         component == "mobile", "Desktop publication requires an authenticated candidate"
     )
-    intent = verify_source(api, component, source, tag)
+    intent = verify_source(api, component, source, tag, reuse_proof=reuse_proof)
     if availability_only:
         require(component == "mobile", "Availability mode is only for TestFlight")
         return "availability"
@@ -904,7 +968,9 @@ def main():
     parser.add_argument("--tag")
     parser.add_argument("--output")
     parser.add_argument("--availability-only", action="store_true")
+    parser.add_argument("--reuse-internal-ci", action="store_true")
     args = parser.parse_args()
+    reuse_proof = {} if args.reuse_internal_ci else None
     try:
         if args.command == "preview-build":
             require(
@@ -980,11 +1046,22 @@ def main():
                 os.environ["GITHUB_RUN_ID"],
                 int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")),
                 availability_only=args.availability_only,
+                reuse_proof=reuse_proof,
             )
+        if reuse_proof is not None:
+            require(
+                bool(reuse_proof) and bool(args.output),
+                "Missing internal CI proof output",
+            )
+            path = Path(args.output)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(reuse_proof, indent=2) + "\n", encoding="utf-8")
         print(result)
         if os.environ.get("GITHUB_OUTPUT"):
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                 output.write("result=" + result + "\n")
+                if reuse_proof:
+                    output.write("reuse_ci=true\n")
     except (ReleaseError, KeyError, TypeError, ValueError, OSError) as error:
         # Source documents and HTTP bodies may contain credentials. Do not echo them.
         print(

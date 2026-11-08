@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 import threading
 import uuid
@@ -24,35 +22,7 @@ class HistoryView:
 
     def snapshot(self):
         """Only stat files; regular Settings polling never parses transcripts."""
-        account = self.history.account
-        with account._lock:
-            owner = account.history_identity()
-            identity = [self._salt, account._generation, repr(owner)]
-            context = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
-            paths = [self.history.local.path]
-            if owner:
-                paths.append(self.history._path(owner))
-            stamps = []
-            for path in paths:
-                try:
-                    stat = path.stat()
-                    stamps.append(
-                        [
-                            stat.st_mtime_ns,
-                            stat.st_ctime_ns,
-                            stat.st_size,
-                            stat.st_dev,
-                            stat.st_ino,
-                        ]
-                    )
-                except FileNotFoundError:
-                    stamps.append(None)
-                except OSError:
-                    stamps.append("unavailable")
-            revision = hashlib.sha256(
-                (context + json.dumps(stamps)).encode()
-            ).hexdigest()
-            return {"context": context, "revision": revision}
+        return self.history.snapshot_stamp(self._salt)
 
     def _check(self, context):
         if not isinstance(context, str) or not _HEX.fullmatch(context):
@@ -81,10 +51,9 @@ class HistoryView:
             raise ValueError("Invalid history query")
         query = query.strip().casefold()
         with (
-            self.history.account._lock,
+            self.history.account.snapshot_guard(),
             self._lock,
-            self.history._lock,
-            self.history.local._lock,
+            self.history.read_guard(),
         ):
             current = self._check(context)
             key = (current["context"], current["revision"])
@@ -180,10 +149,9 @@ class HistoryView:
         if type(offset) is not int or offset < 0 or field not in ("text", "transcript"):
             raise ValueError("Invalid history text request")
         with (
-            self.history.account._lock,
+            self.history.account.snapshot_guard(),
             self._lock,
-            self.history._lock,
-            self.history.local._lock,
+            self.history.read_guard(),
         ):
             item_id, record = self._resolve(context, token)
             text = self._text(record, field)
@@ -210,10 +178,9 @@ class HistoryView:
         The injected writer keeps tests away from the real clipboard.
         """
         with (
-            self.history.account._lock,
+            self.history.account.snapshot_guard(),
             self._lock,
-            self.history._lock,
-            self.history.local._lock,
+            self.history.read_guard(),
         ):
             _, record = self._resolve(context, token)
             if revision != self._key[1]:
@@ -222,11 +189,11 @@ class HistoryView:
             return {"context": context, "revision": revision, "id": token}
 
     def delete(self, context, token):
-        with self.history.account._lock, self._lock:
+        with self.history.account.snapshot_guard(), self._lock:
             item_id, _ = self._resolve(context, token)
             self.history.delete(item_id)
 
     def clear(self, context):
-        with self.history.account._lock, self._lock:
+        with self.history.account.snapshot_guard(), self._lock:
             self._check(context)
             self.history.clear()

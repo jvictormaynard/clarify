@@ -211,6 +211,24 @@ that identity. Signed TestFlight dispatch uses the tag, exact SHA and
 cannot install signing credentials, archive a production IPA or upload it.
 Direct Xcode remains the signing owner. Validation is the default.
 
+For an explicitly authorized internal test, `internal_testing=true` reuses the
+successful canonical main CI at the exact source SHA. The gate requires a
+completed successful CI attempt, its required aggregate, Expo Doctor and native
+steps, including the installed-keyboard fixture with two fresh activation
+attempts. Old CI without that installed coverage, missing steps, skipped tests
+and failed runs cannot authorize reuse. The upload retains a receipt with the
+source, CI run, attempt and job IDs. It omits repeated JavaScript, Expo Doctor,
+Swift, UIKit and installed tests, and the full app UI run. Ordinary CI retains
+both app profiles and the unsigned build. Dependency installation and patches,
+prebuild, Pods, native source verification, signing, IPA verification, upload
+history guards, Apple availability checks and candidate sealing still run. The
+retained testing-scope receipt records incomplete full app acceptance; this mode
+does not establish App Store acceptance. The known automatic-return defect is
+explicitly retained: when the origin is `unknown`, the test requires a consumed
+nonce, a failed automatic return and the visible container before switching apps
+manually. Other failures still fail delivery. The default upload keeps both
+automatic-return assertions and all tests.
+
 The TestFlight run verifies the signed IPA and both extensions, uploads that
 exact IPA, verifies Apple processing and existing internal-group availability,
 then seals `verification.json`, confirmed `upload-receipt.json`, availability

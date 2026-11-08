@@ -8,6 +8,7 @@ function commands(python, node = process.execPath, root = path.resolve(__dirname
   return [
     [python, '../scripts/sync_locales.py', '--check'],
     [python, 'scripts/sync-prompts.py', '--check'],
+    [python, '../scripts/sync_processing_contract.py', '--check'],
     [node, 'node_modules/typescript/bin/tsc', '--noEmit'],
     [node, 'node_modules/expo/bin/cli', 'lint'],
     [node, '--experimental-strip-types', '--test', ...tests.map(name => `tests/${name}`)],

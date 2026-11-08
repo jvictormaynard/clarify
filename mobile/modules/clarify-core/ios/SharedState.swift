@@ -9,28 +9,32 @@ struct OutputPreferences: Codable, Equatable {
   var snapshot: [String: String] { ["language": language.rawValue, "style": style.rawValue] }
   func requestFields(supported: Bool, dictation: Bool) throws -> [String: String] {
     var fields: [String: String] = [:]
-    if dictation, language != .auto { fields["output_language"] = language.rawValue }
+    if dictation, supported || language != .auto { fields["output_language"] = language.rawValue }
     if style != .default { fields["writing_style"] = style.rawValue }
-    guard fields.isEmpty || supported else {
+    guard supported || (fields.isEmpty && (dictation || language == .auto)) else {
       throw ClarifyError(L("Atualize o serviço para usar estas preferências de saída."), code: "output_preferences_unsupported")
     }
     return fields
   }
-  func applied(in raw: [String: Any], dictation: Bool) -> Bool {
-    let explicit = (dictation && language != .auto ? [("output_language", language.rawValue)] : []) +
+  func applied(in raw: [String: Any], dictation: Bool, requireOriginalConfirmation: Bool = false) -> Bool {
+    let checksLanguage = language != .auto || (dictation && requireOriginalConfirmation)
+    let explicit = (checksLanguage ? [("output_language", language.rawValue)] : []) +
       (style != .default ? [("writing_style", style.rawValue)] : [])
     if explicit.contains(where: { raw[$0.0 + "_status"] as? String == "standalone" }) {
       return dictation && raw["rewritten"] as? Bool == false && explicit.allSatisfy {
         raw[$0.0 + "_requested"] as? String == $0.1 && raw[$0.0 + "_status"] as? String == "standalone" &&
-          (raw[$0.0 + "_applied"] == nil || raw[$0.0 + "_applied"] is NSNull)
+          (raw[$0.0 + "_applied"] is NSNull || (!requireOriginalConfirmation && raw[$0.0 + "_applied"] == nil))
       }
     }
     func applied(_ prefix: String, _ requested: String) -> Bool {
       guard raw[prefix + "_requested"] as? String == requested else { return false }
       let status = raw[prefix + "_status"] as? String
+      if prefix == "output_language", requested == "auto" {
+        return status == "unchanged" && raw[prefix + "_applied"] as? String == "auto"
+      }
       return status == "applied" && raw[prefix + "_applied"] as? String == requested
     }
-    return (!dictation || language == .auto || applied("output_language", language.rawValue)) &&
+    return (!checksLanguage || applied("output_language", language.rawValue)) &&
       (style == .default || applied("writing_style", style.rawValue))
   }
   func hasDictationFallback(in raw: [String: Any]) -> Bool {
@@ -98,6 +102,7 @@ struct DictationSnapshot: Codable {
   var text: String?
   var message: String?
   var errorCode: String?
+  var errorRecovery: String?
   var errorPhase: String?
   var errorStatus: Int?
   var configured = false
@@ -116,7 +121,7 @@ struct DictationSnapshot: Codable {
       let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
     return text
   }
-  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, text, message, errorCode, errorPhase, errorStatus, configured, libraryRevision, computerMode, processingContext, textOperation, textActions, legacyRewriteReady, legacyTranslateReady, outputPreferencesSupported }
+  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, text, message, errorCode, errorRecovery, errorPhase, errorStatus, configured, libraryRevision, computerMode, processingContext, textOperation, textActions, legacyRewriteReady, legacyTranslateReady, outputPreferencesSupported }
   init() {}
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -127,6 +132,7 @@ struct DictationSnapshot: Codable {
     text = try values.decodeIfPresent(String.self, forKey: .text)
     message = try values.decodeIfPresent(String.self, forKey: .message)
     errorCode = try values.decodeIfPresent(String.self, forKey: .errorCode)
+    errorRecovery = try values.decodeIfPresent(String.self, forKey: .errorRecovery)
     errorPhase = try values.decodeIfPresent(String.self, forKey: .errorPhase)
     errorStatus = try values.decodeIfPresent(Int.self, forKey: .errorStatus)
     configured = try values.decode(Bool.self, forKey: .configured)
@@ -183,6 +189,12 @@ struct SharedState {
     try JSONEncoder().encode(value).write(to: root.appendingPathComponent(name), options: .atomic)
   }
   func snapshot() -> DictationSnapshot { read("state.json", as: DictationSnapshot.self) ?? DictationSnapshot() }
+  func keyboardAutocorrectEnabled() -> Bool {
+    read("keyboard-autocorrect.json", as: Bool.self) ?? false
+  }
+  func setKeyboardAutocorrectEnabled(_ enabled: Bool) throws {
+    try write(enabled, to: "keyboard-autocorrect.json")
+  }
   func outputPreferences() -> OutputPreferences {
     guard let data = try? Data(contentsOf: root.appendingPathComponent("output-preferences.json")), data.count <= 512,
       let value = try? JSONDecoder().decode(OutputPreferences.self, from: data) else { return OutputPreferences() }
@@ -208,11 +220,11 @@ struct SharedState {
     return updated
   }
   func send(_ action: String, operationID: String, context: String?, text: String? = nil, language: String? = nil,
-    actionID: String? = nil, actionRevision: String? = nil) throws {
+    actionID: String? = nil, actionRevision: String? = nil, preferences: OutputPreferences? = nil) throws {
     // The caller supplies the context that authorized this action. Reading a
     // newer snapshot here could retarget text to another processing owner.
     let command = DictationCommand(action, operationID: operationID, text: text, language: language, context: context,
-      actionID: actionID, actionRevision: actionRevision, outputPreferences: outputPreferences())
+      actionID: actionID, actionRevision: actionRevision, outputPreferences: preferences ?? outputPreferences())
     // Persist intent before command delivery. App acknowledgement, command
     // expiry and controller replacement must not restore a cancelled result.
     if action == "cancel" {

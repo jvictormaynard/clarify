@@ -11,7 +11,7 @@ const pending = new Map<number, (value: unknown) => void>();
 let releaseUsage: () => Promise<void>;
 
 test("styles: application rules persist and removal restores default", async ({ page }, testInfo) => {
-  await expect(page.getByText("Padrão para todos os aplicativos.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Todos os aplicativos usam o estilo geral.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Adicionar aplicativo", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Estilo do aplicativo", exact: true });
   await dialog.getByRole("textbox", { name: "Caminho do aplicativo", exact: true }).fill("C:\\Apps\\Editor.exe");
@@ -32,11 +32,11 @@ test("styles: application rules persist and removal restores default", async ({ 
   await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
   await page.getByRole("button", { name: "Remover regra", exact: true }).click();
   await expect(saved).toBeHidden();
-  await expect(page.getByText("Padrão para todos os aplicativos.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Todos os aplicativos usam o estilo geral.", { exact: true })).toBeVisible();
 });
 
 test("styles: preserve explains that an app rule cannot enable cloud processing", async ({ page }) => {
-  await page.getByRole("combobox", { name: "Nível de revisão", exact: true }).click();
+  await page.getByRole("combobox", { name: "Após o ditado", exact: true }).click();
   await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Estilo não aplicado nesta rota." })).toBeVisible();
 });
@@ -52,8 +52,8 @@ test("quota: styles remain configurable for managed accounts", async ({ page }) 
 });
 
 test("cleanup: levels persist across pages and explain minimal changes", async ({ page }, testInfo) => {
-  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
-  await expect(level).toContainText("Padrão atual");
+  const level = page.getByRole("combobox", { name: "Após o ditado", exact: true });
+  await expect(level).toContainText("Natural");
   await level.click();
   await page.getByRole("option", { name: "Ajustes mínimos", exact: true }).click();
   await expect(level).toContainText("Ajustes mínimos");
@@ -72,14 +72,14 @@ test("cleanup: levels persist across pages and explain minimal changes", async (
   await expect(level).toContainText("Revisar clareza");
   await page.screenshot({ path: testInfo.outputPath("dictation-cleanup.png"), fullPage: true });
   await level.click();
-  await page.getByRole("option", { name: "Padrão atual", exact: true }).click();
-  await expect(level).toContainText("Padrão atual");
+  await page.getByRole("option", { name: "Natural", exact: true }).click();
+  await expect(level).toContainText("Natural");
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
 });
 
 for (const locale of ["en", "es"] as const) {
   test(`cleanup: locale ${locale} shows honest minimal changes example`, async ({ page }) => {
-    const level = page.getByRole("combobox", { name: locale === "en" ? "Cleanup level" : "Nivel de revisión", exact: true });
+    const level = page.getByRole("combobox", { name: locale === "en" ? "After dictation" : "Después del dictado", exact: true });
     await level.click();
     await page.getByRole("option", { name: locale === "en" ? "Minimal changes" : "Ajustes mínimos", exact: true }).click();
     await expect(page.getByText(locale === "en" ? "Adjusts spaces and tabs only. Keeps hesitations, repetitions and self-corrections." : "Ajusta solo espacios y tabulaciones. Conserva vacilaciones, repeticiones y autocorrecciones.")).toBeVisible();
@@ -87,7 +87,7 @@ for (const locale of ["en", "es"] as const) {
 }
 
 test("quota: cleanup choices remain available for managed accounts", async ({ page }) => {
-  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
+  const level = page.getByRole("combobox", { name: "Após o ditado", exact: true });
   await level.click();
   await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
   await expect(level).toContainText("Preservar palavras");
@@ -99,7 +99,7 @@ test("cleanup: clarity explains when the refinement route is disabled", async ({
   await openStyleReview(page);
   await page.getByRole("switch", { name: "Ativar revisão por IA", exact: true }).click();
   await navigate(page, "Estilo");
-  const level = page.getByRole("combobox", { name: "Nível de revisão", exact: true });
+  const level = page.getByRole("combobox", { name: "Após o ditado", exact: true });
   await level.click();
   await page.getByRole("option", { name: "Revisar clareza", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Revisão indisponível nesta rota." })).toBeVisible();
@@ -366,7 +366,7 @@ test("settings organization: local cleanup setup opens and activates the local r
   const localReview = page.getByRole("switch", { name: "Ativar revisão por IA", exact: true });
   if (await localReview.isChecked()) await localReview.click();
   await expect(localReview).not.toBeChecked();
-  await page.getByRole("combobox", { name: "Nível de revisão", exact: true }).click();
+  await page.getByRole("combobox", { name: "Após o ditado", exact: true }).click();
   await page.getByRole("option", { name: "Revisar clareza", exact: true }).click();
   await page.getByRole("button", { name: "Configurar revisão", exact: true }).click();
   await openStyleReview(page);
@@ -376,7 +376,7 @@ test("settings organization: local cleanup setup opens and activates the local r
   await navigate(page, "Ditado");
   await openStyleReview(page);
   await expect(localReview).toBeChecked();
-  await expect(page.getByRole("combobox", { name: "Nível de revisão", exact: true })).toContainText("Revisar clareza");
+  await expect(page.getByRole("combobox", { name: "Após o ditado", exact: true })).toContainText("Revisar clareza");
   await expect(page.getByRole("button", { name: "Configurar revisão", exact: true })).toHaveCount(0);
 });
 

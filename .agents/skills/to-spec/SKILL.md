@@ -18,4 +18,4 @@ Include:
 
 Use actual paths as navigation pointers when helpful; do not treat line numbers as durable contracts. Keep the spec proportional to the work. A small fix can use the PR description instead of a new file.
 
-Save a requested durable local spec under `docs/agents/plans/<slug>/spec.md`. Follow [tracker rules](../../../docs/agents/issue-tracker.md) if publication was explicitly requested. Publishing is separate from writing a draft. Technical test-boundary choices do not need user approval. Do not invent acceptance criteria to fill an extensive user-story template.
+Return the spec in the conversation or an OS temporary file. Save it in the repository only when that artifact was explicitly requested; follow [file retention](../../../docs/agents/workflow.md#files-and-evidence). Follow [tracker rules](../../../docs/agents/issue-tracker.md) if publication was explicitly requested. Publishing is separate from writing a draft. Technical test-boundary choices do not need user approval. Do not invent acceptance criteria to fill an extensive user-story template.

@@ -36,8 +36,8 @@ contributions do not need a native Windows build or an Apple account.
 
 ### Settings design or web behavior
 
-Use Python 3.12 and Node.js 22. Rust, Visual Studio and WebView2 are needed only
-for native Settings builds. On Windows, prepare the locked Python environment:
+Use Python 3.12 and Node.js 22. The default Electron shell does not need Rust
+or WebView2. On Windows, prepare the locked Python environment:
 
 ```powershell
 .\scripts\setup.ps1 -Dev
@@ -67,8 +67,8 @@ On Windows:
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
 .\scripts\setup.ps1 -Dev
-.\scripts\build-settings.ps1
-$env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
+.\scripts\build-desktop.ps1
+$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path '.\dist\desktop-shell\Clarify Desktop.exe').Path
 .\.venv\Scripts\python.exe scripts/run_tests.py -v
 .\.venv\Scripts\python.exe clarify\desktop\qml_app.py
 ```
@@ -78,9 +78,10 @@ the full Windows acceptance checklist. Read
 [docs/architecture.md](docs/architecture.md) before moving responsibilities
 between modules.
 
-Settings development needs Node.js 22, Rust MSVC, Visual Studio C++ Build Tools,
+The legacy Tauri build still needs Rust MSVC, Visual Studio C++ Build Tools,
 the Windows SDK, and WebView2. End users do not need these build tools.
-Use `desktop/src/` for Settings, `clarify/desktop/qml/` for the pill, and the
+Use `desktop/src/` for Settings and the pill, `desktop/electron/` for the window
+host, `clarify/desktop/qml/` for recovery views, and the
 root provider modules for ASR and text processing. `clarify/desktop/` contains
 the production Qt adapters. Do not add features to legacy `app.py` or the
 historical comparison tools under `spikes/`.
@@ -98,9 +99,11 @@ and integration.
 
 1. Fork the repository and create a focused branch from the default branch.
 2. Keep unrelated refactors out of the same pull request.
-3. Add or update tests when behavior changes.
-4. Update user documentation when installation, shortcuts, providers, privacy,
-   or configuration changes.
+3. Check the changed behavior. Retain only necessary regression coverage and
+   extend existing cases first; follow [test selection](docs/agents/workflow.md#tests-worth-retaining).
+4. Update user docs when how to use the product changes. Follow
+   [documentation rules](docs/agents/workflow.md#documentation-that-lasts); a cosmetic edit
+   or implementation detail does not automatically need a new test or document.
 5. Run the checks below.
 6. For native integration changes, build and test the Windows executable when
    your environment supports it. Report unavailable platform checks in the PR.
@@ -119,8 +122,9 @@ same component policy as CI and include committed and uncommitted changes.
 They do not install dependencies. Unavailable database, remote or native gates
 are reported as unexecuted, with exit code 2.
 
-PR CI selects checks from the complete diff. Main pushes run full standard
-validation; scheduled and manual runs add extended checks. No special branch prefix, label,
+PR CI selects checks from the complete diff. Main pushes require full standard
+validation, with authenticated exact-source PR evidence reuse where supported.
+Scheduled and manual runs add extended checks. No special branch prefix, label,
 paid service or secret is required. Pushes to a branch with an open PR run one
 PR workflow. Maintainers may need to approve a first-time fork's workflow run.
 
@@ -183,10 +187,17 @@ A useful pull request:
 - explains the user-visible problem and solution;
 - links the related issue when one exists;
 - lists the exact validation performed;
-- includes screenshots or a short recording for visual changes;
+- links uploaded before/after screenshots for visual changes, with a recording
+  when motion or timing matters;
 - calls out platform-specific limitations;
 - contains no secrets or personal user data;
-- keeps generated executables, `.env`, and local config files out of Git.
+- keeps generated executables, `.env`, and local config files out of Git;
+- keeps PR-only evidence, diagnostic scripts, runtime state, and planning drafts
+  outside the committed change; see [file retention](docs/agents/workflow.md#files-and-evidence).
+
+Upload visual evidence as PR attachments. If upload is unavailable, retain the
+local captures and state that limit. Do not commit them as a fallback. Shipped
+assets and images used by maintained documentation can still belong in Git.
 
 Maintainers may ask for a smaller scope when a change mixes unrelated concerns.
 Review is collaborative, and specific technical disagreement is welcome when it

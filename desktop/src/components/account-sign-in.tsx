@@ -5,12 +5,15 @@ import { Button, Field } from "./ui";
 import { ProviderBrandIcon } from "./provider-brand-icon";
 import type { Settings } from "../settings/bridge";
 
-export function AccountSignIn({ account, command, busy = false, onContinueWithoutAccount, guestVariant = "default" }: {
+export type SignInStep = "methods" | "email" | "code" | "browser";
+
+export function AccountSignIn({ account, command, busy = false, onContinueWithoutAccount, guestVariant = "default", onStepChange }: {
   account: NonNullable<Settings["accountState"]>;
   command: (action: string, value?: string) => void;
   busy?: boolean;
   onContinueWithoutAccount?: () => void;
   guestVariant?: "default" | "primary";
+  onStepChange?: (step: SignInStep) => void;
 }) {
   const [email, setEmail] = useState(account.email || "");
   const [code, setCode] = useState("");
@@ -18,6 +21,8 @@ export function AccountSignIn({ account, command, busy = false, onContinueWithou
   const emailInput = useRef<HTMLInputElement>(null);
   const emailChoice = useRef<HTMLButtonElement>(null);
   const returnToChoice = useRef(false);
+  const step: SignInStep = account.socialPending ? "browser" : account.pending ? "code" : emailEntry ? "email" : "methods";
+  useLayoutEffect(() => { onStepChange?.(step); }, [onStepChange, step]);
   useLayoutEffect(() => {
     if (account.socialPending || account.pending) return;
     if (emailEntry) emailInput.current?.focus();

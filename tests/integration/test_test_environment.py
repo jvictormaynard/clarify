@@ -18,12 +18,16 @@ class TestEnvironmentTests(unittest.TestCase):
 import importlib, os
 from pathlib import Path
 from scripts.run_tests import isolated_environment
-with isolated_environment():
-    before = {key: os.environ[key] for key in ("HOME", "APPDATA", "CLARIFY_DATA_DIR")}
+with isolated_environment() as profile:
+    before = {key: os.environ[key] for key in ("HOME", "APPDATA", "CLARIFY_DATA_DIR", "PSModuleAnalysisCachePath")}
+    cache = Path(before["PSModuleAnalysisCachePath"])
+    assert cache.parent == profile
+    cache.write_text("isolated PowerShell cache fixture")
     for module in ("tests.integration.test_repositories", "tests.compatibility.test_repositories"):
         importlib.import_module(module)
         assert {key: os.environ[key] for key in before} == before, module
     assert Path(before["HOME"]).is_dir()
+assert not cache.exists()
 """
         result = subprocess.run(
             [sys.executable, "-B", "-c", script],

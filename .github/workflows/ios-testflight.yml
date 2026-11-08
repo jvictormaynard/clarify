@@ -13,6 +13,10 @@ on:
         options: [validate, testflight, status, availability]
         default: validate
         required: true
+      internal_testing:
+        description: Internal TestFlight testing; reuse exact-source CI including installed keyboard proof
+        type: boolean
+        default: false
       extension_diagnostic:
         description: Also enforce the unresolved opening-height diagnostic (tests only)
         type: boolean
@@ -72,7 +76,7 @@ jobs:
     name: Verify the uploaded TestFlight build
     needs: release_gate
     if: >-
-      always() && github.repository == 'jvictormaynard/clarify' &&
+      !cancelled() && github.repository == 'jvictormaynard/clarify' &&
       needs.release_gate.outputs.result == 'availability'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -102,10 +106,10 @@ jobs:
     name: Test, sign and upload iOS
     needs: release_gate
     if: >-
-      always() && github.repository == 'jvictormaynard/clarify' &&
+      !cancelled() && github.repository == 'jvictormaynard/clarify' &&
       (inputs.mode == 'validate' ||
        (inputs.mode == 'testflight' && needs.release_gate.outputs.result == 'publish'))
-    runs-on: macos-26
+    runs-on: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && github.event_name == 'workflow_dispatch' && 'bitrise-runner-clarify-ios-validation' || 'macos-26' }}
     timeout-minutes: 120
     environment: ${{ inputs.mode == 'testflight' && 'ios-testflight' || 'ios-validation' }}
     defaults:
@@ -115,7 +119,7 @@ jobs:
     env:
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && github.event_name == 'workflow_dispatch' && '/Applications/Xcode-26.6.0.app/Contents/Developer' || '/Applications/Xcode_26.6.app/Contents/Developer' }}
       CLARIFY_IOS_RUNTIME: iOS-26-5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -135,16 +139,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SOURCE: ${{ inputs.source_sha }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: python3 scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
+          INTERNAL_TESTING: ${{ inputs.internal_testing }}
+        run: |
+          flags=()
+          if [ "$INTERNAL_TESTING" = true ]; then
+            flags+=(--reuse-internal-ci --output mobile/test-results/internal-ci-proof.json)
+          fi
+          python3 scripts/release_delivery.py verify --component mobile --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG" "${flags[@]}"
       - name: Verify Xcode
         run: xcodebuild -version
       - name: Install locked dependencies
         run: npm ci
       - name: Check prompts, types, lint and JavaScript contracts
-        if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
+        if: ${{ steps.resume.outputs.reuse_ci != 'true' && (inputs.mode == 'testflight' || !inputs.extension_diagnostic) }}
         run: npm run check
       - name: Check Expo configuration
-        if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
+        if: ${{ steps.resume.outputs.reuse_ci != 'true' && (inputs.mode == 'testflight' || !inputs.extension_diagnostic) }}
         run: npx --yes expo-doctor
       - name: Generate native project
         run: npx expo prebuild --clean --platform ios --no-install
@@ -153,12 +163,13 @@ jobs:
       - name: Verify patched native source targets
         run: node scripts/verify-react-native-source.cjs
       - name: Test Swift contracts
-        if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
+        if: ${{ steps.resume.outputs.reuse_ci != 'true' && (inputs.mode == 'testflight' || !inputs.extension_diagnostic) }}
         run: npm run test:native
       - name: Test first launch and navigation in the containing app
-        if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
+        if: ${{ (inputs.mode == 'testflight' && !inputs.internal_testing) || (inputs.mode == 'validate' && !inputs.extension_diagnostic) }}
         env:
           CLARIFY_APP_UI_COMPACT_ONLY: ${{ inputs.mode == 'validate' && inputs.app_ui_compact_only }}
+          CLARIFY_APP_UI_PROFILE: ${{ inputs.mode == 'validate' && inputs.app_ui_compact_only && 'compact' || 'all' }}
         run: node scripts/test-app-ui.cjs
       - name: Validate short speech with the live mobile client
         if: ${{ inputs.short_dictation_acceptance }}
@@ -171,12 +182,14 @@ jobs:
           CLARIFY_SNIPPETS_ACCEPTANCE: ${{ secrets.CLARIFY_SNIPPETS_ACCEPTANCE }}
         run: node scripts/test-snippets-acceptance.cjs
       - name: Test keyboard on iPhone simulator
-        if: ${{ inputs.mode == 'testflight' || !inputs.extension_diagnostic }}
+        if: ${{ steps.resume.outputs.reuse_ci != 'true' && (inputs.mode == 'testflight' || !inputs.extension_diagnostic) }}
         env:
           CLARIFY_NATIVE_TESTS: '1'
         run: node scripts/test-keyboard-ui.cjs
       - name: Test installed keyboard typing and activation
+        if: ${{ steps.resume.outputs.reuse_ci != 'true' }}
         env:
+          CLARIFY_INTERNAL_MANUAL_RETURN: ${{ inputs.mode == 'testflight' && inputs.internal_testing && '1' || '0' }}
           STRICT_OPENING_HEIGHT: ${{ inputs.mode == 'validate' && inputs.extension_diagnostic }}
         run: |
           if [[ "$STRICT_OPENING_HEIGHT" == 'true' ]]; then
@@ -184,6 +197,24 @@ jobs:
           else
             node scripts/test-keyboard-extension.cjs
           fi
+      - name: Record TestFlight testing scope
+        if: ${{ inputs.mode == 'testflight' }}
+        env:
+          INTERNAL_TESTING: ${{ inputs.internal_testing }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const internalTesting = process.env.INTERNAL_TESTING === 'true';
+          const completeAppAcceptance = !internalTesting &&
+            JSON.parse(fs.readFileSync('test-results/app-ui/summary.json', 'utf8')).completeAppAcceptance === true;
+          fs.writeFileSync('test-results/testflight-testing-scope.json', JSON.stringify({
+            source: process.env.GITHUB_SHA, internalTesting, completeAppAcceptance,
+            reusedCI: internalTesting ? JSON.parse(fs.readFileSync('test-results/internal-ci-proof.json', 'utf8')) : null,
+            automaticReturnAccepted: !internalTesting,
+            knownLimitations: internalTesting ? ['automatic_return_requires_manual_app_switching'] : [],
+            appStoreAcceptance: false
+          }, null, 2));
+          NODE
       - name: Preserve simulator results
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -195,6 +226,8 @@ jobs:
             !mobile/test-results/app-ui/AppFlow.xcresult/Staging/**
             mobile/test-results/installed-keyboard-*
             mobile/test-results/short-dictation-acceptance.json
+            mobile/test-results/testflight-testing-scope.json
+            mobile/test-results/internal-ci-proof.json
           if-no-files-found: ignore
           retention-days: 90
       - name: Build the containing app without signing

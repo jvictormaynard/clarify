@@ -640,16 +640,28 @@ class SnippetConcurrencyTests(TransactionTestCase):
             self.client.get("/v1/dictionary").json()["entries"][0]["term"], "Clarify"
         )
 
-    def test_account_delete_prevents_late_snippet_insertion(self):
+    def test_account_delete_prevents_late_library_insertion(self):
+        from cloud.service.models import Dictionary, SnippetLibrary
+
+        for model, path, entries in (
+            (SnippetLibrary, "/v1/snippets", [ENTRY]),
+            (Dictionary, "/v1/dictionary", [{"term": "Clarify"}]),
+        ):
+            with self.subTest(path=path):
+                self.user, self.client = client_for(
+                    path.rsplit("/", 1)[-1] + "@example.test"
+                )
+                self._assert_delete_prevents_late_insertion(model, path, entries)
+
+    def _assert_delete_prevents_late_insertion(self, model, path, entries):
         from django.db.models.query import QuerySet
-        from cloud.service.models import SnippetLibrary
 
         children_removed, release_delete, saving_started = Event(), Event(), Event()
         original = QuerySet._raw_delete
 
         def pause_after_children(query, using):
             result = original(query, using)
-            if query.model is SnippetLibrary:
+            if query.model is model:
                 children_removed.set()
                 if not release_delete.wait(timeout=5):
                     raise RuntimeError("Test deletion release timed out")
@@ -673,7 +685,7 @@ class SnippetConcurrencyTests(TransactionTestCase):
                 client.force_authenticate(self.user)
                 saving_started.set()
                 return client.put(
-                    "/v1/snippets", {"revision": 0, "entries": [ENTRY]}, format="json"
+                    path, {"revision": 0, "entries": entries}, format="json"
                 ).status_code
             finally:
                 connections.close_all()
@@ -693,4 +705,4 @@ class SnippetConcurrencyTests(TransactionTestCase):
                 release_delete.set()
             self.assertEqual(removal.result(timeout=5), 204)
             self.assertIn(saving.result(timeout=5), (401, 403))
-        self.assertFalse(SnippetLibrary.objects.filter(user_id=self.user.pk).exists())
+        self.assertFalse(model.objects.filter(user_id=self.user.pk).exists())

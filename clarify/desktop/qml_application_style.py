@@ -8,8 +8,11 @@ def style_caption(state):
         return ""
     requested = state.writing_style_requested
     if requested is None:
-        return translate("Estilo: Padrão")
+        return translate("Estilo: Natural")
     name = {
+        "formal": "Formal",
+        "casual": "Casual",
+        "very_casual": "Muito casual",
         "natural": "Natural",
         "informal": "Informal",
         "organized": "Organizado",

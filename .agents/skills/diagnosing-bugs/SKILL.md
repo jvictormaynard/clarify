@@ -15,6 +15,6 @@ Rank plausible causes by the evidence. Use as many hypotheses as the problem nee
 
 For performance work, capture a baseline and comparable inputs before the change. Report observed latency and variance; do not estimate a speedup from source inspection.
 
-Trace Qt command/state and focus paths, provider routing and transport, configuration-to-rendering paths, or recording/sidecar lifecycles as applicable. Build a regression test at the boundary that reaches the actual bug pattern, then fix it and rerun both the regression and original scenario.
+Trace Qt command/state and focus paths, provider routing and transport, configuration-to-rendering paths, or recording/sidecar lifecycles as applicable. Choose proof under [tests worth retaining](../../../docs/agents/workflow.md#tests-worth-retaining). For a logic or state bug, extend a regression at the boundary that reaches the actual pattern. For a purely visual defect, use before/after captures. Fix the cause and rerun the relevant proof and original scenario.
 
 Remove temporary instrumentation. Report the cause, the changed owner, the evidence, and any unavailable Windows acceptance. Ask for additional evidence only when it blocks a required conclusion.

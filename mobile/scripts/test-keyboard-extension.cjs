@@ -4,6 +4,9 @@ const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const strictOpeningHeight = process.argv.includes('--check-opening-height');
 const keyboardHeightDiagnostics = process.env.CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS === '1';
+const internalManualReturn = process.env.CLARIFY_INTERNAL_MANUAL_RETURN === '1';
+if (![undefined, '0', '1'].includes(process.env.CLARIFY_INTERNAL_MANUAL_RETURN)) throw new Error('Invalid manual-return test mode.');
+if (internalManualReturn && (strictOpeningHeight || keyboardHeightDiagnostics)) throw new Error('Manual return cannot be combined with diagnostics.');
 if (process.argv.slice(2).some(argument => argument !== '--check-opening-height')) throw new Error('Unknown installed keyboard test argument.');
 if (process.platform !== 'darwin') throw new Error('The installed extension diagnostic requires macOS.');
 const root = process.cwd();
@@ -85,6 +88,7 @@ try {
   if (fs.existsSync(projectFile)) fs.copyFileSync(projectFile, path.join(results, 'generated-project.pbxproj'));
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
-  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, exitCode }, null, 2));
+  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, internalManualReturn,
+    completeKeyboardAcceptance: !internalManualReturn && !strictOpeningHeight && !keyboardHeightDiagnostics && exitCode === 0, exitCode }, null, 2));
 }
 process.exitCode = exitCode;

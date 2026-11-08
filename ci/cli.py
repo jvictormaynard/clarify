@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 
-from ci import impact
+from ci import evidence, impact
 from ci.tasks import JOBS, ROOT, commands
 from scripts.run_tests import isolated_environment
 
@@ -160,6 +160,7 @@ def run_plan(plan, timeout=3600, check_timeout=1800):
             if not reason and check["component"] in {
                 "settings_unit",
                 "settings_browser",
+                "desktop_shell",
                 "mobile",
             }:
                 if any(
@@ -248,6 +249,7 @@ def main(arguments=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--github-plan", action="store_true")
     mode.add_argument("--check-results", action="store_true")
+    mode.add_argument("--emit-proof", metavar="PATH")
     mode.add_argument("--task", choices=("policy", *JOBS))
     mode.add_argument("--list-tasks", action="store_true")
     parser.add_argument("--base", default="origin/main")
@@ -263,10 +265,23 @@ def main(arguments=None):
         if args.list_tasks:
             print(json.dumps(["policy", *JOBS]))
             return 0
-        if args.check_results:
-            impact.validate_ci_results(
-                json.loads(os.environ["CI_NEEDS"], object_pairs_hook=impact.json_object)
+        if args.check_results or args.emit_proof:
+            needs = json.loads(
+                os.environ["CI_NEEDS"], object_pairs_hook=impact.json_object
             )
+            event = json.loads(
+                Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8")
+            )
+            head = git(ROOT, "rev-parse", "HEAD").decode().strip()
+            if head != os.environ["GITHUB_SHA"]:
+                raise ValueError("The checked-out source does not match the CI event")
+            if args.emit_proof:
+                evidence.emit(ROOT, os.environ, event, needs, args.emit_proof)
+            else:
+                expected = impact.event_jobs(
+                    ROOT, os.environ["GITHUB_EVENT_NAME"], event, head
+                )
+                evidence.validate(ROOT, head, expected, needs, os.environ)
             print("All selected CI jobs passed")
             return 0
         if args.github_plan:
@@ -277,16 +292,30 @@ def main(arguments=None):
             if head != os.environ["GITHUB_SHA"]:
                 raise ValueError("The checked-out source does not match the CI event")
             jobs = impact.event_jobs(ROOT, os.environ["GITHUB_EVENT_NAME"], event, head)
+            jobs, reuse = evidence.plan(ROOT, head, jobs, os.environ)
             runners = impact.runner_profile(
                 os.environ.get("CI_RUNNER_PROVIDER", "github"),
                 event.get("repository", {}).get("owner", {}).get("type", "User"),
             )
-            outputs = {**{job: str(job in jobs).lower() for job in JOBS}, **runners}
+            outputs = {
+                **{job: str(job in jobs).lower() for job in JOBS},
+                **runners,
+                "reuse": reuse,
+            }
             with Path(os.environ["GITHUB_OUTPUT"]).open(
                 "a", encoding="utf-8"
             ) as output:
                 output.writelines(f"{key}={value}\n" for key, value in outputs.items())
-            print(json.dumps({"head": head, "jobs": sorted(jobs), "runners": runners}))
+            print(
+                json.dumps(
+                    {
+                        "head": head,
+                        "jobs": sorted(jobs),
+                        "runners": runners,
+                        "reuse": reuse,
+                    }
+                )
+            )
             return 0
         if args.task:
             checks = commands(args.task)

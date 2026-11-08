@@ -1,7 +1,7 @@
 import { t } from "../i18n";
 import { useState } from "react";
 import { ArrowLeft, HardDrive, KeyRound, UserRound } from "lucide-react";
-import { AccountSignIn } from "../components/account-sign-in";
+import { AccountSignIn, type SignInStep } from "../components/account-sign-in";
 import { ClarifyLogo } from "../components/clarify-logo";
 import { Button, Field } from "../components/ui";
 import type { SettingsPageProps } from "../settings/use-settings";
@@ -11,6 +11,15 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   const account = state.accountState;
   const [step, setStep] = useState<"account" | "byok" | "local">("account");
   const [key, setKey] = useState("");
+  const [signInStep, setSignInStep] = useState<SignInStep>("methods");
+  const welcome = step === "account" && !account?.signedIn && signInStep === "methods";
+  const signInTitles: Record<SignInStep, string> = {
+    methods: t("Boas-vindas ao Clarify"),
+    email: t("Continuar com e-mail"),
+    code: t("Confirmar código"),
+    browser: t("Entrar no Clarify"),
+  };
+  const title = step === "byok" ? t("Use sua chave Groq") : step === "local" ? t("Use um modelo local") : account?.signedIn ? t("Sua conta está pronta") : signInTitles[signInStep];
   const command = (action: string, value = "") => void run("accountCommand", action, value);
   const chooseLocal = async () => {
     if (account?.pending) await run("accountCommand", "logout", "");
@@ -25,9 +34,9 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   return <main className="onboarding onboarding-page">
     <div className="onboarding-content">
       <div className="onboarding-heading">
-        <ClarifyLogo />
-        <h1>{step === "byok" ? t("Use sua chave Groq") : step === "local" ? t("Use um modelo local") : account?.signedIn ? t("Sua conta está pronta") : t("Boas-vindas ao Clarify")}</h1>
-        <p className="hint">{t("Fale. O Clarify transforma sua voz em texto claro.")}</p>
+        {welcome && <ClarifyLogo />}
+        <h1>{title}</h1>
+        {welcome && <p className="hint">{t("Fale. O Clarify transforma sua voz em texto claro.")}</p>}
       </div>
       {error && <p className="error" role="alert">{t(error)}</p>}
       {account?.error && <p className="error" role="alert">{t(account.error)}</p>}
@@ -47,6 +56,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
           <Button variant="primary" onClick={() => void complete("account")}>{t("Começar")}</Button>
         </> : <>
           <AccountSignIn account={account} command={command} busy={busy || account.busy}
+            onStepChange={setSignInStep}
             guestVariant="primary"
             onContinueWithoutAccount={() => void chooseLocal()} />
         </>)}

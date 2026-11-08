@@ -82,6 +82,16 @@ class TextTests(TestCase):
         self.assertGreater(operation.cost, 0)
         self.assertLess(operation.cost, ledger.MAX_COST)
 
+        translated = self.send(
+            uuid.uuid4(), action="translate", language="auto", text="Hello. Hola."
+        )
+        self.assertEqual(translated.status_code, 200)
+        self.assertEqual(translated.json()["output_language_status"], "unchanged")
+        self.assertIn(
+            "multiple languages",
+            provider.call_args.kwargs["json"]["messages"][0]["content"],
+        )
+
     @patch("cloud.service.groq.perform")
     def test_rejects_provider_controls_invalid_language_and_large_source(
         self, provider

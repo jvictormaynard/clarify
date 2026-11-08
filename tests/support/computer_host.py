@@ -84,6 +84,13 @@ class Processor:
         self.block = False
         self.fail = False
 
+    def prepare_dictation(self, **options):
+        if not self.ready:
+            from computer_processing import ComputerActionNotReady
+
+            raise ComputerActionNotReady("Fixture is not ready")
+        return None
+
     def process_text(self, action, text, language, cancel_token):
         self.calls.append((action, text, language, cancel_token))
         self.entered.set()

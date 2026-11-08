@@ -91,6 +91,11 @@ try:
     from .qml_computer import create_computer_controller  # noqa: E402
     from .qml_updates import QmlUpdateController  # noqa: E402
     from .qml_web_settings import WebSettingsProcess  # noqa: E402
+    from .qml_electron import (  # noqa: E402
+        ElectronDesktopProcess,
+        ElectronQtShell,
+        desktop_executable,
+    )
     from .qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
     from .qml_voice_translation import (  # noqa: E402
         QmlVoiceTranslationProvider,
@@ -110,6 +115,11 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from qml_computer import create_computer_controller  # noqa: E402
     from qml_updates import QmlUpdateController  # noqa: E402
     from qml_web_settings import WebSettingsProcess  # noqa: E402
+    from qml_electron import (  # noqa: E402
+        ElectronDesktopProcess,
+        ElectronQtShell,
+        desktop_executable,
+    )
     from qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
     from qml_voice_translation import (  # noqa: E402
         QmlVoiceTranslationProvider,
@@ -161,7 +171,7 @@ class ShellStartResult(Enum):
     SETUP_FAILED = "setup_failed"
 
 
-def _start_shell_if_available(shell) -> ShellStartResult:
+def _start_shell_if_available(shell, *, tray_available=None) -> ShellStartResult:
     """Start the native shell and retain a usable QML window on setup errors.
 
     The shell always owns the single-instance guard.  Only tray construction is
@@ -170,7 +180,8 @@ def _start_shell_if_available(shell) -> ShellStartResult:
     only outcome that should prevent the workflow runtime from continuing.
     """
 
-    tray_available = bool(QSystemTrayIcon.isSystemTrayAvailable())
+    if tray_available is None:
+        tray_available = bool(QSystemTrayIcon.isSystemTrayAvailable())
     try:
         if not shell.start(tray_available=tray_available):
             return ShellStartResult.SECONDARY_INSTANCE
@@ -301,10 +312,11 @@ class _WorkflowWindowVisibility:
 
     _PILL_SURFACES = frozenset({"recording", "processing", "voice_processing"})
 
-    def __init__(self, bridge, shell, window) -> None:
+    def __init__(self, bridge, shell, window, *, enabled=lambda: True) -> None:
         self._bridge = bridge
         self._shell = shell
         self._window = window
+        self._enabled = enabled
         self._restore_visible: bool | None = None
         self._last_surface = bridge.surface
         bridge.surfaceChanged.connect(self.sync)
@@ -320,6 +332,8 @@ class _WorkflowWindowVisibility:
         return bool(self._window.isVisible())
 
     def sync(self) -> None:
+        if not self._enabled():
+            return
         surface = self._bridge.surface
         previous_surface = self._last_surface
         self._last_surface = surface
@@ -721,8 +735,11 @@ def main(argv: list[str] | None = None) -> int:
 
     pill_window_order = QmlStatusPillWindow(pill_window, bridge, parent=app)
 
-    window.setProperty("presentationVisible", not start_hidden)
-    if not start_hidden:
+    electron_path = desktop_executable()
+    window.setProperty(
+        "presentationVisible", not start_hidden and electron_path is None
+    )
+    if not start_hidden and electron_path is None:
         window.show()
     if sys.platform == "win32":
         hotkeys = WindowsGlobalHotkeyBackend(
@@ -744,8 +761,39 @@ def main(argv: list[str] | None = None) -> int:
         bridge.surfaceChanged.connect(sync_escape)
         practice.subscribe(sync_escape)
         sync_escape()
-    shell = QtShell(
+
+    def restore_native_shell():
+        pill_window.setProperty("rendererEnabled", True)
+        shell.restore_native_tray()
+        if bridge.surface == "settings":
+            settings_window_visibility.show_native()
+        else:
+            workflow_window_visibility.sync()
+            if (
+                bridge.surface
+                in {"idle", "success", "result", "voice_result", "voice_error"}
+                and not bridge.feedbackVisible
+            ):
+                shell.show_window_without_activation()
+
+    if electron_path is not None:
+        web_settings = ElectronDesktopProcess(
+            settings, bridge, status_pill, restore_native_shell, app, app
+        )
+        pill_window.setProperty("rendererEnabled", False)
+        # Electron windows are not in QApplication.allWindows(). Exclude their
+        # executable before they can become a foreground paste target.
+        quick_paste.excluded_executable = lambda: str(electron_path)
+    else:
+        web_settings = WebSettingsProcess(
+            settings, bridge, lambda: settings_window_visibility.show_native(), app
+        )
+        quick_paste.excluded_executable = web_settings.process.program
+
+    shell_type = ElectronQtShell if electron_path is not None else QtShell
+    shell = shell_type(
         window,
+        **({"desktop": web_settings} if electron_path is not None else {}),
         hotkeys=hotkeys,
         application=app,
         visibility_hotkey_allowed=lambda: not bridge.recording and not practice.busy,
@@ -760,12 +808,24 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     bridge.resultRequested.connect(shell.show_window)
-    workflow_window_visibility = _WorkflowWindowVisibility(bridge, shell, window)
-    # Keep the coordinator strongly referenced for the lifetime of app.exec().
-    web_settings = WebSettingsProcess(
-        settings, bridge, lambda: settings_window_visibility.show_native(), app
-    )
-    quick_paste.excluded_executable = web_settings.process.program
+    if electron_path is None:
+        workflow_window_visibility = _WorkflowWindowVisibility(bridge, shell, window)
+    else:
+        workflow_window_visibility = _WorkflowWindowVisibility(
+            bridge, shell, window, enabled=lambda: web_settings.failed
+        )
+
+        # File import retains its existing native panel during this migration.
+        # All ordinary pill, picker and result presentation belongs to Electron.
+        def sync_native_panel():
+            if not web_settings.failed:
+                window.setProperty("presentationVisible", bridge.surface == "files")
+                if bridge.surface == "files":
+                    window.show()
+                    window.raise_()
+                    window.requestActivate()
+
+        bridge.surfaceChanged.connect(sync_native_panel)
     settings_window_visibility = _SettingsWindowVisibility(
         bridge, settings_window, web_settings
     )
@@ -776,15 +836,20 @@ def main(argv: list[str] | None = None) -> int:
     app.aboutToQuit.connect(settings.shutdown)
     app.aboutToQuit.connect(updates.shutdown)
 
-    shell_result = _start_shell_if_available(shell)
+    shell_result = _start_shell_if_available(
+        shell, **({"tray_available": False} if electron_path is not None else {})
+    )
     if shell_result is ShellStartResult.SECONDARY_INSTANCE:
         runtime.shutdown()
         return 0
     runtime.computer = create_computer_controller(runtime, parent=app)
     settings.bindComputer(runtime.computer)
     runtime.computer.initialize()
+    if electron_path is not None:
+        web_settings.start(visible=not start_hidden)
     app.setQuitOnLastWindowClosed(
-        shell_result
+        electron_path is None
+        and shell_result
         in (ShellStartResult.STARTED_WITHOUT_TRAY, ShellStartResult.SETUP_FAILED)
     )
     from portable_update_windows import acknowledge_portable_update

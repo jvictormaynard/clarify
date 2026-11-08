@@ -10,6 +10,7 @@ import threading
 import uuid
 
 from clarify_account import AccountError, TextActionsConflict
+from hotkey_config import HotkeyAction
 from text_actions import (
     TextAction,
     TextActionSnapshot,
@@ -20,7 +21,7 @@ from text_actions import (
     settings_for,
     validate_library,
 )
-from workflow_config import validate_workflow_route
+from workflow_config import DEFAULT_WORKFLOW_PROMPTS, validate_workflow_route
 from shared.dictation_policy import DictationCleanupPolicy, cleanup_level
 from provider_types import ProviderCapability, ProviderConnection
 from provider_registry import PROVIDER_REGISTRY
@@ -103,13 +104,82 @@ class TextActionService:
         owner = self.owner()
         if owner is not None:
             return opaque([owner.endpoint, owner.user_id, owner.generation])
-        return opaque(
-            [
-                "personal",
-                getattr(self.account, "_generation", 0),
-                getattr(self.account, "default_endpoint", ""),
-                getattr(self.account, "_state", {}).get("endpoint", ""),
-            ]
+        stamp = (
+            self.account.context_stamp() if self.account is not None else (0, "", "")
+        )
+        return opaque(["personal", *stamp])
+
+    def sync_legacy_hotkeys(self, config, previous):
+        settings = settings_for(config)
+        changed = {
+            action_id: key
+            for action_id, key in (
+                ("rewrite", HotkeyAction.REWRITE),
+                ("translation", HotkeyAction.TRANSLATION),
+            )
+            if config.hotkeys.definition(key) != previous.hotkeys.definition(key)
+        }
+        if not changed:
+            return config
+        if self.managed():
+            devices = {key: dict(value) for key, value in settings.devices.items()}
+            owner = self._device_key()
+            prefs = devices.setdefault(owner, {})
+            for action_id, key in changed.items():
+                prefs[action_id] = {
+                    **prefs.get(action_id, {"processingProfileId": "default"}),
+                    "shortcut": config.hotkeys.definition(key).to_mapping(),
+                }
+            return replace(config, text_actions=replace(settings, devices=devices))
+        actions = []
+        for action in settings.actions:
+            key = {
+                "rewrite": HotkeyAction.REWRITE,
+                "translation": HotkeyAction.TRANSLATION,
+            }.get(action.id)
+            if key is not None and config.hotkeys.definition(
+                key
+            ) != previous.hotkeys.definition(key):
+                action = replace(action, shortcut=config.hotkeys.definition(key))
+            actions.append(action)
+        return replace(config, text_actions=replace(settings, actions=tuple(actions)))
+
+    def sync_legacy_routes(self, config, previous):
+        if self.managed():
+            return config
+        settings = settings_for(config)
+        actions = []
+        changed = False
+        revisions = dict(settings.action_revisions)
+        for action in settings.actions:
+            if action.id in {"rewrite", "translation"}:
+                before, after = previous.workflow(action.id), config.workflow(action.id)
+                changes = {}
+                if before.prompt != after.prompt:
+                    changes["prompt"] = (
+                        after.prompt or DEFAULT_WORKFLOW_PROMPTS[action.id]
+                    )
+                if before.enabled != after.enabled:
+                    changes["enabled"] = after.enabled
+                if changes:
+                    candidate = replace(action, **changes)
+                    if candidate.definition() != action.definition():
+                        action = replace(candidate, revision=action.revision + 1)
+                        revisions[action.id] = action.revision
+                        changed = True
+            actions.append(action)
+        return (
+            replace(
+                config,
+                text_actions=replace(
+                    settings,
+                    actions=tuple(actions),
+                    revision=settings.revision + 1,
+                    action_revisions=revisions,
+                ),
+            )
+            if changed
+            else config
         )
 
     def _device_key(self):
@@ -119,8 +189,8 @@ class TextActionService:
         )
 
     def _library(self):
-        account_guard = getattr(self.account, "_lock", None) or nullcontext()
-        config_guard = getattr(self.repository, "_lock", None) or nullcontext()
+        account_guard = getattr(self.account, "snapshot_guard", nullcontext)()
+        config_guard = getattr(self.repository, "snapshot_guard", nullcontext)()
         with account_guard, config_guard:
             return self._library_owned()
 
@@ -163,7 +233,7 @@ class TextActionService:
 
     def fetch_refresh(self, *, cancel=None):
         """Capture identity, then perform GET without holding any snapshot lock."""
-        account_guard = getattr(self.account, "_lock", None) or nullcontext()
+        account_guard = getattr(self.account, "snapshot_guard", nullcontext)()
         with self._lock, account_guard:
             owner = self.owner()
             context = self.context()
@@ -177,8 +247,8 @@ class TextActionService:
         return generation, context, value
 
     def publish_refresh(self, result, *, apply_bindings=True):
-        account_guard = getattr(self.account, "_lock", None) or nullcontext()
-        config_guard = getattr(self.repository, "_lock", None) or nullcontext()
+        account_guard = getattr(self.account, "snapshot_guard", nullcontext)()
+        config_guard = getattr(self.repository, "snapshot_guard", nullcontext)()
         with self._lock, account_guard, config_guard:
             generation, context, value = result
             if (
@@ -205,8 +275,8 @@ class TextActionService:
             return self.projection()
 
     def projection(self):
-        account_guard = getattr(self.account, "_lock", None) or nullcontext()
-        config_guard = getattr(self.repository, "_lock", None) or nullcontext()
+        account_guard = getattr(self.account, "snapshot_guard", nullcontext)()
+        config_guard = getattr(self.repository, "snapshot_guard", nullcontext)()
         with self._lock, account_guard, config_guard:
             config = self.repository.load()
             settings = settings_for(config)
@@ -311,9 +381,9 @@ class TextActionService:
         defer_remote=False,
         precommit=None,
     ):
-        account_guard = getattr(self.account, "_lock", None) or nullcontext()
-        config_guard = getattr(self.repository, "_lock", None) or nullcontext()
-        session_guard = getattr(self.chatgpt_session, "_lock", None) or nullcontext()
+        account_guard = getattr(self.account, "snapshot_guard", nullcontext)()
+        config_guard = getattr(self.repository, "snapshot_guard", nullcontext)()
+        session_guard = getattr(self.chatgpt_session, "snapshot_guard", nullcontext)()
         with self._lock, account_guard, config_guard, session_guard:
             if self._pending is not None:
                 raise ValueError("Aguarde a alteração das ações.")
@@ -407,9 +477,9 @@ class TextActionService:
 
     def commit_mutation(self, mutation):
         """Run only on the effects owner (Qt in production). No network calls."""
-        account_guard = getattr(self.account, "_lock", None) or nullcontext()
-        config_guard = getattr(self.repository, "_lock", None) or nullcontext()
-        session_guard = getattr(self.chatgpt_session, "_lock", None) or nullcontext()
+        account_guard = getattr(self.account, "snapshot_guard", nullcontext)()
+        config_guard = getattr(self.repository, "snapshot_guard", nullcontext)()
+        session_guard = getattr(self.chatgpt_session, "snapshot_guard", nullcontext)()
         with self._lock, account_guard, config_guard, session_guard:
             applied = False
             try:
@@ -465,8 +535,8 @@ class TextActionService:
             mutation.incomplete = True
 
     def finish_mutation(self, mutation, *, apply_bindings=True):
-        account_guard = getattr(self.account, "_lock", None) or nullcontext()
-        config_guard = getattr(self.repository, "_lock", None) or nullcontext()
+        account_guard = getattr(self.account, "snapshot_guard", nullcontext)()
+        config_guard = getattr(self.repository, "snapshot_guard", nullcontext)()
         with self._lock, account_guard, config_guard:
             if mutation is not self._pending:
                 raise ValueError("A alteração expirou.")
@@ -550,8 +620,8 @@ class TextActionService:
         self, profile_id, provider_id, endpoint, context, revision
     ):
         """Resolve a draft's discovery identity without selecting or editing a route."""
-        account_guard = getattr(self.account, "_lock", None) or nullcontext()
-        config_guard = getattr(self.repository, "_lock", None) or nullcontext()
+        account_guard = getattr(self.account, "snapshot_guard", nullcontext)()
+        config_guard = getattr(self.repository, "snapshot_guard", nullcontext)()
         with self._lock, account_guard, config_guard:
             self._guard(context, revision)
             if self.managed():
@@ -776,7 +846,7 @@ class TextActionService:
                 return False
         return bool(getattr(config, route.provider_id).api_key)
 
-    def set_after(self, action_id, language, context, revision):
+    def set_after(self, action_id, language, context, revision, *, config_change=None):
         from text_actions import TEXT_LANGUAGES
 
         if (
@@ -804,11 +874,40 @@ class TextActionService:
             ] = {"id": action_id, "language": language}
             return replace(settings, after_dictation=after), actions
 
-        return self._transaction(mutate, context, revision)
+        return self._transaction(mutate, context, revision, config_change=config_change)
+
+    def set_after_mode(self, mode, action_id, language, context, revision):
+        levels = {
+            "natural": None,
+            "preserve": "preserve",
+            "light": "light",
+            "clarity": "clarity",
+            "action": "clarity",
+        }
+        if mode not in levels or (mode == "action") != bool(action_id):
+            raise ValueError("Invalid post-dictation mode")
+        level = cleanup_level(levels[mode])
+        return self.set_after(
+            action_id,
+            language,
+            context,
+            revision,
+            config_change=lambda config: replace(config, dictation_cleanup_level=level),
+        )
+
+    def without_after_action(self, config):
+        """Clear this destination's optional action without loading its catalog."""
+        settings = settings_for(config)
+        after = {key: dict(value) for key, value in settings.after_dictation.items()}
+        after.setdefault(self._device_key(), {})[self.dictation_context(config)] = {
+            "id": "",
+            "language": "auto",
+        }
+        return replace(config, text_actions=replace(settings, after_dictation=after))
 
     def resolve(self, action_id):
-        account_guard = getattr(self.account, "_lock", None) or nullcontext()
-        config_guard = getattr(self.repository, "_lock", None) or nullcontext()
+        account_guard = getattr(self.account, "snapshot_guard", nullcontext)()
+        config_guard = getattr(self.repository, "snapshot_guard", nullcontext)()
         with self._lock, account_guard, config_guard:
             actions = self._library()[1]
             action = next((a for a in actions if a.id == action_id), None)
@@ -840,8 +939,8 @@ class TextActionService:
             )
 
     def resolve_after_dictation(self):
-        account_guard = getattr(self.account, "_lock", None) or nullcontext()
-        config_guard = getattr(self.repository, "_lock", None) or nullcontext()
+        account_guard = getattr(self.account, "snapshot_guard", nullcontext)()
+        config_guard = getattr(self.repository, "snapshot_guard", nullcontext)()
         with self._lock, account_guard, config_guard:
             # Account identity remains mandatory even when optional AI is off.
             owner, context = self.owner(), self.context()

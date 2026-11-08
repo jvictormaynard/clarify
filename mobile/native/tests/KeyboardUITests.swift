@@ -3,6 +3,22 @@ import XCTest
 @testable import KeyboardUI
 import KeyboardHostSupport
 
+private final class SourceProcessState: NSObject {
+  var pid: Int32 = 5127
+  var source: Any? = "com.clarify.fixture.host"
+  var replacementPID: Int32?
+  @objc var processIdentifier: Int32 { pid }
+  @objc var sourceBundleIdentifier: Any? {
+    if let replacementPID { pid = replacementPID }
+    return source
+  }
+}
+
+private final class UnexpectedSourceProcessState: NSObject {
+  @objc var processIdentifier: String { "5127" }
+  @objc var sourceBundleIdentifier: String { "com.clarify.fixture.host" }
+}
+
 @MainActor
 private final class Field: NSObject, UITextDocumentProxy {
   var documentIdentifier = UUID()
@@ -56,6 +72,86 @@ private final class ImpactFeedbackSpy: UIImpactFeedbackGenerator {
 }
 
 final class KeyboardUITests: XCTestCase {
+  func testAutocorrectIsOptInAndKeepsTheOutputCapsuleVisible() async throws {
+    try await MainActor.run {
+      let (keyboard, store, window) = try self.makeDictationFixture()
+      defer { window.isHidden = true; try? FileManager.default.removeItem(at: store.root) }
+      XCTAssertFalse(store.keyboardAutocorrectEnabled())
+      let assistant = TypingAssistant(autocorrectionEnabled: store.keyboardAutocorrectEnabled())
+      let field = Field(); field.before = "I would say helllo"
+      XCTAssertTrue(assistant.suggestions(field).isEmpty)
+      assistant.insert(" ", into: field)
+      XCTAssertEqual(field.before, "I would say helllo ")
+      let row = try XCTUnwrap(self.descendants(keyboard.view).first { $0.accessibilityIdentifier == "clarify.keyboard.suggestions" })
+      keyboard.refreshFromStore(); XCTAssertTrue(row.isHidden)
+      try store.setKeyboardAutocorrectEnabled(true)
+      XCTAssertTrue(SharedState(root: store.root).keyboardAutocorrectEnabled())
+      keyboard.field.before = "I would say helllo"
+      keyboard.refreshFromStore()
+      let capsule = try self.outputCapsule(keyboard)
+      for width in [CGFloat(320), 393, 430] {
+        for button in (row as? UIStackView)?.arrangedSubviews.compactMap({ $0 as? UIButton }) ?? [] {
+          button.setTitle("extraordinarilylongsuggestion", for: .normal)
+        }
+        keyboard.view.frame.size.width = width; keyboard.view.layoutIfNeeded()
+        XCTAssertFalse(row.isHidden)
+        XCTAssertEqual(capsule.bounds.width, capsule.intrinsicContentSize.width, accuracy: 1,
+          "Long suggestions must not compress the capsule or add empty side space")
+        XCTAssertLessThanOrEqual(capsule.frame.maxX, row.frame.minX)
+        let compactWidth = capsule.bounds.width
+        keyboard.field.selectedText = "Clarify"; keyboard.selectionDidChange(nil)
+        keyboard.view.layoutIfNeeded(); capsule.layoutIfNeeded()
+        XCTAssertNotNil(capsule.configuration?.image)
+        XCTAssertGreaterThan(capsule.bounds.width, compactWidth,
+          "Selecting text must expand the capsule to fit the wand")
+        XCTAssertEqual(capsule.bounds.width, capsule.intrinsicContentSize.width, accuracy: 1)
+        keyboard.field.selectedText = nil; keyboard.selectionDidChange(nil)
+        keyboard.view.layoutIfNeeded(); capsule.layoutIfNeeded()
+        XCTAssertNil(capsule.configuration?.image)
+        XCTAssertEqual(capsule.bounds.width, compactWidth, accuracy: 1,
+          "Clearing selection must restore the compact width")
+      }
+      assistant.autocorrectionEnabled = true
+      field.before = "I would say helllo"; assistant.insert(" ", into: field)
+      XCTAssertEqual(field.before, "I would say hello ")
+      assistant.autocorrectionEnabled = false
+      assistant.delete(in: field)
+      XCTAssertEqual(field.before, "I would say hello", "Disabling must discard correction undo state")
+      try store.setKeyboardAutocorrectEnabled(false)
+      keyboard.refreshFromStore(); XCTAssertTrue(row.isHidden)
+      XCTAssertFalse(SharedState(root: store.root).keyboardAutocorrectEnabled())
+    }
+  }
+  func testInactiveMicrophoneErrorLeavesTypingAvailableAcrossKeyboardOpenings() async throws {
+    try await MainActor.run {
+      let (original, store, window) = try self.makeDictationFixture()
+      var keyboard = original
+      defer {
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+        window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
+      }
+      for expiredHeartbeat in [false, true] {
+        var state = store.snapshot(); state.phase = .error
+        state.message = L("O áudio foi interrompido. Abra o Clarify para reativar o microfone.")
+        state.sessionActive = expiredHeartbeat
+        state.heartbeat = Date().timeIntervalSince1970 - (expiredHeartbeat ? 4 : 0)
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+        for _ in 0..<2 {
+          keyboard = try self.replaceKeyboard(keyboard, store: store, window: window)
+          keyboard.refreshFromStore(); keyboard.view.layoutIfNeeded()
+          let panel = try XCTUnwrap(self.descendants(keyboard.view).first { $0.accessibilityIdentifier == "clarify.keyboard.recording-panel" })
+          let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+          XCTAssertTrue(panel.isHidden, "An inactive microphone must not require dismissing an error")
+          XCTAssertFalse(grid.isHidden)
+          let key = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.currentTitle?.lowercased() == "a" })
+          let before = keyboard.field.before
+          key.sendActions(for: .touchUpInside)
+          XCTAssertEqual(keyboard.field.before.lowercased(), before.lowercased() + "a")
+          XCTAssertTrue(store.commands().isEmpty, "Typing must not start dictation")
+        }
+      }
+    }
+  }
   func testErrorCauseRemainsVisibleBesidePermanentCapsuleAndRecoverableText() async throws {
     try await MainActor.run {
       let (keyboard, store, window) = try self.makeDictationFixture()
@@ -594,13 +690,33 @@ final class KeyboardUITests: XCTestCase {
     await MainActor.run {
       let keyboard = KeyboardViewController()
       XCTAssertNil(KBHostArbiterHook.legacyHostBundleID(for: keyboard))
+      XCTAssertNil(KBHostArbiterHook.currentHostBundleID(for: keyboard))
       let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
       let host = UIViewController(); window.rootViewController = host; window.makeKeyAndVisible()
       host.addChild(keyboard); host.view.addSubview(keyboard.view); keyboard.didMove(toParent: host)
       // A plain parent has no _hostPID. KVC must not crash the extension.
       XCTAssertNil(KBHostArbiterHook.legacyHostBundleID(for: keyboard))
+      XCTAssertNil(KBHostArbiterHook.currentHostBundleID(for: keyboard))
       window.isHidden = true
     }
+  }
+  func testCurrentSourceStateRequiresTheCurrentHostProcess() throws {
+    let state = SourceProcessState()
+    XCTAssertEqual(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 5127), "com.clarify.fixture.host")
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 5128), "Reject a previous app's state")
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 0))
+    state.pid = 0
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 5127))
+    state.pid = 5127
+    let invalidSources: [Any] = ["", "unknown", NSNumber(value: 5127), try XCTUnwrap(Bundle.main.bundleIdentifier)]
+    for source in invalidSources {
+      state.source = source
+      XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 5127))
+    }
+    state.source = "com.clarify.fixture.host"; state.replacementPID = 5128
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: state, matchingProcessID: 5127), "Reject identity changes during the read")
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: NSObject(), matchingProcessID: 5127))
+    XCTAssertNil(KBHostArbiterHook.sourceBundleID(from: UnexpectedSourceProcessState(), matchingProcessID: 5127), "Do not invoke an unexpected runtime signature")
   }
   func testTypingAndRecordingUseOneStandardImpactPerEvent() async {
     await MainActor.run {
@@ -1091,6 +1207,8 @@ final class KeyboardUITests: XCTestCase {
       keyboard.processSelection("translate", language: "es")
       let command = try XCTUnwrap(store.commands().last?.1)
       XCTAssertEqual(command.action, "translate"); XCTAssertEqual(command.language, "es")
+        XCTAssertEqual(command.outputPreferences?.language, .es)
+        XCTAssertEqual(store.outputPreferences().language, .es)
       XCTAssertEqual(command.text, "Selected text with several words"); XCTAssertEqual(command.context, context)
       state.operationID = command.operationID; state.textOperation = true; state.phase = .rewriting
       state.heartbeat = Date().timeIntervalSince1970
@@ -1115,15 +1233,27 @@ final class KeyboardUITests: XCTestCase {
         for appearance in [UIUserInterfaceStyle.light, .dark] {
           keyboard.overrideUserInterfaceStyle = appearance
           for width in [CGFloat(320), 375, 430] {
+            var plainWidth: CGFloat = 0
             for selected in [false, true] {
               keyboard.field.selectedText = selected ? "Clarify" : nil; keyboard.selectionDidChange(nil)
               keyboard.view.frame.size.width = width; keyboard.view.layoutIfNeeded(); capsule.layoutIfNeeded()
               XCTAssertFalse(capsule.isHidden); XCTAssertTrue(capsule.showsMenuAsPrimaryAction)
               XCTAssertEqual(capsule.configuration?.title, "🇷🇺 " + OutputStyle.very_casual.title)
               XCTAssertEqual(capsule.configuration?.image != nil, selected)
+              if !selected { plainWidth = capsule.bounds.width }
+              else if capsule.intrinsicContentSize.width < width - 80 {
+                XCTAssertGreaterThan(capsule.bounds.width, plainWidth)
+                XCTAssertEqual(capsule.bounds.width, capsule.intrinsicContentSize.width, accuracy: 1,
+                  "A long label and wand must fit when toolbar space is available")
+              }
               XCTAssertEqual(capsule.accessibilityLabel, L("Saída do ditado") + ": Русский, " + OutputStyle.very_casual.title)
               XCTAssertTrue(keyboard.view.bounds.contains(capsule.frame)); XCTAssertGreaterThanOrEqual(capsule.bounds.height, 44)
               XCTAssertEqual(keyboard.view.bounds.height, 278); XCTAssertFalse(capsule.hasAmbiguousLayout)
+              let title = try XCTUnwrap(capsule.titleLabel)
+              let titleRect = title.textRect(forBounds: CGRect(x: 0, y: 0, width: title.bounds.width,
+                height: .greatestFiniteMagnitude), limitedToNumberOfLines: 0)
+              XCTAssertLessThanOrEqual(ceil(titleRect.height), ceil(title.font.lineHeight) + 1,
+                "The output style must stay on one line after width, selection and text-size changes")
               let capture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) })
               capture.name = "output-capsule-\(Int(width))-\(appearance == .dark ? "dark" : "light")-\(selected ? "selection" : "no-selection")-\(expanded ? "expanded" : "normal")"
               capture.lifetime = .keepAlways; self.add(capture)
@@ -1146,6 +1276,8 @@ final class KeyboardUITests: XCTestCase {
           window.isHidden = true; try? FileManager.default.removeItem(at: store.root)
         }
         var state = store.snapshot(); state.computerMode = computerMode
+        // Window setup does not run the containing app's heartbeat producer.
+        state.heartbeat = Date().timeIntervalSince1970
         state.processingContext = computerMode ? "computer-fixture" : "account-fixture"
         try store.write(state, to: "state.json"); keyboard.refreshFromStore()
         keyboard.field.before = "Prefix "; keyboard.field.selectedText = "Original selection"
@@ -1168,6 +1300,8 @@ final class KeyboardUITests: XCTestCase {
         choice.sendActions(for: .primaryActionTriggered)
         let command = try XCTUnwrap(store.commands().last?.1)
         XCTAssertEqual(command.action, "translate"); XCTAssertEqual(command.language, "es")
+        XCTAssertEqual(command.outputPreferences?.language, .es)
+        XCTAssertEqual(store.outputPreferences().language, .es)
         XCTAssertEqual(command.text, "Original selection"); XCTAssertEqual(command.context, state.processingContext)
         state.operationID = command.operationID; state.textOperation = true; state.phase = .rewriting
         try store.write(state, to: "state.json"); keyboard.refreshFromStore()
@@ -1195,7 +1329,7 @@ final class KeyboardUITests: XCTestCase {
       self.invoke(german); XCTAssertEqual(store.outputPreferences().language, .de)
       keyboard.field.selectedText = "Original"; keyboard.selectionDidChange(nil)
       let translation = try XCTUnwrap(self.menuElements(capsule.menu).compactMap { $0 as? UIMenu }.first { $0.title == L("Traduzir") })
-      XCTAssertEqual(translation.children.compactMap { ($0 as? UIAction)?.title }, OutputLanguage.allCases.filter { $0 != .auto }.map(\.menuTitle))
+      XCTAssertEqual(translation.children.compactMap { ($0 as? UIAction)?.title }, OutputLanguage.allCases.map(\.menuTitle))
       let spanish = try XCTUnwrap(translation.children.compactMap { $0 as? UIAction }.first { $0.title == "🇪🇸 Español" })
       keyboard.field.selectedText = "Changed before poll"
       self.invoke(spanish); XCTAssertTrue(store.commands().isEmpty, "A retained closure cannot adopt a changed selection")
@@ -1215,7 +1349,7 @@ final class KeyboardUITests: XCTestCase {
       let command = try XCTUnwrap(store.commands().last?.1)
       XCTAssertEqual(command.action, "text_action"); XCTAssertEqual(command.actionID, custom.id); XCTAssertEqual(command.actionRevision, custom.revision)
       XCTAssertEqual(command.outputPreferences?.language, .de)
-      XCTAssertEqual(command.language, "auto"); XCTAssertEqual(store.outputPreferences().language, .de)
+      XCTAssertEqual(command.language, "de"); XCTAssertEqual(store.outputPreferences().language, .de)
     }
   }
   func testAccountSelectedTextMenuPreservesDictionaryAndRejectsSecureOrOversizedSelections() async throws {
