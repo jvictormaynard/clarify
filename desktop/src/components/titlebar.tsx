@@ -10,10 +10,12 @@ export function Titlebar({
   onClose,
   onError,
   pageLabel,
+  showBrand = true,
 }: {
   onClose: () => void;
   onError: (message: string) => void;
   pageLabel?: string;
+  showBrand?: boolean;
 }) {
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
@@ -44,13 +46,13 @@ export function Titlebar({
     }
   };
   return (
-    <div className="titlebar" data-tauri-drag-region>
-      <div className="titlebar-brand" data-tauri-drag-region><img
+    <div className={`titlebar${showBrand ? "" : " titlebar-standalone"}`} data-tauri-drag-region>
+      {showBrand && <div className="titlebar-brand" data-tauri-drag-region><img
         className="titlebar-logo"
         src={logo}
         alt="Clarify"
         draggable={false}
-      /><span data-tauri-drag-region>Clarify</span></div>
+      /><span data-tauri-drag-region>Clarify</span></div>}
       {pageLabel && <div className="titlebar-context" data-tauri-drag-region><span data-tauri-drag-region>{pageLabel}</span></div>}
       <div className="window-controls">
         <Button variant="ghost" size="icon" className="h-full w-11.5 sm:h-full sm:w-11.5 rounded-none border-0 p-0 hover:bg-white/5 [&:active:not([aria-haspopup])]:scale-100" aria-label={t("Minimizar")} onClick={() => void action("minimize")}>
