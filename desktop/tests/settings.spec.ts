@@ -1274,7 +1274,11 @@ test("onboarding: email confirmation activates account processing immediately", 
   await expect(page.getByRole("button", { name: "Ativar processamento do Clarify" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Sair da conta", exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: "Excluir conta", exact: true })).toBeHidden();
-  await page.getByText("Zona de perigo", { exact: true }).click();
+  const danger = page.getByRole("button", { name: "Zona de perigo", exact: true });
+  await danger.click();
+  const panel = page.locator(`[id="${await danger.getAttribute("aria-controls")}"]`);
+  await expect(panel).not.toHaveAttribute("data-starting-style");
+  await expect.poll(() => panel.evaluate(element => element.getAnimations().filter(animation => animation.playState === "running").length)).toBe(0);
   for (const label of ["Sair da conta", "Excluir conta"]) {
     const button = page.getByRole("button", { name: label, exact: true });
     await expect(button).toBeVisible();
