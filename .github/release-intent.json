@@ -1,10 +1,14 @@
 {
   "schema": 2,
-  "component": "desktop",
-  "version": "0.16.0",
-  "base_sha": "3add01594e5d672a4bb8e5aee1bae6fe061b0550",
-  "notes": "Desktop release after the reviewed dependency integration. Includes After dictation choices, general writing style, independent output language, shared prompt corrections, centered onboarding and the bundled Electron Settings/pill. Exact preparation-merge main CI, immutable stable candidate, Windows acceptance of its final digest and explicit publication remain required. No iOS signing or App Store publication is included.",
+  "component": "mobile",
+  "version": "0.14.2",
+  "base_sha": "bc6aa82d9db8aacc0093a25a0e3b2729fe7712c6",
+  "notes": "TestFlight 0.14.2 build 74 includes merged keyboard PR #276 (equal letter widths, half-key staggering and row-first touch routing) and merged PR #281 (deterministic catalog discovery UI checks). PR #281 passed required CI run 42532495122 with native contracts, both app UI profiles, keyboard tests and unsigned compilation. The normal account refresh uses the unchanged monotonic clock and 60-second gate; only the existing isolated UI-fixture build uses a fixed refresh clock. Accepted operation UUID, cancellation, deactivation and no-late-processing checks remain. Complete Apple inventory run 42535059295 finished at 2026-11-08T23:25:12Z; highest uploaded build 72. Git and checked-in reservations reach 73; build 74 exceeds both. Prepared build 73 had no tag, signing, IPA or upload and is not reused after the source repair. Apple rewriting prototype branches remain excluded. Use standard signed TestFlight validation with internal_testing=false; require exact-source green canonical main CI, immutable tag, verified signed app/two-extension identity, confirmed upload, Apple processing, existing internal group availability and sealed evidence. Full Apple keyboard parity, physical typing accuracy, haptics/sound and UI behavior when automatic refresh starts during a gesture remain unverified. TestFlight authorization does not include App Store submission or public release.",
   "evidence": {
-    "report_url": "https://github.com/jvictormaynard/clarify/issues/279"
+    "build": "74",
+    "highest_build": "73",
+    "pending_builds_checked": true,
+    "checked_at": "2026-11-08T23:25:12Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42535059295"
   }
 }
