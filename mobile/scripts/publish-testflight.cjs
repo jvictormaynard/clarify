@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    'pt-BR': `Clarify ${version} (${build}): na tela de teste Apple, a reescrita ocorre no idioma original e a tradução usa a API local da Apple. Use a comparação com Ferramentas de Escrita para preparar idiomas ausentes. Compare Repetível e Padrão do modelo. Abra os detalhes para ver respostas rejeitadas. A comparação nativa pode usar Private Cloud Compute; o fluxo automático é local. Qualidade e tempo precisam de avaliação no iPhone. Suítes de testes omitidas conforme solicitado.`,
+    'en-US': `Clarify ${version} (${build}): the Apple lab rewrites in the source language, then translates with Apple's local API. Use the Writing Tools comparison to prepare missing languages. Compare Repeatable and Model default. Open test details to inspect rejected responses. Native Writing Tools may use Private Cloud Compute; automatic processing stays local. Quality and latency require iPhone evaluation. Test suites were skipped as requested.`,
+    'es-ES': `Clarify ${version} (${build}): la prueba Apple reescribe en el idioma original y traduce con la API local de Apple. Usa la comparación con Herramientas de Escritura para preparar idiomas. Compara Repetible y Predeterminado del modelo. Abre los detalles para ver respuestas rechazadas. La comparación nativa puede usar Private Cloud Compute; el flujo automático es local. Calidad y tiempo pendientes de evaluación en iPhone. Pruebas omitidas según lo solicitado.`,
   };
 }
 
@@ -106,7 +106,17 @@ async function publish({ env = process.env, fetch = globalThis.fetch,
       if (!attached) {
         const membership = await list('betaGroups/' + group.id + '/builds?limit=100');
         if (!membership.data.some(item => item.id === build.id)) {
-          await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            try {
+              await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            } catch (error) {
+              // Auto-distribution can reject a redundant association before its
+              // group membership is visible. Never accept 422 as availability:
+              // retry the reads and require real membership and testing state.
+              if (!String(error.message).startsWith('Apple API 422 ')) throw error;
+              log('Apple group association is pending; verifying membership again.');
+              await sleep(30_000);
+              continue;
+            }
         }
         const localizations = await list('builds/' + build.id + '/betaBuildLocalizations');
         for (const [locale, whatsNew] of Object.entries(releaseNotes(selected.version, selected.build))) {
