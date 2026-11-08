@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    'pt-BR': `Clarify ${version} (${build}): o teste Apple agora reforça o idioma selecionado no início das instruções. Trechos longos identificados com alta confiança em outro idioma são recusados, preservando o original. Teste o mesmo texto com Inglês e Padrão; depois compare Espanhol e Padrão. A proteção contra perda excessiva de conteúdo permanece ativa. A qualidade da tradução ainda precisa ser verificada. Os testes de CI foram omitidos conforme solicitado.`,
+    'en-US': `Clarify ${version} (${build}): the Apple lab now puts an explicit target-language instruction first. Longer results confidently identified in another language are rejected and the source is preserved. Compare the same input with English + Default, then Spanish + Default. The excessive-content-loss guard remains active. This is not proof of translation quality. CI test suites were skipped as requested.`,
+    'es-ES': `Clarify ${version} (${build}): la prueba Apple refuerza el idioma seleccionado al inicio de las instrucciones. Se rechazan textos largos identificados con alta confianza en otro idioma y se conserva el original. Compare el mismo texto con Inglés y Predeterminado, luego Español y Predeterminado. Se mantiene la protección contra pérdida excesiva de contenido. La calidad de traducción sigue pendiente de verificación. Se omitieron las pruebas de CI, según lo solicitado.`,
   };
 }
 
