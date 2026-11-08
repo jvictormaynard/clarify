@@ -144,6 +144,7 @@ public class ClarifyCoreModule: Module {
       }
     }.runOnQueue(.main)
     AsyncFunction("openAppleWritingTools") { (source: String, language: String, promise: Promise) in
+      Task { @MainActor in
       guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
         source.utf8.count <= AppleRewriteEngine.maxInputBytes,
         OutputLanguage(rawValue: language) != nil,
@@ -156,6 +157,7 @@ public class ClarifyCoreModule: Module {
       }
       let editor = AppleWritingToolsController(source: source, target: language)
       presenter.present(UINavigationController(rootViewController: editor), animated: true) { promise.resolve(nil) }
+      }
     }.runOnQueue(.main)
     AsyncFunction("cancelAppleRewrite") { (id: String, promise: Promise) in
       guard self.appleRewriteID == id, let task = self.appleRewriteTask else { promise.resolve(nil); return }
