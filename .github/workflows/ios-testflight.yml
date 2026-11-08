@@ -14,7 +14,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: clarify-ios-testflight
+  group: clarify-ios-availability-build72
   queue: max
   cancel-in-progress: false
 jobs:
