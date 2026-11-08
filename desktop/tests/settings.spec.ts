@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
-import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog } from "./settings-navigation";
+import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog, openDisclosure } from "./settings-navigation";
 
 test.use({ screenshot: "only-on-failure" });
 
@@ -423,7 +423,7 @@ test("responsive account: pending microphone work does not disable sign-in", asy
 
 test("snippets account: background refresh keeps confirmation Cancel focused and dismissible", async ({ page }) => {
   await navigate(page, "Conta Clarify");
-  await page.getByText("Zona de perigo", { exact: true }).click();
+  await openDisclosure(page, "Zona de perigo");
   await page.getByRole("button", { name: "Excluir conta", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Excluir conta", exact: true });
   const cancel = dialog.getByRole("button", { name: "Cancelar", exact: true });
@@ -1274,7 +1274,7 @@ test("onboarding: email confirmation activates account processing immediately", 
   await expect(page.getByRole("button", { name: "Ativar processamento do Clarify" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Sair da conta", exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: "Excluir conta", exact: true })).toBeHidden();
-  await page.getByText("Zona de perigo", { exact: true }).click();
+  await openDisclosure(page, "Zona de perigo");
   for (const label of ["Sair da conta", "Excluir conta"]) {
     const button = page.getByRole("button", { name: label, exact: true });
     await expect(button).toBeVisible();
@@ -1905,12 +1905,7 @@ test("local cleanup and custom route settings are editable without legacy naviga
 
 test("local model removal requires confirmation and cancel keeps the model", async ({ page }) => {
   await navigate(page, "Modelos e serviços");
-  const options = page.getByRole("button", { name: "Opções do modelo local", exact: true });
-  await options.click();
-  await expect(options).toHaveAttribute("aria-expanded", "true");
-  const panel = page.locator(`[id="${await options.getAttribute("aria-controls")}"]`);
-  await expect(panel).not.toHaveAttribute("data-starting-style");
-  await expect.poll(() => panel.evaluate(element => element.getAnimations().filter(animation => animation.playState === "running").length)).toBe(0);
+  await openDisclosure(page, "Opções do modelo local");
   await page.getByRole("button", { name: "Remover modelo", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Remover modelo local?", exact: true })).toContainText("reinstalá-lo");
   await page.getByRole("dialog", { name: "Remover modelo local?", exact: true }).getByRole("button", { name: "Cancelar", exact: true }).click();
