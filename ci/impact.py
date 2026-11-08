@@ -12,6 +12,7 @@ from scripts.sync_locales import CATALOG_PATH, DESKTOP_KEYS_PATH, native_catalog
 COMPONENTS = (
     "desktop",
     "settings",
+    "desktop_shell",
     "package",
     "installer",
     "server",
@@ -19,7 +20,7 @@ COMPONENTS = (
     "ios",
     "audit",
 )
-DESKTOP_BUILD = {"desktop", "settings", "package"}
+DESKTOP_BUILD = {"desktop", "settings", "desktop_shell", "package"}
 SHARED_CONSUMERS = DESKTOP_BUILD | {"server", "mobile", "ios"}
 RELEASE_INTENT = ".github/release-intent.json"
 FULL_INPUTS = {
@@ -93,11 +94,13 @@ PACKAGE_INPUTS = {
     "build.bat",
     "scripts/build.ps1",
     "scripts/build-settings.ps1",
+    "scripts/build-desktop.ps1",
     "scripts/windows-build-paths.ps1",
     "scripts/deploy.ps1",
     "scripts/setup.ps1",
     "scripts/install_bootstrap_tools.py",
     "scripts/check_settings_payload.py",
+    "scripts/desktop_payload.py",
     "scripts/settings_inventory.py",
     "scripts/qt_distribution.py",
     "scripts/qt_package_policy.py",
@@ -106,6 +109,7 @@ PACKAGE_INPUTS = {
     "scripts/sox-runtime-manifest.json",
     "tests/policy/test_settings_packaging.py",
     "tests/contract/test_settings_inventory.py",
+    "tests/integration/test_settings_inventory.py",
     "tests/contract/test_qt_distribution.py",
     "tests/contract/test_qt_package_policy.py",
     ".github/workflows/release.yml",
@@ -166,11 +170,11 @@ def path_components(path: str) -> set[str]:
     if path in FULL_INPUTS or path == RELEASE_INTENT or path.startswith("ci/"):
         return set(COMPONENTS)
     if path.startswith("tests/support/"):
-        return {"desktop", "settings"}
+        return {"desktop", "settings", "desktop_shell"}
     if path.startswith("tests/policy/"):
         return set()
     if path in {"LICENSE", "THIRD_PARTY_NOTICES.md"}:
-        return {"desktop", "package"}
+        return {"desktop", "package", "desktop_shell"}
     if (
         documentation(path)
         or path in REPOSITORY_INPUTS
@@ -237,10 +241,28 @@ def path_components(path: str) -> set[str]:
         path in PACKAGE_INPUTS
         or PurePosixPath(path).suffix == ".spec"
         or path.startswith(
-            ("scripts/pyinstaller-hooks/", ".github/actions/settings-build/")
+            (
+                "scripts/pyinstaller-hooks/",
+                ".github/actions/settings-build/",
+                ".github/actions/electron-runtime-cache/",
+            )
         )
     ):
         return DESKTOP_BUILD.copy()
+    if path in {
+        "clarify/desktop/qml_electron.py",
+        "clarify/desktop/qml_app.py",
+        "clarify/desktop/qt_shell.py",
+        "tests/qt/test_electron_desktop.py",
+    }:
+        return {"desktop", "desktop_shell"}
+    if path.startswith(("desktop/electron/", "desktop/electron-tests/")) or path in {
+        "desktop/scripts/test-electron.mjs",
+        "desktop/scripts/run-electron-smoke.mjs",
+        "desktop/scripts/electron.test.cjs",
+        "desktop/scripts/package-electron.mjs",
+    }:
+        return {"desktop_shell"}
     if path.startswith("desktop/"):
         if path.startswith(
             ("desktop/src/", "desktop/tests/", "desktop/public/")
@@ -248,9 +270,9 @@ def path_components(path: str) -> set[str]:
             "desktop/playwright.config.ts",
             "desktop/playwright.boot.config.ts",
         }:
-            return {"settings"}
+            return {"settings", "desktop_shell"}
         if path.startswith("desktop/boot-tests/"):
-            return {"settings"}
+            return {"settings", "desktop_shell"}
         return DESKTOP_BUILD.copy()
     if (
         path.startswith(
@@ -258,10 +280,10 @@ def path_components(path: str) -> set[str]:
         )
         or path == "local_asr_manifest.json"
     ):
-        return {"desktop", "package"}
+        return {"desktop", "package", "desktop_shell"}
     selected = {"server"} if path in SERVER_INPUTS else set()
     if path in SETTINGS_INPUTS:
-        return selected | {"desktop", "settings"}
+        return selected | {"desktop", "settings", "desktop_shell"}
     if path.startswith(("clarify/", "tests/")) or (
         "/" not in path and PurePosixPath(path).suffix == ".py"
     ):
@@ -293,7 +315,15 @@ def select_jobs(paths, repo=None):
             "settings": {"settings_unit", "settings_browser"},
             **{
                 name: {name}
-                for name in ("package", "installer", "server", "mobile", "ios", "audit")
+                for name in (
+                    "desktop_shell",
+                    "package",
+                    "installer",
+                    "server",
+                    "mobile",
+                    "ios",
+                    "audit",
+                )
             },
         }
         for component in old:

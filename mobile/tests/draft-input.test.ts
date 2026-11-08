@@ -30,6 +30,7 @@ function fixture(file, modules = {}) {
     if (name === '../i18n') return { t: text => text };
     if (name === './ui') return { Button: 'Button', TextButton: 'TextButton', StepContent: 'StepContent', Title: 'Title', ui: {}, usePalette: () => ({}) };
     if (name === './draft-text-input') return { DraftTextInput: 'DraftTextInput' };
+    if (name === './account-endpoint-recovery') return { AccountEndpointRecovery: 'AccountEndpointRecovery' };
     throw new Error(`Unexpected fixture dependency: ${name}`);
   } });
   return (name, props) => { stateIndex = 0; refIndex = 0; return exports[name](props); };

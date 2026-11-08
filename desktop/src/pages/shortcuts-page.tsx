@@ -1,7 +1,7 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Row, Section } from "../components/ui";
-import { actionDisplayName, hotkeyLabel } from "../settings/use-text-actions";
+import { actionDisplayName, hotkeyLabel } from "../settings/display-labels";
 
 export function ShortcutsPage({ controller }: SettingsPageProps) {
   const { state, run, setCapture, setConfirmAction } = controller;

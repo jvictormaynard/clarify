@@ -190,7 +190,7 @@ class KeyboardViewController: UIInputViewController {
   private var recordingPanelVisible = false
   private var recordingError: String?
   private let keys = KeyGridView()
-  private let typing = TypingAssistant()
+  private let typing = TypingAssistant(autocorrectionEnabled: false)
   private var typingVocabularyRevision = -1
   private var typingVocabularyCheckedAt = Date.distantPast
   private let suggestions = UIStackView()
@@ -298,6 +298,8 @@ class KeyboardViewController: UIInputViewController {
       else { self?.advanceToNextInputMode() }
     }
     suggestions.axis = .horizontal; suggestions.distribution = .fillEqually
+    suggestions.clipsToBounds = true
+    suggestions.accessibilityIdentifier = "clarify.keyboard.suggestions"
     addToDictionary.accessibilityIdentifier = "clarify.output-preferences"
     addToDictionary.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
     addToDictionary.titleLabel?.adjustsFontSizeToFitWidth = true
@@ -306,7 +308,8 @@ class KeyboardViewController: UIInputViewController {
     addToDictionary.imageEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: -10)
     addToDictionary.layer.cornerRadius = 22
     addToDictionary.showsMenuAsPrimaryAction = true
-    addToDictionary.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    addToDictionary.setContentHuggingPriority(UILayoutPriority(999), for: .horizontal)
+    addToDictionary.setContentCompressionResistancePriority(UILayoutPriority(999), for: .horizontal)
     undoDictation.accessibilityIdentifier = "clarify.undo-dictation"
     undoDictation.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 22, weight: .medium), forImageIn: .normal)
     undoDictation.tintColor = .label; undoDictation.isHidden = true
@@ -338,7 +341,7 @@ class KeyboardViewController: UIInputViewController {
     dictionaryTrailing = addToDictionary.trailingAnchor.constraint(lessThanOrEqualTo: mic.leadingAnchor, constant: -8)
     capsuleLeading = addToDictionary.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10)
     NSLayoutConstraint.activate([
-      capsuleLeading!, addToDictionary.widthAnchor.constraint(lessThanOrEqualToConstant: 176),
+      capsuleLeading!,
       dictionaryTrailing!, addToDictionary.centerYAnchor.constraint(equalTo: mic.centerYAnchor),
       addToDictionary.heightAnchor.constraint(equalToConstant: 44)
     ])
@@ -453,8 +456,9 @@ class KeyboardViewController: UIInputViewController {
     let id = UUID().uuidString
     guard recordingRequest.submit("start", operationID: id, now: Date().timeIntervalSince1970) else { return }
     do {
+      let preferences = try store.setOutputPreference("language", value: language)
       try store.send(action, operationID: id, context: state.processingContext, text: selection.text, language: language,
-        actionID: savedAction?.id, actionRevision: savedAction?.revision)
+        actionID: savedAction?.id, actionRevision: savedAction?.revision, preferences: preferences)
       operationID = id; documentID = selection.document
       textOperationID = id; textSelection = selection; dictationEdit = nil
       feedback.type()
@@ -466,6 +470,11 @@ class KeyboardViewController: UIInputViewController {
   // The lifecycle and timer share this state refresh. It does not simulate a
   // UIKit appearance transition when a snapshot or microphone meter changes.
   func refreshFromStore() {
+    let autocorrect = store?.keyboardAutocorrectEnabled() ?? false
+    if typing.autocorrectionEnabled != autocorrect {
+      typing.autocorrectionEnabled = autocorrect
+      updateSuggestions()
+    }
     let previousContext = state.processingContext
     state = store?.snapshot() ?? DictationSnapshot()
     if previousContext != state.processingContext {
@@ -550,7 +559,8 @@ class KeyboardViewController: UIInputViewController {
   }
   private func updateRecordingPanel() {
     let pending = recordingRequest.action
-    let error = outputPreferenceError != nil || (state.phase == .error && state.message != nil && dismissedError != errorIdentity)
+    // A saved audio interruption must not cover the keys after the session ends.
+    let error = outputPreferenceError != nil || (state.isLive && state.phase == .error && state.message != nil && dismissedError != errorIdentity)
     let visible = hasFullAccess && ((state.isLive && (state.phase.busy || pending != nil)) || error)
     let recording = [.recording, .locked].contains(state.phase) && pending != "cancel"
     let processing = [.transcribing, .rewriting].contains(state.phase) || pending == "finish"
@@ -680,6 +690,7 @@ class KeyboardViewController: UIInputViewController {
       configuration.title = title; configuration.image = wand ? UIImage(systemName: "wand.and.stars") : nil
       configuration.subtitle = setupTitle
       configuration.titleAlignment = .center
+      configuration.titleLineBreakMode = .byTruncatingTail
       configuration.imagePlacement = .trailing; configuration.imagePadding = 8
       configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12)
       configuration.baseBackgroundColor = .label; configuration.baseForegroundColor = .systemBackground
@@ -717,7 +728,7 @@ class KeyboardViewController: UIInputViewController {
     // Suggestions use the remaining toolbar width. The existing recording panel
     // also shows complete errors without changing the keyboard's fixed height.
     let showingError = hasFullAccess && state.isLive && state.phase == .error
-    suggestions.isHidden = selection != nil || showEdit || !insert.isHidden || !available || showingError || !state.isLive
+    suggestions.isHidden = !typing.autocorrectionEnabled || selection != nil || showEdit || !insert.isHidden || !available || showingError || !state.isLive
     status.isHidden = true; detail.isHidden = true
     if showingError { addToDictionary.accessibilityHint = state.message }
     if let outputPreferenceError { addToDictionary.accessibilityHint = outputPreferenceError }
@@ -767,14 +778,14 @@ class KeyboardViewController: UIInputViewController {
       func action(_ title: String, kind: String, saved: TextActionDescriptor? = nil, enabled: Bool) -> UIMenuElement {
         func choice(_ target: String, title: String) -> UIAction {
           UIAction(title: title, attributes: enabled && captured.enabled ? [] : .disabled) { [weak self] _ in
-            guard let self, self.menuIsCurrent(captured), captured.enabled else { return }
+            guard let self, self.menuIsCurrent(captured), captured.enabled, self.hasFullAccess else { return }
             self.processSelection(saved == nil ? kind : "text_action", language: target, savedAction: saved)
           }
         }
         if kind == "translate" {
-          return UIMenu(title: title, children: OutputLanguage.allCases.filter { $0 != .auto }.map { choice($0.rawValue, title: $0.menuTitle) })
+          return UIMenu(title: title, children: OutputLanguage.allCases.map { choice($0.rawValue, title: $0.menuTitle) })
         }
-        return choice("auto", title: title)
+        return choice(captured.preferences.language.rawValue, title: title)
       }
       if captured.catalog.status == .ready {
         for saved in captured.catalog.actions {

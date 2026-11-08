@@ -207,7 +207,7 @@ class QmlTextActionTests(QmlTextActionFixture, unittest.TestCase):
         self.assertFalse(self.settings.dirty)
         self.applier.assert_not_called()
 
-    def test_translation_preview_requires_its_own_language_and_hides_stale_result(self):
+    def test_translation_preview_uses_globe_choice_and_hides_stale_result(self):
         state = self.request("snapshot")["result"]
         self.provider.snapshot_text_action.return_value = SimpleNamespace(
             action=TextAction(
@@ -218,14 +218,16 @@ class QmlTextActionTests(QmlTextActionFixture, unittest.TestCase):
             "Translated preview", "openai", "gpt-4o-mini"
         )
         args = ("translation", "Sample", state["textActionContext"], 1)
-        self.assertIn("error", self.request("previewTextAction", *args))
-        self.assertIn("error", self.request("previewTextAction", *args, "auto"))
-        self.provider.transform_text_action.assert_not_called()
-        self.assertNotIn("error", self.request("previewTextAction", *args, "es"))
+        self.assertNotIn("error", self.request("savePreference", "setLanguage", ["es"]))
+        self.assertNotIn("error", self.request("previewTextAction", *args, "auto"))
         deadline = time.monotonic() + 2
         while self.settings.textActionPreview["busy"] and time.monotonic() < deadline:
             self.app.processEvents()
         self.assertEqual(self.provider.transform_text_action.call_args.args[2], "es")
+        self.assertEqual(
+            self.provider.transform_text_action.call_args.kwargs["output_language"],
+            "es",
+        )
         self.assertEqual(self.settings.textActionPreview["text"], "Translated preview")
         self.settings._account._generation += 1
         self.assertEqual(self.settings.textActionPreview["text"], "")

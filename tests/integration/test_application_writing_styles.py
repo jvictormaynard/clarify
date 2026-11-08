@@ -20,7 +20,7 @@ EDITOR = r"C:\Apps\Editor.exe"
 
 
 class ApplicationStyleConfigTests(unittest.TestCase):
-    def test_v3_reader_can_read_but_cannot_erase_v4_rules(self):
+    def test_older_readers_cannot_erase_rules_or_general_style(self):
         from unittest.mock import patch
         from repositories import UnsupportedSchemaVersionError
 
@@ -30,16 +30,20 @@ class ApplicationStyleConfigTests(unittest.TestCase):
             repository.apply(
                 replace(
                     repository.load(),
-                    application_writing_styles=ApplicationWritingStyles().with_rule(
-                        EDITOR, WritingStyle.NATURAL
-                    ),
+                    application_writing_styles=ApplicationWritingStyles(
+                        default_style=WritingStyle.FORMAL
+                    ).with_rule(EDITOR, WritingStyle.NATURAL),
                 )
             )
             original = path.read_bytes()
-            with patch("repositories.CONFIG_SCHEMA_VERSION", 3):
-                repository.load()
-                with self.assertRaises(UnsupportedSchemaVersionError):
-                    repository.apply({"history_enabled": True})
+            for version in (3, 5):
+                with (
+                    self.subTest(version=version),
+                    patch("repositories.CONFIG_SCHEMA_VERSION", version),
+                ):
+                    repository.load()
+                    with self.assertRaises(UnsupportedSchemaVersionError):
+                        repository.apply({"history_enabled": True})
             self.assertEqual(path.read_bytes(), original)
 
     def test_v3_migration_preserves_personal_prompts_and_has_no_style_override(self):
@@ -49,7 +53,7 @@ class ApplicationStyleConfigTests(unittest.TestCase):
             "workflows": {"refinement": {"prompt": "Keep my personal wording."}},
         }
         migrated = migrate_config_payload(original)
-        self.assertEqual(migrated["schema_version"], 5)
+        self.assertEqual(migrated["schema_version"], 6)
         self.assertEqual(migrate_config_payload(migrated), migrated)
         config = AppConfig.from_mapping(migrated)
         self.assertEqual(
@@ -79,7 +83,7 @@ class ApplicationStyleConfigTests(unittest.TestCase):
                 WritingStyle.INFORMAL,
             )
             self.assertTrue(loaded.history_enabled)
-            self.assertEqual(json.loads(path.read_text())["schema_version"], 5)
+            self.assertEqual(json.loads(path.read_text())["schema_version"], 6)
 
 
 class ApplicationStyleProviderTests(unittest.TestCase):

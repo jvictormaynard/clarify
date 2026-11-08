@@ -3,6 +3,115 @@ import Foundation
 @testable import ClarifyContracts
 
 final class CloudAccountTests: XCTestCase {
+  @MainActor func testLegacyEndpointRecoveryRequiresNewSessionAndKeepsHistoryIsolated() async throws {
+    for (sameUser, pendingChange) in [(true, true), (true, false), (false, true)] {
+      try await verifyEndpointRecovery(sameUser: sameUser, pendingChange: pendingChange)
+    }
+  }
+  @MainActor private func verifyEndpointRecovery(sameUser: Bool, pendingChange: Bool) async throws {
+    let suite = "clarify.endpoint.recovery." + UUID().uuidString
+    let defaults = UserDefaults(suiteName: suite)!
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+    let dev = "https://clarify-api-dev-dev.up.railway.app", prod = "https://clarify-api.victormaynard.com"
+    let user = UUID().uuidString
+    let productionUser = sameUser ? user : UUID().uuidString
+    var state = CloudAccountState(); state.endpoint = dev; state.userID = user; state.historyUserID = user; state.sync = true
+    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    var token: String? = "dev-token", requests: [URLRequest] = [], supports = false, rejectDeletion = true
+    let account = CloudAccount(defaults: defaults, transport: { request in
+      requests.append(request)
+      let value: [String: Any]
+      if request.url!.host == "clarify-api-dev-dev.up.railway.app" { value = ["id": user, "email": "fixture@example.test"] }
+      else {
+        XCTAssertNotEqual(request.value(forHTTPHeaderField: "X-Session-Token"), "dev-token")
+        switch request.url!.path {
+        case "/_allauth/app/v1/auth/continue":
+          XCTAssertNil(request.value(forHTTPHeaderField: "X-Session-Token"))
+          value = ["meta": ["session_token": "prod-pending"]]
+        case "/_allauth/app/v1/auth/code/confirm":
+          XCTAssertEqual(request.value(forHTTPHeaderField: "X-Session-Token"), "prod-pending")
+          value = ["meta": ["session_token": "prod-token", "is_authenticated": true]]
+        case "/v1/dictionary", "/v1/snippets":
+          XCTAssertEqual(request.httpMethod, "GET", "DEV words must never be uploaded to production")
+          value = ["revision": 0, "entries": []]
+        default:
+          XCTAssertEqual(request.url!.path, "/v1/account")
+          XCTAssertEqual(request.value(forHTTPHeaderField: "X-Session-Token"), "prod-token")
+          value = ["id": productionUser, "email": "fixture@example.test", "output_preferences_supported": supports]
+        }
+      }
+      return (try JSONSerialization.data(withJSONObject: value), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }, readCredential: { token }, saveCredential: {
+      if $0 == nil && rejectDeletion { throw ComputerFailure.invalidResponse }; token = $0
+    }, connectAccountEndpoint: { prod })
+    let library = try LocalLibrary(root: root)
+    let word = VocabularyEntry(term: "DEV word")
+    let oldDictionary = CloudDictionary(entries: [word], base: pendingChange ? [] : [word], revision: 1)
+    try library.saveCloudDictionary(oldDictionary, scope: user)
+    let keyboard = SharedState(root: root)
+    try keyboard.publishKeyboardDictionary(KeyboardDictionaryContext(scope: user, words: []))
+    try keyboard.addKeyboardTerm("DEV queued", scope: user)
+    let oldScope = try XCTUnwrap(account.historyScope), capture = account.captureHistory()
+    let entry = HistoryEntry(id: UUID().uuidString, createdAt: 1000, transcript: "Dev", text: "Dev", rewritten: false)
+    try library.record(entry, scope: oldScope)
+    XCTAssertEqual(account.snapshot()["endpointRecovery"] as? String, prod)
+    _ = try await account.command("refresh", value: "", library: library, connectionOnly: true)
+    XCTAssertFalse(account.outputPreferencesSupported, "Missing capability must remain disabled")
+    do { _ = try await account.command("recover-endpoint", value: "", library: library); XCTFail("Credential deletion must succeed first") }
+    catch ComputerFailure.invalidResponse {}
+    XCTAssertEqual(account.historyScope, oldScope); XCTAssertEqual(token, "dev-token")
+    rejectDeletion = false
+    let count = requests.count
+    _ = try await account.command("recover-endpoint", value: "", library: library)
+    XCTAssertEqual(requests.count, count, "Recovery must not send any network request")
+    XCTAssertNil(token); XCTAssertFalse(account.configured); XCTAssertNil(account.historyScope)
+    XCTAssertFalse(account.acceptsHistory(capture)); XCTAssertFalse(account.outputPreferencesSupported)
+    let reopened = CloudAccount(defaults: defaults, readCredential: { token }, saveCredential: { token = $0 }, connectAccountEndpoint: { prod })
+    XCTAssertEqual(reopened.snapshot()["endpoint"] as? String, prod); XCTAssertNil(reopened.historyScope)
+    _ = try await account.command("login", value: "fixture@example.test", library: library)
+    _ = try await account.command("confirm", value: "123456", library: library)
+    let productionOwner = try XCTUnwrap(account.scope)
+    XCTAssertNotEqual(productionOwner, user); XCTAssertNotEqual(productionOwner, productionUser)
+    XCTAssertTrue(requests.contains { $0.url?.path == "/v1/dictionary" })
+    XCTAssertTrue(requests.contains { $0.url?.path == "/v1/snippets" })
+    XCTAssertTrue(try library.dictionary(scope: productionOwner).isEmpty)
+    XCTAssertEqual(try library.cloudDictionary(user).entries, oldDictionary.entries)
+    XCTAssertEqual(try library.cloudDictionary(user).base, oldDictionary.base)
+    XCTAssertEqual(try library.cloudDictionary(user).revision, oldDictionary.revision)
+    XCTAssertFalse(try library.importKeyboardAdditions(keyboard, scope: productionOwner))
+    XCTAssertEqual(keyboard.keyboardAdditions(scope: user).count, 1)
+    let signedInAgain = CloudAccount(defaults: defaults, readCredential: { token }, saveCredential: { token = $0 })
+    XCTAssertEqual(signedInAgain.scope, productionOwner, "Owner survives relaunch")
+    XCTAssertFalse(account.outputPreferencesSupported, "False capability must remain disabled")
+    supports = true
+    _ = try await account.command("refresh", value: "", library: library, connectionOnly: true)
+    XCTAssertTrue(ProcessingDestination(defaults: defaults, account: account).outputPreferencesSupported)
+    XCTAssertEqual(account.historyScope, prod + "|" + productionUser)
+    XCTAssertTrue(try library.history(scope: account.historyScope, includeLocal: false).entries.isEmpty)
+    XCTAssertEqual(try library.history(scope: oldScope, includeLocal: false).entries, [entry])
+  }
+
+  @MainActor func testEndpointRecoveryRejectsCustomLocalAndNonProductionBundle() async throws {
+    let suite = "clarify.endpoint.custom." + UUID().uuidString
+    let defaults = UserDefaults(suiteName: suite)!
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+    let library = try LocalLibrary(root: root)
+    for (endpoint, bundle) in [("http://localhost:8000", "https://clarify-api.victormaynard.com"),
+      ("https://custom.example.test", "https://clarify-api.victormaynard.com"),
+      ("https://clarify-api-dev-dev.up.railway.app", "https://custom.example.test")] {
+      var state = CloudAccountState(); state.endpoint = endpoint; state.userID = UUID().uuidString
+      defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+      let account = CloudAccount(defaults: defaults, transport: { _ in XCTFail("No request expected"); throw ComputerFailure.invalidResponse },
+        readCredential: { "fixture" }, saveCredential: { _ in XCTFail("No credential change expected") }, connectAccountEndpoint: { bundle })
+      XCTAssertEqual(account.snapshot()["endpointRecovery"] as? String, "")
+      do { _ = try await account.command("recover-endpoint", value: "", library: library); XCTFail("Unknown endpoint must not change") }
+      catch ComputerFailure.invalidResponse {}
+      XCTAssertEqual(account.snapshot()["endpoint"] as? String, endpoint)
+    }
+  }
+
   @MainActor func testDeleteAccountInComputerModePreservesPairingDestinationAndComputerHistory() async throws {
     let suite = "clarify.connect.delete." + UUID().uuidString
     let defaults = UserDefaults(suiteName: suite)!
@@ -504,10 +613,11 @@ final class CloudAccountTests: XCTestCase {
       XCTAssertTrue(outcome.successful); XCTAssertEqual(outcome.rewritten, didRewrite)
       XCTAssertEqual(outcome.transcript, raw); XCTAssertEqual(outcome.text, text)
       XCTAssertFalse(outcome.text.contains("RECURSION SHOULD NOT RUN")); XCTAssertEqual(dictations, 1)
-      let entry = HistoryEntry(id: operationID, createdAt: 1000, transcript: outcome.transcript, text: outcome.text, rewritten: outcome.successful)
+      let entry = HistoryEntry(id: operationID, createdAt: 1000, transcript: outcome.transcript, text: outcome.text, rewritten: outcome.rewritten)
       try library.record(entry, scope: account.historyScope)
       let reopened = try LocalLibrary(root: root)
       XCTAssertEqual(try reopened.history(scope: account.historyScope).entries, [entry])
+      XCTAssertEqual(try reopened.history(scope: account.historyScope).entries.first?.rewritten, didRewrite)
       XCTAssertEqual(try reopened.snippets(scope: account.snippetScope), snippets)
       XCTAssertEqual(try reopened.snippets(), [guest])
     }

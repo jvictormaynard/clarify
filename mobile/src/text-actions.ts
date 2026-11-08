@@ -1,4 +1,4 @@
-import type { AccountSnapshot, Snapshot, ComputerTextAction } from '../modules/clarify-core';
+import type { AccountSnapshot, Snapshot, ComputerTextAction, OutputLanguage, OutputPreferences } from '../modules/clarify-core';
 import { errorMessage } from './errors.ts';
 
 export const targetLanguages = [
@@ -6,7 +6,7 @@ export const targetLanguages = [
   { value: 'es', label: '🇪🇸 Español' }, { value: 'de', label: '🇩🇪 Deutsch' },
   { value: 'ru', label: '🇷🇺 Русский' },
 ] as const;
-export type TargetLanguage = typeof targetLanguages[number]['value'];
+export type TargetLanguage = OutputLanguage;
 export interface ActionChoice {
   key: string; name: string; translation: boolean; enabled: boolean; ready: boolean;
   saved?: ComputerTextAction; legacy?: 'rewrite' | 'translate';
@@ -42,10 +42,11 @@ interface TextGateway {
   processText(action: 'rewrite' | 'translate', text: string, language: string, context: string): Promise<string>;
   processTextAction(id: string, revision: string, text: string, language: string, context: string): Promise<string>;
   command(action: 'cancel', id: string, context: string): Promise<void>;
+  setOutputPreference(key: 'language', value: string): Promise<OutputPreferences>;
 }
 interface ComposerState {
   draft: string; selected: string; language: TargetLanguage; context: string;
-  starting: boolean; cancelling: boolean; operation: TextOperation | null; error: string;
+  starting: boolean; cancelling: boolean; languagePending: boolean; operation: TextOperation | null; error: string;
 }
 // The mounted Actions screen owns drafts. Native owns execution and its UUID.
 export class TextComposerSession {
@@ -55,7 +56,7 @@ export class TextComposerSession {
   private gateway: TextGateway;
   constructor(gateway: TextGateway, language: TargetLanguage) {
     this.gateway = gateway;
-    this.value = { draft: '', selected: '', language, context: '', starting: false, cancelling: false, operation: null, error: '' };
+    this.value = { draft: '', selected: '', language, context: '', starting: false, cancelling: false, languagePending: false, operation: null, error: '' };
   }
   getState = () => this.value;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -63,6 +64,18 @@ export class TextComposerSession {
   setDraft(draft: string) { this.update({ draft }); }
   select(selected: string) { this.update({ selected, error: '' }); }
   setLanguage(language: TargetLanguage) { this.update({ language }); }
+  async saveLanguage(language: TargetLanguage): Promise<boolean> {
+    if (this.value.languagePending) return false;
+    this.update({ languagePending: true, error: '' });
+    try {
+      const preferences = await this.gateway.setOutputPreference('language', language);
+      this.update({ language: preferences.language });
+      return true;
+    } catch (error) {
+      this.update({ error: errorMessage(error) });
+      return false;
+    } finally { this.update({ languagePending: false }); }
+  }
   setContext(context: string) {
     if (context === this.value.context) return;
     ++this.generation;
@@ -70,11 +83,11 @@ export class TextComposerSession {
   }
   async start(choice: ActionChoice) {
     const { draft, context, language, starting, cancelling } = this.value;
-    if (starting || cancelling || !context || !draft.trim() || !choice.enabled || !choice.ready) return;
+    if (starting || cancelling || this.value.languagePending || !context || !draft.trim() || !choice.enabled || !choice.ready) return;
     const generation = ++this.generation;
     this.update({ starting: true, operation: null, error: '' });
     try {
-      const target = choice.translation ? language : 'auto';
+      const target = language;
       const id = choice.saved
         ? await this.gateway.processTextAction(choice.saved.id, choice.saved.revision, draft, target, context)
         : await this.gateway.processText(choice.legacy!, draft, target, context);

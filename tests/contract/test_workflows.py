@@ -582,6 +582,23 @@ class WorkflowServiceTests(WorkflowFixture, unittest.TestCase):
         self.assertIsNone(self.service.state.refinement_model)
         self.assertEqual(self.service.state.phase, WorkflowPhase.COMPLETED)
 
+    def test_unapplied_output_language_keeps_source_and_reports_recovery(self):
+        self.provider.transcribe = lambda *args: TranscriptionResult(
+            "Original",
+            "local_asr",
+            "whisper",
+            output_language_requested="es",
+            output_language_status="refinement_not_allowed",
+        )
+        self.service.dispatch(StartDictation(None, "prompt", "es"))
+        self.service.dispatch(StopDictation())
+        state = self.service.state
+        self.assertEqual(state.result_text, "Original")
+        self.assertEqual(state.status_key, "output_language_not_applied")
+        self.assertEqual(state.output_language_requested, "es")
+        self.assertIsNone(state.output_language_applied)
+        self.assertEqual(state.output_language_status, "refinement_not_allowed")
+
     def test_prompt_dictation_forwards_raw_and_refinement_route_metadata(self):
         self.provider.transcribe = lambda _audio, _mode, _language: TranscriptionResult(
             "refined transcript",

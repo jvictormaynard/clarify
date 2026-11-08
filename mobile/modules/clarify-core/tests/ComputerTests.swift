@@ -601,7 +601,7 @@ final class ComputerTests: XCTestCase {
     XCTAssertEqual(body["language"] as? String, "auto")
     XCTAssertNotNil(body["audio_wav"])
     XCTAssertNil(body["action"])
-    _ = try await destination.processText(UUID().uuidString, action: "translate", text: "Oi", language: "en")
+    _ = try await destination.processText(UUID().uuidString, prepared: PreparedTextOperation(owner: destination.captureHistory(), action: "translate", language: "en", savedAction: nil, preferences: OutputPreferences()), text: "Oi")
     let translation = try XCTUnwrap(f.requests.last { $0.httpMethod == "POST" })
     let translatedBody = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(translation.httpBody)) as? [String: Any])
     XCTAssertEqual(translation.url?.path, "/v1/computer/text")
@@ -624,11 +624,11 @@ final class ComputerTests: XCTestCase {
     }, readCredential: { "fixture" }, saveCredential: { _ in })
     let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
     XCTAssertFalse(destination.computerMode)
-    let result = try await destination.processText(UUID().uuidString, action: "translate", text: "Original", language: "pt")
+    let result = try await destination.processText(UUID().uuidString, prepared: PreparedTextOperation(owner: destination.captureHistory(), action: "translate", language: "pt", savedAction: nil, preferences: OutputPreferences()), text: "Original")
     XCTAssertEqual(result.text, "Translated"); XCTAssertTrue(result.successful)
     XCTAssertEqual(requests.first?.url?.path, "/v1/text"); XCTAssertTrue(f.requests.isEmpty)
     status = 429
-    do { _ = try await destination.processText(UUID().uuidString, action: "rewrite", text: "Original", language: "auto"); XCTFail("Account failure accepted") }
+    do { _ = try await destination.processText(UUID().uuidString, prepared: PreparedTextOperation(owner: destination.captureHistory(), action: "rewrite", language: "auto", savedAction: nil, preferences: OutputPreferences()), text: "Original"); XCTFail("Account failure accepted") }
     catch let error as ClarifyError { XCTAssertEqual(error.code, "allowance_exhausted") }
     XCTAssertEqual(requests.count, 2); XCTAssertTrue(f.requests.isEmpty, "Account errors must not use computer credentials")
   }
@@ -641,21 +641,21 @@ final class ComputerTests: XCTestCase {
     try destination.select("computer")
     f.dictationReady = false; f.actionReadiness = ["dictate": false, "rewrite": true, "translate": false]
     var started = 0
-    try await destination.withComputerText("rewrite", context: destination.historyContext) { started += 1 }
+    _ = try await destination.prepareText("rewrite", language: "auto", context: destination.historyContext, preferences: OutputPreferences()); started += 1
     XCTAssertEqual(started, 1); XCTAssertFalse(f.connection.ready)
     f.actionReadiness = ["dictate": false, "rewrite": false, "translate": true]
-    do { try await destination.withComputerText("rewrite", context: destination.historyContext) { started += 1 }; XCTFail("Stale readiness accepted") }
+    do { _ = try await destination.prepareText("rewrite", language: "auto", context: destination.historyContext, preferences: OutputPreferences()); started += 1; XCTFail("Stale readiness accepted") }
     catch { XCTAssertEqual(error as? ComputerFailure, .notReady) }
     let context = destination.historyContext
     try destination.select("hosted"); try destination.select("computer")
     let count = f.requests.count
-    do { try await destination.withComputerText("translate", context: context) { started += 1 }; XCTFail("Stale context accepted") } catch {}
+    do { _ = try await destination.prepareText("translate", language: "auto", context: context, preferences: OutputPreferences()); started += 1; XCTFail("Stale context accepted") } catch {}
     XCTAssertEqual(f.requests.count, count)
     f.pauseStatus = true
     let waiting = expectation(description: "refresh suspended")
     f.onStatus = { waiting.fulfill() }
     let currentContext = destination.historyContext
-    let task = Task { try await destination.withComputerText("translate", context: currentContext) { started += 1 } }
+    let task = Task { _ = try await destination.prepareText("translate", language: "auto", context: currentContext, preferences: OutputPreferences()); started += 1 }
     await fulfillment(of: [waiting], timeout: 2)
     f.connection.suspend(); f.resume()
     do { try await task.value; XCTFail("Stale refresh started text") } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
@@ -673,7 +673,7 @@ final class ComputerTests: XCTestCase {
     f.onStatus = { waiting.fulfill() }
     var started = false
     let context = destination.historyContext
-    let task = Task { try await destination.withComputerText("rewrite", context: context) { started = true } }
+    let task = Task { _ = try await destination.prepareText("rewrite", language: "auto", context: context, preferences: OutputPreferences()); started = true }
     await fulfillment(of: [waiting], timeout: 2)
     task.cancel(); f.resume()
     do { try await task.value; XCTFail("Cancelled refresh started text") } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }

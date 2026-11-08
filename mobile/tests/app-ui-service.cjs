@@ -63,6 +63,7 @@ function createAppUIService({ record = () => {}, heartbeatMs = 1000 } = {}) {
     if (method === 'POST' && ['/v1/text', '/v1/text-actions/execute'].includes(route)) {
       const result = { operation_id: value.operation_id, text: `Fixture result: ${value.text}` };
       if (value.action_id) Object.assign(result, { action_id: value.action_id, action_revision: value.action_revision });
+      Object.assign(result, { output_language_requested: value.language, output_language_applied: value.language, output_language_status: value.language === 'auto' ? 'unchanged' : 'applied' });
       if (value.writing_style) Object.assign(result, { writing_style_requested: value.writing_style, writing_style_applied: value.writing_style, writing_style_status: 'applied' });
       send(200, result); return;
     }

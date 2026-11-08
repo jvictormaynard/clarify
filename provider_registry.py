@@ -262,6 +262,28 @@ class ProviderRegistry:
                 shutdown()
 
 
+def configured_connection(
+    config,
+    provider_id: str,
+    *,
+    registry: ProviderRegistry,
+    custom_endpoint: str = "",
+    account_id: str = "",
+) -> ProviderConnection:
+    """Resolve saved credentials, defaults and a validated route endpoint once."""
+    metadata = registry.describe(provider_id)
+    settings = getattr(config, provider_id)
+    connection = ProviderConnection(
+        api_key=str(getattr(settings, "api_key", "") or "").strip(),
+        base_url=(
+            str(getattr(settings, "base_url", "") or "").strip()
+            or str(metadata.default_base_url or "").strip()
+        ),
+        account_id=account_id,
+    )
+    return registry.connection_for_route(provider_id, connection, custom_endpoint)
+
+
 def build_provider_registry(
     http: HttpClient | None = None,
     *,

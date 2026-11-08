@@ -104,7 +104,9 @@ class QmlTextActionRepairTests(unittest.TestCase):
             "accountId": "account-a",
             "generation": 7,
         }
-        session = Mock(snapshot=Mock(side_effect=lambda: dict(state)))
+        session = Mock(
+            snapshot_guard=nullcontext, snapshot=Mock(side_effect=lambda: dict(state))
+        )
         self.settings._chatgpt_session = session
         self.settings._text_actions.chatgpt_session = session
         self.settings._model_catalogs[("chatgpt", "account-a", "7")] = ModelCatalog(

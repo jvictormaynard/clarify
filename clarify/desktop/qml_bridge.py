@@ -109,6 +109,7 @@ class QmlWorkflowBridge(QObject):
         "error": "The dictation could not be completed",
         "no_audio": "No usable audio was captured",
         "refinement_failed": "Refinement failed. Original text is available.",
+        "output_language_not_applied": "The output language was not applied. Original text was preserved.",
         "transcription_network": "Could not connect to the transcription service",
         "no_selection": "No text selected. Select text and try again.",
         "rewrite_failed": "Could not rewrite the selected text. Try again.",
@@ -297,7 +298,8 @@ class QmlWorkflowBridge(QObject):
         return (
             not self._finishing
             and self._state.phase is WorkflowPhase.COMPLETED
-            and self._state.status_key == "refinement_failed"
+            and self._state.status_key
+            in {"refinement_failed", "output_language_not_applied"}
         )
 
     @Property(str, notify=resultChanged)
@@ -774,7 +776,10 @@ class QmlWorkflowBridge(QObject):
             return False
         normalized = str(action or "").strip().lower()
         if normalized.startswith("text_action:"):
-            return self.runTextAction(str(action).strip().split(":", 1)[1])
+            action_id = str(action).strip().split(":", 1)[1]
+            return self._run_text_action(
+                action_id, choose_language=action_id == "translation"
+            )
         if (
             normalized
             in {"rewrite_hotkey", "translation_hotkey", "recording_hold_press"}
@@ -915,6 +920,9 @@ class QmlWorkflowBridge(QObject):
 
     @Slot(str, result=bool)
     def runTextAction(self, actionId):
+        return self._run_text_action(actionId)
+
+    def _run_text_action(self, actionId, *, choose_language=False):
         if self._quick_paste_busy or self.busy or not self._processing_allowed():
             return False
         if self._state.phase in (
@@ -922,13 +930,19 @@ class QmlWorkflowBridge(QObject):
             WorkflowPhase.FAILED,
             WorkflowPhase.CANCELLED,
         ):
-            return self._run_when_ready(lambda: self.runTextAction(actionId))
+            return self._run_when_ready(
+                lambda: self._run_text_action(actionId, choose_language=choose_language)
+            )
         if (
             self._state.phase is not WorkflowPhase.READY
             or not self._dismiss_files_before_workflow()
         ):
             return False
-        self._submit_start(RunTextAction(actionId, self._capture_target()))
+        self._submit_start(
+            RunTextAction(
+                actionId, self._capture_target(), choose_language=choose_language
+            )
+        )
         return True
 
     @Slot()

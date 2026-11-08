@@ -1,3 +1,4 @@
+import { useDraft } from "./use-draft";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { t } from "../i18n";
 import type { Settings, SettingsArguments, SettingsMethod, TextAction, TextActionWrite, HotkeyDefinition } from "./bridge";
@@ -11,28 +12,19 @@ type Editor = {
 type ActionConflict = { action: TextAction | null; context: string; revision: string; actionId: string };
 const writable = ({ revision: _revision, ...action }: TextAction): TextActionWrite => action;
 const isDirty = (editor: Editor | null) => !!editor && !settingsValuesEqual(editor.action, editor.baseline);
-export const actionDisplayName = (action: Pick<TextAction, "id" | "name">) =>
-  (action.id === "rewrite" && action.name === "Rewrite") || (action.id === "translation" && action.name === "Translation") ? t(action.name) : action.name;
 
-export function hotkeyLabel(value: HotkeyDefinition | null | undefined) {
-  if (!value) return "";
-  const names: Record<string, string> = { ctrl: "Ctrl", alt: "Alt", shift: "Shift", win: "Win" };
-  return [...value.modifiers.map(modifier => names[modifier] ?? modifier), value.key].join("+");
-}
+
+
 
 export function useTextActions(state: Settings | undefined, run: Runner) {
   const current = useRef(state); current.current = state;
-  const [editor, renderEditor] = useState<Editor | null>(null);
-  const editorRef = useRef(editor);
-  const setEditor = (value: Editor | null) => { editorRef.current = value; renderEditor(value); };
+  const [editor, setEditor, editorRef] = useDraft<Editor | null>(null);
   const [error, setError] = useState("");
   const [saving, renderSaving] = useState(false);
   const savingRef = useRef(false);
   const [refreshing, renderRefreshing] = useState(false);
   const refreshingRef = useRef(false);
-  const [conflict, renderConflict] = useState<ActionConflict | null>(null);
-  const conflictRef = useRef(conflict);
-  const setConflict = (value: ActionConflict | null) => { conflictRef.current = value; renderConflict(value); };
+  const [conflict, setConflict, conflictRef] = useDraft<ActionConflict | null>(null);
   const [capturing, renderCapturing] = useState(false);
   const [captureStarting, setCaptureStarting] = useState(false);
   const capturingRef = useRef(false);
@@ -44,7 +36,7 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
   const [deleting, setDeleting] = useState<{ action: TextAction; context: string; revision: string } | null>(null);
   const [sample, renderSample] = useState("");
   const sampleRef = useRef(sample);
-  const [sampleLanguage, renderSampleLanguage] = useState("");
+  const sampleLanguage = state?.language ?? "auto";
   const [preview, setPreview] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const previewRequest = useRef<{ actionId: string; revision: number; context: string; sample: string; generation?: number } | null>(null);
@@ -81,7 +73,7 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
     const draft = duplicate ? { ...value, id: crypto.randomUUID(), name: t("Cópia de {name}", { name: value.name }), shortcut: null } : value;
     setEditor({ action: draft, baseline: duplicate ? null : value, context: snapshot.textActionContext,
       revision: snapshot.textActionsRevision ?? "", savedRevision: !action || duplicate ? 0 : action.revision, isNew: !action || duplicate });
-    setError(""); setDiscardRequested(false); renderSample(""); sampleRef.current = ""; renderSampleLanguage("");
+    setError(""); setDiscardRequested(false); renderSample(""); sampleRef.current = "";
     setConflict(null);
     setPreview(""); setPreviewing(false); previewRequest.current = null;
   };
@@ -226,11 +218,13 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
   const setSample = (value: string) => {
     sampleRef.current = value; renderSample(value); invalidatePreview();
   };
-  const setSampleLanguage = (value: string) => { renderSampleLanguage(value); invalidatePreview(); };
+  const setSampleLanguage = async (value: string) => {
+    invalidatePreview();
+    if (!await run("savePreference", "setLanguage", [value])) setError(t("Não foi possível salvar a preferência de saída. Tente novamente."));
+  };
   const test = async () => {
     const value = editorRef.current;
-    if (!value || isDirty(value) || !sampleRef.current.trim() || previewing || current.current?.textActionPreview?.busy ||
-      (value.action.kind === "translation" && !sampleLanguage)) return;
+    if (!value || isDirty(value) || !sampleRef.current.trim() || previewing || current.current?.textActionPreview?.busy) return;
     const request: NonNullable<typeof previewRequest.current> = { actionId: value.action.id, revision: value.savedRevision, context: value.context, sample: sampleRef.current };
     previewRequest.current = request; setPreviewing(true); setError(""); setPreview("");
     const result = await run("previewTextAction", request.actionId, request.sample, request.context, request.revision, sampleLanguage || "auto");

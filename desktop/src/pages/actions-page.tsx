@@ -3,8 +3,8 @@ import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Section, Switch } from "../components/ui";
 import { Menu, MenuTrigger, MenuPopup, MenuItem, MenuSeparator } from "../components/primitives/menu";
-import { actionDisplayName, hotkeyLabel } from "../settings/use-text-actions";
-import { profileName } from "../settings/use-text-profile-editor";
+import { actionDisplayName, hotkeyLabel } from "../settings/display-labels";
+import { profileName } from "../settings/display-labels";
 
 export function ActionsPage({ controller: c }: SettingsPageProps) {
   const actions = c.state.textActions ?? [];

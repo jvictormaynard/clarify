@@ -1,4 +1,4 @@
-"""Check real capsule style labels with synthetic states and no audio capture."""
+"""Check compact capsule geometry with synthetic styles and no audio capture."""
 
 import sys
 from pathlib import Path
@@ -37,35 +37,33 @@ def main():
     engine.load(QUrl.fromLocalFile(str(ROOT / "clarify/desktop/qml/StatusPill.qml")))
     assert len(engine.rootObjects()) == 1
     pill = engine.rootObjects()[0]
-    label = pill.findChild(QObject, "writingStyleCaption")
+    assert pill.findChild(QObject, "writingStyleCaption") is None
     output = Path(sys.argv[1]) if len(sys.argv) > 1 else None
     cases = (
-        (WorkflowPhase.RECORDING, "Selected: Informal", {}),
+        (WorkflowPhase.RECORDING, {}),
+        (WorkflowPhase.RECORDING, {"writing_style_requested": None}),
+        (WorkflowPhase.PROCESSING, {}),
         (
             WorkflowPhase.COMPLETED,
-            "Applied: Informal",
             {"writing_style_applied": "informal", "writing_style_status": "applied"},
         ),
         (
             WorkflowPhase.COMPLETED,
-            "Style not applied",
             {"writing_style_status": "refinement_not_allowed"},
         ),
     )
     with patch("shared.localization.device_language", return_value="en"):
-        for operation, (phase, expected, fields) in enumerate(cases, 1):
+        for operation, (phase, fields) in enumerate(cases, 1):
             service.publish(
                 phase,
                 operation_id=operation,
                 kind="dictation",
-                writing_style_requested="informal",
                 result_text="Synthetic 42.",
-                **fields,
+                **{"writing_style_requested": "informal", **fields},
             )
             QTest.qWait(400)
-            assert label.property("text") == expected
-            assert pill.isVisible() and label.property("visible")
-            assert label.property("implicitWidth") <= label.property("width")
+            assert pill.isVisible()
+            assert pill.height() == round(50 * pill.property("dpiCompensation"))
             if output:
                 output.mkdir(parents=True, exist_ok=True)
                 assert pill.grabWindow().save(str(output / f"style-{operation}.png"))

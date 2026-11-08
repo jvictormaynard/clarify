@@ -49,6 +49,7 @@ export function App() {
   return (
     <div className="settings-window">
       <Titlebar
+        showBrand={!state?.onboardingRequired && !state?.practiceState?.open}
         pageLabel={state?.onboardingRequired || state?.practiceState?.open ? undefined : info.label}
         onClose={() => controller.setClosing(true)}
         onError={controller.setError}

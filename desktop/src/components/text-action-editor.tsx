@@ -4,9 +4,9 @@ import type { SettingsPageProps } from "../settings/use-settings";
 import type { TextActionKind } from "../settings/bridge";
 import { Button, Confirm, Field, Input, Picker, Row, Section, SettingsDisclosure, TextArea, Toggle } from "./ui";
 import { Dialog, DialogPopup, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./primitives/dialog";
-import { actionDisplayName, hotkeyLabel } from "../settings/use-text-actions";
+import { actionDisplayName, hotkeyLabel } from "../settings/display-labels";
 import { textActionLanguages } from "./after-dictation-action";
-import { profileName } from "../settings/use-text-profile-editor";
+import { profileName } from "../settings/display-labels";
 
 export function TextActionEditor({ controller: c }: SettingsPageProps) {
   const a = c.textActions, editor = a.editor;
@@ -65,10 +65,9 @@ export function TextActionEditor({ controller: c }: SettingsPageProps) {
               <label className="sr-only" htmlFor={sampleId}>{t("Texto de exemplo")}</label>
               <TextArea id={sampleId} className="min-h-24" value={a.sample} onChange={event => a.setSample(event.target.value)}
                 placeholder={t("Cole um texto de exemplo.")} />
-              {editor.action.kind === "translation" && <Row title={t("Idioma de destino")}><Picker label={t("Idioma de destino")}
-                value={a.sampleLanguage} options={textActionLanguages} onChange={a.setSampleLanguage} /></Row>}
-              <div className="inline-actions"><Button loading={a.previewing} disabled={editor.isNew || a.dirty || a.refreshing || !!a.conflict || !a.sample.trim() || contextChanged ||
-                (editor.action.kind === "translation" && !a.sampleLanguage)} onClick={() => void a.test()}>{t("Test")}</Button></div>
+              <Row title={t("Idioma de saída")}><Picker label={t("Idioma de saída")}
+                value={a.sampleLanguage} options={[{ id: "auto", label: t("Idioma original") }, ...textActionLanguages]} onChange={a.setSampleLanguage} /></Row>
+              <div className="inline-actions"><Button loading={a.previewing} disabled={editor.isNew || a.dirty || a.refreshing || !!a.conflict || !a.sample.trim() || contextChanged} onClick={() => void a.test()}>{t("Test")}</Button></div>
               {a.dirty && <p className="hint">{t("Salve a ação para testar as instruções.")}</p>}
               {a.preview && <div className="text-action-preview" role="status"><h3>{t("Resultado")}</h3><p>{a.preview}</p></div>}
             </Section>

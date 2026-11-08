@@ -1,0 +1,19 @@
+name: Cache pinned Electron runtime
+description: Cache runtime downloads by platform, architecture and the exact pinned Electron version.
+runs:
+  using: composite
+  steps:
+    - name: Resolve pinned Electron runtime
+      id: runtime
+      shell: pwsh
+      run: |
+        $version = node -p "require('./desktop/package.json').devDependencies.electron"
+        if ($LASTEXITCODE -ne 0 -or $version -notmatch '^\d+\.\d+\.\d+$') { throw 'Electron must use an exact version.' }
+        "version=$version" >> $env:GITHUB_OUTPUT
+        "CLARIFY_ELECTRON_CACHE=$(Join-Path $env:RUNNER_TEMP 'clarify-electron-cache')" >> $env:GITHUB_ENV
+        "ELECTRON_SKIP_BINARY_DOWNLOAD=1" >> $env:GITHUB_ENV
+    - name: Restore Electron runtime downloads
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: ${{ runner.temp }}/clarify-electron-cache
+        key: electron-runtime-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime.outputs.version }}
