@@ -2,6 +2,15 @@ import { expect, type Page } from "@playwright/test";
 
 export const settingsDialog = (page: Page) => page.getByRole("dialog", { name: /^(Configurações|Settings|Ajustes)$/ });
 
+export async function openDisclosure(page: Page, name: string) {
+  const trigger = page.getByRole("button", { name, exact: true });
+  await trigger.click();
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  const panel = page.locator(`[id="${await trigger.getAttribute("aria-controls")}"]`);
+  await expect(panel).not.toHaveAttribute("data-starting-style");
+  await expect.poll(() => panel.evaluate(element => element.getAnimations().filter(animation => animation.playState === "running").length)).toBe(0);
+}
+
 export async function openSettings(page: Page, section: string) {
   await expect(page.locator("main .page-content")).toBeVisible({ timeout: 30000 });
   await expect(page.locator(".settings-dialog[data-ending-style]")).toHaveCount(0);
