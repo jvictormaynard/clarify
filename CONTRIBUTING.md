@@ -36,8 +36,8 @@ contributions do not need a native Windows build or an Apple account.
 
 ### Settings design or web behavior
 
-Use Python 3.12 and Node.js 22. Rust, Visual Studio and WebView2 are needed only
-for native Settings builds. On Windows, prepare the locked Python environment:
+Use Python 3.12 and Node.js 22. The default Electron shell does not need Rust
+or WebView2. On Windows, prepare the locked Python environment:
 
 ```powershell
 .\scripts\setup.ps1 -Dev
@@ -67,8 +67,8 @@ On Windows:
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
 .\scripts\setup.ps1 -Dev
-.\scripts\build-settings.ps1
-$env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
+.\scripts\build-desktop.ps1
+$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path '.\dist\desktop-shell\Clarify Desktop.exe').Path
 .\.venv\Scripts\python.exe scripts/run_tests.py -v
 .\.venv\Scripts\python.exe clarify\desktop\qml_app.py
 ```
@@ -78,9 +78,10 @@ the full Windows acceptance checklist. Read
 [docs/architecture.md](docs/architecture.md) before moving responsibilities
 between modules.
 
-Settings development needs Node.js 22, Rust MSVC, Visual Studio C++ Build Tools,
+The legacy Tauri build still needs Rust MSVC, Visual Studio C++ Build Tools,
 the Windows SDK, and WebView2. End users do not need these build tools.
-Use `desktop/src/` for Settings, `clarify/desktop/qml/` for the pill, and the
+Use `desktop/src/` for Settings and the pill, `desktop/electron/` for the window
+host, `clarify/desktop/qml/` for recovery views, and the
 root provider modules for ASR and text processing. `clarify/desktop/` contains
 the production Qt adapters. Do not add features to legacy `app.py` or the
 historical comparison tools under `spikes/`.
@@ -121,8 +122,9 @@ same component policy as CI and include committed and uncommitted changes.
 They do not install dependencies. Unavailable database, remote or native gates
 are reported as unexecuted, with exit code 2.
 
-PR CI selects checks from the complete diff. Main pushes run full standard
-validation; scheduled and manual runs add extended checks. No special branch prefix, label,
+PR CI selects checks from the complete diff. Main pushes require full standard
+validation, with authenticated exact-source PR evidence reuse where supported.
+Scheduled and manual runs add extended checks. No special branch prefix, label,
 paid service or secret is required. Pushes to a branch with an open PR run one
 PR workflow. Maintainers may need to approve a first-time fork's workflow run.
 

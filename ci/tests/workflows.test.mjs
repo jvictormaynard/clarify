@@ -31,6 +31,8 @@ test('workflow references, needs and action pins are valid', () => {
     }
     for (const [id, job] of Object.entries(workflow.jobs)) {
       visit(id);
+      assert.doesNotMatch(JSON.stringify(job.env || {}), /\$\{\{[^}]*\brunner\./,
+        `${name}/${id}: runner context is only available after the job starts`);
       for (const step of job.steps || []) {
         if (step.uses?.startsWith('./')) assert.ok(existsSync(resolve(root, step.uses)), step.uses);
         else if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/, `${name}/${id}: action must be pinned`);
@@ -93,18 +95,42 @@ test('Settings unit tests need neither Qt nor a browser', () => {
   assert.equal(step.with.native, 'false');
 });
 
-test('Windows builds validate Settings and embed the resulting native executable', () => {
+test('Windows builds embed the complete Electron shell without a Rust toolchain', () => {
   const action = parseDocument(readFileSync(resolve(root, '.github/actions/settings-build/action.yml'), 'utf8')).toJS();
   const commands = action.runs.steps.map(step => step.run || '').join('\n');
   for (const command of ['npm ci', 'npm audit', 'npm run build',
     '../scripts/ci.py --task settings_unit', '../scripts/ci.py --task settings_browser',
-    'cargo build --locked']) assert.ok(commands.includes(command), command);
+    'build-desktop.ps1 -Python $env:BUILD_PYTHON -SkipInstall']) assert.ok(commands.includes(command), command);
   for (const job of [ci.jobs.package, workflows.get('release.yml').jobs.build_candidate]) {
     const settings = job.steps.findIndex(step => step.uses === './.github/actions/settings-build');
     const packaging = job.steps.findIndex(step => step.run?.includes('scripts\\build.ps1') || step.run?.includes('scripts/build.ps1'));
     assert.ok(settings >= 0 && settings < packaging);
-    assert.ok(job.steps[packaging].run.includes('-SettingsExecutable dist\\clarify-settings.exe'));
+    assert.ok(job.steps[packaging].run.includes('-DesktopShellDirectory dist\\desktop-shell'));
   }
+});
+
+test('Electron native validation is selected, isolated and retains failure evidence', () => {
+  const job = ci.jobs.desktop_shell;
+  assert.equal(job['runs-on'], 'windows-2025');
+  const cache = job.steps.findIndex(step => step.uses === './.github/actions/electron-runtime-cache');
+  const node = job.steps.findIndex(step => step.uses?.startsWith('actions/setup-node@'));
+  const install = job.steps.findIndex(step => step.run === 'npm ci --no-fund');
+  assert.ok(node >= 0 && node < cache && cache < install);
+  assert.ok(job.steps.some(step => step.uses === './.github/actions/python-env' && step.with.platform === 'windows' && step.with.qt === 'true'));
+  assert.ok(job.steps.some(step => step.run === 'npm ci --no-fund' && step['working-directory'] === 'desktop'));
+  assert.ok(job.steps.some(step => step.run === 'python scripts/ci.py --task desktop_shell'));
+  const smoke = job.steps.find(step => step.run === 'python scripts/ci.py --task desktop_shell');
+  assert.equal(smoke.env.CLARIFY_TEST_ARTIFACTS_DIR, '$' + '{{ runner.temp }}/clarify-electron-evidence');
+  const evidence = job.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'));
+  assert.equal(evidence.if, 'always()');
+  assert.ok(evidence.with.path.includes('clarify-electron-evidence'));
+  const action = parseDocument(readFileSync(resolve(root, '.github/actions/settings-build/action.yml'), 'utf8')).toJS();
+  assert.ok(!action.runs.steps.some(step => /cargo|rustc|src-tauri/.test(step.run || JSON.stringify(step.with || {}))));
+  assert.ok(!action.runs.steps.some(step => /--task desktop_shell|npm run test:electron$/.test(step.run || '')));
+  assert.equal(ci.jobs.package.steps.find(step => step.uses === './.github/actions/settings-build').with.test, 'false');
+  const release = workflows.get('release.yml').jobs.build_candidate.steps.find(step => step.uses === './.github/actions/settings-build');
+  assert.equal(release.with.smoke, 'true');
+  assert.ok(action.runs.steps.some(step => step.if?.includes("inputs.smoke == 'true'") && step.run?.includes('npm run test:electron:smoke')));
 });
 
 test('destructive installer tests stay on disposable GitHub Windows', () => {
@@ -325,4 +351,23 @@ test('optional Bitrise iOS routing isolates forks and selects the matching Xcode
   assert.match(cache.with.key, /ios-tests-v2-/);
   assert.ok(cache.with.key.includes('env.DEVELOPER_DIR'));
   assert.ok(cache.with['restore-keys'].includes('env.DEVELOPER_DIR'));
+});
+
+test('PR proof upload is last and main authentication has read-only access', () => {
+  for (const id of ['plan', 'required']) {
+    assert.deepEqual(ci.jobs[id].permissions, {contents: 'read', actions: 'read', 'pull-requests': 'read'});
+    assert.equal(ci.jobs[id].steps.find(s => s.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 0);
+    const command = ci.jobs[id].steps.find(s => s.run?.includes(id === 'plan' ? '--github-plan' : '--check-results'));
+    assert.equal(command.env.GH_TOKEN, '$' + '{{ github.token }}');
+  }
+  assert.equal(ci.jobs.plan.outputs.reuse, '$' + '{{ steps.plan.outputs.reuse }}');
+  const steps = ci.jobs.required.steps;
+  assert.ok(steps.at(-3).run.includes('--check-results'));
+  assert.ok(steps.at(-2).run.includes('--emit-proof'));
+  const upload = steps.at(-1);
+  assert.match(upload.uses, /^actions\/upload-artifact@/);
+  assert.equal(upload.if, "github.event_name == 'pull_request'");
+  assert.equal(steps.at(-2).if, upload.if);
+  assert.equal(upload.with.name, 'ci-proof-$' + '{{ github.run_id }}-$' + '{{ github.run_attempt }}');
+  assert.equal(upload.with['if-no-files-found'], 'error');
 });

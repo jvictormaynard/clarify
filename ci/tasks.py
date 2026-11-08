@@ -15,6 +15,7 @@ JOBS = (
     "qt",
     "settings_unit",
     "settings_browser",
+    "desktop_shell",
     "package",
     "installer",
     "server",
@@ -113,6 +114,16 @@ def commands(task, repo=ROOT):
         npm("build", "desktop")
         npm("test:boot", "desktop")
         npm("test:browser", "desktop")
+    elif task == "desktop_shell":
+        if sys.platform != "win32":
+            gate(
+                "electron-native",
+                "The Electron package and native smoke require Windows.",
+            )
+            return checks
+        npm("test:electron", "desktop")
+        npm("build:electron", "desktop")
+        npm("test:electron:smoke", "desktop")
     elif task == "mobile":
         npm("check", "mobile")
         run(

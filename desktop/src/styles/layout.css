@@ -128,6 +128,7 @@
   width: var(--sidebar-width); flex-shrink: 0; display: flex; gap: 8px; align-items: center;
   padding-left: 16px; font-size: 14px; font-weight: 600; height: 100%;
 }
+.titlebar-standalone { border-bottom: 0; }
 .titlebar-logo { width: 20px; height: 20px; object-fit: contain; pointer-events: none; }
 .titlebar-context {
   display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500;

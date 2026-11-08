@@ -1189,6 +1189,21 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
         self.assertIsInstance(service.commands[-1], CancelTranslation)
         self.assertFalse(bridge.handleHotkey("toggle_visibility"))
 
+    def test_builtin_translation_shortcut_requests_language_but_direct_action_does_not(
+        self,
+    ):
+        service = DeterministicWorkflowService()
+        bridge = QmlWorkflowBridge(service)
+        self.assertTrue(bridge.handleHotkey("text_action:translation"))
+        self.assertEqual(service.commands[-1].action_id, "translation")
+        self.assertTrue(service.commands[-1].choose_language)
+        service.publish(WorkflowState())
+        self.assertTrue(bridge.runTextAction("translation"))
+        self.assertFalse(service.commands[-1].choose_language)
+        service.publish(WorkflowState())
+        self.assertTrue(bridge.handleHotkey("text_action:custom"))
+        self.assertFalse(service.commands[-1].choose_language)
+
     def test_bridge_captures_target_before_each_workflow_dispatch(self):
         service = DeterministicWorkflowService()
         targets = [

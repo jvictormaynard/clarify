@@ -1,10 +1,10 @@
 # Desktop design system
 
-The React/Tauri Settings window uses the approved T3 Code dark design and shared
+The React/Electron Settings window uses the approved T3 Code dark design and shared
 React controls. Its workspace includes dictation, style, text actions, dictionary,
 snippets and history. Application preferences and account access use a Settings
-dialog. The Qt/QML pill,
-quick menus and launch-failure Settings fallback retain their own theme and
+dialog. The compact pill,
+quick menus and Qt/QML recovery views retain their own theme and
 behavior. Mobile and the server are outside this system.
 
 ## Required use
@@ -300,6 +300,14 @@ email form, with a 12 px gap before the guest button.
 The initial sign-in screen places its controls directly below the welcome text
 without a surrounding card, border, background or shadow. It uses a blue Continue
 without an account button in the method chooser.
+Setup screens use a centered 400 px content column. Only the welcome screen
+shows the logo and product description. Later steps use a centered task title
+with instructions beside the relevant fields or controls. Dictation practice
+uses a 576 px column for its controls and result. Both occupy the available
+height below the titlebar and scroll from
+the top when the content does not fit. Their titlebar keeps the drag region
+and window controls without repeating the logo and name. Workspace pages keep
+the existing titlebar identity and page context.
 The email form and Account Settings use an outlined guest button. It opens local setup during onboarding and
 returns to General from Account Settings. An expired managed session retains its
 explicit sign-out action before personal processing becomes available.

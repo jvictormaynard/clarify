@@ -1,4 +1,8 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { electron } from "../platform";
+function invoke<T>(command: string, request: {method: string; args: unknown[]}): Promise<T> {
+  return electron() ? electron()!.call<T>("settings", request.method, request.args) : tauriInvoke<T>(command, request);
+}
 import { t } from "../i18n";
 import type { RecordingControls } from "./recording";
 
@@ -262,24 +266,38 @@ const textActionWrites = new Set<SettingsMethod>([
   "saveTextAction", "deleteTextAction", "duplicateTextAction", "saveTextActionProfile", "setAfterDictationTextAction",
 ]);
 async function invokeSettings<M extends SettingsMethod>(method: M, args: SettingsArguments[M]): Promise<Settings> {
-  let snapshot = await invoke<Settings>("settings_call", { method, args });
-  const key = method === "refreshTextActions" ? "textActionRefresh" : textActionWrites.has(method) ? "textActionMutation" : null;
-  if (!key || !snapshot[key]) return snapshot;
-  const generation = snapshot[key].generation;
-  while (snapshot[key]?.busy) {
-    await new Promise<void>(resolve => setTimeout(resolve, 100));
-    let delta: Partial<Settings>;
-    try { delta = await invoke<Partial<Settings>>("settings_call", { method: "poll", args: [] }); }
-    catch (error) { throw new SettingsOperationError(String(error), snapshot); }
-    snapshot = { ...snapshot, ...delta };
-    if (snapshot[key]?.generation !== generation) {
-      throw new SettingsOperationError(t("A operação de ações mudou. Atualize e tente novamente."), snapshot);
+  const patches: Partial<Settings>[] = [];
+  let wake: (() => void) | undefined;
+  const unsubscribe = electron()?.subscribe(message => {
+    if (message.event === "settings") { patches.push(message.state as Partial<Settings>); wake?.(); }
+  });
+  let snapshot: Settings | undefined;
+  try {
+    snapshot = await invoke<Settings>("settings_call", { method, args });
+    const key = method === "refreshTextActions" ? "textActionRefresh" : textActionWrites.has(method) ? "textActionMutation" : null;
+    if (!key || !snapshot[key]) return snapshot;
+    const generation = snapshot[key].generation;
+    while (snapshot[key]?.busy) {
+      let delta: Partial<Settings>;
+      if (electron()) {
+        if (!patches.length) await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => { wake = undefined; reject(new Error("Clarify did not respond")); }, 15000);
+          wake = () => { clearTimeout(timer); wake = undefined; resolve(); };
+        });
+        delta = Object.assign({}, ...patches.splice(0));
+      } else {
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
+        delta = await invoke<Partial<Settings>>("settings_call", { method: "poll", args: [] });
+      }
+      snapshot = { ...snapshot, ...delta };
+      if (snapshot[key]?.generation !== generation) throw new Error(t("A operação de ações mudou. Atualize e tente novamente."));
     }
-  }
-  if (snapshot[key]?.status !== "succeeded") {
-    throw new SettingsOperationError(snapshot[key]?.error || t("Não foi possível concluir a alteração das ações."), snapshot);
-  }
-  return snapshot;
+    if (snapshot[key]?.status !== "succeeded") throw new Error(snapshot[key]?.error || t("Não foi possível concluir a alteração das ações."));
+    return snapshot;
+  } catch (error) {
+    if (snapshot) throw new SettingsOperationError(error instanceof Error ? error.message : String(error), snapshot);
+    throw error;
+  } finally { unsubscribe?.(); }
 }
 
 let queue: Promise<unknown> = Promise.resolve();
