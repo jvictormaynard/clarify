@@ -15,9 +15,14 @@ concurrency:
 jobs:
   plan:
     name: Select validation tasks
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
+      reuse: ${{ steps.plan.outputs.reuse }}
       static: ${{ steps.plan.outputs.static }}
       python: ${{ steps.plan.outputs.python }}
       qt: ${{ steps.plan.outputs.qt }}
@@ -42,6 +47,7 @@ jobs:
           python-version: "3.12"
       - id: plan
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_RUNNER_PROVIDER: ${{ vars.CI_RUNNER_PROVIDER || 'github' }}
         run: python scripts/ci.py --github-plan
   policy:
@@ -427,6 +433,10 @@ jobs:
             -OutputPath dist\Clarify-release-manifest.cab
   required:
     name: CI required
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     if: always()
     needs: [plan, policy, static, python, qt, settings_unit, settings_browser, desktop_shell, package, installer, server, mobile, ios, audit]
     runs-on: ubuntu-24.04
@@ -434,11 +444,26 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
       - name: Require every selected job and matrix to pass
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_NEEDS: ${{ toJSON(needs) }}
         run: python scripts/ci.py --check-results
+      - name: Emit successful PR validation evidence
+        if: github.event_name == 'pull_request'
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python scripts/ci.py --emit-proof "${{ runner.temp }}/proof.json"
+      - name: Upload successful PR validation evidence
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/proof.json
+          if-no-files-found: error
+          retention-days: 2
