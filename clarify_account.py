@@ -299,6 +299,19 @@ class AccountService:
     def _save(self):
         _atomic_write_json(self.path, self._state)
 
+    def snapshot_guard(self):
+        """Pin the account while a collaborator checks and publishes its state."""
+        return self._lock
+
+    def context_stamp(self):
+        """Nonsecret session stamp, including personal-mode account changes."""
+        with self._lock:
+            return (
+                self._generation,
+                self.default_endpoint,
+                self._state.get("endpoint", ""),
+            )
+
     @property
     def busy(self):
         with self._lock:
@@ -1227,10 +1240,18 @@ class AccountService:
                 raise
         return result
 
-    def execute_text_action(self, snapshot, text, language="auto", *, cancel=None):
+    def execute_text_action(
+        self, snapshot, text, language="auto", *, cancel=None, output_language=None
+    ):
         from text_actions import validate_input, validate_output
 
+        from shared.output_preferences import (
+            output_language as parse_output_language,
+            output_language_outcome,
+        )
+
         validate_input(text, language)
+        target = parse_output_language(output_language)
         code, result = self._request(
             "POST",
             "/v1/text-actions/execute",
@@ -1246,6 +1267,14 @@ class AccountService:
         )
         if code != 200:
             raise _processing_error(code, result, text=True)
+        if target not in (None, "auto") and any(
+            result.get(key) != value
+            for key, value in output_language_outcome(target, refined=True).items()
+        ):
+            raise AccountError(
+                "A preferência de saída não foi aplicada. O texto original foi preservado.",
+                code="output_preferences_unapplied",
+            )
         value = result.get("text")
         try:
             validate_output(value)

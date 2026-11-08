@@ -232,7 +232,9 @@ class DictationTests(TestCase):
         )
         rewrite = provider.call_args_list[1].kwargs["json"]
         self.assertEqual(rewrite["model"], "openai/gpt-oss-20b")
-        self.assertEqual(rewrite["messages"][0]["content"], groq.SYSTEM)
+        system = rewrite["messages"][0]["content"]
+        self.assertTrue(system.startswith(groq.SYSTEM))
+        self.assertIn("Do not translate the source", system)
         self.assertIn("BEGIN_SOURCE_TRANSCRIPT", rewrite["messages"][1]["content"])
         operation = Operation.objects.get(user=self.user, operation_id=op)
         self.assertEqual(operation.output_tokens, 300)  # Includes reasoning tokens.

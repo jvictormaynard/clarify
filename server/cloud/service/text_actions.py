@@ -8,19 +8,14 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework.exceptions import PermissionDenied
 
+from shared.output_preferences import LANGUAGES as OUTPUT_LANGUAGES
+
 from .ledger import Rejected
 from .models import TextActionLibrary, TextActionRevision
 
 MAX_REVISION = 2**63 - 1
 MAX_LIBRARY_BYTES = 256 * 1024
-LANGUAGES = {
-    "auto": "the source language",
-    "pt": "Portuguese",
-    "en": "English",
-    "es": "Spanish",
-    "de": "German",
-    "ru": "Russian",
-}
+LANGUAGES = {"auto": "the source language", **OUTPUT_LANGUAGES}
 FIELDS = {"id", "name", "prompt", "kind", "enabled"}
 
 
@@ -80,7 +75,7 @@ def _library_locked(user):
     owner = get_user_model().objects.select_for_update().filter(pk=user.pk).first()
     if owner is None:
         raise PermissionDenied()
-    from .groq import TEXT_PROMPTS
+    from shared.rewrite_prompts import TEXT_PROMPTS
 
     initial = [
         {
@@ -192,8 +187,6 @@ def resolve(user, action_id, revision, language):
         raise Rejected("text_action_stale", 409)
     if not item["enabled"]:
         raise Rejected("text_action_disabled", 409)
-    if item["kind"] == "translation" and language == "auto":
-        raise Rejected("text_action_language_required", 400)
     return Snapshot(**item)
 
 

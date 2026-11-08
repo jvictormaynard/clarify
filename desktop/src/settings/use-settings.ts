@@ -1,7 +1,8 @@
+import { electron } from "../platform";
 import { t, setUiLanguage } from "../i18n";
 import {
   useCallback, useEffect, useMemo, useRef, useState,
-  type KeyboardEvent, type MouseEvent, type SetStateAction,
+  type KeyboardEvent, type MouseEvent,
 } from "react";
 import {
   call, pollSettings, preferenceMethods, settingsTransaction, historyCorrection, SettingsOperationError,
@@ -12,6 +13,7 @@ import { recordingDraft, recordingValue, type RecordingDraft } from "./recording
 import { defaultWorkflowScope, isSettingsSection, isWorkflowPage, workflowPage, type MainPageId, type SettingsSectionId, type PageId } from "./navigation";
 import { useSettingsWindow } from "./use-settings-window";
 import { mergeSettings, settingsValuesEqual } from "./state";
+import { useDraft } from "./use-draft";
 import { dictionaryIdentity } from "./dictionary-identity";
 import { useTextActions } from "./use-text-actions";
 import { useAppStyleEditor } from "./use-app-style-editor";
@@ -33,17 +35,6 @@ type ConfirmationAction = "clearProvider" | "removeLocalAsr" | "resetAllHotkeys"
 type LibraryBaseline<T> = { entry: T | null; identity: LibraryIdentity<T> };
 type LibraryDraft<T> = { entries: T[]; identities: LibraryIdentity<T>[]; baseline: LibraryBaseline<T>[]; context: string };
 
-// Update the ref at the input event, before React renders. An async completion
-// can then clear its own revision without clearing a newer edit.
-function useDraft<T>(initial: T) {
-  const [value, update] = useState(initial);
-  const ref = useRef(value);
-  const set = useCallback((next: SetStateAction<T>) => {
-    ref.current = typeof next === "function" ? (next as (previous: T) => T)(ref.current) : next;
-    update(ref.current);
-  }, []);
-  return [value, set, ref] as const;
-}
 
 function libraryDraft<T extends DictionaryEntry | Snippet>(entries: T[], previous: LibraryDraft<T> | null, persisted: T[], context: string, identify: (entry: T) => LibraryIdentity<T>): LibraryDraft<T> {
   const before = previous?.entries ?? persisted;
@@ -94,12 +85,16 @@ function rebaseSubmittedLibrary<T extends DictionaryEntry | Snippet>(
   };
 }
 
+function libraryKey(entry: DictionaryEntry | Snippet): string {
+  return "term" in entry ? dictionaryIdentity(entry.term) : entry.trigger.trim().normalize("NFC").toLowerCase();
+}
+
 function reconcileLibrary<T extends DictionaryEntry | Snippet>(
   draft: LibraryDraft<T> | null, incoming: T[], context: string,
   identify: (entry: T, identity?: LibraryIdentity<T>) => LibraryIdentity<T>,
 ): LibraryDraft<T> | null {
   if (!draft || draft.context !== context) return draft;
-  const key = (entry: T) => "term" in entry ? dictionaryIdentity(entry.term) : entry.trigger.trim().normalize("NFC").toLowerCase();
+  const key = libraryKey;
   const originals = new Map(draft.baseline.map(row => [row.identity, row.entry]));
   const byKey = new Map(draft.baseline.flatMap(row => {
     const saved = row.identity.persisted ?? row.entry;
@@ -408,8 +403,9 @@ export function useSettings() {
         try {
           if (!current.current) {
             await settingsTransaction(async call => {
-              await call("snapshot");
+              const initial = await call("snapshot");
               if (!live) return;
+              acceptState(initial);
               await call("selectWorkflow", "transcription");
               if (!live) return;
               const snapshot = await call("loadRouteModels");
@@ -420,7 +416,7 @@ export function useSettings() {
             const snapshot = await call("snapshot");
             if (live) acceptState(snapshot);
             needsSnapshot = false;
-          } else {
+          } else if (!electron()) {
             const delta = await pollSettings();
             if (live) acceptState(delta);
           }
@@ -429,16 +425,21 @@ export function useSettings() {
           if (live) setError(String(e));
         } finally { pending.current -= 1; }
       }
-      if (live) timer = setTimeout(refresh, current.current?.microphoneTestBusy ? 100 : 1000);
+      if (live && (!electron() || needsSnapshot || !current.current)) timer = setTimeout(refresh, current.current?.microphoneTestBusy ? 100 : 1000);
     };
     const visibility = () => {
       if (document.hidden && current.current?.hotkeyCaptureAction && !actionsCaptureRef.current) void run("cancelHotkeyCapture");
       if (document.hidden && current.current?.microphoneTestBusy) void run("stopMicrophoneTest");
     };
+    const unsubscribe = electron()?.subscribe(message => {
+      if (live && current.current && message.event === "settings") acceptState(message.state as Partial<Settings>);
+    });
+    void electron()?.ready();
     document.addEventListener("visibilitychange", visibility);
     void refresh();
     return () => {
       live = false;
+      unsubscribe?.();
       lifetime.current += 1;
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", visibility);
@@ -578,7 +579,7 @@ export function useSettings() {
           Object.assign(routeBaselines.current, savedRoutes);
           const bindSaved = <T extends DictionaryEntry | Snippet>(draft: LibraryDraft<T> | null, submitted: T[], entries: T[]) => {
             if (!draft) return;
-            const key = (entry: T) => ("term" in entry ? entry.term : entry.trigger).trim().normalize("NFC").toLowerCase();
+            const key = libraryKey;
             const savedByKey = new Map(entries.map(entry => [key(entry), entry]));
             draft.identities.forEach((identity, index) => {
               // Sync can remove or reorder rows after staging. Match the sent

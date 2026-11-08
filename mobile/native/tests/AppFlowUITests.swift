@@ -15,16 +15,26 @@ final class AppFlowUITests: XCTestCase {
     capture(name)
     print("APP_UI_DIAGNOSTIC \(name)\n\(app.debugDescription)")
   }
-  func reveal(_ element: XCUIElement, identifier: String) {
-    for _ in 0..<6 where !element.isHittable {
+  @discardableResult func reveal(_ element: XCUIElement, identifier: String) -> Bool {
+    for attempt in 0...12 {
       let page = app.scrollViews.containing(element.elementType, identifier: identifier).firstMatch
+      let viewport = page.exists ? page.frame.intersection(app.frame) : app.frame
+      let frame = element.frame
+      let located = !frame.isNull && !frame.isInfinite && frame.width > 0 && frame.height > 0
+      let center = CGPoint(x: frame.midX, y: frame.midY)
+      // Require the target inside the scroll viewport even when AX reports hittable.
+      if located && element.isHittable && viewport.contains(center) { return true }
+      if attempt == 12 { break }
       if page.exists && page.frame.height > 0 && page.frame.intersects(app.frame) {
-        let down = element.frame.midY < page.frame.midY
+        // Clipped React Native elements can have an infinite AX frame. Search
+        // toward the top first, then the bottom until a usable frame appears.
+        let down = located ? frame.midY < page.frame.midY : attempt < 6
         let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: down ? 0.2 : 0.8))
         let finish = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: down ? 0.8 : 0.2))
         start.press(forDuration: 0.1, thenDragTo: finish)
-      } else if element.frame.midY < app.frame.midY { app.swipeDown() } else { app.swipeUp() }
+      } else if (located ? frame.midY < app.frame.midY : attempt < 6) { app.swipeDown() } else { app.swipeUp() }
     }
+    diagnose("unreachable-\(identifier)"); XCTFail("Cannot reveal element: \(identifier)"); return false
   }
   func press(_ identifier: String, allowScroll: Bool = true) {
     let button = app.descendants(matching: .any)[identifier].firstMatch
@@ -35,8 +45,9 @@ final class AppFlowUITests: XCTestCase {
     guard XCTWaiter.wait(for: [enabled], timeout: 15) == .completed else {
       diagnose("disabled-\(identifier)"); XCTFail("Disabled action: \(identifier)"); return
     }
-    if allowScroll { reveal(button, identifier: identifier) }
-    guard button.isHittable else {
+    if allowScroll && !reveal(button, identifier: identifier) { return }
+    let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
+    guard XCTWaiter.wait(for: [reachable], timeout: 5) == .completed else {
       diagnose("unreachable-\(identifier)"); XCTFail("Unreachable action: \(identifier)"); return
     }
     button.tap()
@@ -63,14 +74,9 @@ final class AppFlowUITests: XCTestCase {
       guard page.exists && page.frame.intersects(app.frame) else {
         diagnose("keyboard-dismissal-page-missing"); XCTFail("Cannot reach the page to dismiss the keyboard"); return
       }
-      // The center of the page can be an independently scrolling TextView.
-      // Container isHittable does not establish whether its gutter can be dragged.
-      // Use that gutter so the page's interactive dismissal runs.
-      let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2))
-      // Interactive dismissal follows the touch. Cross the keyboard's top edge
-      // instead of stopping inside the page that has already resized above it.
-      let finish = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.95))
-      start.press(forDuration: 0.1, thenDragTo: finish)
+      // KeyboardPage uses handled taps. Its empty gutter is outside child controls.
+      // Tap there to finish editing without leaving an interactive drag in progress.
+      page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).tap()
       let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: keyboard)
       guard XCTWaiter.wait(for: [dismissed], timeout: 5) == .completed else {
         diagnose("keyboard-obscures-tab-\(label)"); XCTFail("Dismiss the keyboard before choosing tab: \(label)"); return
@@ -108,17 +114,18 @@ final class AppFlowUITests: XCTestCase {
   }
   func enter(_ value: String, in field: XCUIElement, name: String, replacing: Bool = false) {
     XCTAssertTrue(field.waitForExistence(timeout: 15))
-    reveal(field, identifier: field.identifier.isEmpty ? field.label : field.identifier)
+    guard reveal(field, identifier: field.identifier.isEmpty ? field.label : field.identifier) else { return }
     field.tap()
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
     if replacing { field.typeKey("a", modifierFlags: .command) }
     field.typeText(value)
-    // Event synthesis can finish before UIKit drains the input burst.
-    // Wait for the complete value, then preserve the observation for diagnostics.
+    // Keep the first observation; event synthesis can finish before UIKit input delivery.
+    let firstRead = field.value as? String
+    print("APP_UI_INPUT_FIRST_READ \(name) expected=\(String(reflecting: value)) actual=\(String(reflecting: firstRead))")
     let complete = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: field)
-    let received = XCTWaiter.wait(for: [complete], timeout: 10)
+    let received = firstRead == value || XCTWaiter.wait(for: [complete], timeout: 10) == .completed
     let actual = field.value as? String
-    guard received == .completed && actual == value else {
+    guard received && actual == value else {
       print("APP_UI_INPUT_FAILURE \(name) expected=\(String(reflecting: value)) actual=\(String(reflecting: actual)) frame=\(field.frame) hittable=\(field.isHittable)")
       diagnose("typing-\(name)")
       XCTFail("Input did not retain the typed characters: \(name); expected \(String(reflecting: value)), actual \(String(reflecting: actual))")
@@ -264,6 +271,25 @@ final class AppFlowUITests: XCTestCase {
     guard app.textFields["account.code"].waitForExistence(timeout: 15) else {
       diagnose("login-code-missing"); XCTFail("Login did not show the code field. Inspect the HTTP journal and app alert."); return
     }
+    if checkPersistence {
+      press("account.backToEmail")
+      let email = app.textFields["account.email"]
+      XCTAssertTrue(email.waitForExistence(timeout: 15))
+      XCTAssertEqual(email.value as? String, "clarify-e2e@example.test", "Returning from the code step retains the email draft")
+      capture("login-email-restored")
+      email.tap()
+      XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+      email.typeText("\n")
+      XCTAssertTrue(app.textFields["account.code"].waitForExistence(timeout: 15), "Return submits the native field's complete email")
+      enter("000000", in: app.textFields["account.code"], name: "invalid-code")
+      pressWithKeyboard("account.verifyCode", field: app.textFields["account.code"], value: "000000")
+      let alert = app.alerts["Clarify"].firstMatch
+      XCTAssertTrue(alert.waitForExistence(timeout: 15))
+      alert.buttons.firstMatch.tap()
+      XCTAssertFalse(app.buttons["account.verifyCode"].isEnabled, "A rejected attempt clears the submitted code")
+      capture("login-code-reset-after-rejection")
+    }
+    // Enter without replacing so a stale native code also fails the first read.
     enter("123456", in: app.textFields["account.code"], name: "code")
     capture("login-code-keyboard-visible")
     pressWithKeyboard("account.verifyCode", field: app.textFields["account.code"], value: "123456")
@@ -277,7 +303,23 @@ final class AppFlowUITests: XCTestCase {
     let word = app.textFields["Palavra"]
     enter(compact ? "ui" : "Fixture draft", in: word, name: "dictionary-draft")
     capture("dictionary-editor-keyboard-dirty")
-    press("Cancelar"); back()
+    press("Cancelar")
+    if !compact {
+      let savedWord = "fixture saved"
+      press("Adicionar palavra")
+      enter(savedWord, in: word, name: "dictionary-save")
+      enter("fixture alias", in: app.textFields["Variações"], name: "dictionary-alias")
+      press("Salvar"); absent(word)
+      let saved = (fixture("/v1/dictionary")["entries"] as? [[String: Any]])?.first { ($0["term"] as? String) == savedWord }
+      XCTAssertEqual(saved?["term"] as? String, savedWord, "The received dictionary payload retains the full term")
+      XCTAssertEqual(saved?["aliases"] as? [String], ["fixture alias"])
+      let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", savedWord)).firstMatch
+      XCTAssertTrue(row.waitForExistence(timeout: 15)); row.tap()
+      XCTAssertEqual(word.value as? String, savedWord)
+      XCTAssertEqual(app.textFields["Variações"].value as? String, "fixture alias")
+      capture("dictionary-saved-readback"); press("Cancelar")
+    }
+    back()
     XCTAssertTrue(app.tabBars.buttons["Biblioteca"].isSelected)
     press("library.snippets"); capture("snippets")
     press("Adicionar snippet")
@@ -319,9 +361,9 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
     verifyActions()
     tab("Ajustes"); press("settings.output")
-    let unchangedLanguage = app.descendants(matching: .any)["output.language.de"].firstMatch
-    XCTAssertTrue(unchangedLanguage.waitForExistence(timeout: 15))
-    XCTAssertTrue(unchangedLanguage.isSelected, "Translation target does not change dictation output")
+    let sharedLanguage = app.descendants(matching: .any)["output.language.ru"].firstMatch
+    XCTAssertTrue(sharedLanguage.waitForExistence(timeout: 15))
+    XCTAssertTrue(sharedLanguage.isSelected, "Text actions and dictation use the same output language")
     press("output.close"); press("settings.account")
     press("account.logout")
     XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))

@@ -2,7 +2,24 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
 const { createAppUIService } = createRequire(import.meta.url)('./app-ui-service.cjs');
-const { requirePassedTest, requirePassedNativeTests, nativeMethods } = createRequire(import.meta.url)('../scripts/test-app-ui.cjs');
+const { appUIProfiles, requirePassedTest, requirePassedNativeTests, nativeMethods } = createRequire(import.meta.url)('../scripts/test-app-ui.cjs');
+
+test('app UI profiles keep full coverage by default and reject ambiguous selection', () => {
+  for (const [env, expected] of [
+    [{}, ['regular', 'compact']],
+    [{ CLARIFY_APP_UI_PROFILE: 'all' }, ['regular', 'compact']],
+    [{ CLARIFY_APP_UI_PROFILE: 'regular' }, ['regular']],
+    [{ CLARIFY_APP_UI_PROFILE: 'compact' }, ['compact']],
+    [{ CLARIFY_APP_UI_COMPACT_ONLY: 'true' }, ['compact']],
+    [{ CLARIFY_APP_UI_PROFILE: 'compact', CLARIFY_APP_UI_COMPACT_ONLY: 'true' }, ['compact']],
+  ]) assert.deepEqual(appUIProfiles(env), expected);
+  for (const env of [
+    { CLARIFY_APP_UI_PROFILE: '' },
+    { CLARIFY_APP_UI_PROFILE: 'unknown' },
+    { CLARIFY_APP_UI_PROFILE: 'all', CLARIFY_APP_UI_COMPACT_ONLY: 'true' },
+    { CLARIFY_APP_UI_PROFILE: 'regular', CLARIFY_APP_UI_COMPACT_ONLY: 'true' },
+  ]) assert.throws(() => appUIProfiles(env));
+});
 
 test('native text state gate rejects missing, duplicate, unknown and failing cases', () => {
   const lines = nativeMethods.flatMap((method: string) => [

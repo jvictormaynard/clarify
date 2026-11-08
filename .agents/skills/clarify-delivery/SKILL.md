@@ -1,47 +1,27 @@
 ---
 name: clarify-delivery
-description: "Coordinate an authorized code change from source inspection through tests, repair, and final review."
+description: "Implement an authorized feature, fix, or refactor through source inspection, validation, repair, and review."
 ---
 
 # Deliver a Clarify change
 
-Read the [project workflow](../../../docs/agents/workflow.md)
-for authorization, risk, checks, and completion rules.
+Use the [project workflow](../../../docs/agents/workflow.md) for scope, worktrees,
+validation, retained files, review, and completion. It is the execution policy;
+do not add a separate spec, ticket, interview, or prototype stage by default.
 
-1. Establish the task's observable outcome and acceptance criteria. Inspect Git
-   status, the starting branch, existing code, tests, and any supplied issue's
-   full context. Preserve unrelated work. Before implementation, use
-   [worktree preparation](../../../docs/agents/workflow.md#worktrees-and-parallel-work) to create or verify
-   a linked worktree against freshly fetched `origin/main`.
-2. Trace the real ownership and call path. Read the architecture contract for
-   structural work. Choose the smallest coherent change; use `codebase-design`
-   for an interface or dependency decision and `diagnosing-bugs` when the cause
-   is unclear.
-   For CI/CD, read [main validation and delivery](../../../docs/ci-delivery.md).
-   Use native Railway GitHub autodeploy for the server. Keep client validation
-   separate from a dedicated version-preparation PR and its publication.
-   Inspect activation settings without exposing secrets. Implementing automation
-   does not authorize enabling it in production or publishing a version.
-3. Classify the affected behavior using the workflow's validation table and the
-   shared plan in the [CI delivery guide](../../../docs/ci-delivery.md#local-validation).
-   Choose existing test boundaries autonomously. Use `tdd` for meaningful changed
-   behavior and keep tests isolated from personal data and external effects.
-   Report unavailable selected gates as unexecuted; focused tests do not replace them.
-4. Delegate independent outcomes under the project's parallel-work rules.
-   Keep shared-contract changes serial; the coordinator owns integration.
-   Implement in complete slices. Run focused checks during editing; repair
-   actual failures and preserve compatibility, cancellation, resource ownership,
-   and once-only effects.
-5. Run the applicable final checks once the candidate is stable. Use
-   `code-review` for separate requirements and engineering passes. Fix confirmed
-   in-scope findings and rerun affected checks.
-6. Fetch and verify the integrated candidate still contains current `origin/main`.
-   If the base advanced, integrate it safely and repeat affected checks and review.
-   Finish the requested delivery level. A local change ends with a reviewable
-   diff. A requested PR, merge, or release also needs the corresponding terminal
-   Git/CI/asset evidence. Use `clarify-release` for publication.
+1. Inspect the request, Git state, affected owners, callers, and existing tests.
+   Establish the observable outcome and prepare or verify the isolated worktree.
+2. Choose the smallest coherent change. Use `diagnosing-bugs` for an unclear
+   failure, `codebase-design` for an interface decision, and `tdd` when a retained
+   regression test is useful. Load only the method needed.
+3. Implement complete slices. Delegate independent outcomes under the workflow.
+   Run focused checks and fix actual failures. Preserve compatibility, operation
+   identity, cancellation, effect ownership, and cleanup.
+4. Inspect every added file. Apply the workflow's test, documentation, and
+   evidence retention rules. Run the selected final checks on the stable result.
+5. Use `code-review` at the required review level. Repair confirmed findings,
+   repeat affected checks, refresh the base, and finish the requested delivery.
 
-Report the result, validation, and material open limits. A running command,
-deployed bundle, or passing unit test is evidence only for what it checked.
-Do not create a spec, ticket chain, prototype, or extra review stage unless it
-solves an actual problem in this task.
+Report the result, terminal checks, and open limits. A local implementation does
+not request a commit, PR, merge, deployment, or release. Use `clarify-release` for
+desktop publication and the platform guides for server/mobile delivery.

@@ -60,13 +60,34 @@ preparation. Cancelling text leaves the account refresh active. Explicit account
 changes and computer connection work still block text acceptance. The operation
 pins its account identity and credential before the preparation task starts and
 checks them after discovery, so a waiting operation cannot adopt another session.
-Output language is independent
-of recognition language. Explicit choices enter operation fingerprints and
+The desktop toolbar globe preserves the source languages, including mixed-language
+text. A flag selects the output language for dictation and saved text actions.
+Operations freeze this choice at acceptance; changing the toolbar affects the next
+operation. The persisted `ui_language` field retains the toolbar choice for
+compatibility. Output language is independent of recognition language. Explicit
+choices enter operation fingerprints and
 require advertised service support; unsupported choices remain saved and return
-an update-required error. Requested/applied/status metadata distinguishes applied
-editing from a recoverable original. Exact standalone snippets bypass editing.
+an update-required error. Text and dictation responses use the shared
+`output_language_requested`, `output_language_applied` and `output_language_status`
+outcome. Clients require confirmation for explicit text-language choices; an older
+service cannot silently report source-language text as an applied choice. This
+metadata distinguishes applied editing from a recoverable original. Exact
+standalone snippets bypass editing.
 The existing cleanup policy and Local ASR cloud-refinement permission still
 control whether refinement can run.
+
+The versioned processing contract owns supported choices, wire limits and error
+recovery categories for both clients. Its generated Python, Swift and TypeScript
+constants and shared outcome cases are checked by the mobile validation command.
+Services advertise their supported choices; older services cannot silently accept
+a new dictation policy. The iOS app stores the policy per account or paired
+computer and freezes it when recording starts. Explicit natural mode removes the
+computer's selected post-dictation action and cleanup override while retaining
+its normal processing route. History records the actual rewrite flag independently
+of successful snippet expansion. Account action editing uses the same revision
+contract as desktop; full definitions and edit leases stay in the containing app.
+Existing mobile installations retain the destination's policy until an explicit
+choice is saved. Translation actions use the common output-language control.
 
 The iOS keyboard receives a nonsecret App Group vocabulary projection with an
 opaque account scope. A tap on a one- or two-word selection writes a separate
@@ -83,7 +104,12 @@ per-account/global admission. Clients cannot select arbitrary models, endpoints,
 credentials or owners. Account text-action definitions accept bounded saved
 instructions; execution supplies their ID and revision. A PostgreSQL lock
 serializes quota reservations and cost settlement.
-`shared/dictation_prompt.json` is generated from the canonical desktop prompt.
+`shared/rewrite_prompts.py` owns transformation prompts and the composition of
+writing style and output language for desktop and hosted processing. Base rewrite
+and style rules do not select a language. The selected output preference supplies
+the language instruction after the task policy. The generated Swift prompt
+is a compatibility projection of that owner; clients do not maintain separate
+prompt definitions.
 See [server operations and release gates](../server/README.md).
 
 Sponsored processing uses funded individual weekly quotas with a common Monday
@@ -190,7 +216,7 @@ Focus and selection safety check
     +---- changed ------> keep result in clipboard for manual paste
 ```
 
-The Qt/QML event loop owns the desktop surface. Provider calls, audio
+The Qt event loop owns desktop workflows. Provider calls, audio
 processing, and clipboard transactions run through scheduled workers so the
 floating window remains responsive.
 
@@ -224,9 +250,34 @@ certificate pinning, operation identity and open delivery evidence.
 
 ## Settings process boundary
 
+The desktop uses one retained Electron child for the React Settings
+window and the React pill. `qml_electron.py` adapts the existing Qt controllers
+to explicit workflow commands and property-change events over private pipes.
+The Python engine retains recording, provider, clipboard, account and storage
+ownership. Qt still supplies its event loop, native hotkeys and the file-import
+panel during this migration. The QML presentation remains a recovery path if
+the Electron child fails.
+
+The local pilot resolves `desktop-shell/Clarify Desktop.exe` beside the installed
+engine, or an absolute `CLARIFY_DESKTOP_EXECUTABLE` for source development. The
+shell directory is deployed beside the portable executable to avoid extracting
+Chromium on each engine launch. `scripts/deploy.ps1 -DesktopShellDirectory`
+installs it with a separate recoverable engine and shell backup. Public release
+packaging remains on the existing release contract until separately migrated.
+
+Settings close retains the renderer only after its save/discard guard accepts
+the close. Hiding it for a workflow retains the update block until an accepted
+close, because its local drafts can still be unsaved. The Electron executable
+is excluded from foreground target capture before the shell starts. Meter
+events use the small workflow snapshot; Settings events read notified fields
+and preserve the existing account and library ownership guards.
+
 `desktop/src/` contains the React/TypeScript Settings pages, Base UI controls,
-and styles. `desktop/src-tauri/` hosts them in a Tauri v2 WebView2 window. This is
-not Electron and does not replace the Python audio engine or QML pill.
+and styles. `desktop/src-tauri/` retains the explicitly selected legacy Tauri
+build. Default Windows packaging uses `scripts/build-desktop.ps1` and embeds the
+complete Electron app in the portable EXE. The payload manifest and SBOM bind
+the renderer, native runtime and license files to that build. The existing
+portable update signature therefore covers the complete desktop application.
 
 `clarify/desktop/qml_web_settings.py` starts the child with Qt `QProcess` and
 exchanges JSON messages over private standard input/output pipes. The Python
@@ -270,6 +321,11 @@ bindings, limits and immutable execution snapshots. Configuration schema 5
 migrates effective schema-4 rewrite/translation prompts, enabled state, routes,
 ChatGPT account bindings and shortcuts. An intentionally empty catalog remains
 empty. Older readers reject schema 5; newer unknown schemas remain read-only.
+
+Schema 6 adds the general writing style. Application rules override that style;
+Natural adds no style instruction. Schema-5 readers cannot save schema-6 files,
+so an older desktop cannot silently erase this preference. The existing action
+catalog and personal instructions remain unchanged during migration.
 
 `text_action_service.py` owns catalog transactions, account-context guards,
 definition revisions, local shortcut registration and rollback. Personal
@@ -413,7 +469,8 @@ The old widget entrypoint is not used by `start.bat`, PyInstaller, CI, or
 release packaging. Root `app.py` remains for legacy compatibility tests; new
 features must not be added there. Production Qt adapters and assets live in
 `clarify/desktop/`; historical comparison tools remain under `spikes/`.
-The unused Electron implementation is available in Git history, not the checkout.
+The earlier Electron prototype remains in Git history. The retained desktop
+host described above is the current local migration pilot.
 
 ### Provider layer
 
@@ -912,8 +969,8 @@ updating an existing local installation from WSL; contributors normally use
 
 ## Legacy prototype
 
-The incomplete Electron prototype was removed from the checkout. It remains
-available in Git history and is not part of current development or distribution.
+The earlier incomplete Electron prototype remains in Git history. It is separate
+from the current retained desktop host and is not a distribution input.
 
 
 ## Validation ownership

@@ -1,4 +1,24 @@
 {
+  "Usar o servidor de produção?": {
+    "pt": "Usar o servidor de produção?",
+    "en": "Use the production server?",
+    "es": "¿Usar el servidor de producción?"
+  },
+  "Será necessário entrar novamente. O histórico do servidor anterior será mantido separado neste iPhone.": {
+    "pt": "Será necessário entrar novamente. O histórico do servidor anterior será mantido separado neste iPhone.",
+    "en": "You must sign in again. History from the previous server will stay separate on this iPhone.",
+    "es": "Debes iniciar sesión de nuevo. El historial del servidor anterior se mantendrá separado en este iPhone."
+  },
+  "Usar servidor de produção": {
+    "pt": "Usar servidor de produção",
+    "en": "Use production server",
+    "es": "Usar servidor de producción"
+  },
+  "Esta conta usa o servidor de desenvolvimento: {v0}.": {
+    "pt": "Esta conta usa o servidor de desenvolvimento: {v0}.",
+    "en": "This account uses the development server: {v0}.",
+    "es": "Esta cuenta usa el servidor de desarrollo: {v0}."
+  },
   "A operação de ações mudou. Atualize e tente novamente.": {
     "pt": "A operação de ações mudou. Atualize e tente novamente.",
     "en": "The action operation changed. Refresh and try again.",
@@ -7698,5 +7718,140 @@
     "pt": "Entre ou crie sua conta Clarify.",
     "en": "Sign in or create your Clarify account.",
     "es": "Inicia sesión o crea tu cuenta de Clarify."
+  },
+  "Processamento do texto": {
+    "pt": "Processamento do texto",
+    "en": "Text processing",
+    "es": "Procesamiento del texto"
+  },
+  "Aplicar ação de texto": {
+    "pt": "Aplicar ação de texto",
+    "en": "Apply a text action",
+    "es": "Aplicar una acción de texto"
+  },
+  "Mantém suas instruções atuais de ditado, sem uma ação adicional.": {
+    "pt": "Mantém suas instruções atuais de ditado, sem uma ação adicional.",
+    "en": "Keeps your current dictation instructions, with no additional action.",
+    "es": "Mantiene las instrucciones actuales de dictado, sin una acción adicional."
+  },
+  "Aplica a ação escolhida no lugar da revisão padrão, antes de inserir o texto.": {
+    "pt": "Aplica a ação escolhida no lugar da revisão padrão, antes de inserir o texto.",
+    "en": "Applies the selected action instead of standard revision, before inserting the text.",
+    "es": "Aplica la acción elegida en lugar de la revisión estándar, antes de insertar el texto."
+  },
+  "Nenhuma ação salva. Crie uma em Ações de texto.": {
+    "pt": "Nenhuma ação salva. Crie uma em Ações de texto.",
+    "en": "No saved actions. Create one in Text actions.",
+    "es": "No hay acciones guardadas. Crea una en Acciones de texto."
+  },
+  "A ação selecionada está indisponível. Escolha outra ação.": {
+    "pt": "A ação selecionada está indisponível. Escolha outra ação.",
+    "en": "The selected action is unavailable. Choose another action.",
+    "es": "La acción seleccionada no está disponible. Elige otra acción."
+  },
+  "Escolha uma ação para salvar. Até lá, a configuração anterior continua ativa.": {
+    "pt": "Escolha uma ação para salvar. Até lá, a configuração anterior continua ativa.",
+    "en": "Choose an action to save. Until then, the previous setting remains active.",
+    "es": "Elige una acción para guardar. Hasta entonces, la configuración anterior sigue activa."
+  },
+  "Estilo geral": {
+    "pt": "Estilo geral",
+    "en": "General style",
+    "es": "Estilo general"
+  },
+  "Define o tom do texto. Regras por aplicativo têm prioridade.": {
+    "pt": "Define o tom do texto. Regras por aplicativo têm prioridade.",
+    "en": "Sets the tone of the text. Application rules take priority.",
+    "es": "Define el tono del texto. Las reglas por aplicación tienen prioridad."
+  },
+  "Natural mantém suas instruções atuais, sem impor um tom.": {
+    "pt": "Natural mantém suas instruções atuais, sem impor um tom.",
+    "en": "Natural keeps your current instructions without imposing a tone.",
+    "es": "Natural mantiene las instrucciones actuales sin imponer un tono."
+  },
+  "Sem regra, usa o estilo geral. A regra vale para o próximo ditado.": {
+    "pt": "Sem regra, usa o estilo geral. A regra vale para o próximo ditado.",
+    "en": "Without a rule, uses the general style. Rules apply to the next dictation.",
+    "es": "Sin una regla, usa el estilo general. Las reglas se aplican al próximo dictado."
+  },
+  "Todos os aplicativos usam o estilo geral.": {
+    "pt": "Todos os aplicativos usam o estilo geral.",
+    "en": "All applications use the general style.",
+    "es": "Todas las aplicaciones usan el estilo general."
+  },
+  "Estilo: Natural": {
+    "pt": "Estilo: Natural",
+    "en": "Style: Natural",
+    "es": "Estilo: Natural"
+  },
+  "Gerenciar ações": {
+    "pt": "Gerenciar ações",
+    "en": "Manage actions",
+    "es": "Gestionar acciones"
+  },
+  "Gerencie estas ações no computador pareado.": {
+    "pt": "Gerencie estas ações no computador pareado.",
+    "en": "Manage these actions on the paired computer.",
+    "es": "Gestiona estas acciones en el ordenador vinculado."
+  },
+  "Não foi possível salvar ou carregar as ações. Seu rascunho foi mantido.": {
+    "pt": "Não foi possível salvar ou carregar as ações. Seu rascunho foi mantido.",
+    "en": "Could not save or load actions. Your draft was kept.",
+    "es": "No se pudieron guardar o cargar las acciones. Se conservó tu borrador."
+  },
+  "Adicionar ação": {
+    "pt": "Adicionar ação",
+    "en": "Add action",
+    "es": "Añadir acción"
+  },
+  "Duplicar ação": {
+    "pt": "Duplicar ação",
+    "en": "Duplicate action",
+    "es": "Duplicar acción"
+  },
+  "A conta ou o destino mudou. Seu rascunho foi mantido.": {
+    "pt": "A conta ou o destino mudou. Seu rascunho foi mantido.",
+    "en": "The account or destination changed. Your draft was kept.",
+    "es": "La cuenta o el destino cambió. Se conservó tu borrador."
+  },
+  "Recarregar a lista?": {
+    "pt": "Recarregar a lista?",
+    "en": "Reload the list?",
+    "es": "¿Recargar la lista?"
+  },
+  "O rascunho será mantido. Revise as ações atuais antes de salvar.": {
+    "pt": "O rascunho será mantido. Revise as ações atuais antes de salvar.",
+    "en": "Your draft will be kept. Review the current actions before saving.",
+    "es": "Se conservará tu borrador. Revisa las acciones actuales antes de guardar."
+  },
+  "Recarregar e manter rascunho": {
+    "pt": "Recarregar e manter rascunho",
+    "en": "Reload and keep draft",
+    "es": "Recargar y conservar borrador"
+  },
+  "Current server version": {
+    "pt": "Versão atual no servidor",
+    "en": "Current server version",
+    "es": "Versión actual en el servidor"
+  },
+  "A tradução usa o idioma de saída acima. Selecione um idioma antes de escolher a ação.": {
+    "pt": "A tradução usa o idioma de saída acima. Selecione um idioma antes de escolher a ação.",
+    "en": "Translation uses the output language above. Select a language before choosing the action.",
+    "es": "La traducción usa el idioma de salida de arriba. Selecciona un idioma antes de elegir la acción."
+  },
+  "Usar configuração do destino": {
+    "pt": "Usar configuração do destino",
+    "en": "Use destination settings",
+    "es": "Usar la configuración del destino"
+  },
+  "Correção automática": {
+    "pt": "Correção automática",
+    "en": "Autocorrect",
+    "es": "Autocorrección"
+  },
+  "Mostra sugestões e corrige palavras ao digitar no teclado Clarify.": {
+    "pt": "Mostra sugestões e corrige palavras ao digitar no teclado Clarify.",
+    "en": "Shows suggestions and corrects words when typing with the Clarify keyboard.",
+    "es": "Muestra sugerencias y corrige palabras al escribir con el teclado Clarify."
   }
 }

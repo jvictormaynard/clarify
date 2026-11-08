@@ -121,6 +121,7 @@ def _trend(operations, registrations, start, days):
 
 def _budget(now):
     month = now.date().replace(day=1)
+    # Calendar-month reporting differs from admission's cross-month commitments.
     # Values only: there is no create, lock, settlement or cleanup on a read.
     ledger = Budget.objects.filter(month=month).values("spent", "reserved").first()
     spent = ledger["spent"] if ledger else Decimal(0)

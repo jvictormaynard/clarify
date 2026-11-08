@@ -13,7 +13,7 @@ test("workspace: navigation presents tasks and keeps keyboard focus at every wid
     await expect(navigation.getByRole("button", { name: "Estilo", exact: true })).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("heading", { level: 1, name: "Estilo", exact: true })).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Nível de revisão", exact: true })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Após o ditado", exact: true })).toBeVisible();
     await expect(navigation.getByRole("button", { name: "Configurações", exact: true })).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await page.screenshot({ path: testInfo.outputPath(`style-${width}.png`) });
@@ -50,6 +50,8 @@ test("text profiles: Cancel keeps the route and Save preserves unrelated Style i
 
 test("after dictation: translation saves only after an explicit target language", async ({ page, settingsFixture }) => {
   await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await page.getByRole("combobox", { name: "Após o ditado", exact: true }).click();
+  await page.getByRole("option", { name: "Aplicar ação de texto", exact: true }).click();
   const select = page.getByRole("combobox", { name: "Ação após o ditado", exact: true });
   await select.click();
   await page.getByRole("option", { name: "Tradução", exact: true }).click();
@@ -57,7 +59,7 @@ test("after dictation: translation saves only after an explicit target language"
   await expect(dialog.getByRole("button", { name: "Aplicar", exact: true })).toBeDisabled();
   expect((await settingsFixture.rpc("snapshot")).afterDictationTextActionId).toBe("");
   await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
-  await expect(select).toContainText("Revisão padrão");
+  await expect(select).toContainText("Escolher ação");
   await select.click(); await page.getByRole("option", { name: "Tradução", exact: true }).click();
   dialog = page.getByRole("dialog", { name: "Idioma da tradução", exact: true });
   await dialog.getByRole("combobox", { name: "Idioma de destino", exact: true }).click();
@@ -65,15 +67,53 @@ test("after dictation: translation saves only after an explicit target language"
   await dialog.getByRole("button", { name: "Aplicar", exact: true }).click();
   await expect(dialog).toBeHidden();
   const saved = await settingsFixture.rpc("snapshot");
+  expect(saved.dictationCleanupLevel).toBe("clarity");
   expect(saved.afterDictationTextActionId).toBe("translation");
   expect(saved.afterDictationTextActionLanguage).toBe("en");
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Estilo", exact: true }).click();
   await expect(select).toContainText("Tradução");
+  await page.getByRole("combobox", { name: "Após o ditado", exact: true }).click();
+  await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(select).toHaveCount(0);
+  const preserved = await settingsFixture.rpc("snapshot");
+  expect(preserved.dictationCleanupLevel).toBe("preserve");
+  expect(preserved.afterDictationTextActionId).toBe("");
 });
 
-test("text actions: saved preview uses the latest sample and requires a translation target", async ({ page, settingsFixture }, testInfo) => {
+test("styles: general tone persists and Natural clears its override", async ({ page, settingsFixture }) => {
+  await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  const style = page.getByRole("combobox", { name: "Estilo geral", exact: true });
+  await expect(style).toContainText("Natural");
+  await style.click(); await page.getByRole("option", { name: "Formal", exact: true }).click();
+  await expect(style).toContainText("Formal");
+  expect((await settingsFixture.rpc("snapshot")).dictationWritingStyle).toBe("formal");
+  await page.reload();
+  await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await expect(style).toContainText("Formal");
+  await style.click(); await page.getByRole("option", { name: "Natural", exact: true }).click();
+  await expect(style).toContainText("Natural");
+  expect((await settingsFixture.rpc("snapshot")).dictationWritingStyle).toBe("");
+});
+
+test("after dictation: basic processing stays available without an action catalog", async ({ page, settingsFixture }) => {
+  await page.route("**/__test_rpc", async route => {
+    const request = route.request().postDataJSON();
+    const result = await settingsFixture.rpc(request.method, ...(request.args ?? []));
+    await route.fulfill({ json: { result: { ...result, textActionContext: "", textActions: [] } } });
+  });
+  await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  const mode = page.getByRole("combobox", { name: "Após o ditado", exact: true });
+  await expect(mode).toBeEnabled();
+  await mode.click(); await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(mode).toContainText("Preservar palavras");
+  expect((await settingsFixture.rpc("snapshot")).dictationCleanupLevel).toBe("preserve");
+});
+
+test("text actions: saved preview uses the latest sample and the shared output language", async ({ page, settingsFixture }, testInfo) => {
+  await settingsFixture.rpc("savePreference", "setLanguage", ["auto"]);
+  await page.reload();
   await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
   await page.locator("#text-action-rewrite").getByRole("button", { name: "Editar ação", exact: true }).click();
   let dialog = page.getByRole("dialog", { name: "Editar ação", exact: true });
@@ -92,12 +132,13 @@ test("text actions: saved preview uses the latest sample and requires a translat
   await page.locator("#text-action-translation").getByRole("button", { name: "Editar ação", exact: true }).click();
   dialog = page.getByRole("dialog", { name: "Editar ação", exact: true });
   await dialog.getByRole("textbox", { name: "Texto de exemplo", exact: true }).fill("Target sample");
-  await expect(dialog.getByRole("button", { name: "Testar", exact: true })).toBeDisabled();
-  await dialog.getByRole("combobox", { name: "Idioma de destino", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Testar", exact: true })).toBeEnabled();
+  await dialog.getByRole("combobox", { name: "Idioma de saída", exact: true }).click();
   await page.getByRole("option", { name: "Inglês", exact: true }).click();
   await dialog.getByRole("button", { name: "Testar", exact: true }).click();
   await expect(dialog.getByRole("status")).toContainText("Preview (en): Target sample");
   expect((await settingsFixture.rpc("snapshot")).dirty).toBe(false);
+  expect((await settingsFixture.rpc("snapshot")).language).toBe("en");
 });
 
 test("settings dialog: unsaved privacy changes stay local and the task remains selected", async ({ page }, testInfo) => {

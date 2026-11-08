@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
@@ -30,6 +31,8 @@ test('workflow references, needs and action pins are valid', () => {
     }
     for (const [id, job] of Object.entries(workflow.jobs)) {
       visit(id);
+      assert.doesNotMatch(JSON.stringify(job.env || {}), /\$\{\{[^}]*\brunner\./,
+        `${name}/${id}: runner context is only available after the job starts`);
       for (const step of job.steps || []) {
         if (step.uses?.startsWith('./')) assert.ok(existsSync(resolve(root, step.uses)), step.uses);
         else if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/, `${name}/${id}: action must be pinned`);
@@ -92,18 +95,42 @@ test('Settings unit tests need neither Qt nor a browser', () => {
   assert.equal(step.with.native, 'false');
 });
 
-test('Windows builds validate Settings and embed the resulting native executable', () => {
+test('Windows builds embed the complete Electron shell without a Rust toolchain', () => {
   const action = parseDocument(readFileSync(resolve(root, '.github/actions/settings-build/action.yml'), 'utf8')).toJS();
   const commands = action.runs.steps.map(step => step.run || '').join('\n');
   for (const command of ['npm ci', 'npm audit', 'npm run build',
     '../scripts/ci.py --task settings_unit', '../scripts/ci.py --task settings_browser',
-    'cargo build --locked']) assert.ok(commands.includes(command), command);
+    'build-desktop.ps1 -Python $env:BUILD_PYTHON -SkipInstall']) assert.ok(commands.includes(command), command);
   for (const job of [ci.jobs.package, workflows.get('release.yml').jobs.build_candidate]) {
     const settings = job.steps.findIndex(step => step.uses === './.github/actions/settings-build');
     const packaging = job.steps.findIndex(step => step.run?.includes('scripts\\build.ps1') || step.run?.includes('scripts/build.ps1'));
     assert.ok(settings >= 0 && settings < packaging);
-    assert.ok(job.steps[packaging].run.includes('-SettingsExecutable dist\\clarify-settings.exe'));
+    assert.ok(job.steps[packaging].run.includes('-DesktopShellDirectory dist\\desktop-shell'));
   }
+});
+
+test('Electron native validation is selected, isolated and retains failure evidence', () => {
+  const job = ci.jobs.desktop_shell;
+  assert.equal(job['runs-on'], 'windows-2025');
+  const cache = job.steps.findIndex(step => step.uses === './.github/actions/electron-runtime-cache');
+  const node = job.steps.findIndex(step => step.uses?.startsWith('actions/setup-node@'));
+  const install = job.steps.findIndex(step => step.run === 'npm ci --no-fund');
+  assert.ok(node >= 0 && node < cache && cache < install);
+  assert.ok(job.steps.some(step => step.uses === './.github/actions/python-env' && step.with.platform === 'windows' && step.with.qt === 'true'));
+  assert.ok(job.steps.some(step => step.run === 'npm ci --no-fund' && step['working-directory'] === 'desktop'));
+  assert.ok(job.steps.some(step => step.run === 'python scripts/ci.py --task desktop_shell'));
+  const smoke = job.steps.find(step => step.run === 'python scripts/ci.py --task desktop_shell');
+  assert.equal(smoke.env.CLARIFY_TEST_ARTIFACTS_DIR, '$' + '{{ runner.temp }}/clarify-electron-evidence');
+  const evidence = job.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'));
+  assert.equal(evidence.if, 'always()');
+  assert.ok(evidence.with.path.includes('clarify-electron-evidence'));
+  const action = parseDocument(readFileSync(resolve(root, '.github/actions/settings-build/action.yml'), 'utf8')).toJS();
+  assert.ok(!action.runs.steps.some(step => /cargo|rustc|src-tauri/.test(step.run || JSON.stringify(step.with || {}))));
+  assert.ok(!action.runs.steps.some(step => /--task desktop_shell|npm run test:electron$/.test(step.run || '')));
+  assert.equal(ci.jobs.package.steps.find(step => step.uses === './.github/actions/settings-build').with.test, 'false');
+  const release = workflows.get('release.yml').jobs.build_candidate.steps.find(step => step.uses === './.github/actions/settings-build');
+  assert.equal(release.with.smoke, 'true');
+  assert.ok(action.runs.steps.some(step => step.if?.includes("inputs.smoke == 'true'") && step.run?.includes('npm run test:electron:smoke')));
 });
 
 test('destructive installer tests stay on disposable GitHub Windows', () => {
@@ -117,13 +144,47 @@ test('destructive installer tests stay on disposable GitHub Windows', () => {
 
 test('native iOS validation includes app, keyboard, library and unsigned compilation', () => {
   const ios = workflows.get('ios-validation.yml');
-  assert.equal(ios.jobs.native['runs-on'], 'macos-26');
+  assert.match(ios.jobs.native['runs-on'], /CLARIFY_IOS_RUNNER/);
   assert.ok(ios.jobs.native.steps.some(step => step.run?.includes('swift test')));
   assert.ok(ios.jobs.native.steps.some(step => step.run?.includes('test-keyboard-ui.cjs')));
+  assert.ok(ios.jobs.native.steps.some(step => step.run === 'node scripts/test-keyboard-extension.cjs'),
+    'Installed fixture must remain available for explicit acceptance');
   assert.ok(ios.jobs.build.steps.some(step => step.run?.includes('CODE_SIGNING_ALLOWED=NO')));
   assert.ok(ios.jobs.app.steps.some(step => step.run === 'node scripts/test-app-ui.cjs'));
+  assert.deepEqual(ios.jobs.app.strategy?.matrix.profile, ['regular', 'compact']);
+  assert.equal(ios.jobs.app.strategy['fail-fast'], false);
+  assert.equal(ios.jobs.app.env.CLARIFY_APP_UI_PROFILE, '$' + '{{ matrix.profile }}');
+  const appEvidence = ios.jobs.app.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'));
+  assert.ok(appEvidence.with.name.includes('$' + '{{ matrix.profile }}'));
   assert.deepEqual(ios.permissions, { contents: 'read' });
   assert.deepEqual(new Set(ios.jobs.validate.needs), new Set(['native', 'build', 'app']));
+});
+
+test('focused installed-keyboard validation is manual and cannot report full acceptance', () => {
+  const ios = workflows.get('ios-validation.yml');
+  assert.equal(ios.on.workflow_dispatch.inputs.activation_only.type, 'boolean');
+  assert.equal(ios.on.workflow_dispatch.inputs.activation_only.default, false);
+  const full = "github.event_name != 'workflow_dispatch' || inputs.activation_only != true";
+  for (const id of ['build', 'app']) assert.equal(ios.jobs[id].if, full);
+  assert.equal(ios.jobs.validate.if, `always() && (${full})`);
+  const steps = ios.jobs.native.steps;
+  for (const step of steps.filter(step => /swift test|test-keyboard-ui.cjs/.test(step.run || ''))) {
+    assert.equal(step.if, full);
+  }
+  const installed = steps.find(step => step.run === 'node scripts/test-keyboard-extension.cjs');
+  assert.equal(installed.if, undefined);
+  assert.equal(ios.on.workflow_dispatch.inputs.manual_return.default, false);
+  for (const manual_return of [false, true]) {
+    assert.equal(runInNewContext(installed.env.CLARIFY_INTERNAL_MANUAL_RETURN.slice(3, -2), {
+      github: {event_name: 'workflow_dispatch'}, inputs: {activation_only: true, manual_return},
+    }), manual_return ? '1' : '0');
+  }
+  assert.equal(runInNewContext(installed.env.CLARIFY_INTERNAL_MANUAL_RETURN.slice(3, -2), {
+    github: {event_name: 'workflow_dispatch'}, inputs: {activation_only: false, manual_return: false},
+  }), '0');
+  assert.ok(steps.some(step => step.run?.includes('REVIEWED_SOURCE') && step.run.includes('GITHUB_SHA')));
+  assert.deepEqual(ios.permissions, { contents: 'read' });
+  assert.deepEqual(ios.on.workflow_call, {});
 });
 
 test('desktop publication consumes a sealed candidate across a permission boundary', () => {
@@ -179,6 +240,64 @@ test('TestFlight and App Store use separate explicit actions and one Apple build
   assert.deepEqual(Object.keys(flight.on), ['workflow_dispatch']);
   assert.deepEqual(flight.on.workflow_dispatch.inputs.mode.options, ['validate', 'testflight', 'status', 'availability']);
   assert.equal(flight.on.workflow_dispatch.inputs.mode.default, 'validate');
+  assert.equal(flight.on.workflow_dispatch.inputs.internal_testing.default, false);
+  for (const [job, mode, result] of [
+    ['publish', 'testflight', 'publish'], ['publish', 'validate', ''],
+    ['availability', 'availability', 'availability'],
+  ]) {
+    for (const isCancelled of [false, true]) {
+      assert.equal(runInNewContext(flight.jobs[job].if, {
+        github: { repository: 'jvictormaynard/clarify' }, inputs: { mode },
+        needs: { release_gate: { outputs: { result } } },
+        always: () => true, cancelled: () => isCancelled,
+      }), !isCancelled, `${job} must stop after cancellation and allow its normal path`);
+    }
+  }
+  const appFlow = Object.values(flight.jobs).flatMap(job => job.steps || [])
+    .find(step => step.run === 'node scripts/test-app-ui.cjs');
+  assert.equal(appFlow.env.CLARIFY_APP_UI_PROFILE,
+    "$" + "{{ inputs.mode == 'validate' && inputs.app_ui_compact_only && 'compact' || 'all' }}");
+  for (const mode of ['validate', 'testflight', 'status', 'availability']) {
+    for (const internal of [false, true]) for (const diagnostic of [false, true]) {
+      const inputs = { mode, internal_testing: internal, extension_diagnostic: diagnostic };
+      assert.equal(runInNewContext(appFlow.if.slice(3, -2), { inputs }, { timeout: 100 }),
+        mode === 'testflight' ? !internal : mode === 'validate' && !diagnostic);
+    }
+  }
+  const flightSteps = Object.values(flight.jobs).flatMap(job => job.steps || []);
+  const repeated = ['npm run check', 'npx --yes expo-doctor', 'npm run test:native',
+    'node scripts/test-keyboard-ui.cjs'];
+  const installed = flightSteps.find(step => step.name === 'Test installed keyboard typing and activation');
+  for (const step of [...flightSteps.filter(step => repeated.includes(step.run)), installed]) {
+    for (const reuse_ci of [undefined, 'false', 'true']) {
+      for (const mode of ['validate', 'testflight']) {
+        const expression = step.if.slice(3, -2);
+        assert.equal(runInNewContext(expression, {
+          inputs: {mode, extension_diagnostic: false}, steps: {resume: {outputs: {reuse_ci}}},
+        }), reuse_ci !== 'true');
+      }
+    }
+  }
+  const resume = flightSteps.find(step => step.id === 'resume');
+  assert.ok(resume.run.includes('--reuse-internal-ci'));
+  const native = workflows.get('ios-validation.yml').jobs.native;
+  const coverage = native.steps.find(step => step.name === installed.name);
+  assert.equal(coverage.if, undefined);
+  assert.equal(coverage.run, 'node scripts/test-keyboard-extension.cjs');
+  assert.equal(runInNewContext(coverage.env.CLARIFY_INTERNAL_MANUAL_RETURN.slice(3, -2), {
+    github: {event_name: 'push'}, inputs: {},
+  }), '1');
+  const manual = flightSteps.find(step => step.name === 'Test installed keyboard typing and activation').env.CLARIFY_INTERNAL_MANUAL_RETURN;
+  for (const mode of ['validate', 'testflight', 'status', 'availability']) for (const internal_testing of [true, false]) {
+    assert.equal(runInNewContext(manual.slice(3, -2), {inputs: {mode, internal_testing}}),
+      mode === 'testflight' && internal_testing ? '1' : '0');
+  }
+  for (const name of ['Verify signed app and both extensions', 'Upload directly to App Store Connect',
+    'Verify processing and publish to the existing internal group']) {
+    const matching = flightSteps.filter(step => step.name === name);
+    assert.ok(matching.length > 0, name);
+    assert.ok(matching.every(step => !(step.if || '').includes('internal_testing')), name);
+  }
   const store = workflows.get('ios-app-store.yml');
   assert.deepEqual(Object.keys(store.on), ['workflow_dispatch']);
   assert.deepEqual(store.on.workflow_dispatch.inputs.action.options, ['prepare-submission', 'prepare-release']);
@@ -190,4 +309,65 @@ test('TestFlight and App Store use separate explicit actions and one Apple build
   assert.equal(flight.concurrency.queue, 'max');
   assert.equal(flight.concurrency['cancel-in-progress'], false);
   assert.equal(store.concurrency.group, 'clarify-ios-testflight');
+});
+
+// Exercise the trust boundary and toolchain pair, not only a label's presence.
+test('optional Bitrise iOS routing isolates forks and selects the matching Xcode', () => {
+  function value(expression, github, setting) {
+    return runInNewContext(expression.slice(3, -2), { github, vars: { CLARIFY_IOS_RUNNER: setting } }, { timeout: 100 });
+  }
+  const canonical = 'jvictormaynard/clarify';
+  const context = (event, repository = canonical, head = canonical, ref = 'refs/heads/main') => ({
+    repository, event_name: event, ref, event: { pull_request: { head: { repo: { full_name: head } } } },
+  });
+  const validation = workflows.get('ios-validation.yml');
+  for (const job of [validation.jobs.native, validation.jobs.build, validation.jobs.app]) {
+    for (const [github, setting, bitrise] of [
+      [context('push'), 'bitrise', true],
+      [context('pull_request'), 'bitrise', true],
+      [context('workflow_dispatch'), 'bitrise', true],
+      [context('pull_request', canonical, 'external/fork'), 'bitrise', false],
+      [context('pull_request_target'), 'bitrise', false],
+      [context('push', canonical, canonical, 'refs/heads/other'), 'bitrise', false],
+      [context('workflow_dispatch', 'external/fork'), 'bitrise', false],
+      [context('push'), '', false],
+      [context('push'), 'unknown', false],
+    ]) {
+      assert.equal(value(job['runs-on'], github, setting), bitrise ? 'bitrise-runner-clarify-ios-validation' : 'macos-26');
+      assert.equal(value(job.env.DEVELOPER_DIR, github, setting), bitrise ? '/Applications/Xcode-26.6.0.app/Contents/Developer' : '/Applications/Xcode_26.6.app/Contents/Developer');
+    }
+  }
+  const publish = workflows.get('ios-testflight.yml').jobs.publish;
+  for (const [github, setting, bitrise] of [
+    [context('workflow_dispatch'), 'bitrise', true],
+    [context('workflow_dispatch', 'external/fork'), 'bitrise', false],
+    [context('pull_request'), 'bitrise', false],
+    [context('workflow_dispatch'), '', false],
+  ]) {
+    assert.equal(value(publish['runs-on'], github, setting), bitrise ? 'bitrise-runner-clarify-ios-validation' : 'macos-26');
+    assert.equal(value(publish.env.DEVELOPER_DIR, github, setting), bitrise ? '/Applications/Xcode-26.6.0.app/Contents/Developer' : '/Applications/Xcode_26.6.app/Contents/Developer');
+  }
+  const cache = validation.jobs.native.steps.find(step => step.id === 'native-cache');
+  assert.match(cache.with.key, /ios-tests-v2-/);
+  assert.ok(cache.with.key.includes('env.DEVELOPER_DIR'));
+  assert.ok(cache.with['restore-keys'].includes('env.DEVELOPER_DIR'));
+});
+
+test('PR proof upload is last and main authentication has read-only access', () => {
+  for (const id of ['plan', 'required']) {
+    assert.deepEqual(ci.jobs[id].permissions, {contents: 'read', actions: 'read', 'pull-requests': 'read'});
+    assert.equal(ci.jobs[id].steps.find(s => s.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 0);
+    const command = ci.jobs[id].steps.find(s => s.run?.includes(id === 'plan' ? '--github-plan' : '--check-results'));
+    assert.equal(command.env.GH_TOKEN, '$' + '{{ github.token }}');
+  }
+  assert.equal(ci.jobs.plan.outputs.reuse, '$' + '{{ steps.plan.outputs.reuse }}');
+  const steps = ci.jobs.required.steps;
+  assert.ok(steps.at(-3).run.includes('--check-results'));
+  assert.ok(steps.at(-2).run.includes('--emit-proof'));
+  const upload = steps.at(-1);
+  assert.match(upload.uses, /^actions\/upload-artifact@/);
+  assert.equal(upload.if, "github.event_name == 'pull_request'");
+  assert.equal(steps.at(-2).if, upload.if);
+  assert.equal(upload.with.name, 'ci-proof-$' + '{{ github.run_id }}-$' + '{{ github.run_attempt }}');
+  assert.equal(upload.with['if-no-files-found'], 'error');
 });

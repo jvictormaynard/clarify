@@ -23,7 +23,9 @@ dictation output, microphone and keyboard, and history and privacy.
 The keyboard always shows the output-language flag and writing style. Its menu
 changes dictation output when no text is selected. With selected text, the same
 control shows a wand and offers rewrite, translation and saved text actions.
-Translation targets do not change the output language for later dictations.
+The language picker in Actions and the keyboard translation menu update the same
+output preference as dictation. The globe preserves the source languages; a flag
+sets the output language. Each operation keeps its accepted preference snapshot.
 
 Choose **Meu computador** on the sign-in page or under **Ajustes > Processamento**, then scan the QR
 inside Clarify. The computer must have its iPhone connection enabled. Direct LAN
@@ -211,10 +213,16 @@ Account and back navigation, Settings, explicit guide replay and logout/relaunch
 It builds the isolated app once. The standard iPhone runs the complete functional
 flow. A compact iPhone with the largest accessibility text size runs a shorter
 flow for keyboard access, scrolling, dialogs, draft retention, cancellation and
-copy confirmation. Both use the same test build. Each profile must execute its
-selected test; a successful command with zero tests fails acceptance. Swift
-contracts run before these app flows. Keyboard and installed-extension tests
-remain separate.
+copy confirmation. Default local validation and signed publication run both
+profiles from the same test build. PR CI runs them in separate required matrix
+jobs, each with its own build and 60-minute budget. This avoids spending one
+job's budget on the cold build and both UI flows; it uses two app builds.
+Each profile must execute its selected test; a successful command with zero
+tests fails acceptance. Single-profile summaries report incomplete app acceptance.
+The CI aggregate requires both profile jobs, native tests and the unsigned build
+to pass. Each CI profile job runs native text-input regressions before its UI
+test. Swift library, keyboard and installed-extension checks remain separate
+required gates.
 For a focused retry, `mode=validate` and `app_ui_compact_only=true` run only
 the compact app profile. Its summary marks full app acceptance as incomplete.
 Signed publication ignores this diagnostic selector and runs both profiles.
@@ -373,10 +381,17 @@ retains traces, screenshots, video and the result bundle for investigation.
 Passing the separate in-process UIKit tests does not resolve this open gate.
 No new signing or upload occurs when `mode=validate` is selected.
 Selecting both diagnostic inputs runs the installed-extension fixture directly;
-regular tests-only runs and every signed upload retain all product checks.
+regular tests-only runs and default signed uploads retain all product checks.
 
-Every signed upload runs the installed typing, casing and two-return checks
-against production sources. It also records all five opening traces and requires
+Default signed uploads run the installed typing, casing and two-return checks
+against production sources. Internal uploads reuse successful exact-source
+canonical CI, including the same installed fixture with two fresh activations
+and the authorized manual return. The gate rejects missing, failed or skipped
+proof and records the CI run, attempt and jobs in its evidence. Internal uploads
+still install dependencies and patches, generate the project, install Pods,
+sign, verify the IPA and both extensions, upload and verify Apple availability.
+Full app, automatic-return and App Store acceptance remain false for this scope.
+The installed fixture also records all five opening traces and requires
 the final keyboard height and bottom row to be usable. The transient overshoot
 assertion remains in the strict diagnostic above; the user explicitly deferred
 that known defect to test the other improvements in build 25. This exception does
@@ -714,16 +729,16 @@ GitHub Actions and direct Xcode provide builds and delivery. EAS is not part of
 the current delivery path.
 
 The lockfile overrides `query-string` to 9.5.1 to use the patched URL decoder.
-`patches/expo-router+57.0.29.patch` changes four Router imports to use that
+`patches/expo-router+57.0.30.patch` changes four Router imports to use that
 package's default export. `npm ci` applies this patch through `patch-package`
 and fails if it cannot apply it. Keep install scripts enabled. Recheck or remove
 both the patch and override when updating Router. The regression suite tests
 real Router parsing, query round trips and malformed input with a time limit.
 
-Expo CLI uses the patched Zod 4.6.7 dependency. Its optional MCP tunnel is pinned
-to 0.3.1, which supports Zod 4 schema serialization. Keep these pins together;
-the tests validate plugin inputs and the complete advertised command schema
-without opening a tunnel. These changes preserve the Expo SDK and native ABI.
+The optional MCP tunnel is pinned to 0.3.1 with Zod 4.6.7 for schema
+serialization. Keep these pins together. The tests exercise Expo CLI's JSON
+Schema validation and the complete advertised MCP command schema without
+opening a tunnel.
 See the [decoder advisory](https://github.com/advisories/GHSA-qr28-fpjm-wq7f),
 [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) and
 [patch-package instructions](https://github.com/ds300/patch-package#readme).

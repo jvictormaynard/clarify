@@ -7,14 +7,23 @@ from pathlib import Path
 
 try:
     from .qt_package_policy import unexpected_qt_payload
+    from .desktop_payload import (
+        manifest_bytes,
+        payload_manifest,
+        verify_desktop_payload,
+    )
 except ImportError:
     from qt_package_policy import unexpected_qt_payload
+    from desktop_payload import manifest_bytes, payload_manifest, verify_desktop_payload
 
 
 def verify_payload(executable: Path, settings: Path) -> None:
     from PyInstaller.archive.readers import CArchiveReader
 
     archive = CArchiveReader(str(executable))
+    if settings.is_dir():
+        verify_desktop_payload(archive, settings)
+        return
     try:
         embedded = archive.extract("clarify-settings.exe")
     except KeyError as error:
@@ -135,7 +144,12 @@ def verify_inventory(executable: Path, settings: Path) -> None:
     bom = json.loads(
         (settings.parent / "Clarify-settings.sbom.json").read_text(encoding="utf-8")
     )
-    expected_hash = hashlib.sha256(settings.read_bytes()).hexdigest()
+    payload = (
+        manifest_bytes(payload_manifest(settings))
+        if settings.is_dir()
+        else settings.read_bytes()
+    )
+    expected_hash = hashlib.sha256(payload).hexdigest()
     if {"alg": "SHA-256", "content": expected_hash} not in bom["metadata"]["component"][
         "hashes"
     ]:

@@ -24,6 +24,10 @@ class OutputPreferenceTests(TestCase):
         self.assertIs(
             self.client.get("/v1/account").json()["output_preferences_supported"], True
         )
+        contract = self.client.get("/v1/account").json()["processing_contract"]
+        self.assertEqual(contract["text_input_bytes"], 16000)
+        self.assertEqual(contract["text_output_bytes"], 64000)
+        self.assertIs(contract["dictation_actions"], True)
         clip = fixture.clip()
         upload = SimpleUploadedFile("clip.wav", clip)
         self.assertEqual(
@@ -58,6 +62,8 @@ class OutputPreferenceTests(TestCase):
         system = provider.call_args_list[1].kwargs["json"]["messages"][0]["content"]
         self.assertIn("requested output language is English", system)
         self.assertIn("Formal presentation", system)
+        self.assertNotIn("Output MUST be in the same language", system)
+        self.assertNotIn("Keep the source language", system)
         replay = self.send(
             operation, language="auto", output_language="en", writing_style="formal"
         )

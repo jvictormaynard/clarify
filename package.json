@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build:settings": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-settings.ps1",
+    "build:desktop": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-desktop.ps1",
     "test": "python scripts/run_tests.py",
     "check": "python scripts/ci.py --task static",
     "setup-hooks": "git config core.hooksPath .githooks",

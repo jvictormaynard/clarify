@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Picker, Row, Section, TextArea } from "./ui";
-import { ClarifyLogo } from "./clarify-logo";
 
 const statusMessages: Record<string, string> = {
   practice_busy: "practice_busy",
@@ -45,12 +44,10 @@ export function DictationPractice({ controller }: SettingsPageProps) {
   const statusKey = status === "provider_authentication" && !state.accountState?.managed && !state.accountState?.signedIn
     ? "practice_configuration" : statusMessages[status] || (status === "practice_microphone" ? "practice_microphone" : "practice_failed");
 
-  return <main className="onboarding onboarding-page">
+  return <main className="onboarding onboarding-page onboarding-practice">
     <div className="onboarding-content">
       <div className="onboarding-heading">
-        <ClarifyLogo />
         <h1>{t("practice_title")}</h1>
-        <p className="hint">{t("practice_optional")}</p>
       </div>
       <div className="onboarding-panel">
         <p className="hint">{t("practice_destination")}</p>
@@ -74,6 +71,7 @@ export function DictationPractice({ controller }: SettingsPageProps) {
           <label>{t("practice_result")}<TextArea readOnly value={practice.text} rows={4} /></label>
           <p className="hint">{t("practice_result_hint")}</p>
         </>}
+        <p className="hint">{t("practice_optional")}</p>
         {processing ? <Button disabled>{t(waiting ? "practice_waiting" : "practice_processing")}</Button> : <Button variant="primary"
           disabled={busy || (!recording && !!practice?.blocked)} onClick={() => command(recording ? "stop" : "start")}>
           {t(recording ? "practice_stop" : practice?.text ? "practice_again" : "practice_start")}
