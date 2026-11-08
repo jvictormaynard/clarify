@@ -47,7 +47,7 @@ final class KeyGridView: UIView {
   private var selectedAccent: String?
   private var suppressKey = false
   private let preview = KeyPreview()
-  private var touchKeys: [KeyButton] = []
+  private var touchRows: [(view: UIView, keys: [KeyButton])] = []
   private var presses: [AnyHashable: KeyButton] = [:]
   private var rebuildPending = false
   private var layoutSignature = ""
@@ -100,17 +100,24 @@ final class KeyGridView: UIView {
     return nearestKey(at: CGPoint(x: min(max(0, point.x), bounds.maxX - 0.01), y: min(max(0, point.y), bounds.maxY - 0.01)))
   }
 
-  // Partition the visible grid by distance to each key's rectangle. This covers
-  // row gaps and outside margins without changing the visible key geometry.
+  // Choose the row before the key. A global distance search lets the wider
+  // rows steal touches in the side margins of the inset letter row.
   private func nearestKey(at point: CGPoint) -> KeyButton? {
     guard bounds.contains(point) else { return nil }
+    var rowKeys: [KeyButton] = []
+    var rowDistance = CGFloat.greatestFiniteMagnitude
+    for row in touchRows {
+      let available = row.keys.filter { $0.isEnabled && $0.isUserInteractionEnabled && !$0.isHidden && $0.alpha > 0.01 }
+      guard !available.isEmpty else { continue }
+      let rect = row.view.convert(row.view.bounds, to: self)
+      let distance = max(rect.minY - point.y, 0, point.y - rect.maxY)
+      if distance < rowDistance { rowDistance = distance; rowKeys = available }
+    }
     var result: KeyButton?
     var shortest = CGFloat.greatestFiniteMagnitude
-    for key in touchKeys where key.isEnabled && key.isUserInteractionEnabled && !key.isHidden && key.alpha > 0.01 {
+    for key in rowKeys {
       let rect = key.convert(key.bounds, to: self)
-      let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
-      let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
-      let distance = dx * dx + dy * dy
+      let distance = max(rect.minX - point.x, 0, point.x - rect.maxX)
       if distance < shortest { shortest = distance; result = key }
     }
     return result
@@ -204,11 +211,14 @@ final class KeyGridView: UIView {
         buttons.first!.widthAnchor.constraint(equalTo: buttons.last!.widthAnchor).isActive = true
       }
       let container = UIView(); container.addSubview(row); row.translatesAutoresizingMaskIntoConstraints = false
-      let inset: CGFloat = model.page == .letters && index == 1 ? 19 : 0
       NSLayoutConstraint.activate([
         row.topAnchor.constraint(equalTo: container.topAnchor), row.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        row.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: inset),
-        row.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -inset)
+        row.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+        // Nine letters use the same key width and spacing as the ten-key row.
+        // Their centered inset is half a key pitch at every supported width.
+        row.widthAnchor.constraint(equalTo: container.widthAnchor,
+          multiplier: model.page == .letters && index == 1 ? 0.9 : 1,
+          constant: model.page == .letters && index == 1 ? -0.6 : 0)
       ])
       stack.addArrangedSubview(container)
     }
@@ -242,7 +252,7 @@ final class KeyGridView: UIView {
         return buttons(in: child)
       }
     }
-    touchKeys = buttons(in: stack)
+    touchRows = stack.arrangedSubviews.map { (view: $0, keys: buttons(in: $0)) }
     // A second tap can arrive before the next display frame. Publish the new
     // hit regions now, rather than leaving freshly created keys at zero size.
     if bounds.width > 0, bounds.height > 0 {
