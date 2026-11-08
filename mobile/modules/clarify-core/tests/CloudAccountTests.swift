@@ -420,6 +420,27 @@ final class CloudAccountTests: XCTestCase {
       resume(); defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root)
     }
   }
+  @MainActor func testAutomaticRefreshUsesTheInjectedClockAndKeepsItsMinuteGate() async throws {
+    let f = try ActivationFixture(); defer { f.cleanup() }
+    var now: TimeInterval = 0, accountReads = 0
+    let account = CloudAccount(defaults: f.defaults, transport: { request in
+      if request.url!.path == "/v1/account" {
+        accountReads += 1
+        return try f.response(request, ["id": f.user, "email": "fixture@example.test"])
+      }
+      if request.url!.path == "/v1/text-actions" { return try f.response(request, ["revision": 0, "actions": []]) }
+      return try f.response(request, ["revision": 0, "entries": []])
+    }, readCredential: { f.token }, saveCredential: { f.token = $0 }, refreshClock: { now })
+    _ = try await account.command("refresh", value: "", library: f.library)
+    XCTAssertEqual(accountReads, 1)
+    for (instant, accepted, reads) in [(0.0, false, 1), (59.0, false, 1), (60.0, true, 2), (60.0, false, 2), (120.0, true, 3)] {
+      now = instant
+      let changed = try await account.command("auto", value: "", library: f.library)
+      XCTAssertEqual(changed, accepted)
+      XCTAssertEqual(accountReads, reads)
+      XCTAssertFalse(account.isBusy)
+    }
+  }
   @MainActor func testActivationWaitsForAutomaticRefreshWithoutTakingAccountOwnership() async throws {
     let f = try ActivationFixture(); defer { f.cleanup() }
     let refreshing = expectation(description: "automatic refresh suspended")
