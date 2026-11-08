@@ -31,6 +31,8 @@ test('workflow references, needs and action pins are valid', () => {
     }
     for (const [id, job] of Object.entries(workflow.jobs)) {
       visit(id);
+      assert.doesNotMatch(JSON.stringify(job.env || {}), /\$\{\{[^}]*\brunner\./,
+        `${name}/${id}: runner context is only available after the job starts`);
       for (const step of job.steps || []) {
         if (step.uses?.startsWith('./')) assert.ok(existsSync(resolve(root, step.uses)), step.uses);
         else if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/, `${name}/${id}: action must be pinned`);
@@ -117,7 +119,8 @@ test('Electron native validation is selected, isolated and retains failure evide
   assert.ok(job.steps.some(step => step.uses === './.github/actions/python-env' && step.with.platform === 'windows' && step.with.qt === 'true'));
   assert.ok(job.steps.some(step => step.run === 'npm ci --no-fund' && step['working-directory'] === 'desktop'));
   assert.ok(job.steps.some(step => step.run === 'python scripts/ci.py --task desktop_shell'));
-  assert.equal(job.env.CLARIFY_TEST_ARTIFACTS_DIR, '$' + '{{ runner.temp }}/clarify-electron-evidence');
+  const smoke = job.steps.find(step => step.run === 'python scripts/ci.py --task desktop_shell');
+  assert.equal(smoke.env.CLARIFY_TEST_ARTIFACTS_DIR, '$' + '{{ runner.temp }}/clarify-electron-evidence');
   const evidence = job.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'));
   assert.equal(evidence.if, 'always()');
   assert.ok(evidence.with.path.includes('clarify-electron-evidence'));
