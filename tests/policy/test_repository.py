@@ -44,7 +44,9 @@ class RepositorySafetyTests(unittest.TestCase):
 
                     with (
                         patch.object(check_dependency_lock, "ROOT", root),
-                        patch.object(check_dependency_lock.subprocess, "run", compile_lock),
+                        patch.object(
+                            check_dependency_lock.subprocess, "run", compile_lock
+                        ),
                         contextlib.redirect_stdout(io.StringIO()),
                         contextlib.redirect_stderr(io.StringIO()),
                     ):
