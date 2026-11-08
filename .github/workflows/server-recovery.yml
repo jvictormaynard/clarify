@@ -35,7 +35,7 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
       SERVER_IMAGE: ghcr.io/jvictormaynard/clarify-server:recovery-ced75d817decd55e7ed6f350e34e008b59f9cb26-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
