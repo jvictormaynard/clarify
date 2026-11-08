@@ -5,6 +5,23 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-08
+
+### Added
+
+- Choose what happens after dictation with one selector, and set a general writing style. Style rules for individual applications take priority.
+- Select an output language with the globe control, independently of the recognition language.
+
+### Changed
+
+- Run Settings and the status pill in a bundled Electron shell while retaining the native Python/Qt engine.
+- Center setup and practice content, simplify step headings and keep controls reachable in short windows.
+- Update reviewed desktop, server and build dependencies.
+
+### Fixed
+
+- Apply the selected output language consistently across desktop, paired-computer and hosted processing, without conflicting source-language instructions.
+
 ## [0.15.0] - 2026-10-31
 
 ### Added
@@ -470,7 +487,8 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/jvictormaynard/clarify/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/jvictormaynard/clarify/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/jvictormaynard/clarify/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/jvictormaynard/clarify/compare/v0.12.0...v0.13.0
