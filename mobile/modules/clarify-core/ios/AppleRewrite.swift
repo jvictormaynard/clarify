@@ -1,10 +1,29 @@
 import Foundation
+#if canImport(Translation)
+import Translation
+#endif
 #if canImport(NaturalLanguage)
 import NaturalLanguage
 #endif
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
+
+// Transient diagnostics. The bridge reads the snapshot on MainActor.
+struct AppleRewriteReport: Sendable {
+  let result: String
+  let error: String
+  let code: String
+  let stage: String
+  let candidate: String
+  let rewritten: String
+  let elapsedMS: Int
+
+  var snapshot: [String: Any] {
+    ["result": result, "error": error, "code": code, "stage": stage,
+      "candidate": candidate, "rewritten": rewritten, "elapsedMS": elapsedMS]
+  }
+}
 
 // Admission and publication checks can run without loading a model.
 struct AppleRewriteRuntime {
@@ -93,6 +112,25 @@ enum AppleRewriteEngine {
 
   static func rewrite(_ source: String, preferences: OutputPreferences,
     runtime: AppleRewriteRuntime? = nil) async throws -> String {
+    do {
+      return try await runRewrite(source, preferences: preferences, runtime: runtime)
+    } catch let rejected as RejectedCandidate {
+      throw rejected.failure
+    }
+  }
+
+  private struct RejectedCandidate: Error {
+    let failure: ClarifyError
+    let candidate: String
+  }
+
+  private static func boundedDiagnostic(_ value: String) -> String {
+    // Leave room for a replacement character at a cut UTF-8 boundary.
+    String(decoding: value.utf8.prefix(maxOutputBytes - 3), as: UTF8.self)
+  }
+
+  private static func runRewrite(_ source: String, preferences: OutputPreferences,
+    runtime: AppleRewriteRuntime? = nil, experiment: Bool = false) async throws -> String {
     try Task.checkCancellation()
     guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw failure("Enter text to rewrite.", "empty_input")
@@ -112,7 +150,8 @@ enum AppleRewriteEngine {
     guard required.allSatisfy(runtime.supportsLanguage) else {
       throw failure("Apple Intelligence does not support a language in this request.", "unsupported_language")
     }
-    let instructions = AppleRewritePrompt.instructions(preferences)
+    let instructions = experiment ? AppleRewritePrompt.sourceLanguageInstructions(preferences) :
+      AppleRewritePrompt.instructions(preferences)
     let prompt = AppleRewritePrompt.source(source)
     let sourceTokens = try await tokens(source, runtime: runtime)
     let instructionTokens = try await tokens(instructions, runtime: runtime)
@@ -127,61 +166,197 @@ enum AppleRewriteEngine {
       timeoutMS: timeoutMS, runtime: runtime)
     try Task.checkCancellation()
     let result = output.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !result.isEmpty, result.utf8.count <= maxOutputBytes else {
-      throw failure("Apple Intelligence did not return a complete rewrite. The source was preserved.", "invalid_result")
-    }
-    if let limit = runtime.responseTokenLimit {
-      // Count the untrimmed response. An estimate cannot establish that a capped
-      // generation completed; if exact counting fails, preserve the source.
-      guard let responseTokens = try await exactTokens(output, runtime: runtime), responseTokens < limit else {
+    do {
+      guard !result.isEmpty, result.utf8.count <= maxOutputBytes else {
         throw failure("Apple Intelligence did not return a complete rewrite. The source was preserved.", "invalid_result")
       }
+      if let limit = runtime.responseTokenLimit {
+        // Count the untrimmed response. An estimate cannot establish that a capped
+        // generation completed; if exact counting fails, preserve the source.
+        guard let responseTokens = try await exactTokens(output, runtime: runtime), responseTokens < limit else {
+          throw failure("Apple Intelligence did not return a complete rewrite. The source was preserved.", "invalid_result")
+        }
+      }
+      let leakedMarkers = ["BEGIN_SOURCE_TRANSCRIPT", "END_SOURCE_TRANSCRIPT", "<transcript>", "</transcript>"].contains { marker in
+        result.range(of: marker, options: .caseInsensitive) != nil &&
+          source.range(of: marker, options: .caseInsensitive) == nil
+      }
+      guard !leakedMarkers else {
+        // Do not strip markers and silently present a contaminated answer as valid.
+        throw failure("Apple Intelligence did not return a complete rewrite. The source was preserved.", "invalid_result")
+      }
+      if preferences.language != .auto,
+        result.split(whereSeparator: { $0.isWhitespace }).count >= 8,
+        let identified = runtime.identifyLanguage?(result), identified.confidence >= 0.8,
+        identified.language != preferences.language.rawValue {
+        throw failure("Apple Intelligence did not translate the text into the selected language. The source was preserved.", "untranslated_result")
+      }
+      func normalized(_ value: String) -> String {
+        value.lowercased().split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+      }
+      // An identical passage is not a translation when its detected language is
+      // different. Limit this check to prose; names and identifiers may stay exact.
+      if preferences.language != .auto, !detected.contains(preferences.language.rawValue),
+        source.split(whereSeparator: { $0.isWhitespace }).count >= 8,
+        normalized(source) == normalized(result) {
+        throw failure("Apple Intelligence did not translate the text into the selected language. The source was preserved.", "untranslated_result")
+      }
+      let sourceSize = normalized(source).count
+      if sourceSize >= 240, normalized(result).count * 4 < sourceSize {
+        let sentences = source.replacingOccurrences(of: #"(?<=[.!?。！？])\s+"#,
+          with: "\n", options: .regularExpression).components(separatedBy: "\n").map(normalized).filter { !$0.isEmpty }
+        var seen = Set<String>()
+        let unique = sentences.filter { seen.insert($0).inserted }
+        guard unique.count < sentences.count, normalized(result) == unique.joined(separator: " ") else {
+          throw failure("The rewrite removed too much text. The source was preserved.", "invalid_result")
+        }
+      }
+      if experiment, detected.count == 1,
+        result.split(whereSeparator: { $0.isWhitespace }).count >= 8,
+        let identified = runtime.identifyLanguage?(result), identified.confidence >= 0.8,
+        identified.language != detected[0] {
+        throw failure("The rewrite changed the source language. The source was preserved.", "rewrite_language")
+      }
+      return result
+    } catch let error as ClarifyError {
+      throw RejectedCandidate(failure: error, candidate: boundedDiagnostic(output))
     }
-    let leakedMarkers = ["BEGIN_SOURCE_TRANSCRIPT", "END_SOURCE_TRANSCRIPT", "<transcript>", "</transcript>"].contains { marker in
-      result.range(of: marker, options: .caseInsensitive) != nil &&
-        source.range(of: marker, options: .caseInsensitive) == nil
+  }
+
+  // False compares Apple's default sampling; greedy is the experiment default.
+  // Existing callers and injected runtimes retain their original policy.
+  static func rewriteReport(_ source: String, preferences: OutputPreferences,
+    deterministic: Bool = true) async throws -> AppleRewriteReport {
+    let start = ContinuousClock.now
+    var stage = "rewrite"
+    var candidate = ""
+    var rewritten = ""
+    func report(result: String = "", error: String = "", code: String = "") -> AppleRewriteReport {
+      let duration = start.duration(to: .now).components
+      return AppleRewriteReport(result: result, error: error, code: code, stage: stage,
+        candidate: boundedDiagnostic(candidate), rewritten: rewritten,
+        elapsedMS: Int(duration.seconds * 1_000 + duration.attoseconds / 1_000_000_000_000_000))
     }
-    guard !leakedMarkers else {
-      // Do not strip markers and silently present a contaminated answer as valid.
-      throw failure("Apple Intelligence did not return a complete rewrite. The source was preserved.", "invalid_result")
+    do {
+      try Task.checkCancellation()
+      var sourcePreferences = preferences
+      sourcePreferences.language = .auto
+      guard let runtime = systemRuntime(deterministic: deterministic) else {
+        throw failure("Apple Intelligence is not available on this device.", "unavailable")
+      }
+      rewritten = try await runRewrite(source, preferences: sourcePreferences,
+        runtime: runtime, experiment: true)
+      candidate = rewritten
+      try Task.checkCancellation()
+      if preferences.language == .auto { return report(result: rewritten) }
+      let detected = runtime.detectedLanguages(source)
+      guard detected.count == 1, let sourceLanguage = detected.first else {
+        stage = "translation"
+        throw failure("Use text in one source language for this translation experiment.", "translation_source_language")
+      }
+      if sourceLanguage == preferences.language.rawValue { return report(result: rewritten) }
+      stage = "translation"
+      candidate = ""
+      let translated = try await translateInstalled(rewritten, sourceLanguage: sourceLanguage,
+        targetLanguage: preferences.language.rawValue)
+      try Task.checkCancellation()
+      candidate = translated
+      stage = "translation_validation"
+      let result = translated.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !result.isEmpty, result.utf8.count <= maxOutputBytes else {
+        throw failure("Translation did not return complete text. The source was preserved.", "translation_invalid_result")
+      }
+      let leakedMarkers = ["BEGIN_SOURCE_TRANSCRIPT", "END_SOURCE_TRANSCRIPT", "<transcript>", "</transcript>"].contains { marker in
+        result.range(of: marker, options: .caseInsensitive) != nil &&
+          rewritten.range(of: marker, options: .caseInsensitive) == nil
+      }
+      guard !leakedMarkers else {
+        throw failure("Translation returned invalid text. The source was preserved.", "translation_invalid_result")
+      }
+      // The length ratio applies only to the source-language rewrite above.
+      if result.split(whereSeparator: { $0.isWhitespace }).count >= 8,
+        let identified = runtime.identifyLanguage?(result), identified.confidence >= 0.8,
+        identified.language != preferences.language.rawValue {
+        throw failure("Translation did not use the selected language. The source was preserved.", "translation_language")
+      }
+      if rewritten.split(whereSeparator: { $0.isWhitespace }).count >= 8,
+        result.lowercased() == rewritten.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        throw failure("Translation returned the source language. The source was preserved.", "translation_language")
+      }
+      try Task.checkCancellation()
+      return report(result: result)
+    } catch is CancellationError { throw CancellationError() }
+    catch let rejected as RejectedCandidate {
+      try Task.checkCancellation()
+      candidate = rejected.candidate
+      stage = "rewrite_validation"
+      return report(error: rejected.failure.message, code: rejected.failure.code ?? "apple_rewrite_invalid_result")
+    } catch let error as ClarifyError {
+      try Task.checkCancellation()
+      return report(error: error.message, code: error.code ?? "apple_rewrite_failed")
+    } catch {
+      try Task.checkCancellation()
+      // Never expose framework descriptions or response bodies.
+      return report(error: "Local text processing failed. The source was preserved.", code: "apple_rewrite_failed")
     }
-    if preferences.language != .auto,
-      result.split(whereSeparator: { $0.isWhitespace }).count >= 8,
-      let identified = runtime.identifyLanguage?(result), identified.confidence >= 0.8,
-      identified.language != preferences.language.rawValue {
-      throw failure("Apple Intelligence did not translate the text into the selected language. The source was preserved.", "untranslated_result")
-    }
-    func normalized(_ value: String) -> String {
-      value.lowercased().split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
-    }
-    // An identical passage is not a translation when its detected language is
-    // different. Limit this check to prose; names and identifiers may stay exact.
-    if preferences.language != .auto, !detected.contains(preferences.language.rawValue),
-      source.split(whereSeparator: { $0.isWhitespace }).count >= 8,
-      normalized(source) == normalized(result) {
-      throw failure("Apple Intelligence did not translate the text into the selected language. The source was preserved.", "untranslated_result")
-    }
-    let sourceSize = normalized(source).count
-    if sourceSize >= 240, normalized(result).count * 4 < sourceSize {
-      let sentences = source.replacingOccurrences(of: #"(?<=[.!?。！？])\s+"#,
-        with: "\n", options: .regularExpression).components(separatedBy: "\n").map(normalized).filter { !$0.isEmpty }
-      var seen = Set<String>()
-      let unique = sentences.filter { seen.insert($0).inserted }
-      guard unique.count < sentences.count, normalized(result) == unique.joined(separator: " ") else {
-        throw failure("The rewrite removed too much text. The source was preserved.", "invalid_result")
+  }
+
+  private static func translateInstalled(_ text: String, sourceLanguage: String,
+    targetLanguage: String) async throws -> String {
+    #if canImport(Translation)
+    if #available(iOS 26.0, macOS 26.0, *) {
+      // Keep the session inside one child task. Wait for cancelled work to stop
+      // before the caller can admit the next operation.
+      return try await withThrowingTaskGroup(of: String.self) { group in
+        group.addTask {
+          try Task.checkCancellation()
+          let source = Locale.Language(identifier: sourceLanguage)
+          let target = Locale.Language(identifier: targetLanguage)
+          let status = await LanguageAvailability().status(from: source, to: target)
+          try Task.checkCancellation()
+          switch status {
+          case .installed: break
+          case .supported:
+            throw failure("Download the source and target languages in the native translation sheet, then try again.", "translation_download_needed")
+          case .unsupported:
+            throw failure("Apple Translation does not support this language pair.", "translation_unsupported")
+          @unknown default:
+            throw failure("Translation language availability could not be checked. Try again.", "translation_unavailable")
+          }
+          do {
+            let session = TranslationSession(installedSource: source, target: target)
+            let response = try await session.translate(text)
+            try Task.checkCancellation()
+            return response.targetText
+          } catch is CancellationError { throw CancellationError() }
+          catch {
+            try Task.checkCancellation()
+            throw failure("Apple Translation failed. Check downloaded languages in the native translation sheet and try again.", "translation_failed")
+          }
+        }
+        group.addTask {
+          try await Task.sleep(nanoseconds: 30_000_000_000)
+          try Task.checkCancellation()
+          throw failure("Apple Translation took too long. The source was preserved.", "translation_timeout")
+        }
+        defer { group.cancelAll() }
+        guard let result = try await group.next() else { throw CancellationError() }
+        try Task.checkCancellation()
+        return result
       }
     }
-    return result
+    #endif
+    throw failure("Local translation requires iOS 26 or later.", "translation_unavailable")
   }
 
   private static func failure(_ message: String, _ code: String) -> ClarifyError {
     ClarifyError(message, code: "apple_rewrite_" + code)
   }
 
-  private static func systemRuntime() -> AppleRewriteRuntime? {
+  private static func systemRuntime(deterministic: Bool? = nil) -> AppleRewriteRuntime? {
     #if canImport(FoundationModels)
     if #available(iOS 26.0, macOS 26.0, *) {
-      // Match the public OpenWhispr adapter: default model and default sampling.
+      // Keep the default guardrails. The experiment changes only sampling.
       let model = SystemLanguageModel.default
       let responseTokenLimit: Int?
       if #available(iOS 26.4, macOS 26.4, *) { responseTokenLimit = maxResponseTokens }
@@ -196,7 +371,8 @@ enum AppleRewriteEngine {
           let session = LanguageModelSession(model: model, instructions: instructions)
           do {
             let response = try await session.respond(to: source,
-              options: GenerationOptions(maximumResponseTokens: responseTokenLimit))
+              options: GenerationOptions(sampling: deterministic == true ? .greedy : nil,
+                maximumResponseTokens: responseTokenLimit))
             try Task.checkCancellation()
             return response.content
           } catch is CancellationError { throw CancellationError() }
