@@ -684,8 +684,12 @@ This does not replace the system's microphone icon or orange privacy indicator.
 
 Settings includes an **Apple Intelligence test** screen for short transcripts.
 Paste the source text, choose a language and writing style, then run the rewrite.
-This prototype uses Apple's on-device model on compatible devices with iOS 26 or
-later. It checks model and language availability and accepts up to 2,000 UTF-8
+Automatic processing uses Apple's on-device model for cleanup and style, then
+TranslationSession for an explicitly selected target language on iOS 26 or later.
+Use the separate Apple editor to prepare missing translation languages. The
+comparison editor opens the system Writing Tools UI, which can use Private Cloud
+Compute; Clarify language and style settings do not control that UI.
+Automatic processing checks availability and accepts up to 2,000 UTF-8
 bytes. An unavailable model, unsupported language, context limit or refusal
 returns an error and preserves the source. It has no cloud fallback and does not
 save text to history or change normal dictation processing. Leaving the screen,
@@ -697,8 +701,11 @@ The Apple test adapts the public OpenWhispr cleanup path at commit
 [`cb08c411`](https://github.com/OpenWhispr/openwhispr/tree/cb08c411dd008c57e4f0a8193756d6b5812479fd/openwhispr-mobile).
 `AppleRewritePrompt.swift` owns the attributed cleanup prompt and `<transcript>`
 framing. `AppleRewriteEngine` owns admission, the native model, token budgets,
-generation deadline, cancellation and result validation. The adapter uses the
-default Apple model and sampling and a fresh session. On iOS 26.4+ it uses a
+generation deadline, cancellation and result validation. The automatic rewrite uses
+the default Apple model and a fresh session. The lab defaults to greedy sampling
+and also offers the model default for comparison. Test details expose intermediate
+text and rejected output only in screen memory. Cancellation and input changes
+clear these details; they never enter history or logs. On iOS 26.4+ it uses a
 900-token response cap and verifies the untrimmed response with native counting.
 It reserves 300 context tokens, admits at most 720 source tokens, and uses native
 token counts on iOS 26.4+ with a character-based estimate on older systems. The

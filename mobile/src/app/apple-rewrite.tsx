@@ -17,6 +17,9 @@ export default function AppleRewrite() {
   const model = useSyncExternalStore(session.subscribe, session.getState);
   const [availability, setAvailability] = useState<AppleRewriteAvailability>();
   const [loadError, setLoadError] = useState('');
+  const [nativeOpening, setNativeOpening] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  useEffect(() => setShowDetails(false), [model.report]);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(() => Keyboard.isVisible());
   const availabilityGeneration = useRef(0);
@@ -51,6 +54,16 @@ export default function AppleRewrite() {
   }, [refreshAvailability, session]));
   const language = model.preferences.language;
   const languageLabel = targetLanguages.find(item => item.value === language)?.label ?? t('Manter idioma original');
+  const openNative = async () => {
+    if (nativeOpening) return;
+    setNativeOpening(true); setLoadError('');
+    try {
+      await session.cancel();
+      Keyboard.dismiss();
+      await Core.openAppleWritingTools(model.source, language);
+    } catch (error) { setLoadError(errorMessage(error)); }
+    finally { setNativeOpening(false); }
+  };
   return <>
     <Stack.Screen options={{ headerRight: () => keyboardVisible ? <Pressable testID="apple.dismiss-keyboard"
       accessibilityRole="button" accessibilityLabel={t('Concluir')} onPress={Keyboard.dismiss}
@@ -60,7 +73,7 @@ export default function AppleRewrite() {
     <KeyboardPage>
     <ScreenHeader title={t('Teste do Apple Intelligence')} subtitle={t('Cole uma transcrição curta para testar a reescrita neste iPhone.')} />
     <Card>
-      <Text style={[ui.body, { color: c.text }]}>{t('Este teste usa somente o modelo da Apple no dispositivo. O texto não é salvo no histórico. Revise o resultado antes de usar.')}</Text>
+      <Text style={[ui.body, { color: c.text }]}>{t('A reescrita e a tradução automáticas são processadas neste iPhone. O texto não é salvo no histórico. Revise o resultado antes de usar.')}</Text>
       <Text testID="apple.status" accessibilityLiveRegion="polite" style={[ui.small, { color: c.muted }]}>
         {availability?.message ?? (loadError || t('Verificando disponibilidade…'))}
       </Text>
@@ -75,9 +88,28 @@ export default function AppleRewrite() {
       <NavigationRow testID="apple.language" title={t('Idioma de saída')} detail={languageLabel} icon="globe" onPress={() => setSheet('language')} />
       <NavigationRow testID="apple.style" title={t('Estilo de escrita')} detail={t(outputStyleLabel(model.preferences.style))} icon="textformat" onPress={() => setSheet('style')} />
     </Card>}
+    <Card>
+      <Text style={[ui.section, { color: c.text }]}>{t('Geração')}</Text>
+      <ChoiceRow title={t('Repetível')} selected={model.deterministic} onPress={() => session.setDeterministic(true)} />
+      <ChoiceRow title={t('Padrão do modelo')} selected={!model.deterministic} onPress={() => session.setDeterministic(false)} />
+    </Card>
     <Button testID="apple.rewrite" primary disabled={!preferencesLoaded || !availability?.available || !model.source.trim()} loading={model.busy} onPress={() => void session.run()}>{t('Reescrever com Apple Intelligence')}</Button>
     {model.busy && <Button testID="apple.cancel" onPress={() => void session.cancel()}>{t('Cancelar')}</Button>}
     {!!model.error && <Text testID="apple.error" accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(model.error)}</Text>}
+    {!!loadError && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{loadError}</Text>}
+    <Button disabled={model.busy || !model.source.trim()} loading={nativeOpening} onPress={() => void openNative()}>{t('Comparar com as Ferramentas de Escrita')}</Button>
+    <Text style={[ui.small, { color: c.muted }]}>{t('A comparação abre os controles da Apple e permite preparar os idiomas para tradução local. Ela pode usar o Private Cloud Compute.')}</Text>
+    {!!model.report && <Card>
+      <Button onPress={() => setShowDetails(value => !value)}>{t(showDetails ? 'Ocultar detalhes do teste' : 'Mostrar detalhes do teste')}</Button>
+      {showDetails && <>
+        <Text selectable style={[ui.small, { color: c.muted }]}>{model.report.stage} · {model.report.code || 'OK'} · {model.elapsedMS} ms</Text>
+        {!!model.report.rewritten && <Text selectable style={[ui.body, { color: c.text }]}>{model.report.rewritten}</Text>}
+        {!!model.report.candidate && !!model.report.error && <>
+          <Text style={[ui.section, { color: c.danger }]}>{t('Resposta rejeitada. Não use como resultado final.')}</Text>
+          <Text selectable style={[ui.body, { color: c.text }]}>{model.report.candidate}</Text>
+        </>}
+      </>}
+    </Card>}
     {!!model.result && <View testID="apple.result" style={{ gap: 12 }}>
       <Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t('Resultado')}</Text>
       <Text selectable style={[ui.body, { color: c.text }]}>{model.result}</Text>

@@ -1,4 +1,4 @@
-import type { OutputPreferences, OutputStyle } from '../modules/clarify-core';
+import type { AppleRewriteReport, OutputPreferences, OutputStyle } from '../modules/clarify-core';
 import { errorMessage } from './errors.ts';
 
 export const appleRewriteStyles = ['default', 'formal', 'casual'] as const;
@@ -10,6 +10,7 @@ const labStyles: Record<OutputStyle, typeof appleRewriteStyles[number]> = {
 interface Gateway {
   newOperationID(): string;
   rewriteWithApple(id: string, source: string, language: string, style: string): Promise<string>;
+  rewriteWithAppleReport?(id: string, source: string, language: string, style: string, deterministic: boolean): Promise<AppleRewriteReport>;
   cancelAppleRewrite(id: string): Promise<void>;
 }
 interface State {
@@ -19,6 +20,8 @@ interface State {
   result: string;
   error: string;
   elapsedMS: number | null;
+  deterministic: boolean;
+  report: AppleRewriteReport | null;
 }
 
 // This lab has no shared preferences, history, clipboard or dictation effects.
@@ -27,7 +30,7 @@ export class AppleRewriteSession {
   private generation = 0;
   private cancellation: Promise<void> | null = null;
   private listeners = new Set<() => void>();
-  private state: State = { source: '', preferences: { language: 'auto', style: 'default' }, busy: false, result: '', error: '', elapsedMS: null };
+  private state: State = { source: '', preferences: { language: 'auto', style: 'default' }, busy: false, result: '', error: '', elapsedMS: null, deterministic: true, report: null };
   private readonly gateway: Gateway;
   constructor(gateway: Gateway) { this.gateway = gateway; }
   getState = () => this.state;
@@ -37,7 +40,7 @@ export class AppleRewriteSession {
     const id = this.operation;
     this.operation = null;
     ++this.generation;
-    this.update({ busy: !!id || this.cancellation !== null, result: '', error: '', elapsedMS: null });
+    this.update({ busy: !!id || this.cancellation !== null, result: '', error: '', elapsedMS: null, report: null });
     if (id) {
       const pending = this.gateway.cancelAppleRewrite(id).catch(() => {});
       this.cancellation = pending;
@@ -53,15 +56,24 @@ export class AppleRewriteSession {
     void this.cancel();
     this.update({ preferences: { ...preferences, style: labStyles[preferences.style] } });
   }
+  setDeterministic(deterministic: boolean) {
+    void this.cancel();
+    this.update({ deterministic });
+  }
   async run() {
     if (this.state.busy || !this.state.source.trim()) return;
     const generation = ++this.generation;
     const id = this.gateway.newOperationID();
     this.operation = id;
-    const { source, preferences } = this.state;
+    const { source, preferences, deterministic } = this.state;
     const started = Date.now();
-    this.update({ busy: true, result: '', error: '', elapsedMS: null });
+    this.update({ busy: true, result: '', error: '', elapsedMS: null, report: null });
     try {
+      if (this.gateway.rewriteWithAppleReport) {
+        const report = await this.gateway.rewriteWithAppleReport(id, source, preferences.language, preferences.style, deterministic);
+        if (generation === this.generation && this.operation === id) this.update({ report, result: report.result, error: report.error, elapsedMS: report.elapsedMS });
+        return;
+      }
       const result = await this.gateway.rewriteWithApple(id, source, preferences.language, preferences.style);
       if (generation === this.generation && this.operation === id) this.update({ result, elapsedMS: Date.now() - started });
     } catch (error) {

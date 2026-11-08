@@ -7993,5 +7993,95 @@
     "pt": "Mostra sugestões e corrige palavras ao digitar no teclado Clarify.",
     "en": "Shows suggestions and corrects words when typing with the Clarify keyboard.",
     "es": "Muestra sugerencias y corrige palabras al escribir con el teclado Clarify."
+  },
+  "Ferramentas de Escrita da Apple": {
+    "pt": "Ferramentas de Escrita da Apple",
+    "en": "Apple Writing Tools",
+    "es": "Herramientas de Escritura de Apple"
+  },
+  "Abrir Ferramentas de Escrita": {
+    "pt": "Abrir Ferramentas de Escrita",
+    "en": "Open Writing Tools",
+    "es": "Abrir Herramientas de Escritura"
+  },
+  "A Apple pode solicitar o download dos idiomas. Depois, volte ao teste de reescrita.": {
+    "pt": "A Apple pode solicitar o download dos idiomas. Depois, volte ao teste de reescrita.",
+    "en": "Apple may ask to download languages. Then return to the rewrite test.",
+    "es": "Apple puede solicitar la descarga de idiomas. Después, vuelve a la prueba de reescritura."
+  },
+  "Preparar idiomas": {
+    "pt": "Preparar idiomas",
+    "en": "Prepare languages",
+    "es": "Preparar idiomas"
+  },
+  "Idiomas prontos. Volte ao teste de reescrita.": {
+    "pt": "Idiomas prontos. Volte ao teste de reescrita.",
+    "en": "Languages are ready. Return to the rewrite test.",
+    "es": "Los idiomas están listos. Vuelve a la prueba de reescritura."
+  },
+  "Comparar com as Ferramentas de Escrita": {
+    "pt": "Comparar com as Ferramentas de Escrita",
+    "en": "Compare with Writing Tools",
+    "es": "Comparar con Herramientas de Escritura"
+  },
+  "Ocultar detalhes do teste": {
+    "pt": "Ocultar detalhes do teste",
+    "en": "Hide test details",
+    "es": "Ocultar detalles de la prueba"
+  },
+  "Mostrar detalhes do teste": {
+    "pt": "Mostrar detalhes do teste",
+    "en": "Show test details",
+    "es": "Mostrar detalles de la prueba"
+  },
+  "Esta comparação usa os controles da Apple e pode usar o Private Cloud Compute. As opções de idioma e estilo do Clarify não são aplicadas aqui.": {
+    "pt": "Esta comparação usa os controles da Apple e pode usar o Private Cloud Compute. As opções de idioma e estilo do Clarify não são aplicadas aqui.",
+    "en": "This comparison uses Apple controls and may use Private Cloud Compute. Clarify language and style settings do not apply here.",
+    "es": "Esta comparación usa los controles de Apple y puede usar Private Cloud Compute. Los ajustes de idioma y estilo de Clarify no se aplican aquí."
+  },
+  "Preparar idiomas para tradução local": {
+    "pt": "Preparar idiomas para tradução local",
+    "en": "Prepare languages for local translation",
+    "es": "Preparar idiomas para traducción local"
+  },
+  "Tradução local": {
+    "pt": "Tradução local",
+    "en": "Local translation",
+    "es": "Traducción local"
+  },
+  "Não foi possível preparar os idiomas. Tente novamente.": {
+    "pt": "Não foi possível preparar os idiomas. Tente novamente.",
+    "en": "Could not prepare languages. Try again.",
+    "es": "No se pudieron preparar los idiomas. Inténtalo de nuevo."
+  },
+  "A reescrita e a tradução automáticas são processadas neste iPhone. O texto não é salvo no histórico. Revise o resultado antes de usar.": {
+    "pt": "A reescrita e a tradução automáticas são processadas neste iPhone. O texto não é salvo no histórico. Revise o resultado antes de usar.",
+    "en": "Automatic rewriting and translation run on this iPhone. Text is not saved in history. Review the result before use.",
+    "es": "La reescritura y traducción automáticas se procesan en este iPhone. El texto no se guarda en el historial. Revisa el resultado antes de usarlo."
+  },
+  "Geração": {
+    "pt": "Geração",
+    "en": "Generation",
+    "es": "Generación"
+  },
+  "Repetível": {
+    "pt": "Repetível",
+    "en": "Repeatable",
+    "es": "Repetible"
+  },
+  "Padrão do modelo": {
+    "pt": "Padrão do modelo",
+    "en": "Model default",
+    "es": "Predeterminado del modelo"
+  },
+  "A comparação abre os controles da Apple e permite preparar os idiomas para tradução local. Ela pode usar o Private Cloud Compute.": {
+    "pt": "A comparação abre os controles da Apple e permite preparar os idiomas para tradução local. Ela pode usar o Private Cloud Compute.",
+    "en": "The comparison opens Apple controls and lets you prepare languages for local translation. It may use Private Cloud Compute.",
+    "es": "La comparación abre los controles de Apple y permite preparar idiomas para traducción local. Puede usar Private Cloud Compute."
+  },
+  "Resposta rejeitada. Não use como resultado final.": {
+    "pt": "Resposta rejeitada. Não use como resultado final.",
+    "en": "Rejected response. Do not use as the final result.",
+    "es": "Respuesta rechazada. No la uses como resultado final."
   }
 }

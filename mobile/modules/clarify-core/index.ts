@@ -44,6 +44,10 @@ export interface OutputPreferences { language: OutputLanguage; style: OutputStyl
 export interface AppleRewriteAvailability {
   available: boolean; reason: string; message: string; supportedLanguages: string[]; maxInputBytes: number;
 }
+export interface AppleRewriteReport {
+  result: string; error: string; code: string; stage: string;
+  candidate: string; rewritten: string; elapsedMS: number;
+}
 export interface DictationPolicy { mode: 'legacy' | 'natural' | 'preserve' | 'light' | 'clarity' | 'action'; actionID: string; actionRevision: string; language: OutputLanguage }
 export interface ProcessingCapabilities {
   schema_version: 1; output_languages: OutputLanguage[]; writing_styles: ContractOutputStyle[];
@@ -102,6 +106,8 @@ export default requireNativeModule<{
   getOutputPreferences(): Promise<OutputPreferences>;
   getAppleRewriteAvailability(): Promise<AppleRewriteAvailability>;
   rewriteWithApple(id: string, source: string, language: string, style: string): Promise<string>;
+  rewriteWithAppleReport(id: string, source: string, language: string, style: string, deterministic: boolean): Promise<AppleRewriteReport>;
+  openAppleWritingTools(source: string, language: string): Promise<void>;
   cancelAppleRewrite(id: string): Promise<void>;
   setOutputPreference(key: 'language' | 'style', value: string): Promise<OutputPreferences>;
   getDictationPolicy(): Promise<DictationPolicy>;
