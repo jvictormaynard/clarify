@@ -326,3 +326,22 @@ test('optional Bitrise iOS routing isolates forks and selects the matching Xcode
   assert.ok(cache.with.key.includes('env.DEVELOPER_DIR'));
   assert.ok(cache.with['restore-keys'].includes('env.DEVELOPER_DIR'));
 });
+
+test('PR proof upload is last and main authentication has read-only access', () => {
+  for (const id of ['plan', 'required']) {
+    assert.deepEqual(ci.jobs[id].permissions, {contents: 'read', actions: 'read', 'pull-requests': 'read'});
+    assert.equal(ci.jobs[id].steps.find(s => s.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 0);
+    const command = ci.jobs[id].steps.find(s => s.run?.includes(id === 'plan' ? '--github-plan' : '--check-results'));
+    assert.equal(command.env.GH_TOKEN, '$' + '{{ github.token }}');
+  }
+  assert.equal(ci.jobs.plan.outputs.reuse, '$' + '{{ steps.plan.outputs.reuse }}');
+  const steps = ci.jobs.required.steps;
+  assert.ok(steps.at(-3).run.includes('--check-results'));
+  assert.ok(steps.at(-2).run.includes('--emit-proof'));
+  const upload = steps.at(-1);
+  assert.match(upload.uses, /^actions\/upload-artifact@/);
+  assert.equal(upload.if, "github.event_name == 'pull_request'");
+  assert.equal(steps.at(-2).if, upload.if);
+  assert.equal(upload.with.name, 'ci-proof-$' + '{{ github.run_id }}-$' + '{{ github.run_attempt }}');
+  assert.equal(upload.with['if-no-files-found'], 'error');
+});

@@ -121,8 +121,9 @@ same component policy as CI and include committed and uncommitted changes.
 They do not install dependencies. Unavailable database, remote or native gates
 are reported as unexecuted, with exit code 2.
 
-PR CI selects checks from the complete diff. Main pushes run full standard
-validation; scheduled and manual runs add extended checks. No special branch prefix, label,
+PR CI selects checks from the complete diff. Main pushes require full standard
+validation, with authenticated exact-source PR evidence reuse where supported.
+Scheduled and manual runs add extended checks. No special branch prefix, label,
 paid service or secret is required. Pushes to a branch with an open PR run one
 PR workflow. Maintainers may need to approve a first-time fork's workflow run.
 
