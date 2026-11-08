@@ -1,7 +1,13 @@
+import contextlib
+import io
 import json
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from scripts import check_dependency_lock
 
 from version import __version__
 
@@ -10,6 +16,47 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class RepositorySafetyTests(unittest.TestCase):
+    def test_lock_check_ignores_generated_command_but_rejects_dependency_drift(self):
+        header = (
+            "#    pip-compile --allow-unsafe --output-file=lock.txt "
+            "--strip-extras requirements-dev.txt"
+        )
+        expected = header + "\nclick==8.5.0\n    # via pip-tools\n"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lock.txt").write_text(expected, encoding="utf-8")
+            for generated_body, expected_result in (
+                ("click==8.5.0\n    # via pip-tools\n", 0),
+                ("click==8.4.2\n    # via pip-tools\n", 1),
+                ("click==8.5.0\n    # via other-package\n", 1),
+            ):
+                with self.subTest(body=generated_body):
+
+                    def compile_lock(command, **kwargs):
+                        output = Path(command[command.index("--output-file") + 1])
+                        output.write_text(
+                            "#    pip-compile --allow-unsafe --no-index "
+                            f"--output-file='{output}' --strip-extras requirements-dev.txt\n"
+                            + generated_body,
+                            encoding="utf-8",
+                        )
+                        return subprocess.CompletedProcess(command, 0, "", "")
+
+                    with (
+                        patch.object(check_dependency_lock, "ROOT", root),
+                        patch.object(
+                            check_dependency_lock.subprocess, "run", compile_lock
+                        ),
+                        contextlib.redirect_stdout(io.StringIO()),
+                        contextlib.redirect_stderr(io.StringIO()),
+                    ):
+                        self.assertEqual(
+                            check_dependency_lock.main(
+                                ["--lock-file", "lock.txt", "--allow-unsafe"]
+                            ),
+                            expected_result,
+                        )
+
     def test_validation_outputs_are_not_tracked(self):
         tracked = (
             subprocess.run(
