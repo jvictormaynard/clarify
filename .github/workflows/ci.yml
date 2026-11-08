@@ -110,7 +110,7 @@ jobs:
       - run: python scripts/ci.py --task python --shard ${{ matrix.shard }}
       - name: Retain test durations
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: python-durations-${{ matrix.platform }}-${{ strategy.job-index }}-${{ github.sha }}
           path: ${{ runner.temp }}/durations/*.json
@@ -149,7 +149,7 @@ jobs:
       - run: python scripts/ci.py --task qt
       - name: Retain test durations
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: qt-durations-${{ matrix.platform }}-${{ github.sha }}
           path: |
@@ -226,7 +226,7 @@ jobs:
           CLARIFY_TEST_ARTIFACTS_DIR: ${{ runner.temp }}/clarify-electron-evidence
       - name: Retain Electron native evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: Electron-native-${{ github.sha }}
           path: ${{ runner.temp }}/clarify-electron-evidence/
@@ -371,7 +371,7 @@ jobs:
       - name: Validate secret-store contract
         run: python -c "import sys; sys.argv = ['app.py', 'secret-store-self-test']; import app; raise SystemExit(app._run_cli(['secret-store-self-test']))"
       - name: Upload smoke-test build
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: Clarify-windows-${{ github.sha }}
           path: |
@@ -461,7 +461,7 @@ jobs:
         run: python scripts/ci.py --emit-proof "${{ runner.temp }}/proof.json"
       - name: Upload successful PR validation evidence
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ci-proof-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/proof.json
