@@ -1,14 +1,14 @@
 {
   "schema": 2,
   "component": "mobile",
-  "version": "0.14.0",
-  "base_sha": "bc46feb9ff80bcd0ad1b7877b1fe2abda98216d8",
-  "notes": "Official App Store 0.14.0 build 66 consolidates current main, including the shared output-language prompt correction, shared processing policy, saved text actions, opt-in keyboard autocorrect, language/style controls, Expo SDK 57 alignment and PR #261. The source-app lookup now matches UIKit current-state identity to the attached keyboard owner without accepting the historical source cache. PR #261 passed CI run 42338966853: 226 Swift tests (one existing skip), 74 UIKit tests including identity guards, both app UI profiles and unsigned native compilation. Strict run 42338475967 passed both automatic returns with manual return disabled; its verified artifact records complete keyboard acceptance. The merged base has the same reviewed source tree. Complete read-only Apple inventory 42341027468 finished at 2026-11-07T05:03:06.674Z with no errors: 43 builds/uploads, highest build 65 and completed review submissions. Git reservations also reached 65, with no competing preparation. Preserve the failed build 61 tag; builds 62 through 65 are separate internal experiments and are excluded from this source. Use the standard signed path with internal_testing=false. Require exact-source canonical CI, signed app/two-extension verification, confirmed upload, Apple processing, internal-group availability and sealed evidence. Exact-candidate physical acceptance and final metadata, privacy, screenshots, export and store-policy review remain required before App Store submission. Preparation is not submission or public availability.",
+  "version": "0.14.2",
+  "base_sha": "41a6f7d6e1dccac25a7c939fd59697377ca7b26b",
+  "notes": "TestFlight keyboard correction candidate. Includes merged PR #276: equal letter widths and half-key staggering across widths, and row-first touch routing so side-margin touches do not select another row. The integrated feature passed required CI, including Swift contracts, UIKit gap/slide/overlap/cancellation tests, installed-keyboard tests, regular/compact app UI and unsigned app/extensions compilation. Complete read-only Apple inventory run 42507003343 finished at 2026-11-08T17:51:23Z: 49 builds, 50 uploads, highest build 72, all review submissions complete. Git tags and open release reservations were rechecked on 2026-11-08T19:48Z and also reach 72; build 73 is the next candidate. Existing Apple rewriting prototype branches and builds are excluded. Use the standard signed TestFlight path with internal_testing=false, then verify signed app/two-extension identity, upload receipt, Apple processing, existing internal group and sealed candidate evidence. Full Apple keyboard parity across devices, physical touch accuracy, haptics and sound remain unverified. This authorization is for TestFlight only; no App Store submission or public release.",
   "evidence": {
-    "build": "66",
-    "highest_build": "65",
+    "build": "73",
+    "highest_build": "72",
     "pending_builds_checked": true,
-    "checked_at": "2026-11-07T05:07:25Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42341027468"
+    "checked_at": "2026-11-08T17:51:23Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42507003343"
   }
 }
