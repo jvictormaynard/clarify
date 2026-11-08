@@ -5,7 +5,7 @@ import Core, { type OutputPreferences } from '../../modules/clarify-core';
 import { Button, ChoiceRow, Section, ui, usePalette } from '../components/ui';
 import { isBusy, useClarify } from '../state/clarify';
 import { errorMessage } from '../errors';
-import { outputStyleLabel, outputStyles, visibleOutputStyle } from '../output-preferences';
+import { outputStyleLabel, outputStyles } from '../output-preferences';
 import { targetLanguages } from '../text-actions';
 import { t } from '../i18n';
 import { DictationPolicyControls } from '../components/dictation-policy';
@@ -80,7 +80,7 @@ export default function Output() {
       </Section>
       <Section title={t('Estilo')}>
         {outputStyles.map(item => <ChoiceRow key={item.value} testID={`output.style.${item.value}`} title={t(item.label)}
-          selected={visibleOutputStyle(preferences.style) === item.value} disabled={pending || refreshing || (!supported && item.value !== 'default')} onPress={() => void save('style', item.value)} />)}
+          selected={preferences.style === item.value} disabled={pending || refreshing || (!supported && item.value !== 'default')} onPress={() => void save('style', item.value)} />)}
         {legacy && <ChoiceRow title={t(outputStyleLabel(preferences.style))} selected disabled onPress={() => {}} />}
       </Section>
     </>}

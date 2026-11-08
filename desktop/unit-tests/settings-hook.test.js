@@ -428,3 +428,15 @@ test('continuing settings editing revokes a pending save-and-close', async () =>
  c=h.render();c.setSettingsDismissRequested(false);gate.release();await saving;c=h.render();
  assert.equal(h.persisted.historyRetentionDays,30);assert.equal(c.settingsOpen,true);assert.equal(c.settingsDismissRequested,false);
 });
+
+
+test('dictionary flag queued during Save follows a casefold-equivalent server spelling', async () => {
+ const h=await setup();let c=h.render();await c.navigate('dictionary');c=h.render();
+ c.setDictionary([{...c.state.dictionaryEntries[0],term:'Straße',pronunciation:'street'}]);c=h.render();
+ const gate=h.pause('save');const saving=c.save();await gate.started;
+ const flag=c.setLibraryPreference('dictionary',0,'enabled',false);
+ h.replaceLibrary('dictionary',[{term:'STRASSE',pronunciation:'street',aliases:[],enabled:true}]);
+ gate.release();await Promise.all([saving,flag]);c=h.render();
+ assert.equal(c.error,'');assert.equal(h.persisted.dictionaryEntries[0].enabled,false);
+ assert.equal(h.persisted.dictionaryEntries[0].term,'STRASSE');
+});

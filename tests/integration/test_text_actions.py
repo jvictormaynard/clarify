@@ -3,6 +3,7 @@
 import unittest
 import threading
 from dataclasses import replace
+from contextlib import nullcontext
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -512,13 +513,14 @@ class LocalServiceTests(LocalServiceFixture, unittest.TestCase):
         )
         self.repo.apply(config)
         self.service.chatgpt_session = Mock(
+            snapshot_guard=nullcontext,
             snapshot=Mock(
                 return_value={
                     "connected": True,
                     "planEnabled": True,
                     "accountId": "other-account",
                 }
-            )
+            ),
         )
         state = self.service.projection()
         profile = next(

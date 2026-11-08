@@ -28,6 +28,20 @@ from tests.support.workflow_provider import (
 
 
 class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
+    def test_prompt_language_labels_preserve_regional_and_unknown_tags(self):
+        from shared.rewrite_prompts import language_display_name
+
+        for value, expected in (
+            ("", "English"),
+            (" AUTO ", "the detected source language"),
+            ("pt_BR", "Brazilian Portuguese"),
+            ("de-DE", "German"),
+            ("zh_Hant", "zh-Hant"),
+            ("fr-FR", "fr-FR"),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(language_display_name(value), expected)
+
     def test_managed_text_ignores_disabled_personal_routes_and_does_not_fallback(self):
         from clarify_account import AccountError
 
@@ -189,6 +203,7 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
         self.set_cleanup("clarity")
         self.current = replace(
             self.current,
+            openai=replace(self.current.openai, api_key=" test-only "),
             workflows=replace(
                 self.current.workflows,
                 refinement=WorkflowRoute(
@@ -225,7 +240,7 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
         self.assertEqual(request.model, "original-editor")
         self.assertIn("Original policy.", request.instruction)
         self.assertNotIn("New policy.", request.instruction)
-        self.assertEqual(connection.api_key, original.openai.api_key)
+        self.assertEqual(connection.api_key, "test-only")
         self.assertEqual(connection.base_url, "https://old.invalid/v1")
 
     def test_explicit_multimodal_recognition_cannot_use_rewrite_prompt(self):

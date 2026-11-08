@@ -75,7 +75,7 @@ def _library_locked(user):
     owner = get_user_model().objects.select_for_update().filter(pk=user.pk).first()
     if owner is None:
         raise PermissionDenied()
-    from .groq import TEXT_PROMPTS
+    from shared.rewrite_prompts import TEXT_PROMPTS
 
     initial = [
         {
