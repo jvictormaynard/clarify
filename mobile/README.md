@@ -716,6 +716,12 @@ Responses introducing transcript boundary markers are rejected. These checks do
 not prove that arbitrary model prose is a faithful rewrite.
 
 Clarify's generated language/style suffixes extend that cleanup prompt. The test
+also places Apple's recommended explicit `You MUST respond in ...` instruction
+before the cleanup prompt for every selected output language, including English.
+Longer results confidently identified as another language are rejected. This
+language check skips automatic language selection, short fragments and uncertain
+detection; it does not establish semantic fidelity or translation quality.
+The test
 offers Default, Formal and Casual. Natural and Organized saved styles map to
 Default; Informal and Very casual map to Casual, without changing saved settings.
 OpenWhispr's normal local dictation path does not apply its keyboard tone, and

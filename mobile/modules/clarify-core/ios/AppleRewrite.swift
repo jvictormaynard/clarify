@@ -16,6 +16,7 @@ struct AppleRewriteRuntime {
   var countTokens: ((String) async throws -> Int)? = nil
   var responseTokenLimit: Int? = nil
   var waitForDeadline: (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
+  var identifyLanguage: ((String) -> (language: String, confidence: Double)?)? = nil
 }
 
 enum AppleRewriteEngine {
@@ -144,6 +145,12 @@ enum AppleRewriteEngine {
       // Do not strip markers and silently present a contaminated answer as valid.
       throw failure("Apple Intelligence did not return a complete rewrite. The source was preserved.", "invalid_result")
     }
+    if preferences.language != .auto,
+      result.split(whereSeparator: { $0.isWhitespace }).count >= 8,
+      let identified = runtime.identifyLanguage?(result), identified.confidence >= 0.8,
+      identified.language != preferences.language.rawValue {
+      throw failure("Apple Intelligence did not translate the text into the selected language. The source was preserved.", "untranslated_result")
+    }
     func normalized(_ value: String) -> String {
       value.lowercased().split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     }
@@ -217,6 +224,7 @@ enum AppleRewriteEngine {
       if #available(iOS 26.4, macOS 26.4, *) {
         runtime.countTokens = { text in try await model.tokenCount(for: text) }
       }
+      runtime.identifyLanguage = languageHypothesis
       return runtime
     }
     #endif
@@ -230,6 +238,18 @@ enum AppleRewriteEngine {
     return false
   }
   #endif
+
+  private static func languageHypothesis(_ text: String) -> (language: String, confidence: Double)? {
+    #if canImport(NaturalLanguage)
+    let recognizer = NLLanguageRecognizer()
+    recognizer.processString(text)
+    guard let language = recognizer.dominantLanguage,
+      let confidence = recognizer.languageHypotheses(withMaximum: 1)[language] else { return nil }
+    return (language.rawValue, confidence)
+    #else
+    return nil
+    #endif
+  }
 
   private static func sourceLanguages(_ source: String) -> [String] {
     #if canImport(NaturalLanguage)

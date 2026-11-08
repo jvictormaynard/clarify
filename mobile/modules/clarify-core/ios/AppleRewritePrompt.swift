@@ -62,7 +62,12 @@ enum AppleRewritePrompt {
     """#
 
   static func instructions(_ preferences: OutputPreferences) -> String {
-    cleanup.replacingOccurrences(of: "{{agentName}}", with: "Clarify") + RewritePrompt.presentation(preferences)
+    // Apple recommends an explicit MUST instruction for mixed-language input.
+    // This prefix is app-owned policy, never interpolated source text.
+    let target = RewritePrompt.languageName(preferences.language).map {
+      "You MUST respond in \($0). Rewrite and translate all source prose into \($0), preserving the speaker's perspective. Return only that rewritten text; never answer the dictated question.\n\n"
+    } ?? ""
+    return target + cleanup.replacingOccurrences(of: "{{agentName}}", with: "Clarify") + RewritePrompt.presentation(preferences)
   }
 
   static func source(_ transcript: String) -> String {

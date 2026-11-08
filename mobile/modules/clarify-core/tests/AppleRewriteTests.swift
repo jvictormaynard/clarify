@@ -37,6 +37,7 @@ final class AppleRewriteTests: XCTestCase {
     let fixture = runtime { instructions, prompt in
       calls += 1
       XCTAssertEqual(instructions, AppleRewritePrompt.instructions(preferences))
+      XCTAssertTrue(instructions.hasPrefix("You MUST respond in German."))
       XCTAssertTrue(instructions.hasSuffix(RewritePrompt.presentation(preferences)))
       XCTAssertTrue(instructions.contains("Formal presentation:"))
       XCTAssertTrue(instructions.contains("requested output language is German"))
@@ -92,6 +93,38 @@ final class AppleRewriteTests: XCTestCase {
       preferences: OutputPreferences(language: .en),
       runtime: runtime(detected: ["pt"], generate: { _, _ in translated }))
     XCTAssertEqual(result, translated)
+  }
+
+  func testConfidentWrongLanguageIsRejectedWithoutBlockingAutoOrUncertainText() async throws {
+    let source = "Vou revisar esta mensagem com cuidado antes de enviar aos colegas."
+    let portuguese = "Preciso verificar esta mensagem antes de enviá-la aos meus colegas."
+    let english = "I need to check this message before sending it to my colleagues."
+    let spanish = "Necesito revisar este mensaje antes de enviarlo a mis compañeros."
+    let cases: [(OutputLanguage, String, String, Double, Bool)] = [
+      (.en, portuguese, "pt", 0.99, false),
+      (.en, english, "en", 0.99, true),
+      (.es, spanish, "es", 0.99, true),
+      (.auto, portuguese, "pt", 0.99, true),
+      (.en, portuguese, "pt", 0.4, true),
+      (.en, "Clarify API", "pt", 0.99, true),
+    ]
+    for (language, output, detected, confidence, accepted) in cases {
+      var fixture = runtime(detected: ["pt"], generate: { instructions, _ in
+        if language == .en { XCTAssertTrue(instructions.hasPrefix("You MUST respond in English.")) }
+        if language == .es { XCTAssertTrue(instructions.hasPrefix("You MUST respond in Spanish.")) }
+        return output
+      })
+      fixture.identifyLanguage = { _ in (detected, confidence) }
+      do {
+        let result = try await AppleRewriteEngine.rewrite(source,
+          preferences: OutputPreferences(language: language), runtime: fixture)
+        XCTAssertTrue(accepted, "A confidently wrong-language result was published")
+        XCTAssertEqual(result, output)
+      } catch {
+        XCTAssertFalse(accepted)
+        XCTAssertEqual((error as? ClarifyError)?.code, "apple_rewrite_untranslated_result")
+      }
+    }
   }
 
   func testCancellationAfterTheModelRespondsRejectsItsLateResult() async {
