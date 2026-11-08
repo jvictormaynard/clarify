@@ -36,7 +36,8 @@ def _installer(args) -> LocalASRInstaller:
 def _require_windows() -> None:
     if platform.system() != "Windows":
         raise LocalASRError(
-            "This pinned sidecar is the Windows x64 build. Run the harness with Windows Python.")
+            "This pinned sidecar is the Windows x64 build. Run the harness with Windows Python."
+        )
 
 
 def _confirm(message: str, assume_yes: bool) -> bool:
@@ -60,8 +61,7 @@ def _audio_duration(path: Path) -> float:
             frame_rate = audio.getframerate()
             frame_count = audio.getnframes()
     except Exception as error:
-        raise LocalASRError(
-            f"Unsupported or invalid WAV audio: {path.name}") from error
+        raise LocalASRError(f"Unsupported or invalid WAV audio: {path.name}") from error
     if frame_rate <= 0:
         raise LocalASRError(f"Unsupported WAV audio rate: {path.name}")
     return frame_count / frame_rate
@@ -80,11 +80,13 @@ def _word_error_rate(reference: str, hypothesis: str) -> float:
     for expected_word in expected:
         current = [previous[0] + 1]
         for index, actual_word in enumerate(actual, start=1):
-            current.append(min(
-                current[-1] + 1,
-                previous[index] + 1,
-                previous[index - 1] + (expected_word != actual_word),
-            ))
+            current.append(
+                min(
+                    current[-1] + 1,
+                    previous[index] + 1,
+                    previous[index - 1] + (expected_word != actual_word),
+                )
+            )
         previous = current
     return previous[-1] / len(expected)
 
@@ -92,6 +94,7 @@ def _word_error_rate(reference: str, hypothesis: str) -> float:
 def _windows_working_set(pid: int | None) -> int | None:
     if platform.system() != "Windows" or not pid:
         return None
+
     class ProcessMemoryCounters(ctypes.Structure):
         _fields_ = [
             ("cb", ctypes.c_ulong),
@@ -105,7 +108,9 @@ def _windows_working_set(pid: int | None) -> int | None:
             ("PagefileUsage", ctypes.c_size_t),
             ("PeakPagefileUsage", ctypes.c_size_t),
         ]
+
     from ctypes import wintypes
+
     kernel32 = ctypes.windll.kernel32
     psapi = ctypes.windll.psapi
     kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
@@ -113,7 +118,9 @@ def _windows_working_set(pid: int | None) -> int | None:
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel32.CloseHandle.restype = wintypes.BOOL
     psapi.GetProcessMemoryInfo.argtypes = [
-        wintypes.HANDLE, ctypes.POINTER(ProcessMemoryCounters), wintypes.DWORD,
+        wintypes.HANDLE,
+        ctypes.POINTER(ProcessMemoryCounters),
+        wintypes.DWORD,
     ]
     psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
     process = kernel32.OpenProcess(0x0400 | 0x0010, False, pid)
@@ -122,8 +129,7 @@ def _windows_working_set(pid: int | None) -> int | None:
     try:
         counters = ProcessMemoryCounters()
         counters.cb = ctypes.sizeof(counters)
-        if not psapi.GetProcessMemoryInfo(
-                process, ctypes.byref(counters), counters.cb):
+        if not psapi.GetProcessMemoryInfo(process, ctypes.byref(counters), counters.cb):
             return None
         return int(counters.PeakWorkingSetSize)
     finally:
@@ -171,35 +177,52 @@ def _benchmark(args) -> dict:
         "startup_seconds": round(startup_seconds, 3),
         "inference_seconds": round(inference_seconds, 3),
         "total_seconds": round(total_seconds, 3),
-        "real_time_factor": round(inference_seconds / duration, 3) if duration else None,
+        "real_time_factor": round(inference_seconds / duration, 3)
+        if duration
+        else None,
         "peak_working_set_bytes": max(memory_samples) if memory_samples else None,
         "transcript": text,
         "reference": expected or None,
-        "word_error_rate": round(_word_error_rate(expected, text), 4) if expected else None,
+        "word_error_rate": round(_word_error_rate(expected, text), 4)
+        if expected
+        else None,
         "offline_network_disabled": False,
     }
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Clarify local-ASR maintainer harness (not product integration)")
+        description="Clarify local-ASR maintainer harness (not product integration)"
+    )
     parser.add_argument(
-        "--root", help="Override the asset root (recommended for isolated acceptance runs)")
+        "--root",
+        help="Override the asset root (recommended for isolated acceptance runs)",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("status", help="Verify installed files without network access")
 
-    install = commands.add_parser("install", help="Download and verify the pinned assets")
-    install.add_argument("--yes", action="store_true", help="Accept requirements non-interactively")
+    install = commands.add_parser(
+        "install", help="Download and verify the pinned assets"
+    )
+    install.add_argument(
+        "--yes", action="store_true", help="Accept requirements non-interactively"
+    )
 
-    remove = commands.add_parser("remove", help="Remove every local-ASR asset under the root")
-    remove.add_argument("--yes", action="store_true", help="Confirm removal non-interactively")
+    remove = commands.add_parser(
+        "remove", help="Remove every local-ASR asset under the root"
+    )
+    remove.add_argument(
+        "--yes", action="store_true", help="Confirm removal non-interactively"
+    )
 
     transcribe = commands.add_parser("transcribe", help="Run one local transcription")
     transcribe.add_argument("--file", required=True)
     transcribe.add_argument("--language", default="en")
 
     benchmark = commands.add_parser(
-        "benchmark", help="Measure startup, latency, memory, and optional WER on Windows")
+        "benchmark",
+        help="Measure startup, latency, memory, and optional WER on Windows",
+    )
     benchmark.add_argument("--file", required=True)
     benchmark.add_argument("--language", default="en")
     benchmark.add_argument("--expected-text", default="")
@@ -235,20 +258,21 @@ def main(argv: list[str] | None = None) -> int:
             duration = _audio_duration(audio_path)
             manager = LocalASRSidecarManager(installer)
             try:
-                text = manager.transcribe(
-                    audio_path, args.language)
+                text = manager.transcribe(audio_path, args.language)
             finally:
                 manager.shutdown()
-            _json({
-                "ok": True,
-                "text": text,
-                "loopback_only": True,
-                "audio_file": str(audio_path),
-                "audio_seconds": round(duration, 3),
-                "engine": installer.manifest["engine"]["version"],
-                "model": installer.manifest["recommended_model"]["id"],
-                "offline_network_disabled": False,
-            })
+            _json(
+                {
+                    "ok": True,
+                    "text": text,
+                    "loopback_only": True,
+                    "audio_file": str(audio_path),
+                    "audio_seconds": round(duration, 3),
+                    "engine": installer.manifest["engine"]["version"],
+                    "model": installer.manifest["recommended_model"]["id"],
+                    "offline_network_disabled": False,
+                }
+            )
             return 0
         if args.command == "benchmark":
             _json(_benchmark(args))

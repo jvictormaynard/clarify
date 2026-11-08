@@ -5,6 +5,213 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-31
+
+### Added
+
+- Pair an iPhone with a personal Clarify computer by QR code. Use the computer's dictation, rewrite, translation, dictionary and snippets. Revoke paired phones or stop access from desktop Settings.
+- Enable encrypted internet access for a paired computer with a verified free account. Processing models and provider keys remain on the computer.
+- Create named text actions with custom instructions, optional shortcuts and a saved-action preview. Rewrite and Translation remain available as initial actions.
+- Select an action after dictation and configure separate text processing profiles. Account actions belong to the signed-in account; shortcuts and profile choices remain device preferences.
+
+### Changed
+
+- Organize the desktop workspace into Dictation, Style, Text actions, Dictionary, Snippets and History. Open application preferences, services, shortcuts, privacy and account access in a Settings dialog.
+- Move cleanup, post-dictation actions and application writing styles into Style. Use focused dialogs with Save and Cancel for actions, profiles and application rules.
+- Remove global Settings search and use the current T3-derived controls, disclosure motion and navigation geometry. Library and picker filters remain available.
+
+## [0.14.0] - 2026-10-28
+
+### Added
+
+- Find desktop Settings pages and sections with sidebar search and keyboard navigation.
+- Run an explicit dictation practice from first-run setup or General settings, with guidance when a service or account needs attention.
+- Choose text cleanup levels and writing styles for individual applications. Review original and revised history text and correct saved vocabulary with an explicit undo action.
+
+### Changed
+
+- Apply the T3-based desktop design system to navigation, grouped settings, controls and dialogs. Keep the titlebar and sidebar fixed while page content scrolls.
+- Show provider logos, a separate email step and a visible account-free option in both desktop login placements. Initial setup uses a flat layout with a distinct account-free action.
+- Give connected ChatGPT subscriptions a primary usage action and an account menu for adding, reconnecting, refreshing models and signing out. Show the ChatGPT mark on connection actions.
+- Make the desktop design guide the default for future interface work, including new pages, through the repository's agent instructions.
+
+### Fixed
+
+- Include Windows file and product version information in the portable executable and reject builds whose version resource differs from the application version.
+- Replace the installed executable during MSI upgrades and explicit rollback, including builds with the same file version, while preserving user data and transaction recovery.
+
+## [0.13.0] - 2026-10-27
+
+### Added
+
+- Connect an eligible ChatGPT subscription in personal desktop mode without a Clarify account or an OpenAI API key. Use the selected account's models for rewriting, translation, and optional Local Whisper transcript refinement within the plan's existing limits.
+- Manage saved ChatGPT accounts, reconnect, review plan usage, and select account-specific text models in Settings. Text requests go directly to OpenAI; credentials stay in protected local storage.
+
+### Fixed
+
+- Accept completed ChatGPT replies when the final stream event omits the generated text. Preserve cancellation and session checks before returning a result.
+
+### Security
+
+- Keep rotating ChatGPT tokens in a separate protected store. Reject stale account/model selections and bound model-list, error-body, and streamed response reads.
+
+## [0.12.0] - 2026-10-26
+
+### Changed
+
+- Rebuild desktop Settings with shared Base UI controls and a neutral dark theme. Keep navigation and unrelated controls available during microphone tests, refreshes and saves.
+- Save preferences, shortcuts and flags on saved dictionary and snippet rows automatically. Use page-specific Save/Discard actions for text and numeric drafts, and handle all drafts when closing Settings.
+- Validate provider key and connection URL edits with the Models and services page's Validate and save key action before saving other drafts.
+- Remove the global Settings search and floating Save/Discard bar. Dictionary and snippet searches remain available on their pages.
+
+### Fixed
+
+- Preserve text typed after an earlier save starts, drafts on other pages and remote library changes imported during synchronization. Keep dictionary and snippet writes within their original account.
+- Retain provider and local-model operation targets while queued work completes. Keep social-login cancellation available with local drafts.
+- Wait for accepted automatic writes before closing Settings. Continue editing cancels a pending close, and cancelled shortcut capture rejects late events.
+- Run audio discovery outside the Qt thread and reject late worker notifications after Settings shutdown without retaining the Qt controller.
+
+## [0.11.0] - 2026-10-26
+
+### Added
+
+- Sign in or create an account with Google, Microsoft or GitHub on Windows and iOS. Keep email-code login and local cancellation. Provider credentials stay on the server.
+- Configure voice snippets in desktop Settings and the iOS Snippets tab. Create, search, edit, enable or remove saved text, including multiline content.
+- Synchronize account snippets between desktop and iOS with separate guest storage, offline caches and explicit conflict resolution. Apply hosted snippets once on the server.
+- Show funded weekly account quotas as percentages with the next reset in local time. Keep pending reservations separate from consumed quota and explain unavailable funding.
+- Add a public financial ledger and private account administration to the self-hostable server. Contributions and operating provisions determine processing availability.
+
+### Changed
+
+- Substitute spoken snippets after recognition and before optional rewriting so the model can edit the complete message. Preserve original transcripts, direct exact insertion for standalone triggers, and substituted text when rewriting fails. Do not substitute triggers produced by the model.
+- Require a Clarify account for iOS processing. Preserve stored personal keys and local records during upgrade; account-free desktop routes remain available.
+- iOS includes the interface and recording changes already delivered in build 37: four bottom tabs, first-presentation onboarding, an optional guide, tap-to-record controls and an audio waveform.
+
+### Fixed
+
+- Keep Cancel login available on the desktop Account page during browser sign-in.
+- Prevent a desktop shutdown hang when another Clarify process waits for activation.
+- Hosted dictation uses plain vocabulary spellings for short speech. Distinguish unrecognized speech from transcription, service-capacity and allowance errors. Preserve the transcript if rewriting fails, without repeating paid requests.
+- Show localized processing causes instead of a generic quota warning. Preserve safe operation diagnostics and updated usage. Keep the full keyboard error visible within its existing height.
+- iOS converts native microphone input to 24 kHz mono AAC, including inputs whose rate or channel count cannot be encoded directly. Preserve clip cleanup and cancellation.
+- Keep a keyboard Cancel action effective when a result arrives late, after acknowledgement or timeout.
+- Wait for automatic account refresh before iOS microphone activation, then verify the account and foreground state again.
+- Preserve the browser origin during OAuth confirmation so Chrome accepts the protected form submission. Suppress cross-origin referrers.
+
+### Security
+
+- Update pinned desktop build and runtime dependencies. Keep account data isolated across sign-in, sign-out and endpoint changes.
+
+## [0.9.0] - 2026-10-16
+
+### Added
+
+- Automatically synchronize new account transcriptions between Windows and iOS, with the original and revised text, creation time and source device. Keep pre-upgrade records and account-free history on their original devices.
+- Add a Windows History page with bounded pages, complete text access and account-scoped delete and clear actions. Preserve large existing local records.
+- iOS 0.8.0 (29): share new account history with desktop, preserve offline copies and retry pending changes automatically. Hide the temporary keyboard-opening measurement screen after device acceptance of the existing correction.
+- iOS 0.7.1 (24): show a small device icon and Mobile or Desktop below each history timestamp. Preserve the source in each record and identify earlier iPhone records as Mobile. History remains local.
+
+### Fixed
+
+- Preserve pending history changes after network failures and app restarts. Prevent deleted account records from returning through stale synchronization.
+- Reject late history responses and actions after sign-out, account changes or endpoint changes. Remove only the deleted account's local cache.
+- Keep Windows Settings responsive with large histories and capture account ownership before fast operations complete.
+- iOS: preserve the keyboard-opening correction accepted on the user's iPhone in 0.7.5 (28), short-speech transcription with vocabulary, improved key touch coverage, sentence capitalization and the experimental source-app return.
+- Center the iOS Home switch vertically between Off and On. Increase dark keyboard key separation from the system material on brighter backgrounds, while preserving the transparent keyboard surface.
+
+### Changed
+
+- Document synchronized account-history storage and deletion. Preserve personal provider keys, local-only modes and the existing hosted allowance.
+
+## [0.8.0] - 2026-10-12
+
+### Added
+
+- Windows shortcuts accept standalone Ctrl, Alt, Shift and Windows keys, plus the two side mouse buttons. Ordinary keyboard combinations keep their behavior.
+- Hover over the pill's language flag to open an animated vertical list of all supported dictation languages.
+- iOS keyboard: select one or two words to add them directly to the dictionary. The localized action confirms Saved, prevents duplicate additions and preserves the selected text. Offline additions stay on the device and account words synchronize automatically.
+- iOS keyboard: undo or redo the last inserted dictation from the toolbar. Preserve existing text and clear the action after typing or changing the document context.
+
+### Changed
+
+- Activate Clarify processing when signing in, including for existing signed-in profiles. Remove the separate activation step and preserve personal settings for account-free use.
+- Show consumed minutes with a quota progress bar. Keep account sign-out and deletion in a collapsed Danger zone with visible buttons and separate confirmation dialogs.
+- Hide the Text settings page when Clarify manages its models and instructions.
+- iOS 0.7.0 (23): show history in continuous tables grouped by local day, remove the Home recorder, and use continuous dictionary rows. Center the word-editor title between Cancel and Save.
+- Simplify the iOS account page into identity, monthly usage and account actions. Show actual consumed minutes, a percentage and an accessible progress bar.
+- Add a large Clarify switch above Home history. Keep the microphone session active until the user switches it off or iOS interrupts it; remove the five-minute inactivity timeout and retain the five-minute limit per recording.
+
+### Fixed
+
+- Show loading while the account quota is unknown, instead of displaying 0 of 0. Start the query after startup operations finish and allow retry after a failed query.
+- Remove the quick-menu divider above Settings and the empty space from hidden update actions.
+- Release global shortcuts while capturing a new binding, so existing keyboard and side-mouse shortcuts cannot trigger a workflow or prevent capture. Restore bindings on cancellation and window close.
+- Show only the native back chevron on iOS Settings, instead of the internal “(tabs)” route name.
+- Scale and space the keyboard dictionary plus symbol. Publish the keyboard height before view loading and keep fitting requests independent of temporary host frames.
+
+## [0.7.0] - 2026-10-11
+
+### Added
+
+- Use the device language for Portuguese, English and Spanish throughout the desktop and mobile interfaces. Authentication emails use the same language and a localized subject without a brand prefix.
+- Route desktop selected-text rewriting, translation and imported audio through the Clarify account when signed in, with fixed server models and bounded processing.
+
+### Changed
+
+- Separate managed-account settings from personal keys, providers and local models. Keep personal settings and vocabulary when switching accounts or signing out. An expired session requires sign-in or an explicit return to account-free mode.
+- Synchronize account vocabulary automatically after sign-in, on foreground entry and after edits. Refresh usage after processing, with a one-minute foreground refresh interval and conflict protection.
+- Keep local settings, dictionary caches and history for offline use and account-free operation.
+- Apply the same passwordless steps, full-width fields, Back action and initial “Continue without an account” link on both platforms. Put the mobile link outside the authentication card.
+- Use stable button labels with integrated loading indicators. Describe managed data processing using Clarify in the interface.
+- Prepare iOS 0.5.0 (20) for direct TestFlight delivery, separately from the Windows release.
+
+### Fixed
+
+- Prevent stored personal providers from receiving managed-account operations or being contacted by hidden model controls.
+- Preserve reported usage when a completed operation is cancelled locally, and prevent stale refresh responses from replacing newer consumption.
+
+## [0.6.0] - 2026-10-11
+
+### Added
+
+- Optional Clarify accounts on Windows and iOS. Receive an email code and confirm it inside the app, without a password or browser link.
+- Show the email field on first launch. One passwordless code flow enters an existing account or creates a new one. Keep a small link for account-free setup; Windows links directly to local models. Preserve existing profiles and resume unfinished setup.
+- Connect the personal dictionary to the account and sync vocabulary between Windows and iPhone. Concurrent edits preserve both copies for explicit conflict resolution.
+- Optional hosted Groq transcription and rewriting with a shared monthly allowance. Local models and personal API keys remain available; signing in does not enable hosted processing automatically. Hosted availability depends on the service's global beta budget.
+- Open-source iOS client, keyboard extension and self-hostable account service in this repository. iOS 0.4.1 (19) adds the unified first-run flow and Account tab for internal TestFlight delivery, separately from the Windows release.
+
+### Security
+
+- Keep account sessions in Windows DPAPI or the containing iOS app's Keychain. Apply verified-account checks, request and concurrency limits, bounded audio, idempotency and atomic usage/cost reservations to hosted dictation. Provider credentials remain on the server.
+
+### Changed
+
+- Add the Account page to Windows Settings and an iOS Account tab with a settings button and a sign-in invitation for account-free users. History and snippets remain local in this release.
+- Use the Clarify mark without an icon background in the account setup screens.
+
+## [0.5.3] - 2026-10-08
+
+### Changed
+
+- Separate dictation, text rewrite, and translation provider policy from the Qt runtime. Keep existing prompts, route selection, cancellation, dictionary expansion, and original-transcript recovery, with direct tests that run without a desktop framework.
+- Document the current local-history integration and distinguish its storage APIs from the controls available in production Settings.
+
+## [0.5.2] - 2026-10-08
+
+### Changed
+
+- Organize Settings into focused pages, reusable controls, shared draft operations, and separate style files. Add a source map for contributors and typed frontend command arguments. Preserve the existing pill, recording engine, and portable update behavior.
+
+### Fixed
+
+- Associate Settings field labels and help text with their controls, improve instruction placeholder contrast, and avoid duplicate model requirement entries.
+
+## [0.5.1] - 2026-10-06
+
+### Fixed
+
+- Focus the first language when opening the translation picker. Use Up and Down to move through the languages, including from either end of the list, and Enter to select the focused language.
+
 ## [0.5.0] - 2026-10-05
 
 ### Added
@@ -263,7 +470,19 @@ Notable user-facing changes are documented here. This project follows
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/jvictormaynard/clarify/compare/v0.14.0...v0.15.0
+[0.14.0]: https://github.com/jvictormaynard/clarify/compare/v0.13.0...v0.14.0
+[0.13.0]: https://github.com/jvictormaynard/clarify/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/jvictormaynard/clarify/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/jvictormaynard/clarify/compare/v0.9.0...v0.11.0
+[0.9.0]: https://github.com/jvictormaynard/clarify/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/jvictormaynard/clarify/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/jvictormaynard/clarify/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/jvictormaynard/clarify/compare/v0.5.3...v0.6.0
+[0.5.3]: https://github.com/jvictormaynard/clarify/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/jvictormaynard/clarify/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/jvictormaynard/clarify/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/jvictormaynard/clarify/compare/v0.4.7...v0.5.0
 [0.4.7]: https://github.com/jvictormaynard/clarify/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/jvictormaynard/clarify/compare/v0.4.5...v0.4.6

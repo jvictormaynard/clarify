@@ -1,0 +1,5 @@
+interface:
+  display_name: "Prototype"
+  short_description: "Test one design question in isolation"
+policy:
+  allow_implicit_invocation: true

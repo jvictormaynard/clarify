@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -64,7 +65,8 @@ def _load_policy() -> dict[str, str]:
     return {str(vulnerability): reason for vulnerability, reason in exceptions.items()}
 
 
-def main() -> int:
+def main(lock_file: Path | None = None) -> int:
+    lock_file = LOCKFILE if lock_file is None else lock_file
     exceptions = _load_policy()
     command = [
         sys.executable,
@@ -77,7 +79,7 @@ def main() -> int:
         "--timeout",
         "30",
         "--requirement",
-        str(LOCKFILE),
+        str(lock_file),
     ]
     try:
         result = subprocess.run(
@@ -120,9 +122,11 @@ def main() -> int:
         for vulnerability in sorted(vulnerabilities):
             print(f"- {vulnerability}: {exceptions[vulnerability]}")
     else:
-        print(f"No dependency vulnerabilities found in {LOCKFILE.name}.")
+        print(f"No dependency vulnerabilities found in {lock_file.name}.")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--lock-file", type=Path)
+    raise SystemExit(main(parser.parse_args().lock_file))

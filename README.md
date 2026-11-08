@@ -28,21 +28,59 @@ pastes the result back into the app you were using. It can also rewrite or
 translate selected text without opening a separate editor.
 
 > [!IMPORTANT]
-> Clarify supports bring-your-own-key cloud providers. Cloud transcription
-> or text refinement requires an API key. The optional Local Whisper provider
+> Clarify supports bring-your-own-key cloud providers and optional hosted
+> dictation through a Clarify account. Personal cloud access uses your own
+> API key or an eligible ChatGPT plan. On Windows, subscribers can connect their plan
+> for text rewriting, translation, and refinement without a Clarify account.
+> This uses the existing ChatGPT plan limits and sends text directly to OpenAI;
+> it does not include audio transcription. See [ChatGPT plan setup](docs/chatgpt-plan.md).
+> The optional Local Whisper provider
 > does not require an API key for local transcription; it downloads its
 > runtime/model only after an explicit action, and its packaged Windows/offline
 > acceptance is still pending. Keys and local usage statistics stay on your
-> computer. Cloud audio/text goes directly to the provider you configure; Local
+> computer. With your own key, cloud audio/text goes directly to the provider you configure; Local
 > Whisper keeps transcription local unless you explicitly enable cloud
-> refinement.
+> refinement. Hosted dictation sends audio and text through the Clarify service
+> to Groq and uses a sponsored individual allowance within the project's funded
+> budget. Operating costs are reserved before processing funds are distributed.
 
-> The Settings and dictionary described here are included in v0.4.0.
+> The Settings interface described here follows the current source on `main`.
 > Check the [release notes](https://github.com/jvictormaynard/clarify/releases/latest)
 > before downloading; older releases have a different interface. Release acceptance is tracked in
 > [Release readiness](docs/release-readiness.md).
 
 ## Features
+
+Clarify uses the device language for Portuguese, English and Spanish,
+including the passwordless authentication email. On first launch, use Google,
+Microsoft or GitHub, or enter your email and confirm the code inside the app
+to enter or create an account.
+**Continue without an account** opens local-model setup; a personal API key is
+also available there. Signing in activates Clarify processing automatically.
+Signed-in accounts use Clarify-managed models. Personal provider and local-model
+settings are available in account-free mode. Style and Text actions are available
+in both modes. Weekly sponsored
+usage appears as a percentage with the next renewal in your local time. Quotas
+renew each Monday at 00:00 UTC. An unknown quota shows a loading state, and an
+unfunded allowance has an explicit availability message. Sign-out and deletion
+are inside a collapsed Danger zone, with separate confirmations. Vocabulary sync runs automatically,
+and usage updates after processing. Local caches preserve offline edits and
+conflicts keep both copies until resolved. New account transcriptions synchronize
+automatically between Windows and iOS, including original/revised text, time and
+source device. The History page supports complete text, pagination and synchronized
+deletion. Pre-upgrade records and account-free history remain local; they are never
+uploaded. Pending account changes survive connection failures and app restarts.
+Guest snippets stay local. Account snippets synchronize separately from vocabulary.
+See [history synchronization](docs/history-sync.md) and [voice snippets](docs/dictionary-snippets.md).
+Existing profiles retain their setup. The [iOS client](mobile/README.md) is
+available on the [App Store](https://apps.apple.com/app/id6820869157).
+TestFlight is used for internal testing. The [account service](server/README.md) can also
+be self-hosted. Production keys and user data are never public.
+The source also supports [pairing an iPhone with a computer](docs/computer-connection.md)
+by QR for direct LAN processing with the computer's personal configuration.
+The [financial model and public transparency page](docs/finances.md) explain how
+confirmed support pays operating costs and weekly processing quotas. Stripe
+registration is deferred until a business account is available.
 
 - Voice transcription and prompt-quality rewriting from any Windows app
 - Optional Local Whisper transcription after an explicit, verified asset download
@@ -50,23 +88,40 @@ translate selected text without opening a separate editor.
 - Translation picker for selected text
 - Gemini, OpenAI, Groq, Local Whisper, and compatible custom endpoints
 - Native Windows hotkeys and system tray integration
-- English, Portuguese, Spanish, German, and Russian in the QML interface;
-  the new Settings interface currently uses Portuguese
-- React/Tauri Settings organized into General, Dictation, Text, Dictionary,
-  Shortcuts, and Models and services
+- Portuguese, English and Spanish interfaces, independently of dictation language
+- A React/Tauri workspace with Dictation, Style, Text actions, Dictionary, Snippets and History
+- A Settings dialog for General, Devices, Models and services, Shortcuts, Privacy and Clarify account
+- Named text actions with custom instructions, optional shortcuts and previews
 - Toggle or hold-to-record keyboard activation; the microphone button uses toggle
 - A personal dictionary for names and technical terms, with per-term enablement
 - Local-only usage statistics without storing transcripts
 - Bundled SoX runtime in the portable Windows build
-- No Clarify account, hosted backend, or telemetry service
+- Optional account with email-code, Google, Microsoft or GitHub login, shared vocabulary, new transcription history and hosted allowance
+- Local and personal-key modes remain available without an account; no telemetry service
+
+Settings keeps navigation available while microphone tests, refreshes and saves
+run. Choices, switches, shortcuts and flags on saved library rows save
+automatically. Text and numeric drafts use **Salvar alterações** (Save changes)
+and **Descartar** (Discard) for the current page. Provider key and connection URL
+edits on **Modelos e serviços** (Models and services) require **Validar e salvar
+chave** (Validate and save key). Validate or discard those edits before saving
+other drafts. Closing Settings can save or discard drafts from all pages.
+
+Use **Style** for dictation cleanup, an optional action after dictation and
+application writing styles. **Text actions** starts with Rewrite and Translation;
+create another action to use your own instructions. Action, processing-profile
+and application-style dialogs keep edits as drafts until **Save**. **Cancel**
+discards that dialog's edits. Previews use sample text and do not paste into
+another application. Local Whisper remains an audio transcription provider.
 
 ## Interface preview
 
-![Personal dictionary in the current Settings frontend](docs/images/settings-dictionary.png)
+Interface captures are retained in the `Settings-tests` artifacts of CI runs.
+The [desktop design system](docs/desktop-design-system.md) defines the layout,
+tokens and shared components.
 
-The v0.4.0 React frontend, captured in an isolated browser test with synthetic
-data. Native-window checks and untested scenarios are recorded in
-[Release readiness](docs/release-readiness.md).
+See [Release readiness](docs/release-readiness.md) for native acceptance and
+release checks.
 
 ## Installation
 
@@ -99,9 +154,9 @@ hours while running. Automatic installation is off by default. A red dot on
 the home pill's Settings button marks an available update. Open its menu and
 select **Install update** to download and install it.
 
-To enable automatic installation, open **Settings → Geral → Atualizações**,
-enable **Atualização automática**, and save. Clarify downloads in the
-background, waits until active work is complete and Settings are closed,
+To enable automatic installation, open **Settings → Geral → Atualizações** and
+enable **Atualização automática**. This preference saves automatically. Clarify
+downloads in the background, waits until active work is complete and Settings are closed,
 then restarts to apply the update. Settings, keys, models, and shortcuts stay
 in place. If the new version fails to start, the previous executable is restored.
 The app verifies signed metadata and the executable's size and SHA-256 before
@@ -115,10 +170,13 @@ do not need Python, Node.js, or SoX.
 1. Open the [latest release](https://github.com/jvictormaynard/clarify/releases/latest).
 2. Download `Clarify.exe` and place it in a folder you control.
 3. Double-click the executable.
-4. Open **Settings → Modelos e serviços** (Models and services) and choose one explicit onboarding path:
-   - **Cloud setup (credential required):** select Gemini, OpenAI, Groq, or a
-     compatible custom endpoint, then add and validate an API key.
-   - **Local Whisper setup (keyless):** select **Local Whisper**, review its
+4. The first-run page opens automatically. Use Google, Microsoft or GitHub, or enter your email and press **Continuar**,
+   or follow **Continuar sem conta**. No password is needed.
+   - **Clarify account:** complete provider sign-in or confirm your email code inside the app. Account
+     processing is active automatically. No provider key is needed.
+   - **Personal key:** save your Groq key. Other providers remain available
+     under **Settings → Modelos e serviços** (Models and services).
+   - **Local Whisper setup (keyless):** continue to model setup, review its
      requirements, and use the model installation action. No API key is required for
      local transcription. Prompt-mode cloud refinement remains optional; enable
      **Allow cloud refinement** only when desired. The Windows/offline
@@ -179,12 +237,22 @@ their current limitations.
 | `Alt + R` (default) | Show or hide Clarify |
 
 All five global shortcuts can be captured, validated, and reset in **Settings →
-Atalhos** (Shortcuts). Toggle starts and stops on successive presses. Hold records
+Atalhos** (Shortcuts). Standalone Ctrl, Alt, Shift or Windows keys and the Mouse 4
+and Mouse 5 side buttons are also supported. Ordinary combinations such as Ctrl+C
+keep their behavior. Hover over the pill's flag to open the vertical language list
+and select a flag. Toggle starts and stops on successive presses. Hold records
 while the shortcut is pressed and stops on release. `Esc` cancels, including
 while holding the shortcut. The pill microphone button always uses toggle.
+You can also assign a modifier by itself (`Ctrl`, `Alt`, `Shift`, or `Win`) or
+a side mouse button (`Mouse 4` or `Mouse 5`). Modifier taps run on release;
+normal combinations such as `Ctrl+C` do not trigger a standalone modifier.
+Primary, secondary, and middle mouse buttons remain available for normal use.
+Hover over the pill's flag to open the animated vertical language menu.
 Cancellation feedback and Undo appear inside the pill, not in another window.
 While choosing a translation language, `Esc` closes the picker even if the
 source application keeps keyboard focus.
+The picker focuses the first language when it opens. Use `↑` and `↓` to move
+through the languages and `Enter` to select. Navigation wraps at either end.
 
 The floating bar remains available through the Windows system tray. Click the
 tray icon to restore it, or right-click the icon to open Clarify or quit.
@@ -215,7 +283,25 @@ separately with Windows Data Protection API (DPAPI).
 | Gemini | Multimodal audio | Same Gemini model | `generativelanguage.googleapis.com/v1beta` |
 | OpenAI | Audio transcription API | OpenAI-compatible text model | `api.openai.com/v1` |
 | Groq | Whisper-compatible audio API | OpenAI-compatible text model | `api.groq.com/openai/v1` |
+| ChatGPT plan | Not supported | Responses API with the connected account's available models | `api.openai.com/v1` |
 | Local Whisper | Local CPU or compatible NVIDIA GPU sidecar (optional download) | None by default; cloud refinement requires explicit opt-in | Local loopback only |
+
+To use a ChatGPT subscription on Windows, select **Continue without an account**.
+You do not need a Clarify account or an API key for this connection.
+
+1. Open **Settings → Models and services** and select **ChatGPT (subscription)**.
+2. Select **Continue with ChatGPT**, finish sign-in in your browser, and grant
+   permission to use your plan.
+3. Select **Refresh ChatGPT models**, then open **Settings → Text**. For each
+   text workflow, select ChatGPT and an available model for the connected account.
+   Sign-in does not change existing routes.
+
+ChatGPT supports rewriting, translation, and optional cloud refinement of Local
+Whisper transcripts. It does not transcribe audio. Requests use your existing
+ChatGPT allowance and limits, with no additional quota. Windows DPAPI protects
+tokens locally, and text requests go directly to OpenAI through a fixed endpoint.
+Clarify account mode keeps managed processing on desktop and mobile. See
+[ChatGPT setup and limits](docs/chatgpt-plan.md).
 
 Custom endpoints must implement the corresponding provider-compatible routes.
 Unknown custom models work, but their cost is intentionally shown as unpriced
@@ -232,23 +318,43 @@ selected cloud model. The Windows/offline product acceptance remains pending.
 ## Personal dictionary
 
 Add names and technical terms in **Settings → Dicionário**, for example
-`Railway`, `pill`, `Lana`, or `Eva Desktop`. Save or discard through the floating
-bar that appears after a change. You can edit, disable, or remove each term.
+`Railway`, `pill`, `Lana`, or `Eva Desktop`. Additions, text edits and removals
+remain drafts until you select **Salvar alterações** on this page. Use
+**Descartar** to cancel these drafts. Enablement changes on saved terms save
+automatically.
 Enabled terms provide bounded vocabulary context to ASR and optional text
 refinement. They are hints, not guaranteed replacements. When a cloud route is
 used, this vocabulary is sent to that provider with the request. See
 [Dictionary behavior](docs/dictionary-snippets.md) for limits and processing stages.
 
+## Voice snippets
+
+Open **Settings → Snippets** on desktop or **Dictionary → Snippets** on iOS.
+Add a phrase such as `minha assinatura` and the text to insert, then save.
+Say the phrase alone to insert its exact saved text. Inside a sentence, the
+snippet is substituted before rewriting so the model can adjust the whole message. Search, edit, disable or delete snippets
+from the same page. On desktop, additions, text edits and removals use this
+page's **Salvar alterações** and **Descartar** actions. Enablement and case
+sensitivity changes on saved snippets save automatically.
+
+Account snippets synchronize between devices. Guest snippets stay on their device
+and are not uploaded at sign-in. Only trigger phrases can become recognition
+context. With rewriting enabled, applied saved text is sent to the rewrite model
+as part of the source message; its wording and formatting can change. Rewrite failure keeps the
+substituted source, and the original recognized transcript remains in history.
+See [matching, sync and limits](docs/dictionary-snippets.md).
+
 ## Privacy and local data
 
-Clarify has no project-owned server. Cloud provider requests go from your
-computer to the endpoint you select; Local Whisper sends audio only to its own
-randomized loopback sidecar. The app stores:
+In personal mode, cloud requests go directly to the selected provider. ChatGPT
+plan requests send text directly to OpenAI. Local Whisper sends audio only to its
+own randomized loopback sidecar. Account processing uses the optional Clarify
+service; see the [privacy notice](PRIVACY.md). The app stores:
 
 - provider settings in `%APPDATA%\Clarify\config.json`;
-- DPAPI-encrypted provider keys in
-  `%APPDATA%\Clarify\secrets.dpapi.json`, decryptable only by the same
-  Windows user on the same machine;
+- DPAPI-encrypted provider keys in `%APPDATA%\Clarify\secrets.dpapi.json`
+  and ChatGPT OAuth credentials in `%APPDATA%\Clarify\chatgpt-secrets.dpapi.json`,
+  decryptable only by the same Windows user on the same machine;
 - anonymous usage counters in `%APPDATA%\Clarify\usage_stats.json`;
 - optional Local ASR assets below `%LOCALAPPDATA%\Clarify\local-asr` after
   an explicit download; the runtime and model are not bundled in the executable;
@@ -257,8 +363,9 @@ randomized loopback sidecar. The app stores:
   removes it when no operation needs it, including cancellation recovery.
   Crashes, forced shutdown, or cleanup failures can leave files behind; do not
   treat this as a secure-erasure guarantee;
-- transcript history only when explicitly enabled. Usage counters do not
-  contain transcript text.
+- optional local transcript history without an account, and an offline copy of
+  automatically synchronized new account history when signed in. Pre-upgrade
+  history remains local. Usage counters do not contain transcript text.
 
 Existing plaintext keys are migrated on first load and removed from
 `config.json` only after the encrypted copy has been read back successfully.
@@ -380,3 +487,7 @@ If optional dictation refinement fails, Clarify keeps the original transcript, s
 Dictation cleanup uses low reasoning on the official Groq GPT-OSS models.
 It preserves unique content, resolves clear spoken corrections, and removes
 accidental duplicates. Incomplete provider output also uses the original text.
+
+## Privacy
+
+Read the [privacy notice](PRIVACY.md) before enabling account sync or hosted processing.

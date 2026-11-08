@@ -18,22 +18,17 @@ from typing import Any
 
 from PySide6.QtCore import Property, QObject, Qt, Signal, Slot
 
-try:
-    import sounddevice as _sounddevice
-except (ImportError, OSError):
-    _sounddevice = None
-
 from provider_http import ProviderCancelledError
-from provider_registry import PROVIDER_REGISTRY
+from provider_registry import PROVIDER_REGISTRY, configured_connection
 from provider_types import (
     ProviderCapability,
-    ProviderConnection,
     TranslationRequest,
     TranslationResult,
     TranscriptionRequest,
     TranscriptionResult,
 )
 from repositories import AppConfig
+from shared.rewrite_prompts import language_display_name
 from voice_translation import (
     VoiceTranslationConfigurationError,
     VoiceTranslationConfig,
@@ -54,30 +49,9 @@ from workflow_config import WorkflowScope, validate_workflow_route
 from workflows import RecordingSnapshot
 
 try:
-    from .qml_runtime import QtRecordingAudioGateway
+    from .qml_runtime import QtRecordingAudioGateway, _load_sounddevice
 except ImportError:  # PyInstaller analyzes the entrypoint as top-level source.
-    from qml_runtime import QtRecordingAudioGateway
-
-
-_LANGUAGE_NAMES = {
-    "en": "English",
-    "pt": "Brazilian Portuguese",
-    "es": "Spanish",
-    "de": "German",
-    "ru": "Russian",
-}
-
-
-def _language_display_name(language: str) -> str:
-    normalized = str(language or "").strip().replace("_", "-")
-    if not normalized:
-        return "English"
-    if normalized.casefold() == "auto":
-        return "the detected source language"
-    key = normalized.casefold()
-    return _LANGUAGE_NAMES.get(
-        key, _LANGUAGE_NAMES.get(key.split("-", 1)[0], normalized)
-    )
+    from qml_runtime import QtRecordingAudioGateway, _load_sounddevice
 
 
 def _provider_language(language: str) -> str:
@@ -141,9 +115,13 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         config_factory: Callable[[], AppConfig],
         *,
         registry: Any = PROVIDER_REGISTRY,
+        account=None,
+        dictionary_service=None,
     ) -> None:
         self._config_factory = config_factory
         self._registry = registry
+        self._account = account
+        self._dictionary_service = dictionary_service
 
     def _config(self) -> AppConfig:
         config = self._config_factory()
@@ -151,26 +129,12 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
             raise TypeError("voice translation config factory must return AppConfig")
         return config
 
-    def _provider_connection(
-        self,
-        config: AppConfig,
-        provider_id: str,
-        custom_endpoint: str,
-    ) -> ProviderConnection:
-        metadata = self._registry.describe(provider_id)
-        provider_config = getattr(config, provider_id)
-        connection = ProviderConnection(
-            api_key=str(getattr(provider_config, "api_key", "") or "").strip(),
-            base_url=(
-                str(getattr(provider_config, "base_url", "") or "").strip()
-                or str(metadata.default_base_url or "").strip()
-            ),
-        )
-        return self._registry.connection_for_route(
-            provider_id,
-            connection,
-            custom_endpoint,
-        )
+    def workflow_config(self) -> VoiceTranslationConfig:
+        config = self._config()
+        if self._account is not None and self._account.managed:
+            # Preserve language choices, while ignoring personal model routes.
+            return VoiceTranslationConfig(languages=config.voice_translation.languages)
+        return config.voice_translation
 
     @staticmethod
     def _require_enabled(
@@ -218,11 +182,15 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         audio_source: RecordingSnapshot,
         source_language: str,
     ) -> TranscriptionResult:
+        if self._account is not None and self._account.managed:
+            return self._account.transcribe(
+                audio_source, source_language, self._dictionary_service
+            )
         config = self._config()
         route = self._transcription_route(config)
         provider_id = route.provider_id
         language = str(source_language or "").strip().replace("_", "-")
-        language_label = _language_display_name(language)
+        language_label = language_display_name(language)
         instruction = (
             "You are an expert transcriber. Transcribe the audio directly. "
             "Keep the original meaning and structure. Return ONLY the "
@@ -240,7 +208,13 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         result = self._registry.transcribe(
             provider_id,
             request,
-            self._provider_connection(config, provider_id, route.custom_endpoint),
+            configured_connection(
+                config,
+                provider_id,
+                registry=self._registry,
+                custom_endpoint=route.custom_endpoint,
+                account_id=route.account_id,
+            ),
             _registry_cancel_token(getattr(audio_source, "cancel_token", None)),
         )
         if not isinstance(result, TranscriptionResult):
@@ -248,14 +222,24 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         return result
 
     def translate(self, request: VoiceTranslationRequest) -> TranslationResult:
+        if self._account is not None and self._account.managed:
+            text = self._account.transform_text(
+                request.text,
+                "translate",
+                request.target_language,
+                cancel=_registry_cancel_token(request.cancel_event),
+            )
+            return TranslationResult(
+                text, "clarify", "openai/gpt-oss-20b", request.target_language
+            )
         config = self._config()
         voice_config = self._voice_translation_config(config)
         route = voice_config.route
         provider_id = route.provider_id
         source_language = str(request.source_language or voice_config.source_language)
         target_language = str(request.target_language or voice_config.target_language)
-        source_label = _language_display_name(source_language)
-        target_label = _language_display_name(target_language)
+        source_label = language_display_name(source_language)
+        target_label = language_display_name(target_language)
         instruction = (
             "Translate the source text faithfully from "
             f"{source_label} to {target_label}. Return ONLY the translated text."
@@ -275,7 +259,13 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         result = self._registry.translate(
             provider_id,
             typed_request,
-            self._provider_connection(config, provider_id, route.custom_endpoint),
+            configured_connection(
+                config,
+                provider_id,
+                registry=self._registry,
+                custom_endpoint=route.custom_endpoint,
+                account_id=route.account_id,
+            ),
             _registry_cancel_token(request.cancel_event),
         )
         if not isinstance(result, TranslationResult):
@@ -295,9 +285,7 @@ class QtVoiceTranslationRecording(VoiceTranslationRecording):
     ) -> None:
         self.session = session
         self._monotonic = monotonic or time.monotonic
-        self._sounddevice = (
-            _sounddevice if sounddevice_module is None else sounddevice_module
-        )
+        self._sounddevice = sounddevice_module
         self._boundary_lock = threading.RLock()
         self._boundary_callback: Callable[[Any], None] | None = None
         self._boundary_claimed = False
@@ -393,6 +381,8 @@ class QtVoiceTranslationRecording(VoiceTranslationRecording):
         vad = getattr(controls, "vad", None)
         with self._boundary_lock:
             callback_registered = self._boundary_callback is not None
+            if self._vad_stop.is_set():
+                return
         if (
             policy is None
             or not getattr(vad, "enabled", False)
@@ -400,13 +390,13 @@ class QtVoiceTranslationRecording(VoiceTranslationRecording):
         ):
             return
         sounddevice_module = self._sounddevice
+        if sounddevice_module is None:
+            sounddevice_module = _load_sounddevice()
+        if self._vad_stop.is_set():
+            return
         stream_type = getattr(sounddevice_module, "RawInputStream", None)
         if not callable(stream_type):
             raise RuntimeError("VAD requires the sounddevice input-level monitor")
-
-        self._vad_stop.clear()
-        self._vad_boundary.clear()
-        self._vad_reason = None
 
         def observe_input(indata: Any, *_args: Any) -> None:
             if self._vad_stop.is_set():
@@ -452,9 +442,10 @@ class QtVoiceTranslationRecording(VoiceTranslationRecording):
             name="ClarifyQmlVoiceTranslationVAD",
             daemon=True,
         )
-        with self._boundary_lock:
-            self._vad_worker = worker
-        worker.start()
+        # Startup owns the stream until native start returns. Stop/cancel only
+        # marks this recording terminal; it must not close a still-starting
+        # stream or let a late result attach after that terminal action.
+        stream = None
         try:
             kwargs: dict[str, Any] = {
                 "channels": 1,
@@ -464,20 +455,37 @@ class QtVoiceTranslationRecording(VoiceTranslationRecording):
                 "callback": observe_input,
             }
             device = self._selected_stream_device()
+            if self._vad_stop.is_set():
+                return
             if device is not None:
                 kwargs["device"] = device
             stream = stream_type(**kwargs)
-            with self._boundary_lock:
-                self._vad_stream = stream
+            if self._vad_stop.is_set():
+                return
             stream.start()
-        except Exception:
-            self._stop_vad_monitor()
-            raise
+            with self._boundary_lock:
+                if self._vad_stop.is_set():
+                    return
+                self._vad_worker = worker
+                try:
+                    worker.start()
+                except Exception:
+                    self._vad_worker = None
+                    raise
+                self._vad_stream = stream
+                stream = None
+        finally:
+            if stream is not None:
+                try:
+                    stream.stop()
+                finally:
+                    stream.close()
 
     def _stop_vad_monitor(self) -> None:
-        self._vad_stop.set()
-        self._vad_boundary.set()
         with self._boundary_lock:
+            # This event is monotonic for the recording's entire lifetime.
+            self._vad_stop.set()
+            self._vad_boundary.set()
             stream = self._vad_stream
             worker = self._vad_worker
             self._vad_stream = None
@@ -608,10 +616,12 @@ class QmlVoiceTranslationController(QObject):
         registry: Any = PROVIDER_REGISTRY,
         on_usage: Callable[[VoiceTranslationConfig, VoiceTranslationState, float], None]
         | None = None,
+        processing_allowed: Callable[[], bool] = lambda: True,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._config_factory = config_factory
+        self._processing_allowed = processing_allowed
         self._runtime_state = VoiceTranslationRuntimeState(VoiceTranslationPhase.READY)
         self._runtime_state_arrived.connect(
             self._deliver_runtime_state,
@@ -626,7 +636,9 @@ class QmlVoiceTranslationController(QObject):
             clipboard,
             recording_factory,
             scheduler,
-            lambda: self._config_factory().voice_translation,
+            actual_provider.workflow_config
+            if isinstance(actual_provider, QmlVoiceTranslationProvider)
+            else lambda: self._config_factory().voice_translation,
             on_state=self._queue_runtime_state,
             on_usage=on_usage,
         )
@@ -677,11 +689,11 @@ class QmlVoiceTranslationController(QObject):
 
     @Slot(result=bool)
     def start(self) -> bool:
-        return self._runtime.start()
+        return self._processing_allowed() and self._runtime.start()
 
     @Slot(object, result=bool)
     def startForTarget(self, target: Any) -> bool:
-        return self._runtime.start(target)
+        return self._processing_allowed() and self._runtime.start(target)
 
     @Slot(result=bool)
     def stop(self) -> bool:
@@ -715,6 +727,7 @@ def create_qml_voice_translation_controller(
     registry: Any = PROVIDER_REGISTRY,
     on_usage: Callable[[VoiceTranslationConfig, VoiceTranslationState, float], None]
     | None = None,
+    processing_allowed: Callable[[], bool] = lambda: True,
     parent: QObject | None = None,
 ) -> QmlVoiceTranslationController:
     """Compose the QML controller without adding a second clipboard adapter."""
@@ -727,6 +740,7 @@ def create_qml_voice_translation_controller(
         provider=provider,
         registry=registry,
         on_usage=on_usage,
+        processing_allowed=processing_allowed,
         parent=parent,
     )
 

@@ -11,9 +11,39 @@ from PySide6.QtCore import QObject, QProcess, QTimer
 
 
 # Never expose QObject reflection, repository access, saved API keys, or paths.
+# Full guest vocabulary and snippets can contain 6.7M characters. JSON control
+# escapes use up to six bytes each, so both native pipe readers allow 64 MiB.
+# Account snippets retain the separate, smaller 256 KiB transport limit.
+MAX_SETTINGS_MESSAGE_BYTES = 64 * 1024 * 1024
+
 PROPERTIES = (
+    "textActions",
+    "textActionProfiles",
+    "textActionProviders",
+    "textActionContext",
+    "textActionsRevision",
+    "afterDictationTextActionId",
+    "afterDictationTextActionLanguage",
+    "textActionDictationContext",
+    "textActionPreview",
+    "textActionHotkeyCaptureActive",
+    "textActionMutation",
+    "textActionsBusy",
+    "textActionsError",
+    "textActionRefresh",
+    "textActionProfileModels",
+    "uiLanguage",
+    "onboardingRequired",
+    "practiceState",
+    "accountState",
+    "chatgptState",
+    "computerState",
+    "historyState",
     "dirty",
     "dictionaryEntries",
+    "dictionaryContext",
+    "snippets",
+    "snippetContext",
     "lastError",
     "language",
     "languages",
@@ -32,12 +62,19 @@ PROPERTIES = (
     "updateProgress",
     "historyRetentionDays",
     "microphoneDevices",
+    "microphoneInventoryBusy",
     "selectedMicrophoneId",
     "microphoneStatus",
     "microphoneTestBusy",
     "microphoneTestLevel",
     "microphoneTestStatus",
     "recordingControls",
+    "dictationCleanupLevel",
+    "applicationWritingStyles",
+    "applicationStyleTarget",
+    "dictationWritingStyle",
+    "applicationStyleRefinementAllowed",
+    "dictationCleanupRefinementAllowed",
     "selectedScope",
     "routeProviderId",
     "routeModelId",
@@ -70,14 +107,41 @@ PROPERTIES = (
     "localBenchmarkDetail",
     "localAsrCloudRefinement",
     "hotkeyActions",
+    "hotkeyCaptureAction",
     "hotkeyActivationMode",
     "hotkeyPushToTalkSupported",
 )
 
 METHODS = frozenset(
     (
+        "saveTextAction",
+        "deleteTextAction",
+        "duplicateTextAction",
+        "saveTextActionProfile",
+        "loadTextActionProfileModels",
+        "refreshTextActionProfileModels",
+        "cancelTextActionProfileModels",
+        "setAfterDictationTextAction",
+        "setDictationPostProcessing",
+        "previewTextAction",
+        "cancelTextActionPreview",
+        "refreshTextActions",
+        "beginTextActionHotkeyCapture",
+        "endTextActionHotkeyCapture",
+        "cancelTextActionHotkeyCapture",
+        "runTextAction",
+        "completeOnboarding",
+        "practiceCommand",
+        "beginHotkeyCapture",
+        "cancelHotkeyCapture",
+        "accountCommand",
+        "chatgptCommand",
+        "computerCommand",
+        "deleteHistoryEntry",
+        "clearHistory",
         "setLanguage",
         "setDictionaryEntries",
+        "setSnippets",
         "setMode",
         "setAutostart",
         "setHistoryEnabled",
@@ -90,6 +154,9 @@ METHODS = frozenset(
         "testMicrophone",
         "stopMicrophoneTest",
         "setRecordingControls",
+        "setRecordingVadEnabled",
+        "savePreference",
+        "saveLibraryPreference",
         "selectWorkflow",
         "setRouteProviderId",
         "setRouteModelId",
@@ -126,9 +193,18 @@ METHODS = frozenset(
 class SettingsProtocol:
     def __init__(self, settings):
         self.settings = settings
+        self._poll_state = None
+        self._poll_dirty = set()
 
     def snapshot(self):
-        state = {key: getattr(self.settings, key) for key in PROPERTIES}
+        library = self.settings.library_snapshot()
+        action_snapshot = getattr(self.settings, "text_action_snapshot", None)
+        if callable(action_snapshot):
+            library.update(action_snapshot())
+        state = {
+            key: library[key] if key in library else getattr(self.settings, key)
+            for key in PROPERTIES
+        }
         state["providers"] = [
             {"id": key, "label": self.settings.providerName(key)}
             for key in self.settings.providerIds
@@ -137,6 +213,36 @@ class SettingsProtocol:
             {"id": key, "label": self.settings.providerName(key)}
             for key in self.settings.providersForScope(self.settings.selectedScope)
         ]
+        return state
+
+    def poll(self):
+        # Read the actual allowlisted values, including asynchronous changes.
+        # Keep one baseline only. Full command replies must not consume changes:
+        # background callers can intentionally ignore those replies.
+        state = self.snapshot()
+        previous = self._poll_state
+        delta = (
+            state
+            if previous is None
+            else {
+                key: value
+                for key, value in state.items()
+                if key in self._poll_dirty or value != previous[key]
+            }
+        )
+        self._poll_state = state
+        self._poll_dirty.clear()
+        return delta
+
+    def _client_snapshot(self):
+        state = self.snapshot()
+        if self._poll_state is not None:
+            # Full replies may expose transient state between polls. Remember
+            # its keys so a completion that returns to the poll baseline still
+            # reaches the client. Retain keys only, never another snapshot.
+            self._poll_dirty.update(
+                key for key, value in state.items() if value != self._poll_state[key]
+            )
         return state
 
     def dispatch(self, request):
@@ -148,8 +254,102 @@ class SettingsProtocol:
             return {**reply, "error": "Invalid settings request"}
         try:
             if method == "snapshot" and not args:
-                result = self.snapshot()
+                result = self._client_snapshot()
+            elif method == "poll" and not args:
+                result = self.poll()
+            elif method == "getComputerPairing":
+                if args:
+                    raise ValueError()
+                # This response is never retained in a general snapshot or poll.
+                result = self.settings.getComputerPairing()
+            elif method == "getHistoryPage":
+                if len(args) not in (2, 3) or any(
+                    type(value) is not str for value in args
+                ):
+                    raise ValueError()
+                result = self.settings.getHistoryPage(*args)
+            elif method == "getHistoryTextPart":
+                if (
+                    len(args) != 4
+                    or any(type(args[index]) is not str for index in (0, 1, 3))
+                    or type(args[2]) is not int
+                ):
+                    raise ValueError()
+                result = self.settings.getHistoryTextPart(*args)
+            elif method == "copyHistoryText":
+                if len(args) != 4 or any(type(value) is not str for value in args):
+                    raise ValueError()
+                result = self.settings.copyHistoryText(*args)
+            elif method == "historyCorrection":
+                if (
+                    len(args) != 2
+                    or type(args[0]) is not str
+                    or type(args[1]) is not dict
+                ):
+                    raise ValueError()
+                result = self.settings.historyCorrection(*args)
             elif method in METHODS:
+                action_signatures = {
+                    "saveTextAction": (dict, str, str),
+                    "deleteTextAction": (str, str, str),
+                    "duplicateTextAction": (str, str, str),
+                    "saveTextActionProfile": (dict, str, str),
+                    "loadTextActionProfileModels": (str, str, str, str, str, str),
+                    "refreshTextActionProfileModels": (str, str, str, str, str, str),
+                    "cancelTextActionProfileModels": (),
+                    "setAfterDictationTextAction": (str, str, str, str),
+                    "setDictationPostProcessing": (str, str, str, str, str),
+                    "previewTextAction": (str, str, str, int),
+                    "beginTextActionHotkeyCapture": (str,),
+                    "endTextActionHotkeyCapture": (),
+                    "cancelTextActionHotkeyCapture": (),
+                    "refreshTextActions": (),
+                    "cancelTextActionPreview": (),
+                    "runTextAction": (str,),
+                }
+                signature = action_signatures.get(method)
+                if method == "previewTextAction" and len(args) == 5:
+                    signature = (str, str, str, int, str)
+                if method == "saveTextActionProfile" and len(args) == 4:
+                    signature = (dict, str, str, str)
+                if signature is not None and (
+                    len(args) != len(signature)
+                    or any(
+                        type(value) is not expected
+                        for value, expected in zip(args, signature)
+                    )
+                ):
+                    raise ValueError()
+                if method == "practiceCommand" and (
+                    len(args) != 1
+                    or type(args[0]) is not str
+                    or args[0] not in {"open", "close", "start", "stop", "cancel"}
+                ):
+                    raise ValueError()
+                if method in {"chatgptCommand", "computerCommand"} and (
+                    len(args) != 2 or any(type(value) is not str for value in args)
+                ):
+                    raise ValueError()
+                if method in {"setDictionaryEntries", "setSnippets"} and (
+                    len(args)
+                    not in ({1, 2, 3} if method == "setDictionaryEntries" else {2, 3})
+                    or type(args[0]) is not list
+                    or (len(args) >= 2 and type(args[1]) is not str)
+                    or (len(args) == 3 and type(args[2]) is not list)
+                ):
+                    raise ValueError()
+                if method == "save" and (
+                    len(args) > 1 or (args and type(args[0]) is not str)
+                ):
+                    raise ValueError()
+                if method == "savePreference" and (
+                    len(args) != 2
+                    or type(args[0]) is not str
+                    or type(args[1]) is not list
+                ):
+                    raise ValueError()
+                if method == "saveLibraryPreference" and len(args) != 5:
+                    raise ValueError()
                 if method == "save" and self.settings.providerDirty:
                     return {
                         **reply,
@@ -165,14 +365,25 @@ class SettingsProtocol:
                         "error": self.settings.lastError
                         or "Não foi possível aplicar a alteração.",
                     }
-                result = self.snapshot()
+                result = self._client_snapshot()
             else:
                 return {**reply, "error": "Unsupported settings method"}
             return {**reply, "result": result}
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as error:
             # Do not echo arguments: they can contain a pending API key.
+            if method in {"getHistoryPage", "getHistoryTextPart", "copyHistoryText"}:
+                return {
+                    **reply,
+                    "error": "O histórico mudou. Atualize e tente novamente."
+                    if str(error) == "O histórico mudou. Atualize e tente novamente."
+                    else "Não foi possível carregar o histórico.",
+                }
             return {**reply, "error": "Invalid settings value"}
         except Exception:
+            if method == "copyHistoryText":
+                return {**reply, "error": "Não foi possível copiar. Tente novamente."}
+            if method in {"getHistoryPage", "getHistoryTextPart"}:
+                return {**reply, "error": "Não foi possível carregar o histórico."}
             return {**reply, "error": "Não foi possível ler as configurações."}
 
 
@@ -239,9 +450,14 @@ class WebSettingsProcess(QObject):
         return True
 
     def hide(self):
+        self.settings.practiceCommand("close")
+        self.settings.cancelChatGPT()
+        self.settings.cancelTextActionPreview()
         if self._visible:
             self._visible = False
+            self.settings.closeComputerPairing()
             self.settings.stopMicrophoneTest()
+            self.settings.cancelHotkeyCapture()
             self._window_command("hide")
 
     def activate(self):
@@ -250,7 +466,7 @@ class WebSettingsProcess(QObject):
 
     def _read(self):
         self.buffer.extend(bytes(self.process.readAllStandardOutput()))
-        if len(self.buffer) > 1_048_576:
+        if len(self.buffer) > MAX_SETTINGS_MESSAGE_BYTES:
             self.process.kill()
             return
         while b"\n" in self.buffer:
@@ -265,6 +481,8 @@ class WebSettingsProcess(QObject):
             self.process.write((json.dumps(reply, ensure_ascii=False) + "\n").encode())
 
     def _failed(self, error):
+        self.settings.practiceCommand("close")
+        self.settings.cancelChatGPT()
         self.startup_timer.stop()
         self.failed = True
         if self.process.state() != QProcess.ProcessState.NotRunning:
@@ -273,11 +491,16 @@ class WebSettingsProcess(QObject):
             self.fallback()
 
     def _finished(self, code, status):
+        self.settings.practiceCommand("close")
+        self.settings.cancelChatGPT()
+        self.settings.cancelTextActionPreview()
         self.startup_timer.stop()
         self._visible = False
+        self.settings.closeComputerPairing()
         self.settings.stopMicrophoneTest()
         if self._shutting_down:
             return
+        self.settings.cancelHotkeyCapture()
         if code != 0:
             self.failed = True
             if self.bridge.surface == "settings":
@@ -286,6 +509,8 @@ class WebSettingsProcess(QObject):
             self.bridge.closeSettings()
 
     def shutdown(self):
+        self.settings.practiceCommand("close")
+        self.settings.cancelChatGPT()
         self._shutting_down = True
         self.startup_timer.stop()
         if self.process.state() != QProcess.ProcessState.NotRunning:

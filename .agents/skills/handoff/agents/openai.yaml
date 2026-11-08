@@ -1,0 +1,5 @@
+interface:
+  display_name: "Handoff"
+  short_description: "Capture verified state and next actions"
+policy:
+  allow_implicit_invocation: true

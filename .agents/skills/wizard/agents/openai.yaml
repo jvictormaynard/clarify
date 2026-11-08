@@ -1,0 +1,5 @@
+interface:
+  display_name: "Wizard"
+  short_description: "Prepare a setup step that requires user action"
+policy:
+  allow_implicit_invocation: true

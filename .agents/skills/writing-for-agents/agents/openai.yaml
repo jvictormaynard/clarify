@@ -1,0 +1,5 @@
+interface:
+  display_name: "Writing For Agents"
+  short_description: "Maintain concise repository instructions and skills"
+policy:
+  allow_implicit_invocation: true

@@ -10,6 +10,7 @@ autostart is handled by a small, local Run-key boundary.
 from __future__ import annotations
 
 import math
+import os
 import platform
 import subprocess
 import sys
@@ -20,12 +21,26 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
-from PySide6.QtCore import Property, QObject, Qt, Signal, Slot
+from PySide6.QtCore import Property, QObject, Qt, QTimer, Signal, Slot
+from clarify_account import AccountService
+from account_history import AccountHistory
+from history_store import HistoryStore
+from clarify.desktop.history_view import HistoryView
+from cloud_defaults import DEFAULT_CLOUD_URL
 from dictionary_snippets import (
     DictionaryEntry,
     DictionarySnippets,
+    Snippet,
+    MAX_SNIPPETS,
+    account_snippet_entries,
     DictionarySnippetService,
     LocalDictionarySnippetsRepository,
+)
+from history_corrections import (
+    CorrectionError,
+    CorrectionIdentity,
+    CorrectionSource,
+    HistoryDictionaryCorrectionService,
 )
 
 from hotkey_config import (
@@ -67,10 +82,70 @@ from workflow_config import (
     WorkflowScope,
 )
 from windows_hotkeys import supports_qt_push_to_talk as supports_push_to_talk
+from text_action_service import TextActionService, TextActionMutation
+from text_actions import settings_for, native_bindings, validate_input
 
 
 AUTOSTART_REGISTRY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 AUTOSTART_VALUE_NAME = "Clarify"
+_EXPECTED_LIBRARY_ENTRIES_UNSET = object()
+
+
+def _chatgpt_error_message(error):
+    """Translate bounded auth codes; never expose exception text or credentials."""
+    groups = (
+        ({"cancelled"}, "A conexão com o ChatGPT foi cancelada."),
+        ({"timeout"}, "O tempo para conectar ao ChatGPT terminou. Tente novamente."),
+        (
+            {"browser_failed"},
+            "Não foi possível abrir o navegador. Verifique o navegador padrão e tente novamente.",
+        ),
+        (
+            {"access_denied"},
+            "A conexão com o ChatGPT não foi autorizada. Conecte novamente para permitir o acesso.",
+        ),
+        (
+            {"plan_disabled"},
+            "Permita que o Clarify use seu plano ChatGPT e conecte novamente.",
+        ),
+        (
+            {"network"},
+            "Não foi possível conectar ao ChatGPT. Verifique sua conexão e tente novamente.",
+        ),
+        (
+            {"storage_unavailable", "storage_invalid"},
+            "Não foi possível acessar as credenciais do ChatGPT. Verifique o armazenamento seguro deste computador e tente novamente.",
+        ),
+        (
+            {"revocation_failed"},
+            "Você saiu do ChatGPT neste computador. A revogação remota não foi confirmada. Desconecte o Clarify nas configurações do ChatGPT.",
+        ),
+        ({"unknown_account"}, "Selecione uma conta ChatGPT salva."),
+        (
+            {
+                "stale_session",
+                "sign_in_required",
+                "refresh_failed",
+                "authorization_failed",
+                "registration_mismatch",
+                "identity_invalid",
+                "callback_invalid",
+                "invalid_response",
+            },
+            "Não foi possível validar a conexão com o ChatGPT. Conecte novamente.",
+        ),
+    )
+    try:
+        from chatgpt_auth import ChatGPTPlanError
+
+        if isinstance(error, ChatGPTPlanError):
+            for codes, message in groups:
+                if error.code in codes:
+                    return message
+    except ImportError:
+        pass
+    return "Não foi possível concluir a operação com o ChatGPT."
+
 
 _HOTKEY_ACTION_LABELS = {
     HotkeyAction.RECORDING: "Record / stop",
@@ -109,6 +184,10 @@ def _qml_hotkey_definition(
 
     key = _qt_enum_value(key_code)
     special_keys = {
+        _qt_enum_value(Qt.Key.Key_Control): "CTRL",
+        _qt_enum_value(Qt.Key.Key_Alt): "ALT",
+        _qt_enum_value(Qt.Key.Key_Shift): "SHIFT",
+        _qt_enum_value(Qt.Key.Key_Meta): "WIN",
         _qt_enum_value(Qt.Key.Key_Space): "SPACE",
         _qt_enum_value(Qt.Key.Key_Tab): "TAB",
         _qt_enum_value(Qt.Key.Key_Enter): "ENTER",
@@ -137,6 +216,12 @@ def _qml_hotkey_definition(
                 code="unsupported_key",
             )
 
+    return HotkeyDefinition(
+        _qml_hotkey_modifiers(modifier_flags) - {key_name.lower()}, key_name
+    )
+
+
+def _qml_hotkey_modifiers(modifier_flags: object) -> set[str]:
     modifiers_value = _qt_enum_value(modifier_flags)
     modifiers = []
     for name, modifier in (
@@ -147,7 +232,7 @@ def _qml_hotkey_definition(
     ):
         if modifiers_value & _qt_enum_value(modifier):
             modifiers.append(name)
-    return HotkeyDefinition(modifiers, key_name)
+    return set(modifiers)
 
 
 def _is_windows() -> bool:
@@ -303,18 +388,116 @@ def _default_microphone_inventory_source() -> Any | None:
     return SoundDeviceMicrophoneInventory(sounddevice)
 
 
+def _read_microphone_inventory(backend, source):
+    """Read hardware on the discovery worker, without retaining its Qt owner."""
+
+    backend_snapshot = getattr(backend, "microphone_inventory", None)
+    if callable(backend_snapshot):
+        inventory = backend_snapshot()
+    else:
+        if source is None:
+            source = _default_microphone_inventory_source()
+        inventory = (
+            source.snapshot()
+            if source is not None
+            else MicrophoneInventory.unavailable("portaudio_unavailable")
+        )
+    if not isinstance(inventory, MicrophoneInventory):
+        raise TypeError("microphone inventory source returned an invalid snapshot")
+    return inventory, source
+
+
+class _SettingsMailbox:
+    """Coalesce worker data without giving a worker a Qt object reference."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._closed = False
+        self._pending: dict[str, tuple[int, Any]] = {}
+
+    def post(self, kind: str, generation: int, payload: Any) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            previous = self._pending.get(kind)
+            if previous is None or generation >= previous[0]:
+                self._pending[kind] = (generation, payload)
+
+    def take(self) -> dict[str, tuple[int, Any]]:
+        with self._lock:
+            pending, self._pending = self._pending, {}
+            return pending
+
+    def close(self) -> None:
+        with self._lock:
+            self._closed = True
+            self._pending.clear()
+
+
+def _merge_library_draft(before, draft, persisted, key):
+    """Keep pending row/field edits and adopt untouched synchronized values.
+
+    The domain validates uniqueness and the combined size. Unlike account sync's
+    whole-row conflict policy, a text draft must also adopt newer saved flags.
+    Keep draft order so an explicit Save can return its row identities in order.
+    """
+    if draft == before:
+        return persisted
+    if persisted == before:
+        return draft
+    baseline = {getattr(item, key).casefold(): item for item in before}
+    current = {getattr(item, key).casefold(): item for item in persisted}
+    edited = {getattr(item, key).casefold() for item in draft}
+    merged = []
+    for item in draft:
+        identity = getattr(item, key).casefold()
+        original, latest = baseline.get(identity), current.get(identity)
+        if item == original:
+            if latest is not None:
+                merged.append(latest)
+        elif original is not None and latest is not None:
+            previous = original.to_mapping()
+            merged.append(
+                type(item).from_mapping(
+                    {
+                        field: latest.to_mapping()[field]
+                        if value == previous[field]
+                        else value
+                        for field, value in item.to_mapping().items()
+                    }
+                )
+            )
+        else:
+            merged.append(item)
+    # An omitted baseline row is a pending deletion, not a remote addition.
+    merged.extend(
+        item
+        for identity, item in current.items()
+        if identity not in baseline and identity not in edited
+    )
+    return tuple(merged)
+
+
 class QmlSettingsController(QObject):
+    textActionsChanged = Signal()
+    textActionPreviewChanged = Signal()
+    chatgptStateChanged = Signal()
+    accountStateChanged = Signal()
+    _accountFinished = Signal(object)
+    _libraryPreferenceSynced = Signal(str, str)
     """Expose the typed application configuration to Qt Quick.
 
-    The object owns an editable draft only.  ``load`` replaces that draft
+    The object owns an editable draft.  ``load`` replaces that draft
     from the configured repository, while ``save`` delegates the complete
-    ``AppConfig`` to the repository's atomic ``apply`` operation.  No legacy
+    ``AppConfig`` to the repository's atomic ``apply`` operation. Discrete
+    ``savePreference`` commands persist only their explicit fields. No legacy
     window or frontend is involved; Windows startup is handled by the local
     Run-key transaction only when settings are saved.
     """
 
     configChanged = Signal()
     updatesChanged = Signal()
+    computerStateChanged = Signal()
     routeChanged = Signal()
     selectedScopeChanged = Signal()
     dirtyChanged = Signal()
@@ -329,8 +512,6 @@ class QmlSettingsController(QObject):
     microphoneLevelChanged = Signal()
     hotkeyChanged = Signal()
     _providerValidationFinished = Signal(str, int, bool, object)
-    _localStatePublished = Signal(object)
-    _localDevicesPublished = Signal(object)
     _localBenchmarkPublished = Signal(str)
     _microphoneTestFinished = Signal(int, bool, object)
     _microphoneLevelPublished = Signal(int, float)
@@ -345,11 +526,77 @@ class QmlSettingsController(QObject):
         microphone_backend: Any | None = None,
         microphone_inventory_source: Any | None = None,
         hotkey_applier: Callable[[HotkeySettings], Any] | None = None,
+        hotkey_capture_changed: Callable[[bool], None] | None = None,
         dictionary_service: DictionarySnippetService | None = None,
+        account_service=None,
+        account_can_change=None,
+        application_target=None,
+        processing_allowed: Callable[[], bool] = lambda: True,
+        chatgpt_session=None,
+        text_action_service=None,
+        text_action_provider=None,
+        text_action_runner=None,
     ) -> None:
         super().__init__(parent)
+        self._background_mailbox = _SettingsMailbox()
+        self._background_timer = QTimer(self)
+        self._background_timer.setInterval(25)
+        self._background_timer.timeout.connect(self._drain_background_publications)
         self._updates = None
+        self._practice = None
+        self._computer = None
         self.repositories = repositories
+        self._account = account_service or AccountService(
+            Path(repositories.config.path).parent,
+            default_endpoint=os.environ.get("CLARIFY_CLOUD_URL", DEFAULT_CLOUD_URL),
+        )
+        self._account_can_change = account_can_change or (lambda: True)
+        self._application_target = application_target
+        self._processing_allowed = processing_allowed
+        self._history = getattr(self._account, "history", None)
+        if self._history is None and isinstance(self._account, AccountService):
+            self._history = AccountHistory(
+                self._account,
+                HistoryStore(Path(repositories.config.path).parent / "history.json"),
+            )
+            self._account.history = self._history
+        self._history_view = (
+            HistoryView(self._history) if self._history is not None else None
+        )
+        self._account_busy = False
+        self._account_error = ""
+        self._account_shutdown = False
+        self._account_social = False
+        self._account_cancel = threading.Event()
+        self._chatgpt_session = chatgpt_session
+        self._chatgpt_snapshot = {
+            "connected": False,
+            "planEnabled": False,
+            "email": "",
+            "accountId": "",
+            "accounts": [],
+            "generation": 0,
+            "planNoticeSeen": False,
+        }
+        self._chatgpt_busy = False
+        self._chatgpt_error = ""
+        self._chatgpt_generation = 0
+        self._chatgpt_initialized = False
+        self._chatgpt_account_reserved = False
+        self._chatgpt_cancel = threading.Event()
+        self._library_sync_pending = False
+        self._library_sync_expected_identity = None
+        self._library_sync_context = None
+        self._library_sync_timer = QTimer(self)
+        self._library_sync_timer.setSingleShot(True)
+        self._library_sync_timer.setInterval(1000)
+        self._library_sync_timer.timeout.connect(self._retry_library_preference_sync)
+        self._accountFinished.connect(
+            self._finish_account, Qt.ConnectionType.QueuedConnection
+        )
+        self._libraryPreferenceSynced.connect(
+            self._finish_library_preference_sync, Qt.ConnectionType.QueuedConnection
+        )
         self._config_repository: ConfigRepository = repositories.config
         self._dictionary_service = dictionary_service or DictionarySnippetService(
             LocalDictionarySnippetsRepository(
@@ -357,6 +604,38 @@ class QmlSettingsController(QObject):
             )
         )
         self._dictionary_draft = self._dictionary_service.state
+        self._history_correction_guard = getattr(
+            self._account, "_lock", threading.RLock()
+        )
+        # A strong callback cycle can let worker GC destroy this QObject.
+        history_owner = weakref.ref(self)
+
+        def read_history_part(context, token, offset, field):
+            owner = history_owner()
+            if owner is None:
+                raise CorrectionError("context_changed")
+            return owner.getHistoryTextPart(context, token, offset, field)
+
+        def history_identity():
+            owner = history_owner()
+            if owner is None:
+                raise CorrectionError("context_changed")
+            return owner._history_correction_identity()
+
+        self._history_corrections = HistoryDictionaryCorrectionService(
+            self._dictionary_service,
+            read_part=read_history_part,
+            identity=history_identity,
+            guard=lambda lock=self._history_correction_guard: lock,
+        )
+        self._history_correction_sync = QTimer(self)
+        self._history_correction_sync.setSingleShot(True)
+        self._history_correction_sync.timeout.connect(
+            self._finish_history_correction_window
+        )
+        self._history_correction_sync_context = None
+        self._dictionary_baseline = self._dictionary_draft
+        self._snippet_draft_context = self.snippetContext
         self._autostart_registry = registry
         self._local_product = local_product or _default_local_asr_product()
         self._local_state: LocalASRProductState = self._local_product.state
@@ -371,13 +650,18 @@ class QmlSettingsController(QObject):
             {"id": "cpu", "label": "CPU"},
         ]
         self._hotkey_applier = hotkey_applier
+        self._hotkey_reapply_required = False
+        self._hotkey_capture_changed = hotkey_capture_changed
         self._microphone_backend = microphone_backend
-        self._microphone_inventory_source = (
-            microphone_inventory_source
-            or getattr(microphone_backend, "microphone_inventory_source", None)
-            or _default_microphone_inventory_source()
+        self._microphone_inventory_source = microphone_inventory_source or getattr(
+            microphone_backend, "microphone_inventory_source", None
         )
         self._microphone_inventory = MicrophoneInventory.unavailable("not_refreshed")
+        self._microphone_inventory_busy = False
+        self._microphone_inventory_generation = 0
+        self._microphone_inventory_shutdown = False
+        self._microphone_inventory_error_before = ""
+        self._microphone_inventory_thread: threading.Thread | None = None
         self._microphone_test_generation = 0
         self._microphone_test_busy = False
         self._microphone_test_level = 0.0
@@ -395,6 +679,42 @@ class QmlSettingsController(QObject):
         self._model_error_key = None
         self._selected_scope = WorkflowScope.TRANSCRIPTION.value
         self._config = self._config_repository.load()
+        self._text_actions = text_action_service or TextActionService(
+            self._config_repository, self._account
+        )
+        self._text_actions.apply_bindings = hotkey_applier
+        self._text_action_provider = text_action_provider
+        self._text_action_runner = text_action_runner
+        self._text_action_preview = {"busy": False, "text": "", "error": ""}
+        self._text_action_preview_generation = 0
+        self._text_action_preview_token = None
+        self._text_action_preview_context = ""
+        self._text_action_refresh_generation = 0
+        self._text_action_refresh_token = None
+        self._text_action_refreshing = False
+        self._text_action_refresh_error = ""
+        self._text_action_mutation = {
+            "generation": 0,
+            "busy": False,
+            "status": "idle",
+            "error": "",
+            "errorCode": "",
+            "restoreRequired": False,
+        }
+        self._text_action_mutation_job = None
+        self._text_profile_model_generation = 0
+        self._text_profile_model_token = None
+        self._text_profile_model_request = None
+        self._text_profile_model_state = {
+            "generation": 0,
+            "requestId": "",
+            "requestKey": "",
+            "busy": False,
+            "status": "idle",
+            "models": [],
+            "error": "",
+        }
+        self._text_action_capture_context = ""
         configured_provider = (
             str(self._config.selection.transcription_provider or "gemini")
             .strip()
@@ -420,10 +740,6 @@ class QmlSettingsController(QObject):
             self._finish_provider_validation,
             Qt.ConnectionType.QueuedConnection,
         )
-        self._localStatePublished.connect(
-            self._apply_local_state,
-            Qt.ConnectionType.QueuedConnection,
-        )
         self._microphoneTestFinished.connect(
             self._finish_microphone_test,
             Qt.ConnectionType.QueuedConnection,
@@ -436,18 +752,13 @@ class QmlSettingsController(QObject):
         self._localBenchmarkPublished.connect(
             self._finish_local_benchmark, Qt.ConnectionType.QueuedConnection
         )
-        self._localDevicesPublished.connect(
-            self._apply_local_devices, Qt.ConnectionType.QueuedConnection
-        )
+        mailbox = self._background_mailbox
 
         def inventory():
             from local_asr_catalog import devices
 
             values = devices()
-            try:
-                self._localDevicesPublished.emit(values)
-            except RuntimeError:
-                pass
+            mailbox.post("local_devices", 0, values)
 
         self._local_inventory_thread = threading.Thread(
             target=inventory, daemon=True, name="LocalASRDevices"
@@ -470,6 +781,1027 @@ class QmlSettingsController(QObject):
         else:
             self._local_product.refresh_async()
         self.refreshMicrophoneInventory()
+        self._background_timer.start()
+        if self._text_actions.managed():
+            self.refreshTextActions()
+
+    @Slot()
+    def _drain_background_publications(self):
+        for kind, (generation, payload) in self._background_mailbox.take().items():
+            if self._account_shutdown:
+                return
+            if kind == "microphone_inventory":
+                self._finish_microphone_inventory(generation, payload)
+            elif kind == "local_state":
+                self._apply_local_state((generation, payload))
+            elif kind == "local_devices":
+                self._apply_local_devices(payload)
+            elif kind == "chatgpt":
+                self._finish_chatgpt_command(generation, payload)
+            elif kind == "text_action_preview":
+                context, result, error = payload
+                if generation == self._text_action_preview_generation:
+                    try:
+                        valid = context == self._text_actions.context()
+                    except Exception:
+                        valid = False
+                    self._text_action_preview = {
+                        "generation": generation,
+                        "busy": False,
+                        "text": result if valid else "",
+                        "error": error
+                        if valid
+                        else "A conta mudou. Atualize as ações.",
+                    }
+                    self.textActionPreviewChanged.emit()
+            elif kind == "text_action_refresh":
+                if generation == self._text_action_refresh_generation:
+                    result, error = payload
+                    if error is None:
+                        try:
+                            self._text_actions.publish_refresh(result)
+                        except Exception as problem:
+                            error = problem
+                    self._set_error(error)
+                    self._text_action_refreshing = False
+                    self._text_action_refresh_error = self.lastError if error else ""
+                    if error is None:
+                        self._text_action_mutation["restoreRequired"] = False
+                    self.textActionsChanged.emit()
+            elif kind == "text_action_commit":
+                if payload is self._text_action_mutation_job:
+                    self._text_actions.commit_mutation(payload)
+                    if not payload.committed and payload.accepted is not None:
+                        self._text_action_mutation["status"] = "restoring"
+                        self.textActionsChanged.emit()
+            elif kind == "text_action_finish":
+                if payload is self._text_action_mutation_job:
+                    self._finish_text_action_write(payload)
+            elif kind == "text_profile_models":
+                request, catalog = payload
+                if (
+                    generation == self._text_profile_model_generation
+                    and self._profile_model_request_current(request)
+                ):
+                    self._text_profile_model_token = None
+                    if catalog is not None:
+                        self._model_catalogs[request.cache_key] = catalog
+                    self._publish_profile_models(catalog)
+
+    def text_action_snapshot(self):
+        try:
+            return self._text_actions.projection()
+        except Exception:
+            return {
+                "textActions": [],
+                "textActionProfiles": [],
+                "textActionContext": "",
+                "textActionsRevision": "",
+                "afterDictationTextActionId": "",
+                "afterDictationTextActionLanguage": "auto",
+                "textActionDictationContext": "cloud",
+            }
+
+    @Property("QVariantList", notify=textActionsChanged)
+    def textActions(self):
+        return self.text_action_snapshot()["textActions"]
+
+    @Property("QVariantList", notify=textActionsChanged)
+    def textActionProfiles(self):
+        return self.text_action_snapshot()["textActionProfiles"]
+
+    @Property("QVariantList", constant=True)
+    def textActionProviders(self):
+        return [
+            {
+                "id": metadata.provider_id,
+                "label": metadata.display_name,
+                "defaultModel": metadata.default_text_model,
+                "supportsCustomEndpoint": metadata.supports(
+                    ProviderCapability.CUSTOM_BASE_URL
+                ),
+            }
+            for metadata in PROVIDER_REGISTRY.metadata
+            if metadata.supports(ProviderCapability.TEXT_GENERATION)
+        ]
+
+    @Property(str, notify=textActionsChanged)
+    def textActionContext(self):
+        return self.text_action_snapshot()["textActionContext"]
+
+    @Property(str, notify=textActionsChanged)
+    def textActionsRevision(self):
+        return self.text_action_snapshot()["textActionsRevision"]
+
+    @Property(str, notify=textActionsChanged)
+    def afterDictationTextActionId(self):
+        return self.text_action_snapshot()["afterDictationTextActionId"]
+
+    @Property(str, notify=textActionsChanged)
+    def afterDictationTextActionLanguage(self):
+        return self.text_action_snapshot()["afterDictationTextActionLanguage"]
+
+    @Property(str, notify=textActionsChanged)
+    def textActionDictationContext(self):
+        return self.text_action_snapshot()["textActionDictationContext"]
+
+    @Property("QVariantMap", notify=textActionPreviewChanged)
+    def textActionPreview(self):
+        if self._text_action_preview_context:
+            try:
+                if self._text_action_preview_context != self._text_actions.context():
+                    return {"busy": False, "text": "", "error": ""}
+            except Exception:
+                return {"busy": False, "text": "", "error": ""}
+        return dict(self._text_action_preview)
+
+    @Property(bool, notify=textActionsChanged)
+    def textActionHotkeyCaptureActive(self):
+        return bool(self._text_action_capture_context)
+
+    @Property("QVariantMap", notify=textActionsChanged)
+    def textActionMutation(self):
+        return dict(self._text_action_mutation)
+
+    @Property(bool, notify=textActionsChanged)
+    def textActionsBusy(self):
+        return self._text_action_refreshing or self._text_action_mutation["busy"]
+
+    @Property(str, notify=textActionsChanged)
+    def textActionsError(self):
+        return self._text_action_refresh_error
+
+    @Property("QVariantMap", notify=textActionsChanged)
+    def textActionRefresh(self):
+        return {
+            "generation": self._text_action_refresh_generation,
+            "busy": self._text_action_refreshing,
+            "status": "pending"
+            if self._text_action_refreshing
+            else "failed"
+            if self._text_action_refresh_error
+            else "succeeded"
+            if self._text_action_refresh_generation
+            else "idle",
+            "error": self._text_action_refresh_error,
+        }
+
+    def _adopt_text_action_write(self, before):
+        current = self._config_repository.load()
+        routes = self._config.workflows
+        selected_before = self._config.workflow(self._selected_scope)
+        for scope in WORKFLOW_SCOPES:
+            if self._config.workflow(scope) == before.workflow(scope):
+                routes = routes.with_route(scope, current.workflow(scope))
+        self._config = self._text_actions.sync_legacy_routes(
+            replace(
+                self._config,
+                workflows=routes,
+                text_actions=current.text_actions,
+                dictation_cleanup_level=current.dictation_cleanup_level,
+            ),
+            current,
+        )
+        if selected_before != self._config.workflow(self._selected_scope):
+            self.routeChanged.emit()
+        self._set_error(None)
+        self.configChanged.emit()
+        self.saved.emit()
+
+    def _finish_text_action_write(self, mutation):
+        try:
+            self._text_actions.finish_mutation(mutation)
+            self._text_action_mutation.update(
+                busy=False,
+                status="succeeded",
+                error="",
+                errorCode="",
+                restoreRequired=False,
+            )
+            self._adopt_text_action_write(mutation.before)
+        except Exception as error:
+            self._set_error(error)
+            self._text_action_mutation.update(
+                busy=False,
+                status="failed",
+                error=self.lastError,
+                errorCode="context_expired"
+                if mutation.context != self.textActionContext
+                else (
+                    "restore_failed"
+                    if mutation.incomplete
+                    else getattr(error, "code", "") or "text_action_write_failed"
+                ),
+                restoreRequired=mutation.incomplete,
+            )
+        self._text_action_mutation_job = None
+        self.textActionsChanged.emit()
+
+    def _text_action_write(self, command, *args, defer_remote=False):
+        try:
+            if (
+                self._account_shutdown
+                or self._text_action_mutation["busy"]
+                or self._hotkey_capture_action
+                or not self._account_can_change()
+            ):
+                raise ValueError("Finalize a operação antes de continuar.")
+            if not self.endTextActionHotkeyCapture():
+                return False
+            before = self._config_repository.load()
+            result = command(*args, **({"defer_remote": True} if defer_remote else {}))
+            generation = self._text_action_mutation["generation"] + 1
+            self._text_action_mutation = {
+                "generation": generation,
+                "busy": isinstance(result, TextActionMutation),
+                "status": "pending"
+                if isinstance(result, TextActionMutation)
+                else "succeeded",
+                "error": "",
+                "errorCode": "",
+                "restoreRequired": False,
+            }
+            if isinstance(result, TextActionMutation):
+                self._text_action_mutation_job = result
+                service, mailbox, mutation = (
+                    self._text_actions,
+                    self._background_mailbox,
+                    result,
+                )
+
+                def write():
+                    service.send_mutation(mutation)
+                    mailbox.post("text_action_commit", generation, mutation)
+                    mutation.decision.wait()
+                    if (
+                        mutation.abandoned.is_set()
+                        and not mutation.committed
+                        and mutation.error is None
+                    ):
+                        mutation.error = ValueError("A alteração foi cancelada.")
+                    service.compensate_mutation(mutation)
+                    if mutation.abandoned.is_set():
+                        try:
+                            service.finish_mutation(mutation, apply_bindings=False)
+                        except Exception:
+                            pass
+                    else:
+                        mailbox.post("text_action_finish", generation, mutation)
+
+                threading.Thread(
+                    target=write, daemon=True, name="TextActionMutation"
+                ).start()
+            else:
+                self._adopt_text_action_write(before)
+            self.textActionsChanged.emit()
+            return True
+        except Exception as error:
+            self._set_error(error)
+            self.textActionsChanged.emit()
+            return False
+
+    def _apply_config_hotkeys(self, config):
+        if self._hotkey_applier is None:
+            return
+        try:
+            bindings = self._text_actions.bindings_for(config)
+        except Exception:
+            if not self._text_actions.managed():
+                raise
+            bindings = native_bindings(config, ())
+        self._hotkey_applier(bindings)
+
+    @Slot("QVariantMap", str, str, result=bool)
+    def saveTextAction(self, action, context, expectedRevision):
+        return self._text_action_write(
+            self._text_actions.save,
+            action,
+            context,
+            expectedRevision,
+            defer_remote=True,
+        )
+
+    @Slot(str, str, str, result=bool)
+    def deleteTextAction(self, actionId, context, expectedRevision):
+        return self._text_action_write(
+            self._text_actions.delete,
+            actionId,
+            context,
+            expectedRevision,
+            defer_remote=True,
+        )
+
+    @Slot(str, str, str, result=bool)
+    def duplicateTextAction(self, actionId, context, expectedRevision):
+        return self._text_action_write(
+            self._text_actions.duplicate,
+            actionId,
+            context,
+            expectedRevision,
+            defer_remote=True,
+        )
+
+    @Slot("QVariantMap", str, str, result=bool)
+    @Slot("QVariantMap", str, str, str, result=bool)
+    def saveTextActionProfile(
+        self, profile, context, expectedRevision, catalogRequestKey=""
+    ):
+        if type(profile) is dict and profile.get("providerId") == "chatgpt":
+            try:
+                if self._text_actions.chatgpt_session is None:
+                    self._text_actions.chatgpt_session = self._get_chatgpt_session()
+            except Exception as error:
+                self._set_error(error)
+                return False
+        model_catalog = None
+        if catalogRequestKey:
+            state = self.textActionProfileModels
+            if (
+                state.get("requestKey") != catalogRequestKey
+                or state["status"] != "ready"
+                or state.get("profileId") != profile.get("id")
+                or state.get("providerId") != profile.get("providerId")
+                or state.get("customEndpoint") != profile.get("customEndpoint")
+            ):
+                self._set_error(
+                    ValueError("O catálogo mudou. Atualize os modelos do perfil.")
+                )
+                return False
+            model_catalog = (catalogRequestKey, tuple(m["id"] for m in state["models"]))
+
+        def save_profile(*args):
+            return self._text_actions.save_profile(*args, model_catalog=model_catalog)
+
+        return self._text_action_write(save_profile, profile, context, expectedRevision)
+
+    def _profile_model_request_current(self, request):
+        try:
+            current = self._text_actions.profile_model_request(
+                request.profile_id,
+                request.provider_id,
+                request.endpoint,
+                request.context,
+                request.revision,
+            )
+            return current == request and not self._account_shutdown
+        except Exception:
+            return False
+
+    @Property("QVariantMap", notify=textActionsChanged)
+    def textActionProfileModels(self):
+        state = self._text_profile_model_state
+        if (
+            self._text_profile_model_request is not None
+            and not self._profile_model_request_current(
+                self._text_profile_model_request
+            )
+        ):
+            if self._text_profile_model_token is not None:
+                self._text_profile_model_token.cancel()
+            return {
+                **state,
+                "busy": False,
+                "status": "stale",
+                "models": [],
+                "error": "O catálogo mudou. Atualize os modelos do perfil.",
+            }
+        return {**state, "models": list(state["models"])}
+
+    def _publish_profile_models(self, catalog):
+        models = (
+            []
+            if catalog is None
+            else [
+                {"id": model, "label": catalog.display_names.get(model, model)}
+                for model in dict.fromkeys(catalog.text_models)
+            ]
+        )
+        self._text_profile_model_state.update(
+            busy=False,
+            models=models,
+            status=("ready" if models else "empty") if catalog is not None else "error",
+            error=""
+            if catalog is not None
+            else "Não foi possível consultar os modelos. Tente novamente.",
+        )
+        self.textActionsChanged.emit()
+
+    def _load_profile_models(
+        self,
+        profileId,
+        providerId,
+        customEndpoint,
+        context,
+        expectedRevision,
+        requestId,
+        *,
+        refresh,
+    ):
+        try:
+            if self._account_shutdown or not self._processing_allowed():
+                return False
+            if not requestId or len(requestId) > 128:
+                raise ValueError("Invalid catalog request")
+            if providerId == "chatgpt" and self._text_actions.chatgpt_session is None:
+                self._text_actions.chatgpt_session = self._get_chatgpt_session()
+            request = self._text_actions.profile_model_request(
+                profileId, providerId, customEndpoint, context, expectedRevision
+            )
+            self.cancelTextActionProfileModels()
+            generation = self._text_profile_model_generation
+            self._text_profile_model_request = request
+            self._text_profile_model_state = {
+                "generation": generation,
+                "requestId": requestId,
+                "requestKey": request.request_key,
+                "profileId": profileId,
+                "providerId": providerId,
+                "customEndpoint": request.endpoint,
+                "context": context,
+                "revision": expectedRevision,
+                "busy": False,
+                "status": request.status,
+                "models": [],
+                "error": "",
+            }
+            if request.status != "idle":
+                self.textActionsChanged.emit()
+                return True
+            catalog = self._model_catalogs.get(request.cache_key)
+            if not refresh and catalog is not None:
+                self._publish_profile_models(catalog)
+                return True
+            if request.draft_endpoint and not refresh:
+                self._text_profile_model_state["status"] = "refresh_required"
+                self.textActionsChanged.emit()
+                return True
+            token = self._text_profile_model_token = CancellationToken()
+            self._text_profile_model_state.update(busy=True, status="loading")
+            registry = (
+                PROVIDER_REGISTRY.with_chatgpt_session(self._get_chatgpt_session())
+                if providerId == "chatgpt"
+                else PROVIDER_REGISTRY
+            )
+            mailbox = self._background_mailbox
+
+            def discover():
+                try:
+                    catalog = registry.discover_models(
+                        request.provider_id, request.connection, token
+                    )
+                    token.raise_if_cancelled()
+                except Exception:
+                    catalog = None
+                mailbox.post("text_profile_models", generation, (request, catalog))
+
+            threading.Thread(
+                target=discover, daemon=True, name="TextProfileModels"
+            ).start()
+            self.textActionsChanged.emit()
+            return True
+        except Exception:
+            self._set_error(
+                ValueError(
+                    "O catálogo mudou ou está indisponível. Atualize os modelos do perfil."
+                )
+            )
+            return False
+
+    @Slot(str, str, str, str, str, str, result=bool)
+    def loadTextActionProfileModels(
+        self,
+        profileId,
+        providerId,
+        customEndpoint,
+        context,
+        expectedRevision,
+        requestId,
+    ):
+        return self._load_profile_models(
+            profileId,
+            providerId,
+            customEndpoint,
+            context,
+            expectedRevision,
+            requestId,
+            refresh=False,
+        )
+
+    @Slot(str, str, str, str, str, str, result=bool)
+    def refreshTextActionProfileModels(
+        self,
+        profileId,
+        providerId,
+        customEndpoint,
+        context,
+        expectedRevision,
+        requestId,
+    ):
+        return self._load_profile_models(
+            profileId,
+            providerId,
+            customEndpoint,
+            context,
+            expectedRevision,
+            requestId,
+            refresh=True,
+        )
+
+    @Slot(result=bool)
+    def cancelTextActionProfileModels(self):
+        if self._text_profile_model_token is not None:
+            self._text_profile_model_token.cancel()
+        self._text_profile_model_generation += 1
+        self._text_profile_model_token = None
+        self._text_profile_model_request = None
+        self._text_profile_model_state = {
+            "generation": self._text_profile_model_generation,
+            "requestId": "",
+            "requestKey": "",
+            "busy": False,
+            "status": "cancelled",
+            "models": [],
+            "error": "",
+        }
+        self.textActionsChanged.emit()
+        return True
+
+    @Slot(str, str, str, str, result=bool)
+    def setAfterDictationTextAction(
+        self, actionId, language, context, expectedRevision
+    ):
+        return self._text_action_write(
+            self._text_actions.set_after, actionId, language, context, expectedRevision
+        )
+
+    @Slot(str, str, str, str, str, result=bool)
+    def setDictationPostProcessing(
+        self, mode, actionId, language, context, expectedRevision
+    ):
+        return self._text_action_write(
+            self._text_actions.set_after_mode,
+            mode,
+            actionId,
+            language,
+            context,
+            expectedRevision,
+        )
+
+    @Slot(result=bool)
+    def refreshTextActions(self):
+        if self._account_shutdown or self._text_action_mutation["busy"]:
+            return False
+        self.cancelTextActionPreview()
+        if self._text_action_refresh_token is not None:
+            self._text_action_refresh_token.cancel()
+        token = self._text_action_refresh_token = CancellationToken()
+        self._text_action_refresh_generation += 1
+        generation = self._text_action_refresh_generation
+        self._text_action_refreshing = True
+        self._text_action_refresh_error = ""
+        self.textActionsChanged.emit()
+        mailbox, service = self._background_mailbox, self._text_actions
+
+        def refresh():
+            result, error = None, None
+            try:
+                # Native binding effects belong to the Qt thread, after refresh.
+                result = service.fetch_refresh(cancel=token)
+            except Exception as problem:
+                error = problem
+            mailbox.post("text_action_refresh", generation, (result, error))
+
+        threading.Thread(target=refresh, daemon=True, name="TextActionsRefresh").start()
+        return True
+
+    @Slot(str, str, str, "qlonglong", result=bool)
+    @Slot(str, str, str, "qlonglong", str, result=bool)
+    def previewTextAction(
+        self, actionId, sampleText, context, actionRevision, language="auto"
+    ):
+        try:
+            if self._text_action_provider is None or not self._processing_allowed():
+                raise ValueError("O processamento está indisponível.")
+            validate_input(sampleText)
+            if context != self._text_actions.context():
+                raise ValueError("A conta mudou. Atualize as ações.")
+            snapshot = self._text_action_provider.snapshot_text_action(actionId)
+            if (
+                type(actionRevision) is not int
+                or snapshot.action.revision != actionRevision
+            ):
+                raise ValueError("A ação mudou. Salve e tente novamente.")
+            validate_input(sampleText, language)
+            target_language = self.repositories.config.load().ui.language
+            self.cancelTextActionPreview()
+            token = self._text_action_preview_token = CancellationToken()
+            generation = self._text_action_preview_generation
+            self._text_action_preview_context = context
+            self._text_action_preview = {
+                "generation": generation,
+                "busy": True,
+                "text": "",
+                "error": "",
+            }
+            self.textActionPreviewChanged.emit()
+            provider, mailbox = self._text_action_provider, self._background_mailbox
+
+            def preview():
+                result, error = "", ""
+                try:
+                    result = provider.transform_text_action(
+                        snapshot,
+                        sampleText,
+                        target_language,
+                        output_language=target_language,
+                        cancel=token,
+                    ).text
+                except Exception:
+                    error = "Não foi possível testar a ação. Tente novamente."
+                mailbox.post(
+                    "text_action_preview", generation, (context, result, error)
+                )
+
+            threading.Thread(
+                target=preview, daemon=True, name="TextActionPreview"
+            ).start()
+            return True
+        except Exception as error:
+            self._set_error(error)
+            return False
+
+    @Slot(result=bool)
+    def cancelTextActionPreview(self):
+        if self._text_action_preview_token is not None:
+            self._text_action_preview_token.cancel()
+        self._text_action_preview_generation += 1
+        self._text_action_preview_context = ""
+        self._text_action_preview = {
+            "generation": self._text_action_preview_generation,
+            "busy": False,
+            "text": "",
+            "error": "",
+        }
+        self.textActionPreviewChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def beginTextActionHotkeyCapture(self, context):
+        try:
+            if (
+                context != self._text_actions.context()
+                or self._text_action_mutation["busy"]
+                or not self._account_can_change()
+            ):
+                raise ValueError("A conta mudou ou há uma operação em andamento.")
+            if self._hotkey_capture_action:
+                raise ValueError("Finalize a captura de atalho atual.")
+            if not self._text_action_capture_context and self._hotkey_capture_changed:
+                self._hotkey_capture_changed(True)
+            self._text_action_capture_context = context
+            self.textActionsChanged.emit()
+            return True
+        except Exception as error:
+            self._set_error(error)
+            return False
+
+    @Slot(result=bool)
+    def endTextActionHotkeyCapture(self):
+        try:
+            if self._text_action_capture_context and self._hotkey_capture_changed:
+                self._hotkey_capture_changed(False)
+            self._text_action_capture_context = ""
+            self.textActionsChanged.emit()
+            return True
+        except Exception as error:
+            self._set_error(error)
+            return False
+
+    @Slot(result=bool)
+    def cancelTextActionHotkeyCapture(self):
+        return self.endTextActionHotkeyCapture()
+
+    @Slot(str, result=bool)
+    def runTextAction(self, actionId):
+        return bool(self._text_action_runner and self._text_action_runner(actionId))
+
+    def _get_chatgpt_session(self):
+        if self._chatgpt_session is None:
+            from chatgpt_auth import get_chatgpt_session
+
+            self._chatgpt_session = get_chatgpt_session(
+                Path(self.repositories.config.path).parent
+            )
+        return self._chatgpt_session
+
+    def _read_chatgpt_snapshot(self):
+        if self._account_shutdown or self._chatgpt_busy:
+            return
+        if (
+            self._chatgpt_session is None
+            and "chatgpt" not in PROVIDER_REGISTRY.provider_ids
+        ):
+            return
+        try:
+            raw = self._get_chatgpt_session().snapshot()
+            # Explicit projection: credentials and future auth fields cannot enter RPC.
+            snapshot = {
+                "connected": raw.get("connected") is True,
+                "planEnabled": raw.get("planEnabled") is True,
+                "email": str(raw.get("email") or ""),
+                "accountId": str(raw.get("accountId") or ""),
+                "accounts": [
+                    {"id": str(a["id"]), "label": str(a["label"])}
+                    for a in raw.get("accounts", [])
+                ],
+                "generation": int(raw.get("generation", 0)),
+                "planNoticeSeen": raw.get("planNoticeSeen") is True,
+            }
+        except Exception:
+            self._chatgpt_error = "Não foi possível ler a conexão com o ChatGPT."
+            snapshot = {
+                **self._chatgpt_snapshot,
+                "connected": False,
+                "planEnabled": False,
+                "email": "",
+                "accountId": "",
+                "accounts": [],
+            }
+        previous = self._chatgpt_snapshot
+        self._chatgpt_snapshot = snapshot
+        identity = ("accountId", "generation", "connected", "planEnabled")
+        if self._chatgpt_initialized and any(
+            previous[key] != snapshot[key] for key in identity
+        ):
+            self._invalidate_chatgpt_models()
+        self._chatgpt_initialized = True
+        if previous != snapshot:
+            self.chatgptStateChanged.emit()
+            self.providerStateChanged.emit()
+
+    @Property("QVariantMap", notify=chatgptStateChanged)
+    def chatgptState(self):
+        self._read_chatgpt_snapshot()
+        return {
+            **self._chatgpt_snapshot,
+            "busy": self._chatgpt_busy,
+            "error": self._chatgpt_error,
+        }
+
+    def _chatgpt_ready(self):
+        state = self.chatgptState
+        return state["connected"] and state["planEnabled"] and not state["busy"]
+
+    @Property("QVariantMap", notify=modelCatalogChanged)
+    def chatgptTextCatalog(self):
+        """Share only the verified catalog for the current OAuth registration."""
+        state = self.chatgptState
+        if not state["connected"] or not state["planEnabled"] or state["busy"]:
+            return {}
+        key = ("chatgpt", state["accountId"], str(state["generation"]))
+        catalog = self._model_catalogs.get(key)
+        if catalog is None:
+            return {}
+        return {
+            "accountId": state["accountId"],
+            "generation": state["generation"],
+            "models": [
+                {"id": model, "label": catalog.display_names.get(model, model)}
+                for model in dict.fromkeys(catalog.text_models)
+            ],
+        }
+
+    def _chatgpt_model_account(self, model):
+        if not model:
+            return ""
+        catalog = self.chatgptTextCatalog
+        state = self.chatgptState
+        if (
+            not catalog.get("accountId")
+            or catalog.get("accountId") != state["accountId"]
+            or catalog.get("generation") != state["generation"]
+            or state["busy"]
+            or not state["connected"]
+            or not state["planEnabled"]
+            or model not in {item["id"] for item in catalog.get("models", [])}
+        ):
+            raise ValueError("Selecione um modelo disponível nesta conta ChatGPT.")
+        return catalog["accountId"]
+
+    @Slot(str, str, result=bool)
+    def chatgptCommand(self, action, value=""):
+        actions = {
+            "sign_in",
+            "add_account",
+            "select_account",
+            "sign_out",
+            "cancel",
+            "manage_usage",
+            "dismiss_notice",
+        }
+        if action not in actions or (action != "select_account" and value):
+            self._set_error(ValueError("Invalid ChatGPT action"))
+            return False
+        if action == "cancel":
+            self.cancelChatGPT()
+            return True
+        if self._account_shutdown or self._chatgpt_busy:
+            return False
+        identity_change = action in {
+            "sign_in",
+            "add_account",
+            "select_account",
+            "sign_out",
+        }
+        if identity_change and (
+            self._account_busy
+            or not self._account_can_change()
+            or self.microphoneTestBusy
+            or self._model_token is not None
+            or self._provider_tokens
+            or self.localAsrBusy
+            or self.localBenchmarkBusy
+            or self._account.snapshot().get("signedIn")
+        ):
+            self._set_error(
+                ValueError("Finalize a operação antes de alterar a conta ChatGPT.")
+            )
+            return False
+        if action == "select_account" and value not in {
+            a["id"] for a in self.chatgptState["accounts"]
+        }:
+            self._set_error(ValueError("Selecione uma conta ChatGPT salva."))
+            return False
+        try:
+            session = None if action == "manage_usage" else self._get_chatgpt_session()
+        except Exception:
+            self._set_error(ValueError("Não foi possível ler a conexão com o ChatGPT."))
+            return False
+        if identity_change:
+            if not self._account.begin_change():
+                self._set_error(
+                    ValueError("Finalize a operação antes de alterar a conta ChatGPT.")
+                )
+                return False
+            self._chatgpt_account_reserved = True
+        self._chatgpt_generation += 1
+        generation = self._chatgpt_generation
+        cancel = self._chatgpt_cancel = threading.Event()
+        self._chatgpt_busy = True
+        self._chatgpt_error = ""
+        self._set_error(None)
+        self.chatgptStateChanged.emit()
+        mailbox = self._background_mailbox
+
+        def work():
+            import webbrowser
+
+            error_message = ""
+            try:
+                if action == "manage_usage":
+                    if not cancel.is_set():
+                        webbrowser.open("https://chatgpt.com/settings/usage")
+                elif action in {"sign_in", "add_account"}:
+                    session.sign_in(
+                        open_browser=webbrowser.open,
+                        cancel=cancel,
+                        new_account=action == "add_account",
+                    )
+                elif action == "select_account":
+                    session.select_account(value)
+                elif action == "sign_out":
+                    session.sign_out()
+                elif action == "dismiss_notice":
+                    session.acknowledge_plan_notice()
+            except Exception as error:
+                error_message = _chatgpt_error_message(error)
+            mailbox.post("chatgpt", generation, (cancel.is_set(), error_message))
+
+        try:
+            threading.Thread(
+                target=work, name="ClarifyChatGPTSettings", daemon=True
+            ).start()
+        except RuntimeError:
+            self._chatgpt_busy = False
+            self._release_chatgpt_change()
+            self._set_error(
+                ValueError("Não foi possível concluir a operação com o ChatGPT.")
+            )
+            return False
+        return True
+
+    def _release_chatgpt_change(self):
+        if self._chatgpt_account_reserved:
+            self._chatgpt_account_reserved = False
+            self._account.end_change()
+
+    @Slot()
+    def cancelChatGPT(self):
+        # Keep busy until the worker exits, so repeated cancel/connect stays bounded.
+        self._chatgpt_cancel.set()
+        if self._model_loading_key and self._model_loading_key[0] == "chatgpt":
+            self._model_generation += 1
+            if self._model_token:
+                self._model_token.cancel()
+            self._model_token = None
+            self._model_loading_key = None
+        token = self._provider_tokens.pop("chatgpt", None)
+        if token:
+            token.cancel()
+            self._provider_generations["chatgpt"] += 1
+            self._provider_activity.pop("chatgpt", None)
+
+    def _finish_chatgpt_command(self, generation, payload):
+        if self._account_shutdown or generation != self._chatgpt_generation:
+            return
+        cancelled, error = payload
+        self._release_chatgpt_change()
+        self._chatgpt_busy = False
+        self._chatgpt_error = (
+            "A conexão com o ChatGPT foi cancelada." if cancelled else error
+        )
+        previous_generation = self._chatgpt_snapshot["generation"]
+        self._read_chatgpt_snapshot()
+        self.chatgptStateChanged.emit()
+        self.providerStateChanged.emit()
+        if (
+            not cancelled
+            and not error
+            and previous_generation != self._chatgpt_snapshot["generation"]
+            and self._chatgpt_ready()
+            and not self._provider_tokens
+        ):
+            if self.selectedProviderId == "chatgpt":
+                self.validateProvider()
+            elif self.routeProviderId == "chatgpt":
+                self.loadRouteModels()
+
+    def _invalidate_chatgpt_models(self):
+        if self._model_loading_key and self._model_loading_key[0] == "chatgpt":
+            self._model_generation += 1
+            if self._model_token:
+                self._model_token.cancel()
+            self._model_token = None
+            self._model_loading_key = None
+        self._model_catalogs = {
+            k: v for k, v in self._model_catalogs.items() if k[0] != "chatgpt"
+        }
+        self._model_error_key = None
+        token = self._provider_tokens.pop("chatgpt", None)
+        if token:
+            token.cancel()
+        self._provider_generations["chatgpt"] = (
+            self._provider_generations.get("chatgpt", 0) + 1
+        )
+        self._provider_activity.pop("chatgpt", None)
+
+        def clear_models(config):
+            # Legacy route controls may reset, but saved text profiles retain
+            # their original account binding until their provider is changed.
+            settings = settings_for(config)
+            profiles = tuple(
+                replace(p, route=p.resolved(config), source_scope="")
+                if p.source_scope and p.resolved(config).provider_id == "chatgpt"
+                else p
+                for p in settings.profiles
+            )
+            routes = config.workflows
+            for scope in WORKFLOW_SCOPES:
+                route = config.workflow(scope)
+                if route.provider_id == "chatgpt":
+                    routes = routes.with_route(
+                        scope,
+                        replace(route, model_id="", custom_endpoint="", account_id=""),
+                    )
+            fields = {
+                "workflows": routes,
+                "text_actions": replace(settings, profiles=profiles),
+            }
+            if config.voice_translation.route.provider_id == "chatgpt":
+                fields["voice_translation"] = replace(
+                    config.voice_translation,
+                    route=replace(
+                        config.voice_translation.route, model_id="", account_id=""
+                    ),
+                )
+            if hasattr(config, "chatgpt"):
+                fields["chatgpt"] = replace(config.chatgpt, text_model="")
+            if config.selection.refinement_provider == "chatgpt":
+                fields["selection"] = replace(config.selection, refinement_model="")
+            return replace(config, **fields)
+
+        self._config = clear_models(self._config)
+        try:
+            persisted = self._config_repository.load()
+            cleared = clear_models(persisted)
+            if cleared != persisted:
+                self._config_repository.apply(cleared)
+        except Exception:
+            self._chatgpt_error = (
+                "Não foi possível limpar os modelos da conta anterior."
+            )
+        self.routeChanged.emit()
+        self.modelCatalogChanged.emit()
 
     @Property("QStringList", constant=True)
     def workflowScopes(self) -> list[str]:
@@ -562,6 +1894,8 @@ class QmlSettingsController(QObject):
 
     @Property(bool, notify=providerStateChanged)
     def providerHasApiKey(self) -> bool:
+        if self.selectedProviderId == "chatgpt":
+            return False
         return bool(
             self._provider_api_key_draft.strip()
             or self._provider_config(self._selected_provider_id).api_key.strip()
@@ -785,6 +2119,10 @@ class QmlSettingsController(QObject):
     def microphoneTestBusy(self) -> bool:
         return self._microphone_test_busy
 
+    @Property(bool, notify=microphoneChanged)
+    def microphoneInventoryBusy(self) -> bool:
+        return self._microphone_inventory_busy
+
     @Property(float, notify=microphoneLevelChanged)
     def microphoneTestLevel(self) -> float:
         return self._microphone_test_level
@@ -798,6 +2136,59 @@ class QmlSettingsController(QObject):
         """Expose the typed boundary settings without recreating their rules."""
 
         return self._config.recording_controls.to_mapping()
+
+    @Property(str, notify=configChanged)
+    def dictationCleanupLevel(self) -> str:
+        level = self._config.dictation_cleanup_level
+        return level.value if level is not None else ""
+
+    @Property("QVariantList", notify=configChanged)
+    def applicationWritingStyles(self):
+        return self._config.application_writing_styles.to_mapping()["rules"]
+
+    @Property(str, notify=configChanged)
+    def dictationWritingStyle(self):
+        style = self._config.application_writing_styles.default_style
+        return style.value if style is not None else ""
+
+    @Property(bool, notify=configChanged)
+    def applicationStyleRefinementAllowed(self):
+        from shared.dictation_policy import DictationCleanupPolicy
+
+        permitted = self.dictationCleanupRefinementAllowed
+        route = self._config.workflow("transcription")
+        if (
+            getattr(self._account, "managed", False) is not True
+            and self._config.dictation_cleanup_level is None
+            and route.provider_id in PROVIDER_REGISTRY.provider_ids
+            and PROVIDER_REGISTRY.supports(
+                route.provider_id, ProviderCapability.MULTIMODAL_AUDIO
+            )
+            and not any(
+                item.enabled for item in self._dictionary_service.state.snippets
+            )
+        ):
+            permitted = route.enabled and bool(route.model_id)
+        return DictationCleanupPolicy(
+            self._config.dictation_cleanup_level
+        ).allows_refinement(permitted)
+
+    @Property(str, notify=configChanged)
+    def applicationStyleTarget(self):
+        from writing_styles import windows_executable_key
+
+        target = self._application_target() if self._application_target else None
+        return windows_executable_key(getattr(target, "executable", None)) or ""
+
+    @Property(bool, notify=configChanged)
+    def dictationCleanupRefinementAllowed(self) -> bool:
+        if getattr(self._account, "managed", False) is True:
+            return getattr(self._account, "signed_in", False) is True
+        local = self._config.workflow("transcription").provider_id == "local_asr"
+        scope = "local_asr_refinement" if local else "refinement"
+        return self._config.workflow(scope).enabled and (
+            not local or self._config.local_asr_cloud_refinement
+        )
 
     @Property(bool, notify=configChanged)
     def localAsrCloudRefinement(self) -> bool:
@@ -825,6 +2216,12 @@ class QmlSettingsController(QObject):
 
     @Property(str, notify=routeChanged)
     def routeModelId(self) -> str:
+        if self.routeProviderId == "chatgpt" and (
+            self._selected_route().account_id != self.chatgptState["accountId"]
+            or self._selected_route().model_id
+            not in {option["id"] for option in self.routeModelOptions}
+        ):
+            return ""
         return self._selected_route().model_id
 
     @routeModelId.setter
@@ -872,27 +2269,322 @@ class QmlSettingsController(QObject):
     def dictionaryEntries(self):
         return [entry.to_mapping() for entry in self._dictionary_draft.dictionary]
 
-    @Slot("QVariantList", result=bool)
-    def setDictionaryEntries(self, entries) -> bool:
+    def library_snapshot(self):
+        """Pair web rows with their owner even before queued account completion."""
+        with self._dictionary_service.transaction():
+            context = self.snippetContext
+            current = context == self._snippet_draft_context
+            return {
+                "dictionaryContext": context,
+                "snippetContext": context,
+                "dictionaryEntries": self.dictionaryEntries if current else [],
+                "snippets": self.snippets if current else [],
+            }
+
+    def _require_library_context(self, context):
+        """Call only under the service's account-before-library guard."""
+        if (
+            not isinstance(context, str)
+            or context != self.snippetContext
+            or context != self._snippet_draft_context
+            or (self._account_busy and self._library_sync_context is None)
+        ):
+            raise ValueError("A conta mudou. Descarte as alterações e tente novamente.")
+
+    def _reconcile_library_draft(self, persisted=None):
+        """Rebase actual pending edits on storage without writing either copy."""
+        persisted = (
+            persisted if persisted is not None else self._dictionary_service.state
+        )
+        self._dictionary_draft = self._reconciled_library_draft(persisted)
+        self._dictionary_baseline = persisted
+
+    def _reconciled_library_draft(self, persisted):
+        """Validate a merged draft without changing it before persistence."""
+        before = self._dictionary_baseline
+        draft = self._dictionary_draft
+        return replace(
+            draft,
+            dictionary=_merge_library_draft(
+                before.dictionary, draft.dictionary, persisted.dictionary, "term"
+            ),
+            snippets=_merge_library_draft(
+                before.snippets, draft.snippets, persisted.snippets, "trigger"
+            ),
+        )
+
+    def _require_expected_library_entries(self, library, expected):
+        """Compare the captured persisted rows under the staging owner guard."""
+        if expected is _EXPECTED_LIBRARY_ENTRIES_UNSET:
+            return
         try:
-            if not isinstance(entries, list) or len(entries) > 512:
-                raise ValueError("Use até 512 termos no dicionário.")
-            self._dictionary_draft = DictionarySnippets(
-                dictionary=tuple(
-                    DictionaryEntry.from_mapping(entry) for entry in entries
-                ),
-                snippets=self._dictionary_draft.snippets,
-            )
-        except (TypeError, ValueError):
-            self._set_error(
-                ValueError(
-                    "Verifique os termos: use até 256 caracteres, sem duplicatas ou quebras de linha."
-                )
-            )
+            if type(expected) is not list or len(expected) > MAX_SNIPPETS:
+                raise ValueError()
+            entry_type = DictionaryEntry if library == "dictionary" else Snippet
+            entries = tuple(entry_type.from_mapping(item) for item in expected)
+            DictionarySnippets(**{library: entries})
+            if [item.to_mapping() for item in entries] != expected:
+                raise ValueError()
+        except (TypeError, ValueError) as error:
+            raise ValueError("Invalid settings value") from error
+        persisted = self._dictionary_service.reload()
+        if entries != getattr(persisted, library):
+            raise ValueError("A biblioteca mudou. Atualize e tente novamente.")
+
+    @Slot("QVariantList", result=bool)
+    @Slot("QVariantList", str, result=bool)
+    @Slot("QVariantList", str, "QVariantList", result=bool)
+    def setDictionaryEntries(
+        self, entries, context=None, expectedEntries=_EXPECTED_LIBRARY_ENTRIES_UNSET
+    ) -> bool:
+        context = self._snippet_draft_context if context is None else context
+        try:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                self._require_expected_library_entries("dictionary", expectedEntries)
+                try:
+                    if not isinstance(entries, list) or len(entries) > 512:
+                        raise ValueError("Use até 512 termos no dicionário.")
+                    self._dictionary_draft = DictionarySnippets(
+                        dictionary=tuple(
+                            DictionaryEntry.from_mapping(entry) for entry in entries
+                        ),
+                        snippets=self._dictionary_draft.snippets,
+                    )
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        "Verifique os termos: use até 256 caracteres, sem duplicatas ou quebras de linha."
+                    ) from error
+        except Exception as error:
+            self._set_error(error)
             return False
         self._set_error(None)
         self.dirtyChanged.emit()
         return True
+
+    @Property(str, notify=accountStateChanged)
+    def snippetContext(self):
+        if isinstance(self._account, AccountService):
+            return self._account.snippet_context()
+        scope = getattr(self._account, "scope", None)
+        if not isinstance(scope, str) or not scope:
+            return "local"
+        import hashlib
+
+        identity = self._account.snapshot()
+        return hashlib.sha256(
+            (str(identity.get("endpoint", "")) + "\n" + scope).encode("utf-8")
+        ).hexdigest()
+
+    @Property(str, notify=accountStateChanged)
+    def dictionaryContext(self):
+        return self.snippetContext
+
+    @Property("QVariantList", notify=dirtyChanged)
+    def snippets(self):
+        return [snippet.to_mapping() for snippet in self._dictionary_draft.snippets]
+
+    @Slot("QVariantList", str, result=bool)
+    @Slot("QVariantList", str, "QVariantList", result=bool)
+    def setSnippets(
+        self, snippets, context, expectedEntries=_EXPECTED_LIBRARY_ENTRIES_UNSET
+    ) -> bool:
+        try:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                self._require_expected_library_entries("snippets", expectedEntries)
+                try:
+                    if not isinstance(snippets, list) or len(snippets) > MAX_SNIPPETS:
+                        raise ValueError("Use até 512 snippets.")
+                    draft = DictionarySnippets(
+                        dictionary=self._dictionary_draft.dictionary,
+                        snippets=tuple(Snippet.from_mapping(item) for item in snippets),
+                    )
+                    if any(not item.replacement.strip() for item in draft.snippets):
+                        raise ValueError("Snippet text must not be empty")
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        "Verifique os snippets: frases únicas de até 256 caracteres, "
+                        "sem quebras de linha, e textos de até 4096 caracteres."
+                    ) from error
+                if self._account.scope:
+                    account_snippet_entries(draft.snippets)
+                self._dictionary_draft = draft
+        except Exception as error:
+            self._set_error(error)
+            return False
+        self._set_error(None)
+        self.dirtyChanged.emit()
+        return True
+
+    @Slot(str, "QVariantMap", str, bool, str, result=bool)
+    def saveLibraryPreference(self, library, identity, field, value, context) -> bool:
+        """Change one persisted flag under its owner guard; never save draft text."""
+        if (
+            type(library) is not str
+            or type(identity) is not dict
+            or type(field) is not str
+            or type(value) is not bool
+            or type(context) is not str
+            or library not in {"dictionary", "snippets"}
+            or field
+            not in (
+                {"enabled"}
+                if library == "dictionary"
+                else {"enabled", "case_sensitive"}
+            )
+        ):
+            self._set_error(ValueError("Invalid settings value"))
+            return False
+        try:
+            entry = (
+                DictionaryEntry.from_mapping(identity)
+                if library == "dictionary"
+                else Snippet.from_mapping(identity)
+            )
+            if entry.to_mapping() != identity:
+                raise ValueError()
+        except (TypeError, ValueError):
+            self._set_error(ValueError("Invalid settings value"))
+            return False
+        try:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                persisted = self._dictionary_service.reload()
+                entries = (
+                    persisted.dictionary
+                    if library == "dictionary"
+                    else persisted.snippets
+                )
+                matches = [
+                    index
+                    for index, item in enumerate(entries)
+                    if item.to_mapping() == identity
+                ]
+                if len(matches) != 1:
+                    raise ValueError("A entrada mudou. Atualize e tente novamente.")
+                index = matches[0]
+                updated = (
+                    *entries[:index],
+                    replace(entries[index], **{field: value}),
+                    *entries[index + 1 :],
+                )
+                candidate = replace(persisted, **{library: updated})
+                self._reconcile_library_draft(persisted)
+                self._dictionary_service.replace(candidate, expected_context=context)
+
+                # Persistence requires the full identity. The draft merge key
+                # only locates the row whose saved flag changed.
+                key = "term" if library == "dictionary" else "trigger"
+                draft_entries = tuple(
+                    replace(item, **{field: value})
+                    if getattr(item, key).casefold() == identity[key].casefold()
+                    else item
+                    for item in getattr(self._dictionary_draft, library)
+                )
+                self._dictionary_draft = replace(
+                    self._dictionary_draft, **{library: draft_entries}
+                )
+                self._dictionary_baseline = candidate
+        except Exception as error:
+            self._set_error(error)
+            return False
+
+        self._set_error(None)
+        self.dirtyChanged.emit()
+        self.saved.emit()
+        self._sync_library_preferences()
+        return True
+
+    def _retry_library_preference_sync(self):
+        if self._library_sync_pending:
+            self._sync_library_preferences(
+                expected_identity=self._library_sync_expected_identity
+            )
+
+    def _sync_library_preferences(self, *, expected_identity=None):
+        """Use account sync without its draft-replacing sign-in completion path."""
+        if not self._account.scope or self._account_shutdown:
+            self._library_sync_pending = False
+            self._library_sync_expected_identity = None
+            self._library_sync_timer.stop()
+            return
+        # The processing guard can acquire workflow locks. Consult it
+        # before reserving the account, never while holding its lock.
+        blocked = self._account_busy or not self._account_can_change()
+        if not blocked:
+            with self._history_correction_guard:
+                if expected_identity is not None:
+                    try:
+                        current_identity = self._history_correction_identity()
+                    except CorrectionError:
+                        current_identity = None
+                    if current_identity != expected_identity:
+                        self._library_sync_pending = False
+                        self._library_sync_expected_identity = None
+                        self._library_sync_timer.stop()
+                        return
+                blocked = not self._account.begin_change()
+        if blocked:
+            self._library_sync_pending = True
+            self._library_sync_expected_identity = expected_identity
+            self._library_sync_timer.start()
+            return
+        self._library_sync_pending = False
+        self._library_sync_expected_identity = None
+        self._library_sync_timer.stop()
+        context = self._snippet_draft_context
+        try:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                self._reconcile_library_draft()
+                self._library_sync_context = context
+        except Exception as error:
+            self._account.end_change()
+            self._set_error(error)
+            return
+        self._account_busy, self._account_error = True, ""
+        self.accountStateChanged.emit()
+
+        def perform():
+            error = ""
+            try:
+                self._account.sync_library(self._dictionary_service)
+            except Exception as problem:
+                from clarify_account import AccountError
+
+                error = (
+                    str(problem)
+                    if isinstance(problem, AccountError)
+                    else "Não foi possível sincronizar a biblioteca."
+                )
+            if not self._account_shutdown:
+                self._libraryPreferenceSynced.emit(context, error)
+
+        threading.Thread(
+            target=perform, name="ClarifyLibraryPreference", daemon=True
+        ).start()
+
+    @Slot(str, str)
+    def _finish_library_preference_sync(self, context, error):
+        if self._account_shutdown or context != self._library_sync_context:
+            return
+        try:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                # A failed sync can still have imported dictionary rows before
+                # its snippets request failed. Reconcile that durable result too.
+                self._reconcile_library_draft()
+        except Exception:
+            error = error or "A biblioteca mudou. Atualize e tente novamente."
+        finally:
+            self._library_sync_context = None
+            self._account_busy, self._account_error = False, error
+            self._account.end_change()
+        self.accountStateChanged.emit()
+        self.dirtyChanged.emit()
+        if self._library_sync_pending:
+            self._retry_library_preference_sync()
 
     @Property(str, notify=errorChanged)
     def lastError(self) -> str:
@@ -975,6 +2667,13 @@ class QmlSettingsController(QObject):
     def beginHotkeyCapture(self, action: str) -> bool:
         """Put one QML row into capture mode without changing the draft."""
 
+        if (
+            self._text_action_capture_context
+            or self._text_action_mutation["busy"]
+            or not self._account_can_change()
+        ):
+            self._set_error(ValueError("Finalize a operação antes de continuar."))
+            return False
         try:
             parsed = _hotkey_action(action)
         except HotkeyValidationError as error:
@@ -983,6 +2682,12 @@ class QmlSettingsController(QObject):
         self._set_error(None)
         next_action = parsed.value
         if next_action != self._hotkey_capture_action:
+            if not self._hotkey_capture_action and self._hotkey_capture_changed:
+                try:
+                    self._hotkey_capture_changed(True)
+                except Exception as error:
+                    self._set_error(error)
+                    return False
             self._hotkey_capture_action = next_action
             self.hotkeyChanged.emit()
         return True
@@ -991,7 +2696,15 @@ class QmlSettingsController(QObject):
     def cancelHotkeyCapture(self) -> bool:
         """Leave capture mode without changing the current draft."""
 
+        if not self.endTextActionHotkeyCapture():
+            return False
         if self._hotkey_capture_action:
+            if self._hotkey_capture_changed:
+                try:
+                    self._hotkey_capture_changed(False)
+                except Exception as error:
+                    self._set_error(error)
+                    return False
             self._hotkey_capture_action = ""
             self.hotkeyChanged.emit()
         return True
@@ -1008,7 +2721,7 @@ class QmlSettingsController(QObject):
             return False
         updated = self._update_config(replace(self._config, hotkeys=settings))
         if updated:
-            self.cancelHotkeyCapture()
+            return self.cancelHotkeyCapture()
         return updated
 
     @Slot(str, int, int, result=bool)
@@ -1026,6 +2739,19 @@ class QmlSettingsController(QObject):
             self._set_error(error)
             return False
         return self.setHotkey(action, definition)
+
+    @Slot(str, int, int, result=bool)
+    def captureMouseHotkey(self, action: str, button: int, modifier_flags: int) -> bool:
+        keys = {
+            _qt_enum_value(Qt.MouseButton.BackButton): "XBUTTON1",
+            _qt_enum_value(Qt.MouseButton.ForwardButton): "XBUTTON2",
+        }
+        if button not in keys:
+            return False
+        return self.setHotkey(
+            action,
+            HotkeyDefinition(_qml_hotkey_modifiers(modifier_flags), keys[button]),
+        )
 
     @Slot(str, result=bool)
     def resetHotkey(self, action: str) -> bool:
@@ -1119,24 +2845,77 @@ class QmlSettingsController(QObject):
             return False
         return self._update_config(replace(self._config, recording_controls=controls))
 
+    @Slot(bool, result=bool)
+    def setRecordingVadEnabled(self, value: bool) -> bool:
+        """Stage the switch without replacing numeric recording drafts."""
+        if type(value) is not bool:
+            self._set_error(ValueError("Invalid settings value"))
+            return False
+        controls = self._config.recording_controls
+        return self._update_config(
+            replace(
+                self._config,
+                recording_controls=replace(
+                    controls, vad=replace(controls.vad, enabled=value)
+                ),
+            )
+        )
+
     @Slot(result=bool)
     def refreshMicrophoneInventory(self) -> bool:
-        """Refresh one inventory snapshot without changing the saved draft."""
+        """Share one background query and keep the last completed inventory."""
 
+        if self._microphone_inventory_shutdown:
+            return False
+        if self._microphone_inventory_busy:
+            return True
         self.stopMicrophoneTest()
-        try:
-            inventory = self._snapshot_microphone_inventory()
-        except Exception as error:
-            inventory = MicrophoneInventory.unavailable("enumeration_failed")
-            self._set_error(error)
-        else:
-            # Hardware enumeration is diagnostic state, not an editable
-            # configuration error.  Leave an unrelated Settings draft error
-            # untouched only when the snapshot itself was successful.
-            self._set_error(None)
-        self._microphone_inventory = inventory
+        self._microphone_inventory_generation += 1
+        generation = self._microphone_inventory_generation
+        self._microphone_inventory_busy = True
+        self._microphone_inventory_error_before = self._last_error
         self.microphoneChanged.emit()
+        mailbox = self._background_mailbox
+        backend = self._microphone_backend
+        source = self._microphone_inventory_source
+
+        def discover():
+            try:
+                inventory, discovered_source = _read_microphone_inventory(
+                    backend, source
+                )
+                error = None
+            except Exception as failure:
+                inventory = MicrophoneInventory.unavailable("enumeration_failed")
+                discovered_source = source
+                error = str(failure).strip() or type(failure).__name__
+            mailbox.post(
+                "microphone_inventory",
+                generation,
+                (inventory, discovered_source, error),
+            )
+
+        self._microphone_inventory_thread = threading.Thread(
+            target=discover, name="ClarifyMicrophoneInventory", daemon=True
+        )
+        self._microphone_inventory_thread.start()
         return True
+
+    @Slot(int, object)
+    def _finish_microphone_inventory(self, generation, payload):
+        if (
+            self._microphone_inventory_shutdown
+            or generation != self._microphone_inventory_generation
+        ):
+            return
+        inventory, source, error = payload
+        self._microphone_inventory_busy = False
+        self._microphone_inventory_thread = None
+        self._microphone_inventory = inventory
+        self._microphone_inventory_source = source
+        if self._last_error == self._microphone_inventory_error_before:
+            self._set_error(ValueError(error) if error else None)
+        self.microphoneChanged.emit()
 
     @Slot(result=bool)
     def refreshMicrophones(self) -> bool:
@@ -1148,7 +2927,11 @@ class QmlSettingsController(QObject):
     def testMicrophone(self) -> bool:
         """Stream local input levels for up to 30 seconds off the GUI thread."""
 
-        if self._microphone_test_busy:
+        if not self._processing_allowed() or (
+            self._microphone_test_busy
+            or self._microphone_inventory_busy
+            or (self._practice is not None and self._practice.busy)
+        ):
             return False
         selection = self._microphone_selection_for_test()
         if selection is None or not selection.can_record:
@@ -1281,6 +3064,7 @@ class QmlSettingsController(QObject):
                 route,
                 provider_id=provider_id,
                 custom_endpoint="",
+                account_id="",
                 model_id=metadata.default_audio_model
                 if audio
                 else metadata.default_text_model,
@@ -1289,6 +3073,9 @@ class QmlSettingsController(QObject):
 
     def _model_connection_key(self) -> tuple[str, str, str]:
         provider = self.routeProviderId
+        if provider == "chatgpt":
+            state = self.chatgptState
+            return (provider, state["accountId"], str(state["generation"]))
         if provider == LOCAL_ASR_PROVIDER_ID:
             return (provider, "", "")
         config = self._provider_config(provider)
@@ -1301,7 +3088,9 @@ class QmlSettingsController(QObject):
     @Property(str, notify=modelCatalogChanged)
     def routeModelStatus(self) -> str:
         key = self._model_connection_key()
-        if key[0] != LOCAL_ASR_PROVIDER_ID and not key[2]:
+        if (key[0] == "chatgpt" and not self._chatgpt_ready()) or (
+            key[0] not in {LOCAL_ASR_PROVIDER_ID, "chatgpt"} and not key[2]
+        ):
             return "not_configured"
         if key == self._model_loading_key:
             return "loading"
@@ -1314,6 +3103,8 @@ class QmlSettingsController(QObject):
     @Property("QVariantList", notify=modelCatalogChanged)
     def routeModelOptions(self) -> list[dict[str, str]]:
         key = self._model_connection_key()
+        if key[0] == "chatgpt" and not self._chatgpt_ready():
+            return []
         catalog = self._model_catalogs.get(key)
         if catalog is None:
             return []
@@ -1330,9 +3121,11 @@ class QmlSettingsController(QObject):
                 "id": model,
                 "label": local_labels.get(model, model)
                 if key[0] == LOCAL_ASR_PROVIDER_ID
-                else model,
+                else getattr(catalog, "display_names", {}).get(model, model),
             }
-            for model in sorted(set(models))
+            for model in (
+                dict.fromkeys(models) if key[0] == "chatgpt" else sorted(set(models))
+            )
         ]
 
     @Slot(result=bool)
@@ -1344,9 +3137,14 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def refreshRouteModels(self) -> bool:
         """Discover models without saving credentials or changing the route."""
+        if not self._processing_allowed():
+            return False
+        if getattr(self._account, "managed", False) is True:
+            return False
         key = self._model_connection_key()
         if (
-            key[0] != LOCAL_ASR_PROVIDER_ID and not key[2]
+            (key[0] == "chatgpt" and not self._chatgpt_ready())
+            or (key[0] not in {LOCAL_ASR_PROVIDER_ID, "chatgpt"} and not key[2])
         ) or key == self._model_loading_key:
             return False
         if self._model_token is not None:
@@ -1358,6 +3156,12 @@ class QmlSettingsController(QObject):
         self._model_loading_key = key
         self._model_error_key = None
         self.modelCatalogChanged.emit()
+
+        discovery_registry = (
+            PROVIDER_REGISTRY.with_chatgpt_session(self._get_chatgpt_session())
+            if key[0] == "chatgpt"
+            else PROVIDER_REGISTRY
+        )
 
         def discover() -> None:
             try:
@@ -1371,8 +3175,12 @@ class QmlSettingsController(QObject):
                             installed.append(model)
                     catalog = ModelCatalog(audio_models=tuple(installed))
                 else:
-                    catalog = PROVIDER_REGISTRY.discover_models(
-                        key[0], ProviderConnection(key[2], key[1]), token
+                    catalog = discovery_registry.discover_models(
+                        key[0],
+                        ProviderConnection("", "https://api.openai.com/v1")
+                        if key[0] == "chatgpt"
+                        else ProviderConnection(key[2], key[1]),
+                        token,
                     )
             except Exception:
                 # Provider errors can contain URLs or credentials. Do not expose them.
@@ -1388,6 +3196,8 @@ class QmlSettingsController(QObject):
     def _finish_model_discovery(
         self, generation: int, key: object, catalog: object
     ) -> None:
+        # A session can change outside Settings while its worker is in flight.
+        self._read_chatgpt_snapshot()
         if generation != self._model_generation:
             return
         self._model_loading_key = None
@@ -1451,7 +3261,11 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def measureLocalDevice(self):
-        if self.localAsrBusy or self._local_benchmark_busy:
+        if (
+            not self._processing_allowed()
+            or self.localAsrBusy
+            or self._local_benchmark_busy
+        ):
             return False
         from local_asr import default_manifest_path
         from local_asr_catalog import calibrate
@@ -1469,10 +3283,11 @@ class QmlSettingsController(QObject):
         def measure():
             try:
                 result = calibrate(pool, model, audio, token)
-                detail = (
-                    "Measured: "
-                    + result["selected"]
-                    + ". Select Automatic and use this model to apply."
+                from shared.localization import translate
+
+                detail = translate(
+                    "Measured: {engine}. Select Automatic and use this model to apply.",
+                    engine=result["selected"],
                 )
             except Exception as error:
                 detail = str(error)
@@ -1530,6 +3345,8 @@ class QmlSettingsController(QObject):
 
     @Slot(object)
     def _apply_local_devices(self, values):
+        if self._account_shutdown:
+            return
         self._local_devices = values
         self.providerStateChanged.emit()
 
@@ -1556,6 +3373,8 @@ class QmlSettingsController(QObject):
         return self._browse_local(self._local_profile, self._local_devices[index]["id"])
 
     def _browse_local(self, model, device):
+        if not self._processing_allowed():
+            return False
         try:
             from local_asr_catalog import ModelInstaller
 
@@ -1593,8 +3412,22 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setRouteModelId(self, value: str) -> bool:
+        model = str(value or "").strip()
+        try:
+            account_id = (
+                self._chatgpt_model_account(model)
+                if self.routeProviderId == "chatgpt"
+                else ""
+            )
+        except ValueError as error:
+            self._set_error(error)
+            return False
         return self._update_selected_route(
-            lambda route: replace(route, model_id=str(value or "").strip())
+            lambda route: replace(
+                route,
+                model_id=model,
+                account_id=account_id if route.provider_id == "chatgpt" else "",
+            )
         )
 
     @Slot(str, result=bool)
@@ -1605,6 +3438,8 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setRouteCustomEndpoint(self, value: str) -> bool:
+        if self.routeProviderId == "chatgpt" and value:
+            return False
         return self._update_selected_route(
             lambda route: replace(route, custom_endpoint=str(value or "").strip())
         )
@@ -1657,6 +3492,8 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setProviderApiKey(self, value: str) -> bool:
+        if self.selectedProviderId == "chatgpt":
+            return False
         self._provider_api_key_draft = str(value or "")
         self._set_error(None)
         self.providerStateChanged.emit()
@@ -1664,6 +3501,8 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setProviderBaseUrl(self, value: str) -> bool:
+        if self.selectedProviderId == "chatgpt":
+            return False
         self._provider_base_url_draft = str(value or "").strip()
         self._set_error(None)
         self.providerStateChanged.emit()
@@ -1672,6 +3511,10 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def validateProvider(self) -> bool:
         """Validate and persist the selected cloud provider without blocking QML."""
+        if not self._processing_allowed():
+            return False
+        if getattr(self._account, "managed", False) is True:
+            return False
 
         provider_id = self._selected_provider_id
         if provider_id == LOCAL_ASR_PROVIDER_ID:
@@ -1679,14 +3522,19 @@ class QmlSettingsController(QObject):
                 ValueError("Local Whisper is configured with the install action")
             )
             return False
-        if self.providerBusy:
+        if self.providerBusy or self._chatgpt_busy:
             return False
 
         provider_config = self._provider_config(provider_id)
         api_key = (
-            self._provider_api_key_draft.strip() or provider_config.api_key.strip()
+            ""
+            if provider_id == "chatgpt"
+            else self._provider_api_key_draft.strip() or provider_config.api_key.strip()
         )
-        if not api_key:
+        if provider_id == "chatgpt" and not self._chatgpt_ready():
+            self._set_error(ValueError("Conecte o ChatGPT e permita o uso do plano."))
+            return False
+        if not api_key and provider_id != "chatgpt":
             self._set_error(
                 ValueError("Enter an API key before validating the provider")
             )
@@ -1712,9 +3560,15 @@ class QmlSettingsController(QObject):
         self._set_error(None)
         self.providerStateChanged.emit()
 
+        discovery_registry = (
+            PROVIDER_REGISTRY.with_chatgpt_session(self._get_chatgpt_session())
+            if provider_id == "chatgpt"
+            else PROVIDER_REGISTRY
+        )
+
         def validate() -> None:
             try:
-                catalog = PROVIDER_REGISTRY.discover_models(
+                catalog = discovery_registry.discover_models(
                     provider_id,
                     ProviderConnection(api_key, base_url),
                     token,
@@ -1724,7 +3578,11 @@ class QmlSettingsController(QObject):
                     provider_id,
                     generation,
                     False,
-                    {"error": str(error).strip() or type(error).__name__},
+                    {
+                        "error": "Não foi possível carregar os modelos ChatGPT."
+                        if provider_id == "chatgpt"
+                        else str(error).strip() or type(error).__name__
+                    },
                 )
                 return
             self._providerValidationFinished.emit(
@@ -1736,6 +3594,7 @@ class QmlSettingsController(QObject):
                     "base_url": base_url,
                     "models": list(catalog.audio_models),
                     "text_models": list(catalog.text_models),
+                    "catalog": catalog if provider_id == "chatgpt" else None,
                 },
             )
 
@@ -1749,6 +3608,8 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def clearProvider(self) -> bool:
         """Remove the selected cloud credential from the secure store."""
+        if self.selectedProviderId == "chatgpt":
+            return False
 
         provider_id = self._selected_provider_id
         if provider_id == LOCAL_ASR_PROVIDER_ID:
@@ -1794,7 +3655,11 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def installLocalAsr(self) -> bool:
-        if self.localAsrBusy or self._local_benchmark_busy:
+        if (
+            not self._processing_allowed()
+            or self.localAsrBusy
+            or self._local_benchmark_busy
+        ):
             return False
         self._local_device = "auto"
         try:
@@ -1809,6 +3674,8 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def removeLocalAsr(self) -> bool:
+        if not self._processing_allowed():
+            return False
         try:
             self._local_product.remove_async()
         except Exception as error:
@@ -1826,12 +3693,37 @@ class QmlSettingsController(QObject):
 
     @Slot(result=bool)
     def refreshLocalAsr(self) -> bool:
+        if not self._processing_allowed():
+            return False
         return bool(self._local_product.refresh_async())
 
     @Slot()
     def shutdown(self) -> None:
+        self.cancelTextActionProfileModels()
+        if self._text_action_refresh_token is not None:
+            self._text_action_refresh_token.cancel()
+        if self._text_action_mutation_job is not None:
+            self._text_action_mutation_job.abandoned.set()
+            self._text_action_mutation_job.decision.set()
+        self.cancelTextActionPreview()
+        self.endTextActionHotkeyCapture()
+        if self._practice is not None:
+            self._practice.command("close")
+        self.cancelChatGPT()
+        self._release_chatgpt_change()
+        self._chatgpt_generation += 1
+        self._account_shutdown = True
+        self._history_correction_sync.stop()
+        self._history_corrections.clear()
+        self._background_mailbox.close()
+        self._background_timer.stop()
+        self._microphone_inventory_shutdown = True
+        self._microphone_inventory_generation += 1
+        self._microphone_inventory_busy = False
+        self._account_cancel.set()
+        self._library_sync_timer.stop()
         self._unsubscribe_local_state()
-        self._local_inventory_thread.join(timeout=3.5)
+        self._local_generation += 1
         if self._local_benchmark_token is not None:
             self._local_benchmark_token.cancel()
         self._model_generation += 1
@@ -1853,21 +3745,24 @@ class QmlSettingsController(QObject):
             unsubscribe(self._local_state_listener)
 
     def _local_state_callback(self, generation):
-        reference = weakref.ref(self)
+        mailbox = self._background_mailbox
 
         def publish(state):
-            controller = reference()
-            if controller is not None:
-                controller._localStatePublished.emit((generation, state))
+            mailbox.post("local_state", generation, state)
 
         return publish
 
     @Slot(result=bool)
     def load(self) -> bool:
         self.stopMicrophoneTest()
+        if not self.cancelHotkeyCapture():
+            return False
         try:
             loaded_config = self._config_repository.load()
-            self._dictionary_draft = self._dictionary_service.state
+            with self._dictionary_service.transaction():
+                self._dictionary_draft = self._dictionary_service.reload()
+                self._dictionary_baseline = self._dictionary_draft
+                self._snippet_draft_context = self.snippetContext
         except Exception as error:  # Repository errors belong in the QML state.
             self._set_error(error)
             return False
@@ -1876,26 +3771,938 @@ class QmlSettingsController(QObject):
         self.loaded.emit()
         return True
 
+    @Property(str, constant=True)
+    def uiLanguage(self):
+        from shared.localization import device_language
+
+        return device_language()
+
+    @Property("QVariantMap", notify=accountStateChanged)
+    def accountState(self):
+        return {
+            **self._account.snapshot(),
+            "busy": self._account_busy,
+            "socialPending": self._account_busy and self._account_social,
+            "error": self._account_error,
+        }
+
+    def bindComputer(self, controller):
+        self._computer = controller
+        controller.changed.connect(self.computerStateChanged)
+        self.accountStateChanged.connect(controller.refresh)
+        self.computerStateChanged.emit()
+
+    @Property("QVariantMap", notify=computerStateChanged)
+    def computerState(self):
+        if self._computer is not None:
+            return self._computer.snapshot()
+        return {
+            "enabled": False,
+            "running": False,
+            "durable": False,
+            "busy": False,
+            "blocked": True,
+            "error": "unavailable",
+            "devices": [],
+            "pairingReady": False,
+            "pairingExpiresAt": 0,
+        }
+
+    @Property(str, notify=computerStateChanged)
+    def computerPairingImage(self):
+        return self._computer.pairingImage if self._computer is not None else ""
+
+    @Slot(str, str, result=bool)
+    def computerCommand(self, action, value=""):
+        if self._computer is None or not self._computer.command(action, value):
+            self._set_error(ValueError("Não foi possível alterar o acesso do celular."))
+            return False
+        self._set_error(None)
+        return True
+
+    def getComputerPairing(self):
+        return self._computer.pairing() if self._computer is not None else {}
+
+    @Slot()
+    def closeComputerPairing(self):
+        if self._computer is not None:
+            self._computer.command("close")
+
+    @Property("QVariantMap", notify=accountStateChanged)
+    def historyState(self):
+        return (
+            self._history_view.snapshot()
+            if self._history_view is not None
+            else {"context": "", "revision": ""}
+        )
+
+    def getHistoryPage(self, context, cursor, query=""):
+        if self._history_view is None and context == "" and cursor == "":
+            return {
+                "context": "",
+                "revision": "",
+                "entries": [],
+                "cursor": "",
+                "hasMore": False,
+            }
+        if self._history_view is None:
+            raise ValueError("Invalid history context")
+        return self._history_view.page(context, cursor, query)
+
+    def getHistoryTextPart(self, context, token, offset, field):
+        if self._history_view is None:
+            raise ValueError("Invalid history context")
+        return self._history_view.text_part(context, token, offset, field)
+
+    def _history_correction_identity(self):
+        if (
+            self._account_shutdown
+            or getattr(self._account, "_ending_session", False)
+            or (self._account.managed and not self._account.signed_in)
+        ):
+            raise CorrectionError("context_changed")
+        return CorrectionIdentity(
+            self.snippetContext,
+            getattr(self._account, "_generation", 0),
+            "account" if self._account.scope else "local",
+        )
+
+    def _finish_history_correction_window(self):
+        context = self._history_correction_sync_context
+        self._history_correction_sync_context = None
+        if not self._account_shutdown:
+            try:
+                if context == self._history_correction_identity():
+                    self._sync_library_preferences(expected_identity=context)
+            except CorrectionError:
+                pass
+        # The scoped library file is durable even after sign-out or quit.
+        # Existing library reconciliation will sync it on the next login.
+
+    def historyCorrection(self, action, payload):
+        """Explicit correction RPC. Tokens never contain transcript text."""
+        messages = {
+            "invalid_term": "Use um termo de até 256 caracteres, sem quebras de linha.",
+            "no_change": "Informe uma grafia diferente para o termo correto.",
+            "heard_not_found": "O termo ouvido não foi encontrado no original.",
+            "history_changed": "O histórico mudou. Atualize e tente novamente.",
+            "owner_mismatch": "O registro e o dicionário devem pertencer à mesma conta ou ao modo local.",
+            "context_changed": "A conta mudou. Abra a correção novamente.",
+            "library_changed": "O dicionário mudou. Revise a correção novamente.",
+            "library_unavailable": "Não foi possível ler o dicionário. A correção não foi salva.",
+            "library_full": "O dicionário atingiu o limite de 512 termos.",
+            "source_too_large": "Este original excede o limite de leitura para correção.",
+            "expired": "Esta correção expirou. Revise os termos novamente.",
+            "persistence_failed": "Não foi possível salvar a correção. Tente novamente.",
+            "draft_conflict": "Salve ou descarte as alterações pendentes do dicionário antes desta correção.",
+        }
+        try:
+            if type(action) is not str or type(payload) is not dict:
+                raise CorrectionError("invalid_term")
+            if action == "preview":
+                if set(payload) != {
+                    "context",
+                    "revision",
+                    "id",
+                    "libraryContext",
+                    "heard",
+                    "corrected",
+                } or any(type(value) is not str for value in payload.values()):
+                    raise CorrectionError("invalid_term")
+                with self._history_correction_guard:
+                    self._require_library_context(payload["libraryContext"])
+                    preview = self._history_corrections.preview(
+                        CorrectionSource(
+                            payload["context"], payload["revision"], payload["id"]
+                        ),
+                        payload["libraryContext"],
+                        payload["heard"],
+                        payload["corrected"],
+                    )
+                return {
+                    "status": "already_exists" if preview.already_exists else "preview",
+                    "token": preview.token,
+                    "heard": preview.heard,
+                    "entry": preview.entry.to_mapping(),
+                }
+            if (
+                set(payload) != {"token"}
+                or type(payload["token"]) is not str
+                or len(payload["token"]) > 128
+            ):
+                raise CorrectionError("expired")
+            token = payload["token"]
+            if action == "cancel":
+                self._history_corrections.cancel(token)
+                return {"status": "cancelled"}
+            if action == "status":
+                return {"canUndo": self._history_corrections.can_undo(token)}
+            if action not in {"confirm", "undo"}:
+                raise CorrectionError("expired")
+            sync_identity = None
+            with self._history_correction_guard:
+                self._require_library_context(self.snippetContext)
+
+                def validate(candidate):
+                    try:
+                        self._reconciled_library_draft(candidate)
+                    except ValueError:
+                        raise CorrectionError("draft_conflict") from None
+
+                result = getattr(self._history_corrections, action)(
+                    token, validate=validate
+                )
+                changed = result.status in {"saved", "saved_without_undo", "undone"}
+                if changed:
+                    self._reconcile_library_draft(self._dictionary_service.state)
+                    if action == "undo":
+                        self._history_correction_sync.stop()
+                        self._history_correction_sync_context = None
+                        sync_identity = self._history_correction_identity()
+                    elif self._account.scope:
+                        # One bounded window. Polling never restarts it.
+                        identity = self._history_correction_identity()
+                        if (
+                            not self._history_correction_sync.isActive()
+                            or self._history_correction_sync_context != identity
+                        ):
+                            self._history_correction_sync.stop()
+                            self._history_correction_sync_context = identity
+                            self._history_correction_sync.start(5000)
+                response = {
+                    "status": result.status,
+                    "receipt": result.receipt,
+                    "canUndo": bool(result.receipt)
+                    and self._history_corrections.can_undo(result.receipt),
+                }
+            if changed:
+                self.dirtyChanged.emit()
+                self.saved.emit()
+            if sync_identity is not None:
+                self._sync_library_preferences(expected_identity=sync_identity)
+            return response
+        except Exception as error:
+            code = (
+                error.code if isinstance(error, CorrectionError) else "context_changed"
+            )
+            return {"error": messages.get(code, messages["persistence_failed"])}
+
+    @staticmethod
+    def _write_history_clipboard(text):
+        from PySide6.QtGui import QGuiApplication
+
+        app = QGuiApplication.instance()
+        if not isinstance(app, QGuiApplication) or app.clipboard() is None:
+            raise OSError("Clipboard unavailable")
+        clipboard = app.clipboard()
+        clipboard.setText(text)
+        if clipboard.text() != text:
+            raise OSError("Clipboard write failed")
+
+    def copyHistoryText(self, context, token, field, revision):
+        if self._history_view is None:
+            raise ValueError("Invalid history context")
+        return self._history_view.copy_text(
+            context, token, field, revision, self._write_history_clipboard
+        )
+
+    @Slot(str, str, result=bool)
+    def deleteHistoryEntry(self, token, context):
+        try:
+            if self._history is not None:
+                self._history_view.delete(context, token)
+                threading.Thread(
+                    target=lambda: self._history.sync_safely(force=True),
+                    name="ClarifyHistory",
+                    daemon=True,
+                ).start()
+            self.accountStateChanged.emit()
+            return True
+        except (OSError, ValueError) as error:
+            self._set_error(error)
+            return False
+
+    @Slot(str, result=bool)
+    def clearHistory(self, context):
+        try:
+            if self._history is not None:
+                self._history_view.clear(context)
+                threading.Thread(
+                    target=lambda: self._history.sync_safely(force=True),
+                    name="ClarifyHistory",
+                    daemon=True,
+                ).start()
+            self.accountStateChanged.emit()
+            return True
+        except (OSError, ValueError) as error:
+            self._set_error(error)
+            return False
+
+    @Property(bool, notify=configChanged)
+    def onboardingRequired(self):
+        return not self._config.onboarding_completed
+
+    def bindPractice(self, controller):
+        self._practice = controller
+
+    @Property("QVariantMap", notify=configChanged)
+    def practiceState(self):
+        return (
+            self._practice.snapshot() if self._practice is not None else {"open": False}
+        )
+
+    @Slot(str, result=bool)
+    def practiceCommand(self, action):
+        if self._practice is None:
+            return False
+        return self._practice.command(action)
+
+    @Slot(str, str, result=bool)
+    def completeOnboarding(self, mode, key=""):
+        """Commit the first-run choice through the existing config transaction."""
+        if (
+            self._account_busy
+            or self._chatgpt_busy
+            or not self._account_can_change()
+            or self.dirty
+            or self.providerDirty
+        ):
+            self._set_error(ValueError("Finalize a operação antes de continuar."))
+            return False
+        try:
+            config = self._config_repository.load()
+            if config.onboarding_completed:
+                return True
+            if mode == "account":
+                account = self._account.snapshot()
+                if not account.get("signedIn"):
+                    raise ValueError("Entre na conta novamente.")
+            elif mode in {"byok", "local"}:
+                if self._account.snapshot().get("signedIn"):
+                    raise ValueError(
+                        "Saia da conta para usar sua chave ou modelos locais."
+                    )
+                if mode == "byok":
+                    key = str(key).strip()
+                    if not key.startswith("gsk_") or any(c.isspace() for c in key):
+                        raise ValueError("Informe uma chave válida do Groq.")
+                    config = replace(config, groq=replace(config.groq, api_key=key))
+                provider = "groq" if mode == "byok" else "local_asr"
+                provider_config = getattr(config, provider)
+                routes = config.workflows.with_route(
+                    "transcription",
+                    replace(
+                        config.workflow("transcription"),
+                        provider_id=provider,
+                        model_id=provider_config.audio_model,
+                        custom_endpoint="",
+                        independent=True,
+                    ),
+                )
+                if mode == "byok":
+                    for scope in ("refinement", "rewrite", "translation"):
+                        routes = routes.with_route(
+                            scope,
+                            replace(
+                                config.workflow(scope),
+                                provider_id="groq",
+                                model_id=config.groq.text_model,
+                                custom_endpoint="",
+                                independent=True,
+                            ),
+                        )
+                config = replace(
+                    config, workflows=routes, local_asr_cloud_refinement=False
+                )
+            else:
+                raise ValueError("Escolha uma opção para continuar.")
+            persisted = self._config_repository.apply(
+                replace(config, onboarding_completed=True)
+            )
+        except Exception as error:
+            self._set_error(error)
+            return False
+        self._replace_loaded_config(persisted)
+        if mode == "byok":
+            self.selectProvider("groq")
+        self._set_error(None)
+        self.saved.emit()
+        if self._practice is not None:
+            self._practice.command("open")
+        return True
+
+    @Slot(str, str, result=bool)
+    def accountCommand(self, action, value="", *, expected_identity=None):
+        if self._account_shutdown:
+            return False
+        if action == "cancel-social":
+            if self._account_busy and self._account_social:
+                self._account_cancel.set()
+                return True
+            return False
+        if action == "auto" and (
+            self._account_busy
+            or not self._account_can_change()
+            or self.dirty
+            or self.providerDirty
+            or not self._account.signed_in
+        ):
+            return False
+        if self._account_busy or self._chatgpt_busy or not self._account_can_change():
+            self._set_error(ValueError("Finalize o ditado antes de alterar a conta."))
+            return False
+        if self.dirty or self.providerDirty:
+            self._set_error(
+                ValueError("Salve ou descarte as alterações antes de alterar a conta.")
+            )
+            return False
+        if action not in {
+            "auto",
+            "configure",
+            "login",
+            "signup",
+            "confirm",
+            "social",
+            "refresh",
+            "sync",
+            "sync-local",
+            "sync-remote",
+            "logout",
+            "delete",
+        }:
+            return False
+        with self._history_correction_guard:
+            if expected_identity is not None:
+                try:
+                    current_identity = self._history_correction_identity()
+                except CorrectionError:
+                    current_identity = None
+                if current_identity != expected_identity:
+                    return False
+            if not self._account.begin_change():
+                return False
+            account_generation = getattr(self._account, "_generation", 0)
+        # Host workers can read account state while draining. Do not hold
+        # the account/history guard when scheduling or waiting for that drain.
+        computer_barrier = (
+            self._computer.prepare_account_change()
+            if self._computer is not None
+            and action
+            in {"configure", "login", "signup", "confirm", "social", "logout", "delete"}
+            else None
+        )
+        self._account_busy, self._account_error = True, ""
+        self._account_social = action == "social"
+        self._account_cancel.clear()
+        self.accountStateChanged.emit()
+
+        def perform():
+            error = ""
+            try:
+                if computer_barrier is not None and computer_barrier.result().get(
+                    "error"
+                ):
+                    raise ValueError("Não foi possível alterar o acesso do celular.")
+                if self._account_shutdown:
+                    return
+                # The drain can outlive the session that reserved this change.
+                # Recheck its owner, then release the guard before account I/O.
+                with self._history_correction_guard:
+                    if getattr(
+                        self._account, "_generation", 0
+                    ) != account_generation or (
+                        expected_identity is not None
+                        and self._history_correction_identity() != expected_identity
+                    ):
+                        raise CorrectionError("context_changed")
+                if action == "social" and self._account_cancel.is_set():
+                    raise ValueError("A operação da conta foi cancelada.")
+                if action == "configure":
+                    self._account.configure(value)
+                elif action == "social":
+                    self._account.authenticate_social(
+                        value, cancel=self._account_cancel
+                    )
+                    if self._account.signed_in:
+                        self._dictionary_service.reload()
+                        self._account.refresh_if_due(
+                            self._dictionary_service, force=True
+                        )
+                elif action in {"login", "signup", "confirm"}:
+                    self._account.authenticate(action, value)
+                    if action == "confirm":
+                        self._dictionary_service.reload()
+                        self._account.refresh_if_due(
+                            self._dictionary_service, force=True
+                        )
+                elif action == "auto":
+                    self._account.refresh_if_due(self._dictionary_service)
+                elif action == "refresh":
+                    self._account.refresh()
+                elif action in {"sync", "sync-local", "sync-remote"}:
+                    self._account.sync_library(
+                        self._dictionary_service,
+                        prefer=action.removeprefix("sync-")
+                        if action != "sync"
+                        else None,
+                    )
+                elif action in {"logout", "delete"}:
+                    self._account.logout(delete=action == "delete")
+                    self._dictionary_service.reload()
+            except Exception as problem:
+                from clarify_account import AccountError
+
+                error = (
+                    str(problem)
+                    if isinstance(problem, AccountError)
+                    else "Não foi possível concluir a operação da conta."
+                )
+            if not self._account_shutdown:
+                self._accountFinished.emit(error)
+
+        threading.Thread(target=perform, name="ClarifyAccount", daemon=True).start()
+        return True
+
+    @Slot(object)
+    def _finish_account(self, error):
+        if self._account_shutdown:
+            return
+        if self._computer is not None:
+            self._computer.finish_account_change()
+        self._account_social = False
+        self._account_error = error
+        try:
+            with self._dictionary_service.transaction():
+                self._dictionary_draft = self._dictionary_service.reload()
+                self._dictionary_baseline = self._dictionary_draft
+                self._snippet_draft_context = self.snippetContext
+        finally:
+            self._account_busy = False
+            self._account.end_change()
+        self.accountStateChanged.emit()
+        self.endTextActionHotkeyCapture()
+        try:
+            self._apply_config_hotkeys(self._config_repository.load())
+        except Exception as problem:
+            self._set_error(problem)
+        self.refreshTextActions()
+        self.textActionsChanged.emit()
+        self.loaded.emit()
+
     @Slot(result=bool)
-    def save(self) -> bool:
+    @Slot(str, result=bool)
+    def save(self, context=None) -> bool:
+        context = self._snippet_draft_context if context is None else context
+        if not self.cancelHotkeyCapture():
+            return False
+        try:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                self._reconcile_library_draft()
+                sync_identity = (
+                    self._history_correction_identity()
+                    if self._account.scope and not self._account_busy
+                    else None
+                )
+                if not self._save_owned_library(context):
+                    return False
+        except Exception as error:
+            self._set_error(error)
+            return False
+        self.saved.emit()
+        if sync_identity is not None:
+            self.accountCommand("sync", "", expected_identity=sync_identity)
+        return True
+
+    @Slot(str, "QVariantList", result=bool)
+    def savePreference(self, method: str, args: list) -> bool:
+        """Persist one allowlisted control against current storage, never Save All."""
+        try:
+            with self._dictionary_service.transaction():
+                if not self._save_preference(method, args):
+                    return False
+        except Exception as error:
+            self._set_error(error)
+            return False
+        self.saved.emit()
+        return True
+
+    def _save_preference(self, method: str, args: list) -> bool:
+        before = None
+        hotkeys_attempted = False
+        try:
+            before = self._config_repository.load()
+            try:
+                change = self._preference_change(method, args, before)
+                candidate = change(before)
+                draft = change(self._config)
+                candidate = self._text_actions.sync_legacy_routes(candidate, before)
+                draft = self._text_actions.sync_legacy_routes(draft, self._config)
+                if (
+                    candidate.hotkeys != before.hotkeys
+                    or draft.hotkeys != self._config.hotkeys
+                ):
+                    candidate = self._text_actions.sync_legacy_hotkeys(
+                        candidate, before
+                    )
+                    draft = self._text_actions.sync_legacy_hotkeys(draft, self._config)
+            except (TypeError, ValueError):
+                self._set_error(ValueError("Invalid settings value"))
+                return False
+            hotkey_method = method in {
+                "setHotkey",
+                "setHotkeyActivationMode",
+                "resetHotkey",
+                "resetAllHotkeys",
+            }
+            if hotkey_method:
+                capture = self._hotkey_capture_action
+                if not self.cancelHotkeyCapture():
+                    # A failed restore must remain retryable.
+                    self._hotkey_capture_action = capture
+                    self.hotkeyChanged.emit()
+                    return False
+            if (
+                self._hotkey_applier is not None
+                # Clearing an optional dictation action does not change bindings
+                # and must also work while the account catalog is unavailable.
+                and method != "setDictationCleanupLevel"
+                and (hotkey_method or candidate.text_actions != before.text_actions)
+                and (
+                    candidate.hotkeys != before.hotkeys
+                    or candidate.text_actions != before.text_actions
+                    or self._hotkey_reapply_required
+                )
+            ):
+                hotkeys_attempted = True
+                self._apply_config_hotkeys(candidate)
+            if method == "setAutostart":
+                saved = _apply_config_with_autostart_transaction(
+                    candidate, self.repositories, self._autostart_registry
+                )
+            else:
+                saved = self._config_repository.apply(candidate)
+        except Exception as error:
+            if hotkeys_attempted and before is not None:
+                try:
+                    self._apply_config_hotkeys(before)
+                    self._hotkey_reapply_required = False
+                except Exception:
+                    self._hotkey_reapply_required = True
+                    self._set_error(
+                        ValueError(
+                            "Não foi possível restaurar os atalhos. Tente novamente."
+                        )
+                    )
+                    return False
+            self._set_error(error)
+            return False
+        if hotkeys_attempted:
+            self._hotkey_reapply_required = False
+        self._update_config(draft)
+        dirty = self._config != saved
+        if self._dirty != dirty:
+            self._dirty = dirty
+            self.dirtyChanged.emit()
+        if method == "useLocalAsr":
+            self.selectWorkflow(WorkflowScope.TRANSCRIPTION.value)
+        self._set_error(None)
+        return True
+
+    def _preference_change(
+        self, method: str, args: list, before: AppConfig
+    ) -> Callable[[AppConfig], AppConfig]:
+        """Small explicit write set; text, credentials and libraries are excluded."""
+        bool_fields = {
+            "setHistoryEnabled": "history_enabled",
+            "setAutomaticUpdates": "automatic_updates",
+            "setLocalStreaming": "local_asr_streaming",
+            "setLocalAsrCloudRefinement": "local_asr_cloud_refinement",
+        }
+        bool_methods = {
+            *bool_fields,
+            "setAutostart",
+            "setRouteEnabled",
+            "setRecordingVadEnabled",
+        }
+        text_methods = {
+            "setDictationWritingStyle",
+            "setDictationCleanupLevel",
+            "setMode",
+            "setLanguage",
+            "setRouteProviderId",
+            "setRouteModelId",
+            "setHotkeyActivationMode",
+            "resetHotkey",
+        }
+        if not isinstance(method, str) or not isinstance(args, list):
+            raise ValueError("Invalid settings value")
+        if method in bool_methods:
+            valid = len(args) == 1 and type(args[0]) is bool
+        elif method in text_methods:
+            valid = len(args) == 1 and type(args[0]) is str
+        elif method == "selectMicrophone":
+            valid = len(args) == 1 and (args[0] is None or type(args[0]) is str)
+        elif method == "setHotkey":
+            valid = (
+                len(args) == 2
+                and type(args[0]) is str
+                and isinstance(args[1], (str, dict))
+            )
+        elif method == "setApplicationWritingStyle":
+            valid = len(args) == 2 and all(type(value) is str for value in args)
+        else:
+            valid = method in {"resetAllHotkeys", "useLocalAsr"} and not args
+        if not valid:
+            raise ValueError("Invalid settings value")
+        if (
+            method
+            in {
+                "setRouteProviderId",
+                "setRouteModelId",
+                "setRouteEnabled",
+                "useLocalAsr",
+                "setLocalStreaming",
+                "setLocalAsrCloudRefinement",
+            }
+            and getattr(self._account, "managed", False) is True
+        ):
+            raise ValueError("A conta Clarify gerencia as opções de processamento.")
+
+        if method == "setDictationCleanupLevel":
+            from shared.dictation_policy import cleanup_level
+
+            level = cleanup_level(args[0] or None)
+            return lambda config: replace(
+                self._text_actions.without_after_action(config),
+                dictation_cleanup_level=level,
+            )
+        if method == "setDictationWritingStyle":
+            from shared.writing_style_policy import writing_style
+
+            style = writing_style(args[0] or None)
+            return lambda config: replace(
+                config,
+                application_writing_styles=replace(
+                    config.application_writing_styles, default_style=style
+                ),
+            )
+        if method == "setApplicationWritingStyle":
+            from shared.writing_style_policy import writing_style
+
+            style = writing_style(args[1] or None)
+            return lambda config: replace(
+                config,
+                application_writing_styles=config.application_writing_styles.with_rule(
+                    args[0], style
+                ),
+            )
+        if method in bool_fields:
+            if method == "setLocalAsrCloudRefinement":
+                return lambda config: replace(
+                    config,
+                    local_asr_cloud_refinement=args[0],
+                    workflows=config.workflows.with_route(
+                        "local_asr_refinement",
+                        replace(
+                            config.workflow("local_asr_refinement"),
+                            enabled=args[0],
+                        ),
+                    ),
+                )
+            return lambda config: replace(config, **{bool_fields[method]: args[0]})
+        if method == "setAutostart":
+            return lambda config: replace(
+                config, startup=replace(config.startup, autostart=args[0])
+            )
+        if method in {"setMode", "setLanguage"}:
+            if method == "setMode":
+                self._choice(args[0], (*SUPPORTED_UI_MODES, "transcription"), "mode")
+                field, value = "mode", "prompt"
+            else:
+                field, value = (
+                    "language",
+                    self._choice(args[0], SUPPORTED_LANGUAGES, "language"),
+                )
+            return lambda config: replace(
+                config, ui=replace(config.ui, **{field: value})
+            )
+        if method == "selectMicrophone":
+            selected = str(args[0] or "").strip() or None
+            if selected and not self._microphone_supports_explicit_selection():
+                raise ValueError(
+                    "Explicit microphone selection is unavailable with SoX PulseAudio"
+                )
+            microphone = MicrophoneSettings(selected)
+            return lambda config: replace(config, microphone=microphone)
+        if method == "setRecordingVadEnabled":
+            return lambda config: replace(
+                config,
+                recording_controls=replace(
+                    config.recording_controls,
+                    vad=replace(config.recording_controls.vad, enabled=args[0]),
+                ),
+            )
+        if method in {
+            "setHotkey",
+            "resetHotkey",
+            "resetAllHotkeys",
+            "setHotkeyActivationMode",
+        }:
+            if method in {"setHotkey", "resetHotkey"}:
+                try:
+                    action = _hotkey_action(args[0])
+                    definition = (
+                        HotkeyDefinition.from_mapping(args[1])
+                        if method == "setHotkey"
+                        else None
+                    )
+                except (TypeError, ValueError):
+                    raise ValueError("Invalid settings value") from None
+                if definition is None:
+                    return lambda config: replace(
+                        config, hotkeys=config.hotkeys.reset(action)
+                    )
+                return lambda config: replace(
+                    config, hotkeys=config.hotkeys.with_hotkey(action, definition)
+                )
+            if method == "resetAllHotkeys":
+                return lambda config: replace(config, hotkeys=HotkeySettings.defaults())
+            return lambda config: replace(
+                config,
+                hotkeys=config.hotkeys.with_activation_mode(
+                    args[0],
+                    push_to_talk_supported=self._hotkey_settings_controller.push_to_talk_supported,
+                ),
+            )
+
+        scope = self._selected_scope
+        if method == "useLocalAsr":
+            if self.localAsrStatus != "installed":
+                raise ValueError("Instale o modelo local antes de usar.")
+            scope = WorkflowScope.TRANSCRIPTION.value
+        old_route = before.workflow(scope)
+        fields: dict[str, Any] = {"independent": True}
+        if method == "setRouteProviderId":
+            provider = args[0].strip().lower()
+            if provider not in self.providersForScope(scope):
+                raise ValueError("This provider does not support this task")
+            fields["provider_id"] = provider
+            if provider != old_route.provider_id:
+                metadata = PROVIDER_REGISTRY.describe(provider)
+                fields["model_id"] = (
+                    metadata.default_audio_model
+                    if WORKFLOW_CAPABILITIES[scope]
+                    == ProviderCapability.AUDIO_TRANSCRIPTION
+                    else metadata.default_text_model
+                )
+                fields["custom_endpoint"] = ""
+                fields["account_id"] = ""
+        elif method == "setRouteModelId":
+            metadata = PROVIDER_REGISTRY.describe(old_route.provider_id)
+            audio = (
+                WORKFLOW_CAPABILITIES[scope] == ProviderCapability.AUDIO_TRANSCRIPTION
+            )
+            model = args[0].strip() or (
+                metadata.default_audio_model if audio else metadata.default_text_model
+            )
+            fields["model_id"] = (
+                PROVIDER_REGISTRY.canonical_audio_model(old_route.provider_id, model)
+                if audio
+                else model
+            )
+            fields["account_id"] = (
+                self._chatgpt_model_account(model)
+                if old_route.provider_id == "chatgpt"
+                else ""
+            )
+        elif method == "setRouteEnabled":
+            fields["enabled"] = args[0]
+        else:  # useLocalAsr
+            fields.update(
+                provider_id=LOCAL_ASR_PROVIDER_ID,
+                model_id=self._local_profile,
+                account_id="",
+                custom_endpoint="",
+                enabled=True,
+            )
+
+        def change_route(config: AppConfig) -> AppConfig:
+            route = config.workflow(scope)
+            changes = dict(fields)
+            # Provider changes reset saved connection defaults, while pending
+            # endpoint/model edits remain in the Settings draft.
+            if (
+                "custom_endpoint" in changes
+                and route.custom_endpoint != old_route.custom_endpoint
+            ):
+                changes.pop("custom_endpoint")
+            if (
+                method == "setRouteProviderId"
+                and "model_id" in changes
+                and route.model_id != old_route.model_id
+            ):
+                changes.pop("model_id")
+            config = replace(
+                config,
+                workflows=config.workflows.with_route(scope, replace(route, **changes)),
+            )
+            route = config.workflow(scope)
+            # Keep the persisted compatibility projection in the draft too.
+            # Otherwise a successful scoped write would still appear dirty.
+            if scope == "transcription":
+                provider_config = getattr(config, route.provider_id)
+                config = replace(
+                    config,
+                    selection=replace(
+                        config.selection, transcription_provider=route.provider_id
+                    ),
+                    **{
+                        route.provider_id: replace(
+                            provider_config, audio_model=route.model_id
+                        )
+                    },
+                )
+            elif scope == "refinement":
+                config = replace(
+                    config,
+                    selection=replace(
+                        config.selection,
+                        refinement_provider=route.provider_id,
+                        refinement_model=route.model_id,
+                    ),
+                )
+            elif scope == "local_asr_refinement":
+                config = replace(config, local_asr_cloud_refinement=route.enabled)
+            if method == "useLocalAsr":
+                config = replace(config, local_asr_device=self._local_device)
+            return config
+
+        return change_route
+
+    def _save_owned_library(self, context) -> bool:
+        """Persist settings and library, including rollback, under one owner guard."""
         persisted_before: AppConfig | None = None
         hotkeys_applied = False
         persisted_config = None
         try:
             persisted_before = self._config_repository.load()
-            if (
-                self._hotkey_applier is not None
-                and persisted_before.hotkeys != self._config.hotkeys
+            if self._hotkey_applier is not None and (
+                persisted_before.hotkeys != self._config.hotkeys
+                or persisted_before.text_actions != self._config.text_actions
             ):
-                self._hotkey_applier(self._config.hotkeys)
+                self._apply_config_hotkeys(self._config)
                 hotkeys_applied = True
             persisted_config = _apply_config_with_autostart_transaction(
                 self._config,
                 self.repositories,
                 self._autostart_registry,
             )
+            self._require_library_context(context)
             if self._dictionary_draft != self._dictionary_service.state:
-                self._dictionary_service.replace(self._dictionary_draft)
+                self._dictionary_service.replace(
+                    self._dictionary_draft, expected_context=context
+                )
         except Exception as error:  # Validation/storage errors are user-facing.
             if persisted_config is not None and persisted_before is not None:
                 try:
@@ -1912,14 +4719,14 @@ class QmlSettingsController(QObject):
             if hotkeys_applied and self._hotkey_applier is not None:
                 try:
                     assert persisted_before is not None
-                    self._hotkey_applier(persisted_before.hotkeys)
+                    self._apply_config_hotkeys(persisted_before)
                 except Exception:
                     pass
             self._set_error(error)
             return False
+        self._dictionary_baseline = self._dictionary_draft
         self._replace_loaded_config(persisted_config)
         self._set_error(None)
-        self.saved.emit()
         return True
 
     @Slot(str, result=bool)
@@ -1993,6 +4800,27 @@ class QmlSettingsController(QObject):
 
     def _provider_state(self, provider_id: str) -> dict[str, Any]:
         metadata = PROVIDER_REGISTRY.describe(provider_id)
+        if provider_id == "chatgpt":
+            state = self.chatgptState
+            activity = self._provider_activity.get(provider_id, {})
+            return {
+                "providerId": provider_id,
+                "displayName": metadata.display_name,
+                "kind": "cloud",
+                "status": activity.get("status")
+                or (
+                    "configured"
+                    if state["connected"] and state["planEnabled"]
+                    else "not_configured"
+                ),
+                "busy": state["busy"] or bool(activity.get("busy")),
+                "error": activity.get("error") or state["error"],
+                "configured": state["connected"] and state["planEnabled"],
+                "hasApiKey": False,
+                "baseUrl": metadata.default_base_url,
+                "models": [],
+                "textModels": list(activity.get("textModels", [])),
+            }
         if provider_id == LOCAL_ASR_PROVIDER_ID:
             state = self._local_state
             return {
@@ -2045,7 +4873,10 @@ class QmlSettingsController(QObject):
         success: bool,
         payload: object,
     ) -> None:
-        if generation != self._provider_generations.get(provider_id):
+        chatgpt_state = self.chatgptState
+        if self._account_shutdown or generation != self._provider_generations.get(
+            provider_id
+        ):
             return
         self._provider_tokens.pop(provider_id, None)
         data = payload if isinstance(payload, dict) else {}
@@ -2061,11 +4892,12 @@ class QmlSettingsController(QObject):
             self.providerStateChanged.emit()
             return
         try:
-            self._persist_provider_credentials(
-                provider_id,
-                str(data.get("api_key") or ""),
-                str(data.get("base_url") or ""),
-            )
+            if provider_id != "chatgpt":
+                self._persist_provider_credentials(
+                    provider_id,
+                    str(data.get("api_key") or ""),
+                    str(data.get("base_url") or ""),
+                )
         except Exception as error:
             self._provider_activity[provider_id] = {
                 "status": "error",
@@ -2084,6 +4916,14 @@ class QmlSettingsController(QObject):
             "textModels": list(data.get("text_models") or []),
             "busy": False,
         }
+        if provider_id == "chatgpt":
+            self._model_catalogs[
+                (
+                    provider_id,
+                    chatgpt_state["accountId"],
+                    str(chatgpt_state["generation"]),
+                )
+            ] = data["catalog"]
         if provider_id == self._selected_provider_id:
             self._provider_api_key_draft = ""
             self._provider_base_url_draft = self._config_provider_base_url(provider_id)
@@ -2134,11 +4974,10 @@ class QmlSettingsController(QObject):
         )
         return saved
 
-    def _publish_local_state(self, state: LocalASRProductState) -> None:
-        self._localStatePublished.emit(state)
-
     @Slot(object)
     def _apply_local_state(self, state: object) -> None:
+        if self._account_shutdown:
+            return
         if isinstance(state, tuple):
             generation, state = state
             if generation != self._local_generation:
@@ -2160,20 +4999,6 @@ class QmlSettingsController(QObject):
             except Exception:
                 return False
         return platform.system() in {"Windows", "Darwin"}
-
-    def _snapshot_microphone_inventory(self) -> MicrophoneInventory:
-        backend_snapshot = getattr(
-            self._microphone_backend, "microphone_inventory", None
-        )
-        if callable(backend_snapshot):
-            inventory = backend_snapshot()
-        elif self._microphone_inventory_source is not None:
-            inventory = self._microphone_inventory_source.snapshot()
-        else:
-            inventory = MicrophoneInventory.unavailable("portaudio_unavailable")
-        if not isinstance(inventory, MicrophoneInventory):
-            raise TypeError("microphone inventory source returned an invalid snapshot")
-        return inventory
 
     def _microphone_selectable_devices(self) -> tuple[Any, ...]:
         if not self._microphone_supports_explicit_selection():
@@ -2248,15 +5073,24 @@ class QmlSettingsController(QObject):
                     "error",
                 )
         if not selection.can_record:
+            from shared.localization import translate
+
             return (
-                f"No safe input device ({self._microphone_inventory.error_code or 'unavailable'}).",
+                translate(
+                    "No safe input device ({code}).",
+                    code=self._microphone_inventory.error_code or "unavailable",
+                ),
                 "error",
             )
         if selection.is_fallback:
             assert selection.device is not None
+            from shared.localization import translate
+
             return (
-                "Saved microphone unavailable; using current default: "
-                + selection.device.name,
+                translate(
+                    "Saved microphone unavailable; using current default: {name}",
+                    name=selection.device.name,
+                ),
                 "warning",
             )
         assert selection.device is not None
@@ -2292,8 +5126,12 @@ class QmlSettingsController(QObject):
             )
             self._microphone_test_kind = "ok" if peak > 0.01 else "warning"
         else:
+            from shared.localization import translate
+
             message = str(payload or "Input test failed")
-            self._microphone_test_status = f"Input test failed: {message}"
+            self._microphone_test_status = translate(
+                "Input test failed: {message}", message=translate(message)
+            )
             self._microphone_test_kind = "error"
         self.microphoneTestChanged.emit()
 
@@ -2347,7 +5185,10 @@ class QmlSettingsController(QObject):
         self._set_error(None)
         if config == self._config:
             return True
+        config = self._text_actions.sync_legacy_routes(config, self._config)
         hotkeys_changed = config.hotkeys != self._config.hotkeys
+        if hotkeys_changed:
+            config = self._text_actions.sync_legacy_hotkeys(config, self._config)
         microphone_changed = (
             config.microphone != self._config.microphone
             or config.recording_controls != self._config.recording_controls
@@ -2358,20 +5199,23 @@ class QmlSettingsController(QObject):
             self._selected_scope
         )
         self._config = config
+        capture_restored = True
+        capture_changed = bool(self._hotkey_capture_action)
         if hotkeys_changed:
             self._hotkey_settings_controller.replace(config.hotkeys)
-            self._hotkey_capture_action = ""
+            capture_restored = self.cancelHotkeyCapture()
         if not self._dirty:
             self._dirty = True
             self.dirtyChanged.emit()
         self.configChanged.emit()
-        if hotkeys_changed:
+        self.textActionsChanged.emit()
+        if hotkeys_changed and not capture_changed:
             self.hotkeyChanged.emit()
         if microphone_changed:
             self.microphoneChanged.emit()
         if route_changed:
             self.routeChanged.emit()
-        return True
+        return capture_restored
 
     def _persist_ui_preference(
         self,
@@ -2401,16 +5245,17 @@ class QmlSettingsController(QObject):
         config_changed = config != self._config
         self._config = config
         self._hotkey_settings_controller.replace(config.hotkeys)
-        self._hotkey_capture_action = ""
+        self.cancelHotkeyCapture()
         self._provider_api_key_draft = ""
         self._provider_base_url_draft = self._config_provider_base_url(
             self._selected_provider_id
         )
         if config_changed:
             self.configChanged.emit()
+            self.textActionsChanged.emit()
         if microphone_changed:
             self.microphoneChanged.emit()
-        if hotkeys_changed or capture_changed:
+        if hotkeys_changed and not capture_changed:
             self.hotkeyChanged.emit()
         self.providerStateChanged.emit()
         if route_changed:

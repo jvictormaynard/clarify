@@ -306,4 +306,4 @@ Evidência Clarify: `workflows.py`, `provider_types.py`, `local_asr.py`,
 `clarify/desktop/qml/Main.qml`, `clarify/desktop/qml/ProviderSettings.qml`,
 `docs/history.md`, `docs/dictionary-snippets.md`, `docs/transcription-latency.md`,
 `docs/local-asr-profiles-and-streaming.md`, `pyproject.toml`,
-`.github/workflows/ci.yml` e `tests/test_pyside6_qml.py`.
+`.github/workflows/ci.yml` e `tests/qt/test_pyside6_qml.py`.

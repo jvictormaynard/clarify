@@ -9,11 +9,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import tomllib
 from pathlib import Path
 from urllib.parse import quote
+
+try:
+    from .desktop_payload import MANIFEST, manifest_bytes, payload_manifest
+except ImportError:
+    from desktop_payload import MANIFEST, manifest_bytes, payload_manifest
 
 
 def command_json(args: list[str], cwd: Path) -> dict:
@@ -62,6 +68,20 @@ def license_texts(root: Path, explicit: str | None = None) -> list[tuple[str, st
     return result
 
 
+def vendored_notices(desktop: Path, entries: list[dict]) -> list[tuple[str, str]]:
+    result = []
+    for entry in entries:
+        path = desktop / "licenses" / entry["file"]
+        if not path.resolve().is_relative_to((desktop / "licenses").resolve()):
+            raise ValueError("Vendored notice escapes license directory")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
+            raise ValueError("Vendored notice checksum mismatch")
+        result.append((entry["source"], path.read_text(encoding="utf-8")))
+    if not result or any(not content.strip() for _, content in result):
+        raise ValueError("Empty vendored notice entry")
+    return result
+
+
 def dependency_notices(desktop: Path, ref: str, root: Path, explicit=None):
     try:
         return license_texts(root, explicit)
@@ -69,17 +89,7 @@ def dependency_notices(desktop: Path, ref: str, root: Path, explicit=None):
         manifest = json.loads((desktop / "licenses/manifest.json").read_text())
         if ref not in manifest:
             raise ValueError(f"Review missing license text: {ref}")
-        result = []
-        for entry in manifest[ref]:
-            path = desktop / "licenses" / entry["file"]
-            if not path.resolve().is_relative_to((desktop / "licenses").resolve()):
-                raise ValueError("Vendored notice escapes license directory")
-            if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
-                raise ValueError("Vendored notice checksum mismatch")
-            result.append((entry["source"], path.read_text(encoding="utf-8")))
-        if not result:
-            raise ValueError("Empty vendored notice entry")
-        return result
+        return vendored_notices(desktop, manifest[ref])
 
 
 def inventory(desktop: Path, npm: dict, cargo: dict) -> tuple[dict, str]:
@@ -176,6 +186,30 @@ def inventory(desktop: Path, npm: dict, cargo: dict) -> tuple[dict, str]:
             }
         )
 
+    source_manifest = desktop / "licenses/source-components.json"
+    if source_manifest.is_file():
+        for entry in json.loads(source_manifest.read_text(encoding="utf-8")):
+            ref = entry["purl"]
+            notices.append((ref, vendored_notices(desktop, [entry])))
+            components.append(
+                {
+                    "type": "library",
+                    "name": entry["name"],
+                    "version": entry["version"],
+                    "bom-ref": ref,
+                    "purl": ref,
+                    "scope": "required",
+                    "licenses": [{"expression": entry["license"]}],
+                    "externalReferences": [{"type": "license", "url": entry["source"]}],
+                }
+            )
+            dependencies.extend(
+                [
+                    {"ref": root_ref, "dependsOn": [ref]},
+                    {"ref": ref, "dependsOn": []},
+                ]
+            )
+
     merged = {}
     for edge in dependencies:
         merged.setdefault(edge["ref"], set()).update(edge["dependsOn"])
@@ -199,7 +233,7 @@ def inventory(desktop: Path, npm: dict, cargo: dict) -> tuple[dict, str]:
         ],
     }
     text = "Clarify Settings — third-party license texts\n\n"
-    text += "Generated from locked npm production dependencies and the resolved Windows Cargo graph.\n"
+    text += "Generated from locked npm production dependencies, vendored source notices, and the resolved Windows Cargo graph.\n"
     text += "Build-only crates are included for attribution; inclusion does not prove binary linkage.\n"
     for ref, files in sorted(notices):
         text += f"\n{'=' * 72}\n{ref}\n"
@@ -227,10 +261,101 @@ def merge_bom(base: dict, settings: dict) -> dict:
     return base
 
 
+def electron_inventory(desktop: Path, npm: dict, shell: Path) -> tuple[dict, str]:
+    package = json.loads((desktop / "package.json").read_text(encoding="utf-8"))
+    installed = json.loads(
+        (desktop / "node_modules/electron/package.json").read_text(encoding="utf-8")
+    )
+    version = installed["version"]
+    if package["devDependencies"]["electron"] != version:
+        raise ValueError("Installed Electron differs from the pinned runtime")
+    # Reuse npm/source attribution without requiring the retired Cargo frontend.
+    cargo = {
+        "packages": [
+            {"id": "root", "name": "clarify-desktop", "version": package["version"]}
+        ],
+        "resolve": {"root": "root", "nodes": [{"id": "root", "deps": []}]},
+    }
+    bom, notices = inventory(desktop, npm, cargo)
+    bom["metadata"]["component"]["name"] = "Clarify Desktop"
+    ref = "pkg:github/electron/electron@" + version
+    bom["components"].append(
+        {
+            "type": "framework",
+            "name": "electron",
+            "version": version,
+            "bom-ref": ref,
+            "purl": ref,
+            "scope": "required",
+            "licenses": [{"expression": "MIT"}],
+            "externalReferences": [
+                {
+                    "type": "distribution",
+                    "url": f"https://github.com/electron/electron/releases/tag/v{version}",
+                }
+            ],
+        }
+    )
+    bom["dependencies"].append({"ref": ref, "dependsOn": []})
+    root_edge = next(
+        edge
+        for edge in bom["dependencies"]
+        if edge["ref"] == bom["metadata"]["component"]["bom-ref"]
+    )
+    root_edge["dependsOn"] = sorted(set(root_edge["dependsOn"]) | {ref})
+    environment = {
+        key: value for key, value in os.environ.items() if key != "NODE_OPTIONS"
+    }
+    environment["ELECTRON_RUN_AS_NODE"] = "1"
+    runtime = subprocess.run(
+        [str(shell / "Clarify Desktop.exe"), "-p", "JSON.stringify(process.versions)"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    versions = json.loads(runtime.stdout)
+    if versions["electron"] != version:
+        raise ValueError("Packaged Electron differs from the pinned runtime")
+    runtime_refs = []
+    for name, key in (("chromium", "chrome"), ("nodejs", "node"), ("v8", "v8")):
+        runtime_ref = f"pkg:generic/{name}@{versions[key]}"
+        runtime_refs.append(runtime_ref)
+        bom["components"].append(
+            {
+                "type": "framework",
+                "name": name,
+                "version": versions[key],
+                "bom-ref": runtime_ref,
+                "purl": runtime_ref,
+                "scope": "required",
+            }
+        )
+        bom["dependencies"].append({"ref": runtime_ref, "dependsOn": []})
+    next(edge for edge in bom["dependencies"] if edge["ref"] == ref)["dependsOn"] = (
+        runtime_refs
+    )
+    notices = notices.replace(
+        "locked npm production dependencies, vendored source notices, and the resolved Windows Cargo graph",
+        "locked npm production dependencies, vendored source notices, and the pinned Electron runtime",
+    ).replace(
+        "Build-only crates are included for attribution; inclusion does not prove binary linkage.\n",
+        "",
+    )
+    for name in ("LICENSE", "LICENSES.chromium.html"):
+        content = (shell / name).read_text(encoding="utf-8")
+        if not content.strip():
+            raise ValueError("Missing Electron runtime license text")
+        notices += f"\n{'=' * 72}\n{ref}/{name}\n{content}\n"
+    return bom, notices
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--desktop", type=Path)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--electron-shell", type=Path)
     parser.add_argument("--merge-bom", type=Path)
     parser.add_argument("--settings-bom", type=Path)
     args = parser.parse_args()
@@ -246,43 +371,77 @@ def main() -> None:
     npm_cli = Path(node).parent / "node_modules/npm/bin/npm-cli.js"
     npm_command = [node, str(npm_cli)] if npm_cli.is_file() else [shutil.which("npm")]
     npm = command_json(
-        [*npm_command, "sbom", "--omit=dev", "--sbom-format", "cyclonedx"], desktop
-    )
-    cargo = command_json(
+        # Each application owns its inventory, independent of other workspaces.
         [
-            "cargo",
-            "metadata",
-            "--format-version",
-            "1",
-            "--locked",
-            "--filter-platform",
-            "x86_64-pc-windows-msvc",
-            "--manifest-path",
-            "src-tauri/Cargo.toml",
-            "--features",
-            "custom-protocol",
+            *npm_command,
+            "sbom",
+            "--workspaces=false",
+            "--omit=dev",
+            "--sbom-format",
+            "cyclonedx",
         ],
         desktop,
     )
-    bom, notices = inventory(desktop, npm, cargo)
-    executable = args.output_dir / "clarify-settings.exe"
-    bom["metadata"]["component"]["hashes"] = [
-        {
-            "alg": "SHA-256",
-            "content": hashlib.sha256(executable.read_bytes()).hexdigest(),
-        }
-    ]
-    bom["metadata"]["properties"] = [
-        {
-            "name": f"clarify:input-sha256:{name}",
-            "value": hashlib.sha256((desktop / name).read_bytes()).hexdigest(),
-        }
-        for name in ("package-lock.json", "src-tauri/Cargo.lock", "rust-toolchain.toml")
-    ]
-    toolchain = tomllib.loads((desktop / "rust-toolchain.toml").read_text())
-    bom["metadata"]["properties"].append(
-        {"name": "clarify:rust-toolchain", "value": toolchain["toolchain"]["channel"]}
-    )
+    if args.electron_shell:
+        shell = args.electron_shell.resolve(strict=True)
+        manifest = manifest_bytes(payload_manifest(shell))
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        (args.output_dir / MANIFEST).write_bytes(manifest)
+        bom, notices = electron_inventory(desktop, npm, shell)
+        bom["metadata"]["component"]["hashes"] = [
+            {"alg": "SHA-256", "content": hashlib.sha256(manifest).hexdigest()}
+        ]
+        bom["metadata"]["properties"] = [
+            {
+                "name": "clarify:input-sha256:package-lock.json",
+                "value": hashlib.sha256(
+                    (desktop / "package-lock.json").read_bytes()
+                ).hexdigest(),
+            }
+        ]
+    else:
+        cargo = command_json(
+            [
+                "cargo",
+                "metadata",
+                "--format-version",
+                "1",
+                "--locked",
+                "--filter-platform",
+                "x86_64-pc-windows-msvc",
+                "--manifest-path",
+                "src-tauri/Cargo.toml",
+                "--features",
+                "custom-protocol",
+            ],
+            desktop,
+        )
+        bom, notices = inventory(desktop, npm, cargo)
+        executable = args.output_dir / "clarify-settings.exe"
+        bom["metadata"]["component"]["hashes"] = [
+            {
+                "alg": "SHA-256",
+                "content": hashlib.sha256(executable.read_bytes()).hexdigest(),
+            }
+        ]
+        bom["metadata"]["properties"] = [
+            {
+                "name": f"clarify:input-sha256:{name}",
+                "value": hashlib.sha256((desktop / name).read_bytes()).hexdigest(),
+            }
+            for name in (
+                "package-lock.json",
+                "src-tauri/Cargo.lock",
+                "rust-toolchain.toml",
+            )
+        ]
+        toolchain = tomllib.loads((desktop / "rust-toolchain.toml").read_text())
+        bom["metadata"]["properties"].append(
+            {
+                "name": "clarify:rust-toolchain",
+                "value": toolchain["toolchain"]["channel"],
+            }
+        )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "Clarify-settings.sbom.json").write_text(
         json.dumps(bom, indent=2) + "\n", encoding="utf-8"

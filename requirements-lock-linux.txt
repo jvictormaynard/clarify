@@ -22,7 +22,7 @@ cachecontrol==0.14.4
     # via
     #   cachecontrol
     #   pip-audit
-certifi==2026.7.22
+certifi==2026.10.19
     # via requests
 cffi==2.1.0
     # via
@@ -44,8 +44,10 @@ cyclonedx-python-lib==11.12.0
     #   pip-audit
 defusedxml==0.7.1
     # via py-serializable
-filelock==3.32.6
-    # via cachecontrol
+filelock==4.2.4
+    # via
+    #   -r requirements-dev.txt
+    #   cachecontrol
 fqdn==1.5.1
     # via jsonschema
 idna==3.18
@@ -74,8 +76,10 @@ markdown-it-py==4.2.0
     # via rich
 mdurl==0.1.2
     # via markdown-it-py
-msgpack==1.2.1
-    # via cachecontrol
+msgpack==1.2.3
+    # via
+    #   -r requirements-dev.txt
+    #   cachecontrol
 mypy==2.3.0
     # via -r requirements-dev.txt
 mypy-extensions==1.1.0
@@ -95,7 +99,7 @@ packaging==26.3
     #   wheel
 pathspec==1.1.1
     # via mypy
-pillow==12.3.0
+pillow==13.0.0
     # via -r requirements.txt
 pip-api==0.0.34
     # via pip-audit
@@ -129,6 +133,8 @@ pyside6-essentials==6.11.2
     # via -r requirements.txt
 python-dateutil==2.9.0.post0
     # via arrow
+qrcode==8.2
+    # via -r requirements.txt
 referencing==0.37.0
     # via
     #   cyclonedx-python-lib
@@ -189,7 +195,7 @@ pip==26.2.1
     #   -r requirements-dev.txt
     #   pip-api
     #   pip-tools
-setuptools==83.0.0
+setuptools==84.2.1
     # via
     #   -r requirements-dev.txt
     #   pip-tools

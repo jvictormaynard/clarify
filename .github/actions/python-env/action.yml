@@ -1,0 +1,39 @@
+name: Locked Python environment
+description: Install the same pinned toolchain for a core or Qt validation lane.
+inputs:
+  platform:
+    description: Lock platform (linux or windows)
+    required: true
+  qt:
+    description: Install Qt and the complete development dependency set
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: requirements-lock-${{ inputs.platform }}.txt
+    - name: Install audio library
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends libportaudio2
+    - name: Install Qt runtime libraries
+      if: runner.os == 'Linux' && inputs.qt == 'true'
+      shell: bash
+      run: sudo apt-get install -y --no-install-recommends libegl1 libopengl0 libxkbcommon0 fonts-dejavu-core
+    - name: Install pinned bootstrap tools
+      shell: pwsh
+      run: python scripts/install_bootstrap_tools.py --lock-file requirements-lock-${{ inputs.platform }}.txt
+    - name: Install locked lane dependencies
+      shell: pwsh
+      env:
+        LOCK_PLATFORM: ${{ inputs.platform }}
+        INSTALL_QT: ${{ inputs.qt }}
+      run: |
+        $requirements = if ($env:INSTALL_QT -eq 'true') { 'requirements-dev.txt' } else { 'ci/requirements-core.txt' }
+        python -m pip install --disable-pip-version-check -r $requirements -c "requirements-lock-$env:LOCK_PLATFORM.txt"
+        if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed.' }

@@ -241,7 +241,11 @@ class QmlUpdateController(QObject):
             and self._phase == "downloading"
         ):
             self._percentage = max(0, min(100, percentage))
-            self._status = f"Baixando a atualização… {self._percentage}%"
+            from shared.localization import translate
+
+            self._status = translate(
+                "Baixando a atualização… {progress}%", progress=self._percentage
+            )
             self.changed.emit()
 
     def _failed_version(self):
@@ -279,7 +283,14 @@ class QmlUpdateController(QObject):
                     "A atualização anterior falhou. A versão anterior foi mantida. Tente instalar novamente pelo menu.",
                 )
             else:
-                self._state("available", f"A versão {result.version} está disponível.")
+                from shared.localization import translate
+
+                self._state(
+                    "available",
+                    translate(
+                        "A versão {version} está disponível.", version=result.version
+                    ),
+                )
                 if self._automatic:
                     self._download()
         elif kind == "download":

@@ -33,6 +33,8 @@ TIMEOUTS = {
     "text_generation": (5.0, 60.0),
 }
 TRANSIENT_STATUS_CODES = frozenset((429, 502, 503, 504))
+MAX_CHATGPT_JSON_BYTES = 1024 * 1024
+MAX_CHATGPT_JSON_SECONDS = 12.0
 MAX_SAFE_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 0.25
 BACKOFF_CAP_SECONDS = 4.0
@@ -146,6 +148,61 @@ class NetworkError(ProviderError):
     code = "network"
 
 
+class ChatGPTUsageLimitError(QuotaError):
+    code = "chatgpt_plan_limit"
+
+
+class ChatGPTIneligibleError(AuthenticationError):
+    code = "chatgpt_plan_ineligible"
+
+
+class ChatGPTPermissionError(AuthenticationError):
+    code = "chatgpt_plan_permission"
+
+
+class ChatGPTIdentityError(AuthenticationError):
+    code = "chatgpt_identity"
+
+
+def chatgpt_response_error(
+    code: str,
+    *,
+    operation: str,
+    status_code: int | None = None,
+    operation_id: str | None = None,
+    request_id: str | None = None,
+) -> ProviderError:
+    """Classify subscription errors without copying provider content to UI/logs."""
+    if not isinstance(code, str) or not re.fullmatch(r"[a-z0-9_]{1,128}", code):
+        code = ""
+    error_type = {
+        "subscription_sharing_usage_limit_exceeded": ChatGPTUsageLimitError,
+        "subscription_sharing_user_not_eligible": ChatGPTIneligibleError,
+        "chatpass_v2_scope_not_authorized": ChatGPTPermissionError,
+        "chatpass_v2_invalid_authorization_context": ChatGPTPermissionError,
+        "subscription_sharing_usage_unavailable": ServiceUnavailableError,
+        "subscription_sharing_user_unavailable": ServiceUnavailableError,
+        "subscription_sharing_unsupported_capability": InvalidRequestError,
+        "subscription_sharing_route_not_supported": InvalidRequestError,
+        "subscription_sharing_invalid_user": ChatGPTIdentityError,
+    }.get(code, InvalidResponseError)
+    error = error_type(
+        provider="chatgpt",
+        operation=operation,
+        status_code=status_code,
+        operation_id=operation_id,
+    )
+    # Keep only bounded machine identifiers. Never retain arbitrary messages.
+    error.response_code = code
+    error.request_id = (
+        request_id
+        if isinstance(request_id, str)
+        and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", request_id)
+        else None
+    )
+    return error
+
+
 _MESSAGES = {
     "en": {
         "authentication": "Check the API key and provider permissions.",
@@ -213,6 +270,52 @@ _MESSAGES = {
         "provider_error": "Запрос к провайдеру завершился ошибкой.",
     },
 }
+
+
+_CHATGPT_MESSAGES = {
+    "en": (
+        "Your ChatGPT plan or app limit was reached. Manage usage in ChatGPT settings.",
+        "This ChatGPT account or workspace cannot use its plan here.",
+        "Allow this app to use your ChatGPT plan, then connect again.",
+        "Could not validate your ChatGPT identity. Check the selected account in settings.",
+    ),
+    "pt": (
+        "O limite do plano ChatGPT ou do aplicativo foi atingido. Gerencie o uso nas configurações do ChatGPT.",
+        "Esta conta ou workspace do ChatGPT não pode usar o plano aqui.",
+        "Autorize o aplicativo a usar seu plano ChatGPT e conecte novamente.",
+        "Não foi possível validar sua identidade ChatGPT. Verifique a conta selecionada nas configurações.",
+    ),
+    "es": (
+        "Se alcanzó el límite del plan ChatGPT o de la aplicación. Gestiona el uso en ChatGPT.",
+        "Esta cuenta o espacio de trabajo de ChatGPT no puede usar el plan aquí.",
+        "Autoriza el uso de tu plan ChatGPT y vuelve a conectar.",
+        "No se pudo validar tu identidad de ChatGPT. Revisa la cuenta seleccionada en los ajustes.",
+    ),
+    "de": (
+        "Das ChatGPT- oder App-Limit wurde erreicht. Verwalten Sie die Nutzung in ChatGPT.",
+        "Dieses ChatGPT-Konto oder dieser Arbeitsbereich kann den Plan hier nicht nutzen.",
+        "Erlauben Sie dieser App die Nutzung Ihres ChatGPT-Plans und verbinden Sie sich erneut.",
+        "Ihre ChatGPT-Identität konnte nicht bestätigt werden. Prüfen Sie das ausgewählte Konto in den Einstellungen.",
+    ),
+    "ru": (
+        "Достигнут лимит плана ChatGPT или приложения. Управляйте использованием в настройках ChatGPT.",
+        "Этот аккаунт или рабочее пространство ChatGPT не может использовать план здесь.",
+        "Разрешите приложению использовать план ChatGPT и подключитесь снова.",
+        "Не удалось подтвердить вашу личность ChatGPT. Проверьте выбранный аккаунт в настройках.",
+    ),
+}
+for _language, _messages in _CHATGPT_MESSAGES.items():
+    _MESSAGES[_language].update(
+        zip(
+            (
+                "chatgpt_plan_limit",
+                "chatgpt_plan_ineligible",
+                "chatgpt_plan_permission",
+                "chatgpt_identity",
+            ),
+            _messages,
+        )
+    )
 
 
 def localized_error_message(error: ProviderError, language: str = "en") -> str:
@@ -398,6 +501,36 @@ def _http_error(
 ) -> ProviderError:
     status = int(response.status_code)
     error_code = _response_error_code(response)
+    if provider == "chatgpt" and error_code.startswith(
+        ("subscription_sharing_", "chatpass_v2_")
+    ):
+        headers = getattr(response, "headers", {}) or {}
+        return chatgpt_response_error(
+            error_code,
+            operation=operation,
+            status_code=status,
+            operation_id=operation_id,
+            request_id=headers.get("x-request-id") or headers.get("openai-request-id"),
+        )
+    if provider == "chatgpt" and status in (401, 403):
+        # Direct-route admission can return only a free-form 'detail'. Avoid
+        # presenting an API-key diagnosis for an OAuth/policy rejection.
+        error_type = ChatGPTPermissionError if status == 401 else ChatGPTIneligibleError
+        error = error_type(
+            provider=provider,
+            operation=operation,
+            status_code=status,
+            operation_id=operation_id,
+        )
+        error.response_code = ""
+        request_id = (getattr(response, "headers", {}) or {}).get("x-request-id")
+        error.request_id = (
+            request_id
+            if isinstance(request_id, str)
+            and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", request_id)
+            else None
+        )
+        return error
     error_status = _response_error_status(response)
     try:
         classification_text = str(getattr(response, "text", ""))[:2000].casefold()
@@ -594,6 +727,11 @@ class ProviderHttpClient:
         attempts = MAX_SAFE_ATTEMPTS if retryable else 1
         sender = getattr(self.session, method.lower())
         operation_id = secrets.token_hex(6)
+        requested_stream = bool(kwargs.get("stream", False))
+        if provider == "chatgpt":
+            # Read JSON ourselves too: requests' default buffering can wait
+            # indefinitely while a peer drips bytes within the read timeout.
+            kwargs["stream"] = True
 
         for attempt in range(1, attempts + 1):
             if cancel_token is not None:
@@ -668,11 +806,53 @@ class ProviderHttpClient:
                     provider=provider, operation=operation, operation_id=operation_id
                 )
             status = int(response.status_code)
+            if provider == "chatgpt" and (
+                not requested_stream or not 200 <= status < 300
+            ):
+                try:
+                    self._cache_chatgpt_json(
+                        response, cancel_token, operation, operation_id
+                    )
+                except (ProviderError, requests.RequestException) as error:
+                    typed_error = (
+                        error
+                        if isinstance(error, ProviderError)
+                        else _network_error(error, provider, operation, operation_id)
+                    )
+                    typed_error.status_code = status
+                    request_id = (getattr(response, "headers", {}) or {}).get(
+                        "x-request-id"
+                    )
+                    typed_error.request_id = (
+                        request_id
+                        if isinstance(request_id, str)
+                        and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", request_id)
+                        else None
+                    )
+                    self._log(
+                        event="provider_http_error",
+                        provider=provider,
+                        operation=operation,
+                        operation_id=operation_id,
+                        method=method,
+                        host=self._host(url),
+                        attempt=attempt,
+                        max_attempts=attempts,
+                        status_code=status,
+                        error_type=typed_error.code,
+                    )
+                    # A cancelled or incomplete error body cannot authorize a
+                    # retry, even for an otherwise safe GET.
+                    raise typed_error from None
             if 200 <= status < 300:
                 setattr(response, "_clarify_operation_id", operation_id)
                 return response
 
-            typed_error = _http_error(response, provider, operation, operation_id)
+            try:
+                typed_error = _http_error(response, provider, operation, operation_id)
+            finally:
+                if provider == "chatgpt":
+                    response.close()
             should_retry = (
                 retryable
                 and status in TRANSIENT_STATUS_CODES
@@ -700,15 +880,53 @@ class ProviderHttpClient:
             )
             if not should_retry:
                 close = getattr(response, "close", None)
-                if callable(close):
+                if provider != "chatgpt" and callable(close):
                     close()
                 raise typed_error
             close = getattr(response, "close", None)
-            if callable(close):
+            if provider != "chatgpt" and callable(close):
                 close()
             self._sleep(delay or 0.0, cancel_token, provider, operation, operation_id)
 
         raise AssertionError("provider HTTP retry loop exhausted unexpectedly")
+
+    @staticmethod
+    def _cache_chatgpt_json(response, token, operation, operation_id):
+        deadline = time.monotonic() + MAX_CHATGPT_JSON_SECONDS
+        body = bytearray()
+        complete = False
+
+        def check():
+            if token is not None:
+                token.raise_if_cancelled("chatgpt", operation, operation_id)
+            if time.monotonic() > deadline:
+                raise ProviderTimeoutError(
+                    provider="chatgpt", operation=operation, operation_id=operation_id
+                )
+
+        try:
+            check()
+            for chunk in response.iter_content(chunk_size=1):
+                check()
+                if (
+                    not isinstance(chunk, bytes)
+                    or len(body) + len(chunk) > MAX_CHATGPT_JSON_BYTES
+                ):
+                    raise InvalidResponseError(
+                        provider="chatgpt",
+                        operation=operation,
+                        operation_id=operation_id,
+                    )
+                body.extend(chunk)
+            check()
+            # Populate requests' normal content cache. json()/text diagnostics
+            # can now inspect only these bounded bytes, without another read.
+            response._content = bytes(body)
+            response._content_consumed = True
+            complete = True
+        finally:
+            if not complete:
+                response.close()
 
     def invalid_response(
         self, response: requests.Response, *, provider: str, operation: str

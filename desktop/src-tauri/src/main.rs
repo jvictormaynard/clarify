@@ -7,6 +7,9 @@ use tauri::Manager;
 
 // Anonymous OS pipes connect to the existing Qt process. No HTTP listener,
 // access token, filesystem access, or arbitrary shell API is exposed to JS.
+// Matches Python: full guest vocabulary/snippets with JSON control escapes.
+const MAX_SETTINGS_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
+
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
 struct Bridge { pending: Pending, next: AtomicU64 }
 
@@ -72,7 +75,7 @@ fn main() {
           std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines() {
             let Ok(line) = line else { break };
-            if line.len() > 1_048_576 { continue; }
+            if line.len() > MAX_SETTINGS_MESSAGE_BYTES { continue; }
             let Ok(value) = serde_json::from_str::<Value>(&line) else { continue };
             if let Some(action) = value["window"].as_str() {
                 if let Some(window) = handle.get_webview_window("main") {

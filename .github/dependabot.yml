@@ -1,6 +1,20 @@
 version: 2
 updates:
   - package-ecosystem: npm
+    directory: /ci
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+  - package-ecosystem: npm
+    directory: /mobile
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+  - package-ecosystem: npm
     directory: /desktop
     groups:
       react:

@@ -13,8 +13,8 @@ Rectangle {
     color: visualTheme.control
     border.color: visualTheme.border
     Accessible.role: Accessible.Indicator
-    Accessible.name: "Live microphone input"
-    Accessible.description: running ? "Listening to the selected microphone" : "Microphone test stopped"
+    Accessible.name: qsTr("Live microphone input")
+    Accessible.description: running ? qsTr("Listening to the selected microphone") : qsTr("Microphone test stopped")
 
     function clear() {
         samples = Array(sampleCount).fill(0)

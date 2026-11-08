@@ -129,7 +129,8 @@ def _read_json(data: bytes, *, label: str, maximum_bytes: int) -> dict[str, Any]
         raise ManifestError(f"{label} has an invalid size")
     try:
         payload = json.loads(
-            data.decode("utf-8"), object_pairs_hook=_reject_duplicate_keys)
+            data.decode("utf-8"), object_pairs_hook=_reject_duplicate_keys
+        )
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
         raise ManifestError(f"{label} is not canonical UTF-8 JSON") from error
     if not isinstance(payload, dict):
@@ -138,14 +139,15 @@ def _read_json(data: bytes, *, label: str, maximum_bytes: int) -> dict[str, Any]
 
 
 def _require_exact_keys(
-        payload: Mapping[str, Any], expected: set[str], *, label: str) -> None:
+    payload: Mapping[str, Any], expected: set[str], *, label: str
+) -> None:
     actual = set(payload)
     if actual != expected:
         missing = sorted(expected - actual)
         extra = sorted(actual - expected)
         raise ManifestError(
-            f"{label} fields do not match the schema "
-            f"(missing={missing}, extra={extra})")
+            f"{label} fields do not match the schema (missing={missing}, extra={extra})"
+        )
 
 
 def parse_version(value: str) -> tuple[int, int, int]:
@@ -159,14 +161,24 @@ def load_update_policy(path: Path | None = None) -> UpdatePolicy:
     policy_path = path or (_resource_root() / "distribution" / "update-policy.json")
     try:
         payload = _read_json(
-            policy_path.read_bytes(), label="update policy", maximum_bytes=16_384)
+            policy_path.read_bytes(), label="update policy", maximum_bytes=16_384
+        )
     except OSError as error:
         raise UpdatePolicyError(f"cannot read update policy: {error}") from error
-    _require_exact_keys(payload, {
-        "schema_version", "repository", "channel", "manifest_asset",
-        "installer_asset", "publisher_common_name", "require_rfc3161_timestamp",
-        "maximum_download_bytes",
-    }, label="update policy")
+    _require_exact_keys(
+        payload,
+        {
+            "schema_version",
+            "repository",
+            "channel",
+            "manifest_asset",
+            "installer_asset",
+            "publisher_common_name",
+            "require_rfc3161_timestamp",
+            "maximum_download_bytes",
+        },
+        label="update policy",
+    )
     if payload["schema_version"] != POLICY_SCHEMA_VERSION:
         raise UpdatePolicyError("unsupported update policy schema")
     repository = str(payload["repository"])
@@ -203,9 +215,17 @@ def load_update_policy(path: Path | None = None) -> UpdatePolicy:
 
 def parse_release_manifest(data: bytes, policy: UpdatePolicy) -> ReleaseManifest:
     payload = _read_json(data, label="release manifest", maximum_bytes=65_536)
-    _require_exact_keys(payload, {
-        "schema_version", "version", "release_tag", "channel", "asset",
-    }, label="release manifest")
+    _require_exact_keys(
+        payload,
+        {
+            "schema_version",
+            "version",
+            "release_tag",
+            "channel",
+            "asset",
+        },
+        label="release manifest",
+    )
     if payload["schema_version"] != MANIFEST_SCHEMA_VERSION:
         raise ManifestError("unsupported release manifest schema")
     version = str(payload["version"])
@@ -219,15 +239,22 @@ def parse_release_manifest(data: bytes, policy: UpdatePolicy) -> ReleaseManifest
     asset_data = payload["asset"]
     if not isinstance(asset_data, dict):
         raise ManifestError("release asset must be an object")
-    _require_exact_keys(asset_data, {
-        "name", "url", "sha256", "size", "publisher_common_name",
-    }, label="release asset")
+    _require_exact_keys(
+        asset_data,
+        {
+            "name",
+            "url",
+            "sha256",
+            "size",
+            "publisher_common_name",
+        },
+        label="release asset",
+    )
     name = str(asset_data["name"])
     if name != policy.installer_asset:
         raise ManifestError("release asset name does not match policy")
     expected_url = (
-        f"https://github.com/{policy.repository}/releases/download/"
-        f"{release_tag}/{name}"
+        f"https://github.com/{policy.repository}/releases/download/{release_tag}/{name}"
     )
     url = str(asset_data["url"])
     if url != expected_url:
@@ -263,7 +290,8 @@ def require_newer_version(current_version: str, manifest: ReleaseManifest) -> bo
     offered = parse_version(manifest.version)
     if offered < current:
         raise DowngradeError(
-            f"refusing downgrade from {current_version} to {manifest.version}")
+            f"refusing downgrade from {current_version} to {manifest.version}"
+        )
     return offered > current
 
 
@@ -276,14 +304,15 @@ def sha256_file(path: Path) -> str:
 
 
 def download_atomic(
-        url: str,
-        destination: Path,
-        *,
-        maximum_bytes: int,
-        expected_size: int | None = None,
-        expected_sha256: str | None = None,
-        session: Any = requests,
-        timeout: tuple[int, int] = (10, 60)) -> Path:
+    url: str,
+    destination: Path,
+    *,
+    maximum_bytes: int,
+    expected_size: int | None = None,
+    expected_sha256: str | None = None,
+    session: Any = requests,
+    timeout: tuple[int, int] = (10, 60),
+) -> Path:
     """Download to a sibling .part file and publish only verified bytes."""
 
     parsed = urlparse(url)
@@ -293,8 +322,7 @@ def download_atomic(
     part_path = destination.with_name(destination.name + ".part")
     try:
         part_path.unlink(missing_ok=True)
-        response = session.get(
-            url, stream=True, timeout=timeout, allow_redirects=True)
+        response = session.get(url, stream=True, timeout=timeout, allow_redirects=True)
         response.raise_for_status()
         final_url = urlparse(str(getattr(response, "url", url)))
         if final_url.scheme != "https":
@@ -583,10 +611,11 @@ public static class ClarifyTimestampInspector
 
 
 def _verify_windows_signature_chain(
-        path: Path,
-        *,
-        runner: Callable[..., subprocess.CompletedProcess[str]],
-        signtool: str | None = None) -> None:
+    path: Path,
+    *,
+    runner: Callable[..., subprocess.CompletedProcess[str]],
+    signtool: str | None = None,
+) -> None:
     """Verify the Authenticode and timestamp/TSA chains with Windows SignTool.
 
     ``Get-AuthenticodeSignature`` exposes the timestamp certificate but does
@@ -613,25 +642,25 @@ def _verify_windows_signature_chain(
             text=True,
         )
     except OSError as error:
-        raise SignatureError(
-            "RFC3161 timestamp verifier is unavailable") from error
+        raise SignatureError("RFC3161 timestamp verifier is unavailable") from error
     if result.returncode:
-        output = "\n".join(
-            str(part or "") for part in (result.stdout, result.stderr))
+        output = "\n".join(str(part or "") for part in (result.stdout, result.stderr))
         detail = output.strip().splitlines()
         suffix = f": {detail[-1][:240]}" if detail else ""
         raise SignatureError(
-            "RFC3161 timestamp or TSA chain verification failed" + suffix)
+            "RFC3161 timestamp or TSA chain verification failed" + suffix
+        )
 
 
 def verify_authenticode(
-        path: Path,
-        expected_common_name: str,
-        *,
-        require_timestamp: bool = True,
-        runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-        powershell: str | None = None,
-        signtool: str | None = None) -> SignatureIdentity:
+    path: Path,
+    expected_common_name: str,
+    *,
+    require_timestamp: bool = True,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    powershell: str | None = None,
+    signtool: str | None = None,
+) -> SignatureIdentity:
     """Require a trusted signature, pinned publisher, and valid timestamp."""
 
     if not path.is_file():
@@ -639,9 +668,7 @@ def verify_authenticode(
     executable = powershell or _powershell_executable()
     script = (
         "$ErrorActionPreference='Stop';"
-        "$inspectorSource=@'\n"
-        + _AUTHENTICODE_TIMESTAMP_INSPECTOR
-        + "\n'@;"
+        "$inspectorSource=@'\n" + _AUTHENTICODE_TIMESTAMP_INSPECTOR + "\n'@;"
         "Add-Type -TypeDefinition $inspectorSource -Language CSharp;"
         "$signature=Get-AuthenticodeSignature -LiteralPath "
         "$env:CLARIFY_SIGNATURE_PATH;"
@@ -679,7 +706,8 @@ def verify_authenticode(
     )
     if result.returncode:
         raise SignatureError(
-            result.stderr.strip() or "Authenticode verification failed")
+            result.stderr.strip() or "Authenticode verification failed"
+        )
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as error:
@@ -698,19 +726,19 @@ def verify_authenticode(
     timestamp_status = str(payload.get("TimestampStatus", "Missing"))
     timestamp_protocol = str(payload.get("TimestampProtocol", "Missing"))
     timestamp_common_name = str(payload.get("TimestampCommonName", "")).strip()
-    timestamp_thumbprint = str(
-        payload.get("TimestampThumbprint", "")).replace(" ", "").upper()
+    timestamp_thumbprint = (
+        str(payload.get("TimestampThumbprint", "")).replace(" ", "").upper()
+    )
     if require_timestamp:
         if timestamp_status != "Valid" or timestamp_protocol != "RFC3161":
             raise SignatureError(
-                "RFC3161 timestamp is missing or invalid: "
-                + timestamp_protocol)
+                "RFC3161 timestamp is missing or invalid: " + timestamp_protocol
+            )
         if not timestamp_common_name:
             raise SignatureError("RFC3161 timestamp signer is missing")
         if not re.fullmatch(r"[0-9A-F]{40,128}", timestamp_thumbprint):
             raise SignatureError("RFC3161 timestamp certificate is missing")
-        _verify_windows_signature_chain(
-            path, runner=runner, signtool=signtool)
+        _verify_windows_signature_chain(path, runner=runner, signtool=signtool)
     return SignatureIdentity(
         common_name=common_name,
         thumbprint=thumbprint,
@@ -720,38 +748,47 @@ def verify_authenticode(
 
 
 def extract_manifest_from_cab(
-        cab_path: Path,
-        destination: Path,
-        *,
-        runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-        expand_executable: str = "expand.exe") -> Path:
+    cab_path: Path,
+    destination: Path,
+    *,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    expand_executable: str = "expand.exe",
+) -> Path:
     destination.mkdir(parents=True, exist_ok=True)
     manifest_path = destination / MANIFEST_FILE_NAME
     manifest_path.unlink(missing_ok=True)
     result = runner(
-        [expand_executable, str(cab_path), f"-F:{MANIFEST_FILE_NAME}", str(destination)],
+        [
+            expand_executable,
+            str(cab_path),
+            f"-F:{MANIFEST_FILE_NAME}",
+            str(destination),
+        ],
         check=False,
         capture_output=True,
         text=True,
     )
     if result.returncode or not manifest_path.is_file():
         raise ManifestError(
-            result.stderr.strip() or result.stdout.strip()
-            or "signed manifest container could not be extracted")
+            result.stderr.strip()
+            or result.stdout.strip()
+            or "signed manifest container could not be extracted"
+        )
     if manifest_path.stat().st_size > 65_536:
         raise ManifestError("release manifest exceeds maximum size")
     return manifest_path
 
 
 def prepare_update(
-        current_version: str,
-        cache_directory: Path,
-        *,
-        policy: UpdatePolicy | None = None,
-        session: Any = requests,
-        signature_verifier: Callable[..., SignatureIdentity] = verify_authenticode,
-        manifest_extractor: Callable[[Path, Path], Path] = extract_manifest_from_cab,
-        downloader: Callable[..., Path] = download_atomic) -> PreparedUpdate | None:
+    current_version: str,
+    cache_directory: Path,
+    *,
+    policy: UpdatePolicy | None = None,
+    session: Any = requests,
+    signature_verifier: Callable[..., SignatureIdentity] = verify_authenticode,
+    manifest_extractor: Callable[[Path, Path], Path] = extract_manifest_from_cab,
+    downloader: Callable[..., Path] = download_atomic,
+) -> PreparedUpdate | None:
     """Return a verified MSI for a newer release, or None when already current."""
 
     active_policy = policy or load_update_policy()
@@ -762,10 +799,12 @@ def prepare_update(
             return downloader(*args, **kwargs)
         except requests.RequestException as error:
             raise UpdateTransportError(
-                "secure update service is temporarily unavailable") from error
+                "secure update service is temporarily unavailable"
+            ) from error
 
     with tempfile.TemporaryDirectory(
-            prefix=".update-staging-", dir=cache_directory) as temporary:
+        prefix=".update-staging-", dir=cache_directory
+    ) as temporary:
         staging_directory = Path(temporary)
         cab_path = staging_directory / active_policy.manifest_asset
         download(
@@ -779,8 +818,7 @@ def prepare_update(
             active_policy.publisher_common_name,
             require_timestamp=active_policy.require_rfc3161_timestamp,
         )
-        manifest_path = manifest_extractor(
-            cab_path, staging_directory / "manifest")
+        manifest_path = manifest_extractor(cab_path, staging_directory / "manifest")
         manifest = parse_release_manifest(manifest_path.read_bytes(), active_policy)
         if not require_newer_version(current_version, manifest):
             return None
@@ -811,10 +849,11 @@ def prepare_update(
 
 
 def launch_prepared_update(
-        prepared: PreparedUpdate,
-        *,
-        signature_verifier: Callable[..., SignatureIdentity] = verify_authenticode,
-        runner: Callable[..., subprocess.Popen[Any]] = subprocess.Popen) -> None:
+    prepared: PreparedUpdate,
+    *,
+    signature_verifier: Callable[..., SignatureIdentity] = verify_authenticode,
+    runner: Callable[..., subprocess.Popen[Any]] = subprocess.Popen,
+) -> None:
     """Revalidate and launch a prepared MSI with visible Windows Installer UI."""
 
     if platform.system() != "Windows":

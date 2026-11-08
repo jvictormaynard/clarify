@@ -1,0 +1,10 @@
+# Non-Qt Python and policy lanes. Resolve every package through the platform lock.
+requests
+cryptography
+sounddevice
+Pillow
+qrcode
+keyboard; platform_system != "Windows"
+pyinstaller
+ruff
+mypy

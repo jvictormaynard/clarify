@@ -1,12 +1,51 @@
-# Local transcription history boundary
+# Transcription history boundaries
 
-This document describes the local history boundary and its current desktop
-integration for issue #53. The Settings window now exposes a reversible,
-disabled-by-default toggle, retention policy, refresh, export, and delete-all
-actions. Successful workflow results and terminal error summaries are written
-only after the workflow publishes its terminal state. This remains a `Part of
-#53` implementation: packaged Windows acceptance is still a separate manual
-gate.
+This document describes the local history boundary and desktop integration.
+Production React Settings expose a History page, plus a reversible,
+disabled-by-default local toggle and retention policy. `QtHistoryRecorder` subscribes
+to terminal workflow states and queues successful results or safe error
+summaries for storage outside the UI thread. Guest writes respect the local
+opt-in. New signed-in results use the separate `AccountHistory` boundary and do
+not change the guest preference. The operation captures its account identity
+before producing a result; a later account switch cannot reassign that result.
+
+The local storage API supports reads, export, and deletion. Production Settings
+show local records and the active account's cached history chronologically,
+with the Mobile/Desktop origin. Explicit deletion of account records is queued
+durably and synchronized; local records are deleted only on this computer.
+Packaged Windows acceptance remains a separate manual gate.
+
+`AccountHistory` owns a separate endpoint/user-scoped atomic snapshot, native
+record metadata, pending upserts/deletes/clear operation and remote cursor. The
+account service owns transport and session generation. Login, foreground
+refresh, new results and deletions trigger coalesced synchronization. Temporary
+network failure preserves the local result and pending work. There is no manual
+sync step. See the [shared wire contract](history-sync.md).
+
+All pre-upgrade records remain in the local store and are never uploaded. Guest
+records remain local, including records created after this change. Signing out
+restores the local view; switching accounts never exposes another account cache.
+
+## Explicit dictionary corrections
+
+History entries with an original transcript offer **Correct term**. Enter the
+heard term and the correct spelling, then review both before saving. The heard
+term must occur in the original. The original record stays unchanged. The action
+does not observe text in other apps or retain audio.
+
+Corrections use the existing dictionary limits, including multiword terms.
+The heard spelling becomes an alias when it differs beyond letter case. An
+existing term keeps its metadata and enabled state. Local records can add words
+only to the local dictionary; account records require the same active account.
+
+Undo removes only this operation's new entry while its session and durable file
+revision still match. An edit, equal-content replacement, sync, or session change
+can disable Undo. Receipts last at most ten minutes and do not survive restart.
+Account corrections schedule sync after one five-second undo window; polling
+does not extend that window. Undo resolves the window and uses normal sync.
+Closing Settings, quitting, or changing accounts preserves the scoped library
+file so the existing sync can reconcile it when that account is active again.
+Native Windows acceptance remains a separate gate.
 
 ## Privacy contract
 
@@ -20,7 +59,7 @@ Each `HistoryRecord` contains only:
 
 - raw transcript text (optional for partial/error records);
 - refined output (optional);
-- workflow, UTC timestamp, transcription provider/model, optional refinement
+- source device, workflow, UTC timestamp, transcription provider/model, optional refinement
   provider/model, status, and a concise error summary.
 
 The type has no audio path/bytes, API-key field, request headers, provider
@@ -32,8 +71,8 @@ still provide a short safe error summary rather than a provider response.
 ## Persistence and recovery
 
 The first version uses a small versioned JSON document (`schema_version: 1`)
-instead of adding SQLite. History has no search, sharing, synchronization, or
-high-volume queue requirement yet; a single document keeps migration,
+instead of adding SQLite. The guest history boundary has no synchronization or
+high-volume queue requirement; a single document keeps migration,
 delete-all, and export behavior auditable and avoids another runtime
 dependency. A future issue can move the boundary to SQLite without changing
 the typed record contract if indexing or volume justifies it.
@@ -79,12 +118,11 @@ The export destination must differ from the history file. Export is unavailable
 while the store is disabled, and neither export nor persistence includes
 telemetry or provider credentials.
 
-The desktop page offers separate **Copy source** and **Copy result** actions
-when the corresponding field exists. It deliberately does not offer a live
-retry action yet: the current workflow contract does not retain audio or a
-focus-safe source target after completion, so silently replaying a record would
-be unsafe. The page labels this boundary rather than pretending that retry is
-available.
+The legacy widget page offers separate **Copy source** and **Copy result**
+actions when the corresponding field exists. These actions are not present in
+production Settings. Neither surface provides history retry: the workflow
+contract does not retain audio or a focus-safe source target after completion.
+A retry feature requires an explicit retained-source contract.
 
 Prompt-mode dictation through a non-multimodal transcription provider keeps
 the raw provider transcript in `raw_text`, the second-route output in
@@ -100,7 +138,9 @@ closed instead of writing transcripts to the production profile.
 
 ## Follow-up needed for #53
 
-Packaged Windows acceptance remains: verify the installed Settings path,
-restart recovery, retention/delete-all, export destinations, and that usage
-statistics contain no transcript text. A future issue can add safe retry only
-after the workflow layer defines an explicit retained source contract.
+A production history browser still needs explicit copy, export, and delete
+controls over the existing storage API. Packaged Windows acceptance must verify
+the opt-in and retention controls, terminal-result persistence, restart recovery,
+and that usage statistics contain no transcript text. Export and delete-all UI
+acceptance applies when those controls are implemented. Safe retry requires an
+explicit retained-source contract.

@@ -1,0 +1,415 @@
+import XCTest
+import CoreFoundation
+
+final class AppFlowUITests: XCTestCase {
+  let app = XCUIApplication(bundleIdentifier: "com.jvictormaynard.clarify")
+  override func setUp() {
+    super.setUp(); continueAfterFailure = false
+    app.launchArguments = ["-AppleLanguages", "(pt)", "-AppleLocale", "pt_BR"]
+  }
+  func capture(_ name: String) {
+    let attachment = XCTAttachment(screenshot: app.screenshot())
+    attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+  }
+  func diagnose(_ name: String) {
+    capture(name)
+    print("APP_UI_DIAGNOSTIC \(name)\n\(app.debugDescription)")
+  }
+  @discardableResult func reveal(_ element: XCUIElement, identifier: String) -> Bool {
+    for attempt in 0...12 {
+      let page = app.scrollViews.containing(element.elementType, identifier: identifier).firstMatch
+      let viewport = page.exists ? page.frame.intersection(app.frame) : app.frame
+      let frame = element.frame
+      let located = !frame.isNull && !frame.isInfinite && frame.width > 0 && frame.height > 0
+      let center = CGPoint(x: frame.midX, y: frame.midY)
+      // Require the target inside the scroll viewport even when AX reports hittable.
+      if located && element.isHittable && viewport.contains(center) { return true }
+      if attempt == 12 { break }
+      if page.exists && page.frame.height > 0 && page.frame.intersects(app.frame) {
+        // Clipped React Native elements can have an infinite AX frame. Search
+        // toward the top first, then the bottom until a usable frame appears.
+        let down = located ? frame.midY < page.frame.midY : attempt < 6
+        let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: down ? 0.2 : 0.8))
+        let finish = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: down ? 0.8 : 0.2))
+        start.press(forDuration: 0.1, thenDragTo: finish)
+      } else if (located ? frame.midY < app.frame.midY : attempt < 6) { app.swipeDown() } else { app.swipeUp() }
+    }
+    diagnose("unreachable-\(identifier)"); XCTFail("Cannot reveal element: \(identifier)"); return false
+  }
+  func press(_ identifier: String, allowScroll: Bool = true) {
+    let button = app.descendants(matching: .any)[identifier].firstMatch
+    guard button.waitForExistence(timeout: 15) else {
+      diagnose("missing-\(identifier)"); XCTFail("Missing action: \(identifier)"); return
+    }
+    let enabled = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: button)
+    guard XCTWaiter.wait(for: [enabled], timeout: 15) == .completed else {
+      diagnose("disabled-\(identifier)"); XCTFail("Disabled action: \(identifier)"); return
+    }
+    if allowScroll && !reveal(button, identifier: identifier) { return }
+    let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
+    guard XCTWaiter.wait(for: [reachable], timeout: 5) == .completed else {
+      diagnose("unreachable-\(identifier)"); XCTFail("Unreachable action: \(identifier)"); return
+    }
+    button.tap()
+  }
+  func tab(_ label: String) {
+    let button = app.tabBars.buttons[label].firstMatch
+    XCTAssertTrue(button.waitForExistence(timeout: 20), "Missing tab: \(label)")
+    let introduction = app.otherElements["UIContinuousPathIntroductionView"].firstMatch
+    if introduction.exists {
+      capture("system-keyboard-introduction")
+      let proceed = introduction.buttons["Continue"].firstMatch
+      guard proceed.waitForExistence(timeout: 5) && proceed.isHittable else {
+        diagnose("keyboard-introduction-blocked"); XCTFail("Cannot finish the system keyboard introduction"); return
+      }
+      proceed.tap()
+      let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: introduction)
+      guard XCTWaiter.wait(for: [closed], timeout: 5) == .completed else {
+        diagnose("keyboard-introduction-remains"); XCTFail("System keyboard introduction is still visible"); return
+      }
+    }
+    let keyboard = app.keyboards.firstMatch
+    if keyboard.exists {
+      let page = app.descendants(matching: .any)["app.keyboard-page"].firstMatch.scrollViews.firstMatch
+      guard page.exists && page.frame.intersects(app.frame) else {
+        diagnose("keyboard-dismissal-page-missing"); XCTFail("Cannot reach the page to dismiss the keyboard"); return
+      }
+      // KeyboardPage uses handled taps. Its empty gutter is outside child controls.
+      // Tap there to finish editing without leaving an interactive drag in progress.
+      page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).tap()
+      let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: keyboard)
+      guard XCTWaiter.wait(for: [dismissed], timeout: 5) == .completed else {
+        diagnose("keyboard-obscures-tab-\(label)"); XCTFail("Dismiss the keyboard before choosing tab: \(label)"); return
+      }
+    }
+    let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
+    guard XCTWaiter.wait(for: [reachable], timeout: 5) == .completed else {
+      diagnose("unreachable-tab-\(label)"); XCTFail("Unreachable tab: \(label)"); return
+    }
+    button.tap()
+    let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: button)
+    XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed, "Select tab: \(label)")
+  }
+  func pressWithKeyboard(_ identifier: String, field: XCUIElement, value: String) {
+    let keyboard = app.keyboards.firstMatch
+    XCTAssertTrue(keyboard.exists && keyboard.isHittable, "Keep the keyboard open for \(identifier)")
+    let button = app.buttons[identifier].firstMatch
+    XCTAssertTrue(button.waitForExistence(timeout: 15))
+    if !button.isHittable {
+      diagnose("keyboard-before-scroll-\(identifier)")
+      let page = app.descendants(matching: .any)["app.keyboard-page"].firstMatch.scrollViews.firstMatch
+      XCTAssertTrue(page.exists && page.isHittable)
+      let distance = min(max(button.frame.maxY - page.frame.maxY + 16, 16), page.frame.height * 0.6)
+      let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85))
+      let finish = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85 - distance / page.frame.height))
+      start.press(forDuration: 0.1, thenDragTo: finish)
+    }
+    let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
+    XCTAssertEqual(XCTWaiter.wait(for: [reachable], timeout: 5), .completed, "Reach \(identifier) with the keyboard open")
+    XCTAssertTrue(keyboard.exists && keyboard.isHittable, "Scrolling must keep the keyboard open")
+    XCTAssertTrue(field.isHittable, "Keep the input visible beside its action")
+    XCTAssertEqual(field.value as? String, value, "Scrolling must retain the complete input")
+    capture("keyboard-action-ready-\(identifier)")
+    press(identifier, allowScroll: false)
+  }
+  func enter(_ value: String, in field: XCUIElement, name: String, replacing: Bool = false) {
+    XCTAssertTrue(field.waitForExistence(timeout: 15))
+    guard reveal(field, identifier: field.identifier.isEmpty ? field.label : field.identifier) else { return }
+    field.tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+    if replacing { field.typeKey("a", modifierFlags: .command) }
+    field.typeText(value)
+    // Keep the first observation; event synthesis can finish before UIKit input delivery.
+    let firstRead = field.value as? String
+    print("APP_UI_INPUT_FIRST_READ \(name) expected=\(String(reflecting: value)) actual=\(String(reflecting: firstRead))")
+    let complete = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: field)
+    let received = firstRead == value || XCTWaiter.wait(for: [complete], timeout: 10) == .completed
+    let actual = field.value as? String
+    guard received && actual == value else {
+      print("APP_UI_INPUT_FAILURE \(name) expected=\(String(reflecting: value)) actual=\(String(reflecting: actual)) frame=\(field.frame) hittable=\(field.isHittable)")
+      diagnose("typing-\(name)")
+      XCTFail("Input did not retain the typed characters: \(name); expected \(String(reflecting: value)), actual \(String(reflecting: actual))")
+      return
+    }
+  }
+  func fixture(_ path: String, values: [String: Any]? = nil) -> [String: Any] {
+    let completed = expectation(description: "Fixture \(path)")
+    var output: [String: Any] = [:]
+    var request = URLRequest(url: URL(string: "__CLARIFY_APP_UI_ENDPOINT__" + path)!)
+    if let values {
+      request.httpMethod = "POST"; request.httpBody = try! JSONSerialization.data(withJSONObject: values)
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    }
+    URLSession.shared.dataTask(with: request) { data, response, error in
+      XCTAssertNil(error)
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+      if let data { output = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:] }
+      completed.fulfill()
+    }.resume()
+    XCTAssertEqual(XCTWaiter.wait(for: [completed], timeout: 15), .completed)
+    return output
+  }
+  func absent(_ element: XCUIElement) {
+    let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
+    XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 15), .completed)
+  }
+  func back() { app.navigationBars.buttons.firstMatch.tap() }
+  func chooseRewrite() {
+    press("actions.choose")
+    press("actions.option.saved:rewrite:1")
+  }
+  func verifyActions() {
+    tab("Ações")
+    let text = app.textViews["actions.text"]
+    enter("cancel", in: text, name: "composer")
+    capture("actions-draft-keyboard")
+    chooseRewrite()
+    tab("Biblioteca"); tab("Ações")
+    XCTAssertEqual(text.value as? String, "cancel", "Tab navigation keeps the mounted draft")
+    press("actions.refresh")
+    XCTAssertEqual(text.value as? String, "cancel")
+    press("actions.choose"); press("Fechar")
+    XCTAssertEqual(text.value as? String, "cancel", "Sheet dismissal keeps the draft")
+    let previousPosts = (fixture("/__fixture/state")["processing"] as? [Any])?.count
+    _ = fixture("/__fixture/control", values: ["catalog": "slow"])
+    press("actions.run")
+    let progress = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH 'actions.operation.' AND identifier != 'actions.operation.starting'")).firstMatch
+    XCTAssertTrue(progress.waitForExistence(timeout: 10), "Accepted UUID must arrive before discovery completes")
+    let identifier = progress.identifier.replacingOccurrences(of: "actions.operation.", with: "")
+    XCTAssertNotNil(UUID(uuidString: identifier))
+    XCTAssertEqual(fixture("/__fixture/wait-catalog")["held"] as? Int, 1)
+    XCTAssertFalse(app.buttons["actions.copy"].exists)
+    capture("actions-slow-catalog-accepted")
+    press("actions.cancel")
+    absent(app.buttons["actions.cancel"])
+    _ = fixture("/__fixture/control", values: ["release": true])
+    XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
+    XCTAssertEqual(text.value as? String, "cancel")
+    XCTAssertFalse(app.buttons["actions.copy"].exists)
+    // Reload the interrupted catalog before starting the next independent case.
+    press("actions.refresh"); chooseRewrite()
+    XCTAssertEqual(text.value as? String, "cancel")
+    enter("off", in: text, name: "deactivated-composer", replacing: true)
+    _ = fixture("/__fixture/control", values: ["catalog": "slow"])
+    press("actions.run")
+    XCTAssertTrue(progress.waitForExistence(timeout: 10))
+    XCTAssertNotNil(UUID(uuidString: progress.identifier.replacingOccurrences(of: "actions.operation.", with: "")))
+    XCTAssertEqual(fixture("/__fixture/wait-catalog")["held"] as? Int, 1)
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+      CFNotificationName("com.clarify.app-flow.deactivate" as CFString), nil, nil, true)
+    absent(app.buttons["actions.cancel"])
+    _ = fixture("/__fixture/control", values: ["release": true])
+    XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
+    XCTAssertFalse(app.buttons["actions.copy"].exists)
+    capture("actions-deactivated-discovery")
+    enter("cancel", in: text, name: "cancelled-composer", replacing: true)
+    for mode in ["empty", "failed"] {
+      _ = fixture("/__fixture/control", values: ["catalog": mode])
+      press("actions.refresh")
+      let status = app.staticTexts["actions.catalog-status"]
+      XCTAssertTrue(status.waitForExistence(timeout: 10))
+      let expected = mode == "empty" ? "Nenhuma ação salva neste destino." : "Não foi possível carregar as ações. Atualize para tentar novamente."
+      let updated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", expected), object: status)
+      XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 15), .completed)
+      XCTAssertFalse(app.buttons["actions.run"].isEnabled)
+      XCTAssertEqual(text.value as? String, "cancel")
+      capture("actions-catalog-\(mode)")
+    }
+    _ = fixture("/__fixture/control", values: ["catalog": "ready"])
+    press("actions.refresh"); chooseRewrite()
+    enter("done", in: text, name: "successful-composer", replacing: true)
+    press("actions.run")
+    XCTAssertTrue(app.staticTexts["actions.result"].waitForExistence(timeout: 15))
+    XCTAssertEqual(app.staticTexts["actions.result"].label, "Fixture result: done")
+    press("actions.copy")
+    XCTAssertTrue(app.staticTexts["Texto copiado."].waitForExistence(timeout: 10))
+    capture("actions-owned-result")
+    press("actions.choose"); press("actions.option.saved:translation:1")
+    absent(app.staticTexts["actions.result"])
+    press("actions.language")
+    for language in ["pt", "en", "es", "de", "ru"] {
+      XCTAssertTrue(app.descendants(matching: .any)["actions.target.\(language)"].firstMatch.exists)
+    }
+    press("actions.target.ru")
+    press("actions.run")
+    XCTAssertTrue(app.staticTexts["actions.result"].waitForExistence(timeout: 15))
+    let posted = fixture("/__fixture/state")["processing"] as? [[String: Any]]
+    let translation = posted?.last?["value"] as? [String: Any]
+    XCTAssertEqual(translation?["language"] as? String, "ru")
+    capture("actions-translation-russian")
+    _ = fixture("/__fixture/control", values: ["revision": 2])
+    press("actions.refresh")
+    XCTAssertTrue(app.staticTexts["actions.catalog-status"].waitForExistence(timeout: 10))
+    let stale = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == false"), object: app.buttons["actions.run"])
+    XCTAssertEqual(XCTWaiter.wait(for: [stale], timeout: 15), .completed)
+    capture("actions-stale-choice")
+  }
+  func signIn(checkPersistence: Bool) {
+    app.launch()
+    XCTAssertTrue(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.waitForExistence(timeout: 30))
+    capture("onboarding-first-open")
+    press("onboarding.skip")
+    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
+    if checkPersistence {
+      app.terminate(); app.launch()
+      XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 20))
+      XCTAssertFalse(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.exists)
+      press("processing.computer")
+      XCTAssertTrue(app.buttons["computer.scan"].waitForExistence(timeout: 10))
+      XCTAssertFalse(app.textFields["account.email"].exists, "Computer pairing does not require hosted sign-in")
+      XCTAssertFalse(app.tabBars.firstMatch.exists, "Choosing a mode alone does not authorize processing")
+      press("processing.hosted")
+      XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 10))
+      for provider in ["Google", "Microsoft", "GitHub"] {
+        XCTAssertTrue(app.buttons["Continuar com \(provider)"].exists, "Social sign-in remains available")
+      }
+    }
+    enter("clarify-e2e@example.test", in: app.textFields["account.email"], name: "email")
+    XCTAssertEqual(app.textFields["account.email"].value as? String, "clarify-e2e@example.test")
+    capture("login-email-keyboard-visible")
+    pressWithKeyboard("account.requestCode", field: app.textFields["account.email"], value: "clarify-e2e@example.test")
+    guard app.textFields["account.code"].waitForExistence(timeout: 15) else {
+      diagnose("login-code-missing"); XCTFail("Login did not show the code field. Inspect the HTTP journal and app alert."); return
+    }
+    if checkPersistence {
+      press("account.backToEmail")
+      let email = app.textFields["account.email"]
+      XCTAssertTrue(email.waitForExistence(timeout: 15))
+      XCTAssertEqual(email.value as? String, "clarify-e2e@example.test", "Returning from the code step retains the email draft")
+      capture("login-email-restored")
+      email.tap()
+      XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+      email.typeText("\n")
+      XCTAssertTrue(app.textFields["account.code"].waitForExistence(timeout: 15), "Return submits the native field's complete email")
+      enter("000000", in: app.textFields["account.code"], name: "invalid-code")
+      pressWithKeyboard("account.verifyCode", field: app.textFields["account.code"], value: "000000")
+      let alert = app.alerts["Clarify"].firstMatch
+      XCTAssertTrue(alert.waitForExistence(timeout: 15))
+      alert.buttons.firstMatch.tap()
+      XCTAssertFalse(app.buttons["account.verifyCode"].isEnabled, "A rejected attempt clears the submitted code")
+      capture("login-code-reset-after-rejection")
+    }
+    // Enter without replacing so a stale native code also fails the first read.
+    enter("123456", in: app.textFields["account.code"], name: "code")
+    capture("login-code-keyboard-visible")
+    pressWithKeyboard("account.verifyCode", field: app.textFields["account.code"], value: "123456")
+    tab("Ditado")
+    XCTAssertEqual(app.tabBars.buttons.count, 4)
+  }
+  func verifyLibraryDrafts(compact: Bool = false) {
+    tab("Biblioteca")
+    press("library.dictionary"); capture("dictionary")
+    press("Adicionar palavra")
+    let word = app.textFields["Palavra"]
+    enter(compact ? "ui" : "Fixture draft", in: word, name: "dictionary-draft")
+    capture("dictionary-editor-keyboard-dirty")
+    press("Cancelar")
+    if !compact {
+      let savedWord = "fixture saved"
+      press("Adicionar palavra")
+      enter(savedWord, in: word, name: "dictionary-save")
+      enter("fixture alias", in: app.textFields["Variações"], name: "dictionary-alias")
+      press("Salvar"); absent(word)
+      let saved = (fixture("/v1/dictionary")["entries"] as? [[String: Any]])?.first { ($0["term"] as? String) == savedWord }
+      XCTAssertEqual(saved?["term"] as? String, savedWord, "The received dictionary payload retains the full term")
+      XCTAssertEqual(saved?["aliases"] as? [String], ["fixture alias"])
+      let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", savedWord)).firstMatch
+      XCTAssertTrue(row.waitForExistence(timeout: 15)); row.tap()
+      XCTAssertEqual(word.value as? String, savedWord)
+      XCTAssertEqual(app.textFields["Variações"].value as? String, "fixture alias")
+      capture("dictionary-saved-readback"); press("Cancelar")
+    }
+    back()
+    XCTAssertTrue(app.tabBars.buttons["Biblioteca"].isSelected)
+    press("library.snippets"); capture("snippets")
+    press("Adicionar snippet")
+    let trigger = app.textFields["Frase de ativação"]
+    enter(compact ? "ui" : "fixture phrase", in: trigger, name: "snippet-draft")
+    capture("snippets-editor-keyboard-dirty")
+    press("Cancelar"); back()
+  }
+  func testFirstPresentationAccountNavigationAndExplicitReplay() {
+    signIn(checkPersistence: true)
+    XCTAssertFalse(app.buttons["home.account"].exists)
+    capture("dictation")
+    verifyLibraryDrafts()
+    tab("Ajustes"); capture("settings")
+    press("settings.account")
+    XCTAssertTrue(app.descendants(matching: .any)["app.account"].firstMatch.waitForExistence(timeout: 15))
+    let weeklyUsage = app.staticTexts["account.weeklyUsage"]
+    XCTAssertTrue(weeklyUsage.waitForExistence(timeout: 15))
+    XCTAssertEqual(weeklyUsage.label, "12,5% usados · 82,5% restantes")
+    XCTAssertTrue(app.staticTexts["account.usageReset"].label.hasPrefix("Próxima renovação: "))
+    XCTAssertFalse(app.buttons["processing.computer"].exists, "Identity and usage do not become PC controls")
+    capture("account"); back()
+    XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
+    press("settings.processing"); capture("processing"); back()
+    press("settings.output")
+    press("output.language.de"); press("output.style.very_casual")
+    capture("output-preferences")
+    press("output.close")
+    press("settings.output")
+    let german = app.descendants(matching: .any)["output.language.de"].firstMatch
+    XCTAssertTrue(german.waitForExistence(timeout: 15))
+    XCTAssertTrue(german.isSelected)
+    press("output.close")
+    press("settings.microphone"); capture("microphone-keyboard"); back()
+    press("settings.privacy"); capture("privacy"); back()
+    press("settings.guide")
+    XCTAssertTrue(app.descendants(matching: .any)["onboarding.keyboard"].firstMatch.waitForExistence(timeout: 15))
+    capture("guide-keyboard"); back()
+    XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
+    verifyActions()
+    tab("Ajustes"); press("settings.output")
+    let sharedLanguage = app.descendants(matching: .any)["output.language.ru"].firstMatch
+    XCTAssertTrue(sharedLanguage.waitForExistence(timeout: 15))
+    XCTAssertTrue(sharedLanguage.isSelected, "Text actions and dictation use the same output language")
+    press("output.close"); press("settings.account")
+    press("account.logout")
+    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
+    app.terminate(); app.launch()
+    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 20))
+    XCTAssertFalse(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.exists)
+    capture("login-after-logout")
+  }
+  func testCompactKeyboardAndActionLayout() {
+    signIn(checkPersistence: false)
+    capture("compact-dictation")
+    verifyLibraryDrafts(compact: true)
+    tab("Ajustes"); capture("compact-settings")
+    press("settings.account")
+    XCTAssertTrue(app.staticTexts["account.weeklyUsage"].waitForExistence(timeout: 15))
+    capture("compact-account"); back()
+    press("settings.output")
+    press("output.language.de"); press("output.style.very_casual")
+    capture("compact-output"); press("output.close")
+    tab("Ações")
+    let text = app.textViews["actions.text"], draft = "a\nb\nc"
+    enter(draft, in: text, name: "compact-composer")
+    chooseRewrite()
+    tab("Biblioteca"); tab("Ações")
+    XCTAssertEqual(text.value as? String, draft)
+    let previousPosts = (fixture("/__fixture/state")["processing"] as? [Any])?.count
+    _ = fixture("/__fixture/control", values: ["catalog": "slow"])
+    press("actions.run")
+    XCTAssertEqual(fixture("/__fixture/wait-catalog")["held"] as? Int, 1)
+    capture("compact-cancel-ready")
+    press("actions.cancel"); absent(app.buttons["actions.cancel"])
+    _ = fixture("/__fixture/control", values: ["release": true])
+    XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
+    XCTAssertEqual(text.value as? String, draft)
+    press("actions.refresh")
+    enter("ok", in: text, name: "compact-result", replacing: true)
+    press("actions.choose"); capture("compact-action-sheet")
+    press("actions.option.saved:translation:1"); press("actions.language")
+    capture("compact-language-sheet"); press("actions.target.ru")
+    press("actions.run")
+    XCTAssertTrue(app.staticTexts["actions.result"].waitForExistence(timeout: 15))
+    press("actions.copy")
+    XCTAssertTrue(app.staticTexts["Texto copiado."].waitForExistence(timeout: 10))
+    capture("compact-copied-result")
+    tab("Ajustes"); press("settings.account"); press("account.logout")
+    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
+    capture("compact-logout")
+  }
+}

@@ -1,0 +1,34 @@
+# Review template. Publishing on a public address needs an operator decision.
+services:
+  relay:
+    build:
+      context: ..
+      dockerfile: connect/Dockerfile
+    restart: "no"
+    read_only: true
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 32
+    mem_limit: 256m
+    cpus: 1
+    ports:
+      - "127.0.0.1:${RELAY_LOCAL_PORT:-8443}:8443"
+    volumes:
+      - "${RELAY_CERT_DIRECTORY:?Set an operator certificate directory}:/certs:ro"
+      - "${RELAY_STATE_DIRECTORY:?Set a dedicated writable state directory}:/state"
+    command:
+      - --bind
+      - 0.0.0.0
+      - --port
+      - "8443"
+      - --relay-host
+      - "${RELAY_DNS_NAME:?Set the relay DNS hostname}"
+      - --certificate
+      - /certs/fullchain.pem
+      - --private-key
+      - /certs/privkey.pem
+      - --budget-db
+      - /state/egress.sqlite3
+      - --monthly-egress-cap
+      - "${RELAY_MONTHLY_EGRESS_CAP:?Set a fixed positive byte cap}"

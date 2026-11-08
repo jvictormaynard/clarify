@@ -1,4 +1,5 @@
 # Vendored notice hashes must be identical on Windows and Linux checkouts.
+.agents/skills/licenses/*.txt text eol=lf
 desktop/licenses/*.txt text eol=lf
 licenses/cryptography-APACHE.txt text eol=lf
 licenses/cryptography-BSD.txt text eol=lf

@@ -1,0 +1,18 @@
+diff --git a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
+index 917dc6d..d2ddeef 100644
+--- a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
++++ b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
+@@ -347,6 +347,13 @@ static NSSet<NSNumber *> *returnKeyTypesSet;
+
+   auto data = _state->getData();
+
++  // Native text snapshots acknowledge edits already applied to the backing view.
++  // Replaying them can overwrite input received while UIKit applies attributes.
++  // React text and style updates use Value boxes and must still be applied.
++  if (oldState && data.attributedStringBox.getMode() == AttributedStringBox::Mode::OpaquePointer) {
++    return;
++  }
++
+   if (!oldState) {
+     _mostRecentEventCount = _state->getData().mostRecentEventCount;
+   }

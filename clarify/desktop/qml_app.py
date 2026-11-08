@@ -15,7 +15,7 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPOSITORY_ROOT))
 
-from PySide6.QtCore import QTimer, QUrl  # noqa: E402
+from PySide6.QtCore import QTimer, QUrl, Qt  # noqa: E402
 from PySide6.QtGui import QIcon  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 from PySide6.QtQuickControls2 import QQuickStyle  # noqa: E402
@@ -88,10 +88,17 @@ try:
     from .qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from .qml_bridge import QmlWorkflowBridge  # noqa: E402
     from .qml_settings import QmlSettingsController  # noqa: E402
+    from .qml_computer import create_computer_controller  # noqa: E402
     from .qml_updates import QmlUpdateController  # noqa: E402
     from .qml_web_settings import WebSettingsProcess  # noqa: E402
+    from .qml_electron import (  # noqa: E402
+        ElectronDesktopProcess,
+        ElectronQtShell,
+        desktop_executable,
+    )
     from .qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
     from .qml_voice_translation import (  # noqa: E402
+        QmlVoiceTranslationProvider,
         create_qml_voice_translation_controller,
     )
     from .qml_runtime import (  # noqa: E402
@@ -105,10 +112,17 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from qml_bridge import QmlWorkflowBridge  # noqa: E402
     from qml_settings import QmlSettingsController  # noqa: E402
+    from qml_computer import create_computer_controller  # noqa: E402
     from qml_updates import QmlUpdateController  # noqa: E402
     from qml_web_settings import WebSettingsProcess  # noqa: E402
+    from qml_electron import (  # noqa: E402
+        ElectronDesktopProcess,
+        ElectronQtShell,
+        desktop_executable,
+    )
     from qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
     from qml_voice_translation import (  # noqa: E402
+        QmlVoiceTranslationProvider,
         create_qml_voice_translation_controller,
     )
     from qml_runtime import (  # noqa: E402
@@ -157,7 +171,7 @@ class ShellStartResult(Enum):
     SETUP_FAILED = "setup_failed"
 
 
-def _start_shell_if_available(shell) -> ShellStartResult:
+def _start_shell_if_available(shell, *, tray_available=None) -> ShellStartResult:
     """Start the native shell and retain a usable QML window on setup errors.
 
     The shell always owns the single-instance guard.  Only tray construction is
@@ -166,7 +180,8 @@ def _start_shell_if_available(shell) -> ShellStartResult:
     only outcome that should prevent the workflow runtime from continuing.
     """
 
-    tray_available = bool(QSystemTrayIcon.isSystemTrayAvailable())
+    if tray_available is None:
+        tray_available = bool(QSystemTrayIcon.isSystemTrayAvailable())
     try:
         if not shell.start(tray_available=tray_available):
             return ShellStartResult.SECONDARY_INSTANCE
@@ -297,10 +312,11 @@ class _WorkflowWindowVisibility:
 
     _PILL_SURFACES = frozenset({"recording", "processing", "voice_processing"})
 
-    def __init__(self, bridge, shell, window) -> None:
+    def __init__(self, bridge, shell, window, *, enabled=lambda: True) -> None:
         self._bridge = bridge
         self._shell = shell
         self._window = window
+        self._enabled = enabled
         self._restore_visible: bool | None = None
         self._last_surface = bridge.surface
         bridge.surfaceChanged.connect(self.sync)
@@ -316,6 +332,8 @@ class _WorkflowWindowVisibility:
         return bool(self._window.isVisible())
 
     def sync(self) -> None:
+        if not self._enabled():
+            return
         surface = self._bridge.surface
         previous_surface = self._last_surface
         self._last_surface = surface
@@ -375,6 +393,24 @@ def _sync_recording_escape_hotkey(bridge, hotkeys) -> None:
         )
 
 
+def _capture_idle(workflow, audio, bridge=None, voice=None, batch=None) -> bool:
+    """Permit Settings recovery while retaining terminal retry and undo audio."""
+    return (
+        workflow.state.phase.value
+        in {
+            "ready",
+            "completed",
+            "failed",
+            "cancelled",
+            "microphone_unavailable",
+        }
+        and not audio.busy
+        and (bridge is None or not bridge.start_pending)
+        and (voice is None or not voice.active)
+        and (batch is None or not batch.running)
+    )
+
+
 def _connect_shutdown(
     app,
     shell,
@@ -428,6 +464,11 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(sys.argv[:1])
     app.setApplicationName("Clarify")
     app.setOrganizationName("Clarify")
+    try:
+        from .qml_localization import install_translations
+    except ImportError:
+        from qml_localization import install_translations
+    install_translations(app)
 
     scheduler = QtWorkflowScheduler(app)
     try:
@@ -448,13 +489,57 @@ def main(argv: list[str] | None = None) -> int:
 
     loaded_config = repositories.config.load()
     usage_statistics = QtStatisticsGateway(repositories)
+    settings = None
+    practice = None
+    voice_translation = None
+    audio_batch = None
+    bridge = None
+    updates = None
+
+    def settings_work_busy() -> bool:
+        return settings is not None and (
+            settings.microphoneTestBusy
+            or settings.microphoneInventoryBusy
+            or settings.localAsrBusy
+            or settings.localBenchmarkBusy
+            or settings.providerBusy
+            or settings.routeModelStatus == "loading"
+            or getattr(settings, "chatgptState", {}).get("busy", False)
+        )
+
+    def capture_idle() -> bool:
+        return _capture_idle(
+            workflow_service,
+            runtime.recording_audio,
+            bridge,
+            voice_translation,
+            audio_batch,
+        )
+
+    def external_processing_allowed() -> bool:
+        return (
+            (practice is None or not practice.blocks_processing)
+            and not settings_work_busy()
+            and not runtime.recording_audio.busy
+        )
+
+    def settings_processing_allowed() -> bool:
+        return (practice is None or not practice.busy) and capture_idle()
+
     voice_translation = create_qml_voice_translation_controller(
         repositories.config.load,
         runtime.recording_audio,
         runtime.clipboard,
         scheduler,
         on_usage=partial(_record_voice_translation_usage, usage_statistics),
+        provider=QmlVoiceTranslationProvider(
+            repositories.config.load,
+            registry=runtime.provider_registry,
+            account=runtime.account,
+            dictionary_service=runtime.dictionary_service,
+        ),
         parent=app,
+        processing_allowed=lambda: external_processing_allowed() and capture_idle(),
     )
     audio_batch = QmlAudioFileImportController(
         runtime.audio_batch_service,
@@ -462,6 +547,7 @@ def main(argv: list[str] | None = None) -> int:
         scheduler=scheduler,
         copy_runner=runtime.copy_result,
         dispatch_runner=scheduler.run_dispatch,
+        processing_allowed=lambda: external_processing_allowed() and capture_idle(),
         parent=app,
     )
 
@@ -476,6 +562,8 @@ def main(argv: list[str] | None = None) -> int:
                 if voice_translation.phase == "recording"
                 else voice_translation.cancel()
             )
+        if not external_processing_allowed() or not capture_idle():
+            return False
         target = runtime.clipboard.capture_target()
         if target is None:
             return False
@@ -494,6 +582,29 @@ def main(argv: list[str] | None = None) -> int:
         lambda: shell.hide_window(),
         parent=app,
     )
+    try:
+        from .dictation_practice import PracticeController, practice_readiness
+        from .practice_local_model import LocalModelReadiness
+    except ImportError:
+        from dictation_practice import PracticeController, practice_readiness
+        from practice_local_model import LocalModelReadiness
+
+    def practice_can_start() -> bool:
+        return capture_idle() and not settings_work_busy()
+
+    local_practice_model = LocalModelReadiness(scheduler)
+    app.aboutToQuit.connect(local_practice_model.close)
+    practice = PracticeController(
+        runtime.practice_workflow,
+        language=lambda: repositories.config.load().ui.language,
+        readiness=lambda: practice_readiness(
+            settings, practice_can_start, local_practice_model.ready
+        ),
+        refresh_readiness=local_practice_model.invalidate,
+        can_open=lambda: capture_idle() and not settings.microphoneTestBusy,
+        identity=runtime.account.history_identity,
+        stop_microphone_test=lambda: settings.stopMicrophoneTest(),
+    )
     bridge = QmlWorkflowBridge(
         workflow_service,
         app_config=loaded_config,
@@ -504,6 +615,11 @@ def main(argv: list[str] | None = None) -> int:
         audio_batch_controller=audio_batch,
         target_provider=quick_paste.capture_target,
         paste_runner=quick_paste.paste,
+        processing_allowed=lambda: (
+            external_processing_allowed()
+            and not voice_translation.active
+            and not audio_batch.running
+        ),
         parent=app,
     )
     hotkeys = None
@@ -512,12 +628,38 @@ def main(argv: list[str] | None = None) -> int:
         if hotkeys is not None:
             hotkeys.reconfigure(settings)
 
+    def capture_qml_hotkeys(active: bool) -> None:
+        if hotkeys is not None:
+            hotkeys.set_capture_active(active)
+
     settings = QmlSettingsController(
         repositories,
         parent=app,
         microphone_backend=runtime.recording_audio.recorder,
         hotkey_applier=apply_qml_hotkeys,
+        hotkey_capture_changed=capture_qml_hotkeys,
+        text_action_service=getattr(runtime.account, "desktop_text_actions", None),
+        text_action_provider=workflow_service._provider,
+        text_action_runner=lambda action_id: bridge.runTextAction(action_id),
         dictionary_service=getattr(runtime, "dictionary_service", None),
+        account_service=getattr(runtime, "account", None),
+        application_target=lambda: quick_paste.target,
+        processing_allowed=settings_processing_allowed,
+        account_can_change=lambda: (
+            workflow_service.state.phase.value
+            in {"ready", "completed", "failed", "cancelled", "microphone_unavailable"}
+            and not voice_translation.active
+            and not audio_batch.running
+            and not practice.blocks_processing
+        ),
+    )
+    settings.bindPractice(practice)
+    app.applicationStateChanged.connect(
+        lambda state: (
+            runtime.request_history_sync()
+            if state == Qt.ApplicationState.ApplicationActive
+            else None
+        )
     )
 
     def can_restart_for_update() -> bool:
@@ -528,9 +670,11 @@ def main(argv: list[str] | None = None) -> int:
             and not voice_translation.active
             and not audio_batch.running
             and not settings.microphoneTestBusy
+            and not practice.open
             and not settings.localAsrBusy
             and not settings.localBenchmarkBusy
             and not settings.providerBusy
+            and not getattr(settings, "chatgptState", {}).get("busy", False)
             and not settings.dirty
             and not settings.providerDirty
             and not web_settings.blocks_update()
@@ -591,37 +735,97 @@ def main(argv: list[str] | None = None) -> int:
 
     pill_window_order = QmlStatusPillWindow(pill_window, bridge, parent=app)
 
-    window.setProperty("presentationVisible", not start_hidden)
-    if not start_hidden:
+    electron_path = desktop_executable()
+    window.setProperty(
+        "presentationVisible", not start_hidden and electron_path is None
+    )
+    if not start_hidden and electron_path is None:
         window.show()
     if sys.platform == "win32":
         hotkeys = WindowsGlobalHotkeyBackend(
             app,
-            settings=repositories.config.load().hotkeys,
+            settings=settings._text_actions.bindings()
+            if settings.textActionContext
+            else __import__("text_actions").native_bindings(
+                repositories.config.load(), ()
+            ),
             parent=app,
         )
     if hotkeys is not None:
-        bridge.surfaceChanged.connect(
-            lambda: _sync_recording_escape_hotkey(bridge, hotkeys)
+
+        def sync_escape():
+            hotkeys.set_recording_active(
+                practice.busy or bridge.surface in {"recording", "translation_picker"}
+            )
+
+        bridge.surfaceChanged.connect(sync_escape)
+        practice.subscribe(sync_escape)
+        sync_escape()
+
+    def restore_native_shell():
+        pill_window.setProperty("rendererEnabled", True)
+        shell.restore_native_tray()
+        if bridge.surface == "settings":
+            settings_window_visibility.show_native()
+        else:
+            workflow_window_visibility.sync()
+            if (
+                bridge.surface
+                in {"idle", "success", "result", "voice_result", "voice_error"}
+                and not bridge.feedbackVisible
+            ):
+                shell.show_window_without_activation()
+
+    if electron_path is not None:
+        web_settings = ElectronDesktopProcess(
+            settings, bridge, status_pill, restore_native_shell, app, app
         )
-        _sync_recording_escape_hotkey(bridge, hotkeys)
-    shell = QtShell(
+        pill_window.setProperty("rendererEnabled", False)
+        # Electron windows are not in QApplication.allWindows(). Exclude their
+        # executable before they can become a foreground paste target.
+        quick_paste.excluded_executable = lambda: str(electron_path)
+    else:
+        web_settings = WebSettingsProcess(
+            settings, bridge, lambda: settings_window_visibility.show_native(), app
+        )
+        quick_paste.excluded_executable = web_settings.process.program
+
+    shell_type = ElectronQtShell if electron_path is not None else QtShell
+    shell = shell_type(
         window,
+        **({"desktop": web_settings} if electron_path is not None else {}),
         hotkeys=hotkeys,
         application=app,
-        visibility_hotkey_allowed=lambda: not bridge.recording,
+        visibility_hotkey_allowed=lambda: not bridge.recording and not practice.busy,
         icon=branding_icon,
         parent=app,
     )
     shell.hotkeyTriggered.connect(
-        lambda action: bridge.handleHotkey(action) if not updates.installing else None
+        lambda action: (
+            (practice.handle_hotkey(action) or bridge.handleHotkey(action))
+            if not updates.installing
+            else None
+        )
     )
     bridge.resultRequested.connect(shell.show_window)
-    workflow_window_visibility = _WorkflowWindowVisibility(bridge, shell, window)
-    # Keep the coordinator strongly referenced for the lifetime of app.exec().
-    web_settings = WebSettingsProcess(
-        settings, bridge, lambda: settings_window_visibility.show_native(), app
-    )
+    if electron_path is None:
+        workflow_window_visibility = _WorkflowWindowVisibility(bridge, shell, window)
+    else:
+        workflow_window_visibility = _WorkflowWindowVisibility(
+            bridge, shell, window, enabled=lambda: web_settings.failed
+        )
+
+        # File import retains its existing native panel during this migration.
+        # All ordinary pill, picker and result presentation belongs to Electron.
+        def sync_native_panel():
+            if not web_settings.failed:
+                window.setProperty("presentationVisible", bridge.surface == "files")
+                if bridge.surface == "files":
+                    window.show()
+                    window.raise_()
+                    window.requestActivate()
+
+        bridge.surfaceChanged.connect(sync_native_panel)
     settings_window_visibility = _SettingsWindowVisibility(
         bridge, settings_window, web_settings
     )
@@ -632,12 +836,20 @@ def main(argv: list[str] | None = None) -> int:
     app.aboutToQuit.connect(settings.shutdown)
     app.aboutToQuit.connect(updates.shutdown)
 
-    shell_result = _start_shell_if_available(shell)
+    shell_result = _start_shell_if_available(
+        shell, **({"tray_available": False} if electron_path is not None else {})
+    )
     if shell_result is ShellStartResult.SECONDARY_INSTANCE:
         runtime.shutdown()
         return 0
+    runtime.computer = create_computer_controller(runtime, parent=app)
+    settings.bindComputer(runtime.computer)
+    runtime.computer.initialize()
+    if electron_path is not None:
+        web_settings.start(visible=not start_hidden)
     app.setQuitOnLastWindowClosed(
-        shell_result
+        electron_path is None
+        and shell_result
         in (ShellStartResult.STARTED_WITHOUT_TRAY, ShellStartResult.SETUP_FAILED)
     )
     from portable_update_windows import acknowledge_portable_update
@@ -645,6 +857,8 @@ def main(argv: list[str] | None = None) -> int:
 
     QTimer.singleShot(0, lambda: acknowledge_portable_update(__version__))
     updates.start()
+    if settings.onboardingRequired:
+        QTimer.singleShot(0, bridge.openSettings)
     return app.exec()
 
 

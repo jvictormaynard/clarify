@@ -8,9 +8,10 @@
 - An API key only for live cloud-provider checks
 - Git, if cloning instead of downloading a source archive
 
-Settings development requires Node.js 22, Rust MSVC, Visual Studio C++ Build
-Tools, and the Windows SDK. WebView2 is required to run the native Settings
-window. End users do not need Node.js, Rust, or Python.
+Settings browser development needs Node.js 22 and the locked Python environment.
+A native Settings build additionally needs Rust MSVC, Visual Studio C++ Build
+Tools and the Windows SDK. WebView2 is required for the native window. End users
+do not need these build tools.
 
 ## Windows setup
 
@@ -53,7 +54,7 @@ see [Release readiness](release-readiness.md). Keeping these locks separate prev
 pip-audit, pip-tools, CycloneDX, and PyInstaller from being reported as shipped
 application components while retaining pinned, reproducible build inputs.
 Development locks are compiled with `--allow-unsafe`, so their exact
-`pip==26.2.1`, `setuptools==83.0.0`, and `pip-tools==7.6.1` versions are
+`pip==26.2.1`, `setuptools==84.2.1`, and `pip-tools==7.6.1` versions are
 committed and installed before the rest of the toolchain. This pip release is
 compatible with pip-tools and includes fixes for the audited pip advisories.
 The runtime-only lock intentionally excludes those bootstrap tools.
@@ -78,7 +79,7 @@ directories and never access the developer's credential store.
 
 ## Settings development
 
-See [CONTRIBUTING](../CONTRIBUTING.md#required-checks) for the exact npm,
+See [CONTRIBUTING](../CONTRIBUTING.md#checks-for-your-change) for the exact npm,
 Playwright, and Cargo checks. `npm run build` in `desktop/` runs TypeScript
 validation with TypeScript 7 before Vite 8. `npm ci` and `cargo build --locked` use the committed
 dependency locks. `npm run dev` starts Vite; controller access still requires
@@ -102,23 +103,40 @@ QML Settings fallback. This is not evidence that the new Settings were built.
 Run the same core checks used in CI:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe -m compileall -q clarify\desktop\qml_app.py clarify\desktop\qml_bridge.py clarify\desktop\qml_runtime.py clarify\desktop\qml_settings.py clarify\desktop\qml_audio_batch.py clarify\desktop\qml_clipboard.py clarify\desktop\qml_voice_translation.py clarify\desktop\qt_shell.py workflows.py repositories.py workflow_config.py workflow_settings.py voice_translation.py voice_translation_runtime.py dictionary_snippets.py dictionary_settings.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests
+.\.venv\Scripts\python.exe scripts/run_tests.py -v
+.\.venv\Scripts\python.exe scripts/ci.py --task static
 ```
 
 From Linux or WSL with the dependencies installed:
 
 ```bash
-python3 -m unittest discover -s tests -v
-python3 -m compileall -q clarify/desktop/qml_app.py clarify/desktop/qml_bridge.py clarify/desktop/qml_runtime.py clarify/desktop/qml_settings.py clarify/desktop/qml_audio_batch.py clarify/desktop/qml_clipboard.py clarify/desktop/qml_voice_translation.py clarify/desktop/qt_shell.py workflows.py repositories.py workflow_config.py workflow_settings.py voice_translation.py voice_translation_runtime.py dictionary_snippets.py dictionary_settings.py microphone_controls.py secret_store.py update_security.py version.py desktop_state.py windows_hotkeys.py windows_clipboard.py provider_types.py provider_adapters.py provider_http.py provider_registry.py local_asr.py audio_file_batch.py audio_file_batch_ui.py history_store.py scripts/create_release_manifest.py scripts/local_asr_harness.py tests
+python3 scripts/run_tests.py -v
+python3 scripts/ci.py --task static
 ```
 
-Repository-specific tests live in `tests/test_repositories.py` and
-`tests/test_workflow_config.py`. They cover legacy file loading, the ordered
+Use the configured interpreter from the locked environment. `scripts/run_tests.py`
+creates a temporary process profile before discovery, removes inherited provider
+credentials and sets `CLARIFY_SKIP_DOTENV=1`. It accepts the same arguments as
+`unittest`; no arguments run full discovery. For a focused Windows check:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_tests.py --suite windows -v
+```
+
+Standalone isolated fixture commands retain their own setup.
+
+Choose local checks by the affected contract. A Settings-only design change
+needs the shared `settings_unit` and `settings_browser` tasks, without Rust or
+an EXE build. Documentation needs repository checks. Python behavior needs the
+Python suite. Native integration and release candidates still need Windows acceptance.
+See [CI selection](ci-delivery.md) and [Contributing](../CONTRIBUTING.md).
+
+Repository-specific tests live in `tests/unit/test_repositories.py` and
+`tests/compatibility/test_workflow_config.py` and `tests/contract/test_workflow_config.py`. They cover legacy file loading, the ordered
 flat-to-workflow migration, independent routes, canonical model IDs,
 capability/custom-endpoint validation, future/unknown fields, atomic writes,
 and rollback when a secret backend cannot be verified. The backend contract and
-corrupted-entry handling are covered in `tests/test_secret_store.py`.
+corrupted-entry handling are covered in `tests/compatibility/test_secret_store.py` and `tests/integration/test_secret_store.py` and `tests/windows/test_secret_store.py`.
 
 Workflow settings are persisted below the `workflows` key in `config.json`:
 
@@ -212,15 +230,15 @@ Delete the disposable `$dataRoot` after the evidence is captured. This manual
 matrix is still required before closing security issue #14 because CI cannot
 provide the real-user UI/restart/request evidence.
 
-Headless orchestration tests live in `tests/test_workflows.py`. They exercise
+Headless orchestration tests live in `tests/compatibility/test_workflows.py` and `tests/contract/test_workflows.py`. They exercise
 dictation, rewrite, translation, overlap prevention, focus-safe target capture,
 publication ordering, shutdown cancellation, and stale-worker rejection without
 constructing Tk widgets. A small app-level harness also verifies Escape cannot
 reset the UI while a terminal publication is blocked.
 
 The dedicated voice-translation contract is covered by
-`tests/test_voice_translation.py`; its recording bridge is covered by
-`tests/test_voice_translation_runtime.py`. These tests use fake provider,
+`tests/contract/test_voice_translation.py`; its recording bridge is covered by
+`tests/contract/test_voice_translation_runtime.py`. These tests use fake provider,
 clipboard, recording, and monotonic-clock seams to verify language/config
 round trips, capability validation, the state sequence, raw-transcript
 fallback, copy-only focus and clipboard decisions, cancellation/publication
@@ -325,14 +343,20 @@ installs the hook on Windows. CI keeps the format check as the final guard.
 
 ## Automated quality and supply-chain checks
 
-The CI quality gate runs staged Ruff linting, a focused Ruff format check, mypy for the
-typed `desktop_state.py` and `windows_hotkeys.py` modules, the full dependency
-audit, the unit-test baseline, and Python compile checks on Ubuntu and Windows.
-The Windows packaging job is required before CI is green.
-It also runs the shared `.github/actions/settings-build` action: npm lock
-installation, production npm audit, TypeScript/Vite build, isolated Playwright
-tests, and a locked Rust build. Both release workflows use the same action.
-Browser success does not certify WebView2 or native window behavior.
+PR CI selects checks from the complete change range. Every main push runs the
+full standard set. Scheduled and manual CI add extended checks. `CI required`
+validates the
+selected jobs, including failures, cancellation and incorrect skips. See
+[CI selection and branch protection](ci-delivery.md) for the current policy.
+
+Python changes select Linux and Windows tests, lint, types and compile checks.
+Settings design changes select the frontend build and isolated browser tests,
+without Rust or a portable EXE. Native, dependency and packaging inputs select
+the corresponding build. MSI checks apply to installer inputs or a full manual
+run. The shared Settings action can run browser checks separately from its
+native build and inventory. Browser success does not establish WebView2 or
+native window acceptance. Desktop dependency audits run for their changed
+inputs, daily, and before Desktop publication.
 
 `scripts/dependency_audit.py` audits the locked set with `pip-audit`. The
 reviewed-exception policy lives in `dependency-audit.json`; it is intentionally
@@ -399,7 +423,7 @@ post-release verification.
 The signed installer/update contract, Azure OIDC configuration, manual
 acceptance matrix, rotation, and revocation procedure are documented in
 [Windows distribution and update security](windows-distribution.md). The
-community release workflow is the no-cost path: it publishes only an unsigned
+desktop release workflow is the no-cost path: it publishes only an unsigned
 portable EXE, checksum, SBOM, ZIP, SoX and Qt/PySide source archives, and provenance.
 From v0.5.0 it also publishes Ed25519 portable update metadata using the
 protected `portable-updates` environment. Do not publish an MSI or Authenticode
@@ -412,29 +436,62 @@ not install it. The build requires a .NET SDK because
 `build\tools`.
 
 1. Choose the next semantic version from the changes since the latest tag.
-2. Set `__version__` in `version.py` and the top-level `version` in
-   `package.json` to the same exact `X.Y.Z` value. Diagnostics and packaged
-   executables import the module, and preflight rejects metadata drift.
-3. Update `CHANGELOG.md` and any documentation whose behavior changed.
-4. Run the release preflight, replacing the example version:
+   Complete Windows manual acceptance for the exact current main base and record
+   its evidence.
+2. Follow [client release automation](release-automation.md) to create a dedicated
+   draft preparation PR. It sets `version.py` and root `package.json` to the same
+   value, updates `CHANGELOG.md` and records the release intent. Preparation needs
+   a separate CI-capable token.
+3. Check out the prepared source in a dedicated worktree. Review the changelog
+   and documentation whose behavior changed. Run local checks and preflight:
 
    ```bash
    python3 .agents/skills/clarify-release/scripts/release_preflight.py \
-     --repo . --version X.Y.Z --track community
+     --repo . --version X.Y.Z --channel stable
    ```
 
-5. Open and merge a focused release-preparation PR after local, Ubuntu,
-   Windows, and packaging checks pass.
-6. Create an annotated `vX.Y.Z` tag on the exact green `main` commit and push
-   only that tag.
-7. A community tag release builds the unsigned portable EXE, runtime-lock
-   CycloneDX SBOM, checksum, ZIP, SoX and Qt/PySide source archives, and provenance
-   attestations, plus portable update metadata and its detached Ed25519
-   signature. It publishes no MSI or Authenticode CAB manifest. The signing
-   secret must match the public key packaged in the source policy.
-8. Download the published assets, verify the checksum, Ed25519 metadata
-   signature/source SHA, and SBOM/ZIP contents,
-   inspect attestations, and confirm that `/releases/latest` resolves to the
-   new version.
-9. Use the signed workflow manually only after Azure signing and the manual
-   acceptance gates are sponsored and complete.
+4. Review the metadata, scope and Windows evidence. Merge the preparation PR only
+   after all PR checks pass. No second-person approval is required.
+5. With promotion enabled, successful post-merge CI creates an immutable tag on
+   that exact current main commit and explicitly dispatches Desktop Release.
+   Ordinary code pushes do not publish. Promotion is inactive when
+   `CLARIFY_RELEASE_PROMOTION_ENABLED` is false or unset.
+6. Desktop Release builds the unsigned portable EXE, runtime-lock CycloneDX
+   SBOM, checksum, ZIP, SoX and Qt/PySide source archives, and provenance
+   attestations, plus portable update metadata and its detached Ed25519 signature.
+   It publishes no MSI or Authenticode CAB manifest. The signing secret must
+   match the public key packaged in the source policy.
+7. Download the published assets, verify the checksum, Ed25519 metadata
+   signature/source SHA, and SBOM/ZIP contents, inspect attestations, and confirm
+   that `/releases/latest` resolves to the new version.
+
+The single portable publisher has explicit preview/stable channels. The blocked
+signed publisher has been removed; MSI/runtime compatibility and acceptance gates
+remain. When promotion is disabled, a maintainer can create the immutable tag on
+the green preparation merge, then manually dispatch Desktop Release on that tag
+with `channel=stable` and the exact SHA. Tag pushes do not publish.
+The publication workflow still requires the reviewed preparation intent.
+Manual branch previews are prereleases, never latest, and have no update feed or
+metadata. See [release automation](release-automation.md#desktop-preview).
+
+## Interface localization
+
+Edit the Portuguese, English and Spanish entries in `shared/ui_strings.json`.
+Run `python scripts/sync_locales.py` to update the native Swift catalog, then
+`python scripts/sync_locales.py --check` before committing. The iOS app, keyboard
+and Live Activity use the generated catalog. Authentication email copy uses the
+same source. Keep substitutions unchanged across translations. Do not translate
+state IDs, prompts, user transcripts, email addresses or dictionary entries.
+
+Text used only by desktop can be listed in `shared/desktop_ui_keys.json`. This
+file contains source keys, not translations. The generator omits these keys from
+Swift. The scope check searches for exact key text in supported mobile source
+files. It can flag comments and cannot resolve keys assembled from multiple
+strings or written with escape sequences. Review such uses explicitly. Remove a
+key from the scope list before using it in mobile. Unclassified keys remain
+shared. The Python and TypeScript catalogs retain every translation, including
+desktop text.
+
+The Windows Settings build stages `desktop/` and `shared/` together under
+`%TEMP%\clarify-settings-workspace`, with pinned dependencies in the staged
+`desktop` folder. The portable package embeds the shared Python UI catalog.

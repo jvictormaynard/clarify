@@ -1,0 +1,114 @@
+Provider brand icons
+
+These local assets identify the corresponding sign-in providers. The
+provider names and logos remain the property of their respective owners.
+The Clarify MIT license does not replace provider logo and trademark terms.
+No Clerk source or runtime dependency is included.
+
+Google G
+Source: https://developers.google.com/static/identity/images/g-logo.png
+Version: branding-guidelines gradient G, retrieved 2026-10-27
+Source SHA-256: d1ce9c2af0b10a7333abc99bc706f9a6a199e5b65bf3e3009624f076b8638e6a
+Use terms: https://developers.google.com/identity/branding-guidelines
+The PNG bytes are unchanged. Display dimensions are 20 by 20 pixels, with
+object-fit: contain to preserve the asset's aspect ratio.
+Google provides this brand asset for identification. No general open-source
+license is asserted for the logo.
+
+Google Sans Medium
+Source: https://fonts.gstatic.com/s/googlesans/v71/4Ua_rENHsxJlGDuGo1OIlJfC6l_24rlCK1Yo_Iqcsih3SAyH6cAwhX9RFD48TE63OOYKtrw2IJllpyk.woff2
+Version: Google Fonts v71, Latin, weight 500, retrieved 2026-10-27
+Source SHA-256: 7ee2b232de66f7530be28964818bc8a813e62553138e48bffd917e95b19bd7fa
+License: SIL Open Font License 1.1, see Google-Sans-OFL-1.1.txt.
+License source: https://github.com/google/fonts/blob/fc0842ce25d003e57a2fc72cd4c4a6af6175a2cc/ofl/googlesans/OFL.txt
+The font bytes are unchanged and are used only in the Google sign-in button.
+
+Microsoft symbol
+Source: https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-add-branding-in-apps/ms-symbollockup_mssymbol_19.svg
+Version: ms-symbollockup_mssymbol_19.svg, retrieved 2026-10-27
+Source SHA-256: 929f48f88c8ca7f3f5d294be47ec4caf51acc28ac25340c19a903125d7ecd84a
+Use terms: https://learn.microsoft.com/en-us/entra/identity-platform/howto-add-branding-in-apps
+The four colored rectangles and viewBox are unchanged. Display dimensions
+are 20 by 20 pixels. The source title is omitted for the decorative icon.
+Microsoft provides this brand asset for sign-in interfaces. No general
+open-source license is asserted for the logo.
+
+GitHub mark
+Source: https://github.com/primer/octicons/blob/9a274e212ee25c400ff666ce25a57866b7eacc25/icons/mark-github-24.svg
+Revision: 9a274e212ee25c400ff666ce25a57866b7eacc25
+Source SHA-256: bce494189797623c34e39a41c2c38a132bdca23ce4e6ac06b70116ed7e91ce26
+Use terms: https://brand.github.com/foundations/logo
+Upstream license guidance: https://github.com/primer/octicons/blob/9a274e212ee25c400ff666ce25a57866b7eacc25/README.md#license
+The path and viewBox are unchanged. Display dimensions are 20 by 20 pixels.
+The fill is currentColor so the monochrome mark follows the interface text.
+The upstream README directs GitHub logo use to the GitHub logo guidelines.
+Its code license is MIT and applies to other files. The upstream MIT notice
+is retained below; it does not replace GitHub logo and trademark terms.
+
+Upstream MIT notice
+Source: https://github.com/primer/octicons/blob/9a274e212ee25c400ff666ce25a57866b7eacc25/LICENSE
+
+MIT License
+
+Copyright (c) 2026 GitHub Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+OpenAI / ChatGPT mark
+Source: https://github.com/pingdotgg/t3code/blob/0b02b21e5a451fa7e488a8596cedbeb0ddd9d63c/apps/web/src/components/Icons.tsx#L405-L419
+Revision: 0b02b21e5a451fa7e488a8596cedbeb0ddd9d63c, OpenAI component, inspected 2026-10-27
+Source file SHA-256: f49073bf441cd63d00ca80a0042b2540bf251e820bcc95f7bc6cb81e58b35c3a
+SVG path d SHA-256 (UTF-8): f137248b6c4ca3c558149ccfeae259e5a2e3406cbb4e54e0529ce7febf723146
+Use terms: https://openai.com/brand/#usage-terms
+Brand guidelines: https://openai.com/brand/
+The path, even-odd rules and viewBox are unchanged. Display dimensions are
+20 by 20 pixels. SVG aspect-ratio preservation uses the default xMidYMid meet.
+The fill is currentColor so the monochrome mark follows the interface text.
+The icon is decorative and has no runtime request or font dependency.
+OpenAI owns the OpenAI and ChatGPT names and marks. Use is subject to OpenAI's
+brand guidelines and limited, revocable Marks usage terms. The mark identifies
+OpenAI's ChatGPT service; it must not imply endorsement or become Clarify's
+primary branding. No general open-source license is asserted for the mark.
+The T3 source code has an MIT license. Its notice is retained below and does
+not replace OpenAI logo and trademark terms.
+
+T3 upstream MIT notice
+Source: https://github.com/pingdotgg/t3code/blob/0b02b21e5a451fa7e488a8596cedbeb0ddd9d63c/LICENSE
+
+MIT License
+
+Copyright (c) 2026 T3 Tools Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

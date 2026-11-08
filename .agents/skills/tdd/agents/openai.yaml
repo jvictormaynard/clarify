@@ -1,0 +1,5 @@
+interface:
+  display_name: "Tdd"
+  short_description: "Prove behavior with isolated regression tests"
+policy:
+  allow_implicit_invocation: true

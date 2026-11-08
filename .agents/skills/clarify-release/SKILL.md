@@ -1,183 +1,125 @@
 ---
 name: clarify-release
-description: Prepare, publish, and verify Clarify GitHub releases with SemVer, changelog and documentation maintenance, Windows executable validation, CI gates, tags, release assets, checksums, and post-release checks. Use when the user asks to release, publish, tag, version, or audit a Clarify release in the clarify repository.
+description: Prepare, build, accept, publish, and verify Clarify desktop release candidates with immutable source, assets, provenance and explicit publication.
 ---
 
 # Clarify Release
 
-Publish a reproducible Windows-first Clarify release without allowing the
-tag, documentation, executable, or source state to drift apart.
+Build a candidate once with its final identity. Publish only that authenticated
+candidate after its native acceptance and a separate explicit publication action.
 
 ## Required context
 
-Operate on `/home/ork/repos/clarify` unless the user supplies another
-Clarify checkout. Read [references/release-contract.md](references/release-contract.md)
-completely before changing release state.
+Read the complete [release contract](references/release-contract.md) and
+[automation guide](../../../docs/release-automation.md). Use the
+[project workflow](../../../docs/agents/workflow.md#worktrees-and-parallel-work)
+for authorization, a linked current-main worktree and ownership. Preserve other
+checkouts, user profiles, existing artifacts and unrelated edits.
 
-Use local `git` for branches, commits, tags, and pushes. Prefer the GitHub
-connector for PR creation and metadata; use `gh` for authentication, Actions,
-release inspection, downloads, and gaps in connector coverage.
+A release audit is read-only. An authorized preparation creates a reviewed
+metadata-only PR. Its merge authorizes candidate creation after exact green main
+CI. It does not prove Windows acceptance or authorize implicit desktop
+publication. Publication requires the accepted packaged candidate and explicit
+`publish-candidate` action. A skill grants no Git, provider or publication rights.
 
-## Workflow
+`release.yml` is the only active desktop release owner. It is manual-only with
+`build-candidate` (default) and `publish-candidate`, and `preview` (default) or
+`stable`. Preview has no stable updater or latest effect. There is no active
+MSI/Authenticode/CAB publication path. Preserve their runtime compatibility and
+future rollout gates in `docs/windows-distribution.md`.
 
-### 1. Establish the release boundary
+## Prepare reviewed source
 
-1. Fetch and prune `origin`, including tags.
-2. Require an understood, clean worktree before creating a release branch.
-3. Inspect the latest GitHub release, existing tags, open PRs, and commits since
-   the latest tag.
-4. Choose the next SemVer:
-   - patch for compatible fixes and dependency maintenance;
-   - minor for backward-compatible user features;
-   - major only for intentional breaking changes.
-5. Stop if the proposed tag already exists or the target commits are not on the
-   canonical `main`.
+1. Inspect current main, tags, release state and intended source changes. Use
+   native Git for authorized branch, commit, tag and push operations. Never
+   force-move a tag or change a sibling checkout.
+2. Choose SemVer according to the actual changes. Keep `version.py`, root
+   `package.json`, the dated changelog section and comparison links aligned.
+3. Use **Release Preparation** on main, or equivalent authorized local
+   preparation. Schema 2 contains `component`, `version`, `base_sha`, `notes`
+   and `evidence`, in addition to `schema`. Desktop evidence contains only a
+   canonical `report_url`. Do not restore pre-build Windows acceptance fields.
+4. Review the metadata-only `release-preparation/vX.Y.Z` PR. Only intent,
+   changelog and desktop version values can differ from the prepared source.
+   Review scope, notes, notices and relevant documentation. Update only documents
+   whose owned behavior changed. Never include secrets, local config or audio.
+5. Complete applicable checks under `docs/ci-delivery.md`, including policy tests
+   with `python scripts/run_tests.py --suite policy`, and the read-only preflight:
 
-### 2. Prepare release documentation
+   ```sh
+   python .agents/skills/clarify-release/scripts/release_preflight.py --repo . --version X.Y.Z --channel stable
+   git diff --check
+   ```
 
-Create `codex/release-vX.Y.Z` from current `origin/main`.
+6. After maintainer review and merge, require canonical successful main push
+   `CI` at `.github/workflows/ci.yml`, exact merge SHA and its unique completed
+   successful `CI required`. Ordinary CI owns its component graph. Do not copy
+   old component job names into release consumers.
 
-Update `CHANGELOG.md`:
+## Build a candidate
 
-- move user-visible entries from `Unreleased` into `[X.Y.Z] - YYYY-MM-DD`;
-- group entries under `Added`, `Changed`, `Fixed`, `Security`, or `Removed`;
-- describe observable behavior, not commit mechanics;
-- change the `Unreleased` comparison to start at the new tag;
-- add the comparison link from the previous tag to the new tag.
+Main must still identify the reviewed source at candidate creation. Create an
+immutable annotated stable tag on that source only when authorized. With
+`CLARIFY_RELEASE_PROMOTION_ENABLED=true`, promotion can create the tag and
+explicitly dispatch the stable candidate build. Unset/false remains inactive.
+Promotion never dispatches desktop publication.
 
-Set `__version__` in `version.py` and the top-level `version` in `package.json`
-to the same exact `X.Y.Z` value before running preflight. The tag, manifest,
-MSI, in-app comparison, runtime diagnostics, and packaged executable derive
-from this value; the preflight rejects drift between the module, package
-metadata, and proposed tag.
+Dispatch **Desktop Release** on the reviewed stable tag with
+`action=build-candidate`, `channel=stable` and exact `source_sha`. Preview uses
+an exact branch dispatch with `channel=preview`. A tag push alone publishes
+nothing. Inspect existing runs before dispatch; preserve partial/uncertain state.
 
-Audit documentation touched by the release contract:
+The candidate build retains current pinned dependencies, audits, native Settings
+and embedded payload checks, portable startup/recovery smoke checks, licenses,
+SBOM, checksums, pinned source archives and build provenance. Stable update
+metadata is signed once inside `portable-updates`, with no fallback key. The
+build has no Contents write permission. Preview disables its update policy
+before packaging and contains neither update manifest nor signature.
 
-- update `README.md` and `docs/README.pt-BR.md` when installation, shortcuts,
-  configuration, requirements, or download behavior changed;
-- update architecture/development docs when build or maintainer workflows changed;
-- update `THIRD_PARTY_NOTICES.md` when bundled components or their terms changed;
-- keep secrets, `.env`, local config, and credentials out of every artifact.
+Record source/ref, run/attempt, final channel/version/tag, artifact ID and digest.
+`Clarify-candidate.json` binds exactly the allowed assets, hashes and sizes.
+Do not repackage, re-sign or mutate that candidate after acceptance.
 
-Do not make cosmetic documentation edits merely to create a release commit.
+## Accept and publish the existing bytes
 
-### 3. Run preflight and product validation
+Perform Windows manual acceptance on the actual stable artifact after packaging.
+Verify the artifact digest and executable checksum first. Cover the affected
+native contracts. Record results and limits in a fresh canonical maintainer
+report with the exact `clarify-candidate-acceptance` block from the automation
+guide. Both source SHA and candidate digest must match. CI, compilation and a
+preview of different bytes do not establish acceptance. No second unrelated
+pre-build manual acceptance is required.
 
-Run:
+When publication is authorized, dispatch **Desktop Release** from main with
+`action=publish-candidate`, channel/version/source, explicit completed candidate
+run ID/current attempt, immutable artifact ID/digest and stable acceptance JSON.
+The protected `desktop-publication` job requires separate opt-in
+`CLARIFY_RELEASE_PUBLICATION_ENABLED=true`. It authenticates the producer and
+receipts, verifies every input and provenance, and uploads only existing candidate bytes.
+It installs no application dependencies, builds nothing and has no signing key.
 
-```bash
-python3 .agents/skills/clarify-release/scripts/release_preflight.py \
-  --repo . \
-  --version X.Y.Z
-git diff --check
-npm run check
-npm test
-```
+It rejects stale attempts, wrong source/channel/version, path escapes, symlinks,
+extra or missing inputs, preview metadata, wrong tags and partial/uncertain assets.
+It creates a draft, uploads once, verifies exact remote hashes/sizes, then publishes.
+Stable explicitly becomes latest; preview is a nonlatest prerelease. A complete
+matching release is verified without another upload. Never overwrite assets,
+retry an uncertain upload automatically, or use a rebuild to hide a gap.
 
-For Windows UI, dependency, packaging, hotkey, focus, microphone, or
-transparency changes, also run `npm run deploy`. Confirm that
-`C:\repos\clarify\dist\Clarify.exe` restarted and is responding.
-When the user explicitly requests publication, treat that request as approval
-of visible and interaction changes. Do not require a second manual-acceptance
-confirmation. Report any manual interaction check that was not performed as an
-open validation limitation.
+## Verify and hand off
 
-Never treat unit tests or a successful PyInstaller build as visual acceptance.
+Verify the exact tag/source, release state, candidate identity, downloaded hashes,
+checksums, ZIP licenses, Qt/SoX sources, signed stable update metadata and
+provenance for every asset. Stable must be latest after its publication. Preview
+must remain a prerelease without updater metadata or a stable-feed change.
+Download into a temporary directory; replacing a user's installed app requires
+its own authorization.
 
-### 4. Publish the release-preparation PR
+Report source/base/HEAD, version/tag, candidate run/attempt/artifact ID/digest,
+manual report, publication action/result, exact asset verification and open gates.
+A local build, accepted workflow dispatch, passing unit test or merged PR proves
+only that stage. Keep Windows packaging/acceptance and GitHub/Apple results separate.
 
-1. Stage only release-preparation files.
-2. Commit tersely, for example `docs: prepare vX.Y.Z release`.
-3. Push the branch with upstream tracking.
-4. Open a draft PR against `main` explaining scope, version choice,
-   documentation changes, validation, and expected assets.
-5. Mark ready only after local gates pass.
-6. Require all PR checks:
-   - `Tests (ubuntu-latest)`;
-  - `Tests (windows-latest)`;
-  - `Package Windows executable` (including MSI lifecycle and manifest smoke
-    tests).
-7. Merge without rewriting existing contributor history.
-8. Wait for the post-merge `main` CI, including Windows packaging.
-
-Do not tag an unmerged branch or a commit whose post-merge CI is failing.
-
-### 5. Tag and publish
-
-Resolve the exact green `origin/main` SHA. Create an annotated tag:
-
-```bash
-git tag -a vX.Y.Z <main-sha> -m "Clarify vX.Y.Z"
-git push origin vX.Y.Z
-```
-
-Watch the tag-triggered `Release` workflow. It must run tests, build on Windows,
-sign and verify the EXE, MSI, and manifest CAB through the protected Azure OIDC
-environment, create checksums, ZIP, and provenance attestations, obtain the
-verified SoX source archive, and publish the GitHub release.
-
-When sponsored signing is unavailable, use the tag-triggered
-`Community Release` workflow instead. It publishes only the unsigned portable
-EXE, checksum, runtime SBOM, ZIP, Qt and SoX source archives, and provenance
-attestations. From v0.5.0 it also publishes Ed25519-authenticated portable
-metadata and its signature, as specified in the release contract. Verify these
-against the bundled public key, executable hash, version, and source SHA.
-It must not publish an MSI or an Authenticode CAB update manifest.
-
-Do not create a second manual release while the workflow is running.
-
-### 6. Verify the published release
-
-Require all of the following:
-
-- release is published, not draft or prerelease;
-- tag resolves to the intended green `main` commit;
-- release is the current latest release;
-- all required assets from the contract exist exactly once;
-- downloaded `Clarify.exe` matches `Clarify.exe.sha256`;
-- for a signed release, downloaded MSI and manifest CAB match their checksums,
-  have valid RFC 3161 timestamped Authenticode signatures, and match the pinned
-  publisher;
-- for a signed release, authenticated manifest version, tag, channel, asset
-  name, URL, size, and MSI checksum all match the release;
-- GitHub provenance attestations verify for every published asset;
-- ZIP contains the executable, `LICENSE`, and `THIRD_PARTY_NOTICES.md`;
-- SoX source digest matches the pinned release-workflow digest;
-- `/releases/latest` resolves to the new version.
-
-Download assets into a temporary directory for verification. Do not replace the
-user's installed executable with a release download unless explicitly asked.
-
-### 7. Hand off
-
-Report:
-
-- version, tag, release URL, and commit SHA;
-- PR and merge result;
-- local, PR, `main`, and release-workflow validation;
-- exact published assets and checksum result;
-- documentation files updated;
-- any remaining signing or SmartScreen limitation.
-- manual installer acceptance evidence and any unmet rollout gate from
-  `docs/windows-distribution.md`.
-
-Keep the local checkout on clean, synchronized `main`. Prune merged temporary
-branches from remote-tracking refs.
-
-## Stop conditions
-
-Stop publication and explain the blocker if:
-
-- unrelated local changes make scope ambiguous;
-- a required test, package job, or post-merge check fails;
-- the Windows build, deployment, or installed-process verification fails;
-- the tag exists at another commit;
-- the release workflow or any required asset is missing;
-- signed-release signing configuration, timestamp, publisher identity, or
-  provenance fails;
-- the installer/update rollout gates are incomplete for a release that intends
-  to enable that path;
-- checksum, ZIP contents, SoX source digest, or tag provenance does not match.
-
-Never force-move a published tag, rewrite contributor history, or silently
-replace release assets.
+For iOS, follow the [mobile guide](../../../mobile/README.md#direct-testflight-delivery).
+`validate` is unsigned. TestFlight is the signed production-identity candidate.
+App Store handoff authenticates its exact Apple build ID and evidence artifact
+without rebuilding. Submission/release is manual; no handoff is public availability.

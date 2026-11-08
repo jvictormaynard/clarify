@@ -1,6 +1,10 @@
 """Isolated real-controller RPC fixture. Never opens user config or a microphone."""
 
 import json
+import base64
+import os
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 import sys
 import threading
 from pathlib import Path
@@ -10,11 +14,239 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtCore import QCoreApplication, QObject, Signal, Qt, Slot, QTimer
 from types import SimpleNamespace
-from test_pyside6_qml_settings import _repositories, _MicrophoneBackend
+from tests.support.settings import _repositories, _MicrophoneBackend
 from microphone_controls import MicrophoneInventory, MicrophoneDevice
 from local_asr_product import LocalASRProductState
 from clarify.desktop.qml_settings import QmlSettingsController
 from clarify.desktop.qml_web_settings import SettingsProtocol, WebSettingsProcess
+from contextlib import ExitStack
+
+_fixture_stdout_lock = threading.Lock()
+
+
+def emit_fixture(value):
+    with _fixture_stdout_lock:
+        print(json.dumps(value), flush=True)
+
+
+def weekly_usage():
+    now = datetime.now(timezone.utc)
+    start = (now - timedelta(days=now.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    usage = dict(
+        schema_version=2,
+        period_start=start.isoformat(),
+        reset_at=(start + timedelta(days=7)).isoformat(),
+        used_percent=12.5,
+        remaining_percent=82.5,
+        reserved_percent=5,
+        allocation_status="available",
+        hosted_available=True,
+    )
+    if "--usage-legacy" in sys.argv:
+        return dict(used_ms=450000, reserved_ms=60000, limit_ms=18000000)
+    if "--usage-malformed" in sys.argv:
+        usage["remaining_percent"] = "invalid"
+    for status in ("waiting", "unfunded", "inactive"):
+        if f"--usage-{status}" in sys.argv:
+            # A bad old cache must not make an unallocated account look usable.
+            usage.update(
+                allocation_status=status,
+                used_percent=0,
+                remaining_percent=100,
+                reserved_percent=0,
+                hosted_available=False,
+            )
+    if "--usage-paused" in sys.argv:
+        usage["hosted_available"] = False
+    if "--usage-exhausted" in sys.argv:
+        usage.update(
+            used_percent=100,
+            remaining_percent=0,
+            reserved_percent=0,
+            hosted_available=False,
+        )
+    return usage
+
+
+class OnboardingAccount:
+    """Offline account double for first-run UI acceptance. Never sends e-mail."""
+
+    @property
+    def scope(self):
+        return "00000000-0000-4000-8000-000000000001" if self.signed_in else None
+
+    def sync_library(self, service, *, prefer=None):
+        if not self.import_on_sync:
+            return
+        self.import_on_sync = False
+        from dictionary_snippets import DictionaryEntry, DictionarySnippets, Snippet
+
+        state = service.state
+        service.replace(
+            DictionarySnippets(
+                dictionary=(*state.dictionary, DictionaryEntry(term="Remote term")),
+                snippets=(
+                    *state.snippets,
+                    Snippet(trigger="remote phrase", replacement="Remote replacement"),
+                ),
+            )
+        )
+
+    @property
+    def signed_in(self):
+        return self.state["signedIn"]
+
+    @property
+    def managed(self):
+        return self.state.get("managed", False)
+
+    def refresh_if_due(self, service, *, force=False):
+        if "--usage-error" in sys.argv:
+            from clarify_account import AccountError
+
+            raise AccountError("Não foi possível conectar ao Clarify. Tente novamente.")
+        if self.signed_in:
+            self.state["usage"] = weekly_usage()
+
+    def refresh(self):
+        self.refresh_if_due(None)
+
+    def __init__(self, directory):
+        self.directory = Path(directory)
+        self._lock = threading.RLock()
+        self._generation = 0
+        self._action_library = {
+            "revision": 0,
+            "actions": [
+                dict(
+                    id="rewrite",
+                    name="Reescrita",
+                    prompt="Edit the source.",
+                    kind="rewrite",
+                    enabled=True,
+                    revision=1,
+                ),
+                dict(
+                    id="translation",
+                    name="Tradução",
+                    prompt="Translate into {lang}.",
+                    kind="translation",
+                    enabled=True,
+                    revision=1,
+                ),
+            ],
+        }
+        self.import_on_sync = False
+        self.state = dict(
+            endpoint="https://clarify.example",
+            signedIn=False,
+            email="",
+            pending="",
+            hosted=False,
+            syncEnabled=False,
+            usage={},
+        )
+        if "--signed-in" in sys.argv:
+            self.state.update(
+                signedIn=True, hosted=True, managed=True, email="test@example.test"
+            )
+
+    def snapshot(self):
+        return dict(self.state)
+
+    def snapshot_guard(self):
+        return self._lock
+
+    def context_stamp(self):
+        with self._lock:
+            return self._generation, "", self.state.get("endpoint", "")
+
+    @property
+    def hosted(self):
+        return self.state.get("hosted", False)
+
+    def history_identity(self):
+        from clarify_account import HistoryIdentity
+
+        return (
+            HistoryIdentity(self.state["endpoint"], self.scope, self._generation)
+            if self.signed_in
+            else None
+        )
+
+    def text_actions_path(self, identity):
+        return self.directory / "fixture-text-actions.json"
+
+    def text_actions(self, *, expected_identity=None, cancel=None):
+        return json.loads(json.dumps(self._action_library))
+
+    def save_text_actions(
+        self, actions, expected_revision, *, expected_identity, cancel=None
+    ):
+        from clarify_account import TextActionsConflict
+
+        if getattr(self, "reject_text_action_save", False):
+            self.reject_text_action_save = False
+            raise ValueError("Fixture action save rejected")
+
+        if expected_identity != self.history_identity():
+            raise ValueError("Fixture account changed")
+        if expected_revision != self._action_library["revision"]:
+            raise TextActionsConflict(self.text_actions())
+        previous = {action["id"]: action for action in self._action_library["actions"]}
+        values = []
+        for action in actions:
+            before = previous.get(action["id"])
+            revision = before["revision"] if before else 0
+            if before is None or any(
+                before[key] != value for key, value in action.items()
+            ):
+                revision += 1
+            values.append({**action, "revision": revision})
+        self._action_library = {"revision": expected_revision + 1, "actions": values}
+        return self.text_actions()
+
+    def execute_text_action(
+        self, snapshot, text, language, *, cancel=None, output_language=None
+    ):
+        return f"Preview ({language}): {text}"
+
+    def begin_change(self):
+        return True
+
+    def end_change(self):
+        pass
+
+    def authenticate(self, action, value):
+        from clarify_account import AccountError
+
+        if action == "confirm":
+            if value != "123456":
+                raise AccountError("Código inválido. Tente novamente.")
+            self.state.update(signedIn=True, pending="", hosted=True, managed=True)
+            self.state["usage"] = weekly_usage()
+        else:
+            self.state.update(email=value, pending=action)
+
+    def logout(self, **_):
+        self._generation += 1
+        self.state.update(signedIn=False, pending="", hosted=False, managed=False)
+
+    def authenticate_social(self, provider, *, cancel):
+        if "--social-wait" in sys.argv:
+            from clarify_account import AccountError
+
+            cancel.wait(30)
+            raise AccountError("O login foi cancelado.")
+        self.state.update(
+            signedIn=True,
+            pending="",
+            hosted=True,
+            managed=True,
+            email=f"{provider}@example.test",
+        )
 
 
 def check_native_corners(process_id):
@@ -79,10 +311,77 @@ class Dispatcher(QObject):
 
     @Slot(object)
     def dispatch(self, request):
+        if request.get("method") == "nativePillInput":
+            from tests.support.electron_native_input import native_pill_input
+
+            emit_fixture(
+                {"id": request["id"], "result": native_pill_input(request["args"][0])}
+            )
+            return
         if request.get("method") == "quit":
             QCoreApplication.quit()
             return
-        print(json.dumps(self.protocol.dispatch(request)), flush=True)
+        if request.get("method") == "testComputer":
+            controller = self.protocol.settings._computer
+            action = request.get("args", [""])[0]
+            if action == "paired":
+                controller._host.devices.append(
+                    {"device_id": "fixture-phone", "device_name": "Fixture iPhone"}
+                )
+                controller.refresh()
+            elif action == "expire":
+                controller._expires = 1
+            elif action == "offline":
+                controller._host.enabled = False
+                controller._host.ready = False
+                controller.refresh()
+            elif action in ("internet", "local"):
+                controller._host.relay_connected = action == "internet"
+                controller.refresh()
+            print(json.dumps({"id": request.get("id"), "result": True}), flush=True)
+            return
+        if (
+            "--text-actions" in sys.argv
+            and request.get("method") == "testRejectTextActionSave"
+        ):
+            self.protocol.settings._account.reject_text_action_save = True
+            emit_fixture({"id": request.get("id"), "result": True})
+            return
+        if (
+            "--text-actions" in sys.argv
+            and request.get("method") == "testRequireTextActionRefresh"
+        ):
+            settings = self.protocol.settings
+            settings._text_actions._incomplete = True
+            settings._text_action_mutation.update(status="failed", restoreRequired=True)
+            settings.textActionsChanged.emit()
+            emit_fixture({"id": request.get("id"), "result": True})
+            return
+        if (
+            "--library-sync" in sys.argv
+            and request.get("method") == "testArmLibrarySync"
+        ):
+            # Test-only remote import on the next real controller sync worker.
+            self.protocol.settings._account.import_on_sync = True
+            emit_fixture({"id": request.get("id"), "result": True})
+            return
+        if (
+            "--history" in sys.argv
+            and request.get("method") == "testHistoryContextChange"
+        ):
+            # Test-only session transition, outside the product RPC allowlist.
+            self.protocol.settings._account._generation += 1
+            emit_fixture({"id": request.get("id"), "result": True})
+            return
+        if "--history" in sys.argv and request.get("method") == "testHistoryClipboard":
+            emit_fixture(
+                {
+                    "id": request.get("id"),
+                    "result": self.protocol.settings._history_test_clipboard,
+                }
+            )
+            return
+        emit_fixture(self.protocol.dispatch(request))
 
 
 def main():
@@ -92,6 +391,10 @@ def main():
     app = QCoreApplication([])
     with (
         TemporaryDirectory() as directory,
+        patch(
+            "shared.localization.device_language",
+            return_value=os.environ.get("CLARIFY_TEST_UI_LANGUAGE", "pt"),
+        ),
         patch("clarify.desktop.qml_settings._is_windows", return_value=False),
         patch(
             "local_asr_catalog.installer_for",
@@ -121,11 +424,171 @@ def main():
             return 0.5
 
         backend.test_microphone = preview
+        repositories = _repositories(directory)
+        chatgpt = None
+        fixtures = ExitStack()
+        if "--chatgpt" in sys.argv:
+            from tests.support.chatgpt_settings import (
+                FakeChatGPTAdapter,
+                FakeChatGPTSession,
+            )
+            from provider_registry import PROVIDER_REGISTRY
+
+            chatgpt = FakeChatGPTSession()
+            if "--chatgpt-no-plan" in sys.argv:
+                chatgpt.state.update(
+                    connected=True,
+                    planEnabled=False,
+                    email="demo@example.test",
+                    accountId="personal",
+                    accounts=[
+                        dict(id="personal", label="demo@example.test · Personal")
+                    ],
+                )
+            if "--chatgpt-wait" in sys.argv:
+                chatgpt.wait = threading.Event()
+            fixtures.enter_context(
+                patch.dict(
+                    PROVIDER_REGISTRY._adapters, chatgpt=FakeChatGPTAdapter(chatgpt)
+                )
+            )
+            fixtures.enter_context(patch("webbrowser.open", return_value=True))
+        onboarding = "--onboarding" in sys.argv
+        if not onboarding:
+            repositories.config.apply(
+                replace(repositories.config.load(), onboarding_completed=True)
+            )
         settings = QmlSettingsController(
-            _repositories(directory),
+            repositories,
+            account_service=OnboardingAccount(directory)
+            if onboarding or "--signed-in" in sys.argv or "--social-wait" in sys.argv
+            else None,
             microphone_backend=backend,
             local_product=Mock(state=LocalASRProductState("installed"), busy=False),
+            chatgpt_session=chatgpt,
         )
+        if "--text-actions" in sys.argv:
+            from provider_registry import PROVIDER_REGISTRY, ProviderRegistry
+            from provider_types import RewriteResult, ModelCatalog
+            from workflow_provider import WorkflowProviderService
+
+            config = repositories.config.load()
+            repositories.config.apply(
+                replace(
+                    config,
+                    groq=replace(config.groq, api_key="fixture-only"),
+                    openai=replace(config.openai, api_key="fixture-only"),
+                )
+            )
+            settings._replace_loaded_config(repositories.config.load())
+            registry = Mock(spec=ProviderRegistry)
+            registry.describe.side_effect = PROVIDER_REGISTRY.describe
+            registry.connection_for_route.side_effect = (
+                PROVIDER_REGISTRY.connection_for_route
+            )
+            original_discovery = PROVIDER_REGISTRY.discover_models
+
+            def discover(provider, connection, cancel=None):
+                if provider == "chatgpt":
+                    return original_discovery(provider, connection, cancel)
+                return ModelCatalog(text_models=("fixture-text", "fixture-text-large"))
+
+            fixtures.enter_context(
+                patch.object(PROVIDER_REGISTRY, "discover_models", side_effect=discover)
+            )
+
+            def transform(provider, request, connection, cancel):
+                return RewriteResult(
+                    f"Preview ({getattr(request, 'target_language', 'auto')}): {request.text}",
+                    provider,
+                    request.model,
+                )
+
+            registry.rewrite.side_effect = transform
+            registry.translate.side_effect = transform
+            settings._text_action_provider = WorkflowProviderService(
+                SimpleNamespace(current=repositories.config.load),
+                Mock(),
+                registry=registry,
+                account=settings._account,
+                text_actions=settings._text_actions,
+            )
+        from tests.support.practice_settings_fixture import bind_practice
+
+        bind_practice(settings, app)
+        from clarify.desktop.qml_computer import QmlComputerController
+
+        computer = QmlComputerController(
+            Path(directory) / "computer.sqlite3",
+            FixtureComputerHost,
+            render_qr=fixture_qr,
+            blocked=lambda: bool(
+                settings.accountState.get("signedIn")
+                or settings.accountState.get("managed")
+            ),
+        )
+        settings.bindComputer(computer)
+        computer.initialize()
+        if "--history" in sys.argv:
+            from history_store import HistoryRecord, HistoryStore
+            from datetime import datetime, timezone
+
+            store = HistoryStore(
+                settings._history.local.path, enabled=True, retention_days=None
+            )
+            # Clipboard reads and writes stay inside this temporary fixture.
+            settings._history_test_clipboard = []
+            settings._write_history_clipboard = settings._history_test_clipboard.append
+            store.append(
+                HistoryRecord(
+                    raw_text="Isolated desktop history.",
+                    refined_text="Isolated revised desktop history.",
+                    timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
+                )
+            )
+            store.append(
+                HistoryRecord(
+                    raw_text="Isolated mobile history.",
+                    source_device="mobile",
+                    timestamp=datetime(2026, 10, 16, 13, tzinfo=timezone.utc),
+                )
+            )
+            if "--history-review" in sys.argv:
+                store.append(
+                    HistoryRecord(
+                        raw_text=None,
+                        refined_text="Result without original.",
+                        timestamp=datetime(2026, 10, 16, 11, tzinfo=timezone.utc),
+                    )
+                )
+            if "--history-large" in sys.argv:
+                from datetime import timedelta
+
+                records = store.list_records()
+                base = datetime(2026, 10, 16, 14, tzinfo=timezone.utc)
+                records.extend(
+                    HistoryRecord(
+                        raw_text=f"Isolated large row {index}: " + "é" * 16000,
+                        timestamp=base + timedelta(minutes=index),
+                    )
+                    for index in range(45)
+                )
+                records.append(
+                    HistoryRecord(
+                        raw_text="Giant legacy " + "x" * 1100000 + " legacy end.",
+                        timestamp=base + timedelta(hours=2),
+                    )
+                )
+                store.path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "records": [record.to_mapping() for record in records],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
         native = "--native" in sys.argv
         host = None
         if native:
@@ -165,10 +628,63 @@ def main():
         try:
             result = app.exec()
         finally:
+            computer.shutdown()
             if host is not None:
                 host.shutdown()
             settings.shutdown()
+            fixtures.close()
         return result
+
+
+class FixtureComputerHost:
+    """Offline mobile host. Its QR and devices are synthetic test data."""
+
+    def __init__(self):
+        self.enabled = False
+        self.ready = False
+        self.devices = []
+        self.sequence = 0
+        self.relay_connected = False
+
+    def start(self):
+        # Pairing is available before processing has been configured.
+        self.enabled = True
+
+    def stop(self):
+        self.enabled = False
+        self.ready = False
+
+    def create_pairing(self):
+        import time
+
+        self.sequence += 1
+        return {
+            "pairing_url": f"clarify://computer?data=FAKE-QR-{self.sequence}",
+            "expires_at": time.time() + 300,
+        }
+
+    def snapshot(self):
+        return {
+            "enabled": self.enabled,
+            "ready": self.ready,
+            "devices": list(self.devices),
+            "relay_configured": True,
+            "relay_connected": self.relay_connected,
+        }
+
+    def revoke_device(self, device_id):
+        self.devices = [
+            device for device in self.devices if device["device_id"] != device_id
+        ]
+
+
+def fixture_qr(value):
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="white"/><rect x="24" y="24" width="60" height="60" fill="black"/><rect x="172" y="24" width="60" height="60" fill="black"/><rect x="24" y="172" width="60" height="60" fill="black"/><text x="90" y="140" fill="black" font-size="16">FAKE QR</text><!-- '
+        + value.rsplit("-", 1)[-1]
+        + " --></svg>"
+    )
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
 
 
 if __name__ == "__main__":

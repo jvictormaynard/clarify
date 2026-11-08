@@ -61,9 +61,7 @@ class VoiceTranslationConfigurationError(ValueError):
         super().__init__(message)
 
 
-class UnsupportedVoiceTranslationSchemaError(
-    VoiceTranslationConfigurationError
-):
+class UnsupportedVoiceTranslationSchemaError(VoiceTranslationConfigurationError):
     """A persisted voice-translation payload is newer than this build."""
 
 
@@ -203,6 +201,7 @@ class VoiceTranslationRoute:
     prompt: str = ""
     custom_endpoint: str = ""
     enabled: bool = True
+    account_id: str = ""
 
     @classmethod
     def from_mapping(
@@ -238,16 +237,20 @@ class VoiceTranslationRoute:
                 fallback_value=fallback.custom_endpoint,
             ),
             enabled=enabled,
+            account_id=text("account_id", fallback_value=fallback.account_id),
         )
 
     def to_mapping(self) -> dict[str, Any]:
-        return {
+        values = {
             "provider_id": self.provider_id,
             "model_id": self.model_id,
             "prompt": self.prompt,
             "custom_endpoint": self.custom_endpoint,
             "enabled": self.enabled,
         }
+        if self.account_id:
+            values["account_id"] = self.account_id
+        return values
 
     def diagnostic_mapping(self) -> dict[str, Any]:
         route = WorkflowRoute(
@@ -277,6 +280,7 @@ def validate_voice_translation_route(
                 prompt=route.prompt,
                 custom_endpoint=route.custom_endpoint,
                 enabled=route.enabled,
+                account_id=route.account_id,
             ),
             WorkflowScope.TRANSLATION,
             registry=registry,
@@ -294,6 +298,7 @@ def validate_voice_translation_route(
         prompt=workflow_route.prompt,
         custom_endpoint=workflow_route.custom_endpoint,
         enabled=workflow_route.enabled,
+        account_id=workflow_route.account_id,
     )
 
 
@@ -538,12 +543,14 @@ class VoiceTranslationStateError(RuntimeError):
 class VoiceTranslationStateMachine:
     """Thread-safe state transitions with transcript retention on failure."""
 
-    _ACTIVE_PHASES = frozenset({
-        VoiceTranslationPhase.RECORDING,
-        VoiceTranslationPhase.TRANSCRIBING,
-        VoiceTranslationPhase.TRANSLATING,
-        VoiceTranslationPhase.PUBLISHING,
-    })
+    _ACTIVE_PHASES = frozenset(
+        {
+            VoiceTranslationPhase.RECORDING,
+            VoiceTranslationPhase.TRANSCRIBING,
+            VoiceTranslationPhase.TRANSLATING,
+            VoiceTranslationPhase.PUBLISHING,
+        }
+    )
 
     def __init__(
         self,
@@ -615,9 +622,7 @@ class VoiceTranslationStateMachine:
                 published_text=changes.pop(
                     "published_text", self._state.published_text
                 ),
-                publication=changes.pop(
-                    "publication", self._state.publication
-                ),
+                publication=changes.pop("publication", self._state.publication),
                 publication_claimed=changes.pop(
                     "publication_claimed", self._state.publication_claimed
                 ),
@@ -640,8 +645,7 @@ class VoiceTranslationStateMachine:
         if self._state.phase not in phases:
             expected = ", ".join(phase.value for phase in phases)
             raise VoiceTranslationStateError(
-                f"cannot transition from {self._state.phase.value}; expected "
-                f"{expected}"
+                f"cannot transition from {self._state.phase.value}; expected {expected}"
             )
 
     def _require_operation(self, operation_id: int) -> None:
@@ -951,9 +955,7 @@ class VoiceTranslationWorkflow:
         self.clipboard = clipboard
         self.policy = policy or VoiceTranslationPublicationPolicy()
         self.coordinator = (
-            coordinator
-            if coordinator is not None
-            else _DEFAULT_PUBLICATION_COORDINATOR
+            coordinator if coordinator is not None else _DEFAULT_PUBLICATION_COORDINATOR
         )
         self.state_machine = VoiceTranslationStateMachine(
             self.config,

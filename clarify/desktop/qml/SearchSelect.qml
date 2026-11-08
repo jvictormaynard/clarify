@@ -7,9 +7,9 @@ Button {
     required property Theme visualTheme
     property var options: []
     property string value: ""
-    property string placeholderText: "Select an option"
-    property string searchPlaceholder: "Search"
-    property string caption: "Choose an option"
+    property string placeholderText: qsTr("Select an option")
+    property string searchPlaceholder: qsTr("Search")
+    property string caption: qsTr("Choose an option")
     property string statusText: ""
     property string secondaryActionText: ""
     property bool searchable: true
@@ -123,7 +123,7 @@ Button {
                 spacing: 6
                 SettingsField {
                     id: search
-                    objectName: control.objectName + "Search"
+                    objectName: control.objectName + qsTr("Search")
                     visualTheme: control.visualTheme
                     Layout.fillWidth: true
                     visible: control.searchable
@@ -153,10 +153,10 @@ Button {
                     iconSource: "icons/refresh.svg"
                     iconSize: 16
                     Layout.preferredWidth: 34; Layout.preferredHeight: 34
-                    Accessible.name: "Refresh list"
+                    Accessible.name: qsTr("Refresh list")
                     ToolTip.visible: hovered
                     ToolTip.delay: 600
-                    ToolTip.text: control.busy ? "Updating list…" : "Refresh list"
+                    ToolTip.text: control.busy ? qsTr("Updating list…") : qsTr("Refresh list")
                     Keys.onShortcutOverride: function(event) { if (event.key === Qt.Key_Escape) event.accepted = true }
                     Keys.onEscapePressed: menu.close()
                     onClicked: {
@@ -168,7 +168,7 @@ Button {
             Label {
                 Layout.fillWidth: true; Layout.margins: 6
                 visible: control.statusText !== "" || control.count === 0
-                text: control.statusText || (search.text ? "No matching results" : "No options available")
+                text: control.statusText || (search.text ? qsTr("No matching results") : qsTr("No options available"))
                 wrapMode: Text.WordWrap; color: control.visualTheme.subtleText; font.pixelSize: 11
             }
             ListView {
@@ -202,7 +202,7 @@ Button {
                     hoverEnabled: true
                     highlighted: results.currentIndex === index
                     onClicked: control.choose(index)
-                    Accessible.name: modelData.label + (modelData.id === control.value ? ", selected" : "")
+                    Accessible.name: modelData.label + (modelData.id === control.value ? qsTr(", selected") : "")
                     contentItem: RowLayout {
                         spacing: 8
                         RoundedFlag {

@@ -11,7 +11,7 @@ Ditado para Windows, com modelos locais ou sua própria chave de IA. Fale,
 revise e cole sem sair do aplicativo. O Clarify também reescreve e traduz
 textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 
-> As Configurações e o dicionário descritos aqui fazem parte da v0.4.0.
+> As Configurações descritas aqui correspondem ao código atual da `main`.
 > Consulte as [notas da versão](https://github.com/jvictormaynard/clarify/releases/latest)
 > antes de baixar; versões anteriores têm uma interface diferente. A validação para publicação
 > está descrita em [Release readiness](release-readiness.md).
@@ -22,28 +22,83 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Reescrita segura de texto selecionado com verificação de foco
 - Tradução de texto selecionado
 - Integração nativa com atalhos e bandeja do Windows
-- Interface QML em inglês, português, espanhol, alemão e russo;
-  as novas Configurações usam português por enquanto
-- Configurações em React/Tauri: Geral, Ditado, Texto, Dicionário, Atalhos e
-  Modelos e serviços
+- Interface em português, inglês e espanhol, independente do idioma do ditado
+- Área de trabalho em React/Tauri: Ditado, Estilo, Ações de texto, Dicionário, Snippets e Histórico
+- Diálogo de Configurações com Geral, Dispositivos, Modelos e serviços, Atalhos, Privacidade e Conta Clarify
+- Ações de texto com nome, instruções próprias, atalhos opcionais e prévia
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
 - Dicionário pessoal para nomes e termos técnicos
 - Estatísticas locais sem armazenar o conteúdo das transcrições
-- Sem conta Clarify, backend próprio ou telemetria
+- Conta opcional com entrada por Google, Microsoft, GitHub ou código de e-mail, dicionário, histórico novo e cota de ditado compartilhados
+- Modos locais e com chave própria disponíveis sem conta; sem telemetria
+
+As Configurações mantêm a navegação disponível durante testes de microfone,
+atualizações de listas e salvamentos. As escolhas nas listas, os atalhos e as
+opções dos itens já salvos nas bibliotecas são salvos automaticamente. Rascunhos de texto
+e números usam **Salvar alterações** e **Descartar** na página atual. Alterações
+na chave ou na URL de conexão em **Modelos e serviços** exigem **Validar e salvar
+chave**. Valide ou descarte essas alterações antes de salvar outros rascunhos.
+Ao fechar as Configurações, você pode salvar ou descartar os rascunhos de todas
+as páginas.
+
+Use **Estilo** para revisar o ditado, escolher uma ação após o ditado e definir
+estilos por aplicativo. **Ações de texto** começa com Reescrita e Tradução;
+crie outra ação para usar suas próprias instruções. Os diálogos de ação, perfil
+de processamento e estilo por aplicativo mantêm rascunhos até **Salvar**.
+**Cancelar** descarta as alterações daquele diálogo. A prévia usa texto de
+exemplo e não cola em outro aplicativo. Local Whisper continua restrito à
+transcrição de áudio.
+
+O Clarify usa o idioma do dispositivo: português, inglês ou espanhol,
+incluindo o e-mail de autenticação. No primeiro acesso, use Google, Microsoft
+ou GitHub, ou informe seu e-mail e confirme o código dentro do aplicativo
+para entrar ou criar uma conta.
+**Continuar sem conta** abre a configuração do modelo local; a chave própria
+continua disponível nessa etapa. Entrar na conta ativa o processamento do Clarify automaticamente.
+Contas autenticadas usam os modelos gerenciados pelo Clarify. As configurações
+de provedores, chaves e modelos locais ficam no modo sem conta. Estilo e Ações
+de texto ficam disponíveis nos dois modos.
+A cota semanal aparece como porcentagem, com a próxima renovação no horário local.
+As cotas renovam na segunda-feira, às 00:00 UTC. Enquanto a cota não é conhecida,
+a tela mostra o carregamento. Uma mensagem informa quando faltam fundos.
+Sair e excluir conta ficam em uma Zona de perigo
+fechada por padrão, com confirmações separadas.
+O dicionário sincroniza automaticamente e o consumo é atualizado após o uso.
+O cache local preserva alterações offline; conflitos mantêm ambas as cópias
+até a resolução. As novas transcrições da conta sincronizam automaticamente entre
+Windows e iOS, com texto original, texto revisado, horário e dispositivo de origem.
+A aba Histórico permite consultar o texto completo, carregar mais registros e
+sincronizar exclusões. Os registros antigos e o histórico sem conta permanecem
+locais e nunca são enviados. Alterações pendentes são preservadas após falhas de
+conexão e reinícios. Os snippets da conta sincronizam entre os clientes; os snippets
+sem conta permanecem locais. Consulte o [contrato de sincronização](history-sync.md)
+e os [snippets de voz](dictionary-snippets.md). As instalações
+existentes mantêm sua configuração. O [aplicativo iOS](../mobile/README.md)
+está na [App Store](https://apps.apple.com/br/app/clarify/id6820869157).
+O TestFlight é usado para testes internos. O [servidor de contas](../server/README.md) também
+pode ser hospedado por você. As chaves de produção e os dados dos usuários são privados.
+O código também permite [parear o iPhone com o computador](computer-connection.md)
+por QR para processar pela rede local, com a configuração pessoal do computador.
 
 > [!IMPORTANT]
-> A transcrição ou o refinamento em provedores cloud exige uma chave de API. O
+> O acesso pessoal à nuvem usa sua chave de API ou um plano ChatGPT elegível.
+> No Windows, o plano permite reescrita, tradução e refinamento de texto sem
+> conta Clarify. Ele usa os limites existentes do ChatGPT e não inclui
+> transcrição de áudio. O ditado
+> pela conta Clarify usa o servidor do Clarify e a Groq, sujeito à cota semanal
+> e aos fundos disponíveis após a reserva dos custos operacionais. O
 > Local Whisper pode transcrever sem chave e baixa seus assets somente após uma
 > ação explícita. As chaves e estatísticas ficam no seu computador. O áudio e o
 > texto selecionado são enviados diretamente ao provedor configurado.
 
 ## Prévia da interface
 
-![Dicionário pessoal nas Configurações atuais](images/settings-dictionary.png)
+As capturas da interface ficam nos artefatos `Settings-tests` das execuções de CI.
+O [sistema visual do desktop](desktop-design-system.md) define o layout, os tokens
+e os componentes compartilhados.
 
-Captura do frontend React da v0.4.0, em teste de navegador com dados fictícios.
-Os testes da janela nativa e os cenários não testados estão registrados em
-[Release readiness](release-readiness.md).
+Consulte [Release readiness](release-readiness.md) para os testes de aceitação
+nativa e as verificações de publicação.
 
 ## Instalação no Windows
 
@@ -76,9 +131,9 @@ e a cada seis horas enquanto estiver aberto. A instalação automática vem
 desativada. Uma bolinha vermelha no botão de Settings do home pill indica uma
 nova versão. Abra o menu e selecione **Install update** para baixar e instalar.
 
-Para ativar a instalação automática, abra **Settings → Geral → Atualizações**,
-ative **Atualização automática** e salve. O Clarify baixa a versão em segundo
-plano, espera concluir as tarefas e fechar os Settings, e reinicia para aplicar
+Para ativar a instalação automática, abra **Settings → Geral → Atualizações** e
+ative **Atualização automática**. Essa opção é salva automaticamente. O Clarify
+baixa a versão em segundo plano, espera concluir as tarefas e fechar os Settings, e reinicia para aplicar
 a atualização. Configurações, chaves, modelos e atalhos são preservados. Se a
 nova versão não iniciar, o executável anterior é restaurado. O aplicativo
 verifica a assinatura do manifesto, o tamanho e o SHA-256 do executável antes
@@ -90,10 +145,13 @@ uma vez.
 1. Abra a [versão mais recente](https://github.com/jvictormaynard/clarify/releases/latest).
 2. Baixe `Clarify.exe` e salve-o em uma pasta sob seu controle.
 3. Abra o executável.
-4. Abra **Configurações → Modelos e serviços** e escolha um caminho:
-   - **Cloud:** selecione Gemini, OpenAI, Groq ou um endpoint compatível,
-     informe a chave de API e valide o provedor.
-   - **Local Whisper:** revise os requisitos e instale o modelo escolhido. A
+4. A página inicial abre automaticamente. Digite seu e-mail e clique em **Continuar**,
+   ou use **Continuar sem conta**. Não é necessário criar uma senha.
+   - **Conta Clarify:** confirme o código dentro do aplicativo. O processamento
+     é ativado automaticamente. Não exige chave própria.
+   - **Chave própria:** salve sua chave Groq. Outros provedores continuam
+     disponíveis em **Configurações → Modelos e serviços**.
+   - **Local Whisper:** continue para a configuração, revise os requisitos e instale o modelo escolhido. A
      transcrição local não exige chave. O refinamento cloud é opcional e pode
      ser ativado com **Allow cloud refinement**.
 5. Abra **Configurações → Ditado** ou **Configurações → Texto** para
@@ -136,12 +194,18 @@ dependências automaticamente.
 | `Alt + R` | Mostrar ou esconder o Clarify |
 
 Os cinco atalhos globais podem ser capturados, validados e redefinidos em
-**Configurações → Atalhos**. No modo Hold, mantenha o atalho pressionado para
+**Configurações → Atalhos**. Também é possível usar Ctrl, Alt, Shift ou Windows
+sozinhos e os botões laterais Mouse 4 e Mouse 5. Combinações comuns, como Ctrl+C,
+continuam funcionando. Passe o mouse sobre a bandeira da pill para abrir a lista
+vertical de idiomas e selecionar uma bandeira.
+No modo Hold, mantenha o atalho pressionado para
 gravar e solte para finalizar. `Esc` cancela mesmo enquanto o atalho está
 pressionado. O botão de microfone da pill continua funcionando por clique.
 O aviso de cancelamento e a opção Desfazer aparecem na própria pill.
 Durante a escolha do idioma da tradução, `Esc` fecha o seletor mesmo quando o
 foco do teclado permanece no aplicativo de origem.
+O seletor dá foco ao primeiro idioma ao abrir. Use `↑` e `↓` para navegar pelos
+idiomas e `Enter` para selecionar. A navegação continua ao chegar ao fim da lista.
 Não há janela automática de resultado. Quando a colagem não é segura, o texto
 fica na área de transferência. O menu da pill permite colar a última
 transcrição da sessão.
@@ -154,11 +218,51 @@ providers são configurados em **Configurações → Modelos e serviços**; as r
 **Configurações → Ditado** e **Configurações → Texto**. O Local Whisper
 usa um sidecar local e não exige chave para transcrição.
 
+Para usar uma assinatura ChatGPT no Windows, selecione **Continuar sem conta**.
+Essa conexão não exige conta Clarify nem chave de API.
+
+1. Abra **Configurações → Modelos e serviços** e selecione **ChatGPT (assinatura)**.
+2. Selecione **Continuar com ChatGPT**, conclua a entrada no navegador e permita
+   o uso do seu plano.
+3. Selecione **Atualizar modelos ChatGPT** e abra **Configurações → Texto**. Para
+   cada fluxo de texto, selecione ChatGPT e um modelo disponível para a conta conectada.
+   A entrada não altera as rotas existentes.
+
+O ChatGPT permite reescrita, tradução e refinamento opcional na nuvem de
+transcrições do Local Whisper. Ele não transcreve áudio. As solicitações usam a
+cota e os limites existentes do seu plano ChatGPT, sem cota adicional. A DPAPI
+do Windows protege os tokens localmente, e as solicitações de texto vão direto
+à OpenAI por um endpoint fixo. O modo com conta Clarify mantém o processamento
+gerenciado no desktop e no aplicativo móvel. Consulte
+[configuração e limites do ChatGPT](chatgpt-plan.md).
+
+## Snippets por voz
+
+No desktop, abra **Configurações → Snippets**. No iPhone, abra **Dicionário →
+Snippets**. Adicione uma frase, como `minha assinatura`, e o texto que será
+inserido. Salve as alterações. Diga a frase sozinha para inserir o texto exato.
+Dentro de uma mensagem, o snippet é substituído antes da reescrita, para que o
+modelo possa ajustar a mensagem completa.
+Você pode buscar, editar, desativar ou excluir os snippets. No desktop, adições,
+alterações de texto e exclusões usam **Salvar alterações** e **Descartar** na
+página atual. A ativação e a distinção entre maiúsculas e minúsculas dos snippets
+já salvos são salvas automaticamente.
+
+Os snippets da conta são sincronizados entre os dispositivos. Os snippets sem
+conta ficam no dispositivo e não são enviados ao entrar na conta. Somente as
+frases de ativação podem ser usadas como contexto de reconhecimento. Com a
+reescrita ativa, o texto substituído é enviado ao modelo de reescrita como parte da mensagem e pode ter
+a redação e a formatação ajustadas. Se a reescrita falhar, o texto substituído é
+mantido. A transcrição original permanece no histórico. Consulte as
+[regras de correspondência, sincronização e limites](dictionary-snippets.md).
+
 ## Dicionário pessoal
 
 Em **Configurações → Dicionário**, adicione termos como `Railway`, `pill`, `Lana`
-ou `Eva Desktop`. Cada termo pode ser editado, desativado ou removido. A barra
-de salvar e descartar aparece após uma alteração.
+ou `Eva Desktop`. Adições, alterações de texto e exclusões permanecem como
+rascunhos até você selecionar **Salvar alterações** nesta página. Use
+**Descartar** para cancelar esses rascunhos. A ativação dos termos já salvos é
+salva automaticamente.
 Os termos ativos entram como contexto limitado no ASR e na revisão opcional.
 Eles ajudam o modelo; não garantem uma substituição. Em uma rota na nuvem,
 esse vocabulário também é enviado ao provedor. Veja as etapas e os limites no
@@ -166,14 +270,16 @@ esse vocabulário também é enviado ao provedor. Veja as etapas e os limites no
 
 ## Privacidade
 
-O Clarify não possui servidor próprio. As configurações e estatísticas
-locais ficam em `%APPDATA%\Clarify`. No Windows, as chaves ficam separadas
+As configurações e estatísticas locais ficam em `%APPDATA%\Clarify`.
+No Windows, as chaves ficam separadas
 em `secrets.dpapi.json`, criptografadas pela DPAPI para o usuário atual. Chaves
 antigas em texto simples são migradas e só são removidas de `config.json` depois
 da confirmação da cópia protegida. Variáveis de ambiente são substituições
 temporárias e não são persistidas.
 
-O dicionário fica em `dictionary.json`. O histórico de transcrições é opcional.
+O dicionário local fica em `dictionary.json`. Sem conta, o histórico local é
+opcional. Com uma conta, as novas transcrições sincronizam automaticamente e
+mantêm uma cópia offline. Os registros anteriores à atualização permanecem locais.
 A gravação usa um WAV temporário, removido após o processamento normal.
 Falhas de limpeza ou encerramento forçado podem deixar arquivos no disco.
 Não há garantia de exclusão segura.
@@ -221,3 +327,7 @@ também mantém o texto original.
 O ditado usa o refinamento fiel como comportamento padrão, sem seletor de modo.
 Configurações antigas de modo são migradas automaticamente. O refinamento em
 nuvem de transcrições locais continua dependendo da autorização nas configurações.
+## Privacidade
+
+Consulte o [aviso de privacidade](../PRIVACY.md) antes de ativar a sincronização
+da conta ou o processamento pelo serviço Clarify.

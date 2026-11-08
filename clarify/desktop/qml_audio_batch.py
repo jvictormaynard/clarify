@@ -121,9 +121,11 @@ class QmlAudioFileImportController(QObject):
         copy_runner: CopyRunner | None = None,
         dispatch_runner: DispatchRunner | None = None,
         controller_factory: Callable[..., AudioFileImportController] | None = None,
+        processing_allowed: Callable[[], bool] = lambda: True,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
+        self._processing_allowed = processing_allowed
         if service is None:
             if service_factory is None:
                 raise ValueError(
@@ -251,6 +253,9 @@ class QmlAudioFileImportController(QObject):
     ) -> bool:
         """Start the current selection using the injected route factory."""
 
+        if not self._processing_allowed():
+            return False
+
         with self._lock:
             paths = self._selected_paths
             if self._running:
@@ -307,6 +312,9 @@ class QmlAudioFileImportController(QObject):
         mode: str = "",
     ) -> bool:
         """Retry only failed files through the existing import controller."""
+
+        if not self._processing_allowed():
+            return False
 
         with self._lock:
             if self._running:

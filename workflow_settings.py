@@ -66,7 +66,7 @@ class WorkflowSettingsController:
         """Update one route in the draft without touching other scopes."""
 
         current = self.route(scope)
-        normalized = normalize_workflow_scope(scope)
+        normalize_workflow_scope(scope)
         changes: dict[str, Any] = {}
         for field_name, value in (
             ("provider_id", provider_id),
@@ -78,15 +78,14 @@ class WorkflowSettingsController:
             if value is not _UNSET:
                 changes[field_name] = value
         if any(
-                value is not _UNSET
-                and value != getattr(current, field_name)
-                for field_name, value in (
-                    ("provider_id", provider_id),
-                    ("model_id", model_id),
-                    ("prompt", prompt),
-                    ("custom_endpoint", custom_endpoint),
-                    ("enabled", enabled),
-                )
+            value is not _UNSET and value != getattr(current, field_name)
+            for field_name, value in (
+                ("provider_id", provider_id),
+                ("model_id", model_id),
+                ("prompt", prompt),
+                ("custom_endpoint", custom_endpoint),
+                ("enabled", enabled),
+            )
         ):
             # The marker records authorship at the moment a scoped form is
             # actually edited.  Merely opening/applying an untouched legacy

@@ -30,6 +30,10 @@ ApplicationWindow {
         value: settings.updateInstalling !== true
     }
     onPresentationVisibleChanged: {
+        if (!presentationVisible) {
+            languageMenu.close()
+            quickMenu.close()
+        }
         // Tray/visibility shortcuts reopen the toolbar, not a settings placeholder.
         if (presentationVisible && workflow.surface === "settings")
             workflow.closeSettings()
@@ -49,7 +53,7 @@ ApplicationWindow {
             easing.type: Easing.OutCubic
         }
     }
-    title: "Clarify"
+    title: qsTr("Clarify")
     onVisibilityChanged: {
         if (root.visibility === Window.Hidden || root.visibility === Window.Minimized)
             settings.stopMicrophoneTest()
@@ -95,7 +99,10 @@ ApplicationWindow {
     Connections {
         target: workflow
         function onSurfaceChanged() {
-            if (workflow.surface !== "idle") quickMenu.close()
+            if (workflow.surface !== "idle") {
+                quickMenu.close()
+                languageMenu.close()
+            }
             // The Python visibility controller receives this same signal. Let it
             // decide whether to hide or restore the window before changing layout.
             if (root.displayedSurface === "translation_picker")
@@ -109,6 +116,17 @@ ApplicationWindow {
         NumberAnimation { target: root; property: "surfaceOpacity"; to: 0; duration: theme.fadeDuration; easing.type: Easing.OutCubic }
         ScriptAction { script: root.displayedSurface = workflow.surface }
         NumberAnimation { target: root; property: "surfaceOpacity"; to: 1; duration: theme.fadeDuration; easing.type: Easing.OutCubic }
+    }
+
+    LanguageMenu {
+        id: languageMenu
+        objectName: "languageMenu"
+        parent: root.contentItem
+        visualTheme: root.visualTheme
+        languages: languageButton.supportedLanguages
+        languageNames: languageButton.languageNames
+        selectedLanguage: workflow.language
+        onSelected: function(language) { workflow.setLanguage(language) }
     }
 
     QuickMenu {
@@ -139,7 +157,7 @@ ApplicationWindow {
             id: microphoneMenu
             objectName: "quickMicrophoneMenu"
             visualTheme: root.visualTheme
-            title: "Microphone"
+            title: qsTr("Microphone")
             icon.source: "icons/mic.svg"
             width: 360
             Instantiator {
@@ -149,48 +167,70 @@ ApplicationWindow {
                     required property int index
                     objectName: "quickMicrophoneOption" + index
                     visualTheme: root.visualTheme
-                    text: modelData.label
+                    text: qsTr(modelData.label)
                     checkable: true
                     checked: settings.quickMicrophoneId === modelData.id
                     onTriggered: {
                         microphoneMenu.close()
                         quickMenu.close()
                         if (!settings.selectQuickMicrophone(modelData.id))
-                            workflow.showQuickNotice("Could not change microphone")
+                            workflow.showQuickNotice(qsTr("Could not change microphone"))
                     }
                 }
                 onObjectAdded: function(index, object) { microphoneMenu.insertItem(index, object) }
                 onObjectRemoved: function(index, object) { microphoneMenu.removeItem(object) }
             }
         }
+        QuickMenu {
+            id: textActionsMenu
+            objectName: "quickTextActionsMenu"
+            visualTheme: root.visualTheme
+            title: qsTr("Text actions")
+            height: Math.min(implicitHeight, Math.max(48, Screen.desktopAvailableHeight - 16))
+            Instantiator {
+                model: settings.textActions
+                delegate: QuickMenuItem {
+                    required property var modelData
+                    required property int index
+                    objectName: "quickTextAction" + index
+                    visualTheme: root.visualTheme
+                    text: modelData.name
+                    enabled: modelData.enabled && !workflow.busy
+                    onTriggered: {
+                        var actionId = modelData.id
+                        textActionsMenu.close()
+                        quickMenu.runAfterClose(function() { workflow.runTextAction(actionId) })
+                    }
+                }
+                onObjectAdded: function(index, object) { textActionsMenu.insertItem(index, object) }
+                onObjectRemoved: function(index, object) { textActionsMenu.removeItem(object) }
+            }
+        }
+
         QuickMenuItem {
             objectName: "quickPasteItem"
             visualTheme: root.visualTheme
-            text: "Paste last transcript"
+            text: qsTr("Paste last transcript")
             icon.source: "icons/paste.svg"
             enabled: workflow.canPasteLastTranscription
             onTriggered: quickMenu.runAfterClose(function() { workflow.pasteLastTranscription() })
             ToolTip.visible: hovered && !enabled
-            ToolTip.text: "Available after your first transcription this session"
+            ToolTip.text: qsTr("Available after your first transcription this session")
         }
         QuickMenuItem {
             objectName: "quickFilesItem"
             visualTheme: root.visualTheme
-            text: "Import audio files"
+            text: qsTr("Import audio files")
             icon.source: "icons/audio-lines.svg"
             onTriggered: quickMenu.runAfterClose(function() {
                 workflow.openFiles()
                 root.requestActivate()
             })
         }
-        MenuSeparator {
-            topPadding: 4; bottomPadding: 4
-            contentItem: Rectangle { implicitHeight: 1; color: theme.controlPressed }
-        }
         QuickMenuItem {
             objectName: "quickSettingsItem"
             visualTheme: root.visualTheme
-            text: "Settings"
+            text: qsTr("Settings")
             icon.source: "icons/settings.svg"
             onTriggered: quickMenu.runAfterClose(function() {
                 workflow.openSettings()
@@ -201,7 +241,7 @@ ApplicationWindow {
             visualTheme: root.visualTheme
             visible: settings.updateAvailable === true
             enabled: !settings.updateBusy
-            text: "Install update " + settings.updateVersion
+            text: qsTr("Install update ") + settings.updateVersion
             icon.source: "icons/refresh.svg"
             onTriggered: quickMenu.runAfterClose(function() { settings.installUpdate() })
         }
@@ -316,7 +356,7 @@ ApplicationWindow {
                             enabled: workflow.surface === "idle"
                                      || workflow.surface === "recording"
                             Accessible.name: workflow.surface === "recording"
-                                             ? "Stop recording" : "Start recording"
+                                             ? qsTr("Stop recording") : qsTr("Start recording")
                             onClicked: {
                                 if (workflow.surface === "recording")
                                     workflow.stopRecording()
@@ -343,22 +383,25 @@ ApplicationWindow {
                             id: languageButton
                             objectName: "languageButton"
                             readonly property var supportedLanguages: [
-                                "en", "pt", "es", "de", "ru"
+                                "auto", "en", "pt", "es", "de", "ru"
                             ]
                             readonly property var languageNames: ({
-                                "en": "English",
-                                "pt": "Portuguese",
-                                "es": "Spanish",
-                                "de": "German",
-                                "ru": "Russian"
+                                "auto": qsTr("Original language"),
+                                "en": qsTr("English"),
+                                "pt": qsTr("Portuguese"),
+                                "es": qsTr("Spanish"),
+                                "de": qsTr("German"),
+                                "ru": qsTr("Russian")
                             })
                             property string languageCode: workflow.language.toUpperCase()
                             text: ""
                             theme: root.visualTheme
                             quiet: true
+                            checked: languageMenu.visible
                             Layout.preferredWidth: 36
                             Layout.preferredHeight: 26
-                            Accessible.name: "Language: "
+                            iconSource: workflow.language === "auto" ? "icons/globe.svg" : ""
+                            Accessible.name: qsTr("Output language: ")
                                               + languageNames[workflow.language]
 
                             RoundedFlag {
@@ -366,14 +409,20 @@ ApplicationWindow {
                                 anchors.centerIn: parent
                                 width: 21.333
                                 height: 16
-                                source: "flags/" + workflow.language + ".svg"
+                                visible: workflow.language !== "auto"
+                                source: visible ? "flags/" + workflow.language + ".svg" : ""
                             }
-                            onClicked: {
+                            function openLanguages() {
+                                languageMenu.keepOpen()
+                                if (languageMenu.visible) return
                                 quickMenu.close()
-                                var currentIndex = supportedLanguages.indexOf(workflow.language)
-                                var nextIndex = (currentIndex + 1) % supportedLanguages.length
-                                workflow.setLanguage(supportedLanguages[nextIndex])
+                                var position = mapToItem(root.contentItem, width / 2, height)
+                                languageMenu.x = position.x - languageMenu.width / 2
+                                languageMenu.y = position.y + 4
+                                languageMenu.open()
                             }
+                            onHoveredChanged: hovered ? openLanguages() : languageMenu.closeSoon()
+                            onClicked: openLanguages()
                         }
 
                         AppButton {
@@ -385,8 +434,8 @@ ApplicationWindow {
                             quiet: true
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
-                            Accessible.name: "Open quick actions"
-                            Accessible.description: settings.updateAvailable ? "A new version is available" : ""
+                            Accessible.name: qsTr("Open quick actions")
+                            Accessible.description: settings.updateAvailable ? qsTr("A new version is available") : ""
                             Rectangle {
                                 objectName: "updateNotification"
                                 visible: settings.updateAvailable === true
@@ -399,6 +448,7 @@ ApplicationWindow {
                                 anchors.margins: 2
                             }
                             onClicked: {
+                                languageMenu.close()
                                 if (quickMenu.visible) {
                                     quickMenu.close()
                                     return
@@ -418,7 +468,7 @@ ApplicationWindow {
                             quiet: true
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
-                            Accessible.name: "Close Clarify"
+                            Accessible.name: qsTr("Close Clarify")
                             onClicked: root.close()
                         }
                     }
@@ -437,21 +487,21 @@ ApplicationWindow {
                         spacing: 4
 
                         AppButton {
-                            text: "Retry"
+                            text: qsTr("Retry")
                             theme: root.visualTheme
                             visible: workflow.canRetryTranscription
                             Layout.preferredWidth: 60
                             Layout.preferredHeight: 26
-                            Accessible.name: "Retry transcription with the same audio"
+                            Accessible.name: qsTr("Retry transcription with the same audio")
                             onClicked: workflow.retryTranscription()
                         }
 
                         AppButton {
-                            text: "Dismiss"
+                            text: qsTr("Dismiss")
                             theme: root.visualTheme
                             Layout.preferredWidth: 60
                             Layout.preferredHeight: 26
-                            Accessible.name: "Dismiss workflow error"
+                            Accessible.name: qsTr("Dismiss workflow error")
                             onClicked: workflow.reset()
                         }
 
@@ -464,18 +514,18 @@ ApplicationWindow {
             Item {
                 id: resultPage
                 objectName: "resultPage"
-                property string copyLabel: "Copy"
+                property string copyLabel: qsTr("Copy")
 
                 function resetCopyConfirmation() {
                     copyResetTimer.stop()
-                    copyLabel = "Copy"
+                    copyLabel = qsTr("Copy")
                 }
 
                 Timer {
                     id: copyResetTimer
                     interval: 850
                     repeat: false
-                    onTriggered: resultPage.copyLabel = "Copy"
+                    onTriggered: resultPage.copyLabel = qsTr("Copy")
                 }
 
                 onVisibleChanged: resetCopyConfirmation()
@@ -506,7 +556,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
 
                         Label {
-                            text: "Result"
+                            text: qsTr("Result")
                             color: theme.text
                             font.pixelSize: 13
                             font.weight: Font.Bold
@@ -520,7 +570,7 @@ ApplicationWindow {
                             quiet: true
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
-                            Accessible.name: "Dismiss result"
+                            Accessible.name: qsTr("Dismiss result")
                             onClicked: workflow.reset()
                         }
                     }
@@ -556,17 +606,17 @@ ApplicationWindow {
                             theme: root.visualTheme
                             Layout.preferredWidth: 52
                             Layout.preferredHeight: 26
-                            Accessible.name: "Copy result"
+                            Accessible.name: qsTr("Copy result")
                             onClicked: workflow.copyResult()
                         }
 
                         AppButton {
-                            text: "Dismiss"
+                            text: qsTr("Dismiss")
                             theme: root.visualTheme
                             quiet: true
                             Layout.preferredWidth: 56
                             Layout.preferredHeight: 26
-                            Accessible.name: "Dismiss result"
+                            Accessible.name: qsTr("Dismiss result")
                             onClicked: workflow.reset()
                         }
 
@@ -724,11 +774,11 @@ ApplicationWindow {
 
                 FileDialog {
                     id: audioFileDialog
-                    title: "Import audio files"
+                    title: qsTr("Import audio files")
                     fileMode: FileDialog.OpenFiles
                     nameFilters: [
-                        "Audio files (*.wav *.aif *.aiff *.au *.flac *.oga *.ogg *.wv)",
-                        "All files (*)"
+                        qsTr("Audio files") + " (*.wav *.aif *.aiff *.au *.flac *.oga *.ogg *.wv)",
+                        qsTr("All files") + " (*)"
                     ]
                     onAccepted: {
                         var paths = []
@@ -752,7 +802,7 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
-                                text: "Import audio"
+                                text: qsTr("Import audio")
                                 color: theme.text
                                 font.pixelSize: 13
                                 font.weight: Font.Bold
@@ -761,8 +811,8 @@ ApplicationWindow {
                             Label {
                                 Layout.fillWidth: true
                                 text: audioBatch.running
-                                      ? "Transcribing selected files"
-                                      : "Select local files to transcribe"
+                                      ? qsTr("Transcribing selected files")
+                                      : qsTr("Select local files to transcribe")
                                 color: theme.dim
                                 font.pixelSize: 10
                             }
@@ -775,7 +825,7 @@ ApplicationWindow {
                             enabled: !audioBatch.running
                             Layout.preferredWidth: 26
                             Layout.preferredHeight: 26
-                            Accessible.name: "Close audio import"
+                            Accessible.name: qsTr("Close audio import")
                             onClicked: workflow.closeFiles()
                         }
                     }
@@ -787,13 +837,14 @@ ApplicationWindow {
                     }
 
                     GridLayout {
+                        visible: !(settings.accountState.managed || settings.accountState.signedIn)
                         Layout.fillWidth: true
                         columns: 4
                         columnSpacing: 7
                         rowSpacing: 5
 
                         Label {
-                            text: "Route"
+                            text: qsTr("Route")
                             color: theme.dim
                             font.pixelSize: 10
                         }
@@ -804,15 +855,15 @@ ApplicationWindow {
                             visualTheme: theme
                             Layout.fillWidth: true
                             enabled: !audioBatch.running
-                            caption: "Transcription route"
+                            caption: qsTr("Transcription route")
                             searchable: false
-                            options: [{id: "local", label: "Local Whisper"}, {id: "cloud", label: "Cloud"}]
+                            options: [{id: "local", label: qsTr("Local Whisper")}, {id: "cloud", label: qsTr("Cloud")}]
                             value: filesPage.batchExecution
                             onActivated: function(value) { filesPage.selectBatchExecution(value) }
                         }
 
                         Label {
-                            text: "Provider"
+                            text: qsTr("Provider")
                             color: theme.dim
                             font.pixelSize: 10
                         }
@@ -823,7 +874,7 @@ ApplicationWindow {
                             visualTheme: theme
                             Layout.fillWidth: true
                             enabled: !audioBatch.running
-                            caption: "Transcription service"
+                            caption: qsTr("Transcription service")
                             searchable: false
                             options: filesPage.providerIdsForExecution(filesPage.batchExecution).map(function(id) { return {id: id, label: settings.providerName(id)} })
                             value: filesPage.batchProviderId
@@ -831,7 +882,7 @@ ApplicationWindow {
                         }
 
                         Label {
-                            text: "Model"
+                            text: qsTr("Model")
                             color: theme.dim
                             font.pixelSize: 10
                         }
@@ -843,11 +894,11 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             enabled: !audioBatch.running
                             Layout.columnSpan: 3
-                            caption: "Transcription model"
-                            searchPlaceholder: "Search models"
+                            caption: qsTr("Transcription model")
+                            searchPlaceholder: qsTr("Search models")
                             options: filesPage.modelIdsForProvider(filesPage.batchProviderId).map(function(id) { return {id: id, label: id} })
                             value: filesPage.batchModelId
-                            secondaryActionText: filesPage.batchExecution === "cloud" ? "Use model ID…" : ""
+                            secondaryActionText: filesPage.batchExecution === "cloud" ? qsTr("Use model ID…") : ""
                             onSecondaryRequested: {
                                 filesPage.manualBatchModel = true
                                 Qt.callLater(function() { batchModelField.forceActiveFocus(); batchModelField.selectAll() })
@@ -857,7 +908,7 @@ ApplicationWindow {
 
                         Label {
                             visible: filesPage.manualBatchModel
-                            text: "Model ID"
+                            text: qsTr("Model ID")
                             color: theme.dim
                             font.pixelSize: 10
                         }
@@ -870,8 +921,8 @@ ApplicationWindow {
                             Layout.columnSpan: 3
                             Layout.fillWidth: true
                             text: filesPage.batchModelId
-                            placeholderText: "For models not listed by your service"
-                            Accessible.name: "Custom transcription model ID"
+                            placeholderText: qsTr("For models not listed by your service")
+                            Accessible.name: qsTr("Custom transcription model ID")
                             onEditingFinished: filesPage.selectBatchModel(text)
                         }
                     }
@@ -881,19 +932,19 @@ ApplicationWindow {
                         spacing: 5
 
                         AppButton {
-                            text: "Choose files"
+                            text: qsTr("Choose files")
                             theme: root.visualTheme
                             enabled: !audioBatch.running
                             Layout.preferredWidth: 94
                             Layout.preferredHeight: 26
-                            Accessible.name: "Choose local audio files"
+                            Accessible.name: qsTr("Choose local audio files")
                             onClicked: audioFileDialog.open()
                         }
 
                         Label {
                             Layout.fillWidth: true
                             text: audioBatch.selectedFiles.length === 0
-                                  ? "No files selected"
+                                  ? qsTr("No files selected")
                                   : audioBatch.selectedFiles.length + " file(s) selected"
                             color: theme.secondaryText
                             font.pixelSize: 10
@@ -923,7 +974,7 @@ ApplicationWindow {
                                         required property var modelData
                                         property bool hasTranscript: modelData.status === "succeeded"
                                                                       && modelData.text.length > 0
-                                        property string copyLabel: "Copy"
+                                        property string copyLabel: qsTr("Copy")
                                         width: parent.width
                                         height: hasTranscript ? 166 : 34
                                         radius: 7
@@ -941,7 +992,7 @@ ApplicationWindow {
                                             id: transcriptCopyResetTimer
                                             interval: 900
                                             repeat: false
-                                            onTriggered: fileResultRow.copyLabel = "Copy"
+                                            onTriggered: fileResultRow.copyLabel = qsTr("Copy")
                                         }
 
                                         Connections {
@@ -950,7 +1001,7 @@ ApplicationWindow {
                                             function onCopyCompleted(path, success) {
                                                 if (path !== fileResultRow.modelData.path)
                                                     return
-                                                fileResultRow.copyLabel = success ? "Copied" : "Copy"
+                                                fileResultRow.copyLabel = success ? qsTr("Copied") : qsTr("Copy")
                                                 if (success)
                                                     transcriptCopyResetTimer.restart()
                                             }
@@ -974,7 +1025,7 @@ ApplicationWindow {
                                             }
 
                                             Label {
-                                                text: fileResultRow.modelData.status
+                                                text: qsTr(fileResultRow.modelData.status)
                                                 color: fileResultRow.modelData.status === "failed"
                                                        ? theme.secondaryText : theme.dim
                                                 font.pixelSize: 9
@@ -1004,7 +1055,7 @@ ApplicationWindow {
                                                     readOnly: true
                                                     color: theme.secondaryText
                                                     font.pixelSize: 10
-                                                    Accessible.name: "Transcript for "
+                                                    Accessible.name: qsTr("Transcript for ")
                                                                       + fileResultRow.modelData.name
                                                 }
                                             }
@@ -1024,7 +1075,7 @@ ApplicationWindow {
                                                 spacing: 5
 
                                                 Label {
-                                                    text: "Select text to reuse"
+                                                    text: qsTr("Select text to reuse")
                                                     color: theme.dim
                                                     font.pixelSize: 9
                                                     elide: Text.ElideRight
@@ -1037,7 +1088,7 @@ ApplicationWindow {
                                                     enabled: !audioBatch.running
                                                     Layout.preferredWidth: 58
                                                     Layout.preferredHeight: 24
-                                                    Accessible.name: "Copy transcript for "
+                                                    Accessible.name: qsTr("Copy transcript for ")
                                                                       + fileResultRow.modelData.name
                                                     onClicked: {
                                                         if (audioBatch.copyFile(fileResultRow.modelData.path))
@@ -1060,7 +1111,7 @@ ApplicationWindow {
                                         }
                                     }
                                     width: parent.width
-                                    text: "Your selected files will appear here."
+                                    text: qsTr("Your selected files will appear here.")
                                     color: theme.dim
                                     font.pixelSize: 10
                                     horizontalAlignment: Text.AlignHCenter
@@ -1080,7 +1131,7 @@ ApplicationWindow {
                                 easing.type: Easing.OutCubic
                             }
                         }
-                        text: audioBatch.lastError
+                        text: qsTr(audioBatch.lastError)
                         color: theme.secondaryText
                         font.pixelSize: 10
                         wrapMode: Text.WordWrap
@@ -1091,48 +1142,48 @@ ApplicationWindow {
                         spacing: 5
 
                         AppButton {
-                            text: "Start"
+                            text: qsTr("Start")
                             theme: root.visualTheme
                             enabled: !audioBatch.running
                                      && audioBatch.selectedFiles.length > 0
                             Layout.preferredWidth: 54
                             Layout.preferredHeight: 26
-                            Accessible.name: "Start audio transcription"
+                            Accessible.name: qsTr("Start audio transcription")
                             onClicked: filesPage.startBatch()
                         }
 
                         AppButton {
-                            text: "Cancel"
+                            text: qsTr("Cancel")
                             theme: root.visualTheme
                             quiet: true
                             enabled: audioBatch.running
                             Layout.preferredWidth: 58
                             Layout.preferredHeight: 26
-                            Accessible.name: "Cancel audio transcription"
+                            Accessible.name: qsTr("Cancel audio transcription")
                             onClicked: audioBatch.cancel()
                         }
 
                         AppButton {
-                            text: "Retry"
+                            text: qsTr("Retry")
                             theme: root.visualTheme
                             quiet: true
                             enabled: !audioBatch.running && audioBatch.canRetry
                             Layout.preferredWidth: 52
                             Layout.preferredHeight: 26
-                            Accessible.name: "Retry failed audio files"
+                            Accessible.name: qsTr("Retry failed audio files")
                             onClicked: filesPage.retryBatch()
                         }
 
                         Item { Layout.fillWidth: true }
 
                         AppButton {
-                            text: "Close"
+                            text: qsTr("Close")
                             theme: root.visualTheme
                             quiet: true
                             enabled: !audioBatch.running
                             Layout.preferredWidth: 56
                             Layout.preferredHeight: 26
-                            Accessible.name: "Close audio import"
+                            Accessible.name: qsTr("Close audio import")
                             onClicked: workflow.closeFiles()
                         }
                     }
@@ -1143,6 +1194,20 @@ ApplicationWindow {
                 id: translationPickerPage
                 objectName: "translationPickerPage"
                 implicitHeight: translationPickerContent.implicitHeight + 20
+                function focusFirstLanguage() {
+                    if (!visible || workflow.surface !== "translation_picker") return
+                    const firstOption = translationOptionsRepeater.itemAt(0)
+                    if (firstOption) firstOption.forceActiveFocus(Qt.TabFocusReason)
+                }
+                onVisibleChanged: if (visible) Qt.callLater(focusFirstLanguage)
+
+                Connections {
+                    target: workflow
+                    function onSurfaceChanged() {
+                        if (workflow.surface === "translation_picker")
+                            Qt.callLater(translationPickerPage.focusFirstLanguage)
+                    }
+                }
 
                 DragHandler {
                     objectName: "translationPickerWindowDragHandler"
@@ -1165,14 +1230,14 @@ ApplicationWindow {
                             spacing: 4
 
                             Label {
-                                text: "Translate selection"
+                                text: qsTr("Translate selection")
                                 color: theme.text
                                 font.pixelSize: 14
                                 font.weight: Font.DemiBold
                             }
 
                             Label {
-                                text: "Choose a target language"
+                                text: qsTr("Choose a target language")
                                 color: theme.subtleText
                                 font.pixelSize: 11
                             }
@@ -1189,7 +1254,7 @@ ApplicationWindow {
                             Layout.preferredWidth: 22
                             Layout.preferredHeight: 22
                             Layout.alignment: Qt.AlignTop
-                            Accessible.name: "Cancel translation"
+                            Accessible.name: qsTr("Cancel translation")
                             onClicked: workflow.cancelTranslation()
                         }
                     }
@@ -1200,13 +1265,15 @@ ApplicationWindow {
                         spacing: 4
 
                         Repeater {
+                            id: translationOptionsRepeater
                             model: workflow.translationOptions
 
                             delegate: Button {
                                 id: languageOption
                                 required property var modelData
+                                required property int index
                                 objectName: "translationOption_" + modelData.code
-                                text: modelData.label
+                                text: qsTr(modelData.label)
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 34
                                 hoverEnabled: true
@@ -1214,8 +1281,20 @@ ApplicationWindow {
                                 rightPadding: 10
                                 topPadding: 0
                                 bottomPadding: 0
-                                Accessible.name: "Translate to " + modelData.label
+                                Accessible.name: qsTr("Translate to ") + modelData.label
                                 onClicked: workflow.chooseTranslation(modelData.code)
+                                KeyNavigation.up: translationOptionsRepeater.itemAt(
+                                    (index + translationOptionsRepeater.count - 1) % translationOptionsRepeater.count)
+                                KeyNavigation.down: translationOptionsRepeater.itemAt(
+                                    (index + 1) % translationOptionsRepeater.count)
+                                Keys.onReturnPressed: event => {
+                                    if (!event.isAutoRepeat) languageOption.clicked()
+                                    event.accepted = true
+                                }
+                                Keys.onEnterPressed: event => {
+                                    if (!event.isAutoRepeat) languageOption.clicked()
+                                    event.accepted = true
+                                }
 
                                 contentItem: RowLayout {
                                     spacing: 10

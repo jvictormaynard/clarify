@@ -63,6 +63,7 @@ class ProviderMetadata:
     text_model_key: str
     default_audio_model: str
     default_text_model: str
+    authentication: str = "api_key"
 
     def supports(self, capability: ProviderCapability) -> bool:
         return capability in self.capabilities
@@ -72,12 +73,14 @@ class ProviderMetadata:
 class ProviderConnection:
     api_key: str
     base_url: str
+    account_id: str = ""
 
 
 @dataclass(frozen=True)
 class ModelCatalog:
     audio_models: tuple[str, ...] = ()
     text_models: tuple[str, ...] = ()
+    display_names: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -138,6 +141,19 @@ class TranscriptionResult:
     timings_ms: dict[str, float] = field(default_factory=dict, compare=False)
     # Content-free signal: optional refinement failed, but ASR text is usable.
     refinement_failed: bool = False
+    # Requested policy is distinct from the successful processing step. None
+    # marks legacy clients/routes. These fields never contain transcript text.
+    cleanup_level_requested: str | None = None
+    cleanup_level_applied: str | None = None
+    writing_style_requested: str | None = None
+    writing_style_applied: str | None = None
+    writing_style_status: str | None = None
+    output_language_requested: str | None = None
+    output_language_applied: str | None = None
+    output_language_status: str | None = None
+    text_action_id: str | None = None
+    text_action_name: str | None = None
+    text_action_revision: int | None = None
 
 
 @dataclass(frozen=True)

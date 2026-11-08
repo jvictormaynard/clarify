@@ -55,7 +55,8 @@ def _text(value: Any, *, field_name: str, max_chars: int) -> str:
     value = unicodedata.normalize("NFC", str(value or "")).strip()
     if len(value) > max_chars:
         raise MicrophoneConfigurationError(
-            f"{field_name} must contain at most {max_chars} characters")
+            f"{field_name} must contain at most {max_chars} characters"
+        )
     return value
 
 
@@ -119,7 +120,8 @@ def _version(
         raise error_type(f"{field_name} must be an integer")
     if value < 0 or value > supported:
         raise error_type(
-            f"unsupported {field_name} {value}; newest supported version is {supported}")
+            f"unsupported {field_name} {value}; newest supported version is {supported}"
+        )
     return value
 
 
@@ -138,13 +140,19 @@ def stable_microphone_id(
     hot-plugging and would route a saved preference to an unrelated endpoint.
     """
 
-    normalized_name = _text(name, field_name="microphone name", max_chars=MAX_MICROPHONE_NAME_CHARS)
+    normalized_name = _text(
+        name, field_name="microphone name", max_chars=MAX_MICROPHONE_NAME_CHARS
+    )
     if not normalized_name:
         raise MicrophoneConfigurationError("microphone name must not be empty")
     normalized_host = _optional_text(
-        host_api, field_name="host API", max_chars=MAX_HOST_API_CHARS)
+        host_api, field_name="host API", max_chars=MAX_HOST_API_CHARS
+    )
     normalized_native = _optional_text(
-        native_id, field_name="native microphone identity", max_chars=MAX_NATIVE_ID_CHARS)
+        native_id,
+        field_name="native microphone identity",
+        max_chars=MAX_NATIVE_ID_CHARS,
+    )
     source = (
         "native\0" + normalized_host.casefold() + "\0" + normalized_native
         if normalized_native
@@ -176,56 +184,72 @@ class MicrophoneDevice:
 
     def __post_init__(self) -> None:
         stable_id = _text(
-            self.stable_id, field_name="microphone stable ID", max_chars=MAX_NATIVE_ID_CHARS)
+            self.stable_id,
+            field_name="microphone stable ID",
+            max_chars=MAX_NATIVE_ID_CHARS,
+        )
         name = _text(
-            self.name, field_name="microphone name", max_chars=MAX_MICROPHONE_NAME_CHARS)
+            self.name, field_name="microphone name", max_chars=MAX_MICROPHONE_NAME_CHARS
+        )
         host_api = _optional_text(
-            self.host_api, field_name="host API", max_chars=MAX_HOST_API_CHARS)
+            self.host_api, field_name="host API", max_chars=MAX_HOST_API_CHARS
+        )
         if not stable_id:
             raise MicrophoneConfigurationError("microphone stable ID must not be empty")
         if not name:
             raise MicrophoneConfigurationError("microphone name must not be empty")
         if isinstance(self.input_channels, bool):
             raise MicrophoneConfigurationError(
-                "microphone input channel count must be a non-negative integer")
+                "microphone input channel count must be a non-negative integer"
+            )
         try:
             channels = int(self.input_channels)
         except (TypeError, ValueError) as error:
             raise MicrophoneConfigurationError(
-                "microphone input channel count must be a non-negative integer") from error
+                "microphone input channel count must be a non-negative integer"
+            ) from error
         if channels < 0 or (
             isinstance(self.input_channels, float)
             and not self.input_channels.is_integer()
         ):
             raise MicrophoneConfigurationError(
-                "microphone input channel count must be a non-negative integer")
+                "microphone input channel count must be a non-negative integer"
+            )
         try:
             sample_rate = float(self.default_sample_rate or 0.0)
         except (TypeError, ValueError) as error:
             raise MicrophoneConfigurationError(
-                "microphone default sample rate must be numeric") from error
+                "microphone default sample rate must be numeric"
+            ) from error
         if not math.isfinite(sample_rate) or sample_rate < 0:
             raise MicrophoneConfigurationError(
-                "microphone default sample rate must be finite and non-negative")
-        if not isinstance(self.is_default, bool) or not isinstance(self.available, bool):
+                "microphone default sample rate must be finite and non-negative"
+            )
+        if not isinstance(self.is_default, bool) or not isinstance(
+            self.available, bool
+        ):
             raise MicrophoneConfigurationError(
-                "microphone availability flags must be boolean")
+                "microphone availability flags must be boolean"
+            )
         backend_index = self.backend_index
         if backend_index is not None:
             if isinstance(backend_index, bool):
                 raise MicrophoneConfigurationError(
-                    "microphone backend index must be a non-negative integer")
+                    "microphone backend index must be a non-negative integer"
+                )
             try:
                 backend_index = int(backend_index)
             except (TypeError, ValueError) as error:
                 raise MicrophoneConfigurationError(
-                    "microphone backend index must be a non-negative integer") from error
+                    "microphone backend index must be a non-negative integer"
+                ) from error
             if backend_index < 0 or (
                 isinstance(self.backend_index, float)
                 and not self.backend_index.is_integer()
             ):
                 raise MicrophoneConfigurationError(
-                    "microphone backend index must be a non-negative integer")
+                    "microphone backend index must be a non-negative integer"
+                )
         object.__setattr__(self, "stable_id", stable_id)
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "host_api", host_api)
@@ -259,11 +283,15 @@ class MicrophoneDevice:
         stable_id = value.get("stable_id", "")
         if not isinstance(stable_id, str) or not stable_id.strip():
             stable_id = stable_microphone_id(
-                name, host_api, native_id=native_id if native_id else None)
+                name, host_api, native_id=native_id if native_id else None
+            )
         channels = value.get("input_channels", value.get("max_input_channels", 0))
         sample_rate = value.get(
-            "default_sample_rate", value.get("default_samplerate", 0.0))
-        backend_index = value.get("backend_index", value.get("index", value.get("device_index")))
+            "default_sample_rate", value.get("default_samplerate", 0.0)
+        )
+        backend_index = value.get(
+            "backend_index", value.get("index", value.get("device_index"))
+        )
         if isinstance(backend_index, bool):
             backend_index = None
         return cls(
@@ -344,32 +372,33 @@ class MicrophoneInventory:
         devices = tuple(self.devices)
         if any(not isinstance(device, MicrophoneDevice) for device in devices):
             raise MicrophoneConfigurationError(
-                "microphone inventory entries must be MicrophoneDevice values")
+                "microphone inventory entries must be MicrophoneDevice values"
+            )
         ids = [device.stable_id for device in devices]
         if len(set(ids)) != len(ids):
             # Two endpoints with the same fallback name/host identity cannot
             # be selected safely without a backend-native ID.
-            object.__setattr__(self, "error_code", self.error_code or "ambiguous_identity")
+            object.__setattr__(
+                self, "error_code", self.error_code or "ambiguous_identity"
+            )
         name_counts: dict[str, int] = {}
         for device in devices:
             if device.usable:
                 name = device.name.casefold()
                 name_counts[name] = name_counts.get(name, 0) + 1
-        ambiguous_names = {
-            name for name, count in name_counts.items() if count > 1
-        }
+        ambiguous_names = {name for name, count in name_counts.items() if count > 1}
         if ambiguous_names:
             # SoX receives only the display name for the selected input. Do
             # not expose endpoints that would resolve to one another when
             # host APIs share that name; they remain visible in the snapshot
             # but are explicitly non-selectable for Settings and Recorder.
-            object.__setattr__(
-                self, "error_code", self.error_code or "ambiguous_name")
+            object.__setattr__(self, "error_code", self.error_code or "ambiguous_name")
         default_id = self.default_id
         if default_id is not None:
             default_id = str(default_id).strip() or None
         error_code = _text(
-            self.error_code, field_name="microphone inventory error", max_chars=64)
+            self.error_code, field_name="microphone inventory error", max_chars=64
+        )
         object.__setattr__(self, "devices", devices)
         object.__setattr__(self, "default_id", default_id)
         object.__setattr__(self, "error_code", error_code)
@@ -385,7 +414,8 @@ class MicrophoneInventory:
         """Build a snapshot while translating a transient default index once."""
 
         devices = tuple(
-            record if isinstance(record, MicrophoneDevice)
+            record
+            if isinstance(record, MicrophoneDevice)
             else MicrophoneDevice.from_mapping(record)
             for record in records
         )
@@ -395,9 +425,14 @@ class MicrophoneInventory:
             marked = tuple(device.stable_id for device in devices if device.is_default)
             if len(marked) == 1:
                 resolved_default = marked[0]
-        if not resolved_default and isinstance(default_index, int) and not isinstance(default_index, bool):
+        if (
+            not resolved_default
+            and isinstance(default_index, int)
+            and not isinstance(default_index, bool)
+        ):
             indexed = tuple(
-                device for device in devices if device.backend_index == default_index)
+                device for device in devices if device.backend_index == default_index
+            )
             if len(indexed) == 1:
                 default_device_index = devices.index(indexed[0])
                 resolved_default = indexed[0].stable_id
@@ -415,13 +450,16 @@ class MicrophoneInventory:
         if default_device_index is not None:
             devices = tuple(
                 replace(device, is_default=True)
-                if index == default_device_index else device
+                if index == default_device_index
+                else device
                 for index, device in enumerate(devices)
             )
         return cls(devices, resolved_default or None)
 
     @classmethod
-    def unavailable(cls, error_code: str = "enumeration_failed") -> "MicrophoneInventory":
+    def unavailable(
+        cls, error_code: str = "enumeration_failed"
+    ) -> "MicrophoneInventory":
         """Represent a backend enumeration failure without raising in the UI."""
 
         return cls((), None, error_code)
@@ -430,7 +468,8 @@ class MicrophoneInventory:
     def available_devices(self) -> tuple[MicrophoneDevice, ...]:
         ambiguous_names = self._ambiguous_names()
         return tuple(
-            device for device in self.devices
+            device
+            for device in self.devices
             if device.usable and device.name.casefold() not in ambiguous_names
         )
 
@@ -446,7 +485,8 @@ class MicrophoneInventory:
         if not self.default_id:
             return None
         matches = tuple(
-            device for device in self.devices if device.stable_id == self.default_id)
+            device for device in self.devices if device.stable_id == self.default_id
+        )
         usable = tuple(device for device in matches if device.usable)
         if not usable:
             return None
@@ -466,7 +506,8 @@ class MicrophoneInventory:
         requested = str(requested_id).strip() if requested_id else None
         ambiguous_names = self._ambiguous_names()
         matches = tuple(
-            device for device in self.devices
+            device
+            for device in self.devices
             if requested and device.stable_id == requested
         )
         if (
@@ -476,7 +517,10 @@ class MicrophoneInventory:
         ):
             return MicrophoneSelection(
                 MicrophoneSelectionState.SELECTED,
-                matches[0], requested, "requested_device_available")
+                matches[0],
+                requested,
+                "requested_device_available",
+            )
 
         fallback = self._default_device()
         if fallback is not None:
@@ -593,7 +637,9 @@ class SoundDeviceMicrophoneInventory:
                     record["index"] = index
                 indexed_records.append(record)
             records = tuple(indexed_records)
-            default = getattr(getattr(self._sounddevice, "default", None), "device", None)
+            default = getattr(
+                getattr(self._sounddevice, "default", None), "device", None
+            )
             default_index = None
             if isinstance(default, (tuple, list)):
                 default_index = default[0] if default else None
@@ -608,7 +654,8 @@ class SoundDeviceMicrophoneInventory:
                 except (IndexError, KeyError, TypeError):
                     default_index = getattr(default, "input", None)
             return MicrophoneInventory.from_records(
-                records, default_index=default_index)
+                records, default_index=default_index
+            )
         except Exception:
             return MicrophoneInventory.unavailable()
 
@@ -681,10 +728,10 @@ class VADSettings:
         if not isinstance(self.enabled, bool):
             raise RecordingControlsError("VAD enabled must be boolean")
         threshold = _finite_number(
-            self.level_threshold, field_name="VAD level threshold")
+            self.level_threshold, field_name="VAD level threshold"
+        )
         if threshold < 0 or threshold > 1:
-            raise RecordingControlsError(
-                "VAD level threshold must be between 0 and 1")
+            raise RecordingControlsError("VAD level threshold must be between 0 and 1")
         minimum_speech = _duration(
             self.minimum_speech_seconds,
             field_name="VAD minimum speech duration",
@@ -710,12 +757,13 @@ class VADSettings:
             raise RecordingControlsError("VAD settings must be an object")
         return cls(
             enabled=value.get("enabled", False),
-            level_threshold=value.get(
-                "level_threshold", value.get("threshold", 0.02)),
+            level_threshold=value.get("level_threshold", value.get("threshold", 0.02)),
             minimum_speech_seconds=value.get(
-                "minimum_speech_seconds", value.get("min_speech_seconds", 0.25)),
+                "minimum_speech_seconds", value.get("min_speech_seconds", 0.25)
+            ),
             silence_duration_seconds=value.get(
-                "silence_duration_seconds", value.get("silence_seconds", 0.8)),
+                "silence_duration_seconds", value.get("silence_seconds", 0.8)
+            ),
         )
 
     def to_mapping(self) -> dict[str, Any]:
@@ -751,8 +799,13 @@ class RecordingControls:
         assert warning is not None
         if maximum is not None and warning > maximum:
             raise RecordingControlsError(
-                "maximum recording warning cannot exceed maximum duration")
-        vad = self.vad if isinstance(self.vad, VADSettings) else VADSettings.from_mapping(self.vad)
+                "maximum recording warning cannot exceed maximum duration"
+            )
+        vad = (
+            self.vad
+            if isinstance(self.vad, VADSettings)
+            else VADSettings.from_mapping(self.vad)
+        )
         object.__setattr__(self, "max_duration_seconds", maximum)
         object.__setattr__(self, "warning_seconds", warning)
         object.__setattr__(self, "vad", vad)
@@ -784,9 +837,11 @@ class RecordingControls:
             }
         return cls(
             max_duration_seconds=value.get(
-                "max_duration_seconds", value.get("maximum_duration_seconds")),
+                "max_duration_seconds", value.get("maximum_duration_seconds")
+            ),
             warning_seconds=value.get(
-                "warning_seconds", value.get("max_duration_warning_seconds", 10.0)),
+                "warning_seconds", value.get("max_duration_warning_seconds", 10.0)
+            ),
             vad=VADSettings.from_mapping(vad),
         )
 
@@ -842,7 +897,9 @@ class MaximumDurationPolicy:
             elapsed,
             warning,
             expired,
-            RecordingBoundaryReason.MAX_DURATION if expired else RecordingBoundaryReason.NONE,
+            RecordingBoundaryReason.MAX_DURATION
+            if expired
+            else RecordingBoundaryReason.NONE,
         )
 
 
@@ -890,8 +947,7 @@ class SilenceVADPolicy:
     def observe(self, now: float, input_level: float) -> VADDecision:
         timestamp = _finite_number(now, field_name="VAD timestamp")
         if self._last_timestamp is not None and timestamp < self._last_timestamp:
-            raise NonMonotonicTimestampError(
-                "VAD timestamps must be monotonic")
+            raise NonMonotonicTimestampError("VAD timestamps must be monotonic")
         level = _finite_number(input_level, field_name="VAD input level")
         if level < 0:
             raise RecordingControlsError("VAD input level must be non-negative")
@@ -957,7 +1013,9 @@ class SilenceVADPolicy:
             self._speech_seconds,
             silence_seconds,
             should_stop,
-            RecordingBoundaryReason.SILENCE if should_stop else RecordingBoundaryReason.NONE,
+            RecordingBoundaryReason.SILENCE
+            if should_stop
+            else RecordingBoundaryReason.NONE,
         )
 
     def _silence_duration(self, now: float) -> float:
@@ -1016,7 +1074,8 @@ class RecordingBoundaryPolicy:
             return _finite_number(now, field_name="recording timestamp")
         if self._clock is None:
             raise RecordingControlsError(
-                "a timestamp or an injected monotonic clock is required")
+                "a timestamp or an injected monotonic clock is required"
+            )
         method = getattr(self._clock, "monotonic", None)
         if not callable(method):
             raise RecordingControlsError("recording clock must expose monotonic()")
@@ -1043,10 +1102,13 @@ class RecordingBoundaryPolicy:
         """
         with self._lock:
             timestamp = self._timestamp(now)
-            if (self._duration_last_timestamp is not None
-                    and timestamp < self._duration_last_timestamp):
+            if (
+                self._duration_last_timestamp is not None
+                and timestamp < self._duration_last_timestamp
+            ):
                 raise NonMonotonicTimestampError(
-                    "recording timestamps must be monotonic")
+                    "recording timestamps must be monotonic"
+                )
             if self._started_at is None:
                 self._started_at = timestamp
                 self._last_timestamp = timestamp
@@ -1054,7 +1116,8 @@ class RecordingBoundaryPolicy:
                 self._vad.start(timestamp)
             if timestamp < self._started_at:
                 raise NonMonotonicTimestampError(
-                    "recording timestamps must be monotonic")
+                    "recording timestamps must be monotonic"
+                )
             self._duration_last_timestamp = timestamp
             elapsed = timestamp - self._started_at
             if self._state is not RecordingBoundaryState.ACTIVE:
@@ -1064,7 +1127,8 @@ class RecordingBoundaryPolicy:
                 self._state = RecordingBoundaryState.STOPPED
                 self._reason = duration.reason
                 return BoundaryDecision(
-                    self._state, self._reason, elapsed, duration.warning)
+                    self._state, self._reason, elapsed, duration.warning
+                )
             return BoundaryDecision(
                 RecordingBoundaryState.ACTIVE,
                 RecordingBoundaryReason.NONE,
@@ -1082,13 +1146,15 @@ class RecordingBoundaryPolicy:
             timestamp = self._timestamp(now)
             if self._last_timestamp is not None and timestamp < self._last_timestamp:
                 raise NonMonotonicTimestampError(
-                    "recording timestamps must be monotonic")
+                    "recording timestamps must be monotonic"
+                )
             if self._started_at is None:
                 self._started_at = timestamp
                 self._vad.start(timestamp)
             if timestamp < self._started_at:
                 raise NonMonotonicTimestampError(
-                    "recording timestamps must be monotonic")
+                    "recording timestamps must be monotonic"
+                )
             elapsed = timestamp - self._started_at
             self._last_timestamp = timestamp
             if self._state is not RecordingBoundaryState.ACTIVE:
@@ -1098,13 +1164,15 @@ class RecordingBoundaryPolicy:
                 self._state = RecordingBoundaryState.STOPPED
                 self._reason = duration.reason
                 return BoundaryDecision(
-                    self._state, self._reason, elapsed, duration.warning)
+                    self._state, self._reason, elapsed, duration.warning
+                )
             vad = self._vad.observe(timestamp, input_level)
             if vad.should_stop:
                 self._state = RecordingBoundaryState.STOPPED
                 self._reason = vad.reason
                 return BoundaryDecision(
-                    self._state, self._reason, elapsed, duration.warning, vad)
+                    self._state, self._reason, elapsed, duration.warning, vad
+                )
             return BoundaryDecision(
                 RecordingBoundaryState.ACTIVE,
                 RecordingBoundaryReason.NONE,
@@ -1114,7 +1182,9 @@ class RecordingBoundaryPolicy:
             )
 
     def cancel(self, now: float | None = None) -> BoundaryDecision:
-        return self._terminate(RecordingBoundaryState.CANCELLED, RecordingBoundaryReason.CANCELLED, now)
+        return self._terminate(
+            RecordingBoundaryState.CANCELLED, RecordingBoundaryReason.CANCELLED, now
+        )
 
     def device_lost(self, now: float | None = None) -> BoundaryDecision:
         return self._terminate(
@@ -1136,10 +1206,12 @@ class RecordingBoundaryPolicy:
                 self._last_timestamp = timestamp
             elif self._last_timestamp is not None and timestamp < self._last_timestamp:
                 raise NonMonotonicTimestampError(
-                    "recording timestamps must be monotonic")
+                    "recording timestamps must be monotonic"
+                )
             if timestamp < self._started_at:
                 raise NonMonotonicTimestampError(
-                    "recording timestamps must be monotonic")
+                    "recording timestamps must be monotonic"
+                )
             self._last_timestamp = timestamp
             if self._state is RecordingBoundaryState.ACTIVE:
                 self._state = state

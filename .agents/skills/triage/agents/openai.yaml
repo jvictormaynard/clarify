@@ -1,0 +1,5 @@
+interface:
+  display_name: "Triage"
+  short_description: "Read issue context and prepare implementation briefs"
+policy:
+  allow_implicit_invocation: true

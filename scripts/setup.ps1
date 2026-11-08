@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$Dev
+    [switch]$Dev,
+    [switch]$SkipGitHooks
 )
 
 $ErrorActionPreference = "Stop"
@@ -110,9 +111,11 @@ Invoke-CheckedProcess $venvPython @(
     "-c", $lockFile
 ) "Could not install Clarify dependencies."
 
-Write-Host "Installing the repository Git hooks..."
-Invoke-CheckedProcess "git.exe" @(
-    "-C", $repoRoot, "config", "core.hooksPath", ".githooks"
-) "Could not configure the repository Git hooks."
+if (-not $SkipGitHooks) {
+    Write-Host "Installing the repository Git hooks..."
+    Invoke-CheckedProcess "git.exe" @(
+        "-C", $repoRoot, "config", "core.hooksPath", ".githooks"
+    ) "Could not configure the repository Git hooks."
+}
 
 Write-Host "Clarify environment is ready."

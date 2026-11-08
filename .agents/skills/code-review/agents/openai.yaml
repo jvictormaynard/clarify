@@ -1,0 +1,5 @@
+interface:
+  display_name: "Code Review"
+  short_description: "Review behavior, architecture, and defects"
+policy:
+  allow_implicit_invocation: true

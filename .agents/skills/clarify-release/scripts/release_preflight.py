@@ -59,22 +59,11 @@ REQUIRED_FILES = (
     ".githooks/pre-commit",
     ".github/workflows/ci.yml",
     ".github/workflows/release.yml",
+    "scripts/release_candidate.py",
+    "tests/policy/test_release_candidate.py",
 )
 
-SIGNED_REQUIRED_ASSETS = (
-    "Clarify-qt-sources.zip",
-    "Clarify.exe",
-    "Clarify.exe.sha256",
-    "Clarify.sbom.json",
-    "Clarify-windows-x64.msi",
-    "Clarify-windows-x64.msi.sha256",
-    "Clarify-release-manifest.cab",
-    "Clarify-release-manifest.cab.sha256",
-    "Clarify-windows-x64.zip",
-    "sox-14.4.2-source.tar.gz",
-)
-
-COMMUNITY_REQUIRED_ASSETS = (
+STABLE_REQUIRED_ASSETS = (
     "Clarify-portable-update.json",
     "Clarify-portable-update.json.sig",
     "Clarify-qt-sources.zip",
@@ -141,16 +130,71 @@ def version_tags(repo: Path) -> list[tuple[tuple[int, int, int], str]]:
     return sorted(parsed)
 
 
+def workflow_failures(workflow: str) -> list[str]:
+    """Check the one portable publisher. This is not native/package acceptance."""
+    failures = []
+    for required in (
+        "workflow_dispatch:",
+        "options: [build-candidate, publish-candidate]",
+        "default: build-candidate",
+        "options: [preview, stable]",
+        "preview-build",
+        "portable-updates",
+        "environment: desktop-publication",
+        "vars.CLARIFY_RELEASE_PUBLICATION_ENABLED == 'true'",
+        "scripts/release_candidate.py publish",
+        "scripts/release_candidate.py seal",
+        "--artifact-id",
+        "--artifact-digest",
+        "attestations: read",
+        "requirements-lock-windows.txt",
+        "requirements-lock-runtime-windows.txt",
+        "cyclonedx-py requirements requirements-lock-runtime-windows.txt",
+        "attest-build-provenance@",
+    ):
+        if required not in workflow:
+            failures.append("portable release workflow is missing: " + required)
+    for forbidden in (
+        "azure/login@",
+        "azure/artifact-signing-action@",
+        "build-installer.ps1",
+        "create_release_manifest.py",
+        "release-manifest.cab",
+        "  push:",
+        "  schedule:",
+        "gh release create",
+        "--clobber",
+    ):
+        if forbidden in workflow:
+            failures.append(
+                "portable release workflow must not reference: " + forbidden
+            )
+    build = workflow.split("  build_candidate:", 1)[-1].split(
+        "  publish_candidate:", 1
+    )[0]
+    publish = workflow.split("  publish_candidate:", 1)[-1]
+    if "contents: write" in build:
+        failures.append("candidate build must have no release-write permission")
+    if any(
+        token in publish
+        for token in (
+            "pip install",
+            "npm ci",
+            "build.ps1",
+            "CLARIFY_UPDATE_SIGNING_KEY",
+        )
+    ):
+        failures.append(
+            "publication must reuse candidate bytes without installation, packaging or signing"
+        )
+    return failures
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--version", required=True)
-    parser.add_argument(
-        "--track",
-        choices=("signed", "community"),
-        default="signed",
-        help="Release track to validate (default: signed)",
-    )
+    parser.add_argument("--channel", choices=("stable", "preview"), default="stable")
     parser.add_argument("--require-clean", action="store_true")
     args = parser.parse_args()
 
@@ -163,8 +207,6 @@ def main() -> int:
         failures.append(f"not a Git repository: {repo}")
 
     required_files = list(REQUIRED_FILES)
-    if args.track == "community":
-        required_files.append(".github/workflows/community-release.yml")
     missing = [path for path in required_files if not (repo / path).is_file()]
     if missing:
         failures.append("missing required files: " + ", ".join(missing))
@@ -177,117 +219,31 @@ def main() -> int:
     failures.extend(version_consistency_failures(repo, version))
 
     tags = version_tags(repo)
-    existing_tags = {existing_tag for _, existing_tag in tags}
-    if tag in existing_tags:
-        failures.append(f"tag already exists: {tag}")
-
     previous = [item for item in tags if item[0] < version_parts]
-    if not previous:
-        failures.append("no previous SemVer tag found")
-        previous_tag = None
-    else:
-        previous_tag = previous[-1][1]
-
-    changelog = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
-    heading_pattern = rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$"
-    if not re.search(heading_pattern, changelog, re.MULTILINE):
-        failures.append(f"CHANGELOG.md has no dated [{version}] section")
-
+    previous_tag = previous[-1][1] if previous else None
     owner_url = "https://github.com/jvictormaynard/clarify"
-    expected_unreleased = f"[Unreleased]: {owner_url}/compare/{tag}...HEAD"
-    if expected_unreleased not in changelog:
-        failures.append("Unreleased comparison does not start at the new tag")
-
-    if previous_tag:
-        expected_version = f"[{version}]: {owner_url}/compare/{previous_tag}...{tag}"
-        if expected_version not in changelog:
+    if args.channel == "stable":
+        if tag in {existing_tag for _, existing_tag in tags}:
+            failures.append(f"tag already exists: {tag}")
+        if previous_tag is None:
+            failures.append("no previous SemVer tag found")
+        changelog = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
+        heading_pattern = rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$"
+        if not re.search(heading_pattern, changelog, re.MULTILINE):
+            failures.append(f"CHANGELOG.md has no dated [{version}] section")
+        if f"[Unreleased]: {owner_url}/compare/{tag}...HEAD" not in changelog:
+            failures.append("Unreleased comparison does not start at the new tag")
+        if (
+            previous_tag
+            and f"[{version}]: {owner_url}/compare/{previous_tag}...{tag}"
+            not in changelog
+        ):
             failures.append("version comparison link is missing or incorrect")
 
-    if args.track == "community":
-        release_workflow_path = repo / ".github/workflows/community-release.yml"
-        release_workflow = release_workflow_path.read_text(encoding="utf-8")
-        if not re.search(r'^\s*-\s*["\']v\*["\']\s*$', release_workflow, re.MULTILINE):
-            failures.append("community release workflow is not triggered by v* tags")
-        for asset in COMMUNITY_REQUIRED_ASSETS:
-            if asset not in release_workflow:
-                failures.append(
-                    f"community release workflow does not reference {asset}"
-                )
-        if "requirements-lock-windows.txt" not in release_workflow:
-            failures.append(
-                "community release workflow does not use requirements-lock-windows.txt"
-            )
-        if "requirements-lock-runtime-windows.txt" not in release_workflow:
-            failures.append(
-                "community release workflow does not use "
-                "requirements-lock-runtime-windows.txt"
-            )
-        if (
-            "cyclonedx-py requirements requirements-lock-runtime-windows.txt"
-            not in release_workflow
-        ):
-            failures.append(
-                "community release SBOM is not generated from the runtime lock"
-            )
-        if "attest-build-provenance@" not in release_workflow:
-            failures.append(
-                "community release workflow does not publish artifact provenance"
-            )
-        for forbidden in (
-            "azure/login@",
-            "azure/artifact-signing-action@",
-            "build-installer.ps1",
-            "create_release_manifest.py",
-            "release-manifest.cab",
-        ):
-            if forbidden in release_workflow:
-                failures.append(
-                    f"community release workflow must not reference {forbidden}"
-                )
-    else:
-        release_workflow_path = repo / ".github/workflows/release.yml"
-        release_workflow = release_workflow_path.read_text(encoding="utf-8")
-        if not re.search(r'^\s*-\s*["\']v\*["\']\s*$', release_workflow, re.MULTILINE):
-            failures.append("release workflow is not triggered by v* tags")
-        for asset in SIGNED_REQUIRED_ASSETS:
-            if asset not in release_workflow:
-                failures.append(f"release workflow does not reference {asset}")
-        if "requirements-lock-windows.txt" not in release_workflow:
-            failures.append(
-                "release workflow does not use requirements-lock-windows.txt"
-            )
-        if "requirements-lock-runtime-windows.txt" not in release_workflow:
-            failures.append(
-                "release workflow does not use requirements-lock-runtime-windows.txt"
-            )
-        if (
-            "cyclonedx-py requirements requirements-lock-runtime-windows.txt"
-            not in release_workflow
-        ):
-            failures.append("release SBOM is not generated from the runtime lock")
-        if "attest-build-provenance" not in release_workflow:
-            failures.append("release workflow does not publish artifact provenance")
-        for required_gate in (
-            "azure/login@",
-            "azure/artifact-signing-action@",
-            "verify-signature.ps1",
-            "actions/attest-build-provenance@",
-        ):
-            if required_gate not in release_workflow:
-                failures.append(f"release workflow is missing gate: {required_gate}")
-        azure_action_refs = re.findall(
-            r"uses:\s+(azure/(?:login|artifact-signing-action))@([^\s#]+)",
-            release_workflow,
-        )
-        if len(azure_action_refs) != 4:
-            failures.append(
-                "release workflow must contain exactly four Azure action uses"
-            )
-        for action, action_ref in azure_action_refs:
-            if not re.fullmatch(r"[0-9a-f]{40}", action_ref):
-                failures.append(
-                    f"release workflow uses mutable {action} ref: {action_ref}"
-                )
+    release_workflow = (repo / ".github/workflows/release.yml").read_text(
+        encoding="utf-8"
+    )
+    failures.extend(workflow_failures(release_workflow))
 
     readme = (repo / "README.md").read_text(encoding="utf-8")
     readme_pt = (repo / "docs/README.pt-BR.md").read_text(encoding="utf-8")
@@ -306,7 +262,7 @@ def main() -> int:
             print(f"FAIL: {failure}")
         return 1
 
-    print(f"OK: Clarify {tag} {args.track} release preflight passed")
+    print(f"OK: Clarify {tag} {args.channel} release preflight passed")
     print(f"Repository: {repo}")
     print(f"Branch: {current_branch}")
     print(f"HEAD: {head}")

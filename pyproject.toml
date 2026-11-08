@@ -1,12 +1,17 @@
 [tool.ruff]
 target-version = "py311"
 line-length = 88
-extend-exclude = ["legacy", "build", "dist"]
+extend-exclude = ["legacy", "spikes", "app.py", "build", "dist"]
 
 [tool.ruff.lint]
-# Keep the first pass non-disruptive: syntax, imports, and obvious pyflakes
-# findings are enforced while legacy style is migrated in focused changes.
+# Maintained modules and all owned test suites use the same checks.
+# app.py and spikes retain historical compatibility coverage in their own suite.
 select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# Import setup must precede product imports in these modules.
+"scripts/create_release_manifest.py" = ["E402"]
+"tests/**/test_providers.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.11"

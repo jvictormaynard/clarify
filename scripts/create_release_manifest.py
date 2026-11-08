@@ -45,9 +45,10 @@ def main() -> int:
             "publisher_common_name": policy.publisher_common_name,
         },
     }
-    encoded = (json.dumps(
-        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        + "\n").encode("utf-8")
+    encoded = (
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
     parse_release_manifest(encoded, policy)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(encoded)

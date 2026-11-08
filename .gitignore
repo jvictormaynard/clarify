@@ -33,6 +33,15 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Agent scratch, runtime state and PR-only evidence (prefer the OS temp directory)
+/.artifacts/
+/.plans/
+/.t3/
+.github/pr-assets/
+
+# Generated test captures
+__screenshots__/
+
 # Temp files
 temp_recording.wav
 temp_recording.webm
@@ -41,4 +50,11 @@ temp_recording.webm
 # Local application data and test artifacts
 config.json
 usage_stats.json
+account.json
+account-secrets*.json
+account-data/
+server/.development.sqlite3*
 *.wav
+
+# Tauri-generated schemas
+desktop/src-tauri/gen/

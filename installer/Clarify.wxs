@@ -11,7 +11,10 @@
     <SummaryInformation
       Description="Clarify per-user Windows installer"
       Manufacturer="Joao Victor Maynard Mota" />
-    <MajorUpgrade AllowDowngrades="yes" Schedule="afterInstallExecute" />
+    <!-- Remove the old payload inside the transaction before copying files.
+         This also replaces equal-version builds and permits explicit rollback
+         to an older PE version. Failed installs restore the previous product. -->
+    <MajorUpgrade AllowDowngrades="yes" Schedule="afterInstallInitialize" />
     <MediaTemplate EmbedCab="yes" />
 
     <Icon Id="ClarifyIcon" SourceFile="$(var.IconFile)" />

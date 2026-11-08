@@ -67,16 +67,26 @@ class DictionarySettingsController:
         for index, entry in enumerate(state.dictionary):
             haystack = " ".join((entry.term, entry.pronunciation, *entry.aliases))
             if not needle or needle in haystack.casefold():
-                items.append(DictionarySettingsItem(
-                    "dictionary", index, entry.term, "", entry.enabled,
-                    pronunciation=entry.pronunciation, aliases=entry.aliases))
+                items.append(
+                    DictionarySettingsItem(
+                        "dictionary",
+                        index,
+                        entry.term,
+                        "",
+                        entry.enabled,
+                        pronunciation=entry.pronunciation,
+                        aliases=entry.aliases,
+                    )
+                )
         for index, snippet in enumerate(state.snippets):
             detail = snippet.replacement.replace("\n", " ")
             haystack = f"{snippet.trigger} {snippet.replacement}"
             if not needle or needle in haystack.casefold():
-                items.append(DictionarySettingsItem(
-                    "snippet", index, snippet.trigger, detail,
-                    snippet.enabled))
+                items.append(
+                    DictionarySettingsItem(
+                        "snippet", index, snippet.trigger, detail, snippet.enabled
+                    )
+                )
         return tuple(items)
 
     def add_dictionary(
@@ -93,10 +103,12 @@ class DictionarySettingsController:
             aliases=tuple(aliases),
             enabled=enabled,
         )
-        return self.service.replace(DictionarySnippets(
-            dictionary=(*state.dictionary, entry),
-            snippets=state.snippets,
-        ))
+        return self.service.replace(
+            DictionarySnippets(
+                dictionary=(*state.dictionary, entry),
+                snippets=state.snippets,
+            )
+        )
 
     def update_dictionary(
         self,
@@ -115,16 +127,18 @@ class DictionarySettingsController:
             aliases=tuple(aliases),
             enabled=enabled,
         )
-        return self.service.replace(DictionarySnippets(
-            dictionary=tuple(entries), snippets=state.snippets))
+        return self.service.replace(
+            DictionarySnippets(dictionary=tuple(entries), snippets=state.snippets)
+        )
 
     def delete_dictionary(self, index: int) -> DictionarySnippets:
         state = self.service.state
         entries = list(state.dictionary)
         self._check_index(index, entries, "dictionary")
         del entries[index]
-        return self.service.replace(DictionarySnippets(
-            dictionary=tuple(entries), snippets=state.snippets))
+        return self.service.replace(
+            DictionarySnippets(dictionary=tuple(entries), snippets=state.snippets)
+        )
 
     def add_snippet(
         self,
@@ -140,10 +154,12 @@ class DictionarySettingsController:
             enabled=enabled,
             case_sensitive=case_sensitive,
         )
-        return self.service.replace(DictionarySnippets(
-            dictionary=state.dictionary,
-            snippets=(*state.snippets, snippet),
-        ))
+        return self.service.replace(
+            DictionarySnippets(
+                dictionary=state.dictionary,
+                snippets=(*state.snippets, snippet),
+            )
+        )
 
     def update_snippet(
         self,
@@ -162,16 +178,18 @@ class DictionarySettingsController:
             enabled=enabled,
             case_sensitive=case_sensitive,
         )
-        return self.service.replace(DictionarySnippets(
-            dictionary=state.dictionary, snippets=tuple(snippets)))
+        return self.service.replace(
+            DictionarySnippets(dictionary=state.dictionary, snippets=tuple(snippets))
+        )
 
     def delete_snippet(self, index: int) -> DictionarySnippets:
         state = self.service.state
         snippets = list(state.snippets)
         self._check_index(index, snippets, "snippets")
         del snippets[index]
-        return self.service.replace(DictionarySnippets(
-            dictionary=state.dictionary, snippets=tuple(snippets)))
+        return self.service.replace(
+            DictionarySnippets(dictionary=state.dictionary, snippets=tuple(snippets))
+        )
 
     def reset(self) -> DictionarySnippets:
         """Clear both collections through the same atomic save boundary."""

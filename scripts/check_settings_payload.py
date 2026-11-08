@@ -7,14 +7,23 @@ from pathlib import Path
 
 try:
     from .qt_package_policy import unexpected_qt_payload
+    from .desktop_payload import (
+        manifest_bytes,
+        payload_manifest,
+        verify_desktop_payload,
+    )
 except ImportError:
     from qt_package_policy import unexpected_qt_payload
+    from desktop_payload import manifest_bytes, payload_manifest, verify_desktop_payload
 
 
 def verify_payload(executable: Path, settings: Path) -> None:
     from PyInstaller.archive.readers import CArchiveReader
 
     archive = CArchiveReader(str(executable))
+    if settings.is_dir():
+        verify_desktop_payload(archive, settings)
+        return
     try:
         embedded = archive.extract("clarify-settings.exe")
     except KeyError as error:
@@ -36,7 +45,50 @@ def main() -> None:
     verify_qt_notices(args.executable, args.settings.parent)
     verify_qt_payload(args.executable)
     verify_update_payload(args.executable, args.settings.parent)
+    verify_localization_payload(args.executable)
+    verify_computer_payload(args.executable)
     print("Packaged Settings payload matches the build input.")
+
+
+def verify_computer_payload(executable: Path) -> None:
+    from PyInstaller.archive.readers import CArchiveReader
+
+    archive = CArchiveReader(str(executable))
+    names = [name for name in archive.toc if name.lower().endswith(".pyz")]
+    if len(names) != 1:
+        raise ValueError("The portable build has no unique Python module archive")
+    modules = archive.open_embedded_archive(names[0]).toc
+    required = {
+        "computer_host",
+        "computer_cloudflare",
+        "computer_processing",
+        "computer_relay_client",
+        "computer_relay_protocol",
+        "shared.computer_connect",
+        "qrcode",
+        "qrcode.image.svg",
+    }
+    if required - modules.keys():
+        raise ValueError("The portable build is missing computer connection modules")
+    config = "shared/computer_connect.json"
+    matches = [entry for entry in archive.toc if entry.replace("\\", "/") == config]
+    expected = (Path(__file__).resolve().parents[1] / config).read_bytes()
+    if len(matches) != 1 or archive.extract(matches[0]) != expected:
+        raise ValueError(
+            "Packaged computer relay configuration differs from the build input"
+        )
+    config = "shared/computer_cloudflare.json"
+    matches = [entry for entry in archive.toc if entry.replace("\\", "/") == config]
+    expected = (Path(__file__).resolve().parents[1] / config).read_bytes()
+    if len(matches) != 1 or archive.extract(matches[0]) != expected:
+        raise ValueError(
+            "Packaged Cloudflare configuration differs from the build input"
+        )
+    name = "licenses/qrcode-BSD.txt"
+    matches = [entry for entry in archive.toc if entry.replace("\\", "/") == name]
+    expected = (Path(__file__).resolve().parents[1] / name).read_bytes()
+    if len(matches) != 1 or archive.extract(matches[0]) != expected:
+        raise ValueError("Packaged QR notices differ from the source notice")
 
 
 def verify_qt_notices(executable: Path, inputs: Path) -> None:
@@ -70,6 +122,17 @@ def verify_qt_payload(executable: Path) -> None:
         raise ValueError("Unreviewed Qt payload: " + ", ".join(unexpected[:12]))
 
 
+def verify_localization_payload(executable: Path) -> None:
+    from PyInstaller.archive.readers import CArchiveReader
+
+    archive = CArchiveReader(str(executable))
+    name = "shared/ui_strings.json"
+    matches = [entry for entry in archive.toc if entry.replace("\\", "/") == name]
+    expected = (Path(__file__).resolve().parents[1] / name).read_bytes()
+    if len(matches) != 1 or archive.extract(matches[0]) != expected:
+        raise ValueError("Packaged UI translations differ from the source catalog")
+
+
 def verify_inventory(executable: Path, settings: Path) -> None:
     from PyInstaller.archive.readers import CArchiveReader
 
@@ -81,7 +144,12 @@ def verify_inventory(executable: Path, settings: Path) -> None:
     bom = json.loads(
         (settings.parent / "Clarify-settings.sbom.json").read_text(encoding="utf-8")
     )
-    expected_hash = hashlib.sha256(settings.read_bytes()).hexdigest()
+    payload = (
+        manifest_bytes(payload_manifest(settings))
+        if settings.is_dir()
+        else settings.read_bytes()
+    )
+    expected_hash = hashlib.sha256(payload).hexdigest()
     if {"alg": "SHA-256", "content": expected_hash} not in bom["metadata"]["component"][
         "hashes"
     ]:

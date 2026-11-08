@@ -1,0 +1,10 @@
+[
+  {"input":"Minha assinatura.","snippets":[{"trigger":"minha assinatura","replacement":"João Victor\nEngenharia","enabled":true,"case_sensitive":false}],"expected":"João Victor\nEngenharia"},
+  {"input":"Atenciosamente, minha assinatura.","snippets":[{"trigger":"minha assinatura","replacement":"João Victor\nEngenharia","enabled":true,"case_sensitive":false}],"expected":"Atenciosamente, João Victor\nEngenharia."},
+  {"input":"resign sig sig_x","snippets":[{"trigger":"sig","replacement":"Assinatura","enabled":true,"case_sensitive":false}],"expected":"resign Assinatura sig_x"},
+  {"input":"assinatura","snippets":[{"trigger":"assinatura","replacement":"sig","enabled":true,"case_sensitive":false},{"trigger":"sig","replacement":"Não repetir","enabled":true,"case_sensitive":false}],"expected":"sig"},
+  {"input":"Olá, bom dia e bom dia.","snippets":[{"trigger":"bom","replacement":"curto","enabled":true,"case_sensitive":false},{"trigger":"bom dia","replacement":"longo","enabled":true,"case_sensitive":false}],"expected":"Olá, longo e longo."},
+  {"input":"Contato: CAFÉ.","snippets":[{"trigger":"café","replacement":"cafe@example.test","enabled":true,"case_sensitive":false}],"expected":"Contato: cafe@example.test."},
+  {"input":"sig","snippets":[{"trigger":"sig","replacement":"Desativado","enabled":false,"case_sensitive":false}],"expected":"sig"},
+  {"input":"sig SIG","snippets":[{"trigger":"SIG","replacement":"<nome>\n  Cargo","enabled":true,"case_sensitive":true}],"expected":"sig <nome>\n  Cargo"}
+]

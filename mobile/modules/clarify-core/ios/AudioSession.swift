@@ -1,0 +1,521 @@
+import AVFoundation
+import UIKit
+
+// All control and publication run on the main queue. The audio tap owns only
+// writing buffers under fileLock. No audio is saved between dictated clips.
+final class ClarifyAudioSession: NSObject {
+  static let shared = ClarifyAudioSession()
+  private var engine = AVAudioEngine()
+  private let fileLock = NSLock()
+  private var file: AudioClipWriter?
+  private var captureAfter: TimeInterval = 0
+  private var meteredOperationID: String?
+  private var meteredAt: TimeInterval = 0
+  private var meteredLevel = 0.0
+  private var cancellations = RecordingCancellations()
+  private var cuePlayer: AVAudioPlayer?
+  private let feedback = HapticFeedback()
+  private let liveActivity = ClarifyLiveActivity()
+  private var audioURL: URL?
+  private var store: SharedState?
+  private var timer: Timer?
+  private var task: Task<Void, Never>?
+  private var startedAt: Date?
+  private var hasTap = false
+  private var backgroundTask = UIBackgroundTaskIdentifier.invalid
+  private lazy var libraryResult = Result { try LocalLibrary.openDefault() }
+  private var clipPolicy = DictationPolicy.legacy
+  private var clipPreferences = OutputPreferences()
+  private var clipHistory = ProcessingDestination.shared.captureHistory()
+  private(set) var state = DictationSnapshot()
+
+  func library() throws -> LocalLibrary { try libraryResult.get() }
+  func libraryChanged() { state.libraryRevision += 1; try? importKeyboardVocabulary(); publish() }
+  func syncHistory(force: Bool = false) {
+    Task { @MainActor [weak self] in
+      guard let self, !ProcessingDestination.shared.computerMode, let library = try? self.library() else { return }
+      if await ProcessingDestination.shared.syncHistory(library, force: force) { self.libraryChanged() }
+    }
+  }
+  func importKeyboardVocabulary() throws {
+    guard let store, !state.phase.busy, !ProcessingDestination.shared.isBusy else { return }
+    if ProcessingDestination.shared.computerMode { try store.publishKeyboardDictionary(nil); return }
+    let account = CloudAccount.shared
+    let library = try library()
+    guard account.configured, let scope = account.scope else {
+      // Preserve words queued by the former guest keyboard before an upgrade.
+      // This only imports into local storage; it never enables guest dictation.
+      if !account.managed, try library.importKeyboardAdditions(store, scope: nil) {
+        state.libraryRevision += 1
+      }
+      try store.publishKeyboardDictionary(nil); return
+    }
+    try account.prepareLibrary(library)
+    if try library.importKeyboardAdditions(store, scope: scope) {
+      state.libraryRevision += 1
+      account.dictionaryChanged()
+    }
+    let words = try library.dictionary(scope: scope).map { KeyboardDictionaryWord(term: $0.term, enabled: $0.enabled) }
+    try store.publishKeyboardDictionary(KeyboardDictionaryContext(scope: scope, words: words))
+  }
+
+  private override init() {
+    super.init()
+    CloudAccount.shared.setSessionInvalidationHandler { [weak self] in
+      if !ProcessingDestination.shared.computerMode { self?.accountSessionInvalidated() }
+    }
+    ComputerConnection.shared.setInvalidationHandler { [weak self] in
+      guard ProcessingDestination.shared.computerMode else { return }
+      self?.destinationChanged()
+      self?.fail(ComputerFailure.authentication.localizedDescription)
+    }
+    // Remove only this app's clips left by an interrupted or terminated process.
+    let temporary = FileManager.default.temporaryDirectory
+    for url in (try? FileManager.default.contentsOfDirectory(at: temporary, includingPropertiesForKeys: nil)) ?? [] {
+      if url.lastPathComponent.hasPrefix("clarify-"), ["m4a", "wav"].contains(url.pathExtension) {
+        try? FileManager.default.removeItem(at: url)
+      }
+    }
+    store = SharedState()
+    try? importKeyboardVocabulary()
+    state.computerMode = ProcessingDestination.shared.computerMode
+    state.configured = ProcessingDestination.shared.configured
+    state.textActions = ProcessingDestination.shared.textActions
+    state.legacyRewriteReady = ProcessingDestination.shared.legacyRewriteReady
+    state.legacyTranslateReady = ProcessingDestination.shared.legacyTranslateReady
+    state.outputPreferencesSupported = ProcessingDestination.shared.outputPreferencesSupported
+    publish()
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+      Unmanaged.passUnretained(self).toOpaque(), { _, observer, _, _, _ in
+        guard let observer = observer else { return }
+        let owner = Unmanaged<ClarifyAudioSession>.fromOpaque(observer).takeUnretainedValue()
+        DispatchQueue.main.async { try? owner.importKeyboardVocabulary(); owner.tick() }
+      }, "com.clarify.keyboard.command" as CFString, nil, .deliverImmediately)
+    #if CLARIFY_APP_FLOW_TESTING
+    // Enabled only by the isolated simulator harness. Test deactivation without
+    // starting audio or exposing a production command or JavaScript test API.
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+      Unmanaged.passUnretained(self).toOpaque(), { _, observer, _, _, _ in
+        guard let observer else { return }
+        let owner = Unmanaged<ClarifyAudioSession>.fromOpaque(observer).takeUnretainedValue()
+        DispatchQueue.main.async { owner.deactivate() }
+      }, "com.clarify.app-flow.deactivate" as CFString, nil, .deliverImmediately)
+    #endif
+    NotificationCenter.default.addObserver(self, selector: #selector(interrupted),
+      name: AVAudioSession.interruptionNotification, object: nil)
+    NotificationCenter.default.addObserver(self, selector: #selector(routeChanged),
+      name: AVAudioSession.routeChangeNotification, object: nil)
+    NotificationCenter.default.addObserver(self, selector: #selector(mediaReset),
+      name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
+  }
+  func publish() {
+    state.heartbeat = Date().timeIntervalSince1970
+    state.processingContext = ProcessingDestination.shared.historyContext
+    state.computerMode = ProcessingDestination.shared.computerMode
+    state.configured = ProcessingDestination.shared.configured
+    state.textActions = ProcessingDestination.shared.textActions
+    state.legacyRewriteReady = ProcessingDestination.shared.legacyRewriteReady
+    state.legacyTranslateReady = ProcessingDestination.shared.legacyTranslateReady
+    state.outputPreferencesSupported = ProcessingDestination.shared.outputPreferencesSupported
+    try? store?.write(state, to: "state.json")
+    liveActivity.update(state)
+    publishMeter()
+  }
+  func activate() throws {
+    guard !ProcessingDestination.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
+    guard store != nil else { throw ClarifyError(L("Não foi possível acessar os dados do teclado.")) }
+    guard ProcessingDestination.shared.configured else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
+    if engine.isRunning { publish(); return }
+    let session = AVAudioSession.sharedInstance()
+    do {
+      try session.setCategory(.playAndRecord, mode: .default,
+        options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth])
+      // Configure this before activation; otherwise recording can suppress haptics.
+      try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
+      try session.setActive(true)
+      feedback.prepare()
+      let input = engine.inputNode
+      let format = input.outputFormat(forBus: 0)
+      guard format.sampleRate > 0, format.channelCount > 0 else {
+        throw ClarifyError(L("O microfone está indisponível."))
+      }
+      if hasTap { input.removeTap(onBus: 0) }
+      input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
+        guard let self = self else { return }
+        let observedAt = Date().timeIntervalSince1970
+        self.fileLock.lock()
+        defer { self.fileLock.unlock() }
+        let bufferDuration = Double(buffer.frameLength) / buffer.format.sampleRate
+        if let file = self.file, observedAt - bufferDuration >= self.captureAfter {
+          self.meteredLevel = 0
+          if let channels = buffer.floatChannelData {
+            let planes = buffer.format.isInterleaved ? 1 : Int(buffer.format.channelCount)
+            let count = Int(buffer.frameLength) * (buffer.format.isInterleaved ? Int(buffer.format.channelCount) : 1)
+            for channel in 0..<planes {
+              self.meteredLevel = max(self.meteredLevel, AudioLevel.measure(UnsafeBufferPointer(start: channels[channel], count: count)))
+            }
+          }
+          self.meteredAt = observedAt
+          do { try file.write(buffer) }
+          catch {
+            let failedURL = self.audioURL
+            DispatchQueue.main.async {
+              if let failedURL = failedURL, self.audioURL == failedURL {
+                self.fail(L("Não foi possível gravar o áudio."))
+              }
+            }
+          }
+        }
+      }
+      hasTap = true
+      engine.prepare(); try engine.start()
+      state.sessionActive = true
+      if state.phase == .error { state.phase = .idle; state.message = nil; state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil }
+      timer?.invalidate()
+      timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.tick() }
+      publish()
+    } catch {
+      // Category, session activation and engine startup all need the same rollback.
+      // A call can reject setActive before a tap or engine has been started.
+      stopAudio()
+      engine = AVAudioEngine()
+      let message = MicrophoneFailure.message(for: error)
+      fail(message)
+      throw ClarifyError(message)
+    }
+  }
+  func deactivate() {
+    cancel()
+    stopAudio()
+    publish()
+  }
+  func accountSessionInvalidated() {
+    clearResult()
+    stopAudio()
+    fail(L("Entre na conta novamente."), diagnostics: ClarifyError(L("Entre na conta novamente."), code: "authentication_required"))
+    try? store?.publishKeyboardDictionary(nil)
+  }
+  private func stopAudio() {
+    engine.stop()
+    if hasTap { engine.inputNode.removeTap(onBus: 0); hasTap = false }
+    try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    timer?.invalidate(); timer = nil
+    state.sessionActive = false
+  }
+  private func publishMeter() {
+    let now = Date().timeIntervalSince1970
+    guard state.sessionActive, [.recording, .locked].contains(state.phase), let id = state.operationID else {
+      try? store?.publishAudioMeter(.inactive(now: now)); return
+    }
+    fileLock.lock()
+    let reading = AudioMeterReading(operationID: meteredOperationID, measuredAt: meteredAt, level: meteredLevel)
+    fileLock.unlock()
+    try? store?.publishAudioMeter(AudioMeterReading(operationID: id, measuredAt: now, level: reading.level(for: id, now: now)))
+  }
+  private func tick() {
+    for (url, command) in store?.commands() ?? [] {
+      try? FileManager.default.removeItem(at: url)
+      let age = Date().timeIntervalSince1970 - command.createdAt
+      if age >= 0, age < 5, command.context == ProcessingDestination.shared.historyContext {
+        // The visible keyboard owns feedback for keyboard-originated commands.
+        if let text = command.text, let language = command.language {
+          let context = command.context ?? ""
+          Task { @MainActor in
+            do {
+              _ = try await self.startText(command.action, id: command.operationID, text: text, language: language,
+                context: context, actionID: command.actionID, revision: command.actionRevision, preferences: command.outputPreferences)
+            } catch {
+              guard !(error is CancellationError), !self.state.phase.busy,
+                context == ProcessingDestination.shared.historyContext, self.store?.isCancelled(command.operationID) != true else { return }
+              self.state.operationID = command.operationID; self.state.textOperation = true; self.state.text = nil
+              self.fail(error.localizedDescription, diagnostics: error as? ClarifyError)
+            }
+          }
+        } else { handle(command.action, id: command.operationID, haptics: false, preferences: command.outputPreferences) }
+      }
+    }
+    if SessionDeadline.action(startedAt: startedAt, phase: state.phase, now: Date()) == .finishRecording {
+      finish()
+    }
+    if [.recording, .locked].contains(state.phase) { publishMeter() }
+    // Refresh liveness once per second, without disk writes on every audio buffer.
+    if Date().timeIntervalSince1970 - state.heartbeat >= 1 { try? importKeyboardVocabulary(); publish() }
+  }
+  func handle(_ action: String, id: String, haptics: Bool = true, preferences: OutputPreferences? = nil) {
+    switch action {
+    case "start", "lock":
+      if action == "lock", state.operationID == id, state.phase == .recording {
+        if haptics, UIApplication.shared.applicationState == .active { feedback.record("lock") }
+        state.phase = .locked; publish(); return
+      }
+      guard !state.phase.busy, cancellations.acceptsStart(id, now: Date().timeIntervalSince1970), store?.isCancelled(id) != true else { return }
+      guard state.sessionActive, engine.isRunning else {
+        deactivate(); fail(L("Abra o Clarify e ative o microfone.")); return
+      }
+      do { try start(id: id, locked: action == "lock", haptics: haptics, preferences: preferences) }
+      catch {
+        state.operationID = id; state.textOperation = false; state.text = nil
+        if error is ComputerFailure || error is ClarifyError { fail(error.localizedDescription, diagnostics: error as? ClarifyError); return }
+        let failure = MicrophoneFailure.recordingError(for: error)
+        fail(failure.localizedDescription, diagnostics: failure)
+      }
+    case "finish":
+      if state.operationID == id { finish(haptics: haptics) }
+    case "cancel":
+      cancellations.cancel(id, now: Date().timeIntervalSince1970)
+      if state.operationID == id { cancel() } else { publish() }
+    default: break
+    }
+  }
+  private func start(id: String, locked: Bool, haptics: Bool, preferences: OutputPreferences? = nil) throws {
+    if ProcessingDestination.shared.computerMode, ComputerConnection.shared.busy { throw ComputerFailure.busy }
+    guard ProcessingDestination.shared.configured else { throw ClarifyError(L("Entre na sua conta primeiro.")) }
+    guard !ProcessingDestination.shared.isBusy else { throw ClarifyError(L("Aguarde a operação da conta.")) }
+    if ProcessingDestination.shared.computerMode, !ComputerConnection.shared.isReady(for: "dictate") {
+      throw ComputerConnection.shared.status == "offline" ? ComputerFailure.offline : ComputerFailure.notReady
+    }
+    let frozenPreferences = preferences ?? store?.outputPreferences() ?? OutputPreferences()
+    _ = try frozenPreferences.requestFields(supported: ProcessingDestination.shared.outputPreferencesSupported, dictation: true)
+    let policy = DictationPolicyStore().read(scope: ProcessingDestination.shared.historyScope ?? "")
+    _ = try ProcessingDestination.shared.dictationFields(policy)
+    try ProcessingDestination.shared.processingCapabilities.validate(frozenPreferences)
+    clipPolicy = policy
+    clipPreferences = frozenPreferences
+    try? importKeyboardVocabulary()
+    clipHistory = ProcessingDestination.shared.captureHistory()
+    let format = engine.inputNode.outputFormat(forBus: 0)
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("clarify-\(UUID().uuidString).m4a")
+    let newFile = try AudioClipWriter(url: url, inputFormat: format)
+    playCue(starting: true)
+    if haptics, UIApplication.shared.applicationState == .active {
+      feedback.record("start")
+    }
+    // The engine discards the short start cue so it is not sent for transcription.
+    let captureStart = Date().addingTimeInterval(0.12)
+    fileLock.lock()
+    file = newFile; audioURL = url; captureAfter = captureStart.timeIntervalSince1970
+    meteredOperationID = id; meteredAt = 0; meteredLevel = 0
+    fileLock.unlock()
+    startedAt = captureStart
+    state.operationID = id
+    state.textOperation = false
+    state.phase = locked ? .locked : .recording
+    state.text = nil; state.message = nil; state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
+    publish()
+  }
+  private func closeFile(finalize: Bool = false) -> URL? {
+    fileLock.lock()
+    var failed = false
+    if finalize {
+      do { try file?.finish() } catch { failed = true }
+    } else { file?.cancel() }
+    file = nil
+    let url = audioURL; audioURL = nil
+    meteredOperationID = nil; meteredAt = 0; meteredLevel = 0
+    fileLock.unlock()
+    try? store?.publishAudioMeter(.inactive())
+    if failed {
+      if let url { try? FileManager.default.removeItem(at: url) }
+      return nil
+    }
+    return url
+  }
+  private func finish(haptics: Bool = true) {
+    guard [.recording, .locked].contains(state.phase), let id = state.operationID else { return }
+    let duration = startedAt.map { Date().timeIntervalSince($0) } ?? 0
+    let recordedAt = startedAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
+    let historyOwner = clipHistory
+    let preferences = clipPreferences
+    let policy = clipPolicy
+    startedAt = nil
+    guard let url = closeFile(finalize: true) else { fail(L("Não foi possível gravar o áudio.")); return }
+    playCue(starting: false)
+    if haptics, UIApplication.shared.applicationState == .active { feedback.record("finish") }
+    guard duration >= 0.3 else {
+      try? FileManager.default.removeItem(at: url)
+      fail(L("Fale por mais tempo antes de concluir.")); return
+    }
+    guard ProcessingDestination.shared.acceptsHistory(historyOwner) else {
+      try? FileManager.default.removeItem(at: url); fail(L("Entre na conta novamente.")); return
+    }
+    guard ProcessingDestination.shared.configured else {
+      try? FileManager.default.removeItem(at: url)
+      fail(L("Entre na conta novamente.")); return
+    }
+    state.phase = .transcribing; publish()
+    backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Clarify transcription") { [weak self] in
+      self?.cancel()
+    }
+    let backgroundID = backgroundTask
+    task = Task { @MainActor [weak self] in
+      guard let self = self else { return }
+      defer {
+        try? FileManager.default.removeItem(at: url)
+        self.endBackgroundTask(backgroundID)
+      }
+      do {
+        let outcome = try await ProcessingDestination.shared.dictate(url, operationID: id, library: self.library(), preferences: preferences, policy: policy)
+        guard !Task.isCancelled, self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(historyOwner) else { return }
+        let transcript = outcome.transcript
+        self.state.text = outcome.text
+        self.state.phase = outcome.successful ? .ready : .error
+        if !outcome.successful { self.state.message = L(outcome.outputPreferenceFailed ? OutputPreferences.unappliedMessage : "A reescrita falhou. Você pode inserir a transcrição original.") }
+        if outcome.outputPreferenceFailed { self.state.errorCode = "output_preferences_unapplied"; self.state.errorPhase = "rewriting" }
+        // Save only the terminal result of this still-current operation. The
+        // original remains available when rewriting fails; audio is never kept.
+        guard !Task.isCancelled, self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(historyOwner) else { return }
+        do {
+          try self.library().record(HistoryEntry(id: id, createdAt: recordedAt,
+            transcript: transcript, text: self.state.text ?? transcript,
+            rewritten: outcome.rewritten), scope: historyOwner.scope)
+          self.state.libraryRevision += 1
+          self.syncHistory(force: true)
+        } catch {
+          self.state.message = L("O texto foi preservado, mas não foi possível salvar o histórico.")
+        }
+        self.publish()
+      } catch {
+        guard !Task.isCancelled, self.state.operationID == id else { return }
+        // The account boundary cancels stale responses without marking this
+        // Task cancelled. End only this still-current clip, not a new recording.
+        if error is CancellationError { self.cancel(); return }
+        self.fail((error is ClarifyError || error is ComputerFailure) ? error.localizedDescription : L("Falha de conexão. Verifique a internet e tente novamente."), diagnostics: error as? ClarifyError)
+      }
+    }
+  }
+  @MainActor func startText(_ action: String, id: String = UUID().uuidString, text: String, language: String,
+    context: String, actionID: String? = nil, revision: String? = nil, preferences: OutputPreferences? = nil) async throws -> String {
+    let destination = ProcessingDestination.shared
+    guard !state.phase.busy, !destination.textStartBlocked else { throw ComputerFailure.busy }
+    guard destination.configured,
+      cancellations.acceptsStart(id, now: Date().timeIntervalSince1970), store?.isCancelled(id) != true,
+      UUID(uuidString: id) != nil, !text.contains("\0"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      text.utf8.count <= (destination.computerMode ? ProcessingContractData.computerTextInputBytes : ProcessingContractData.accountTextInputBytes), context == destination.historyContext,
+      OutputLanguage(rawValue: language) != nil else { throw ComputerFailure.notReady }
+    let frozen = preferences ?? store?.outputPreferences() ?? OutputPreferences()
+    let owner = destination.captureHistory()
+    let accountIdentity = destination.captureTextIdentity()
+    // Reserve the operation before discovery can suspend. The keyboard can then
+    // acknowledge and cancel preparation through the same existing task owner.
+    state.operationID = id; state.textOperation = true; state.text = nil; state.message = nil
+    state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil; state.phase = .rewriting; publish()
+    task = Task { @MainActor [weak self] in
+      guard let self else { return }
+      do {
+        let prepared = try await destination.prepareText(action, actionID: actionID, revision: revision,
+          language: language, context: context, preferences: frozen, accountIdentity: accountIdentity)
+        try Task.checkCancellation()
+        guard self.state.operationID == id, self.state.phase == .rewriting,
+          destination.acceptsHistory(owner), destination.acceptsHistory(prepared.owner),
+          self.cancellations.acceptsStart(id, now: Date().timeIntervalSince1970),
+          self.store?.isCancelled(id) != true else { throw CancellationError() }
+        let result = try await destination.processText(id, prepared: prepared, text: text)
+        guard !Task.isCancelled, self.state.operationID == id, destination.acceptsHistory(prepared.owner) else { return }
+        if self.store?.isCancelled(id) == true { self.cancel(); return }
+        self.state.text = result.text; self.state.phase = result.successful ? .ready : .error
+        if !result.successful { self.state.message = L(result.outputPreferenceFailed ? OutputPreferences.unappliedMessage : "A reescrita falhou. Você pode inserir a transcrição original.") }
+        if result.outputPreferenceFailed { self.state.errorCode = "output_preferences_unapplied"; self.state.errorPhase = "rewriting" }
+        do {
+          try self.library().record(HistoryEntry(id: id, createdAt: Date().timeIntervalSince1970,
+            transcript: text, text: result.text, rewritten: result.rewritten), scope: prepared.owner.scope)
+          self.state.libraryRevision += 1; self.publish(); self.syncHistory(force: true)
+        } catch {
+          self.state.message = L("O texto foi preservado, mas não foi possível salvar o histórico."); self.publish()
+        }
+      } catch {
+        guard !Task.isCancelled, self.state.operationID == id else { return }
+        if error is CancellationError || !destination.acceptsHistory(owner) { self.cancel(); return }
+        self.fail((error is ComputerFailure || error is ClarifyError) ? error.localizedDescription : ComputerFailure.offline.localizedDescription,
+          diagnostics: error as? ClarifyError)
+      }
+    }
+    return id
+  }
+  private func endBackgroundTask(_ expected: UIBackgroundTaskIdentifier? = nil) {
+    if let expected = expected, expected != backgroundTask { return }
+    if backgroundTask != .invalid { UIApplication.shared.endBackgroundTask(backgroundTask); backgroundTask = .invalid }
+  }
+  func clearResult(publish: Bool = true) {
+    state.operationID = nil; state.textOperation = false; state.text = nil; state.phase = .idle; state.message = nil
+    state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
+    if publish { self.publish() }
+  }
+  func destinationChanged() {
+    if let id = state.operationID {
+      // Control callbacks already use the main queue. Cancel synchronously so
+      // the remote action is retired before publishing another destination.
+      MainActor.assumeIsolated { ComputerConnection.shared.cancelOperation(id) }
+    }
+    // Clear ownership before cancel/deactivate publish any intermediate state.
+    clearResult(publish: false)
+    deactivate(); libraryChanged()
+  }
+  func cancel() {
+    if ProcessingDestination.shared.computerMode, let id = state.operationID {
+      MainActor.assumeIsolated { ComputerConnection.shared.cancelOperation(id) }
+    }
+    cuePlayer?.stop(); cuePlayer = nil
+    task?.cancel(); task = nil; startedAt = nil
+    if let url = closeFile() { try? FileManager.default.removeItem(at: url) }
+    if state.phase.busy {
+      state.operationID = nil; state.phase = .idle; state.text = nil; state.message = nil
+      state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
+    }
+    endBackgroundTask()
+    publish()
+  }
+  private func fail(_ message: String, diagnostics: ClarifyError? = nil) {
+    if !ProcessingDestination.shared.configured, state.sessionActive { stopAudio() }
+    cuePlayer?.stop(); cuePlayer = nil
+    task?.cancel(); task = nil; startedAt = nil
+    if let url = closeFile() { try? FileManager.default.removeItem(at: url) }
+    endBackgroundTask()
+    state.phase = .error; state.message = message
+    state.errorRecovery = diagnostics?.recovery; state.errorCode = diagnostics?.code; state.errorPhase = diagnostics?.phase; state.errorStatus = diagnostics?.status
+    publish()
+  }
+  private func playCue(starting: Bool) {
+    // Original 90 ms cue, with a soft envelope. No WhatsApp audio is bundled.
+    let rate = 24_000
+    let samples = 2_160
+    var wav = Data()
+    func ascii(_ value: String) { wav.append(Data(value.utf8)) }
+    func integer<T: FixedWidthInteger>(_ value: T) {
+      var little = value.littleEndian
+      withUnsafeBytes(of: &little) { wav.append(contentsOf: $0) }
+    }
+    ascii("RIFF"); integer(UInt32(36 + samples * 2)); ascii("WAVEfmt ")
+    integer(UInt32(16)); integer(UInt16(1)); integer(UInt16(1))
+    integer(UInt32(rate)); integer(UInt32(rate * 2)); integer(UInt16(2)); integer(UInt16(16))
+    ascii("data"); integer(UInt32(samples * 2))
+    var phase = 0.0
+    for index in 0..<samples {
+      let progress = Double(index) / Double(samples - 1)
+      let frequency = starting ? 840 + 360 * progress : 1_040 - 300 * progress
+      phase += 2 * .pi * frequency / Double(rate)
+      let envelope = pow(sin(.pi * progress), 2)
+      integer(Int16(sin(phase) * envelope * 3_800))
+    }
+    cuePlayer = try? AVAudioPlayer(data: wav)
+    cuePlayer?.volume = 0.5; cuePlayer?.prepareToPlay(); cuePlayer?.play()
+  }
+  @objc private func interrupted(_ notification: Notification) {
+    guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+          AVAudioSession.InterruptionType(rawValue: raw) == .began else { return }
+    DispatchQueue.main.async { self.deactivate(); self.fail(L("O áudio foi interrompido. Abra o Clarify para reativar o microfone.")) }
+  }
+  @objc private func routeChanged(_ notification: Notification) {
+    guard let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+          let reason = AVAudioSession.RouteChangeReason(rawValue: raw),
+          [.oldDeviceUnavailable, .newDeviceAvailable].contains(reason) else { return }
+    DispatchQueue.main.async {
+      if self.state.sessionActive { self.deactivate(); self.fail(L("O dispositivo de áudio mudou. Ative o microfone novamente.")) }
+    }
+  }
+  @objc private func mediaReset() {
+    DispatchQueue.main.async {
+      self.deactivate(); self.engine = AVAudioEngine()
+      self.fail(L("O áudio foi reiniciado pelo iOS. Ative o microfone novamente."))
+    }
+  }
+}

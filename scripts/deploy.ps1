@@ -2,19 +2,40 @@
 param(
     [string]$InstallPath = $env:CLARIFY_INSTALL_PATH,
     [string]$SettingsExecutable,
+    [string]$DesktopShellDirectory,
     [switch]$BuildOnly
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-if (-not $SettingsExecutable) {
-    $SettingsExecutable = Join-Path $repoRoot 'dist\clarify-settings.exe'
-    & (Join-Path $PSScriptRoot 'build-settings.ps1') -OutputPath $SettingsExecutable
+. (Join-Path $PSScriptRoot 'windows-build-paths.ps1')
+$taskBuildPaths = Get-ClarifyWindowsBuildPaths -RepositoryPath $repoRoot
+if ($SettingsExecutable -and $DesktopShellDirectory) { throw 'Choose either the Electron shell or the legacy Settings executable.' }
+if (-not $SettingsExecutable -and -not $DesktopShellDirectory) {
+    & (Join-Path $PSScriptRoot 'setup.ps1') -Dev
+    & (Join-Path $PSScriptRoot 'build-desktop.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Desktop shell build failed.' }
+    $DesktopShellDirectory = Join-Path $repoRoot 'dist\desktop-shell'
 }
-if ($SettingsExecutable -and -not (Test-Path -LiteralPath $SettingsExecutable -PathType Leaf)) {
-    throw 'The requested settings executable does not exist.'
+if ($DesktopShellDirectory) {
+    $DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory).ProviderPath
+    if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'Clarify Desktop.exe') -PathType Leaf)) { throw 'Desktop shell is missing.' }
+    $presentationInput = $DesktopShellDirectory
+} else {
+    $SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath
+    $presentationInput = $SettingsExecutable
 }
-$SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath
+$presentationInputs = Split-Path -Parent $presentationInput
+if ($DesktopShellDirectory) {
+    $DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory -ErrorAction Stop).ProviderPath
+    if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'Clarify Desktop.exe') -PathType Leaf)) {
+        throw 'The Electron desktop shell executable is missing.'
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'resources\app.asar') -PathType Leaf) -and
+        -not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'resources\app\package.json') -PathType Leaf)) {
+        throw 'The Electron desktop shell has no application payload.'
+    }
+}
 $repoVersion = Join-Path $repoRoot "version.py"
 $repoExtra = Join-Path $repoRoot "extra"
 $repoAssets = Join-Path $repoRoot "assets"
@@ -23,7 +44,7 @@ $repoQmlPython = Join-Path $repoRoot "clarify\desktop"
 $repoQml = Join-Path $repoQmlPython "qml"
 $repoLocalAsrManifest = Join-Path $repoRoot "local_asr_manifest.json"
 $repoLocalAsrLicenses = Join-Path $repoRoot "licenses"
-$buildRoot = Join-Path $env:TEMP "clarify-build"
+$buildRoot = $taskBuildPaths.DeployRoot
 $venvDir = Join-Path $buildRoot "venv"
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
 $requirementsDir = Join-Path $buildRoot "requirements"
@@ -124,6 +145,9 @@ $targetExe = Resolve-InstallPath $InstallPath
 $python = Resolve-Python
 $targetDir = Split-Path -Parent $targetExe
 $backupExe = "$targetExe.backup"
+if ($DesktopShellDirectory) {
+    $backupExe = "$targetExe.electron-backup-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
+}
 
 Write-Host "Building Clarify..."
 New-Item $buildRoot, $requirementsDir -ItemType Directory -Force | Out-Null
@@ -197,11 +221,26 @@ foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File))
     Copy-Item $qmlModule.FullName $sourceQmlPython -Force
 }
 Copy-Item (Join-Path $repoQmlPython "qt_shell.py") $sourceQmlPython -Force
+Copy-Item (Join-Path $repoQmlPython "history_view.py") $sourceQmlPython -Force
+Copy-Item (Join-Path $repoQmlPython "dictation_practice.py") $sourceQmlPython -Force
+Copy-Item (Join-Path $repoQmlPython "practice_local_model.py") $sourceQmlPython -Force
 foreach ($backendModule in @(
+    "account_history.py",
     "audio_file_batch.py",
     "audio_file_batch_ui.py",
+    "chatgpt_auth.py",
+    "chatgpt_provider.py",
+    "clarify_account.py",
+    "cloud_defaults.py",
+    "computer_host.py",
+    "computer_cloudflare.py",
+    "computer_processing.py",
+    "computer_relay_client.py",
+    "computer_relay_protocol.py",
     "dictionary_settings.py",
     "dictionary_snippets.py",
+    "experimental_audio_history.py",
+    "history_corrections.py",
     "history_store.py",
     "hotkey_config.py",
     "local_asr.py",
@@ -218,16 +257,24 @@ foreach ($backendModule in @(
     "portable_updates.py",
     "portable_update_windows.py",
     "secret_store.py",
+    "text_actions.py",
+    "text_action_service.py",
     "version.py",
     "voice_translation.py",
     "voice_translation_runtime.py",
     "windows_clipboard.py",
     "windows_hotkeys.py",
     "workflow_config.py",
+    "workflow_provider.py",
     "workflow_settings.py",
+    "writing_styles.py",
     "workflows.py"
 )) {
     Copy-Item (Join-Path $repoRoot $backendModule) $sourceDir -Force
+}
+New-Item (Join-Path $sourceDir "shared") -ItemType Directory -Force | Out-Null
+foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json", "dictation_policy.py", "writing_style_policy.py", "output_preferences.py", "rewrite_prompts.py", "processing_contract.py", "computer_connect.py", "computer_connect.json", "computer_cloudflare.json")) {
+    Copy-Item (Join-Path $repoRoot "shared\$catalogFile") (Join-Path $sourceDir "shared") -Force
 }
 Copy-Item $repoQml $qml -Recurse -Force
 Copy-Item $repoVersion $sourceDir -Force
@@ -276,6 +323,9 @@ $pyinstallerArgs = @(
     "--add-data", "${assets};assets",
     "--add-data", "${distribution};distribution",
     "--add-data", "${qml};qml",
+    "--add-data", "$(Join-Path $sourceDir 'shared\ui_strings.json');shared",
+    "--add-data", "$(Join-Path $sourceDir 'shared\computer_connect.json');shared",
+    "--add-data", "$(Join-Path $sourceDir 'shared\computer_cloudflare.json');shared",
     "--add-data", "${localAsrManifest};.",
     "--add-data", "${localAsrLicenses};licenses",
     "--hidden-import", "version",
@@ -298,14 +348,17 @@ foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File))
 
 # Never copy or bundle the repository .env. Public and local executables read
 # provider credentials from the user's Clarify config directory instead.
-if ($SettingsExecutable) {
-    & $venvPython (Join-Path $PSScriptRoot 'qt_distribution.py') --output-dir (Split-Path $SettingsExecutable) --cache-dir (Join-Path $buildRoot 'qt-sources')
+if ($presentationInput) {
+    & $venvPython (Join-Path $PSScriptRoot 'qt_distribution.py') --output-dir $presentationInputs --cache-dir (Join-Path $buildRoot 'qt-sources')
     if ($LASTEXITCODE -ne 0) { throw 'Qt source and notice verification failed.' }
-    & $venvPython (Join-Path $PSScriptRoot 'portable_crypto_inventory.py') --output-dir (Split-Path $SettingsExecutable)
+    & $venvPython (Join-Path $PSScriptRoot 'portable_crypto_inventory.py') --output-dir $presentationInputs
     if ($LASTEXITCODE -ne 0) { throw 'Crypto attribution verification failed.' }
-    $pyinstallerArgs += @('--add-binary', "${SettingsExecutable};.")
+    if ($DesktopShellDirectory) {
+        $pyinstallerArgs += @('--add-data', "${DesktopShellDirectory};desktop-shell")
+        $pyinstallerArgs += @('--add-data', "$(Join-Path $presentationInputs 'Clarify-desktop-payload.json');.")
+    } else { $pyinstallerArgs += @('--add-binary', "${SettingsExecutable};.") }
     foreach ($noticeName in @('Clarify-settings.sbom.json', 'Clarify-settings-NOTICES.txt', 'Clarify-qt-NOTICES.txt', 'Clarify-crypto-NOTICES.txt')) {
-        $noticePath = Join-Path (Split-Path $SettingsExecutable) $noticeName
+        $noticePath = Join-Path $presentationInputs $noticeName
         if (-not (Test-Path -LiteralPath $noticePath -PathType Leaf)) { throw "Missing Settings inventory: $noticeName" }
         $pyinstallerArgs += @('--add-data', "${noticePath};.")
     }
@@ -313,12 +366,15 @@ if ($SettingsExecutable) {
 $pyinstallerArgs += $source
 
 $inheritedPath = $env:PATH
+$inheritedPyInstallerConfig = $env:PYINSTALLER_CONFIG_DIR
+$env:PYINSTALLER_CONFIG_DIR = Join-Path $buildRoot 'pyinstaller-cache'
 $env:PATH = Get-IsolatedBuildPath $inheritedPath
 try {
     Invoke-LoggedProcess $venvPython $pyinstallerArgs $buildOutLog $buildErrLog `
         "Clarify build failed. The installed version was not changed."
 } finally {
     $env:PATH = $inheritedPath
+    $env:PYINSTALLER_CONFIG_DIR = $inheritedPyInstallerConfig
 }
 if (-not (Test-Path $builtExe)) {
     throw "Clarify build completed without producing an executable."
@@ -340,7 +396,7 @@ if ($smoke.ExitCode -ne 0) {
     throw "Clarify import smoke test failed. The installed version was not changed."
 }
 
-& $venvPython (Join-Path $repoRoot 'scripts\check_settings_payload.py') $builtExe $SettingsExecutable
+& $venvPython (Join-Path $repoRoot 'scripts\check_settings_payload.py') $builtExe $presentationInput
 if ($LASTEXITCODE -ne 0) { throw 'Packaged Settings inventory verification failed.' }
 if ($BuildOnly) {
     Write-Host "Validated portable build: $builtExe. The installed application was not changed."
@@ -354,10 +410,16 @@ $taskProcessSnapshot = @(Get-CimInstance Win32_Process)
 $taskAppIds = @($taskProcessSnapshot | Where-Object {
     $_.ExecutablePath -eq $resolvedTargetExe
 } | Select-Object -ExpandProperty ProcessId)
-$taskChildren = @($taskProcessSnapshot | Where-Object {
-    $_.ParentProcessId -in $taskAppIds -and
-    $_.Name -in @('sox.exe', 'whisper-server.exe', 'clarify-settings.exe')
-})
+$taskChildren = @()
+$taskParentIds = $taskAppIds
+while ($taskParentIds.Count -gt 0) {
+    $taskNextChildren = @($taskProcessSnapshot | Where-Object {
+        $_.ParentProcessId -in $taskParentIds -and
+        $_.Name -in @('sox.exe', 'whisper-server.exe', 'clarify-settings.exe', 'Clarify Desktop.exe')
+    })
+    $taskChildren += $taskNextChildren
+    $taskParentIds = @($taskNextChildren | Select-Object -ExpandProperty ProcessId)
+}
 if ($taskChildren | Where-Object { $_.Name -eq 'sox.exe' }) {
     throw 'Finish or cancel the current recording before updating Clarify. The installed version was not changed.'
 }
@@ -371,15 +433,51 @@ Get-Process -ErrorAction SilentlyContinue |
     Stop-Process -Force
 New-Item $targetDir -ItemType Directory -Force | Out-Null
 
+$desktopShellTarget = Join-Path $targetDir 'desktop-shell'
+$desktopShellBackup = $null
+$desktopShellCreated = $false
 try {
-    Remove-Item $backupExe -Force -ErrorAction SilentlyContinue
+    if ($DesktopShellDirectory) {
+        # Keep Chromium beside the engine to avoid extracting it on each launch.
+        $resolvedTargetDir = [System.IO.Path]::GetFullPath($targetDir).TrimEnd('\')
+        $resolvedShellTarget = [System.IO.Path]::GetFullPath($desktopShellTarget)
+        if ([System.IO.Path]::GetDirectoryName($resolvedShellTarget) -ne $resolvedTargetDir) {
+            throw 'The desktop shell must stay inside the installation directory.'
+        }
+        if (Test-Path -LiteralPath $desktopShellTarget) {
+            $desktopShellBackup = Join-Path $targetDir ('desktop-shell.backup-' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))
+            if ([System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($desktopShellBackup)) -ne $resolvedTargetDir) {
+                throw 'The desktop shell backup must stay inside the installation directory.'
+            }
+            Move-Item -LiteralPath $desktopShellTarget -Destination $desktopShellBackup
+        }
+        $desktopShellCreated = $true
+        Copy-Item -LiteralPath $DesktopShellDirectory -Destination $desktopShellTarget -Recurse
+    }
+
+    if (-not $DesktopShellDirectory) {
+        Remove-Item $backupExe -Force -ErrorAction SilentlyContinue
+    }
     if (Test-Path $targetExe) {
         Move-Item $targetExe $backupExe -Force
     }
     Copy-Item $builtExe $targetExe -Force
 } catch {
+    if ($DesktopShellDirectory -and (Test-Path -LiteralPath $backupExe)) {
+        if (Test-Path -LiteralPath $targetExe) {
+            Remove-Item -LiteralPath $targetExe -Force
+        }
+        Copy-Item -LiteralPath $backupExe -Destination $targetExe -Force
+    }
     if (-not (Test-Path $targetExe) -and (Test-Path $backupExe)) {
         Move-Item $backupExe $targetExe -Force
+    }
+    if ($desktopShellCreated -and (Test-Path -LiteralPath $desktopShellTarget)) {
+        # Containment was checked before creating this task-owned destination.
+        Remove-Item -LiteralPath $desktopShellTarget -Recurse -Force
+    }
+    if ($desktopShellBackup -and (Test-Path -LiteralPath $desktopShellBackup)) {
+        Move-Item -LiteralPath $desktopShellBackup -Destination $desktopShellTarget
     }
     throw
 }

@@ -1,0 +1,91 @@
+name: iOS App Store handoff
+
+# Apple review submission and approved-version release remain manual actions.
+# This workflow reuses a verified TestFlight build and creates no Apple mutation.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Prepare a separate manual Apple action (does not execute it)
+        type: choice
+        options: [prepare-submission, prepare-release]
+        required: true
+      source_sha:
+        description: Exact source SHA of the reviewed ios/vX.Y.Z-buildN tag
+        type: string
+        required: true
+      testflight_run_id:
+        description: Successful TestFlight run that signed, uploaded and verified this build
+        type: string
+        required: true
+      testflight_run_attempt:
+        description: Exact successful run attempt
+        type: string
+        required: true
+      artifact_id:
+        description: Immutable TestFlight candidate evidence artifact ID
+        type: string
+        required: true
+      artifact_digest:
+        description: SHA-256 digest of the selected TestFlight candidate artifact
+        type: string
+        required: true
+      apple_build_id:
+        description: Exact Apple build UUID from the verified availability receipt
+        type: string
+        required: true
+      readiness:
+        description: Fresh manual readiness JSON (see docs/release-automation.md)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: clarify-ios-testflight
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  handoff:
+    if: github.repository == 'jvictormaynard/clarify' && startsWith(github.ref, 'refs/tags/ios/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SOURCE: ${{ inputs.source_sha }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      TESTFLIGHT_RUN: ${{ inputs.testflight_run_id }}
+      TESTFLIGHT_ATTEMPT: ${{ inputs.testflight_run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: Recheck producer and prepare the manual Apple handoff
+        env:
+          APP_STORE_ACTION: ${{ inputs.action }}
+          APP_STORE_READINESS: ${{ inputs.readiness }}
+          APPLE_BUILD: ${{ inputs.apple_build_id }}
+          CANDIDATE_ARTIFACT: ${{ inputs.artifact_id }}
+          CANDIDATE_DIGEST: ${{ inputs.artifact_digest }}
+        run: >-
+          python scripts/app_store_handoff.py "$APP_STORE_ACTION"
+          --source-sha "$RELEASE_SOURCE" --tag "$RELEASE_TAG"
+          --run-id "$TESTFLIGHT_RUN" --attempt "$TESTFLIGHT_ATTEMPT"
+          --apple-build-id "$APPLE_BUILD" --artifact-id "$CANDIDATE_ARTIFACT" --artifact-digest "$CANDIDATE_DIGEST"
+          --output App-Store-handoff.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: app-store-handoff-${{ inputs.action }}-${{ github.sha }}
+          path: App-Store-handoff.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Record the action boundary
+        run: echo 'Manual Apple handoff prepared. No submission, public release or availability was verified.' >> "$GITHUB_STEP_SUMMARY"

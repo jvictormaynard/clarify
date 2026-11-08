@@ -534,10 +534,19 @@ class OpenAICompatibleAdapter(ProviderAdapter):
             transcription_data = {
                 "model": model,
                 "response_format": "json",
-                "prompt": request.effective_prompt(
-                    max_chars=896 if self.metadata.provider_id == "groq" else None
-                ),
             }
+            if self.metadata.provider_id == "groq":
+                # Whisper uses this as previous speech, not chat instructions.
+                # The dictionary service bounds canonical terms as whole entries.
+                vocabulary = str(request.vocabulary_prompt or "").strip()
+                if len(vocabulary) > 896:
+                    raise ValueError(
+                        "Groq vocabulary prompt exceeds the 896-character limit"
+                    )
+                if vocabulary:
+                    transcription_data["prompt"] = vocabulary
+            else:
+                transcription_data["prompt"] = request.effective_prompt()
             # Whisper detects the language when the optional hint is omitted;
             # sending ``language=auto`` is rejected by OpenAI-compatible APIs.
             if str(request.language or "").strip():

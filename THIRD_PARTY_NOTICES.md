@@ -16,19 +16,33 @@ The release SBOM records cryptography and its statically linked OpenSSL.
 | Python | Runtime | Python Software Foundation License |
 | PySide6 / Qt | Desktop engine and QML pill | PySide6 metadata: LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only; Qt module and distribution terms must be reviewed for the release |
 | React / React DOM | Settings interface | MIT; Meta Platforms, Inc. and affiliates |
-| Radix UI | Settings controls | MIT; WorkOS |
-| cmdk | Searchable Settings pickers | MIT; Paco Coursey |
+| Base UI | Settings controls | MIT; Material-UI SAS |
+| t3code | Adapted Settings controls | MIT; T3 Tools Inc.; preserved in `desktop/licenses/t3code-MIT.txt` |
+| Inter Variable | Desktop interface typography | OFL-1.1; preserved in `desktop/licenses/Inter-OFL-1.1.txt` |
+| Google Sans | Google sign-in button typography | OFL-1.1; preserved in `desktop/licenses/Google-Sans-OFL-1.1.txt` |
 | Lucide | Settings icons | ISC, with Feather portions under MIT; see the package LICENSE |
 | Tauri | Native Settings child window | MIT OR Apache-2.0; transitive crate terms also apply |
 | Pillow | Image rendering | HPND |
+| python-qrcode 8.2 | Local pairing QR generation | BSD-3-Clause, with inherited MIT attribution; preserved in `licenses/qrcode-BSD.txt` |
 | Requests | HTTP client | Apache-2.0 |
-| cryptography 50.0.2 | Ed25519 portable-update authentication | Apache-2.0 OR BSD-3-Clause; preserved in `licenses/cryptography-APACHE.txt` and `licenses/cryptography-BSD.txt` |
+| cryptography 50.0.2 | Portable-update authentication and paired-computer TLS identity | Apache-2.0 OR BSD-3-Clause; preserved in `licenses/cryptography-APACHE.txt` and `licenses/cryptography-BSD.txt` |
 | OpenSSL 4.0.3 | Static dependency of the Windows cryptography wheel | Apache-2.0; preserved in `licenses/OpenSSL-APACHE.txt` |
 | sounddevice | Audio capture | MIT |
 | PyInstaller bootloader | Portable packaging | GPL-2.0-or-later with a special exception for bundled applications |
 
 PyInstaller is a build dependency. Its bootloader becomes part of the portable
 executable under PyInstaller's documented exception.
+
+Internet computer access downloads Cloudflare's `cloudflared` 2026.10.4 connector
+on demand. Clarify verifies the pinned download hash before execution. This
+separate process is licensed under [Apache-2.0](https://github.com/cloudflare/cloudflared/blob/2026.10.4/LICENSE).
+It is not part of the bundled Windows executable.
+
+Google, Microsoft, GitHub and ChatGPT marks identify their sign-in or connection
+actions. Their trademark and brand-use terms remain separate from Clarify's MIT
+license. Sources, revisions and preserved code notices are recorded in
+`desktop/licenses/provider-brand-icons-NOTICE.txt` and included in the Settings
+dependency inventory.
 
 The SoX runtime is invoked as a separate process and is not linked into the
 Clarify source. Every tagged release provides `sox-14.4.2-source.tar.gz`
@@ -79,6 +93,11 @@ locked Cargo graph for Windows. Each Settings build produces
 embedded beside the Settings child in the portable executable; the notices are
 also included in the release ZIP. The release SBOM merges Settings with the
 existing Python and SoX inventory.
+
+Adapted frontend source is recorded in
+[`desktop/licenses/source-components.json`](desktop/licenses/source-components.json)
+with its source revision and preserved license. The Settings notices and SBOM
+include these components with the npm and Cargo dependencies.
 
 The Settings SBOM records the child executable SHA-256, lockfile hashes, and
 pinned Rust toolchain. Cargo build-only crates are included with excluded scope

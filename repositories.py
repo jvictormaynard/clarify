@@ -13,9 +13,13 @@ import os
 import tempfile
 import threading
 from abc import ABC, abstractmethod
+from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping
+
+from shared.dictation_policy import DictationCleanupLevel, cleanup_level
+from writing_styles import ApplicationWritingStyles
 
 from provider_registry import PROVIDER_IDS, PROVIDER_REGISTRY
 from provider_types import ProviderCapability, ProviderError
@@ -44,6 +48,7 @@ from workflow_config import (
     validate_workflow_route,
 )
 from voice_translation import VoiceTranslationConfig
+from text_actions import TextActionSettings
 
 __all__ = [
     "AppConfig",
@@ -71,7 +76,7 @@ __all__ = [
 ]
 
 
-CONFIG_SCHEMA_VERSION = 2
+CONFIG_SCHEMA_VERSION = 6
 STATS_SCHEMA_VERSION = 1
 SUPPORTED_PROVIDERS = PROVIDER_IDS
 PROVIDER_SECRET_KEYS = {
@@ -80,7 +85,7 @@ PROVIDER_SECRET_KEYS = {
     "groq": "groq_api_key",
 }
 SUPPORTED_UI_MODES = ("prompt",)
-SUPPORTED_LANGUAGES = ("en", "pt", "es", "de", "ru")
+SUPPORTED_LANGUAGES = ("auto", "en", "pt", "es", "de", "ru")
 
 
 def environment_defaults(
@@ -110,6 +115,8 @@ def environment_defaults(
         "groq_base_url": env.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
         "groq_audio_model": env.get("GROQ_AUDIO_MODEL", "whisper-large-v3-turbo"),
         "groq_text_model": env.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile"),
+        "chatgpt_audio_model": "",
+        "chatgpt_text_model": "",
         "local_asr_model": env.get("LOCAL_ASR_MODEL", "ggml-small"),
         "local_asr_cloud_refinement": False,
         "refinement_provider": env.get("REFINEMENT_PROVIDER", ""),
@@ -120,6 +127,7 @@ def environment_defaults(
         # the typed repository means the UI can apply one atomic preference
         # change without teaching the history file about configuration.
         "history_enabled": False,
+        "experimental_audio_history": False,
         "automatic_updates": False,
         "history_retention_days": 30,
         "autostart": False,
@@ -183,16 +191,26 @@ class AppConfig:
     openai: ProviderConfig = field(default_factory=ProviderConfig)
     groq: ProviderConfig = field(default_factory=ProviderConfig)
     local_asr: ProviderConfig = field(default_factory=ProviderConfig)
+    chatgpt: ProviderConfig = field(
+        default_factory=lambda: ProviderConfig(base_url="https://api.openai.com/v1")
+    )
     ui: UIPreferences = field(default_factory=UIPreferences)
     startup: StartupSettings = field(default_factory=StartupSettings)
     local_asr_cloud_refinement: bool = False
+    dictation_cleanup_level: DictationCleanupLevel | None = None
+    application_writing_styles: ApplicationWritingStyles = field(
+        default_factory=ApplicationWritingStyles
+    )
     local_asr_device: str = "auto"
     local_asr_streaming: bool = False
     history_enabled: bool = False
+    experimental_audio_history: bool = False
     automatic_updates: bool = False
+    onboarding_completed: bool = False
     history_retention_days: int | None = 30
     hotkeys: HotkeySettings = field(default_factory=HotkeySettings.defaults)
     workflows: WorkflowConfig = field(default_factory=WorkflowConfig)
+    text_actions: TextActionSettings | None = None
     voice_translation: VoiceTranslationConfig = field(
         default_factory=VoiceTranslationConfig
     )
@@ -267,6 +285,11 @@ class AppConfig:
         def provider_config(name: str) -> ProviderConfig:
             metadata = PROVIDER_REGISTRY.describe(name)
             defaults_for_provider = provider_defaults[name]
+            if name == "chatgpt":
+                return ProviderConfig(
+                    base_url=metadata.default_base_url,
+                    text_model=string(metadata.text_model_key),
+                )
             audio_model = string(
                 metadata.audio_model_key, defaults_for_provider["audio_model"]
             )
@@ -533,18 +556,29 @@ class AppConfig:
             openai=provider_configs["openai"],
             groq=provider_configs["groq"],
             local_asr=provider_configs["local_asr"],
+            chatgpt=provider_configs["chatgpt"],
             ui=UIPreferences(mode, language),
             startup=StartupSettings(autostart),
             local_asr_cloud_refinement=local_asr_cloud_refinement,
+            dictation_cleanup_level=_config_cleanup_level(
+                source.get("dictation_cleanup_level")
+            ),
+            application_writing_styles=_config_writing_styles(
+                source.get("application_writing_styles")
+            ),
             local_asr_device=__import__("local_asr_catalog").normalize_device(
                 source.get("local_asr_device")
             ),
             local_asr_streaming=source.get("local_asr_streaming") is True,
             history_enabled=history_enabled,
+            experimental_audio_history=source.get("experimental_audio_history") is True,
             automatic_updates=source.get("automatic_updates") is True,
+            onboarding_completed=source.get("onboarding_completed", bool(values))
+            is True,
             history_retention_days=history_retention_days,
             hotkeys=hotkeys,
             workflows=workflows,
+            text_actions=_config_text_actions(source, workflows, hotkeys),
             voice_translation=voice_translation,
             microphone=microphone,
             recording_controls=recording_controls,
@@ -567,8 +601,14 @@ class AppConfig:
             "groq_base_url": self.groq.base_url,
             "groq_audio_model": self.groq.audio_model,
             "groq_text_model": self.groq.text_model,
+            "chatgpt_text_model": self.chatgpt.text_model,
+            # The legacy loader enumerates every registered audio-model key.
+            # Text-only providers retain an empty compatibility field.
+            "chatgpt_audio_model": "",
             "local_asr_model": self.local_asr.audio_model,
             "local_asr_cloud_refinement": self.local_asr_cloud_refinement,
+            "dictation_cleanup_level": self.dictation_cleanup_level,
+            "application_writing_styles": self.application_writing_styles.to_mapping(),
             "local_asr_device": self.local_asr_device,
             "local_asr_streaming": self.local_asr_streaming,
             "refinement_provider": self.selection.refinement_provider,
@@ -577,10 +617,15 @@ class AppConfig:
             "ui_language": self.ui.language,
             "autostart": self.startup.autostart,
             "history_enabled": self.history_enabled,
+            "experimental_audio_history": self.experimental_audio_history,
             "automatic_updates": self.automatic_updates,
+            "onboarding_completed": self.onboarding_completed,
             "history_retention_days": self.history_retention_days,
             "hotkeys": self.hotkeys.to_mapping(),
             "workflows": self.workflows.to_mapping(),
+            "text_actions": self.text_actions.to_mapping()
+            if self.text_actions is not None
+            else TextActionSettings.migrate(self.workflows, self.hotkeys).to_mapping(),
             "voice_translation": self.voice_translation.to_mapping(),
             "microphone": self.microphone.to_mapping(),
             "recording_controls": self.recording_controls.to_mapping(),
@@ -822,6 +867,19 @@ def _version(value: Any) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
+def _config_text_actions(source, workflows, hotkeys):
+    try:
+        return TextActionSettings.from_mapping(
+            source.get("text_actions"), workflows, hotkeys
+        )
+    except (KeyError, TypeError, ValueError, AttributeError):
+        if _version(source.get("schema_version")) <= CONFIG_SCHEMA_VERSION:
+            raise
+        # Newer files can use an unknown action representation. Existing routes
+        # remain readable; require_writable/save still reject this file.
+        return TextActionSettings.migrate(workflows, hotkeys)
+
+
 def _migrate_legacy_to_v1(payload: dict[str, Any]) -> dict[str, Any]:
     migrated = dict(payload)
     migrated["schema_version"] = 1
@@ -1029,7 +1087,49 @@ def _migrate_v1_to_v2(payload: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
-CONFIG_MIGRATIONS = {0: _migrate_legacy_to_v1, 1: _migrate_v1_to_v2}
+def _config_cleanup_level(value):
+    try:
+        return cleanup_level(value)
+    except ValueError:
+        return None
+
+
+def _migrate_v2_to_v3(payload: dict[str, Any]) -> dict[str, Any]:
+    # v2 readers already refuse writes to a future schema. Keep that downgrade
+    # protection instead of allowing them to silently erase the new preference.
+    return {**payload, "schema_version": 3}
+
+
+def _config_writing_styles(value):
+    try:
+        return ApplicationWritingStyles.from_mapping(value)
+    except ValueError:
+        return ApplicationWritingStyles()
+
+
+def _migrate_v3_to_v4(payload: dict[str, Any]) -> dict[str, Any]:
+    return {**payload, "schema_version": 4}
+
+
+def _migrate_v4_to_v5(payload: dict[str, Any]) -> dict[str, Any]:
+    # AppConfig materializes missing actions only after effective routes and
+    # environment defaults have been resolved. Older readers must refuse saves.
+    return {**payload, "schema_version": 5}
+
+
+def _migrate_v5_to_v6(payload: dict[str, Any]) -> dict[str, Any]:
+    # Older readers must not erase the general writing-style preference.
+    return {**payload, "schema_version": 6}
+
+
+CONFIG_MIGRATIONS = {
+    0: _migrate_legacy_to_v1,
+    1: _migrate_v1_to_v2,
+    2: _migrate_v2_to_v3,
+    3: _migrate_v3_to_v4,
+    4: _migrate_v4_to_v5,
+    5: _migrate_v5_to_v6,
+}
 
 
 def migrate_config_payload(payload: Any) -> dict[str, Any]:
@@ -1089,6 +1189,10 @@ def _read_json_mapping(path: Path) -> dict[str, Any] | None:
 
 class ConfigRepository(ABC):
     """Application-facing configuration persistence interface."""
+
+    def snapshot_guard(self):
+        """Pin a compound read/write; lock-free repositories need no guard."""
+        return nullcontext()
 
     @abstractmethod
     def load(self) -> AppConfig:
@@ -1163,6 +1267,15 @@ class LocalConfigRepository(ConfigRepository):
             self.path.parent, filename_stem=secret_stem
         )
         self._lock = threading.RLock()
+
+    def snapshot_guard(self):
+        """Serialize compound configuration operations with load and apply."""
+        return self._lock
+
+    def require_writable(self):
+        """Reject a newer file before native or remote settings effects."""
+        with self._lock:
+            _ensure_supported_schema(self.path, CONFIG_SCHEMA_VERSION)
 
     def _environment_secret(self, provider: str) -> str | None:
         names = (
@@ -1260,6 +1373,7 @@ class LocalConfigRepository(ConfigRepository):
                 # config to the migration boundary above.  Keep the explicit
                 # fresh-install defaults marker in that case.
                 runtime["hotkeys"] = self.defaults.get("hotkeys")
+                runtime["onboarding_completed"] = False
             return AppConfig.from_mapping(runtime, self.defaults)
 
     def _model_from_mapping(

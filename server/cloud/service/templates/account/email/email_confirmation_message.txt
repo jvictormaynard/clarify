@@ -1,0 +1,8 @@
+{{ email_intro }}
+
+{{ code }}
+
+{{ email_instructions }}
+{{ email_expiry }}
+
+{{ email_ignore }}

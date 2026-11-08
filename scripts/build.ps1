@@ -3,29 +3,38 @@ param(
     [string]$OutputDirectory,
     [ValidatePattern('^[a-z0-9][a-z0-9.-]{0,63}$')]
     [string]$PayloadIdentity,
-    [string]$SettingsExecutable
+    [string]$SettingsExecutable,
+    [string]$DesktopShellDirectory,
+    [switch]$SkipGitHooks
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-if (-not $SettingsExecutable) {
-    $SettingsExecutable = Join-Path $repoRoot 'dist\clarify-settings.exe'
-    & (Join-Path $PSScriptRoot 'build-settings.ps1') -OutputPath $SettingsExecutable
+if ($SettingsExecutable -and $DesktopShellDirectory) { throw 'Choose either the Electron shell or the legacy Settings executable.' }
+if (-not $SettingsExecutable -and -not $DesktopShellDirectory) {
+    & (Join-Path $PSScriptRoot 'setup.ps1') -Dev -SkipGitHooks:$SkipGitHooks
+    & (Join-Path $PSScriptRoot 'build-desktop.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Desktop shell build failed.' }
+    $DesktopShellDirectory = Join-Path $repoRoot 'dist\desktop-shell'
 }
-if ($SettingsExecutable -and -not (Test-Path -LiteralPath $SettingsExecutable -PathType Leaf)) {
-    throw 'The requested settings executable does not exist.'
+if ($DesktopShellDirectory) {
+    $DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory).ProviderPath
+    if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'Clarify Desktop.exe') -PathType Leaf)) { throw 'Desktop shell is missing.' }
+    $presentationInput = $DesktopShellDirectory
+} else {
+    $SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath
+    $presentationInput = $SettingsExecutable
 }
-# PyInstaller resolves bundled inputs relative to its generated spec file.
-$SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath
+$presentationInputs = Split-Path -Parent $presentationInput
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repoRoot "dist"
 } elseif (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {
     $OutputDirectory = Join-Path $repoRoot $OutputDirectory
 }
 
-& (Join-Path $PSScriptRoot "setup.ps1") -Dev
+& (Join-Path $PSScriptRoot "setup.ps1") -Dev -SkipGitHooks:$SkipGitHooks
 if (-not (Test-Path (Join-Path $repoRoot ".venv\Scripts\python.exe"))) {
     throw "Could not prepare the build environment."
 }
@@ -42,6 +51,7 @@ $localAsrManifest = Join-Path $repoRoot "local_asr_manifest.json"
 $localAsrLicenses = Join-Path $repoRoot "licenses"
 $icon = Join-Path $assets "branding\clarify.ico"
 $workDir = Join-Path $repoRoot "build\pyinstaller"
+$windowsVersionFile = Join-Path $workDir "windows-version.txt"
 $specDir = Join-Path $repoRoot "build\spec"
 $packageInput = Join-Path $repoRoot "build\package-input"
 $payloadIdentityFile = Join-Path $packageInput "clarify-build-identity.txt"
@@ -82,6 +92,9 @@ if (@(Get-ChildItem $qmlRoot -Filter "*.qml" -File).Count -eq 0) {
 }
 
 New-Item $OutputDirectory, $workDir, $specDir -ItemType Directory -Force | Out-Null
+& $python (Join-Path $PSScriptRoot 'windows_version.py') --version-source $versionSource --output $windowsVersionFile
+if ($LASTEXITCODE -ne 0) { throw 'Windows version resource generation failed.' }
+
 Remove-Item $packageInput -Recurse -Force -ErrorAction SilentlyContinue
 New-Item $packageSox -ItemType Directory -Force | Out-Null
 
@@ -100,6 +113,7 @@ $pyInstallerArgs = @(
     "--noconfirm", "--clean", "--onefile", "--windowed",
     "--name", "Clarify",
     "--icon", $icon,
+    "--version-file", $windowsVersionFile,
     "--distpath", $OutputDirectory,
     "--workpath", $workDir,
     "--specpath", $specDir,
@@ -110,6 +124,9 @@ $pyInstallerArgs = @(
     "--add-data", "${assets};assets",
     "--add-data", "${distribution};distribution",
     "--add-data", "${qmlRoot};qml",
+    "--add-data", "$(Join-Path $repoRoot 'shared\ui_strings.json');shared",
+    "--add-data", "$(Join-Path $repoRoot 'shared\computer_connect.json');shared",
+    "--add-data", "$(Join-Path $repoRoot 'shared\computer_cloudflare.json');shared",
     # The local provider is optional at runtime, but its pinned manifest and
     # license notices must travel inside the signed executable so an attacker
     # cannot redirect the product to an unreviewed asset definition.
@@ -138,14 +155,17 @@ if ($PayloadIdentity) {
     # gets a valid but byte-distinct historical payload without mutating source.
     $pyInstallerArgs += @("--add-data", "${payloadIdentityFile};.")
 }
-if ($SettingsExecutable) {
-    & $python (Join-Path $PSScriptRoot 'qt_distribution.py') --output-dir (Split-Path $SettingsExecutable)
+if ($presentationInput) {
+    & $python (Join-Path $PSScriptRoot 'qt_distribution.py') --output-dir $presentationInputs
     if ($LASTEXITCODE -ne 0) { throw 'Qt source and notice verification failed.' }
-    & $python (Join-Path $PSScriptRoot 'portable_crypto_inventory.py') --output-dir (Split-Path $SettingsExecutable)
+    & $python (Join-Path $PSScriptRoot 'portable_crypto_inventory.py') --output-dir $presentationInputs
     if ($LASTEXITCODE -ne 0) { throw 'Crypto attribution verification failed.' }
-    $pyInstallerArgs += @('--add-binary', "${SettingsExecutable};.")
+    if ($DesktopShellDirectory) {
+        $pyInstallerArgs += @('--add-data', "${DesktopShellDirectory};desktop-shell")
+        $pyInstallerArgs += @('--add-data', "$(Join-Path $presentationInputs 'Clarify-desktop-payload.json');.")
+    } else { $pyInstallerArgs += @('--add-binary', "${SettingsExecutable};.") }
     foreach ($noticeName in @('Clarify-settings.sbom.json', 'Clarify-settings-NOTICES.txt', 'Clarify-qt-NOTICES.txt', 'Clarify-crypto-NOTICES.txt')) {
-        $noticePath = Join-Path (Split-Path $SettingsExecutable) $noticeName
+        $noticePath = Join-Path $presentationInputs $noticeName
         if (-not (Test-Path -LiteralPath $noticePath -PathType Leaf)) { throw "Missing Settings inventory: $noticeName" }
         $pyInstallerArgs += @('--add-data', "${noticePath};.")
     }
@@ -158,12 +178,15 @@ $argumentLine = ($arguments | ForEach-Object {
     ConvertTo-ProcessArgument ([string]$_)
 }) -join " "
 $inheritedPath = $env:PATH
+$inheritedPyInstallerConfig = $env:PYINSTALLER_CONFIG_DIR
+$env:PYINSTALLER_CONFIG_DIR = Join-Path $repoRoot 'build\pyinstaller-cache'
 $env:PATH = Get-IsolatedBuildPath $inheritedPath
 try {
     $builder = Start-Process -FilePath $python -ArgumentList $argumentLine `
         -Wait -PassThru -NoNewWindow
 } finally {
     $env:PATH = $inheritedPath
+    $env:PYINSTALLER_CONFIG_DIR = $inheritedPyInstallerConfig
 }
 if ($builder.ExitCode -ne 0) {
     throw "Clarify build failed."
@@ -174,7 +197,10 @@ if (-not (Test-Path $executable)) {
     throw "PyInstaller completed without producing $executable."
 }
 
-& $python (Join-Path $PSScriptRoot 'check_settings_payload.py') $executable $SettingsExecutable
+& $python (Join-Path $PSScriptRoot 'windows_version.py') --version-source $versionSource --check-pe $executable
+if ($LASTEXITCODE -ne 0) { throw 'Packaged Windows PE version verification failed.' }
+
+& $python (Join-Path $PSScriptRoot 'check_settings_payload.py') $executable $presentationInput
 if ($LASTEXITCODE -ne 0) { throw 'Packaged Settings payload verification failed.' }
 
 $smokeOutLog = Join-Path $workDir "smoke.stdout.log"

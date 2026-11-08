@@ -1,7 +1,197 @@
 # Architecture
 
-Clarify is a local-first desktop application. It has no Clarify-owned
-backend: the desktop process calls the AI provider selected by the user.
+Clarify has a local-first Windows desktop client, an iOS client in `mobile/`,
+and an account service in `server/`. On desktop, local models and personal API keys
+work without an account. The iOS client uses an authenticated Clarify account or
+an explicitly paired computer. Stored personal keys from older versions do not
+enable mobile processing.
+Hosted dictation requires an authenticated account and
+uses a server-owned Groq key; personal keys never pass through that service.
+
+`computer_host.py` owns the opt-in personal HTTPS listener, pairing, device
+revocation and operation admission. `computer_processing.py` uses the desktop's
+existing provider and dictionary contracts. The optional `computer_relay_client.py`
+and `computer_relay_server.py` share a bounded TLS byte-forwarding protocol.
+The operator image is in `connect/`; desktop and iOS use the public configuration
+in `shared/computer_connect.json`. Processing stays on the paired computer.
+See the [computer connection contract](computer-connection.md) for trust,
+discovery, cancellation and ownership.
+
+All product source remains in this public MIT repository. Production credentials,
+user data, backups and administrator access stay private in the hosting platform.
+There is no separate closed backend or local/cloud product fork.
+
+Accounts share vocabulary, snippets, sponsored processing quota and new account
+transcriptions. Pre-upgrade records, guest history and guest snippets remain local.
+Account snippet caches use endpoint and account identity; signing in does not
+upload guest snippets. Hosted substitution runs once after recognition and before optional rewriting.
+The rewrite model receives the substituted source and can adjust it with the
+rest of the message. Rewrite failure returns the substituted source. The
+original recognized transcript remains unchanged in history. Standalone triggers
+insert the exact saved text without rewriting. Recognition hints contain only
+enabled triggers; saved replacements are sent only when applied to rewrite source. Account libraries have a 256 KiB compact UTF-8 JSON limit, and
+snippet-expanded dictation fields retain the existing 32 KiB UTF-8 history limit.
+Rendered hosted responses also have a 384 KiB bound. Excessive expansion returns
+an explicit error without truncation. Account history
+uses an endpoint/user-scoped offline cache and durable pending changes; local
+records are never inferred to belong to the current account or uploaded.
+See the [history synchronization contract](history-sync.md) for cursor,
+idempotency, deletion and retry ownership. `clarify_account.py` owns the
+desktop account boundary; the iOS containing app owns `CloudAccount.swift`.
+Sessions stay in the desktop secret store or app-only iOS Keychain. The keyboard
+extension receives neither provider keys nor account sessions. Account-scoped
+vocabulary caches preserve the local dictionary when the user signs out.
+
+The iOS containing app publishes a bounded, context-scoped text-action descriptor
+catalog to the keyboard. Descriptors contain identity, revision, name, kind and
+readiness; prompts and account authority stay outside the App Group. Revisions
+cross the JavaScript bridge as decimal strings and the wire as signed-64-bit
+integers. A missing catalog identifies an older service. Empty or failed catalogs
+do not enable a different action. Preparation refreshes and freezes the selected
+definition before processing, and responses must echo the same identity.
+
+`SharedState.swift` owns the separate, nonsecret output preference file. A
+cross-process file-coordination transaction changes one field without replacing
+another field's concurrent change. Recording and text operations freeze these
+preferences at acceptance. The containing app keeps discovery and processing
+under its existing task and cancellation owner. Hosted text can reserve its UUID
+while an automatic account refresh is active, then wait for that refresh during
+preparation. Cancelling text leaves the account refresh active. Explicit account
+changes and computer connection work still block text acceptance. The operation
+pins its account identity and credential before the preparation task starts and
+checks them after discovery, so a waiting operation cannot adopt another session.
+The desktop toolbar globe preserves the source languages, including mixed-language
+text. A flag selects the output language for dictation and saved text actions.
+Operations freeze this choice at acceptance; changing the toolbar affects the next
+operation. The persisted `ui_language` field retains the toolbar choice for
+compatibility. Output language is independent of recognition language. Explicit
+choices enter operation fingerprints and
+require advertised service support; unsupported choices remain saved and return
+an update-required error. Text and dictation responses use the shared
+`output_language_requested`, `output_language_applied` and `output_language_status`
+outcome. Clients require confirmation for explicit text-language choices; an older
+service cannot silently report source-language text as an applied choice. This
+metadata distinguishes applied editing from a recoverable original. Exact
+standalone snippets bypass editing.
+The existing cleanup policy and Local ASR cloud-refinement permission still
+control whether refinement can run.
+
+The versioned processing contract owns supported choices, wire limits and error
+recovery categories for both clients. Its generated Python, Swift and TypeScript
+constants and shared outcome cases are checked by the mobile validation command.
+Services advertise their supported choices; older services cannot silently accept
+a new dictation policy. The iOS app stores the policy per account or paired
+computer and freezes it when recording starts. Explicit natural mode removes the
+computer's selected post-dictation action and cleanup override while retaining
+its normal processing route. History records the actual rewrite flag independently
+of successful snippet expansion. Account action editing uses the same revision
+contract as desktop; full definitions and edit leases stay in the containing app.
+Existing mobile installations retain the destination's policy until an explicit
+choice is saved. Translation actions use the common output-language control.
+
+The iOS keyboard receives a nonsecret App Group vocabulary projection with an
+opaque account scope. A tap on a one- or two-word selection writes a separate
+atomic inbox file before confirming Saved. The containing app imports these
+additions into its scoped SQLite dictionary before dictation or dictionary
+access, and while its microphone session is active. Imported files are removed
+only after persistence. Account additions invalidate the synchronization interval
+so the next hosted dictation includes them. History and credentials remain
+app-only; pending additions never cross account or guest scopes.
+
+`server/` uses Django, django-allauth headless email codes, DRF and PostgreSQL.
+The server owns provider selection, default prompts, billing bounds and
+per-account/global admission. Clients cannot select arbitrary models, endpoints,
+credentials or owners. Account text-action definitions accept bounded saved
+instructions; execution supplies their ID and revision. A PostgreSQL lock
+serializes quota reservations and cost settlement.
+`shared/rewrite_prompts.py` owns transformation prompts and the composition of
+writing style and output language for desktop and hosted processing. Base rewrite
+and style rules do not select a language. The selected output preference supplies
+the language instruction after the task policy. The generated Swift prompt
+is a compatibility projection of that owner; clients do not maintain separate
+prompt definitions.
+See [server operations and release gates](../server/README.md).
+
+Sponsored processing uses funded individual weekly quotas with a common Monday
+00:00 UTC expiry. Operating provisions and existing commitments precede the
+80/20 regular/entry allocation. The server measures provider costs and returns
+versioned percentages and reset dates; clients show the reset in local time.
+See the [accepted funding contract](agents/plans/weekly-sponsored-usage/spec.md).
+Public financial reporting separates project treasury entries from read-only
+Stripe balances and sanitized movements. API credentials and contributor identity
+stay private. A declared sponsorship or spending cap never becomes a receipt.
+New receipts require operating-cost confirmation before a new period can be
+distributed. Each receipt retains its net processing basis and monthly release
+schedule. Public finance reads use a read-only snapshot and shared request limits;
+they do not acquire the financial write mutex.
+
+Desktop startup opens Settings for an unfinished setup;
+`AppConfig.onboarding_completed` is saved through the existing config transaction.
+Legacy profiles retain their choices. The iOS app stores separate app-only
+presentation and setup preferences. General onboarding appears once when first
+shown and can be dismissed. Existing signed-in installations and legacy setup
+preferences migrate without another presentation. The guide can be replayed from
+Account without resetting that marker. Protected Router screens require an
+account session or a selected paired computer before the iOS tabs can be used.
+The iOS route guard checks the selected processing destination, so a completed
+legacy personal-key setup cannot enable processing. Its old history remains on the device
+and is never assigned to an account. The existing first-login import of local
+dictionary words is preserved; the local dictionary is not deleted.
+Setup does not acquire the microphone or send an email without a user action.
+The sign-in form supports email codes, Google, Microsoft and GitHub. The server's
+`auth/continue` adapter creates an unverified account only when needed, then uses allauth's
+same login-code verification and session machinery for both paths. New-account
+limits still apply; no usable password is saved. Legacy separate endpoints remain
+available. Authentication forms are shared with desktop Settings and the iOS
+sign-in screen. Once the selected destination is configured, the bottom tabs
+contain Dictation, Actions, Library and Settings. Library opens Dictionary and
+Snippets. Settings separates account, processing destination, dictation output,
+microphone and keyboard, and history and privacy. It also opens the explicit
+guide replay. The tabs, Settings and guide routes share the destination guard. In iOS account mode,
+sign-out or session expiry returns to the connection choice before tabs can be used.
+
+An authenticated account uses Clarify-managed processing for dictation, imported
+audio, selected-text rewrite and translation. Personal provider and local-model
+controls are hidden in this mode. An expired managed session fails closed; it
+cannot fall back to a saved personal key. Signing out explicitly restores the
+personal configuration on desktop. The iOS account route stops microphone access
+when its session expires; it cannot fall back to a paired computer. In account
+mode, signing in activates account processing automatically,
+including for existing signed-in profiles. There is no separate activation step.
+
+Shortcut capture is owned by the Qt Settings controller, including the React
+dialog's capture state. Capture temporarily releases native hotkeys and input
+hooks so an existing binding cannot trigger a workflow or consume a side button.
+Successful capture, cancellation, hidden or closed Settings restore the bindings.
+Late input events from the replaced hook are ignored; a registration collision
+can recover through the existing Apply transaction.
+
+Vocabulary sync runs after login and local edits, then at most once per minute
+while the app is active or before a hosted dictation. Failed attempts also use
+this interval. Conflicting edits require an explicit resolution. Each account
+has its own persistent cache; guest words, guest snippets, settings, keys and history
+remain on the device. Processing responses include the updated shared allowance,
+and a foreground refresh catches changes made on another device.
+
+`shared/ui_strings.json` owns Portuguese, English and Spanish UI and email copy.
+Clients select the device UI language, independently of dictation language, and
+send it as `Accept-Language` for authentication. Unsupported device languages
+use English. Qt and React read the shared catalog; `scripts/sync_locales.py`
+generates the checked Swift copy for the app, keyboard and Live Activity. The
+desktop bridge supplies the same Windows UI language used by the account client.
+Authentication emails contain the code and localized instructions, without links.
+
+Google, Microsoft and GitHub use server-owned django-allauth OAuth adapters.
+The desktop system browser and the iOS authentication session share a bounded,
+one-time native handoff protected by a client-generated SHA-256 proof. The
+server owns provider secrets, OAuth state, provider code exchange and account
+creation. Browser callback URLs contain no Clarify credentials. Native clients
+receive the resulting allauth session only through the proof-protected endpoint,
+then use the existing account refresh and synchronization owners. Unverified
+provider emails continue through the existing email-code confirmation flow.
+Matching email addresses do not authorize automatic account linking. The desktop
+`social_login.py` boundary owns browser URL validation, bounded polling and
+cancellation; `clarify_account.py` owns credential storage and account state.
 
 ## Runtime flow
 
@@ -26,15 +216,68 @@ Focus and selection safety check
     +---- changed ------> keep result in clipboard for manual paste
 ```
 
-The Qt/QML event loop owns the desktop surface. Provider calls, audio
+The Qt event loop owns desktop workflows. Provider calls, audio
 processing, and clipboard transactions run through scheduled workers so the
 floating window remains responsive.
 
+## Paired computer processing
+
+`computer_host.py` owns the opt-in HTTPS listener, TLS identity, expiring one-use
+pairing codes, per-device authorization and bounded operation admission. Private
+identity material uses `clarify_computer` in the existing secret store. The
+profile's `computer.sqlite3` stores device token hashes, operation metadata and
+explicit startup consent. Result text remains in a bounded memory cache.
+
+`computer_processing.py` adapts accepted WAV and text input to
+`WorkflowProviderService`. It snapshots the computer's personal configuration
+and dictionary and reuses the provider registry. It owns no microphone,
+clipboard or hosted account. Provider keys, models and prompts remain on the
+computer. `clarify/desktop/qml_computer.py` owns Qt lifecycle and temporary QR
+presentation. Account transitions stop personal hosting before changing owners.
+Application shutdown must drain mobile processing before closing shared providers.
+
+The iOS containing app's `ComputerConnection` owns camera pairing, private
+Keychain credentials and scoped HTTPS transport. `ProcessingDestination` selects
+it or the existing `CloudAccount` boundary. Computer mode needs no hosted
+account and cannot silently fall back to hosted processing. The existing
+recorder and keyboard bridge remain authoritative. The keyboard receives no
+connection credential. Computer history stays in its own scope on the iPhone;
+it does not enter account synchronization. Computer dictation uses the
+computer's dictionary and snippets.
+
+See the [computer connection protocol](computer-connection.md) for wire bounds,
+certificate pinning, operation identity and open delivery evidence.
+
 ## Settings process boundary
 
-`desktop/src/` contains the React/TypeScript Settings pages, Radix-based controls,
-and styles. `desktop/src-tauri/` hosts them in a Tauri v2 WebView2 window. This is
-not Electron and does not replace the Python audio engine or QML pill.
+The desktop uses one retained Electron child for the React Settings
+window and the React pill. `qml_electron.py` adapts the existing Qt controllers
+to explicit workflow commands and property-change events over private pipes.
+The Python engine retains recording, provider, clipboard, account and storage
+ownership. Qt still supplies its event loop, native hotkeys and the file-import
+panel during this migration. The QML presentation remains a recovery path if
+the Electron child fails.
+
+The local pilot resolves `desktop-shell/Clarify Desktop.exe` beside the installed
+engine, or an absolute `CLARIFY_DESKTOP_EXECUTABLE` for source development. The
+shell directory is deployed beside the portable executable to avoid extracting
+Chromium on each engine launch. `scripts/deploy.ps1 -DesktopShellDirectory`
+installs it with a separate recoverable engine and shell backup. Public release
+packaging remains on the existing release contract until separately migrated.
+
+Settings close retains the renderer only after its save/discard guard accepts
+the close. Hiding it for a workflow retains the update block until an accepted
+close, because its local drafts can still be unsaved. The Electron executable
+is excluded from foreground target capture before the shell starts. Meter
+events use the small workflow snapshot; Settings events read notified fields
+and preserve the existing account and library ownership guards.
+
+`desktop/src/` contains the React/TypeScript Settings pages, Base UI controls,
+and styles. `desktop/src-tauri/` retains the explicitly selected legacy Tauri
+build. Default Windows packaging uses `scripts/build-desktop.ps1` and embeds the
+complete Electron app in the portable EXE. The payload manifest and SBOM bind
+the renderer, native runtime and license files to that build. The existing
+portable update signature therefore covers the complete desktop application.
 
 `clarify/desktop/qml_web_settings.py` starts the child with Qt `QProcess` and
 exchanges JSON messages over private standard input/output pipes. The Python
@@ -44,10 +287,170 @@ and audio devices; React displays state and submits changes through this bridge.
 `qml_settings.py` remains the shared controller. The QML Settings view remains a
 fallback when the native child is unavailable.
 
-The new Settings currently use Portuguese labels. QML locale coverage must not
-be described as complete localization of the React pages.
+React and QML use the shared translation catalog. Desktop-only copy stays in
+the reviewed desktop projection and does not add unused mobile strings.
+
+The Settings frontend separates window composition (`desktop/src/app.tsx`),
+feature pages (`pages/`), reusable controls (`components/`), and application state
+(`settings/`). `settings/use-settings.ts` owns local drafts, navigation and
+contextual save/discard operations. Its operation boundary controls action-local
+pending state, errors and success updates. Navigation stays available during
+microphone tests, refreshes and saves; it does not stage free-text drafts.
+`savePreference` persists one allowlisted choice without committing other drafts.
+`saveLibraryPreference` applies a library flag only under the matching persisted
+entry identity and account context. Explicit text saves reserve the connection
+for the full staging/persistence transaction, preserving later edits and drafts
+on other pages. Library drafts retain their original persisted baseline. Save
+merges local edits with a fresh library snapshot. Staging checks the expected
+persisted rows under the account/library guard and rejects a stale snapshot
+before changing the backend draft. This preserves remote additions received
+during editing or while Save waits in the queue. The close confirmation can
+explicitly save all pending drafts. `settings/use-settings-window.ts` owns native close
+requests. `settings/bridge.ts` defines typed command arguments for frontend
+callers without changing the Python allowlist or private pipe protocol.
+
+The workspace separates Dictation, Style, Text actions and content libraries.
+Application preferences use a Settings dialog. Opening that dialog preserves
+the main destination and its drafts. Action, app-style and processing-profile
+editors use explicit Save/Cancel. Native close includes their dirty state.
+
+### Saved text actions
+
+`text_actions.py` owns validated action definitions, processing profiles, device
+bindings, limits and immutable execution snapshots. Configuration schema 5
+migrates effective schema-4 rewrite/translation prompts, enabled state, routes,
+ChatGPT account bindings and shortcuts. An intentionally empty catalog remains
+empty. Older readers reject schema 5; newer unknown schemas remain read-only.
+
+Schema 6 adds the general writing style. Application rules override that style;
+Natural adds no style instruction. Schema-5 readers cannot save schema-6 files,
+so an older desktop cannot silently erase this preference. The existing action
+catalog and personal instructions remain unchanged during migration.
+
+`text_action_service.py` owns catalog transactions, account-context guards,
+definition revisions, local shortcut registration and rollback. Personal
+definitions remain on the device. Hosted definitions belong to the authenticated
+account; shortcuts, profile choices and post-dictation selection remain device
+preferences scoped to the endpoint and account. Signing in does not upload the
+personal catalog. Profile edits address an existing profile ID without changing
+the selected Settings workflow or committing unrelated drafts.
+
+Hosted catalog writes run as explicit jobs. Network requests do not hold the
+locks used by Qt snapshots. The worker performs the remote write; Qt rechecks
+the context and local revision before applying shortcuts and configuration.
+`textActionMutation` retains the terminal result for its generation. The private
+frontend transaction waits for that same generation, including compensation,
+before reporting success or releasing the pipe. A failed job returns the latest
+snapshot and keeps the editor draft. Refresh also performs network work outside
+the snapshot locks and publishes through the Qt mailbox. `textActionRefresh`
+identifies its generation and terminal result. A successful refresh clears the
+incomplete-write guard. The editor preserves the draft and requires an explicit
+choice when the saved definition changed before it accepts the new revision.
+
+Processing profiles use a dedicated model catalog command. Discovery does not
+select a workflow or save a profile. Request identity includes the profile,
+provider, endpoint, configured credential and ChatGPT session. Late results are
+discarded. A draft endpoint requires an explicit refresh. Changing a ChatGPT
+model requires its current verified catalog; another active account cannot
+replace the profile's saved account binding.
+
+`WorkflowProviderService` resolves an immutable action/profile/account snapshot
+at operation start. The same transform handles selection, menu, shortcut,
+preview and the optional post-dictation refinement. Custom actions use a neutral
+transform policy that permits tasks such as summarization. Translation retains
+an explicit target language. Local Whisper only transcribes audio; it does not
+become a text model or gain an implicit cloud fallback.
+
+`WorkflowService` retains selection capture, cancellation, overlap prevention,
+operation identity, clipboard ownership and once-only publication. Legacy
+rewrite and translation entrypoints resolve their stable action IDs. History
+can record action ID/name/revision alongside the preserved original. Preview
+accepts only a saved revision and explicit sample text. Its generation identifies
+the result; closing or invalidating the preview cancels it without clipboard
+publication. Cancellation is cooperative around existing blocking HTTP calls;
+late cancelled or account-stale results are discarded.
+
+`clarify_account.py` implements the hosted catalog and execution protocol in
+[server/TEXT_ACTIONS.md](../server/TEXT_ACTIONS.md). Account catalog writes use
+compare-and-swap revisions. Compensation also uses its accepted revision and
+cannot overwrite a later client change. Hosted execution uses service-owned
+models and credentials. Post-dictation selection replaces the existing
+refinement pass after one snippet expansion. Standalone snippets bypass it;
+cleanup permissions and original-text recovery remain in force.
+Cleanup modes that do not permit AI, a disabled review route, and local
+transcription with cloud refinement disabled bypass the optional action before
+resolving its profile.
+A disabled or unavailable optional action cannot prevent those dictations.
+
+Periodic Settings reads use top-level deltas from one previous poll snapshot.
+Initial reads and command replies remain full snapshots. Only a poll advances
+the delta baseline, so an ignored background command reply cannot consume a
+later update. Full replies mark changed field names for the next poll, including
+transient values that return to the baseline before that poll. React merges fields with structural sharing, skips unchanged
+state, and compares library drafts only when their references change. A failed
+poll triggers a full read before polling continues. This remains one serialized
+frontend connection; Python still reads the allowlisted properties on each poll.
+Pending telemetry does not hold the user-operation busy state. Local navigation
+uses the latest state and does not publish an old snapshot over a newer delta.
+
+Microphone discovery runs on one worker per Settings controller. Repeated refresh
+requests share the pending query. The last completed inventory stays available
+while discovery runs. Workers publish data to a plain Python mailbox, drained
+by a controller-owned timer on the Qt thread. Inventory, local-product state,
+and local-device workers retain the mailbox instead of the Qt controller.
+Shutdown closes and clears the mailbox before stopping its timer; generation
+and shutdown checks reject late results. Optional backend loading also occurs
+on the inventory worker. Device discovery does not change a saved microphone
+preference or an unrelated draft error. See [desktop performance](desktop-performance.md)
+for shared components, measured cases, and validation limits.
+
+`QtRecorder` loads PortAudio lazily through one shared loader on audio workers.
+Each SoX capture has its own identity. Process launch and WAV readiness reads
+run outside locks used by Qt; the pill reads cached readiness. One optional
+meter worker owns stream open/start/stop/close across rapid restarts. Recording
+finalization does not wait for this presentation stream. Late processes and
+streams cannot attach to a newer capture, and cancelled late launches repeat
+their owned audio cleanup after process termination.
+Windows readiness handles share delete access, so cancellation can unlink the
+WAV during a pending read. Voice translation uses the same lazy audio loader
+from its recording worker; the production import path does not initialize it.
+
+Snippet draft writes retain their captured account context through persistence
+and rollback. The account repository supplies an optional transaction guard;
+`DictionarySnippetService` acquires it before its own lock for load, replace and
+import. Settings uses the same owner guard for its complete save transaction.
+The lock order is account before dictionary service, including synchronization.
+A session transition cannot redirect an account draft into guest storage.
+
+Shared Settings visual values live in `desktop/src/styles/tokens.css`; base styles,
+controls, page layouts and responsive window rules have separate files. Common
+fields own their accessible labels and help-text associations. The compact QML
+surfaces keep their existing theme and behavior. See `desktop/README.md` for the
+source map and component conventions.
 
 ## Current modules
+
+### Personal ChatGPT plan Settings
+
+The desktop ChatGPT subscription route is separate from Clarify-managed account
+processing. `qml_settings.py` owns its Settings worker, cancellation and safe
+state projection; the auth session owns credentials and protected notice
+acknowledgement. The RPC allowlist exposes `chatgptState` and explicit
+`chatgptCommand` actions. React never receives OAuth tokens. Identity mutations
+reserve the existing
+`AccountService.begin_change` operation guard, which blocks native recording;
+completion or shutdown releases that reservation once. Auth errors map bounded
+codes to the shared localized catalog. Catalog caches use
+account identity and auth generation. Account changes invalidate cached models
+and saved model choices, without changing provider selection or marking an auth
+change as an unsaved config draft. Model slugs and server order are preserved;
+display names are labels. Saved OAuth model selections include the local account registration ID. The
+provider rejects an absent or different ID before inference, including after a
+restart or a failed Settings save. ChatGPT credentials use a dedicated
+`chatgpt-secrets` store so provider-key writes cannot restore rotating tokens.
+ChatGPT is available only for text routes, with no
+API-key draft or custom endpoint. See [ChatGPT plan support](chatgpt-plan.md) for
+the direct OAuth flow, shared limits and current VM support boundary.
 
 ### `clarify/desktop/qml_app.py`, `qml_bridge.py`, and `qml_runtime.py`
 
@@ -66,7 +469,8 @@ The old widget entrypoint is not used by `start.bat`, PyInstaller, CI, or
 release packaging. Root `app.py` remains for legacy compatibility tests; new
 features must not be added there. Production Qt adapters and assets live in
 `clarify/desktop/`; historical comparison tools remain under `spikes/`.
-The unused Electron implementation is available in Git history, not the checkout.
+The earlier Electron prototype remains in Git history. The retained desktop
+host described above is the current local migration pilot.
 
 ### Provider layer
 
@@ -118,8 +522,26 @@ surface. It keeps an immutable typed draft, changes one scope at a time, and
 delegates Apply, Reset, and Test to `LocalConfigRepository` so validation and
 atomic persistence remain outside the Qt event loop. The controller exposes only redacted
 effective-route summaries (provider, model, endpoint, and local/cloud state).
-`AppWorkflowProvider` resolves the route for each operation, including the
-rewrite and translation-specific prompt and endpoint.
+`WorkflowProviderService` resolves the route for each operation, including the
+rewrite and translation-specific prompt and endpoint. The legacy
+`AppWorkflowProvider` remains a compatibility adapter in `app.py`.
+
+### `workflow_provider.py`
+
+`WorkflowProviderService` owns provider policy for dictation, selected-text
+rewrite, and selected-text translation. It constructs typed requests, applies
+workflow prompts and dictionary context, preserves raw/refined provenance,
+and retains the exact raw transcript when optional refinement fails.
+Cancellation still takes precedence over recovery. It delegates HTTP, retries,
+and local inference to the existing provider registry.
+
+The service accepts a read-only configuration protocol, a dictionary service,
+and an optional registry. It imports no desktop framework and does not own
+capture, worker scheduling, clipboard publication, or profile persistence.
+`QtProviderGateway` composes this policy with Qt-owned recording preparation;
+the recording gateway still owns session exclusivity, stop, and cleanup.
+This boundary allows provider policy to be tested without starting Qt or a
+microphone. It changes no routes, persisted schemas, prompts, or user controls.
 
 ### Dedicated voice translation (`voice_translation.py`, `voice_translation_runtime.py`)
 
@@ -259,7 +681,7 @@ cleanup. Settings integration, hot-plug handling, audio cues, and packaged
 Windows acceptance remain follow-up work so the existing `Recorder` and
 `RecordingSession` cleanup/cancellation contract is not duplicated here.
 
-### `history_store.py` (typed groundwork, not user-facing)
+### `history_store.py` and `QtHistoryRecorder`
 
 Defines the opt-in, local-only transcription history boundary for issue #53.
 `HistoryRecord` accepts raw/refined text, workflow, timestamp, provider/model
@@ -269,9 +691,25 @@ uses a versioned JSON document with atomic same-directory writes, recovers an
 intact interrupted snapshot when the primary is missing, enforces configurable
 retention, supports delete-all, and exports TXT, Markdown, or JSON. The first
 version intentionally avoids SQLite because the staged boundary has no search,
-sync, or high-volume requirement. Settings/UI wiring, copy/retry actions,
-per-user path selection, and packaged Windows acceptance remain follow-up work;
-this module must not be read as a product-level history claim.
+sync, or high-volume requirement.
+
+The production Qt runtime creates a profile-relative store and subscribes
+`QtHistoryRecorder` to terminal workflow states. The recorder queues writes
+outside the UI thread and records only when local history is enabled.
+React Settings and its QML controller expose
+the opt-in and retention controls. Production Settings expose paged history,
+search, comparison, copy and deletion through `HistoryView`. Search covers
+original and result text in records available on this device, including the
+account cache; it does not query unsynchronized server records. Each continuation
+scans at most 128 text blocks and returns at most 20 previews. Opaque cursors bind
+the query, session context and file revision. Text readers return 4,000-character
+sections. Clipboard writes resolve the original or result in Python under the
+account and history locks, with no paste or transcript in Settings snapshots.
+`HistoryEntryActions` and `HistoryComparison` own reusable presentation;
+`HistoryPage.renderEntryAction` accepts an entry and an immutable context/revision
+scope for later actions. Backend reads identify `local` or `account` ownership
+separately from the source device. Export remains a storage API.
+See [the history boundary](history.md) for privacy and acceptance limits.
 
 ### `desktop_state.py`
 
@@ -289,7 +727,8 @@ formats. See [Provider HTTP reliability and diagnostics](http-resilience.md).
 
 ### `windows_hotkeys.py`
 
-Owns native Windows `RegisterHotKey` registration and Ctrl-key synthesis. The
+Owns native Windows `RegisterHotKey` registration, scoped low-level keyboard
+and mouse hooks for modifier keys and side buttons, and Ctrl-key synthesis. The
 typed `HotkeySettings` value in `hotkey_config.py` persists the five actions
 (recording, rewrite, selected-text translation, voice translation, and
 visibility) without coupling them to provider adapters. Legacy installations
@@ -297,6 +736,12 @@ are normalised to Alt+L, Alt+K, Alt+T, Alt+V, and Alt+R. Conflicts are rejected
 before registration, and strict registration rolls back every accepted ID if
 Windows rejects one combination; settings therefore cannot leave a stale or
 partially active set.
+
+The Qt backend owns hook installation, replacement, polling, and cleanup.
+Callbacks queue action IDs to Qt and never record text. Standalone modifiers
+run on clean release, so ordinary chords do not trigger them. Modifier Hold
+recording starts after 200 ms and ends when released or used in a chord. Only
+configured side mouse buttons are consumed. Injected input is ignored.
 
 `RegisterHotKey` delivers key-down notifications and has no key-up edge. The
 production Qt shell adds a scoped physical-key timer for Hold recording: key
@@ -355,7 +800,7 @@ launch. It does not own UI confirmation and never runs an installer by itself.
 
 The unit suite tests provider routing, URL construction, configuration,
 clipboard safety, workflow state, usage statistics, and geometry calculations.
-`tests/test_workflows.py` is deliberately separate from the provider suite and
+`tests/compatibility/test_workflows.py` and `tests/contract/test_workflows.py` is deliberately separate from the provider suite and
 runs the core application services without importing or constructing Tk.
 Windows UI acceptance still requires a real packaged build because mocked tests
 cannot reveal transparency, focus, DPI, or hotkey integration defects.
@@ -470,6 +915,7 @@ boundary.
 | --- | --- | --- |
 | Settings | `%APPDATA%\Clarify\config.json` | Provider endpoints, models, selections, and UI preferences; no API keys |
 | Provider secrets | `%APPDATA%\Clarify\secrets.dpapi.json` | Current-user DPAPI ciphertext keyed by provider |
+| ChatGPT credentials | `%APPDATA%\Clarify\chatgpt-secrets.dpapi.json` | Current-user DPAPI; isolated from provider-key writes |
 | Usage stats | `%APPDATA%\Clarify\usage_stats.json` | Counts, durations, model identifiers, and estimates; no transcript text |
 | Dictionary and snippets | `%APPDATA%\Clarify\dictionary.json` | Versioned local terms, aliases, and bounded replacement rules; no credentials or usage events |
 | Working audio | `%APPDATA%\Clarify\clarify-recording-*.wav` | One unique session-owned file, deleted after the provider no longer needs it |
@@ -523,5 +969,16 @@ updating an existing local installation from WSL; contributors normally use
 
 ## Legacy prototype
 
-The incomplete Electron prototype was removed from the checkout. It remains
-available in Git history and is not part of current development or distribution.
+The earlier incomplete Electron prototype remains in Git history. It is separate
+from the current retained desktop host and is not a distribution input.
+
+
+## Validation ownership
+
+`ci/` owns task selection and execution. Component runners own their tests;
+workflow YAML owns runner setup, services, permissions and artifacts. Python
+suites are separated by contract and platform under `tests/`, with reusable
+fixtures under `tests/support/`. Settings unit tests run without a browser;
+Playwright owns browser behavior and production bundle boot checks. Native iOS
+and Windows packaging are separate from source tests. See
+[validation and delivery](ci-delivery.md) for the dependency map and commands.
