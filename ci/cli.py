@@ -160,6 +160,7 @@ def run_plan(plan, timeout=3600, check_timeout=1800):
             if not reason and check["component"] in {
                 "settings_unit",
                 "settings_browser",
+                "desktop_shell",
                 "mobile",
             }:
                 if any(

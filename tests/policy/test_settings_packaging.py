@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from scripts.check_settings_payload import verify_inventory, verify_payload
+from scripts.desktop_payload import MANIFEST, REQUIRED, manifest_bytes, payload_manifest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -82,8 +83,12 @@ class SettingsPackagingTests(unittest.TestCase):
         for name in ("build.ps1", "deploy.ps1"):
             script = (ROOT / "scripts" / name).read_text()
             with self.subTest(script=name):
-                self.assertIn("if (-not $SettingsExecutable)", script)
-                self.assertIn("'build-settings.ps1'", script)
+                self.assertIn(
+                    "if (-not $SettingsExecutable -and -not $DesktopShellDirectory)",
+                    script,
+                )
+                self.assertIn("'build-desktop.ps1'", script)
+                self.assertIn('"${DesktopShellDirectory};desktop-shell"', script)
                 normalized = script.index(
                     "$SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath"
                 )
@@ -91,6 +96,88 @@ class SettingsPackagingTests(unittest.TestCase):
         self.assertIn(
             "check_settings_payload.py", (ROOT / "scripts/build.ps1").read_text()
         )
+
+    def test_electron_archive_binds_every_runtime_and_renderer_file(self):
+        from PyInstaller.archive.writers import CArchiveWriter
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shell = root / "desktop-shell"
+            for name in REQUIRED:
+                file = shell / name
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_bytes(b"isolated Electron fixture")
+            manifest = root / MANIFEST
+            manifest.write_bytes(manifest_bytes(payload_manifest(shell)))
+            bom = root / "Clarify-settings.sbom.json"
+            bom.write_text(
+                json.dumps(
+                    {
+                        "metadata": {
+                            "component": {
+                                "hashes": [
+                                    {
+                                        "alg": "SHA-256",
+                                        "content": hashlib.sha256(
+                                            manifest.read_bytes()
+                                        ).hexdigest(),
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                )
+            )
+            notice = root / "Clarify-settings-NOTICES.txt"
+            notice.write_text("fixture license")
+            entries = [
+                (
+                    "desktop-shell/" + file.relative_to(shell).as_posix(),
+                    str(file),
+                    True,
+                    "x",
+                )
+                for file in shell.rglob("*")
+                if file.is_file()
+            ]
+            package = root / "desktop.pkg"
+            CArchiveWriter(
+                str(package),
+                [
+                    *entries,
+                    *[
+                        (file.name, str(file), True, "x")
+                        for file in (manifest, bom, notice)
+                    ],
+                ],
+                pylib_name="python312.dll",
+            )
+            verify_payload(package, shell)
+            verify_inventory(package, shell)
+            ambiguous = root / "ambiguous.pkg"
+            CArchiveWriter(
+                str(ambiguous),
+                [
+                    *entries,
+                    (
+                        "DESKTOP-SHELL/resources/app/dist/index.html",
+                        str(shell / "resources/app/dist/index.html"),
+                        True,
+                        "x",
+                    ),
+                    (manifest.name, str(manifest), True, "x"),
+                ],
+                pylib_name="python312.dll",
+            )
+            with self.assertRaisesRegex(ValueError, "duplicate Windows paths"):
+                verify_payload(ambiguous, shell)
+            # A correct executable alone must not hide an old renderer or DLL.
+            (shell / "resources/app/dist/index.html").write_text("new renderer")
+            with self.assertRaisesRegex(ValueError, "manifest differs"):
+                verify_payload(package, shell)
+            (shell / "LICENSE").unlink()
+            with self.assertRaisesRegex(ValueError, "missing runtime"):
+                payload_manifest(shell)
 
     def test_payload_must_exist_and_match(self):
         # A fake archive avoids starting or modifying any installed executable.

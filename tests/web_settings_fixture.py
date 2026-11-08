@@ -311,6 +311,13 @@ class Dispatcher(QObject):
 
     @Slot(object)
     def dispatch(self, request):
+        if request.get("method") == "nativePillInput":
+            from tests.support.electron_native_input import native_pill_input
+
+            emit_fixture(
+                {"id": request["id"], "result": native_pill_input(request["args"][0])}
+            )
+            return
         if request.get("method") == "quit":
             QCoreApplication.quit()
             return

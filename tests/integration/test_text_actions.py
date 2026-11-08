@@ -734,6 +734,34 @@ class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
         )
         self.assertEqual(self.clipboard.writes, ["Translated"])
 
+    def test_interactive_translation_waits_and_uses_the_picked_language(self):
+        from workflows import RunTextAction, ChooseTranslationLanguage, WorkflowPhase
+
+        self.save(
+            TextAction(
+                "translate-interactive", "Translate", "Target {lang}.", "translation"
+            ).to_mapping()
+        )
+        provider, registry = self.provider()
+        registry.translate.return_value = TranslationResult(
+            "Traducido", "openai", "gpt-4o-mini", "es"
+        )
+        workflow = self.workflow(provider)
+        workflow.dispatch(RunTextAction("translate-interactive", choose_language=True))
+        self.drain()
+        self.assertEqual(workflow.state.phase, WorkflowPhase.TRANSLATION_PICKER)
+        registry.translate.assert_not_called()
+        self.repo.apply(
+            replace(self.repo.load(), ui=replace(self.repo.load().ui, language="de"))
+        )
+        workflow.dispatch(ChooseTranslationLanguage("es"))
+        self.drain()
+        self.assertEqual(workflow.state.phase, WorkflowPhase.COMPLETED)
+        request = registry.translate.call_args.args[1]
+        self.assertEqual(request.target_language, "es")
+        self.assertIn("Output MUST be in Spanish", request.instruction)
+        self.assertEqual(self.clipboard.writes, ["Traducido"])
+
     def test_post_dictation_expands_once_then_runs_only_selected_action(self):
         from workflows import RecordingSnapshot
 

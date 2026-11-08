@@ -5,6 +5,7 @@ import QtQuick.Window 6.5
 Window {
     id: pill
     objectName: "workflowStatusPill"
+    property bool rendererEnabled: true
     readonly property real dpiCompensation: 1.0 / Math.max(1.0,
                                                            Screen.devicePixelRatio)
     readonly property int designWidth: 168
@@ -38,7 +39,7 @@ Window {
                                              || workflow.surface === "voice_processing"
                                              || (workflow.surface === "success"
                                                  && successVisible)
-    visible: requestedVisible || opacity > 0.001
+    visible: rendererEnabled && (requestedVisible || opacity > 0.001)
     opacity: requestedVisible ? 1.0 : 0.0
     Behavior on opacity {
         NumberAnimation {

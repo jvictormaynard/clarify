@@ -1,15 +1,18 @@
 name: Validate and build Settings
-description: Validate Settings in a browser and optionally compile the native child application.
+description: Validate Settings in a browser and optionally package the Electron shell.
 inputs:
   python:
     description: Python interpreter with the repository development dependencies installed
     required: true
   native:
-    description: Compile the native Settings executable and collect its inventory
+    description: Build the Electron shell and collect its inventory
     default: "true"
   test:
     description: Run the isolated browser and Python bridge tests
     default: "true"
+  smoke:
+    description: Run native packaged smoke for a release candidate
+    default: "false"
   audit:
     description: Audit dependencies during a release build
     default: "false"
@@ -21,32 +24,13 @@ runs:
         node-version: "22.21.1"
         cache: npm
         cache-dependency-path: desktop/package-lock.json
-    - name: Check native toolchain
-      id: toolchain
-      if: ${{ (inputs.native == 'true') }}
-      shell: pwsh
-      working-directory: desktop
-      run: |
-        rustc --version
-        if ($LASTEXITCODE -ne 0) { throw 'The Windows runner must provide Rust MSVC.' }
-        cargo --version
-        if ($LASTEXITCODE -ne 0) { throw 'Cargo is required.' }
-        $rustVersion = (rustc --version) -replace '[^a-zA-Z0-9.-]', '-'
-        "rust=$rustVersion" >> $env:GITHUB_OUTPUT
-    - name: Restore native compilation cache
-      if: ${{ (inputs.native == 'true') }}
-      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          desktop/src-tauri/target
-        key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.rust }}-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}-${{ hashFiles('desktop/src-tauri/src/**', 'desktop/src-tauri/build.rs', 'desktop/src-tauri/tauri.conf.json') }}
-        restore-keys: |
-          cargo-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.rust }}-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}-
+    - uses: ./.github/actions/electron-runtime-cache
+      if: ${{ inputs.native == 'true' }}
     - name: Install locked frontend dependencies
       shell: pwsh
       working-directory: desktop
+      env:
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       run: npm ci --no-fund
     - name: Audit frontend and build dependencies
       if: ${{ (inputs.audit == 'true') }}
@@ -54,7 +38,7 @@ runs:
       working-directory: desktop
       run: npm audit --include=dev --audit-level=high
     - name: Type-check and build frontend
-      if: inputs.test != 'true'
+      if: inputs.test != 'true' && inputs.native != 'true'
       shell: pwsh
       working-directory: desktop
       run: npm run build
@@ -95,23 +79,33 @@ runs:
         if ($LASTEXITCODE -ne 0) { throw 'Settings unit tests failed.' }
         & $env:CLARIFY_TEST_PYTHON ../scripts/ci.py --task settings_browser
         if ($LASTEXITCODE -ne 0) { throw 'Settings browser, bridge or boot checks failed.' }
-    - name: Compile native Settings
-      if: ${{ (inputs.native == 'true') }}
-      shell: pwsh
-      working-directory: desktop
-      run: |
-        cargo build --locked --manifest-path src-tauri/Cargo.toml --release --features custom-protocol
-        if ($LASTEXITCODE -ne 0) { throw 'Settings native build failed.' }
-        New-Item -ItemType Directory -Path ../dist -Force | Out-Null
-        Copy-Item src-tauri/target/release/clarify-settings.exe ../dist/clarify-settings.exe
-    - name: Collect locked dependency inventory and license texts
+    - name: Build Electron shell and dependency inventory
       if: ${{ (inputs.native == 'true') }}
       shell: pwsh
       env:
-        INVENTORY_PYTHON: ${{ inputs.python }}
+        BUILD_PYTHON: ${{ inputs.python }}
       run: |
-        & $env:INVENTORY_PYTHON scripts/settings_inventory.py --desktop desktop --output-dir dist
-        if ($LASTEXITCODE -ne 0) { throw 'Settings dependency inventory failed.' }
+        & ./scripts/build-desktop.ps1 -Python $env:BUILD_PYTHON -SkipInstall
+        if ($LASTEXITCODE -ne 0) { throw 'Electron shell build failed.' }
+    - name: Smoke-test release Electron package
+      if: ${{ (inputs.native == 'true' && inputs.smoke == 'true') }}
+      shell: pwsh
+      working-directory: desktop
+      env:
+        CLARIFY_TEST_PYTHON: ${{ inputs.python }}
+        CLARIFY_TEST_ARTIFACTS_DIR: ${{ runner.temp }}/clarify-electron-evidence
+      run: |
+        $env:CLARIFY_TEST_FIXTURE = Join-Path $env:GITHUB_WORKSPACE 'tests/web_settings_fixture.py'
+        npm run test:electron:smoke
+        if ($LASTEXITCODE -ne 0) { throw 'Electron package smoke failed.' }
+    - name: Retain release Electron evidence
+      if: ${{ (always() && inputs.native == 'true' && inputs.smoke == 'true') }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: Electron-release-${{ github.sha }}
+        path: ${{ runner.temp }}/clarify-electron-evidence/
+        if-no-files-found: warn
+        retention-days: 7
     - name: Retain isolated Settings test evidence
       if: ${{ (always() && inputs.test == 'true') }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

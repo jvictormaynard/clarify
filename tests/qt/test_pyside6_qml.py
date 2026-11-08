@@ -579,7 +579,9 @@ class PySide6QmlFrontendTests(unittest.TestCase):
             source.index("app.aboutToQuit.connect(shell.stop)"),
             source.index("app.aboutToQuit.connect(runtime.shutdown)"),
         )
-        self.assertLess(source.index("engine.rootObjects()"), source.index("QtShell("))
+        self.assertLess(
+            source.index("engine.rootObjects()"), source.index("    shell = ")
+        )
         self.assertIn("_start_shell_if_available", source)
         self.assertNotIn("FakeWorkflow", source)
         self.assertNotIn("--fake", source)

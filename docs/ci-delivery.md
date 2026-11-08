@@ -75,7 +75,8 @@ Component runners own collection and assertions.
 | `qt` | Qt/QML, DPI and retained GUI compatibility on both platforms; Windows contracts on Windows |
 | `settings_unit` | Types and headless units; no controller or browser |
 | `settings_browser` | Production build and boot, browser behavior, isolated Python bridge |
-| `package` | Native Settings, inventory, Windows EXE, embedded payload, startup, update recovery |
+| `desktop_shell` | Windows Electron host tests, actual package build and native smoke with isolated Python fixture |
+| `package` | Electron shell, inventory, Windows EXE, embedded payload, startup, update recovery |
 | `installer` | Disposable Windows install, upgrade, repair, rollback and removal |
 | `server` | PostgreSQL behavior, migrations, container startup and database health |
 | `mobile` | Types, lint, contracts, locale/prompt synchronization, iOS JavaScript bundle |
@@ -147,6 +148,32 @@ inputs select all consumers. A locale change can avoid native iOS only when its
 native catalog projection is unchanged and the inputs are regular Git blobs.
 Uncertainty retains native checks.
 
+This follows the ownership and dependent-selection pattern in
+[T3 Code's CI selector](https://github.com/pingdotgg/t3code/blob/a9e709f15f825cacac1b6d665fa1920c328d68b7/.github/scripts/ci-changes.cjs),
+checked on 8 November 2026. Clarify keeps its Python planner as the shared owner
+for local commands and CI. A change to that planner or the top-level CI graph
+requires the complete validation set because it changes the selection rules.
+
+Renderer changes select Settings unit, browser and Electron checks without the
+Python/Qt or portable EXE jobs. Electron host changes select `desktop_shell`.
+The Python Electron adapter also selects Python/Qt checks. Shared inputs keep
+their existing client dependents. Packaging inputs select the shell and EXE jobs.
+The Windows shell lane installs locked Python and npm dependencies and requires
+no Rust toolchain. Its build includes renderer type checks. It retains native
+captures and diagnostics from `CLARIFY_TEST_ARTIFACTS_DIR` on success or failure.
+
+Native builds use `scripts/build-desktop.ps1 -Python <path> -SkipInstall` after
+`npm ci`. The output is the complete app in `dist/desktop-shell`; inventory keeps
+`Clarify-settings.sbom.json` and `Clarify-settings-NOTICES.txt` in `dist/`.
+The portable build embeds that directory through `-DesktopShellDirectory`.
+The package job does not repeat the Electron suite from the required shell lane.
+Release candidates run native packaged smoke after building their shell.
+Electron downloads are cached by exact runtime version, platform and
+architecture. Browser-only jobs skip the unused Electron binary download.
+The portable EXE embeds the complete shell and its file manifest. Payload
+verification checks every renderer, runtime and license file, so the existing
+atomic EXE updater also replaces the Electron presentation.
+
 `CI required` is the terminal aggregate. The planner and policy job must succeed.
 Every selected job and every matrix row must succeed. Only unselected jobs can
 be skipped. Missing or unexpected jobs, invalid flags, failures and cancellation
@@ -179,6 +206,7 @@ python scripts/ci.py --plan
 python scripts/ci.py
 python scripts/ci.py --full
 python scripts/ci.py --task settings_unit
+python scripts/ci.py --task desktop_shell
 python scripts/ci.py --task python --shard 1/2
 ```
 
@@ -202,7 +230,7 @@ browser task as unexecuted. Headless Settings units do not need the Python super
 Set `CLARIFY_TEST_DURATIONS_JSON` for Python timings and
 `CLARIFY_TEST_DURATIONS_UNIT=test|file` for granularity. CI retains each lane's
 reports through `CLARIFY_CI_DURATIONS_DIR`. Use measurements to balance shards.
-Caches hold tool downloads and compiler output. Passing tests are not cached.
+Caches hold tool downloads only. Passing tests are not cached.
 Qt screenshots use `CLARIFY_TEST_ARTIFACTS_DIR` and stay with CI evidence.
 Without an explicit artifact path, tests use temporary output directories.
 PR-only captures and diagnostic reports follow [file retention](agents/workflow.md#files-and-evidence).
@@ -232,7 +260,7 @@ TestFlight receives a signed production-identity candidate. Public App Store
 handoff uses that same verified Apple build ID. Server delivery follows
 [native Railway delivery](server-delivery.md).
 
-[T3 Code CI](https://github.com/pingdotgg/t3code/blob/d2d1e4f50ef856f940d91858915368500657b0b7/.github/workflows/ci.yml)
+[T3 Code CI](https://github.com/pingdotgg/t3code/blob/a9e709f15f825cacac1b6d665fa1920c328d68b7/.github/workflows/ci.yml)
 is the reference for task ownership, PR selection, full main checks, separate
 browser boot checks and sharding. Clarify keeps required Windows coverage and
 direct Xcode builds for its Python/Qt and keyboard contracts. T3's EAS/OTA policy

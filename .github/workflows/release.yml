@@ -140,6 +140,7 @@ jobs:
         with:
           python: ${{ env.pythonLocation }}/python.exe
           audit: 'true'
+          smoke: 'true'
 
       - name: Prepare preview inputs without an update feed
         if: inputs.channel == 'preview'
@@ -149,7 +150,7 @@ jobs:
 
       - name: Build portable executable
         shell: pwsh
-        run: .\scripts\build.ps1 -SettingsExecutable dist\clarify-settings.exe
+        run: .\scripts\build.ps1 -DesktopShellDirectory dist\desktop-shell
 
       - name: Generate runtime SBOM
         run: cyclonedx-py requirements requirements-lock-runtime-windows.txt --of JSON -o dist\Clarify.sbom.json

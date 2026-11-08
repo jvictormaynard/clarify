@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 import { join, relative, resolve } from "node:path";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const generated = mkdtempSync(join(tmpdir(), "clarify-settings-web-"));
-const output = resolve(root, "dist");
+const output = resolve(root, process.argv.includes("--electron") ? "dist-electron" : "dist");
 try {
-  for (const [file, args] of [["typescript/bin/tsc", ["--noEmit"]], ["vite/bin/vite.js", ["build", "--outDir", generated, "--emptyOutDir"]]]) {
+  for (const [file, args] of [["typescript/bin/tsc", ["--noEmit"]], ["vite/bin/vite.js", ["build", ...(process.argv.includes("--electron") ? ["--base", "./"] : []), "--outDir", generated, "--emptyOutDir"]]]) {
     const result = spawnSync(process.execPath, [resolve(root, "node_modules", file), ...args], { cwd: root, stdio: "inherit" });
     if (result.status !== 0) {
       process.exitCode = result.status || 1;

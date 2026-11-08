@@ -11,9 +11,9 @@ function jobs(method = "saveTextAction", key = "textActionMutation") {
   let entered!: () => void;
   const polled = new Promise<void>(resolve => { entered = resolve; });
   const calls: string[] = [];
-  const context = createContext({ t: (value: string) => value,
+  const context = createContext({ t: (value: string) => value, electron: () => undefined,
     setTimeout: (callback: () => void) => { queueMicrotask(callback); return 0; },
-    invoke: async (_command: string, request: { method: string }) => {
+    tauriInvoke: async (_command: string, request: { method: string }) => {
       calls.push(request.method);
       if (request.method === method) return { [key]: { ...next }, textActions: [] };
       if (request.method === "poll") { entered(); await held; return { [key]: { ...next }, textActions: [{ id: "saved" }] }; }
@@ -67,4 +67,30 @@ test("action jobs: refresh waits for its catalog generation before returning rec
   const result = await refreshing;
   assert.equal(result.textActionRefresh.status, "succeeded");
   assert.equal(result.textActions[0].id, "saved");
+});
+
+test("Electron action jobs consume pushed patches and retain the pipe without polling", async () => {
+  let listener: ((message: unknown) => void) | undefined;
+  let subscribed = false;
+  const calls: string[] = [];
+  const context = createContext({ t: (value: string) => value, setTimeout, clearTimeout,
+    electron: () => ({
+      subscribe: (next: typeof listener) => { listener = next; subscribed = true; return () => { subscribed = false; }; },
+      call: async (_channel: string, method: string) => {
+        calls.push(method);
+        return {textActionMutation: {generation: 3, busy: true, status: "pending"}};
+      },
+    }),
+  });
+  const source = readFileSync("src/settings/bridge.ts", "utf8").replace(/^import\b[\s\S]*?;\s*/gm, "").replace(/^export /gm, "");
+  runInContext(stripTypeScriptTypes(source), context);
+  const saving = runInContext('call("saveTextAction", {}, "context", "revision")', context) as Promise<any>;
+  await new Promise(resolve => setImmediate(resolve));
+  const queued = runInContext('call("snapshot")', context) as Promise<any>;
+  assert.deepEqual(calls, ["saveTextAction"]);
+  listener?.({event: "settings", state: {textActionMutation: {generation: 3, busy: false, status: "succeeded"}, textActions: [{id: "saved"}]}});
+  assert.equal((await saving).textActions[0].id, "saved");
+  await queued;
+  assert.deepEqual(calls, ["saveTextAction", "snapshot"]);
+  assert.equal(subscribed, false);
 });
