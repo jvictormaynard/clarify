@@ -90,7 +90,7 @@ class ApplicationStyleSettingsTests(unittest.TestCase):
         finally:
             controller.timer.stop()
 
-    def test_real_capsule_shows_selection_and_confirmed_result_then_expires(self):
+    def test_real_capsule_keeps_compact_height_without_style_caption_then_expires(self):
         import subprocess
         import sys
 
@@ -146,16 +146,44 @@ class ApplicationStyleSettingsTests(unittest.TestCase):
                     [{"executable": r"c:\apps\editor.exe", "style": "informal"}],
                 )
                 self.assertEqual(settings.applicationStyleTarget, r"c:\apps\editor.exe")
+                self.assertTrue(
+                    settings.savePreference("setDictationWritingStyle", ["formal"])
+                )
+                self.assertEqual(settings.dictationWritingStyle, "formal")
+                styles = repositories.config.load().application_writing_styles
+                self.assertEqual(styles.resolve(None).requested_style, "formal")
+                self.assertEqual(
+                    styles.resolve(target.executable).requested_style, "informal"
+                )
                 self.assertEqual(
                     repositories.config.load().workflow("refinement").prompt, before
                 )
                 self.assertEqual(settings.routePrompt, "Unrelated unsaved text")
+                from unittest.mock import patch
+
+                with patch.object(
+                    settings._text_actions,
+                    "_library",
+                    side_effect=ValueError("Catalog unavailable"),
+                ):
+                    self.assertTrue(
+                        settings.savePreference(
+                            "setDictationCleanupLevel", ["preserve"]
+                        )
+                    )
+                    self.assertEqual(settings.dictationCleanupLevel, "preserve")
                 self.assertTrue(
                     settings.savePreference(
                         "setApplicationWritingStyle", [target.executable, ""]
                     )
                 )
                 self.assertEqual(settings.applicationWritingStyles, [])
+                self.assertEqual(
+                    repositories.config.load()
+                    .application_writing_styles.resolve(target.executable)
+                    .requested_style,
+                    "formal",
+                )
             finally:
                 settings.shutdown()
 
@@ -187,5 +215,5 @@ class ApplicationStyleSettingsTests(unittest.TestCase):
             )
             self.assertEqual(
                 style_caption(replace(state, writing_style_requested=None)),
-                "Style: Default",
+                "Style: Natural",
             )

@@ -3,6 +3,48 @@ import XCTest
 @testable import ClarifyContracts
 
 final class MobileActionsTests: XCTestCase {
+  func testSharedOutputOutcomeVectorsAndCapabilityBounds() throws {
+    let cases = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(ProcessingOutcomeCases.json.utf8)) as? [[String: Any]])
+    let known = ProcessingContractData.value
+    var advertised = known.filter { !["limits", "errors"].contains($0.key) }
+    advertised["text_input_bytes"] = 16_000; advertised["text_output_bytes"] = 64_000
+    let capabilities = try ProcessingCapabilities(advertised)
+    XCTAssertEqual(known["output_languages"] as? [String], OutputLanguage.allCases.map(\.rawValue))
+    XCTAssertEqual(known["writing_styles"] as? [String], OutputStyle.allCases.filter { $0 != .default }.map(\.rawValue))
+    XCTAssertEqual(try OutputPreferences().requestFields(supported: true, dictation: true)["output_language"], "auto")
+    for vector in cases {
+      let preference = OutputPreferences(language: try XCTUnwrap(OutputLanguage(rawValue: try XCTUnwrap(vector["language"] as? String))))
+      var raw = try XCTUnwrap(vector["outcome"] as? [String: Any]); raw["rewritten"] = false
+      XCTAssertEqual(preference.applied(in: raw, dictation: true, requireOriginalConfirmation: capabilities.available), vector["accepted"] as? Bool)
+    }
+    XCTAssertFalse(OutputPreferences().applied(in: [:], dictation: true, requireOriginalConfirmation: true))
+    advertised["output_languages"] = ["auto", "unknown"]
+    XCTAssertThrowsError(try ProcessingCapabilities(advertised))
+  }
+  func testDictationPolicyIsScopedFrozenAndRejectsStaleActions() throws {
+    let suite = "clarify.policy." + UUID().uuidString, defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let store = DictationPolicyStore(defaults: defaults)
+    let action = TextActionDescriptor(id: "saved", revision: "2", name: "Saved", kind: "custom", enabled: true, ready: true)
+    let catalog = TextActionCatalog(status: .ready, actions: [action])
+    var advertised = ProcessingContractData.value.filter { !["limits", "errors"].contains($0.key) }
+    advertised["text_input_bytes"] = 32_768; advertised["text_output_bytes"] = 32_768
+    let capabilities = try ProcessingCapabilities(advertised)
+    let selected = DictationPolicy(mode: .action, actionID: "saved", actionRevision: "2")
+    try store.save(selected, scope: "account-a")
+    let frozen = store.read(scope: "account-a")
+    try store.save(DictationPolicy(mode: .preserve), scope: "account-a")
+    XCTAssertEqual(store.read(scope: "account-b"), DictationPolicy())
+    XCTAssertEqual(try frozen.fields(capabilities: capabilities, catalog: catalog, computer: true)["text_action_revision"] as? Int64, 2)
+    XCTAssertThrowsError(try frozen.fields(capabilities: capabilities, catalog: .unavailable, computer: true))
+    XCTAssertThrowsError(try frozen.fields(capabilities: .unavailable, catalog: catalog, computer: true))
+    XCTAssertFalse(frozen.accepts(["text_action_id": "saved", "text_action_revision": 3]))
+    XCTAssertEqual(try DictationPolicy(mode: .natural).fields(capabilities: capabilities, catalog: catalog, computer: true)["dictation_policy"] as? String, "natural")
+    XCTAssertEqual(ClarifyError("fixture", code: "text_action_stale").recovery, "refresh_actions")
+    let missing = CloudAccount.processingFailure(404, result: ["code": "text_action_missing"], operationID: "")
+    XCTAssertEqual(missing.code, "text_action_missing"); XCTAssertEqual(missing.recovery, "refresh_actions")
+    XCTAssertNil(ClarifyError("fixture", code: "provider_body").recovery)
+  }
   func testDestinationDefaultDoesNotClaimAnExplicitCasualStyle() {
     XCTAssertEqual(OutputStyle.default.title, L("Padrão"))
     XCTAssertNotEqual(OutputStyle.default.title, OutputStyle.casual.title)
@@ -117,9 +159,12 @@ final class MobileActionsTests: XCTestCase {
     XCTAssertEqual(try preferences.requestFields(supported: true, dictation: true), ["output_language": "es", "writing_style": "formal"])
     XCTAssertEqual(try preferences.requestFields(supported: true, dictation: false), ["writing_style": "formal"])
     XCTAssertFalse(preferences.applied(in: [:], dictation: true))
+    XCTAssertThrowsError(try OutputPreferences(language: .es).requestFields(supported: false, dictation: false))
+    XCTAssertFalse(OutputPreferences(language: .es).applied(in: [:], dictation: false))
     var raw: [String: Any] = ["output_language_requested": "es", "output_language_applied": "es", "output_language_status": "applied",
       "writing_style_requested": "formal", "writing_style_applied": "formal", "writing_style_status": "applied"]
     XCTAssertTrue(preferences.applied(in: raw, dictation: true))
+    XCTAssertTrue(preferences.applied(in: raw, dictation: false))
     raw["writing_style_status"] = "refinement_failed"
     XCTAssertFalse(preferences.applied(in: raw, dictation: true))
     raw["writing_style_status"] = "standalone"; raw["writing_style_applied"] = NSNull()
@@ -372,9 +417,10 @@ final class MobileActionsTests: XCTestCase {
       let result = try await f.destination.processText(UUID().uuidString, prepared: prepared, text: "Original")
       XCTAssertFalse(result.successful); XCTAssertTrue(result.outputPreferenceFailed); XCTAssertEqual(result.text, "Original")
       let body = try JSONSerialization.jsonObject(with: f.posts[0].httpBody!) as! [String: Any]
-      XCTAssertEqual(body["language"] as? String, "auto"); XCTAssertEqual(body["writing_style"] as? String, "formal")
-      XCTAssertNil(body["output_language"], "Selected-text language is separate from dictation output")
-      f.provenance = ["writing_style_requested": "formal", "writing_style_applied": "formal", "writing_style_status": "applied"]
+      XCTAssertEqual(body["language"] as? String, "de"); XCTAssertEqual(body["writing_style"] as? String, "formal")
+      XCTAssertNil(body["output_language"], "Text operations carry the frozen output choice in language")
+      f.provenance = ["writing_style_requested": "formal", "writing_style_applied": "formal", "writing_style_status": "applied",
+        "output_language_requested": "de", "output_language_applied": "de", "output_language_status": "applied"]
       let applied = try await f.destination.processText(UUID().uuidString, prepared: prepared, text: "Original")
       XCTAssertTrue(applied.successful); XCTAssertEqual(applied.text, "Changed")
     }

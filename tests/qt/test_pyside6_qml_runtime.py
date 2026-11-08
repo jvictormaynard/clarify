@@ -1189,6 +1189,21 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
         self.assertIsInstance(service.commands[-1], CancelTranslation)
         self.assertFalse(bridge.handleHotkey("toggle_visibility"))
 
+    def test_builtin_translation_shortcut_requests_language_but_direct_action_does_not(
+        self,
+    ):
+        service = DeterministicWorkflowService()
+        bridge = QmlWorkflowBridge(service)
+        self.assertTrue(bridge.handleHotkey("text_action:translation"))
+        self.assertEqual(service.commands[-1].action_id, "translation")
+        self.assertTrue(service.commands[-1].choose_language)
+        service.publish(WorkflowState())
+        self.assertTrue(bridge.runTextAction("translation"))
+        self.assertFalse(service.commands[-1].choose_language)
+        service.publish(WorkflowState())
+        self.assertTrue(bridge.handleHotkey("text_action:custom"))
+        self.assertFalse(service.commands[-1].choose_language)
+
     def test_bridge_captures_target_before_each_workflow_dispatch(self):
         service = DeterministicWorkflowService()
         targets = [
@@ -1460,9 +1475,11 @@ class QtProviderGatewayTests(unittest.TestCase):
                         },
                     }
                 )
+                registry = Mock()
                 gateway = QtProviderGateway(
                     SimpleNamespace(current=lambda: config, workflow=config.workflow),
                     SimpleNamespace(vocabulary_prompt=lambda: "QML"),
+                    registry=registry,
                 )
                 recording = SimpleNamespace(
                     _lock=threading.RLock(),
@@ -1480,8 +1497,10 @@ class QtProviderGatewayTests(unittest.TestCase):
                     ) as adapter,
                     patch("local_asr_streaming.PauseStream") as factory,
                 ):
-                    adapter.return_value.select_backend.return_value = backend
+                    registry.adapter.return_value.select_backend.return_value = backend
                     gateway.prepare_dictation(recording)
+                    adapter.assert_not_called()
+                    registry.adapter.assert_called_once_with("local_asr")
                     self.assertEqual(factory.called, expected)
                     backend.prepare.assert_called_once()
                     if expected:
@@ -2041,7 +2060,7 @@ class QtProviderGatewayTests(unittest.TestCase):
         self.assertIn("not a conversational assistant", registry.request.instruction)
         self.assertIn("If the source is a question", registry.request.instruction)
         self.assertIn("NEVER answer it", registry.request.instruction)
-        self.assertIn("Preserve the source language", registry.request.instruction)
+        self.assertIn("Do not translate the source", registry.request.instruction)
         self.assertIn("Workflow-specific instruction", registry.request.instruction)
         self.assertEqual(
             registry.request.source_message,

@@ -60,6 +60,12 @@ class AccountIsolationTests(TestCase):
         )
 
     def test_dictionary_is_private_and_revision_prevents_lost_update(self):
+        from cloud.service.models import Dictionary
+
+        self.assertEqual(
+            self.ca.get("/v1/dictionary").json(), {"revision": 0, "entries": []}
+        )
+        self.assertFalse(Dictionary.objects.filter(user=self.a).exists())
         entry = {"term": "Clarify", "pronunciation": "", "aliases": [], "enabled": True}
         payload = {"revision": 0, "entries": [entry]}
         first = self.ca.put("/v1/dictionary", payload, format="json")

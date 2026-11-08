@@ -28,6 +28,20 @@ from tests.support.workflow_provider import (
 
 
 class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
+    def test_prompt_language_labels_preserve_regional_and_unknown_tags(self):
+        from shared.rewrite_prompts import language_display_name
+
+        for value, expected in (
+            ("", "English"),
+            (" AUTO ", "the detected source language"),
+            ("pt_BR", "Brazilian Portuguese"),
+            ("de-DE", "German"),
+            ("zh_Hant", "zh-Hant"),
+            ("fr-FR", "fr-FR"),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(language_display_name(value), expected)
+
     def test_managed_text_ignores_disabled_personal_routes_and_does_not_fallback(self):
         from clarify_account import AccountError
 
@@ -65,6 +79,13 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
         )
         self.service.transcribe(self.audio, "prompt", "pt", selection=selection)
         account.transcribe.assert_called_once_with(self.audio, "pt", self.dictionary)
+        account.transcribe.reset_mock()
+        self.service.transcribe(
+            self.audio, "prompt", "auto", selection=selection, output_language="es"
+        )
+        account.transcribe.assert_called_once_with(
+            self.audio, "auto", self.dictionary, output_language="es"
+        )
         self.registry.transcribe.assert_not_called()
         self.registry.transcribe.reset_mock()
         self.service.account = Mock(hosted=False)
@@ -91,6 +112,10 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
         self.assertNotIn("Rewrite everything", recognition.prompt)
         self.assertNotIn("English", recognition.instruction)
         self.assertEqual(self.registry.rewrite.call_args.args[1].language, "en")
+        instruction = self.registry.rewrite.call_args.args[1].instruction
+        self.assertNotIn("Output MUST be in Brazilian Portuguese", instruction)
+        self.assertNotIn("Keep the source language", instruction)
+        self.assertIn("requested output language is English", instruction)
         self.assertEqual(result.raw_text, self.raw)
         self.assertEqual(result.output_language_applied, "en")
         self.assertIsNone(result.writing_style_requested)
@@ -178,6 +203,7 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
         self.set_cleanup("clarity")
         self.current = replace(
             self.current,
+            openai=replace(self.current.openai, api_key=" test-only "),
             workflows=replace(
                 self.current.workflows,
                 refinement=WorkflowRoute(
@@ -214,7 +240,7 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
         self.assertEqual(request.model, "original-editor")
         self.assertIn("Original policy.", request.instruction)
         self.assertNotIn("New policy.", request.instruction)
-        self.assertEqual(connection.api_key, original.openai.api_key)
+        self.assertEqual(connection.api_key, "test-only")
         self.assertEqual(connection.base_url, "https://old.invalid/v1")
 
     def test_explicit_multimodal_recognition_cannot_use_rewrite_prompt(self):

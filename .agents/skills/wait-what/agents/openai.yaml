@@ -1,5 +1,0 @@
-interface:
-  display_name: "Wait What"
-  short_description: "Explain a previous technical message more clearly"
-policy:
-  allow_implicit_invocation: true

@@ -6,7 +6,7 @@
 - Reviewed stable source: exact metadata-only preparation merge on `main`
 - Version: Semantic Versioning, immutable annotated `vX.Y.Z` tags
 - Maintained desktop: Python/Qt `clarify/desktop/qml_app.py`
-- Settings: React/TypeScript in the Tauri child under `desktop/`
+- Presentation: React/TypeScript Settings and pill in the Electron child under `desktop/`
 - Public desktop platform: Windows 10/11 x64 portable executable
 
 Read [release automation](../../../../docs/release-automation.md) for exact inputs,
@@ -22,6 +22,11 @@ Python/npm/Cargo locks, runtime lock checks, Settings license/source inventory,
 Qt distribution sources and replacement instructions, portable crypto inventory,
 SoX pinned source and manifest, embedded Settings hash verification and portable
 update policy/key pin. Never package .env, local config, keys, profiles or audio.
+
+The portable EXE embeds the complete Electron shell, its file manifest, runtime
+license texts and dependency inventory. The existing EXE checksum and updater
+signature cover both the Python engine and its presentation. Validate every
+embedded shell file against the build input before sealing the candidate.
 
 Release owners are:
 

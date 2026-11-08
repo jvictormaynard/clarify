@@ -9,7 +9,6 @@ from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.db import transaction
 from django.http import JsonResponse
-from django.utils import timezone
 from rest_framework import exceptions, permissions
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
@@ -21,6 +20,7 @@ from dictionary_snippets import (
     DictionarySnippets,
     Snippet,
 )
+from shared.processing_contract import CONTRACT, capabilities as processing_capabilities
 from . import audio, groq, history, ledger, text_actions
 from .middleware import take_rate
 from .models import Dictionary, Operation, SnippetLibrary
@@ -114,6 +114,7 @@ class AccountView(ServiceView):
                 "email": request.user.email,
                 "usage": ledger.usage(request.user),
                 "output_preferences_supported": True,
+                "processing_contract": processing_capabilities("account"),
             }
         )
 
@@ -173,8 +174,12 @@ def validate_entries(entries):
 
 class DictionaryView(ServiceView):
     def get(self, request):
-        item, _ = Dictionary.objects.get_or_create(user=request.user)
-        return Response({"revision": item.revision, "entries": item.entries})
+        item = Dictionary.objects.filter(user=request.user).first()
+        return Response(
+            {"revision": item.revision, "entries": item.entries}
+            if item
+            else {"revision": 0, "entries": []}
+        )
 
     def put(self, request):
         try:
@@ -188,6 +193,14 @@ class DictionaryView(ServiceView):
         except (KeyError, TypeError, ValueError):
             return Response({"code": "invalid_dictionary"}, status=400)
         with transaction.atomic():
+            owner = (
+                get_user_model()
+                .objects.select_for_update()
+                .filter(pk=request.user.pk)
+                .first()
+            )
+            if owner is None:
+                raise exceptions.PermissionDenied()
             Dictionary.objects.get_or_create(user=request.user)
             item = Dictionary.objects.select_for_update().get(user=request.user)
             if request.data["revision"] != item.revision:
@@ -422,21 +435,14 @@ class DictationView(ServiceView):
                     # Both clients save the original and final text through the
                     # existing history protocol before publishing a result.
                     raise groq.SnippetResultTooLarge()
-                with ledger.admission_lock():
-                    current = Operation.objects.get(pk=operation.pk)
-                    if (
-                        current.state != "running"
-                        or current.lease_until <= timezone.now()
-                    ):
-                        raise ledger.Rejected("operation_expired", 410)
-                    ledger.settle(
-                        operation,
-                        result=outcome.result,
-                        cost=outcome.cost,
-                        input_tokens=outcome.input_tokens,
-                        output_tokens=outcome.output_tokens,
-                        cost_estimated=outcome.cost_estimated,
-                    )
+                with ledger.successful_settlement(
+                    operation,
+                    result=outcome.result,
+                    cost=outcome.cost,
+                    input_tokens=outcome.input_tokens,
+                    output_tokens=outcome.output_tokens,
+                    cost_estimated=outcome.cost_estimated,
+                ):
                     result = {**outcome.result, "usage": ledger.usage(request.user)}
                     if (
                         len(
@@ -551,7 +557,8 @@ class TextView(ServiceView):
             if (
                 not isinstance(source, str)
                 or not source.strip()
-                or len(source.encode()) > 16000
+                or len(source.encode())
+                > CONTRACT["limits"]["account"]["text_input_bytes"]
             ):
                 raise ValueError()
             fingerprint = hashlib.sha256(
@@ -593,21 +600,14 @@ class TextView(ServiceView):
                     authorize=lambda total: ledger.authorize(operation, total),
                     **({"writing_style": style} if style is not None else {}),
                 )
-                with ledger.admission_lock():
-                    current = Operation.objects.get(pk=operation.pk)
-                    if (
-                        current.state != "running"
-                        or current.lease_until <= timezone.now()
-                    ):
-                        raise ledger.Rejected("operation_expired", 410)
-                    ledger.settle(
-                        operation,
-                        result=outcome.result,
-                        cost=outcome.cost,
-                        input_tokens=outcome.input_tokens,
-                        output_tokens=outcome.output_tokens,
-                        cost_estimated=outcome.cost_estimated,
-                    )
+                with ledger.successful_settlement(
+                    operation,
+                    result=outcome.result,
+                    cost=outcome.cost,
+                    input_tokens=outcome.input_tokens,
+                    output_tokens=outcome.output_tokens,
+                    cost_estimated=outcome.cost_estimated,
+                ):
                     result = outcome.result
             else:
                 result = operation.result

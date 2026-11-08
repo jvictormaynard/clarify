@@ -1,6 +1,5 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
-import { DictationCleanup } from "../components/dictation-cleanup";
 import { ApplicationWritingStyles } from "../components/application-writing-styles";
 import { Picker, Row, Section, SettingsDisclosure, TextArea, Toggle } from "../components/ui";
 import { WorkflowRoute } from "../components/workflow-route";
@@ -9,7 +8,6 @@ import { AfterDictationAction } from "../components/after-dictation-action";
 export function StylePage({ controller: c }: SettingsPageProps) {
   const managed = !!(c.state.accountState?.managed || c.state.accountState?.signedIn);
   return <>
-    <DictationCleanup controller={c} />
     <AfterDictationAction controller={c} />
     <ApplicationWritingStyles controller={c} />
     {!managed && <Section title={t("Revisão com IA")}>

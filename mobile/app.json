@@ -3,7 +3,7 @@
     "name": "Clarify",
     "slug": "clarify-ios",
     "owner": "victormaynard",
-    "version": "0.13.0",
+    "version": "0.14.0",
     "scheme": "clarify",
     "platforms": [
       "ios"
@@ -13,7 +13,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.jvictormaynard.clarify",
-      "buildNumber": "50",
+      "buildNumber": "66",
       "supportsTablet": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "O Clarify usa o microfone para transcrever e reescrever o que você ditar.",
@@ -22,9 +22,18 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true,
           "NSExceptionDomains": {
-            "10.0.0.0/8": { "NSExceptionAllowsInsecureHTTPLoads": true, "NSExceptionMinimumTLSVersion": "TLSv1.2" },
-            "172.16.0.0/12": { "NSExceptionAllowsInsecureHTTPLoads": true, "NSExceptionMinimumTLSVersion": "TLSv1.2" },
-            "192.168.0.0/16": { "NSExceptionAllowsInsecureHTTPLoads": true, "NSExceptionMinimumTLSVersion": "TLSv1.2" }
+            "10.0.0.0/8": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSExceptionMinimumTLSVersion": "TLSv1.2"
+            },
+            "172.16.0.0/12": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSExceptionMinimumTLSVersion": "TLSv1.2"
+            },
+            "192.168.0.0/16": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSExceptionMinimumTLSVersion": "TLSv1.2"
+            }
           }
         },
         "ITSAppUsesNonExemptEncryption": false,

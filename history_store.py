@@ -861,6 +861,10 @@ class HistoryStore:
         self._clock = clock or _utc_now
         self._lock = threading.RLock()
 
+    def snapshot_guard(self):
+        """Pin the local document through a compound history read."""
+        return self._lock
+
     def _now(self) -> datetime:
         return _coerce_timestamp(self._clock())
 

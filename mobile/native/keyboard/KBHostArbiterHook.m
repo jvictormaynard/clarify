@@ -11,6 +11,7 @@
 #import <string.h>
 #import <dlfcn.h>
 #import <stdlib.h>
+#import <limits.h>
 
 // All private UIKit symbols are resolved at runtime so they never appear as
 // static references. Names are kept as string constants.
@@ -41,6 +42,15 @@ static id ObjectResult(id receiver, NSString *name) {
     NSMethodSignature *signature = [receiver methodSignatureForSelector:selector];
     if (!signature || signature.numberOfArguments != 2 || signature.methodReturnType[0] != '@') return nil;
     return ((id (*)(id, SEL))objc_msgSend)(receiver, selector);
+}
+
+static int ProcessIdentifierResult(id receiver) {
+    SEL selector = NSSelectorFromString(@"processIdentifier");
+    if (![receiver respondsToSelector:selector]) return 0;
+    NSMethodSignature *signature = [receiver methodSignatureForSelector:selector];
+    if (!signature || signature.numberOfArguments != 2 || strcmp(signature.methodReturnType, "i") != 0) return 0;
+    int pid = ((int (*)(id, SEL))objc_msgSend)(receiver, selector);
+    return pid > 0 ? pid : 0;
 }
 
 static BOOL IsAcceptableBundleId(NSString *_Nullable bid) {
@@ -123,6 +133,39 @@ static BOOL AlwaysEnabledIMP(__unused id self, __unused SEL _cmd) {
 #pragma mark - Install
 
 @implementation KBHostArbiterHook
+
++ (nullable NSString *)sourceBundleIDFromState:(nullable id)state matchingProcessID:(int)processID {
+    if (processID <= 0) return nil;
+    @try {
+        if (ProcessIdentifierResult(state) != processID) return nil;
+        id source = ObjectResult(state, @"sourceBundleIdentifier");
+        if (![source isKindOfClass:NSString.class] || !IsAcceptableBundleId(source)) return nil;
+        NSString *bundleID = [source copy];
+        // Reject a state whose process changed while its source was read.
+        return ProcessIdentifierResult(state) == processID ? bundleID : nil;
+    } @catch (__unused NSException *error) { return nil; }
+}
+
++ (nullable NSString *)currentHostBundleIDForController:(UIInputViewController *)controller {
+    if (!NSThread.isMainThread || !controller.isViewLoaded || !controller.view.window) return nil;
+    if (@available(iOS 26.4, *)) {
+        @try {
+            UIViewController *parent = controller.parentViewController;
+            UIWindow *window = controller.view.window;
+            id rawPID = [parent valueForKey:@"_hostPID"];
+            if (![rawPID isKindOfClass:NSNumber.class] || [rawPID longLongValue] <= 0 || [rawPID longLongValue] > INT_MAX) return nil;
+            int pid = [rawPID intValue];
+            id client = ObjectResult(NSClassFromString(kArbiterClientClassName), kAutoSharedSelectorName);
+            id state = ObjectResult(client, @"currentClientState");
+            NSString *source = [self sourceBundleIDFromState:state matchingProcessID:pid];
+            id latestPID = [parent valueForKey:@"_hostPID"];
+            if (controller.parentViewController != parent || controller.view.window != window ||
+                ![latestPID isKindOfClass:NSNumber.class] || [latestPID longLongValue] != pid) return nil;
+            return source;
+        } @catch (__unused NSException *error) { return nil; }
+    }
+    return nil;
+}
 
 + (nullable NSString *)legacyHostBundleIDForController:(UIInputViewController *)controller {
     if (!NSThread.isMainThread || !controller.isViewLoaded || !controller.view.window) return nil;

@@ -15,14 +15,20 @@ concurrency:
 jobs:
   plan:
     name: Select validation tasks
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
+      reuse: ${{ steps.plan.outputs.reuse }}
       static: ${{ steps.plan.outputs.static }}
       python: ${{ steps.plan.outputs.python }}
       qt: ${{ steps.plan.outputs.qt }}
       settings_unit: ${{ steps.plan.outputs.settings_unit }}
       settings_browser: ${{ steps.plan.outputs.settings_browser }}
+      desktop_shell: ${{ steps.plan.outputs.desktop_shell }}
       package: ${{ steps.plan.outputs.package }}
       installer: ${{ steps.plan.outputs.installer }}
       server: ${{ steps.plan.outputs.server }}
@@ -41,6 +47,7 @@ jobs:
           python-version: "3.12"
       - id: plan
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_RUNNER_PROVIDER: ${{ vars.CI_RUNNER_PROVIDER || 'github' }}
         run: python scripts/ci.py --github-plan
   policy:
@@ -189,6 +196,42 @@ jobs:
         with:
           python: ${{ env.pythonLocation }}/bin/python
           native: "false"
+  desktop_shell:
+    name: Windows Electron package and native smoke
+    needs: plan
+    if: needs.plan.outputs.desktop_shell == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QT_QUICK_CONTROLS_STYLE: Basic
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/python-env
+        with:
+          platform: windows
+          qt: "true"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22.21.1
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: ./.github/actions/electron-runtime-cache
+      - run: npm ci --no-fund
+        working-directory: desktop
+      - run: python scripts/ci.py --task desktop_shell
+        env:
+          CLARIFY_TEST_ARTIFACTS_DIR: ${{ runner.temp }}/clarify-electron-evidence
+      - name: Retain Electron native evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: Electron-native-${{ github.sha }}
+          path: ${{ runner.temp }}/clarify-electron-evidence/
+          if-no-files-found: warn
+          retention-days: 7
   server:
     name: server validation
     needs: plan
@@ -234,6 +277,8 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci --no-fund
       - run: python ../scripts/ci.py --task mobile
+      - name: Check Expo configuration
+        run: npx --yes expo-doctor
   package:
     name: Package Windows executable
     needs: plan
@@ -265,13 +310,13 @@ jobs:
           test: "false"
       - name: Build portable executable
         shell: pwsh
-        run: .\scripts\build.ps1 -SettingsExecutable dist\clarify-settings.exe
+        run: .\scripts\build.ps1 -DesktopShellDirectory dist\desktop-shell
       - name: Build installer baseline only when required
         if: ${{ (needs.plan.outputs.installer == 'true') }}
         shell: pwsh
         run: |
           .\scripts\build.ps1 `
-            -SettingsExecutable dist\clarify-settings.exe `
+            -DesktopShellDirectory dist\desktop-shell `
             -OutputDirectory dist\baseline `
             -PayloadIdentity baseline-msi-0.1.1
           $baselineHash = (Get-FileHash dist\baseline\Clarify.exe -Algorithm SHA256).Hash
@@ -293,13 +338,27 @@ jobs:
             $process = Start-Process -FilePath $executable `
               -ArgumentList @('--hidden') -WindowStyle Hidden -PassThru
             try {
-              Start-Sleep -Seconds 5
-              if ($process.HasExited) {
-                throw "Packaged QML entrypoint exited during hidden launch (exit code $($process.ExitCode))."
-              }
+              $deadline = [DateTime]::UtcNow.AddSeconds(90)
+              $frontend = $null
+              do {
+                if ($process.HasExited) { throw 'Packaged engine exited before starting Electron.' }
+                $snapshot = @(Get-CimInstance Win32_Process)
+                $parents = @($process.Id)
+                $owned = @()
+                while ($parents.Count -gt 0) {
+                  $children = @($snapshot | Where-Object { $_.ParentProcessId -in $parents })
+                  $owned += $children
+                  $parents = @($children | Select-Object -ExpandProperty ProcessId)
+                }
+                $frontend = $owned | Where-Object { $_.Name -eq 'Clarify Desktop.exe' -and $_.ExecutablePath -like '*\desktop-shell\Clarify Desktop.exe' } | Select-Object -First 1
+                if (-not $frontend) { Start-Sleep -Milliseconds 500 }
+              } while (-not $frontend -and [DateTime]::UtcNow -lt $deadline)
+              if (-not $frontend) { throw 'Portable executable did not start its embedded Electron shell.' }
+              Write-Host 'PASS: packaged engine started its embedded Electron shell.'
             } finally {
               if (-not $process.HasExited) {
-                Stop-Process -Id $process.Id -Force
+                $stop = Start-Process -FilePath taskkill.exe -ArgumentList @('/PID', $process.Id, '/T', '/F') -WindowStyle Hidden -Wait -PassThru
+                if ($stop.ExitCode -ne 0 -and -not $process.HasExited) { throw 'Packaged smoke cleanup failed.' }
               }
             }
           } finally {
@@ -374,18 +433,37 @@ jobs:
             -OutputPath dist\Clarify-release-manifest.cab
   required:
     name: CI required
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     if: always()
-    needs: [plan, policy, static, python, qt, settings_unit, settings_browser, package, installer, server, mobile, ios, audit]
+    needs: [plan, policy, static, python, qt, settings_unit, settings_browser, desktop_shell, package, installer, server, mobile, ios, audit]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
       - name: Require every selected job and matrix to pass
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_NEEDS: ${{ toJSON(needs) }}
         run: python scripts/ci.py --check-results
+      - name: Emit successful PR validation evidence
+        if: github.event_name == 'pull_request'
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python scripts/ci.py --emit-proof "${{ runner.temp }}/proof.json"
+      - name: Upload successful PR validation evidence
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/proof.json
+          if-no-files-found: error
+          retention-days: 2

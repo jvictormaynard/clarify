@@ -299,11 +299,16 @@ class ExecutionTests(TestCase):
             },
             format="json",
         )
-        self.assertEqual(
-            self.send(action_revision=2).json()["code"], "text_action_language_required"
+        self.assertEqual(self.send(action_revision=2).status_code, 200)
+        self.assertIn(
+            "multiple languages",
+            provider.call_args.kwargs["json"]["messages"][0]["content"],
         )
         response = self.send(action_revision=2, language="de")
         self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["output_language_requested"], "de")
+        self.assertEqual(response.json()["output_language_applied"], "de")
+        self.assertEqual(response.json()["output_language_status"], "applied")
         messages = provider.call_args.kwargs["json"]["messages"]
         self.assertIn("German", messages[0]["content"])
         self.assertIn("{unknown}", messages[0]["content"])
@@ -480,6 +485,8 @@ class DictationActionTests(TestCase):
         self.assertEqual(response.json()["text"], "Übersetzt.")
         messages = provider.call_args.kwargs["json"]["messages"]
         self.assertIn("Translate to German. Keep {literal}.", messages[0]["content"])
+        self.assertNotIn("Do not translate", messages[0]["content"])
+        self.assertNotIn("Keep the source language", messages[0]["content"])
         self.assertIn("German", messages[1]["content"])
         self.assertEqual(provider.call_count, 2)
 

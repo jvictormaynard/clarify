@@ -50,10 +50,16 @@ const parent = spawnOwned(process.execPath, ['-e', `
   console.log(child.pid);
   setInterval(() => {}, 1000);
 `], { ownDetached: true, windowsHide: true, stdio: ['ignore', 'pipe', 'inherit'] });
-const timeout = setTimeout(() => { stopProcessTree(parent); process.exitCode = 1; }, 10000);
+let phase = 'waiting for the owned runner to start';
+const timeout = setTimeout(() => {
+  console.error('Process cancellation fixture timed out: ' + phase);
+  stopProcessTree(parent);
+  process.exitCode = 1;
+}, 10000);
 try {
   const [data] = await once(parent.stdout, 'data');
   const exited = once(parent, 'exit');
+  phase = 'waiting for the owned process tree to stop';
   stopProcessTree(parent);
   await exited;
   console.log(JSON.stringify({ descendant: Number(data.toString().trim()) }));
@@ -63,10 +69,15 @@ try {
 """.replace("HELPER", json.dumps(helper))
         result = subprocess.run(
             [node, "--input-type=module", "-e", script],
-            check=True,
+            check=False,
             capture_output=True,
             text=True,
             timeout=45,
+        )
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"Cancellation fixture failed. stdout: {result.stdout}\nstderr: {result.stderr}",
         )
         descendant = json.loads(result.stdout)["descendant"]
         self.assert_stopped(descendant)

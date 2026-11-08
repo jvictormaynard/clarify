@@ -162,7 +162,7 @@ extension TextActionCatalog {
   func resolve(_ id: String, revision: String, language: String) throws -> TextActionDescriptor {
     guard status == .ready, TextActionDescriptor.wireRevision(revision) != nil,
       let action = actions.first(where: { $0.id == id && $0.revision == revision }), action.enabled, action.ready,
-      OutputLanguage(rawValue: language) != nil, action.kind != "translation" || language != "auto" else {
+      OutputLanguage(rawValue: language) != nil else {
       throw ClarifyError(L("A ação mudou ou está indisponível. Atualize a lista e tente novamente."), code: "text_action_unavailable")
     }
     return action
@@ -423,7 +423,7 @@ struct ComputerResult: Decodable {
   static func decode(_ data: Data, operationID: String) throws -> Self {
     guard let result = try? JSONDecoder().decode(Self.self, from: data), result.operationID == UUID(uuidString: operationID),
       !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      result.text.utf8.count <= 32_768, result.transcript.utf8.count <= 32_768 else { throw ComputerFailure.invalidResponse }
+      result.text.utf8.count <= ProcessingContractData.computerTextOutputBytes, result.transcript.utf8.count <= 32_768 else { throw ComputerFailure.invalidResponse }
     return result
   }
   func checkingPreferences(_ applied: Bool, original: String) -> Self {

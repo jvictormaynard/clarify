@@ -72,6 +72,13 @@ public class ClarifyCoreModule: Module {
         }
       }
     }.runOnQueue(.main)
+    AsyncFunction("getKeyboardAutocorrectEnabled") { () -> Bool in
+      SharedState()?.keyboardAutocorrectEnabled() ?? false
+    }.runOnQueue(.main)
+    AsyncFunction("setKeyboardAutocorrectEnabled") { (enabled: Bool) in
+      guard let store = SharedState() else { throw ClarifyError(L("Não foi possível acessar os dados do teclado.")) }
+      try store.setKeyboardAutocorrectEnabled(enabled)
+    }.runOnQueue(.main)
     AsyncFunction("getOutputPreferences") { () -> [String: String] in
       (SharedState()?.outputPreferences() ?? OutputPreferences()).snapshot
     }.runOnQueue(.main)
@@ -79,20 +86,48 @@ public class ClarifyCoreModule: Module {
       guard let store = SharedState() else { throw ClarifyError(L("Não foi possível acessar os dados do teclado.")) }
       return try store.setOutputPreference(key, value: value).snapshot
     }.runOnQueue(.main)
-    AsyncFunction("processComputerText") { (action: String, text: String, language: String, context: String, promise: Promise) in
-      Task { @MainActor in
-        do {
-          guard ProcessingDestination.shared.computerMode else { throw ComputerFailure.notReady }
-          _ = try await ClarifyAudioSession.shared.startText(action, text: text, language: language, context: context, legacyComputer: true)
-          promise.resolve(nil)
-        } catch { promise.reject("COMPUTER_ERROR", error.localizedDescription) }
-      }
+    AsyncFunction("getDictationPolicy") { () -> [String: String] in
+      DictationPolicyStore().read(scope: ProcessingDestination.shared.historyScope ?? "").snapshot
+    }.runOnQueue(.main)
+    AsyncFunction("setDictationPolicy") { (mode: String, actionID: String, revision: String, language: String, context: String) -> [String: String] in
+      let destination = ProcessingDestination.shared
+      guard destination.configured, context == destination.historyContext, let scope = destination.historyScope,
+        let selected = DictationMode(rawValue: mode),
+        let target = OutputLanguage(rawValue: language) else { throw ComputerFailure.notReady }
+      let policy = DictationPolicy(mode: selected, actionID: selected == .action ? actionID : "",
+        actionRevision: selected == .action ? revision : "", language: target)
+      _ = try destination.dictationFields(policy)
+      try DictationPolicyStore().save(policy, scope: scope)
+      return policy.snapshot
     }.runOnQueue(.main)
     AsyncFunction("processText") { (action: String, text: String, language: String, context: String, promise: Promise) in
       Task { @MainActor in
         do {
           guard ["rewrite", "translate"].contains(action) else { throw ComputerFailure.invalidResponse }
           promise.resolve(try await ClarifyAudioSession.shared.startText(action, text: text, language: language, context: context))
+        } catch { promise.reject("TEXT_ERROR", error.localizedDescription) }
+      }
+    }.runOnQueue(.main)
+    AsyncFunction("getAccountTextActions") { (context: String, promise: Promise) in
+      Task { @MainActor in
+        do {
+          let destination = ProcessingDestination.shared
+          guard !destination.computerMode, !ClarifyAudioSession.shared.state.phase.busy, destination.historyContext == context else { throw ComputerFailure.notReady }
+          let result = try await CloudAccount.shared.getAccountTextActions(context: context)
+          guard !destination.computerMode, !ClarifyAudioSession.shared.state.phase.busy, destination.historyContext == context else { throw CancellationError() }
+          promise.resolve(result)
+        } catch { promise.reject("TEXT_ERROR", error.localizedDescription) }
+      }
+    }.runOnQueue(.main)
+    AsyncFunction("saveAccountTextActions") { (rows: [[String: Any]], revision: String, lease: String, context: String, promise: Promise) in
+      Task { @MainActor in
+        do {
+          let destination = ProcessingDestination.shared
+          guard !destination.computerMode, !ClarifyAudioSession.shared.state.phase.busy, destination.historyContext == context else { throw ComputerFailure.notReady }
+          let result = try await CloudAccount.shared.saveAccountTextActions(rows, revision: revision, lease: lease, context: context)
+          guard !destination.computerMode, !ClarifyAudioSession.shared.state.phase.busy, destination.historyContext == context else { throw CancellationError() }
+          ClarifyAudioSession.shared.libraryChanged()
+          promise.resolve(result)
         } catch { promise.reject("TEXT_ERROR", error.localizedDescription) }
       }
     }.runOnQueue(.main)

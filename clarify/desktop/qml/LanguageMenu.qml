@@ -48,6 +48,7 @@ Popup {
                 objectName: "languageOption_" + modelData
                 theme: menu.visualTheme
                 quiet: true
+                iconSource: modelData === "auto" ? "icons/globe.svg" : ""
                 checked: menu.selectedLanguage === modelData
                 width: menu.availableWidth
                 height: 30
@@ -58,7 +59,8 @@ Popup {
                     anchors.centerIn: parent
                     width: 21.333; height: 16
                     displayScale: menu.visualTheme.uiScale
-                    source: "flags/" + modelData + ".svg"
+                    visible: modelData !== "auto"
+                    source: visible ? "flags/" + modelData + ".svg" : ""
                 }
                 onClicked: {
                     menu.selected(modelData)

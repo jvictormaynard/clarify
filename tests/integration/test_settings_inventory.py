@@ -3,11 +3,14 @@ import hashlib
 import json
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 
 from scripts.settings_inventory import (
     dependency_notices,
     inventory,
+    electron_inventory,
     license_texts,
     merge_bom,
 )
@@ -164,6 +167,38 @@ class SettingsInventoryTests(unittest.TestCase):
                     if edge["ref"] == "pkg:generic/clarify-settings"
                 ),
             )
+            (root / "package.json").write_text(
+                json.dumps(
+                    {"version": "1.0", "devDependencies": {"electron": "45.2.3"}}
+                )
+            )
+            electron = root / "node_modules/electron"
+            electron.mkdir()
+            (electron / "package.json").write_text(json.dumps({"version": "45.2.3"}))
+            shell = root / "desktop-shell"
+            shell.mkdir()
+            for name in ("LICENSE", "LICENSES.chromium.html"):
+                (shell / name).write_text("Electron and Chromium license fixture")
+            versions = {
+                "electron": "45.2.3",
+                "chrome": "150.0",
+                "node": "26.0",
+                "v8": "15.0",
+            }
+            with patch(
+                "scripts.settings_inventory.subprocess.run",
+                return_value=SimpleNamespace(stdout=json.dumps(versions)),
+            ):
+                desktop_bom, desktop_notices = electron_inventory(root, npm, shell)
+            self.assertLessEqual(
+                {"electron", "chromium", "nodejs", "v8"},
+                {c["name"] for c in desktop_bom["components"]},
+            )
+            self.assertEqual(
+                len(desktop_bom["dependencies"]),
+                len({edge["ref"] for edge in desktop_bom["dependencies"]}),
+            )
+            self.assertIn("Electron and Chromium license fixture", desktop_notices)
             notice.write_text("modified notice")
             with self.assertRaisesRegex(ValueError, "checksum"):
                 inventory(root, npm, cargo)

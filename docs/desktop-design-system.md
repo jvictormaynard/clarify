@@ -1,10 +1,10 @@
 # Desktop design system
 
-The React/Tauri Settings window uses the approved T3 Code dark design and shared
+The React/Electron Settings window uses the approved T3 Code dark design and shared
 React controls. Its workspace includes dictation, style, text actions, dictionary,
 snippets and history. Application preferences and account access use a Settings
-dialog. The Qt/QML pill,
-quick menus and launch-failure Settings fallback retain their own theme and
+dialog. The compact pill,
+quick menus and Qt/QML recovery views retain their own theme and
 behavior. Mobile and the server are outside this system.
 
 ## Required use
@@ -153,7 +153,7 @@ text actions. Custom actions use the same editor and execution contract.
 | Destination | Contents and order |
 | --- | --- |
 | Dictation | Microphone, recording mode and limits, transcription route and practice entry |
-| Style | Cleanup level, optional action after dictation, application styles, then advanced review routing and instructions |
+| Style | Unified processing after dictation, general writing style, application overrides, then advanced review routing and instructions |
 | Text actions | Named actions, state, shortcut, edit, duplicate and delete |
 | Dictionary / Snippets / History | Separate content destinations with their existing filters and account guards |
 | Settings: General | Output language, startup, updates and practice entry |
@@ -166,7 +166,7 @@ When local dictation is selected, put local-model setup first instead of the
 cloud connection. This also keeps local onboarding on its chosen setup path.
 Keep installation and activation visible beside local-model status. Put
 streaming, optimization and removal in advanced options. Keep recording mode
-with microphone and recording limits. Cleanup level belongs to Style. A disabled
+with microphone and recording limits. Processing after dictation belongs to Style. The single selector offers Natural, preserve words, minimal changes, clarity revision and a saved text action. Choosing an action saves its revision mode and action together. Natural retains existing dictation instructions and clears the optional action. General writing style offers Natural, Formal, Casual and Very casual. Natural adds no style instruction; application rules override the general style. A disabled
 cleanup route links to the matching cloud or local context in Style without changing a setting
 automatically.
 
@@ -185,8 +185,8 @@ Duplicate starts a new draft with a new ID and no shortcut. Preview uses a saved
 action and explicit sample text, and never publishes through the clipboard.
 Translation requires its own target language.
 
-New application writing rules offer Formal, Casual and Very casual. Existing
-Natural, Informal and Organized rules retain their names and processing meaning
+New application writing rules offer Natural, Formal, Casual and Very casual. Existing
+Informal and Organized rules retain their names and processing meaning
 until the user selects a new tone. Editing an existing legacy rule keeps its
 current choice available. A tone change remains a draft until Save and does not
 enable a disabled refinement route.
@@ -300,6 +300,14 @@ email form, with a 12 px gap before the guest button.
 The initial sign-in screen places its controls directly below the welcome text
 without a surrounding card, border, background or shadow. It uses a blue Continue
 without an account button in the method chooser.
+Setup screens use a centered 400 px content column. Only the welcome screen
+shows the logo and product description. Later steps use a centered task title
+with instructions beside the relevant fields or controls. Dictation practice
+uses a 576 px column for its controls and result. Both occupy the available
+height below the titlebar and scroll from
+the top when the content does not fit. Their titlebar keeps the drag region
+and window controls without repeating the logo and name. Workspace pages keep
+the existing titlebar identity and page context.
 The email form and Account Settings use an outlined guest button. It opens local setup during onboarding and
 returns to General from Account Settings. An expired managed session retains its
 explicit sign-out action before personal processing becomes available.

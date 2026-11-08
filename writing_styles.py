@@ -125,9 +125,10 @@ class ApplicationWritingStyleRule:
 
 @dataclass(frozen=True)
 class ApplicationWritingStyles:
-    """A bounded immutable rule set; no rule means no style override."""
+    """Application overrides and an optional general presentation choice."""
 
     rules: tuple[ApplicationWritingStyleRule, ...] = ()
+    default_style: WritingStyle | None = None
 
     @classmethod
     def from_mapping(cls, value) -> ApplicationWritingStyles:
@@ -147,18 +148,31 @@ class ApplicationWritingStyles:
             tuple(
                 ApplicationWritingStyleRule(row["executable"], row["style"])
                 for row in rows
-            )
+            ),
+            default_style=value.get("default_style"),
         )
 
     def to_mapping(self):
         return {
+            **(
+                {"default_style": self.default_style.value}
+                if self.default_style
+                else {}
+            ),
             "rules": [
                 {"executable": rule.executable, "style": rule.style.value}
                 for rule in self.rules
-            ]
+            ],
         }
 
     def __post_init__(self) -> None:
+        if self.default_style is not None:
+            try:
+                object.__setattr__(
+                    self, "default_style", WritingStyle(self.default_style)
+                )
+            except (TypeError, ValueError) as error:
+                raise WritingStyleConfigurationError("invalid_writing_style") from error
         try:
             rules = tuple(self.rules)
         except TypeError as error:
@@ -200,4 +214,4 @@ class ApplicationWritingStyles:
         for rule in self.rules:
             if rule.executable == key:
                 return WritingStyleSelection(key, rule.style)
-        return WritingStyleSelection(key)
+        return WritingStyleSelection(key, self.default_style)

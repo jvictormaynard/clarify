@@ -226,6 +226,28 @@ def _settle_locked(
     operation.save()
 
 
+@contextmanager
+def successful_settlement(
+    operation, *, result, cost, input_tokens=0, output_tokens=0, cost_estimated=False
+):
+    """Settle live work and keep response validation inside its transaction."""
+    with funding.locked() as treasury:
+        current = Operation.objects.get(pk=operation.pk)
+        if current.state != "running" or current.lease_until <= timezone.now():
+            raise Rejected("operation_expired", 410)
+        _settle_locked(
+            treasury,
+            current,
+            cost,
+            result,
+            input_tokens,
+            output_tokens,
+            "complete",
+            cost_estimated=cost_estimated,
+        )
+        yield
+
+
 def settle(
     operation,
     *,

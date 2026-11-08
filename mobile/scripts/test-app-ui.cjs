@@ -7,6 +7,15 @@ const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 const readline = require('node:readline');
 
+function appUIProfiles(env = process.env) {
+  const compactOnly = env.CLARIFY_APP_UI_COMPACT_ONLY === 'true';
+  const selected = env.CLARIFY_APP_UI_PROFILE ?? (compactOnly ? 'compact' : 'all');
+  if (!['all', 'regular', 'compact'].includes(selected) || (compactOnly && selected !== 'compact')) {
+    throw new Error('Select all, regular, or compact app UI profiles without conflicting selectors.');
+  }
+  return selected === 'all' ? ['regular', 'compact'] : [selected];
+}
+
 // A successful xcodebuild with a stale selector can execute zero tests.
 function requirePassedTest(lines, method) {
   const name = `ClarifyAppFlowTests.AppFlowUITests ${method}`;
@@ -47,6 +56,7 @@ async function runXcode(args, method) {
 
 async function main() {
   if (process.platform !== 'darwin') throw new Error('App UI acceptance requires macOS and an iPhone simulator.');
+  const profiles = appUIProfiles();
   const root = process.cwd();
   const output = path.join(root, 'test-results/app-ui');
   if (fs.existsSync(output) && fs.readdirSync(output).length) throw new Error('App UI output must be empty; preserve the previous run separately.');
@@ -72,7 +82,6 @@ async function main() {
   let simulator;
   const results = [];
   const scenarios = [];
-  const compactOnly = process.env.CLARIFY_APP_UI_COMPACT_ONLY === 'true';
   const derivedData = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-app-ui-derived-'));
   let testRun, buildSeconds;
   let nativeTextInputAcceptance = false;
@@ -92,11 +101,11 @@ async function main() {
     const types = JSON.parse(run('xcrun', ['simctl', 'list', 'devicetypes', '--json'], { encoding: 'utf8', stdio: 'pipe' })).devicetypes;
     const regular = types.find(item => item.name === 'iPhone 17 Pro') || types.find(item => item.name.startsWith('iPhone'));
     const compact = types.find(item => item.name === 'iPhone 13 mini') || types.find(item => item.name === 'iPhone SE (3rd generation)');
-    if (!compact) throw new Error('Compact iPhone simulator is unavailable.');
+    if (profiles.includes('compact') && !compact) throw new Error('Compact iPhone simulator is unavailable.');
     for (const scenario of [
-      { name: 'AppFlow', device: regular, appearance: 'dark', text: 'large', method: 'testFirstPresentationAccountNavigationAndExplicitReplay' },
-      { name: 'AppFlow-compact-light', device: compact, appearance: 'light', text: 'accessibility-extra-extra-extra-large', method: 'testCompactKeyboardAndActionLayout' },
-    ].filter(scenario => !compactOnly || scenario.name === 'AppFlow-compact-light')) {
+      { name: 'AppFlow', profile: 'regular', device: regular, appearance: 'dark', text: 'large', method: 'testFirstPresentationAccountNavigationAndExplicitReplay' },
+      { name: 'AppFlow-compact-light', profile: 'compact', device: compact, appearance: 'light', text: 'accessibility-extra-extra-extra-large', method: 'testCompactKeyboardAndActionLayout' },
+    ].filter(scenario => profiles.includes(scenario.profile))) {
       const device = scenario.device;
       scenarios.push({ ...scenario, device: device?.name });
       await fetch(endpoint + '/__fixture/control', { method: 'POST', body: JSON.stringify({ catalog: 'ready', revision: 1, release: true }) });
@@ -138,7 +147,7 @@ async function main() {
   } catch (error) { console.error(error.message); } finally {
     for (const result of results) if (fs.existsSync(result.path)) spawnSync('xcrun', ['xcresulttool', 'export', 'attachments', '--path', result.path, '--output-path', path.join(output, 'captures', result.name)], { stdio: 'inherit' });
     for (const [name, hash] of preserved) if (fingerprint(path.join(original, name)) !== hash) { console.error('Production generated project changed during app UI testing.'); exitCode = 1; }
-    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, nativeTextInputAcceptance, completeAppAcceptance: exitCode === 0 && !compactOnly && nativeTextInputAcceptance, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
+    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, profiles, nativeTextInputAcceptance, completeAppAcceptance: exitCode === 0 && profiles.length === 2 && nativeTextInputAcceptance, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
     service.release();
     await new Promise(resolve => server.close(resolve));
     if (simulator) { spawnSync('xcrun', ['simctl', 'shutdown', simulator]); spawnSync('xcrun', ['simctl', 'delete', simulator]); }
@@ -147,5 +156,5 @@ async function main() {
   }
 }
 
-module.exports = { requirePassedTest, requirePassedNativeTests, nativeMethods };
+module.exports = { appUIProfiles, requirePassedTest, requirePassedNativeTests, nativeMethods };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
