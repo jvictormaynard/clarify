@@ -688,7 +688,12 @@ Automatic processing uses Apple's on-device model for cleanup and style, then
 TranslationSession for an explicitly selected target language on iOS 26 or later.
 Use the separate Apple editor to prepare missing translation languages. The
 comparison editor opens the system Writing Tools UI, which can use Private Cloud
-Compute; Clarify language and style settings do not control that UI.
+Compute; Clarify language and style settings do not control that UI. Accept the
+Writing Tools changes with the checkmark, then tap **Translate to [language]**
+to translate the current editor text with Apple's local translation API. This
+button uses Clarify's selected output language and displays a separate, selectable
+result without replacing the editor text. Choose an output language before
+opening the editor. Translation can request permission to download missing languages.
 Automatic processing checks availability and accepts up to 2,000 UTF-8
 bytes. An unavailable model, unsupported language, context limit or refusal
 returns an error and preserves the source. It has no cloud fallback and does not

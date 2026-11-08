@@ -8148,5 +8148,50 @@
     "pt": "A tradução local exige iOS 26 ou posterior.",
     "en": "Local translation requires iOS 26 or later.",
     "es": "La traducción local requiere iOS 26 o posterior."
+  },
+  "As Ferramentas de Escrita usam os controles da Apple e podem usar o Private Cloud Compute. O botão Traduzir usa o idioma de saída do Clarify e processa a tradução neste iPhone.": {
+    "pt": "As Ferramentas de Escrita usam os controles da Apple e podem usar o Private Cloud Compute. O botão Traduzir usa o idioma de saída do Clarify e processa a tradução neste iPhone.",
+    "en": "Writing Tools uses Apple controls and may use Private Cloud Compute. The Translate button uses Clarify’s output language and translates on this iPhone.",
+    "es": "Herramientas de Escritura usa los controles de Apple y puede usar Private Cloud Compute. El botón Traducir usa el idioma de salida de Clarify y traduce en este iPhone."
+  },
+  "Selecione um idioma de saída na tela anterior.": {
+    "pt": "Selecione um idioma de saída na tela anterior.",
+    "en": "Choose an output language on the previous screen.",
+    "es": "Elige un idioma de salida en la pantalla anterior."
+  },
+  "Traduzir para {language}": {
+    "pt": "Traduzir para {language}",
+    "en": "Translate to {language}",
+    "es": "Traducir a {language}"
+  },
+  "Aceite a reescrita com ✓. Depois, toque em Traduzir. A tradução usa o texto deste editor e é processada neste iPhone.": {
+    "pt": "Aceite a reescrita com ✓. Depois, toque em Traduzir. A tradução usa o texto deste editor e é processada neste iPhone.",
+    "en": "Accept the rewrite with ✓. Then tap Translate. Translation uses this editor’s text and runs on this iPhone.",
+    "es": "Acepta la reescritura con ✓. Después, toca Traducir. La traducción usa el texto de este editor y se procesa en este iPhone."
+  },
+  "Aceite ou cancele a alteração nas Ferramentas de Escrita antes de traduzir.": {
+    "pt": "Aceite ou cancele a alteração nas Ferramentas de Escrita antes de traduzir.",
+    "en": "Accept or cancel the Writing Tools change before translating.",
+    "es": "Acepta o cancela el cambio de Herramientas de Escritura antes de traducir."
+  },
+  "Use um texto não vazio de até 8.000 bytes para traduzir.": {
+    "pt": "Use um texto não vazio de até 8.000 bytes para traduzir.",
+    "en": "Enter text of up to 8,000 bytes to translate.",
+    "es": "Introduce texto de hasta 8.000 bytes para traducir."
+  },
+  "A tradução usa o texto atual do editor. O texto do editor permanece disponível ao fechar esta tela.": {
+    "pt": "A tradução usa o texto atual do editor. O texto do editor permanece disponível ao fechar esta tela.",
+    "en": "Translation uses the current editor text. The editor text remains available when you close this screen.",
+    "es": "La traducción usa el texto actual del editor. El texto del editor sigue disponible al cerrar esta pantalla."
+  },
+  "A tradução falhou. O texto do editor foi preservado. Tente novamente.": {
+    "pt": "A tradução falhou. O texto do editor foi preservado. Tente novamente.",
+    "en": "Translation failed. The editor text was preserved. Try again.",
+    "es": "La traducción falló. Se conservó el texto del editor. Inténtalo de nuevo."
+  },
+  "O texto já está no idioma selecionado.": {
+    "pt": "O texto já está no idioma selecionado.",
+    "en": "The text is already in the selected language.",
+    "es": "El texto ya está en el idioma seleccionado."
   }
 }
