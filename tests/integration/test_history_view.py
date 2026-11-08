@@ -20,6 +20,8 @@ class HistoryViewTests(unittest.TestCase):
         self.account = SimpleNamespace(
             _lock=threading.RLock(),
             _generation=0,
+            snapshot_guard=lambda: self.account._lock,
+            context_stamp=lambda: (self.account._generation, "", ""),
             history_identity=lambda: None,
             directory=Path(self.temp.name),
         )

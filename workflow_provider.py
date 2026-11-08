@@ -29,6 +29,7 @@ from shared.rewrite_prompts import (
     SELECTED_TEXT_REWRITE_INSTRUCTION,
     SELECTED_TEXT_TRANSLATION_INSTRUCTION,
     rewrite_instruction,
+    language_display_name,
 )
 
 
@@ -48,7 +49,7 @@ from audio_file_batch import FileTranscriptionSelection
 from dictionary_snippets import DictionarySnippetService
 from local_asr import PROVIDER_ID as LOCAL_ASR_PROVIDER_ID
 from provider_http import NetworkError, ProviderCancelledError, ProviderTimeoutError
-from provider_registry import PROVIDER_REGISTRY, ProviderRegistry
+from provider_registry import PROVIDER_REGISTRY, ProviderRegistry, configured_connection
 from provider_types import (
     ProviderCapability,
     ProviderConnection,
@@ -84,27 +85,6 @@ TRANSCRIPTION_INSTRUCTION = (
     "Keep the original meaning and structure. Return ONLY the transcribed text. "
     "Output MUST be in {lang}."
 )
-LANGUAGE_NAMES = {
-    "en": "English",
-    "pt": "Brazilian Portuguese",
-    "es": "Spanish",
-    "de": "German",
-    "ru": "Russian",
-}
-
-
-def _language_display_name(value: str) -> str:
-    text = str(value or "").strip().replace("_", "-")
-    if not text:
-        return "English"
-    key = text.casefold()
-    if key == "auto":
-        return "the detected source language"
-    direct = LANGUAGE_NAMES.get(key)
-    if direct:
-        return direct
-    base = key.split("-", 1)[0]
-    return LANGUAGE_NAMES.get(base, text)
 
 
 def _workflow_instruction(base: str, route_prompt: str = "") -> str:
@@ -188,7 +168,7 @@ class WorkflowProviderService:
 
     @contextmanager
     def publication_guard(self, snapshot):
-        guard = getattr(self.account, "_lock", None) or nullcontext()
+        guard = getattr(self.account, "snapshot_guard", nullcontext)()
         with guard:
             if snapshot.context != self.text_actions.context():
                 raise RuntimeError("Publication account context changed")
@@ -241,7 +221,7 @@ class WorkflowProviderService:
         elif action.kind == "translation" and target != "auto":
             if not language or language == "auto":
                 raise ValueError("Select a translation language")
-            label = _language_display_name(language)
+            label = language_display_name(language)
             instruction = _workflow_instruction(
                 SELECTED_TEXT_TRANSLATION_INSTRUCTION.format(lang=label),
                 action.prompt.replace("{lang}", label),
@@ -272,7 +252,7 @@ class WorkflowProviderService:
             instruction = _workflow_instruction(base, action.prompt)
             if action.kind == "translation":
                 instruction = instruction.replace(
-                    "{lang}", _language_display_name(target or language)
+                    "{lang}", language_display_name(target or language)
                 )
             instruction = rewrite_instruction(
                 instruction,
@@ -319,17 +299,12 @@ class WorkflowProviderService:
 
     def _connection(self, route, *, current: AppConfig | None = None):
         current = current if current is not None else self.config.current()
-        metadata = self.registry.describe(route.provider_id)
-        provider = getattr(current, route.provider_id)
-        connection = ProviderConnection(
-            api_key=provider.api_key,
-            base_url=provider.base_url or metadata.default_base_url,
-            account_id=route.account_id,
-        )
-        return self.registry.connection_for_route(
+        return configured_connection(
+            current,
             route.provider_id,
-            connection,
-            route.custom_endpoint,
+            registry=self.registry,
+            custom_endpoint=route.custom_endpoint,
+            account_id=route.account_id,
         )
 
     def transcribe(
@@ -424,7 +399,7 @@ class WorkflowProviderService:
             and not snippet_two_stage
         )
         language = str(language or "auto").strip().lower()
-        language_label = _language_display_name(language)
+        language_label = language_display_name(language)
         provider_language = (
             "" if language in {"", "auto"} else language.split("-", 1)[0]
         )
@@ -782,7 +757,7 @@ class WorkflowProviderService:
         target = str(target_language or "").strip().lower()
         if not target:
             raise RuntimeError("Translation target language is required")
-        language_label = _language_display_name(target)
+        language_label = language_display_name(target)
         instruction = _workflow_instruction(
             SELECTED_TEXT_TRANSLATION_INSTRUCTION.format(lang=language_label),
             route.prompt,

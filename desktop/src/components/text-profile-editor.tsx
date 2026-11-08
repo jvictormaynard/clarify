@@ -1,6 +1,6 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
-import { profileName } from "../settings/use-text-profile-editor";
+import { profileName } from "../settings/display-labels";
 import { Button, Field, Picker, Row, Section, SettingsDisclosure, Toggle } from "./ui";
 import { Dialog, DialogPopup, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./primitives/dialog";
 

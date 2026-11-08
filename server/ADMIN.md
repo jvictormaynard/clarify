@@ -47,8 +47,10 @@ reaches the origin without a CDN.
   duration shifted back by the selected number of days. Details are retained
   for 31 days; the 30-day view cannot compare with an earlier 30-day period.
 - Period costs sum the conservative operation ledger. Monthly budget values
-  use the durable budget ledger, independent of the selected period. Reserved
-  cost is separate. Linear projection is an estimate, not a spending promise.
+  use the current UTC month's durable budget ledger, independent of the selected
+  period. Reserved cost is separate. Admission also counts running reservations
+  from earlier months, so its available capacity can be lower than this monthly
+  balance. Linear projection is an estimate, not a spending promise.
 - There is no billing integration: costs are not revenue, profit, or margin.
 
 ## Validation and deployment

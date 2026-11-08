@@ -1,3 +1,4 @@
+import { useDraft } from "./use-draft";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { t } from "../i18n";
 import type { Settings, SettingsArguments, SettingsMethod, TextAction, TextActionWrite, HotkeyDefinition } from "./bridge";
@@ -11,28 +12,19 @@ type Editor = {
 type ActionConflict = { action: TextAction | null; context: string; revision: string; actionId: string };
 const writable = ({ revision: _revision, ...action }: TextAction): TextActionWrite => action;
 const isDirty = (editor: Editor | null) => !!editor && !settingsValuesEqual(editor.action, editor.baseline);
-export const actionDisplayName = (action: Pick<TextAction, "id" | "name">) =>
-  (action.id === "rewrite" && action.name === "Rewrite") || (action.id === "translation" && action.name === "Translation") ? t(action.name) : action.name;
 
-export function hotkeyLabel(value: HotkeyDefinition | null | undefined) {
-  if (!value) return "";
-  const names: Record<string, string> = { ctrl: "Ctrl", alt: "Alt", shift: "Shift", win: "Win" };
-  return [...value.modifiers.map(modifier => names[modifier] ?? modifier), value.key].join("+");
-}
+
+
 
 export function useTextActions(state: Settings | undefined, run: Runner) {
   const current = useRef(state); current.current = state;
-  const [editor, renderEditor] = useState<Editor | null>(null);
-  const editorRef = useRef(editor);
-  const setEditor = (value: Editor | null) => { editorRef.current = value; renderEditor(value); };
+  const [editor, setEditor, editorRef] = useDraft<Editor | null>(null);
   const [error, setError] = useState("");
   const [saving, renderSaving] = useState(false);
   const savingRef = useRef(false);
   const [refreshing, renderRefreshing] = useState(false);
   const refreshingRef = useRef(false);
-  const [conflict, renderConflict] = useState<ActionConflict | null>(null);
-  const conflictRef = useRef(conflict);
-  const setConflict = (value: ActionConflict | null) => { conflictRef.current = value; renderConflict(value); };
+  const [conflict, setConflict, conflictRef] = useDraft<ActionConflict | null>(null);
   const [capturing, renderCapturing] = useState(false);
   const [captureStarting, setCaptureStarting] = useState(false);
   const capturingRef = useRef(false);

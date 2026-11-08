@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { outputStyleLabel, outputStyles, visibleOutputStyle } from '../src/output-preferences.ts';
+import { outputStyleLabel, outputStyles } from '../src/output-preferences.ts';
 import { targetLanguages } from '../src/text-actions.ts';
 
 function fixture(preferences, { supported = true, fail = false, mode = 'hosted', freshSupport = supported, refreshFails = false, busy = false, policyOnly = false, processingContract } = {}) {
@@ -42,7 +42,7 @@ function fixture(preferences, { supported = true, fail = false, mode = 'hosted',
     if (name === '../components/ui' || name === './ui') return { Button: 'Button', ChoiceRow: 'ChoiceRow', Section: 'Section', ui: {}, usePalette: () => ({}) };
     if (name === '../state/clarify') return { isBusy: state => state.phase === 'recording', useClarify: () => ({ account, state, accountBusy: false, accountCommand, computerCommand }) };
     if (name === '../errors') return { errorMessage: error => error.message };
-    if (name === '../output-preferences') return { outputStyleLabel, outputStyles, visibleOutputStyle };
+    if (name === '../output-preferences') return { outputStyleLabel, outputStyles };
     if (name === '../text-actions') return { targetLanguages };
     if (name === '../components/dictation-policy') return { DictationPolicyControls: 'DictationPolicyControls' };
     if (name === '../i18n') return { t: text => text };

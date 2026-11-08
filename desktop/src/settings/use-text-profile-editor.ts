@@ -1,3 +1,4 @@
+import { useDraft } from "./use-draft";
 import { useRef, useState } from "react";
 import { t } from "../i18n";
 import type { Settings, SettingsArguments, SettingsMethod, TextActionProfile, TextActionProfileWrite, TextActionProfileModels } from "./bridge";
@@ -7,14 +8,12 @@ type Runner = <M extends SettingsMethod>(method: M, ...args: SettingsArguments[M
 type ProfileDraft = { value: TextActionProfileWrite; baseline: TextActionProfileWrite; context: string; revision: string; instance: string };
 type ModelRequest = { id: string; generation?: number; profileId: string; providerId: string; endpoint: string; context: string; revision: string; instance: string };
 const profileDirty = (draft: ProfileDraft | null) => !!draft && !settingsValuesEqual(draft.value, draft.baseline);
-export const profileName = (id: string) => t(id === "default" ? "Serviço de texto" : id === "legacy-rewrite" ? "Reescrita" : id === "legacy-translation" ? "Tradução" : id);
+
 const profileValue = ({ id, providerId, modelId, customEndpoint, enabled }: TextActionProfile): TextActionProfileWrite => ({ id, providerId, modelId, customEndpoint, enabled });
 
 export function useTextProfileEditor(state: Settings | undefined, run: Runner) {
   const current = useRef(state); current.current = state;
-  const [editor, render] = useState<ProfileDraft | null>(null);
-  const live = useRef(editor);
-  const update = (value: ProfileDraft | null) => { live.current = value; render(value); };
+  const [editor, update, live] = useDraft<ProfileDraft | null>(null);
   const [saving, renderSaving] = useState(false);
   const savingRef = useRef(false);
   const [error, setError] = useState("");

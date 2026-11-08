@@ -9,4 +9,3 @@ export function outputStyleLabel(style: OutputStyle): string {
   return ({ default: 'Padrão', formal: 'Formal', casual: 'Casual', very_casual: 'Muito casual',
     natural: 'Natural', informal: 'Informal', organized: 'Organizado' })[style];
 }
-export const visibleOutputStyle = (style: OutputStyle) => style;

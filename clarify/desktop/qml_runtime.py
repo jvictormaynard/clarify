@@ -27,6 +27,7 @@ from cloud_defaults import DEFAULT_CLOUD_URL
 from experimental_audio_history import archive_audio, prune_audio_history
 
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, Qt, Signal, Slot
+from shared.rewrite_prompts import language_display_name
 from workflow_provider import (
     WorkflowProviderService as WorkflowProviderService,
     FAITHFUL_REWRITE_INSTRUCTION as FAITHFUL_REWRITE_INSTRUCTION,
@@ -37,8 +38,6 @@ from workflow_provider import (
     SELECTED_TEXT_REWRITE_INSTRUCTION as SELECTED_TEXT_REWRITE_INSTRUCTION,
     SELECTED_TEXT_TRANSLATION_INSTRUCTION as SELECTED_TEXT_TRANSLATION_INSTRUCTION,
     TRANSCRIPTION_INSTRUCTION as TRANSCRIPTION_INSTRUCTION,
-    LANGUAGE_NAMES as LANGUAGE_NAMES,
-    _language_display_name as _language_display_name,
     _workflow_instruction as _workflow_instruction,
     _is_exact_duplicate_removal as _is_exact_duplicate_removal,
 )
@@ -82,11 +81,10 @@ try:
         LocalDictionarySnippetsRepository,
     )
     from history_store import HistoryRecord, HistoryStore, HistoryStoreError
-    from provider_registry import PROVIDER_REGISTRY
+    from provider_registry import PROVIDER_REGISTRY, configured_connection
     from provider_http import CancellationToken
     from provider_types import (
         ProviderCapability,
-        ProviderConnection,
     )
     from local_asr import PROVIDER_ID as LOCAL_ASR_PROVIDER_ID
     from microphone_controls import (
@@ -125,7 +123,7 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
         LocalDictionarySnippetsRepository,
     )
     from ...history_store import HistoryRecord, HistoryStore, HistoryStoreError  # type: ignore[no-redef]
-    from ...provider_registry import PROVIDER_REGISTRY  # type: ignore[no-redef]
+    from ...provider_registry import PROVIDER_REGISTRY, configured_connection  # type: ignore[no-redef]
     from ...provider_http import CancellationToken  # type: ignore[no-redef]
     from ...local_asr import PROVIDER_ID as LOCAL_ASR_PROVIDER_ID  # type: ignore[no-redef]
     from ...microphone_controls import (  # type: ignore[no-redef]
@@ -138,7 +136,6 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     )
     from ...provider_types import (  # type: ignore[no-redef]
         ProviderCapability,
-        ProviderConnection,
     )
     from ...repositories import (  # type: ignore[no-redef]
         ApplicationRepositories,
@@ -389,7 +386,7 @@ class QtProviderGateway(WorkflowProviderService):
             route = self._route(WorkflowScope.TRANSCRIPTION)
             if route.provider_id != LOCAL_ASR_PROVIDER_ID:
                 return
-            adapter = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID)
+            adapter = self.registry.adapter(LOCAL_ASR_PROVIDER_ID)
             backend = adapter.select_backend(
                 route.model_id, self.config.current().local_asr_device
             )
@@ -1820,24 +1817,16 @@ class QtWorkflowRuntime:
             .lower()
         )
         selected_mode = "prompt"
-        metadata = self.provider_registry.describe(selected_provider)
-        provider_config = getattr(current, selected_provider)
-        connection = ProviderConnection(
-            api_key=str(getattr(provider_config, "api_key", "") or "").strip(),
-            base_url=(
-                str(getattr(provider_config, "base_url", "") or "").strip()
-                or str(metadata.default_base_url or "").strip()
-            ),
-        )
         custom_endpoint = (
             route.custom_endpoint if selected_provider == route.provider_id else ""
         )
-        connection = self.provider_registry.connection_for_route(
+        connection = configured_connection(
+            current,
             selected_provider,
-            connection,
-            custom_endpoint,
+            registry=self.provider_registry,
+            custom_endpoint=custom_endpoint,
         )
-        language_label = _language_display_name(selected_language)
+        language_label = language_display_name(selected_language)
         instruction = (
             TRANSCRIPTION_INSTRUCTION
             if selected_mode == "transcription"
