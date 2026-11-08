@@ -1,14 +1,10 @@
 {
   "schema": 2,
-  "component": "mobile",
-  "version": "0.14.2",
-  "base_sha": "41a6f7d6e1dccac25a7c939fd59697377ca7b26b",
-  "notes": "TestFlight keyboard correction candidate. Includes merged PR #276: equal letter widths and half-key staggering across widths, and row-first touch routing so side-margin touches do not select another row. The integrated feature passed required CI, including Swift contracts, UIKit gap/slide/overlap/cancellation tests, installed-keyboard tests, regular/compact app UI and unsigned app/extensions compilation. Complete read-only Apple inventory run 42507003343 finished at 2026-11-08T17:51:23Z: 49 builds, 50 uploads, highest build 72, all review submissions complete. Git tags and open release reservations were rechecked on 2026-11-08T19:48Z and also reach 72; build 73 is the next candidate. Existing Apple rewriting prototype branches and builds are excluded. Use the standard signed TestFlight path with internal_testing=false, then verify signed app/two-extension identity, upload receipt, Apple processing, existing internal group and sealed candidate evidence. Full Apple keyboard parity across devices, physical touch accuracy, haptics and sound remain unverified. This authorization is for TestFlight only; no App Store submission or public release.",
+  "component": "desktop",
+  "version": "0.16.0",
+  "base_sha": "3add01594e5d672a4bb8e5aee1bae6fe061b0550",
+  "notes": "Desktop release after the reviewed dependency integration. Includes After dictation choices, general writing style, independent output language, shared prompt corrections, centered onboarding and the bundled Electron Settings/pill. Exact preparation-merge main CI, immutable stable candidate, Windows acceptance of its final digest and explicit publication remain required. No iOS signing or App Store publication is included.",
   "evidence": {
-    "build": "73",
-    "highest_build": "72",
-    "pending_builds_checked": true,
-    "checked_at": "2026-11-08T17:51:23Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42507003343"
+    "report_url": "https://github.com/jvictormaynard/clarify/issues/279"
   }
 }
