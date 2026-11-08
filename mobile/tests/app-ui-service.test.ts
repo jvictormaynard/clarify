@@ -106,8 +106,14 @@ test('slow catalog uses an explicit release barrier and never sends processing o
     const pending = fetch(base + '/v1/text-actions', { signal: abort.signal }).then(response => response.json()).catch(error => error);
     const state = await (await fetch(base + '/__fixture/wait-catalog')).json();
     assert.equal(state.held, 1);
+    // An automatic account refresh can overlap the action's catalog read.
+    const refresh = await fetch(base + '/v1/text-actions', { signal: AbortSignal.timeout(2000) });
+    const refreshedCatalog = refresh.json();
+    assert.equal((await (await fetch(base + '/__fixture/wait-catalog')).json()).held, 2);
+    assert.deepEqual((await (await fetch(base + '/__fixture/state')).json()).processing, []);
     abort.abort(); await pending;
     await control({ release: true });
+    assert.equal((await refreshedCatalog).revision, 1);
     const final = await (await fetch(base + '/__fixture/state')).json();
     assert.deepEqual(final.processing, []);
     for (const mode of ['empty', 'failed', 'unsupported']) {

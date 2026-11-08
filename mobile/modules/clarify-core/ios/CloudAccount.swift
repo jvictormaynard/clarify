@@ -45,7 +45,13 @@ private struct VocabularyConflict: Error {}
 // Mutations are initiated on the containing app's main queue. The short lock
 // also protects snapshots during async work. No credential reaches JavaScript.
 final class CloudAccount {
+  #if CLARIFY_APP_FLOW_TESTING
+  // Keep minute-based refresh from changing controls while XCTest delivers
+  // gestures. Explicit account refresh and action discovery still run normally.
+  static let shared = CloudAccount(refreshClock: { 0 })
+  #else
   static let shared = CloudAccount()
+  #endif
   private let defaults: UserDefaults
   private let lock = NSRecursiveLock()
   private var state: CloudAccountState
@@ -74,6 +80,7 @@ final class CloudAccount {
   private let connectAccountEndpoint: () -> String?
   private let readCredential: () -> String?
   private let saveCredential: (String?) throws -> Void
+  private let refreshClock: () -> TimeInterval
   private let historyClock: () -> TimeInterval
   private let socialBrowser: SocialBrowser
   private let socialClock: @MainActor () -> TimeInterval
@@ -94,6 +101,7 @@ final class CloudAccount {
        transport: ((URLRequest) async throws -> (Data, HTTPURLResponse))? = nil,
        readCredential: @escaping () -> String? = AccountCredential.read,
        saveCredential: @escaping (String?) throws -> Void = AccountCredential.save,
+       refreshClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
        historyClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
        sessionInvalidated: (() -> Void)? = nil,
        socialBrowser: SocialBrowser = .system,
@@ -109,7 +117,7 @@ final class CloudAccount {
     self.transport = transport; self.readCredential = readCredential; self.saveCredential = saveCredential
     self.connectTransport = connectTransport; self.connectConfiguration = connectConfiguration
     self.connectAccountEndpoint = connectAccountEndpoint
-    self.historyClock = historyClock
+    self.refreshClock = refreshClock; self.historyClock = historyClock
     self.sessionInvalidated = sessionInvalidated
     self.socialBrowser = socialBrowser; self.socialClock = socialClock; self.socialSleep = socialSleep
     state = defaults.data(forKey: "clarify.account.metadata").flatMap { try? JSONDecoder().decode(CloudAccountState.self, from: $0) } ?? CloudAccountState()
@@ -348,7 +356,7 @@ final class CloudAccount {
     return (response.statusCode, result)
   }
   @MainActor private func refresh() async throws {
-    lastRefreshAttempt = ProcessInfo.processInfo.systemUptime
+    lastRefreshAttempt = refreshClock()
     do {
       let (code, result) = try await perform("GET", "/v1/account")
       guard code == 200 else { throw ClarifyError(L("A sessão expirou. Entre na conta novamente.")) }
@@ -621,7 +629,7 @@ final class CloudAccount {
       catch is CancellationError { return false }
       return true
     }
-    if action == "auto", scope == nil || isBusy || ProcessInfo.processInfo.systemUptime - lastRefreshAttempt < 60 { return false }
+    if action == "auto", scope == nil || isBusy || refreshClock() - lastRefreshAttempt < 60 { return false }
     if action != "auto" { try await waitForAutomaticRefresh() }
     try begin(); defer { end() }
     locked { automatic = action == "auto" }
