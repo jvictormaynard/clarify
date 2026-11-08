@@ -63,8 +63,10 @@ def main(argv: list[str] | None = None) -> int:
             return result.returncode
 
         actual = generated.read_text(encoding="utf-8")
+        # Resolver environment options and the temporary output path affect only
+        # this generated command comment, not the locked dependency graph.
         actual = re.sub(
-            r"(?m)^#    pip-compile (?:--allow-unsafe )?--output-file=.*$",
+            r"(?m)^#    pip-compile [^\n]*$",
             header,
             actual,
             count=1,
