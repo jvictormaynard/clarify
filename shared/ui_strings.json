@@ -8083,5 +8083,70 @@
     "pt": "Resposta rejeitada. Não use como resultado final.",
     "en": "Rejected response. Do not use as the final result.",
     "es": "Respuesta rechazada. No la uses como resultado final."
+  },
+  "The rewrite changed the source language. The source was preserved.": {
+    "pt": "A reescrita mudou o idioma original. O original foi preservado.",
+    "en": "The rewrite changed the source language. The source was preserved.",
+    "es": "La reescritura cambió el idioma original. Se conservó el original."
+  },
+  "Use text in one source language for this translation experiment.": {
+    "pt": "Use texto em um único idioma neste teste de tradução.",
+    "en": "Use text in one source language for this translation experiment.",
+    "es": "Usa texto en un solo idioma en esta prueba de traducción."
+  },
+  "Translation did not return complete text. The source was preserved.": {
+    "pt": "A tradução não retornou o texto completo. O original foi preservado.",
+    "en": "Translation did not return complete text. The source was preserved.",
+    "es": "La traducción no devolvió el texto completo. Se conservó el original."
+  },
+  "Translation returned invalid text. The source was preserved.": {
+    "pt": "A tradução retornou texto inválido. O original foi preservado.",
+    "en": "Translation returned invalid text. The source was preserved.",
+    "es": "La traducción devolvió texto no válido. Se conservó el original."
+  },
+  "Translation did not use the selected language. The source was preserved.": {
+    "pt": "A tradução não usou o idioma selecionado. O original foi preservado.",
+    "en": "Translation did not use the selected language. The source was preserved.",
+    "es": "La traducción no usó el idioma seleccionado. Se conservó el original."
+  },
+  "Translation returned the source language. The source was preserved.": {
+    "pt": "A tradução retornou o idioma original. O original foi preservado.",
+    "en": "Translation returned the source language. The source was preserved.",
+    "es": "La traducción devolvió el idioma original. Se conservó el original."
+  },
+  "Local text processing failed. The source was preserved.": {
+    "pt": "O processamento local falhou. O original foi preservado.",
+    "en": "Local text processing failed. The source was preserved.",
+    "es": "Falló el procesamiento local. Se conservó el original."
+  },
+  "Download the source and target languages in the native translation sheet, then try again.": {
+    "pt": "Abra a comparação com as Ferramentas de Escrita, prepare os idiomas e tente novamente.",
+    "en": "Download the source and target languages in the native translation sheet, then try again.",
+    "es": "Abre la comparación con Herramientas de Escritura, prepara los idiomas e inténtalo de nuevo."
+  },
+  "Apple Translation does not support this language pair.": {
+    "pt": "A tradução da Apple não aceita este par de idiomas.",
+    "en": "Apple Translation does not support this language pair.",
+    "es": "La traducción de Apple no admite este par de idiomas."
+  },
+  "Translation language availability could not be checked. Try again.": {
+    "pt": "Não foi possível verificar os idiomas de tradução. Tente novamente.",
+    "en": "Translation language availability could not be checked. Try again.",
+    "es": "No se pudieron verificar los idiomas de traducción. Inténtalo de nuevo."
+  },
+  "Apple Translation failed. Check downloaded languages in the native translation sheet and try again.": {
+    "pt": "A tradução da Apple falhou. Abra a comparação, prepare os idiomas e tente novamente.",
+    "en": "Apple Translation failed. Check downloaded languages in the native translation sheet and try again.",
+    "es": "Falló la traducción de Apple. Abre la comparación, prepara los idiomas e inténtalo de nuevo."
+  },
+  "Apple Translation took too long. The source was preserved.": {
+    "pt": "A tradução da Apple demorou demais. O original foi preservado.",
+    "en": "Apple Translation took too long. The source was preserved.",
+    "es": "La traducción de Apple tardó demasiado. Se conservó el original."
+  },
+  "Local translation requires iOS 26 or later.": {
+    "pt": "A tradução local exige iOS 26 ou posterior.",
+    "en": "Local translation requires iOS 26 or later.",
+    "es": "La traducción local requiere iOS 26 o posterior."
   }
 }

@@ -356,8 +356,9 @@ enum AppleRewriteEngine {
   private static func systemRuntime(deterministic: Bool? = nil) -> AppleRewriteRuntime? {
     #if canImport(FoundationModels)
     if #available(iOS 26.0, macOS 26.0, *) {
-      // Keep the default guardrails. The experiment changes only sampling.
-      let model = SystemLanguageModel.default
+      // The experiment transforms supplied prose. Keep the legacy route unchanged.
+      let model = deterministic == nil ? SystemLanguageModel.default :
+        SystemLanguageModel(useCase: .general, guardrails: .permissiveContentTransformations)
       let responseTokenLimit: Int?
       if #available(iOS 26.4, macOS 26.4, *) { responseTokenLimit = maxResponseTokens }
       else { responseTokenLimit = nil }
