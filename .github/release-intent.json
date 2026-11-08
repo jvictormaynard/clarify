@@ -2,7 +2,7 @@
   "schema": 2,
   "component": "desktop",
   "version": "0.16.0",
-  "base_sha": "41a6f7d6e1dccac25a7c939fd59697377ca7b26b",
+  "base_sha": "3add01594e5d672a4bb8e5aee1bae6fe061b0550",
   "notes": "Desktop release after the reviewed dependency integration. Includes After dictation choices, general writing style, independent output language, shared prompt corrections, centered onboarding and the bundled Electron Settings/pill. Exact preparation-merge main CI, immutable stable candidate, Windows acceptance of its final digest and explicit publication remain required. No iOS signing or App Store publication is included.",
   "evidence": {
     "report_url": "https://github.com/jvictormaynard/clarify/issues/279"
