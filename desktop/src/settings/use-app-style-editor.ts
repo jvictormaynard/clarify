@@ -1,3 +1,4 @@
+import { useDraft } from "./use-draft";
 import { useRef, useState } from "react";
 import { t } from "../i18n";
 import type { ApplicationWritingStyle, Settings, SettingsArguments, SettingsMethod, WritingStyle } from "./bridge";
@@ -7,15 +8,11 @@ type Runner = <M extends SettingsMethod>(method: M, ...args: SettingsArguments[M
 type AppStyleDraft = { executable: string; style: WritingStyle; baseline: ApplicationWritingStyle; isNew: boolean; context: string };
 const dirty = (value: AppStyleDraft | null) => !!value && !settingsValuesEqual({ executable: value.executable, style: value.style }, value.baseline);
 
-export function applicationName(executable: string) {
-  return executable.split(/[\\/]/).pop()?.replace(/\.exe$/i, "") || executable;
-}
+
 
 export function useAppStyleEditor(state: Settings | undefined, run: Runner) {
   const current = useRef(state); current.current = state;
-  const [editor, render] = useState<AppStyleDraft | null>(null);
-  const live = useRef(editor);
-  const update = (value: AppStyleDraft | null) => { live.current = value; render(value); };
+  const [editor, update, live] = useDraft<AppStyleDraft | null>(null);
   const [saving, renderSaving] = useState(false);
   const savingRef = useRef(false);
   const [error, setError] = useState("");

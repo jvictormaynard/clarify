@@ -13,6 +13,7 @@ import os
 import tempfile
 import threading
 from abc import ABC, abstractmethod
+from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping
@@ -1189,6 +1190,10 @@ def _read_json_mapping(path: Path) -> dict[str, Any] | None:
 class ConfigRepository(ABC):
     """Application-facing configuration persistence interface."""
 
+    def snapshot_guard(self):
+        """Pin a compound read/write; lock-free repositories need no guard."""
+        return nullcontext()
+
     @abstractmethod
     def load(self) -> AppConfig:
         raise NotImplementedError
@@ -1262,6 +1267,10 @@ class LocalConfigRepository(ConfigRepository):
             self.path.parent, filename_stem=secret_stem
         )
         self._lock = threading.RLock()
+
+    def snapshot_guard(self):
+        """Serialize compound configuration operations with load and apply."""
+        return self._lock
 
     def require_writable(self):
         """Reject a newer file before native or remote settings effects."""

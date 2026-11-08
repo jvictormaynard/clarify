@@ -1460,9 +1460,11 @@ class QtProviderGatewayTests(unittest.TestCase):
                         },
                     }
                 )
+                registry = Mock()
                 gateway = QtProviderGateway(
                     SimpleNamespace(current=lambda: config, workflow=config.workflow),
                     SimpleNamespace(vocabulary_prompt=lambda: "QML"),
+                    registry=registry,
                 )
                 recording = SimpleNamespace(
                     _lock=threading.RLock(),
@@ -1480,8 +1482,10 @@ class QtProviderGatewayTests(unittest.TestCase):
                     ) as adapter,
                     patch("local_asr_streaming.PauseStream") as factory,
                 ):
-                    adapter.return_value.select_backend.return_value = backend
+                    registry.adapter.return_value.select_backend.return_value = backend
                     gateway.prepare_dictation(recording)
+                    adapter.assert_not_called()
+                    registry.adapter.assert_called_once_with("local_asr")
                     self.assertEqual(factory.called, expected)
                     backend.prepare.assert_called_once()
                     if expected:

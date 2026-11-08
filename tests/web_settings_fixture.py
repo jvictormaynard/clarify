@@ -156,6 +156,13 @@ class OnboardingAccount:
     def snapshot(self):
         return dict(self.state)
 
+    def snapshot_guard(self):
+        return self._lock
+
+    def context_stamp(self):
+        with self._lock:
+            return self._generation, "", self.state.get("endpoint", "")
+
     @property
     def hosted(self):
         return self.state.get("hosted", False)

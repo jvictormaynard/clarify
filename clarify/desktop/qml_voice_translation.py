@@ -19,16 +19,16 @@ from typing import Any
 from PySide6.QtCore import Property, QObject, Qt, Signal, Slot
 
 from provider_http import ProviderCancelledError
-from provider_registry import PROVIDER_REGISTRY
+from provider_registry import PROVIDER_REGISTRY, configured_connection
 from provider_types import (
     ProviderCapability,
-    ProviderConnection,
     TranslationRequest,
     TranslationResult,
     TranscriptionRequest,
     TranscriptionResult,
 )
 from repositories import AppConfig
+from shared.rewrite_prompts import language_display_name
 from voice_translation import (
     VoiceTranslationConfigurationError,
     VoiceTranslationConfig,
@@ -52,27 +52,6 @@ try:
     from .qml_runtime import QtRecordingAudioGateway, _load_sounddevice
 except ImportError:  # PyInstaller analyzes the entrypoint as top-level source.
     from qml_runtime import QtRecordingAudioGateway, _load_sounddevice
-
-
-_LANGUAGE_NAMES = {
-    "en": "English",
-    "pt": "Brazilian Portuguese",
-    "es": "Spanish",
-    "de": "German",
-    "ru": "Russian",
-}
-
-
-def _language_display_name(language: str) -> str:
-    normalized = str(language or "").strip().replace("_", "-")
-    if not normalized:
-        return "English"
-    if normalized.casefold() == "auto":
-        return "the detected source language"
-    key = normalized.casefold()
-    return _LANGUAGE_NAMES.get(
-        key, _LANGUAGE_NAMES.get(key.split("-", 1)[0], normalized)
-    )
 
 
 def _provider_language(language: str) -> str:
@@ -157,29 +136,6 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
             return VoiceTranslationConfig(languages=config.voice_translation.languages)
         return config.voice_translation
 
-    def _provider_connection(
-        self,
-        config: AppConfig,
-        provider_id: str,
-        custom_endpoint: str,
-        account_id: str = "",
-    ) -> ProviderConnection:
-        metadata = self._registry.describe(provider_id)
-        provider_config = getattr(config, provider_id)
-        connection = ProviderConnection(
-            api_key=str(getattr(provider_config, "api_key", "") or "").strip(),
-            account_id=account_id,
-            base_url=(
-                str(getattr(provider_config, "base_url", "") or "").strip()
-                or str(metadata.default_base_url or "").strip()
-            ),
-        )
-        return self._registry.connection_for_route(
-            provider_id,
-            connection,
-            custom_endpoint,
-        )
-
     @staticmethod
     def _require_enabled(
         route: Any,
@@ -234,7 +190,7 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         route = self._transcription_route(config)
         provider_id = route.provider_id
         language = str(source_language or "").strip().replace("_", "-")
-        language_label = _language_display_name(language)
+        language_label = language_display_name(language)
         instruction = (
             "You are an expert transcriber. Transcribe the audio directly. "
             "Keep the original meaning and structure. Return ONLY the "
@@ -252,8 +208,12 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         result = self._registry.transcribe(
             provider_id,
             request,
-            self._provider_connection(
-                config, provider_id, route.custom_endpoint, route.account_id
+            configured_connection(
+                config,
+                provider_id,
+                registry=self._registry,
+                custom_endpoint=route.custom_endpoint,
+                account_id=route.account_id,
             ),
             _registry_cancel_token(getattr(audio_source, "cancel_token", None)),
         )
@@ -278,8 +238,8 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         provider_id = route.provider_id
         source_language = str(request.source_language or voice_config.source_language)
         target_language = str(request.target_language or voice_config.target_language)
-        source_label = _language_display_name(source_language)
-        target_label = _language_display_name(target_language)
+        source_label = language_display_name(source_language)
+        target_label = language_display_name(target_language)
         instruction = (
             "Translate the source text faithfully from "
             f"{source_label} to {target_label}. Return ONLY the translated text."
@@ -299,8 +259,12 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         result = self._registry.translate(
             provider_id,
             typed_request,
-            self._provider_connection(
-                config, provider_id, route.custom_endpoint, route.account_id
+            configured_connection(
+                config,
+                provider_id,
+                registry=self._registry,
+                custom_endpoint=route.custom_endpoint,
+                account_id=route.account_id,
             ),
             _registry_cancel_token(request.cancel_event),
         )

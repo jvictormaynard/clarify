@@ -1,6 +1,6 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
-import { applicationName } from "../settings/use-app-style-editor";
+import { applicationName } from "../settings/display-labels";
 import type { WritingStyle } from "../settings/bridge";
 import { Button, Picker, Row, Section } from "./ui";
 
