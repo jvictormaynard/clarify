@@ -197,7 +197,7 @@ jobs:
           import base64,gzip,hashlib,io,os,tarfile,json
           from pathlib import Path
           data=base64.b64decode(os.environ['LAB_BUNDLE'],validate=True)
-          expected='29cfd310285aed121b1109351b57693ea6f31ac258ceec9e97e449dc99d5e612'
+          expected='586823e95a1acd30294a51b59a938766586930907b88636730e03dfcb2b59f2c'
           assert len(data)<=60000 and hashlib.sha256(data).hexdigest()==expected,'Unreviewed lab source'
           with gzip.GzipFile(fileobj=io.BytesIO(data)) as gz: raw=gz.read(1024*1024+1)
           assert len(raw)<=1024*1024,'Oversized lab source'
