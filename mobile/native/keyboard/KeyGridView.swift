@@ -7,6 +7,7 @@ private final class KeyButton: UIButton {
   var acceptsPoint: ((CGPoint) -> Bool)?
   weak var grid: KeyGridView?
   var isGlobe = false
+  var startsNumberSlide = false
   var titleVerticalOffset: CGFloat = 0
   override func titleRect(forContentRect contentRect: CGRect) -> CGRect {
     super.titleRect(forContentRect: contentRect).offsetBy(dx: 0, dy: titleVerticalOffset)
@@ -53,6 +54,7 @@ final class KeyGridView: UIView {
   private let preview = KeyPreview()
   private var touchRows: [(view: UIView, keys: [KeyButton])] = []
   private var presses: [AnyHashable: KeyButton] = [:]
+  private var numberSlide: (id: AnyHashable, key: KeyButton, row: UIStackView)?
   private var rebuildPending = false
   private var layoutSignature = ""
   private var usesModernKeyAppearance: Bool {
@@ -73,6 +75,11 @@ final class KeyGridView: UIView {
   }
   func beginPress(_ id: AnyHashable, at point: CGPoint, event: UIEvent? = nil) {
     guard presses[id] == nil, accentBar == nil, let key = nearestKey(at: point) else { return }
+    if key.startsNumberSlide, model.page == .letters, presses.isEmpty,
+       let bottom = stack.arrangedSubviews.last as? UIStackView {
+      numberSlide = (id, key, bottom)
+      model.page = .numbers; rebuild()
+    }
     presses[id] = key; key.isHighlighted = true
     if key.isGlobe { onNextKeyboard?(key, event) } else { key.sendActions(for: .touchDown) }
   }
@@ -90,15 +97,27 @@ final class KeyGridView: UIView {
   func endPress(_ id: AnyHashable, at point: CGPoint, event: UIEvent? = nil) {
     movePress(id, to: point, event: event)
     guard let key = presses.removeValue(forKey: id) else { return }
+    let slide = numberSlide
+    let ownsSlide = slide?.id == id
+    let inside = releaseKey(at: point) != nil && accentBar == nil
     if !presses.values.contains(where: { $0 === key }) { key.isHighlighted = false }
-    if key.isGlobe { onNextKeyboard?(key, event) }
-    else { key.sendActions(for: releaseKey(at: point) != nil && accentBar == nil ? .touchUpInside : .touchCancel) }
+    if ownsSlide, key === slide?.key { key.sendActions(for: .touchCancel) }
+    else if key.isGlobe { onNextKeyboard?(key, event) }
+    else { key.sendActions(for: inside ? .touchUpInside : .touchCancel) }
+    if ownsSlide {
+      numberSlide = nil
+      if key !== slide?.key || !inside { model.page = .letters }
+      // Refresh the retained row too, even if insertion already changed pages.
+      layoutSignature = ""; rebuild()
+    }
     finishPresses()
   }
   func cancelPress(_ id: AnyHashable) {
     guard let key = presses.removeValue(forKey: id) else { return }
     if !presses.values.contains(where: { $0 === key }) { key.isHighlighted = false }
-    key.sendActions(for: .touchCancel); finishPresses()
+    key.sendActions(for: .touchCancel)
+    if numberSlide?.id == id { numberSlide = nil; model.page = .letters; layoutSignature = ""; rebuild() }
+    finishPresses()
   }
   private func finishPresses() {
     if presses.isEmpty, rebuildPending { rebuildPending = false; rebuild() }
@@ -167,7 +186,9 @@ final class KeyGridView: UIView {
     layoutSignature = signature
     preview.removeFromSuperview()
     stopDelete()
-    stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+    // UIKit must keep the view that received touchesBegan attached while the
+    // finger slides onto the new page. Rebuild the rows around its bottom row.
+    stack.arrangedSubviews.filter { $0 !== numberSlide?.row }.forEach { $0.removeFromSuperview() }
     let rows = model.rows
     for (index, letters) in rows.enumerated() {
       let row = UIStackView(); row.axis = .horizontal; row.spacing = 6
@@ -231,45 +252,52 @@ final class KeyGridView: UIView {
           multiplier: model.page == .letters && index == 1 ? 0.9 : 1,
           constant: model.page == .letters && index == 1 ? -0.6 : 0)
       ])
-      stack.addArrangedSubview(container)
+      stack.insertArrangedSubview(container, at: index)
     }
-    let bottom = UIStackView(); bottom.axis = .horizontal; bottom.spacing = 6
-    // Attach the row before activating constraints against the outer stack.
-    stack.addArrangedSubview(bottom)
-    let mode = key(model.page == .letters ? "123" : "ABC", special: true) { [weak self] in
-      guard let self = self else { return }
-      self.model.page = self.model.page == .letters ? .numbers : .letters; self.rebuild()
+    if let slide = numberSlide {
+      let title = model.page == .letters ? "123" : "ABC"
+      slide.key.setTitle(title, for: .normal); slide.key.accessibilityLabel = title
+      slide.key.startsNumberSlide = model.page == .letters
+    } else {
+      let bottom = UIStackView(); bottom.axis = .horizontal; bottom.spacing = 6
+      // Attach the row before activating constraints against the outer stack.
+      stack.addArrangedSubview(bottom)
+      let mode = key(model.page == .letters ? "123" : "ABC", special: true) { [weak self] in
+        guard let self = self else { return }
+        self.model.page = self.model.page == .letters ? .numbers : .letters; self.rebuild()
+      }
+      mode.startsNumberSlide = model.page == .letters
+      bottom.addArrangedSubview(mode)
+      let wideBottomControls = usesModernKeyAppearance && !needsGlobe
+      // With the system globe below the grid, the side controls each occupy a
+      // quarter of the row's key pitch; subtract their visible inter-key gaps.
+      mode.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: wideBottomControls ? 0.25 : 0.113,
+        constant: wideBottomControls ? -4.5 : 0).isActive = true
+      if needsGlobe {
+        let globe = key("", special: true) {}; globe.setImage(UIImage(systemName: "globe"), for: .normal)
+        globe.isGlobe = true
+        globe.accessibilityLabel = L("Próximo teclado")
+        globe.accessibleAction = { [weak self, weak globe] in if let globe = globe { self?.onNextKeyboard?(globe, nil) } }
+        globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
+        bottom.addArrangedSubview(globe); globe.widthAnchor.constraint(equalTo: mode.widthAnchor).isActive = true
+      }
+      let space = key(L("espaço")) { [weak self] in self?.insert(" ") }
+      if usesModernKeyAppearance { space.setTitle("", for: .normal) }
+      bottom.addArrangedSubview(space)
+      let returns: [UIReturnKeyType: String] = [.go: L("ir"), .search: L("buscar"), .send: L("enviar"), .next: L("próximo"), .done: "OK", .join: L("entrar"), .route: L("rota")]
+      let enter = key(returns[returnType] ?? L("retorno"), special: true) { [weak self] in self?.insert("\n") }
+      if usesModernKeyAppearance && returnType == .default {
+        enter.setTitle("", for: .normal)
+        enter.setImage(UIImage(systemName: "return"), for: .normal)
+        enter.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 22, weight: .regular), forImageIn: .normal)
+      }
+      if returnType != .default {
+        enter.restingColor = .systemBlue; enter.backgroundColor = .systemBlue; enter.setTitleColor(.white, for: .normal)
+      }
+      bottom.addArrangedSubview(enter)
+      enter.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: wideBottomControls ? 0.25 : 0.23,
+        constant: wideBottomControls ? -4.5 : 0).isActive = true
     }
-    bottom.addArrangedSubview(mode)
-    let wideBottomControls = usesModernKeyAppearance && !needsGlobe
-    // With the system globe below the grid, the side controls each occupy a
-    // quarter of the row's key pitch; subtract their visible inter-key gaps.
-    mode.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: wideBottomControls ? 0.25 : 0.113,
-      constant: wideBottomControls ? -4.5 : 0).isActive = true
-    if needsGlobe {
-      let globe = key("", special: true) {}; globe.setImage(UIImage(systemName: "globe"), for: .normal)
-      globe.isGlobe = true
-      globe.accessibilityLabel = L("Próximo teclado")
-      globe.accessibleAction = { [weak self, weak globe] in if let globe = globe { self?.onNextKeyboard?(globe, nil) } }
-      globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
-      bottom.addArrangedSubview(globe); globe.widthAnchor.constraint(equalTo: mode.widthAnchor).isActive = true
-    }
-    let space = key(L("espaço")) { [weak self] in self?.insert(" ") }
-    if usesModernKeyAppearance { space.setTitle("", for: .normal) }
-    bottom.addArrangedSubview(space)
-    let returns: [UIReturnKeyType: String] = [.go: L("ir"), .search: L("buscar"), .send: L("enviar"), .next: L("próximo"), .done: "OK", .join: L("entrar"), .route: L("rota")]
-    let enter = key(returns[returnType] ?? L("retorno"), special: true) { [weak self] in self?.insert("\n") }
-    if usesModernKeyAppearance && returnType == .default {
-      enter.setTitle("", for: .normal)
-      enter.setImage(UIImage(systemName: "return"), for: .normal)
-      enter.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 22, weight: .regular), forImageIn: .normal)
-    }
-    if returnType != .default {
-      enter.restingColor = .systemBlue; enter.backgroundColor = .systemBlue; enter.setTitleColor(.white, for: .normal)
-    }
-    bottom.addArrangedSubview(enter)
-    enter.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: wideBottomControls ? 0.25 : 0.23,
-      constant: wideBottomControls ? -4.5 : 0).isActive = true
     func buttons(in view: UIView) -> [KeyButton] {
       view.subviews.flatMap { child in
         if let key = child as? KeyButton { return [key] }

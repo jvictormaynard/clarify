@@ -293,6 +293,48 @@ final class KeyboardUITests: XCTestCase {
       grid.beginPress(6, at: first); grid.beginPress(7, at: second)
       grid.endPress(6, at: first); grid.endPress(7, at: second)
       XCTAssertTrue(text.hasSuffix("Qw"), "Two overlapping fingers consume one-shot shift only once")
+      let letters = text
+      let mode = try key("123"), modePoint = center(mode)
+      grid.beginPress("number-tap", at: modePoint)
+      XCTAssertEqual(grid.model.page, .numbers, "Show the number page while the finger is held")
+      XCTAssertTrue(mode.isDescendant(of: grid), "Keep UIKit's original touch receiver attached")
+      grid.endPress("number-tap", at: modePoint)
+      XCTAssertEqual(grid.model.page, .numbers, "A plain 123 tap must keep the number page")
+      XCTAssertEqual(text, letters)
+      try key("ABC").sendActions(for: .touchUpInside)
+      grid.beginPress("number-slide", at: center(try key("123")))
+      let one = center(try key("1"))
+      grid.movePress("number-slide", to: one); grid.endPress("number-slide", at: one)
+      grid.endPress("number-slide", at: one)
+      XCTAssertEqual(text, letters + "1", "A number slide inserts its release target exactly once")
+      XCTAssertEqual(grid.model.page, .letters)
+      for cancel in [true, false] {
+        grid.beginPress("aborted-slide", at: center(try key("123")))
+        let point = center(try key("1")); grid.movePress("aborted-slide", to: point)
+        if cancel { grid.cancelPress("aborted-slide") }
+        else { grid.endPress("aborted-slide", at: CGPoint(x: -30, y: -30)) }
+        grid.endPress("aborted-slide", at: point)
+        XCTAssertEqual(text, letters + "1", "Cancelled or outside slides must not insert")
+        XCTAssertEqual(grid.model.page, .letters)
+      }
+      grid.beginPress("number-owner", at: center(try key("123")))
+      let held = try key("1"), heldPoint = center(held), two = center(try key("2"))
+      grid.beginPress("held-digit", at: heldPoint)
+      grid.movePress("number-owner", to: two); grid.endPress("number-owner", at: two)
+      XCTAssertTrue(held.isDescendant(of: grid), "Defer the return to letters until the other finger finishes")
+      grid.endPress("held-digit", at: heldPoint)
+      XCTAssertEqual(text, letters + "121", "Changing the page must not lose another finger's digit")
+      XCTAssertEqual(grid.model.page, .letters)
+      grid.onInsert = { [weak grid] value in
+        text += value; grid?.returnType = .search; grid?.rebuild()
+      }
+      grid.beginPress("space-slide", at: center(try key("123")))
+      let space = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("espaço") })
+      grid.endPress("space-slide", at: center(space))
+      XCTAssertEqual(text, letters + "121 ")
+      XCTAssertEqual(grid.model.page, .letters)
+      XCTAssertNotNil(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("buscar") },
+                      "Apply host traits to the retained row when insertion changes pages")
     }
   }
   func testCustomVocabularyIsNotReplacedAndQuotedWordsStillCorrect() async {
