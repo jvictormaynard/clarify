@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    'pt-BR': `Clarify ${version} (${build}): experimento isolado com APIs privadas da Apple. Abra o teste Apple e inspecione as interfaces privadas. Teste o controlador privado para tentar iniciar Rewrite, Professional ou Friendly conforme o estilo escolhido. Ele pode exibir a interface da Apple e usar modelos locais ou na nuvem. A rota direta TextComposer nesta build apenas inspeciona o contrato; não inicia uma reescrita. O original é preservado em caso de falha. Envie o relatório de interface e o resultado do controlador. Suítes de testes omitidas conforme solicitado.`,
+    'en-US': `Clarify ${version} (${build}): isolated private Apple API experiment. Open the Apple test and inspect private interfaces. Try the private controller to request Rewrite, Professional or Friendly using the selected style. It may show Apple UI and use local or cloud models. The direct TextComposer route in this build only checks the interface contract; it does not start a rewrite. The source is preserved on failure. Share the interface report and controller result. Test suites were skipped as requested.`,
+    'es-ES': `Clarify ${version} (${build}): experimento aislado con API privadas de Apple. Abre la prueba Apple e inspecciona las interfaces privadas. Prueba el controlador privado para solicitar Rewrite, Professional o Friendly según el estilo seleccionado. Puede mostrar la interfaz de Apple y usar modelos locales o en la nube. La ruta directa TextComposer en esta build solo inspecciona el contrato; no inicia una reescritura. Se conserva el original si falla. Comparte el informe y el resultado del controlador. Pruebas omitidas según lo solicitado.`,
   };
 }
 
@@ -106,7 +106,17 @@ async function publish({ env = process.env, fetch = globalThis.fetch,
       if (!attached) {
         const membership = await list('betaGroups/' + group.id + '/builds?limit=100');
         if (!membership.data.some(item => item.id === build.id)) {
-          await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            try {
+              await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            } catch (error) {
+              // Auto-distribution can reject a redundant association before its
+              // group membership is visible. Never accept 422 as availability:
+              // retry the reads and require real membership and testing state.
+              if (!String(error.message).startsWith('Apple API 422 ')) throw error;
+              log('Apple group association is pending; verifying membership again.');
+              await sleep(30_000);
+              continue;
+            }
         }
         const localizations = await list('builds/' + build.id + '/betaBuildLocalizations');
         for (const [locale, whatsNew] of Object.entries(releaseNotes(selected.version, selected.build))) {
