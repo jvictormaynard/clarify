@@ -8193,5 +8193,75 @@
     "pt": "O texto já está no idioma selecionado.",
     "en": "The text is already in the selected language.",
     "es": "El texto ya está en el idioma seleccionado."
+  },
+  "O botão Reescrever usa o modelo local e a tradução local da Apple. O texto não é salvo no histórico. Revise o resultado antes de usar.": {
+    "pt": "O botão Reescrever usa o modelo local e a tradução local da Apple. O texto não é salvo no histórico. Revise o resultado antes de usar.",
+    "en": "The Rewrite button uses Apple’s local model and local translation. Text is not saved in history. Review the result before use.",
+    "es": "El botón Reescribir usa el modelo local y la traducción local de Apple. El texto no se guarda en el historial. Revisa el resultado antes de usarlo."
+  },
+  "Experimento com APIs privadas da Apple": {
+    "pt": "Experimento com APIs privadas da Apple",
+    "en": "Private Apple API experiment",
+    "es": "Experimento con API privadas de Apple"
+  },
+  "Estas rotas podem usar modelos locais ou na nuvem da Apple. Elas podem estar indisponíveis neste iOS. O original é preservado em caso de falha.": {
+    "pt": "Estas rotas podem usar modelos locais ou na nuvem da Apple. Elas podem estar indisponíveis neste iOS. O original é preservado em caso de falha.",
+    "en": "These routes may use Apple’s local or cloud models. They may be unavailable on this iOS version. The source is preserved on failure.",
+    "es": "Estas rutas pueden usar modelos locales o en la nube de Apple. Pueden no estar disponibles en esta versión de iOS. Se conserva el original si fallan."
+  },
+  "Inspecionar interfaces privadas": {
+    "pt": "Inspecionar interfaces privadas",
+    "en": "Inspect private interfaces",
+    "es": "Inspeccionar interfaces privadas"
+  },
+  "A rota direta é uma inspeção de interface nesta build. Ela ainda não inicia uma reescrita.": {
+    "pt": "A rota direta é uma inspeção de interface nesta build. Ela ainda não inicia uma reescrita.",
+    "en": "The direct route is an interface check in this build. It does not start a rewrite yet.",
+    "es": "La ruta directa es una inspección de interfaz en esta build. Todavía no inicia una reescritura."
+  },
+  "Verificar rota privada TextComposer": {
+    "pt": "Verificar rota privada TextComposer",
+    "en": "Check private TextComposer route",
+    "es": "Verificar ruta privada TextComposer"
+  },
+  "Testar controlador privado das Ferramentas de Escrita": {
+    "pt": "Testar controlador privado das Ferramentas de Escrita",
+    "en": "Try private Writing Tools controller",
+    "es": "Probar controlador privado de Herramientas de Escritura"
+  },
+  "Controlador privado chamado. Confira se a Apple iniciou a reescrita.": {
+    "pt": "Controlador privado chamado. Confira se a Apple iniciou a reescrita.",
+    "en": "Private controller invoked. Check whether Apple started rewriting.",
+    "es": "Se llamó al controlador privado. Comprueba si Apple inició la reescritura."
+  },
+  "O controlador privado não pôde ser iniciado. O original foi preservado.": {
+    "pt": "O controlador privado não pôde ser iniciado. O original foi preservado.",
+    "en": "The private controller could not start. The source was preserved.",
+    "es": "No se pudo iniciar el controlador privado. Se conservó el original."
+  },
+  "The private Apple rewrite route is unavailable.": {
+    "pt": "A rota privada de reescrita da Apple está indisponível.",
+    "en": "The private Apple rewrite route is unavailable.",
+    "es": "La ruta privada de reescritura de Apple no está disponible."
+  },
+  "The direct route is an interface check in this build. No rewrite was started.": {
+    "pt": "A rota direta é uma inspeção de interface nesta build. Nenhuma reescrita foi iniciada.",
+    "en": "The direct route is an interface check in this build. No rewrite was started.",
+    "es": "La ruta directa es una inspección de interfaz en esta build. No se inició ninguna reescritura."
+  },
+  "Main thread required.": {
+    "pt": "É necessário usar a thread principal.",
+    "en": "Main thread required.",
+    "es": "Es necesario usar el hilo principal."
+  },
+  "Invalid private rewrite input.": {
+    "pt": "Entrada inválida para a reescrita privada.",
+    "en": "Invalid private rewrite input.",
+    "es": "Entrada no válida para la reescritura privada."
+  },
+  "A private writing session is still pending.": {
+    "pt": "Uma sessão privada de escrita ainda está pendente.",
+    "en": "A private writing session is still pending.",
+    "es": "Hay una sesión privada de escritura pendiente."
   }
 }

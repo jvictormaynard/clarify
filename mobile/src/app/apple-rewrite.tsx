@@ -19,6 +19,10 @@ export default function AppleRewrite() {
   const [loadError, setLoadError] = useState('');
   const [nativeOpening, setNativeOpening] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [privateProbe, setPrivateProbe] = useState('');
+  const [probing, setProbing] = useState(false);
+  const probeGeneration = useRef(0);
+  useEffect(() => () => { ++probeGeneration.current; }, []);
   useEffect(() => setShowDetails(false), [model.report]);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(() => Keyboard.isVisible());
@@ -54,13 +58,24 @@ export default function AppleRewrite() {
   }, [refreshAvailability, session]));
   const language = model.preferences.language;
   const languageLabel = targetLanguages.find(item => item.value === language)?.label ?? t('Manter idioma original');
-  const openNative = async () => {
+  const inspectPrivate = async () => {
+    if (probing) return;
+    const generation = ++probeGeneration.current;
+    setProbing(true); setPrivateProbe(''); setLoadError('');
+    try {
+      const report = await Core.getPrivateAppleRewriteProbe();
+      if (generation === probeGeneration.current) setPrivateProbe(JSON.stringify(report, null, 2).slice(0, 16000));
+    } catch (error) { if (generation === probeGeneration.current) setLoadError(errorMessage(error)); }
+    finally { if (generation === probeGeneration.current) setProbing(false); }
+  };
+  const openNative = async (privateController = false) => {
     if (nativeOpening) return;
     setNativeOpening(true); setLoadError('');
     try {
       await session.cancel();
       Keyboard.dismiss();
-      await Core.openAppleWritingTools(model.source, language);
+      if (privateController) await Core.openPrivateAppleWritingTools(model.source, language, model.preferences.style);
+      else await Core.openAppleWritingTools(model.source, language);
     } catch (error) { setLoadError(errorMessage(error)); }
     finally { setNativeOpening(false); }
   };
@@ -73,7 +88,7 @@ export default function AppleRewrite() {
     <KeyboardPage>
     <ScreenHeader title={t('Teste do Apple Intelligence')} subtitle={t('Cole uma transcrição curta para testar a reescrita neste iPhone.')} />
     <Card>
-      <Text style={[ui.body, { color: c.text }]}>{t('A reescrita e a tradução automáticas são processadas neste iPhone. O texto não é salvo no histórico. Revise o resultado antes de usar.')}</Text>
+      <Text style={[ui.body, { color: c.text }]}>{t('O botão Reescrever usa o modelo local e a tradução local da Apple. O texto não é salvo no histórico. Revise o resultado antes de usar.')}</Text>
       <Text testID="apple.status" accessibilityLiveRegion="polite" style={[ui.small, { color: c.muted }]}>
         {availability?.message ?? (loadError || t('Verificando disponibilidade…'))}
       </Text>
@@ -99,10 +114,21 @@ export default function AppleRewrite() {
     {!!loadError && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{loadError}</Text>}
     <Button disabled={model.busy || !model.source.trim()} loading={nativeOpening} onPress={() => void openNative()}>{t('Comparar com as Ferramentas de Escrita')}</Button>
     <Text style={[ui.small, { color: c.muted }]}>{t('A comparação abre os controles da Apple e permite preparar os idiomas para tradução local. Ela pode usar o Private Cloud Compute.')}</Text>
+    <Card>
+      <Text style={[ui.section, { color: c.text }]}>{t('Experimento com APIs privadas da Apple')}</Text>
+      <Text style={[ui.small, { color: c.muted }]}>{t('Estas rotas podem usar modelos locais ou na nuvem da Apple. Elas podem estar indisponíveis neste iOS. O original é preservado em caso de falha.')}</Text>
+      <Button disabled={model.busy || nativeOpening} loading={probing} onPress={() => void inspectPrivate()}>{t('Inspecionar interfaces privadas')}</Button>
+      {!!privateProbe && <Text selectable style={[ui.small, { color: c.muted }]}>{privateProbe}</Text>}
+      <Text style={[ui.small, { color: c.muted }]}>{t('A rota direta é uma inspeção de interface nesta build. Ela ainda não inicia uma reescrita.')}</Text>
+      <Button testID="apple.private.rewrite" disabled={!preferencesLoaded || model.busy || nativeOpening || !model.source.trim()} onPress={() => void session.run('private')}>{t('Verificar rota privada TextComposer')}</Button>
+      <Button testID="apple.private.controller" disabled={!preferencesLoaded || model.busy || nativeOpening || !model.source.trim()} onPress={() => void openNative(true)}>{t('Testar controlador privado das Ferramentas de Escrita')}</Button>
+    </Card>
     {!!model.report && <Card>
       <Button onPress={() => setShowDetails(value => !value)}>{t(showDetails ? 'Ocultar detalhes do teste' : 'Mostrar detalhes do teste')}</Button>
       {showDetails && <>
         <Text selectable style={[ui.small, { color: c.muted }]}>{model.report.stage} · {model.report.code || 'OK'} · {model.elapsedMS} ms</Text>
+        {!!model.report.route && <Text selectable style={[ui.small, { color: c.muted }]}>{model.report.route}</Text>}
+        {!!model.report.diagnostics && <Text selectable style={[ui.small, { color: c.muted }]}>{model.report.diagnostics}</Text>}
         {!!model.report.rewritten && <Text selectable style={[ui.body, { color: c.text }]}>{model.report.rewritten}</Text>}
         {!!model.report.candidate && !!model.report.error && <>
           <Text style={[ui.section, { color: c.danger }]}>{t('Resposta rejeitada. Não use como resultado final.')}</Text>

@@ -11,6 +11,7 @@ interface Gateway {
   newOperationID(): string;
   rewriteWithApple(id: string, source: string, language: string, style: string): Promise<string>;
   rewriteWithAppleReport?(id: string, source: string, language: string, style: string, deterministic: boolean): Promise<AppleRewriteReport>;
+  rewriteWithPrivateAppleReport?(id: string, source: string, language: string, style: string): Promise<AppleRewriteReport>;
   cancelAppleRewrite(id: string): Promise<void>;
 }
 interface State {
@@ -60,7 +61,7 @@ export class AppleRewriteSession {
     void this.cancel();
     this.update({ deterministic });
   }
-  async run() {
+  async run(route: 'standard' | 'private' = 'standard') {
     if (this.state.busy || !this.state.source.trim()) return;
     const generation = ++this.generation;
     const id = this.gateway.newOperationID();
@@ -69,6 +70,12 @@ export class AppleRewriteSession {
     const started = Date.now();
     this.update({ busy: true, result: '', error: '', elapsedMS: null, report: null });
     try {
+      if (route === 'private') {
+        if (!this.gateway.rewriteWithPrivateAppleReport) throw new Error('The private Apple rewrite route is unavailable.');
+        const report = await this.gateway.rewriteWithPrivateAppleReport(id, source, preferences.language, preferences.style);
+        if (generation === this.generation && this.operation === id) this.update({ report, result: report.result, error: report.error, elapsedMS: report.elapsedMS });
+        return;
+      }
       if (this.gateway.rewriteWithAppleReport) {
         const report = await this.gateway.rewriteWithAppleReport(id, source, preferences.language, preferences.style, deterministic);
         if (generation === this.generation && this.operation === id) this.update({ report, result: report.result, error: report.error, elapsedMS: report.elapsedMS });

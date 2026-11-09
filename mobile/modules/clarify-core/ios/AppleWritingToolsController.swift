@@ -10,14 +10,37 @@ import Translation
 final class AppleWritingToolsController: UIViewController {
   private let source: String
   private let target: String
+  private let privateStyle: String?
+  private var attemptedPrivateController = false
   private let editor = UITextView()
   private let translationHint = UILabel()
 
-  init(source: String, target: String) {
-    self.source = source; self.target = target
+  init(source: String, target: String, privateStyle: String? = nil) {
+    self.source = source; self.target = target; self.privateStyle = privateStyle
     super.init(nibName: nil, bundle: nil)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    guard let style = privateStyle, !attemptedPrivateController else { return }
+    attemptedPrivateController = true
+    editor.becomeFirstResponder()
+    editor.selectedRange = NSRange(location: 0, length: (editor.text as NSString).length)
+    var details: NSString?
+    let invoked = ClarifyPrivateWritingToolsBridge.openTool(textView: editor, style: style, diagnostics: &details)
+    // Invocation is not proof that a model generated or that an edit was accepted.
+    let state = L(invoked ? "Controlador privado chamado. Confira se a Apple iniciou a reescrita." :
+      "O controlador privado não pôde ser iniciado. O original foi preservado.")
+    translationHint.text = state + "\n" + ((details as String?) ?? "")
+  }
+
+  override func viewDidDisappear(_ animated: Bool) {
+    super.viewDidDisappear(animated)
+    if isBeingDismissed || navigationController?.isBeingDismissed == true {
+      ClarifyPrivateWritingToolsBridge.endTool(textView: editor)
+    }
+  }
 
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -110,7 +133,10 @@ final class AppleWritingToolsController: UIViewController {
     }
     #endif
   }
-  @objc private func close() { dismiss(animated: true) }
+  @objc private func close() {
+    ClarifyPrivateWritingToolsBridge.endTool(textView: editor)
+    dismiss(animated: true)
+  }
 }
 
 #if canImport(Translation)

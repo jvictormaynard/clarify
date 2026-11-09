@@ -694,6 +694,17 @@ to translate the current editor text with Apple's local translation API. This
 button uses Clarify's selected output language and displays a separate, selectable
 result without replacing the editor text. Choose an output language before
 opening the editor. Translation can request permission to download missing languages.
+
+The private-API experiment is separate from normal dictation. **Inspect private
+interfaces** reads class, selector and signature metadata on the actual device.
+The TextComposer direct route remains a contract probe: its callback and rewrite
+identifiers are not verified, so this build starts no direct model request.
+The private Writing Tools controller route attempts to select Rewrite, Professional
+or Friendly from the chosen lab style and start the system session. It can display
+Apple UI and use local or cloud processing. A successful invocation is not proof
+that rewriting completed; inspect the editor before accepting or translating.
+Unknown signatures and failures preserve the source. Diagnostics stay in screen
+memory and contain no transcript, recording, credentials or exception body.
 Automatic processing checks availability and accepts up to 2,000 UTF-8
 bytes. An unavailable model, unsupported language, context limit or refusal
 returns an error and preserves the source. It has no cloud fallback and does not

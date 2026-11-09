@@ -18,10 +18,13 @@ struct AppleRewriteReport: Sendable {
   let candidate: String
   let rewritten: String
   let elapsedMS: Int
+  var diagnostics: String = ""
+  var route: String = "foundation_models"
 
   var snapshot: [String: Any] {
     ["result": result, "error": error, "code": code, "stage": stage,
-      "candidate": candidate, "rewritten": rewritten, "elapsedMS": elapsedMS]
+      "candidate": candidate, "rewritten": rewritten, "elapsedMS": elapsedMS,
+      "diagnostics": diagnostics, "route": route]
   }
 }
 

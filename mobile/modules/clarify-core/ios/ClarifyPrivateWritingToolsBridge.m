@@ -13,6 +13,7 @@
 - (instancetype)initWithTool:(long long)tool prompt:(id)prompt;
 - (void)setSourceResponder:(id)responder sourceTextInput:(id)input;
 - (void)startWritingTools;
+- (void)endWritingTools;
 - (bool)isWritingToolsActive;
 @end
 
@@ -81,6 +82,12 @@ static BOOL CWUIShape(Class cls) {
     && CWMethod(cls, NO, @selector(isWritingToolsActive), @encode(bool), NULL, 0);
 }
 
+static NSString *CWEncoding(Class cls, BOOL classMethod, SEL selector) {
+  Method method = classMethod ? class_getClassMethod(cls, selector) : class_getInstanceMethod(cls, selector);
+  const char *types = method ? method_getTypeEncoding(method) : NULL;
+  return types ? ([[NSString alloc] initWithBytes:types length:strnlen(types, 1024) encoding:NSUTF8StringEncoding] ?: @"unreadable") : @"unavailable";
+}
+
 static BOOL CWStyle(NSString *style, long long *tool) {
   // These are WTRequestedTool values, NOT TextComposer rewritingType strings.
   // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/PAL/pal/spi/cocoa/WritingToolsSPI.h
@@ -127,6 +134,19 @@ static NSDictionary<NSString *, id> *CWReply(NSString *code, NSString *error, NS
             @"diagnostics": diagnostics, @"route": @"private_textcomposer" };
 }
 
+static NSString *CWExtendedRewriteTypes(void) {
+  // objc4 exposes extended protocol encodings used by XPC. Read metadata only.
+  // https://github.com/apple-oss-distributions/objc4/blob/fb265098298302243cd7eeaa1f63f0ba7786dd9a/runtime/objc-internal.h#L1252
+  typedef const char *(*EncodingFunction)(Protocol *, SEL, BOOL, BOOL);
+  EncodingFunction encoding = (EncodingFunction)dlsym(RTLD_DEFAULT, "_protocol_getMethodTypeEncoding");
+  Protocol *protocol = objc_getProtocol("TCTextCompositionXPCProtocol");
+  if (!encoding || !protocol) return @"unavailable";
+  const char *types = encoding(protocol, NSSelectorFromString(@"rewriteWithString:range:rewritingType:options:with:"), YES, YES);
+  if (!types) return @"unavailable";
+  NSUInteger count = strnlen(types, 4096);
+  return [[NSString alloc] initWithBytes:types length:count encoding:NSUTF8StringEncoding] ?: @"unreadable";
+}
+
 @implementation ClarifyPrivateWritingToolsBridge
 + (NSDictionary<NSString *, id> *)probe {
   if (!NSThread.isMainThread) return @{ @"code": @"main_thread_required" };
@@ -145,6 +165,14 @@ static NSDictionary<NSString *, id> *CWReply(NSString *code, NSString *error, NS
       @"rewriteOuterSignature": @(CWMethod(tc, NO, rewrite, @encode(void), args, 5)),
       @"callbackVerified": @NO, @"rewriteIdentifiersVerified": @NO,
       @"directAvailable": @NO, @"controllerSignatures": @(CWUIShape(ui)),
+      @"extendedRewriteProtocol": CWExtendedRewriteTypes(),
+      @"assistantRewriteEncoding": CWEncoding(tc, NO, rewrite),
+      @"controllerAvailableEncoding": CWEncoding(ui, YES, @selector(isAvailable)),
+      @"controllerInitEncoding": CWEncoding(ui, NO, @selector(initWithTool:prompt:)),
+      @"controllerSourceEncoding": CWEncoding(ui, NO, @selector(setSourceResponder:sourceTextInput:)),
+      @"controllerStartEncoding": CWEncoding(ui, NO, @selector(startWritingTools)),
+      @"controllerActiveEncoding": CWEncoding(ui, NO, @selector(isWritingToolsActive)),
+      @"iOS": UIDevice.currentDevice.systemVersion,
       @"code": @"direct_contract_unverified" };
   } @catch (__unused NSException *exception) {
     return @{ @"code": @"probe_exception", @"directAvailable": @NO };
@@ -176,8 +204,10 @@ static NSDictionary<NSString *, id> *CWReply(NSString *code, NSString *error, NS
     // They also do not establish rewritingType string constants. Never call the
     // assistant, synthesize a callback ABI, or borrow WTRequestedTool integers.
     // https://github.com/qingralf/iOS26-Runtime-Headers/blob/cbf1d4c4122f3c6807eba36693581882640e5c6c/PrivateFrameworks/TextComposer.framework/TCTextCompositionAssistant.h
-    reply = CWReply(@"direct_contract_unverified", @"Private rewrite callback and style identifiers are not verified.",
-                    @"callback_unverified;rewriting_type_unverified;model_work_started=0");
+    NSDictionary *probe = [self probe];
+    NSData *data = [NSJSONSerialization dataWithJSONObject:probe options:NSJSONWritingSortedKeys error:nil];
+    NSString *metadata = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"probe_unavailable";
+    reply = CWReply(@"direct_contract_unverified", @"The direct route is an interface check in this build. No rewrite was started.", metadata);
   }
   // Synchronous rejection has no in-flight work, late callback, timeout, retry
   // or fallback. Keep source unchanged; the caller retains its original draft.
@@ -240,5 +270,21 @@ static NSDictionary<NSString *, id> *CWReply(NSString *code, NSString *error, NS
     if (diagnostics) *diagnostics = @"ui_exception;result_unconfirmed";
     return NO;
   }
+}
+
++ (void)endToolForTextView:(UITextView *)textView {
+  if (!NSThread.isMainThread || CWSession.textView != textView) return;
+  @try {
+    id controller = CWSession.controller;
+    if (CWMethod(object_getClass(controller), NO, @selector(endWritingTools), @encode(void), NULL, 0)) {
+      [controller endWritingTools];
+      // An explicit end request plus an inactive controller is a confirmed end.
+      if (CWMethod(object_getClass(controller), NO, @selector(isWritingToolsActive), @encode(bool), NULL, 0)
+          && ![controller isWritingToolsActive]) {
+        objc_setAssociatedObject(textView, CWSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        CWSession = nil;
+      }
+    }
+  } @catch (__unused NSException *exception) { /* Keep an uncertain session occupied. */ }
 }
 @end
