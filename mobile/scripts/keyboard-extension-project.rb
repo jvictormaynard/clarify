@@ -9,14 +9,61 @@ container = project.new_target(:application, 'ActivationContainer', :ios, '16.4'
 container.add_dependency(keyboard); tests.add_dependency(app)
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionHost.swift')))
 shared_root = File.join(fixture, 'Shared'); Dir.mkdir(shared_root)
-# Runtime metadata stays in the isolated simulator fixture. Do not link this
-# probe into the distributed app or invoke the discovered private selectors.
+# Runtime experiments stay in the isolated simulator fixture. Do not link this
+# probe into the distributed app or change the active keyboard's input state.
 runtime_probe = File.join(fixture, 'KeyboardReferenceProbe.m')
 File.write(runtime_probe, <<~OBJC)
   #import <UIKit/UIKit.h>
   #import <objc/runtime.h>
   #import <TargetConditionals.h>
+  #import <math.h>
+  #import <string.h>
   #if TARGET_OS_SIMULATOR
+  static id ReferenceObject(id target, NSString *name, NSMutableDictionary *errors) {
+    if (!target) return nil;
+    SEL selector = NSSelectorFromString(name);
+    NSMethodSignature *signature = [target methodSignatureForSelector:selector];
+    if (!signature || signature.numberOfArguments != 2 || signature.methodReturnType[0] != '@' ||
+        signature.methodReturnType[1] == '?' || signature.methodReturnLength != sizeof(id)) return nil;
+    @try {
+      NSInvocation *call = [NSInvocation invocationWithMethodSignature:signature];
+      call.target = target; call.selector = selector; [call invoke];
+      __unsafe_unretained id value = nil; [call getReturnValue:&value];
+      return value;
+    } @catch (NSException *error) { errors[name] = error.name; return nil; }
+  }
+  static id ReferenceScalar(id target, NSString *name, NSMutableDictionary *errors) {
+    if (!target) return [NSNull null];
+    NSMethodSignature *signature = [target methodSignatureForSelector:NSSelectorFromString(name)];
+    BOOL isDouble = signature && strcmp(signature.methodReturnType, @encode(double)) == 0;
+    BOOL isRect = signature && strcmp(signature.methodReturnType, @encode(CGRect)) == 0;
+    if (!signature || signature.numberOfArguments != 2 || (!isDouble && !isRect) ||
+        signature.methodReturnLength != (isDouble ? sizeof(double) : sizeof(CGRect))) return [NSNull null];
+    @try {
+      NSInvocation *call = [NSInvocation invocationWithMethodSignature:signature];
+      call.target = target; call.selector = NSSelectorFromString(name); [call invoke];
+      if (isDouble) { double value = 0; [call getReturnValue:&value]; return isfinite(value) ? @(value) : [NSNull null]; }
+      CGRect rect = CGRectZero; [call getReturnValue:&rect];
+      if (!isfinite(rect.origin.x) || !isfinite(rect.origin.y) || !isfinite(rect.size.width) || !isfinite(rect.size.height)) return [NSNull null];
+      return @{@"x": @(rect.origin.x), @"y": @(rect.origin.y), @"width": @(rect.size.width), @"height": @(rect.size.height)};
+    } @catch (NSException *error) { errors[name] = error.name; return [NSNull null]; }
+  }
+  static void ReferenceTree(id tree, NSMutableArray *nodes, NSUInteger depth, NSMutableDictionary *errors) {
+    if (!tree || depth > 6 || nodes.count >= 200) return;
+    id name = ReferenceObject(tree, @"name", errors), text = ReferenceObject(tree, @"displayString", errors);
+    id geometry = ReferenceObject(tree, @"geometry", errors);
+    [nodes addObject:@{@"class": NSStringFromClass([tree class]),
+      @"name": [name isKindOfClass:NSString.class] ? name : @"",
+      @"displayString": [text isKindOfClass:NSString.class] ? text : @"",
+      @"frame": ReferenceScalar(tree, @"frame", errors),
+      @"displayFrame": ReferenceScalar(geometry, @"displayFrame", errors),
+      @"symbolFrame": ReferenceScalar(geometry, @"symbolFrame", errors),
+      @"roundRectRadius": ReferenceScalar(geometry, @"roundRectRadius", errors)}];
+    id children = ReferenceObject(tree, @"subtrees", errors);
+    if ([children isKindOfClass:NSArray.class]) {
+      for (id child in children) { if (nodes.count >= 200) break; ReferenceTree(child, nodes, depth + 1, errors); }
+    }
+  }
   static void CaptureKeyboardRuntimeReference(void) {
     NSDictionary *selectors = @{
       @"UIKeyboardImpl": @[@"sharedInstance", @"activeInstance", @"initWithFrame:", @"inputManager", @"layout"],
@@ -49,6 +96,33 @@ File.write(runtime_probe, <<~OBJC)
       [fonts addObject:@{@"requested": name, @"resolved": font.fontName ?: [NSNull null]}];
     }
     UIFont *font = [UIFont systemFontOfSize:25];
+    NSMutableDictionary *errors = [NSMutableDictionary dictionary];
+    // Read the existing engine only. sharedInstance can create an engine, so
+    // it is deliberately not called in the host or installed extension.
+    id impl = ReferenceObject(NSClassFromString(@"UIKeyboardImpl"), @"activeInstance", errors);
+    id layout = ReferenceObject(impl, @"layout", errors);
+    id plane = ReferenceObject(layout, @"keyplane", errors);
+    NSMutableArray *nodes = [NSMutableArray array]; ReferenceTree(plane, nodes, 0, errors);
+    NSMutableDictionary *defaults = [NSMutableDictionary dictionary];
+    @try {
+      Class factoryClass = NSClassFromString(@"UIKBRenderFactory");
+      id factory = factoryClass ? [[factoryClass alloc] init] : nil;
+      for (NSString *name in @[@"lightKeycapsFontName", @"lightTextFontName"]) {
+        id value = ReferenceObject(factory, name, errors);
+        defaults[name] = [value isKindOfClass:NSString.class] ? value : [NSNull null];
+      }
+    } @catch (NSException *error) { errors[@"renderFactoryInit"] = error.name; }
+    id config = ReferenceObject(NSClassFromString(@"UIKBRenderConfig"), @"defaultConfig", errors);
+    defaults[@"blurRadius"] = ReferenceScalar(config, @"blurRadius", errors);
+    defaults[@"keycapOpacity"] = ReferenceScalar(config, @"keycapOpacity", errors);
+    NSMutableArray *layoutMethods = [NSMutableArray array];
+    unsigned int methodCount = 0; Method *methods = layout ? class_copyMethodList([layout class], &methodCount) : NULL;
+    for (unsigned int i = 0; i < methodCount; i++) {
+      NSString *name = NSStringFromSelector(method_getName(methods[i]));
+      if ([name rangeOfString:@"render" options:NSCaseInsensitiveSearch].location != NSNotFound ||
+          [name rangeOfString:@"font" options:NSCaseInsensitiveSearch].location != NSNotFound) [layoutMethods addObject:name];
+    }
+    free(methods);
     NSArray *arguments = NSProcessInfo.processInfo.arguments;
     NSString *scenario = [arguments containsObject:@"--native-keyboard-reference"] ? @"ordinary-system" :
       ([arguments containsObject:@"--system-keyboard"] ? @"secure-system" :
@@ -56,7 +130,10 @@ File.write(runtime_probe, <<~OBJC)
     NSDictionary *report = @{@"os": NSProcessInfo.processInfo.operatingSystemVersionString, @"scenario": scenario,
       @"process": NSBundle.mainBundle.bundleIdentifier ?: @"unknown", @"classes": classes,
       @"fontCandidates": fonts, @"systemFont25": font.fontName,
-      @"scope": @"Metadata only. No private selector invoked; availability does not establish engine embedding or behavior."};
+      @"liveReference": @{@"implementationClass": impl ? NSStringFromClass([impl class]) : @"none",
+        @"layoutClass": layout ? NSStringFromClass([layout class]) : @"none", @"keyplaneNodes": nodes,
+        @"renderDefaults": defaults, @"layoutRenderingMethods": layoutMethods, @"exceptions": errors},
+      @"scope": @"Guarded read-only private getter experiment in isolated simulator fixture. No engine embedding, input mutation or parity proof."};
     NSData *data = [NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:NULL];
     NSString *name = [NSString stringWithFormat:@"keyboard-runtime-%@-%@.json", NSBundle.mainBundle.bundleIdentifier, scenario];
     [data writeToFile:[@#{shared_root.inspect} stringByAppendingPathComponent:name] atomically:YES];
