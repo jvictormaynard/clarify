@@ -238,18 +238,24 @@ final class KeyGridView: UIView {
         delete.addTarget(self, action: #selector(stopDelete), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
         row.addArrangedSubview(delete)
       }
-      if index == 2, model.page == .letters {
+      if index == 2, model.page == .letters || usesModernKeyAppearance {
         row.distribution = .fill
         let buttons = row.arrangedSubviews
-        // The middle seven keys keep the first row's width. Separate gaps let
-        // shift/delete keep the narrower proportions of the Apple reference.
+        // Keep wider gaps beside the side controls on every iOS 26 page.
         let middle = UIStackView(); middle.axis = .horizontal; middle.spacing = 6
         for button in buttons.dropFirst().dropLast() {
           row.removeArrangedSubview(button); button.removeFromSuperview(); middle.addArrangedSubview(button)
         }
         row.insertArrangedSubview(middle, at: 1); row.spacing = 14
-        for button in middle.arrangedSubviews {
-          button.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.1, constant: -5.4).isActive = true
+        if model.page == .letters {
+          // The middle seven letters keep the first row's key width.
+          for button in middle.arrangedSubviews {
+            button.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.1, constant: -5.4).isActive = true
+          }
+        } else {
+          // Five punctuation keys retain the letter row's side-control widths.
+          middle.distribution = .fillEqually
+          buttons.first!.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.15, constant: -13.1).isActive = true
         }
         buttons.first!.widthAnchor.constraint(equalTo: buttons.last!.widthAnchor).isActive = true
       }
