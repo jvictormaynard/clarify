@@ -15,6 +15,10 @@ on:
         description: Exact reviewed commit required for activation-only validation
         type: string
         default: ""
+      private_lab_bundle:
+        description: Reviewed hash-bound simulator lab source bundle (experimental branch only)
+        type: string
+        default: ""
 permissions:
   contents: read
 jobs:
@@ -169,3 +173,104 @@ jobs:
             test "$NATIVE_RESULT" = success
             test "$BUILD_RESULT" = success
             test "$APP_RESULT" = success
+
+  private_keyboard_lab:
+    name: Isolated private keyboard lab
+    if: github.event_name == 'workflow_dispatch' && inputs.private_lab_bundle != ''
+    runs-on: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && 'bitrise-runner-clarify-ios-validation' || 'macos-26' }}
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: ${{ vars.CLARIFY_IOS_RUNNER == 'bitrise' && github.repository == 'jvictormaynard/clarify' && '/Applications/Xcode-26.6.0.app/Contents/Developer' || '/Applications/Xcode_26.6.app/Contents/Developer' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Admit exact source and reviewed lab bundle
+        env:
+          REVIEWED_SOURCE: ${{ inputs.source_sha }}
+          LAB_BUNDLE: ${{ inputs.private_lab_bundle }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$REVIEWED_SOURCE" =~ ^[0-9a-f]{40}$ && "$REVIEWED_SOURCE" == "$GITHUB_SHA" ]]
+          python3 - <<'PYSOURCE'
+          import base64,gzip,hashlib,io,os,tarfile,json
+          from pathlib import Path
+          data=base64.b64decode(os.environ['LAB_BUNDLE'],validate=True)
+          expected='29cfd310285aed121b1109351b57693ea6f31ac258ceec9e97e449dc99d5e612'
+          assert len(data)<=60000 and hashlib.sha256(data).hexdigest()==expected,'Unreviewed lab source'
+          with gzip.GzipFile(fileobj=io.BytesIO(data)) as gz: raw=gz.read(1024*1024+1)
+          assert len(raw)<=1024*1024,'Oversized lab source'
+          root=Path(os.environ['RUNNER_TEMP'])/('private-keyboard-lab-'+os.environ['GITHUB_RUN_ID']+'-'+os.environ['GITHUB_RUN_ATTEMPT'])
+          source=root/'source';source.mkdir(parents=True,exist_ok=False)
+          allowed={'collect.py','generate.rb','run.sh','Sources/Extension.swift','Sources/Host.swift','Sources/Lab.h','Sources/Lab.m','Sources/Tests.swift'}
+          with tarfile.open(fileobj=io.BytesIO(raw),mode='r:') as tar:
+              members=tar.getmembers()
+              assert len(members)==len(allowed) and {m.name for m in members}==allowed
+              for member in members:
+                  assert member.isfile() and member.size<=100000
+                  path=source/member.name;path.parent.mkdir(exist_ok=True)
+                  path.write_bytes(tar.extractfile(member).read());path.chmod(0o700 if member.name=='run.sh' else 0o600)
+          (root/'source-identity.json').write_text(json.dumps({'source':os.environ['GITHUB_SHA'],'run':os.environ['GITHUB_RUN_ID'],'attempt':os.environ['GITHUB_RUN_ATTEMPT'],'bundleSHA256':expected},indent=2)+'\n')
+          PYSOURCE
+      - name: Create a dedicated disposable simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          lab_root="$RUNNER_TEMP/private-keyboard-lab-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          ruby -e "gem 'xcodeproj', '= 1.27.0'; require 'xcodeproj'; puts Xcodeproj::VERSION"
+          lab_device=$(xcrun simctl create "PrivateKeyboardLab-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro com.apple.CoreSimulator.SimRuntime.iOS-26-5)
+          [[ "$lab_device" =~ ^[A-Fa-f0-9-]{36}$ ]]
+          printf '%s\n' "$lab_device" > "$lab_root/simulator-id"
+          xcrun simctl boot "$lab_device"
+          xcrun simctl bootstatus "$lab_device" -b
+      - name: Test isolated app and extension engine contexts
+        shell: bash
+        run: |
+          set +e
+          set -uo pipefail
+          lab_root="$RUNNER_TEMP/private-keyboard-lab-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          lab_device=$(cat "$lab_root/simulator-id")
+          "$lab_root/source/run.sh" app "$lab_device" "$lab_root/app"
+          lab_app_exit=$?
+          "$lab_root/source/run.sh" extension "$lab_device" "$lab_root/extension"
+          lab_extension_exit=$?
+          set -e
+          LAB_APP_EXIT="$lab_app_exit" LAB_EXTENSION_EXIT="$lab_extension_exit" python3 - <<'PYSOURCE'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/('private-keyboard-lab-'+os.environ['GITHUB_RUN_ID']+'-'+os.environ['GITHUB_RUN_ATTEMPT'])
+          (root/'context-results.json').write_text(json.dumps({'appExit':int(os.environ['LAB_APP_EXIT']),'extensionExit':int(os.environ['LAB_EXTENSION_EXIT']),'productAcceptance':False},indent=2)+'\n')
+          PYSOURCE
+          [[ "$lab_app_exit" == 0 && "$lab_extension_exit" == 0 ]]
+      - name: Preserve isolated experiment evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: private-keyboard-lab-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/private-keyboard-lab-${{ github.run_id }}-${{ github.run_attempt }}/
+            !${{ runner.temp }}/private-keyboard-lab-${{ github.run_id }}-${{ github.run_attempt }}/**/DerivedData/**
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Remove only this experiment's simulator
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          lab_root="$RUNNER_TEMP/private-keyboard-lab-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if [[ -f "$lab_root/simulator-id" ]]; then
+            lab_device=$(cat "$lab_root/simulator-id")
+            [[ "$lab_device" =~ ^[A-Fa-f0-9-]{36}$ ]]
+            xcrun simctl list devices --json > "$lab_root/cleanup-devices.json"
+            LAB_DEVICE="$lab_device" LAB_ROOT="$lab_root" python3 - <<'PYSOURCE'
+          import json,os
+          from pathlib import Path
+          devices=json.loads((Path(os.environ['LAB_ROOT'])/'cleanup-devices.json').read_text())['devices']
+          wanted='PrivateKeyboardLab-'+os.environ['GITHUB_RUN_ID']+'-'+os.environ['GITHUB_RUN_ATTEMPT']
+          matches=[d for ds in devices.values() for d in ds if d['udid']==os.environ['LAB_DEVICE']]
+          assert len(matches)==1 and matches[0]['name']==wanted,'Simulator ownership differs'
+          PYSOURCE
+            xcrun simctl shutdown "$lab_device" || true
+            xcrun simctl delete "$lab_device"
+          fi
