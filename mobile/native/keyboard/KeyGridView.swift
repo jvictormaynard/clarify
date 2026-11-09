@@ -253,9 +253,11 @@ final class KeyGridView: UIView {
             button.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.1, constant: -5.4).isActive = true
           }
         } else {
-          // Five punctuation keys retain the letter row's side-control widths.
+          // Add one display pixel to each side control without moving punctuation.
+          let edgePixel = 1 / max(traitCollection.displayScale, 1)
+          row.spacing -= edgePixel
           middle.distribution = .fillEqually
-          buttons.first!.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.15, constant: -13.1).isActive = true
+          buttons.first!.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.15, constant: -13.1 + edgePixel).isActive = true
         }
         buttons.first!.widthAnchor.constraint(equalTo: buttons.last!.widthAnchor).isActive = true
       }
