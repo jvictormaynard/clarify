@@ -370,20 +370,22 @@ class KeyboardViewController: UIInputViewController {
   }
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
+    updateInputTraits()
     ClarifyKeyboardHeightDidAppear(self)
   }
   override func textDidChange(_ textInput: UITextInput?) {
     super.textDidChange(textInput)
+    updateInputTraits()
     // Context is used only locally for casing; it is never saved or sent to Groq.
+    updateCapitalization()
+    updateSuggestions()
+  }
+  private func updateInputTraits() {
     let proxy = textDocumentProxy
     let appearance: UIUserInterfaceStyle = proxy.keyboardAppearance == .dark ? .dark : (proxy.keyboardAppearance == .light ? .light : .unspecified)
     let returnType = proxy.returnKeyType ?? .default
-    let changed = view.overrideUserInterfaceStyle != appearance || keys.returnType != returnType
-    view.overrideUserInterfaceStyle = appearance
-    keys.returnType = returnType
-    updateCapitalization()
-    if changed { keys.rebuild() }
-    updateSuggestions()
+    if view.overrideUserInterfaceStyle != appearance { view.overrideUserInterfaceStyle = appearance }
+    if keys.returnType != returnType { keys.returnType = returnType; keys.rebuild() }
   }
   private func updateCapitalization() {
     let proxy = textDocumentProxy
@@ -399,11 +401,12 @@ class KeyboardViewController: UIInputViewController {
   }
   override func selectionDidChange(_ textInput: UITextInput?) {
     super.selectionDidChange(textInput)
+    updateInputTraits()
     updateCapitalization()
     updateSuggestions()
   }
   override func viewWillAppear(_ animated: Bool) {
-    super.viewWillAppear(animated); attached = true; feedback.prepare(); refreshFromStore(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
+    super.viewWillAppear(animated); attached = true; updateInputTraits(); feedback.prepare(); refreshFromStore(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
     timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.refreshFromStore() }
   }
   override func viewDidDisappear(_ animated: Bool) {

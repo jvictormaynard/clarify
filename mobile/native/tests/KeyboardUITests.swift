@@ -34,6 +34,8 @@ private final class Field: NSObject, UITextDocumentProxy {
   var autocorrectionType: UITextAutocorrectionType = .yes
   var spellCheckingType: UITextSpellCheckingType = .yes
   var keyboardType: UIKeyboardType = .default
+  var keyboardAppearance: UIKeyboardAppearance = .default
+  var returnKeyType: UIReturnKeyType = .default
   var isSecureTextEntry = false
   var autocapitalizationType: UITextAutocapitalizationType = .sentences
   var didInsert: ((String) -> Void)?
@@ -185,6 +187,24 @@ final class KeyboardUITests: XCTestCase {
           let metrics = XCTAttachment(string: "UILabel=\(required), NSStringWithLeading=\(genericHeight), available=\(caption.bounds.height)")
           metrics.name = captureName + "-metrics"; metrics.lifetime = .keepAlways; self.add(metrics)
         }
+      }
+    }
+  }
+  func testReopeningAppliesHostInputTraitsWithoutATextChange() async throws {
+    try await MainActor.run {
+      let keyboard = SelectionKeyboard(); keyboard.loadViewIfNeeded()
+      let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+      keyboard.field.before = "Q"
+      let cases: [(UIKeyboardAppearance, UIReturnKeyType, UIUserInterfaceStyle)] = [
+        (.dark, .search, .dark), (.light, .done, .light), (.default, .default, .unspecified)
+      ]
+      for (appearance, returnType, expectedStyle) in cases {
+        keyboard.field.keyboardAppearance = appearance; keyboard.field.returnKeyType = returnType
+        keyboard.beginAppearanceTransition(true, animated: false); keyboard.endAppearanceTransition()
+        XCTAssertEqual(keyboard.view.overrideUserInterfaceStyle, expectedStyle)
+        XCTAssertEqual(grid.returnType, returnType)
+        XCTAssertEqual(keyboard.field.before, "Q", "Applying input traits must not modify the draft")
+        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
       }
     }
   }
