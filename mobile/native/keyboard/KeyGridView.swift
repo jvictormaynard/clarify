@@ -305,12 +305,13 @@ final class KeyGridView: UIView {
     button.layer.shadowOffset = CGSize(width: 0, height: 1); button.layer.shadowRadius = 0
     button.setTitle(title, for: .normal); button.setTitleColor(.label, for: .normal); button.tintColor = .label
     let uppercaseLetter = title.count == 1 && title.allSatisfy(\.isUppercase)
-    button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 16 : (modern && uppercaseLetter ? 21 : 25))
-    // Smaller capitals and higher baselines improve the measured iOS 26 fit.
+    let compactGlyph = uppercaseLetter || (title.count == 1 && "0123456789".contains(title))
+    button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 16 : (modern && compactGlyph ? 21 : 25))
+    // The iOS 26 references have smaller capitals and digits.
     // Offset titles only; keep key bounds and touch ownership unchanged.
     if modern, title.count == 1 {
       if title.allSatisfy(\.isLowercase) { button.titleVerticalOffset = -7.0 / 3.0 }
-      else if uppercaseLetter { button.titleVerticalOffset = -4.0 / 3.0 }
+      else if compactGlyph { button.titleVerticalOffset = -4.0 / 3.0 }
     }
     button.accessibilityLabel = title; button.accessibilityTraits = .keyboardKey
     button.acceptsPoint = { [weak self, weak button] point in
