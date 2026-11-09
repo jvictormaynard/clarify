@@ -91,7 +91,7 @@ File.write(runtime_probe, <<~OBJC)
       classes[name] = @{@"available": @(cls != Nil), @"instanceSelectors": instance, @"classSelectors": type};
     }
     NSMutableArray *fonts = [NSMutableArray array];
-    for (NSString *name in @[@".SFUI-Regular", @".SFCompact-Regular", @"SFCompact-Regular", @".SFCompactDisplay-Regular"]) {
+    for (NSString *name in @[@".SFUI-Regular", @".SFCompact-Regular", @"SFCompact-Regular", @".SFCompactDisplay-Regular", @".Keycaps-Keys"]) {
       UIFont *font = [UIFont fontWithName:name size:25];
       [fonts addObject:@{@"requested": name, @"resolved": font.fontName ?: [NSNull null]}];
     }

@@ -51,6 +51,10 @@ final class KeyGridView: UIView {
   private var presses: [AnyHashable: KeyButton] = [:]
   private var rebuildPending = false
   private var layoutSignature = ""
+  private var usesModernKeyAppearance: Bool {
+    if #available(iOS 26.0, *) { return true }
+    return false
+  }
 
   func track(_ touches: Set<UITouch>, phase: UITouch.Phase, event: UIEvent?) {
     for touch in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
@@ -132,13 +136,16 @@ final class KeyGridView: UIView {
   override init(frame: CGRect) {
     super.init(frame: frame)
     isMultipleTouchEnabled = true
-    stack.axis = .vertical; stack.spacing = 10; stack.distribution = .fillEqually
+    let modern = usesModernKeyAppearance
+    // The iOS 26 portrait reference has 43-point keys on a 54-point row pitch.
+    // Keep the existing input-view height and the toolbar's interaction area.
+    stack.axis = .vertical; stack.spacing = modern ? 11 : 10; stack.distribution = .fillEqually
     addSubview(stack); stack.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([
-      stack.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-      stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
-      stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-      stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6)
+      stack.topAnchor.constraint(equalTo: topAnchor, constant: modern ? 12 : 4),
+      stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: modern ? -3 : -6),
+      stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: modern ? 6.5 : 6),
+      stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: modern ? -6.5 : -6)
     ])
     rebuild()
   }
@@ -230,7 +237,11 @@ final class KeyGridView: UIView {
       self.model.page = self.model.page == .letters ? .numbers : .letters; self.rebuild()
     }
     bottom.addArrangedSubview(mode)
-    mode.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 0.113).isActive = true
+    let wideBottomControls = usesModernKeyAppearance && !needsGlobe
+    // With the system globe below the grid, the side controls each occupy a
+    // quarter of the row's key pitch; subtract their visible inter-key gaps.
+    mode.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: wideBottomControls ? 0.25 : 0.113,
+      constant: wideBottomControls ? -4.5 : 0).isActive = true
     if needsGlobe {
       let globe = key("", special: true) {}; globe.setImage(UIImage(systemName: "globe"), for: .normal)
       globe.isGlobe = true
@@ -239,13 +250,22 @@ final class KeyGridView: UIView {
       globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
       bottom.addArrangedSubview(globe); globe.widthAnchor.constraint(equalTo: mode.widthAnchor).isActive = true
     }
-    bottom.addArrangedSubview(key(L("espaço")) { [weak self] in self?.insert(" ") })
+    let space = key(L("espaço")) { [weak self] in self?.insert(" ") }
+    if usesModernKeyAppearance { space.setTitle("", for: .normal) }
+    bottom.addArrangedSubview(space)
     let returns: [UIReturnKeyType: String] = [.go: L("ir"), .search: L("buscar"), .send: L("enviar"), .next: L("próximo"), .done: "OK", .join: L("entrar"), .route: L("rota")]
     let enter = key(returns[returnType] ?? L("retorno"), special: true) { [weak self] in self?.insert("\n") }
+    if usesModernKeyAppearance && returnType == .default {
+      enter.setTitle("", for: .normal)
+      enter.setImage(UIImage(systemName: "return"), for: .normal)
+      enter.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 22, weight: .regular), forImageIn: .normal)
+    }
     if returnType != .default {
       enter.restingColor = .systemBlue; enter.backgroundColor = .systemBlue; enter.setTitleColor(.white, for: .normal)
     }
-    bottom.addArrangedSubview(enter); enter.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 0.23).isActive = true
+    bottom.addArrangedSubview(enter)
+    enter.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: wideBottomControls ? 0.25 : 0.23,
+      constant: wideBottomControls ? -4.5 : 0).isActive = true
     func buttons(in view: UIView) -> [KeyButton] {
       view.subviews.flatMap { child in
         if let key = child as? KeyButton { return [key] }
@@ -261,6 +281,7 @@ final class KeyGridView: UIView {
   }
   private func key(_ title: String, special: Bool = false, action: @escaping () -> Void) -> KeyButton {
     let button = KeyButton(type: .custom)
+    let modern = usesModernKeyAppearance
     button.grid = self; button.isMultipleTouchEnabled = true
     button.restingColor = UIColor { traits in
       // Lift the system material below each dark key instead of covering it
@@ -271,11 +292,11 @@ final class KeyGridView: UIView {
           ? UIColor(white: stronger ? 0.6 : 0.47, alpha: 1)
           : UIColor(white: 1, alpha: stronger ? 0.36 : 0.24)
       }
-      return special ? UIColor(white: 0.68, alpha: 1) : .white
+      return special && !modern ? UIColor(white: 0.68, alpha: 1) : .white
     }
-    button.backgroundColor = button.restingColor; button.layer.cornerRadius = 10
-    button.layer.cornerCurve = .continuous
-    button.layer.shadowColor = UIColor.black.cgColor; button.layer.shadowOpacity = 0.12
+    button.backgroundColor = button.restingColor; button.layer.cornerRadius = modern ? 8 : 10
+    button.layer.cornerCurve = modern ? .circular : .continuous
+    button.layer.shadowColor = UIColor.black.cgColor; button.layer.shadowOpacity = modern ? 0 : 0.12
     button.layer.shadowOffset = CGSize(width: 0, height: 1); button.layer.shadowRadius = 0
     button.setTitle(title, for: .normal); button.setTitleColor(.label, for: .normal); button.tintColor = .label
     button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 16 : 25)

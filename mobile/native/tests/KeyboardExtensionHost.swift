@@ -40,7 +40,15 @@ final class KeyboardHostController: UIViewController {
     reset.addAction(UIAction { [weak self] _ in self?.heights = []; self?.sampledHeights = []; self?.visibleHeights = []; self?.publishTrace() }, for: .touchUpInside)
     let activate = UIButton(type: .system); activate.setTitle("Open activation fixture", for: .normal)
     activate.addAction(UIAction { _ in UIApplication.shared.open(URL(string: "clarify://fixture-preflight")!) }, for: .touchUpInside)
-    for element in [field, trace, returnTrace, dismiss, reset, activate] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
+    let appearance = UIButton(type: .system); appearance.setTitle("Toggle appearance", for: .normal)
+    appearance.addAction(UIAction { [weak self] _ in
+      guard let self = self else { return }
+      let dark = self.view.window?.overrideUserInterfaceStyle != .dark
+      self.view.window?.overrideUserInterfaceStyle = dark ? .dark : .light
+      self.field.keyboardAppearance = dark ? .dark : .light
+      self.field.reloadInputViews()
+    }, for: .touchUpInside)
+    for element in [field, trace, returnTrace, dismiss, reset, activate, appearance] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
     NSLayoutConstraint.activate([
       trace.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
       trace.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20), trace.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
@@ -48,6 +56,7 @@ final class KeyboardHostController: UIViewController {
       reset.topAnchor.constraint(equalTo: dismiss.topAnchor), reset.trailingAnchor.constraint(equalTo: trace.trailingAnchor),
       returnTrace.topAnchor.constraint(equalTo: reset.bottomAnchor, constant: 16), returnTrace.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       activate.topAnchor.constraint(equalTo: returnTrace.bottomAnchor, constant: 16), activate.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
+      appearance.topAnchor.constraint(equalTo: activate.bottomAnchor, constant: 12), appearance.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       field.leadingAnchor.constraint(equalTo: trace.leadingAnchor), field.trailingAnchor.constraint(equalTo: trace.trailingAnchor),
       field.heightAnchor.constraint(equalToConstant: 44), field.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8)
     ])

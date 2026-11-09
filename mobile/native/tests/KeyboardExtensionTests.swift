@@ -82,12 +82,7 @@ final class KeyboardExtensionTests: XCTestCase {
     let expected = uppercase ? "Q" : "q"
     let firstLetter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", expected)).firstMatch
     XCTAssertTrue(firstLetter.waitForExistence(timeout: 5), "Reference case did not settle: \(name)")
-    let screen = XCTAttachment(screenshot: app.screenshot())
-    screen.name = name; screen.lifetime = .keepAlways; add(screen)
-    // Accessibility frames are reference coordinates, not visible key shapes
-    // or Apple's adaptive touch targets. Keep the pixels and tree alongside them.
-    let tree = XCTAttachment(string: app.debugDescription)
-    tree.name = "\(name)-accessibility"; tree.lifetime = .keepAlways; add(tree)
+    captureKeyboardAppearance(name, in: app)
     var keys: [[String: Any]] = []
     for letter in "qwertyuiopasdfghjklzxcvbnm" {
       let lower = String(letter), upper = lower.uppercased()
@@ -101,6 +96,37 @@ final class KeyboardExtensionTests: XCTestCase {
       "coordinateMeaning": "Accessibility frames in screen points; not visible bounds or adaptive touch targets"], options: [.sortedKeys])
     let geometry = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
     geometry.name = "\(name)-geometry"; geometry.lifetime = .keepAlways; add(geometry)
+  }
+  private func captureKeyboardAppearance(_ name: String, in app: XCUIApplication) {
+    let screen = XCTAttachment(screenshot: app.screenshot())
+    screen.name = name; screen.lifetime = .keepAlways; add(screen)
+    // AX frames are reference coordinates, not visible shapes or adaptive targets.
+    let tree = XCTAttachment(string: app.debugDescription)
+    tree.name = "\(name)-accessibility"; tree.lifetime = .keepAlways; add(tree)
+  }
+  private func capturePagesAndDarkAppearance(_ prefix: String, in app: XCUIApplication) throws {
+    func control(_ labels: [String]) -> XCUIElement {
+      app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+    }
+    func pages(_ suffix: String) {
+      let numbers = control(["numbers", "123"])
+      XCTAssertTrue(numbers.waitForExistence(timeout: 5), app.debugDescription); numbers.tap()
+      XCTAssertTrue(control(["1"]).waitForExistence(timeout: 5), app.debugDescription)
+      captureKeyboardAppearance("\(prefix)-\(suffix)-numbers", in: app)
+      let symbols = control(["symbols", "#+="])
+      XCTAssertTrue(symbols.waitForExistence(timeout: 5), app.debugDescription); symbols.tap()
+      XCTAssertTrue(control(["["]).waitForExistence(timeout: 5), app.debugDescription)
+      captureKeyboardAppearance("\(prefix)-\(suffix)-symbols", in: app)
+      let letters = control(["letters", "ABC"])
+      XCTAssertTrue(letters.waitForExistence(timeout: 5), app.debugDescription); letters.tap()
+      XCTAssertTrue(control(["q"]).waitForExistence(timeout: 5), app.debugDescription)
+    }
+    pages("default")
+    app.buttons["Toggle appearance"].tap()
+    try captureKeyboardReference("\(prefix)-dark-lowercase", uppercase: false, in: app)
+    pages("dark")
+    app.buttons["Toggle appearance"].tap()
+    XCTAssertTrue(control(["q"]).waitForExistence(timeout: 5), app.debugDescription)
   }
   private func activateHost(_ app: XCUIApplication) {
     app.activate()
@@ -147,6 +173,7 @@ final class KeyboardExtensionTests: XCTestCase {
     app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch.tap()
     expectText("Q", in: app)
     try captureKeyboardReference("apple-default-lowercase", uppercase: false, in: app)
+    try capturePagesAndDarkAppearance("apple", in: app)
   }
   func testInstalledKeyboardTypingAndActivation() throws {
     continueAfterFailure = false
@@ -201,6 +228,7 @@ final class KeyboardExtensionTests: XCTestCase {
     XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription); letter.tap()
     expectText("Q", in: app)
     try captureKeyboardReference("clarify-default-lowercase", uppercase: false, in: app)
+    try capturePagesAndDarkAppearance("clarify", in: app)
     let space = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["space", "espaço", "espacio"])).firstMatch
     XCTAssertTrue(space.isHittable, "The bottom keyboard row must be usable")
     space.tap()

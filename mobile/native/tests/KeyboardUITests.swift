@@ -194,7 +194,7 @@ final class KeyboardUITests: XCTestCase {
       let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
       for punctuation in [".", "?", "!"] {
         keyboard.field.before = "Olá" + punctuation; keyboard.textDidChange(nil)
-        let space = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == L("espaço") })
+        let space = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("espaço") })
         space.sendActions(for: .touchUpInside)
         XCTAssertEqual(grid.model.shift, .once)
         let letter = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal)?.lowercased() == "q" })
@@ -292,7 +292,7 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(store.keyboardAdditions(scope: "guest").map { $0.1.term }, ["helllo"])
       keyboard.field.selectedText = nil; keyboard.selectionDidChange(nil)
       let space = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
-        .first { $0.title(for: .normal) == L("espaço") })
+        .first { $0.accessibilityLabel == L("espaço") })
       space.sendActions(for: .touchUpInside)
       XCTAssertEqual(keyboard.field.before, "helllo ", "A newly saved word must not wait for the vocabulary cache to expire")
     }
