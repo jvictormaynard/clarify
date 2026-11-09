@@ -78,6 +78,30 @@ final class KeyboardExtensionTests: XCTestCase {
     }, evaluatedWith: nil)
     wait(for: [inserted], timeout: 3)
   }
+  private func captureKeyboardReference(_ name: String, uppercase: Bool, in app: XCUIApplication) throws {
+    let expected = uppercase ? "Q" : "q"
+    let firstLetter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", expected)).firstMatch
+    XCTAssertTrue(firstLetter.waitForExistence(timeout: 5), "Reference case did not settle: \(name)")
+    let screen = XCTAttachment(screenshot: app.screenshot())
+    screen.name = name; screen.lifetime = .keepAlways; add(screen)
+    // Accessibility frames are reference coordinates, not visible key shapes
+    // or Apple's adaptive touch targets. Keep the pixels and tree alongside them.
+    let tree = XCTAttachment(string: app.debugDescription)
+    tree.name = "\(name)-accessibility"; tree.lifetime = .keepAlways; add(tree)
+    var keys: [[String: Any]] = []
+    for letter in "qwertyuiopasdfghjklzxcvbnm" {
+      let lower = String(letter), upper = lower.uppercased()
+      let key = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", lower, upper)).firstMatch
+      XCTAssertTrue(key.exists, "Missing reference letter \(lower): \(name)")
+      let frame = key.frame
+      keys.append(["letter": lower, "label": key.label, "x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height])
+    }
+    let data = try JSONSerialization.data(withJSONObject: ["name": name, "uppercase": uppercase, "keys": keys,
+      "os": ProcessInfo.processInfo.operatingSystemVersionString,
+      "coordinateMeaning": "Accessibility frames in screen points; not visible bounds or adaptive touch targets"], options: [.sortedKeys])
+    let geometry = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+    geometry.name = "\(name)-geometry"; geometry.lifetime = .keepAlways; add(geometry)
+  }
   private func activateHost(_ app: XCUIApplication) {
     app.activate()
     // Settings can return before SpringBoard finishes scaling the host window.
@@ -114,6 +138,15 @@ final class KeyboardExtensionTests: XCTestCase {
       XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
       try checkTrace(in: app, opening: "Native keyboard opening \(index)", monotonic: true)
     }
+    app.terminate()
+    app.launchArguments = ["--native-keyboard-reference"]; app.launch()
+    app.textFields["composer"].tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertFalse(app.buttons["clarify.keyboard.record"].exists, "The reference must use Apple's keyboard")
+    try captureKeyboardReference("apple-default-uppercase", uppercase: true, in: app)
+    app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch.tap()
+    expectText("Q", in: app)
+    try captureKeyboardReference("apple-default-lowercase", uppercase: false, in: app)
   }
   func testInstalledKeyboardTypingAndActivation() throws {
     continueAfterFailure = false
@@ -163,9 +196,11 @@ final class KeyboardExtensionTests: XCTestCase {
     XCTAssertTrue(app.buttons["clarify.keyboard.start"].waitForExistence(timeout: 5),
                   "The installed extension must receive Full Access before testing activation")
     try checkTrace(in: app, opening: "Switching to the extension", strict: strictHeight)
+    try captureKeyboardReference("clarify-default-uppercase", uppercase: true, in: app)
     let letter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch
     XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription); letter.tap()
     expectText("Q", in: app)
+    try captureKeyboardReference("clarify-default-lowercase", uppercase: false, in: app)
     let space = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["space", "espaço", "espacio"])).firstMatch
     XCTAssertTrue(space.isHittable, "The bottom keyboard row must be usable")
     space.tap()

@@ -1,7 +1,13 @@
 import UIKit
 
 @main
-final class KeyboardHostApp: UIResponder, UIApplicationDelegate {}
+final class KeyboardHostApp: UIResponder, UIApplicationDelegate {
+  func application(_ application: UIApplication, shouldAllowExtensionPointIdentifier identifier: UIApplication.ExtensionPointIdentifier) -> Bool {
+    // Use the ordinary text field for the Apple reference. Secure entry changes
+    // keyboard traits, so it is not an equivalent appearance reference.
+    identifier != .keyboard || !ProcessInfo.processInfo.arguments.contains("--native-keyboard-reference")
+  }
+}
 
 final class KeyboardHostScene: UIResponder, UIWindowSceneDelegate {
   var window: UIWindow?
