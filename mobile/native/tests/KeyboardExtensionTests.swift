@@ -140,9 +140,17 @@ final class KeyboardExtensionTests: XCTestCase {
       // iOS can default to adding this language to an existing bilingual keyboard.
       let regionalSetup = settings.navigationBars.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", names, names)).firstMatch
       let separate = settings.cells.matching(NSPredicate(format: "label == %@", "Add New Keyboard")).firstMatch
-      if regionalSetup.exists && separate.waitForExistence(timeout: 2) { separate.tap() }
+      if regionalSetup.exists && separate.waitForExistence(timeout: 2) {
+        separate.tap()
+        let layout = settings.cells.matching(NSPredicate(format: "label == %@", "QWERTY")).firstMatch
+        XCTAssertTrue(layout.waitForExistence(timeout: 5), settings.debugDescription); layout.tap()
+      }
       let done = settings.navigationBars.buttons["Done"]
-      if done.waitForExistence(timeout: 2) { done.tap() }
+      if done.waitForExistence(timeout: 2) {
+        let ready = expectation(for: NSPredicate { _, _ in done.isEnabled && done.isHittable }, evaluatedWith: nil)
+        wait(for: [ready], timeout: 5)
+        done.tap()
+      }
       XCTAssertTrue(row(names).waitForExistence(timeout: 5), "Keyboard was not added: \(language). \(settings.debugDescription)")
     }
     app.launchArguments = ["--native-keyboard-reference"]; app.launch()
