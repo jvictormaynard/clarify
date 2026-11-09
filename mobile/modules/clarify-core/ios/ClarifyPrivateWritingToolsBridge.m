@@ -1,0 +1,244 @@
+#import "ClarifyPrivateWritingToolsBridge.h"
+#import <objc/runtime.h>
+#import <dlfcn.h>
+#import <TargetConditionals.h>
+#import <stdbool.h>
+#import <stdlib.h>
+#import <string.h>
+
+// Declarations only; every private send is guarded against the loaded method.
+// https://github.com/qingralf/iOS26-Runtime-Headers/blob/cbf1d4c4122f3c6807eba36693581882640e5c6c/PrivateFrameworks/WritingToolsUI.framework/WTWritingToolsController.h
+@interface NSObject (ClarifyPrivateWritingToolsDeclarations)
++ (bool)isAvailable;
+- (instancetype)initWithTool:(long long)tool prompt:(id)prompt;
+- (void)setSourceResponder:(id)responder sourceTextInput:(id)input;
+- (void)startWritingTools;
+- (bool)isWritingToolsActive;
+@end
+
+static const void *CWSessionKey = &CWSessionKey;
+static void *CWTextComposerHandle;
+static void *CWWritingToolsHandle;
+
+@interface ClarifyPrivateWritingToolsSession : NSObject
+@property (nonatomic, strong) id controller;
+@property (nonatomic, weak) UITextView *textView;
+@property (nonatomic) BOOL observedActive;
+@property (nonatomic) NSTimeInterval deadline;
+@end
+@implementation ClarifyPrivateWritingToolsSession
+@end
+
+// One UI session, including uncertain startup. No direct service work is admitted.
+static ClarifyPrivateWritingToolsSession *CWSession;
+
+static BOOL CWPlatform(void) {
+#if TARGET_OS_IOS && !TARGET_OS_SIMULATOR && !TARGET_OS_MACCATALYST
+  if (@available(iOS 18.0, *)) return YES;
+#endif
+  return NO;
+}
+
+static void CWLoad(void) {
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    if (!CWPlatform()) return;
+    CWTextComposerHandle = dlopen("/System/Library/PrivateFrameworks/TextComposer.framework/TextComposer", RTLD_LAZY | RTLD_LOCAL);
+    CWWritingToolsHandle = dlopen("/System/Library/PrivateFrameworks/WritingToolsUI.framework/WritingToolsUI", RTLD_LAZY | RTLD_LOCAL);
+    // Keep handles open: runtime classes can outlive this bridge.
+  });
+}
+
+static BOOL CWType(char *actual, const char *expected) {
+  BOOL matches = actual && strcmp(actual, expected) == 0;
+  free(actual);
+  return matches;
+}
+
+// Use runtime metadata, not forwarding or an untrusted methodSignature override.
+static BOOL CWMethod(Class cls, BOOL classMethod, SEL selector,
+                     const char *result, const char * const *arguments, unsigned count) {
+  if (!cls) return NO;
+  Method method = classMethod ? class_getClassMethod(cls, selector) : class_getInstanceMethod(cls, selector);
+  if (!method || method_getNumberOfArguments(method) != count + 2) return NO;
+  if (!CWType(method_copyReturnType(method), result)
+      || !CWType(method_copyArgumentType(method, 0), @encode(id))
+      || !CWType(method_copyArgumentType(method, 1), @encode(SEL))) return NO;
+  for (unsigned index = 0; index < count; index++) {
+    if (!CWType(method_copyArgumentType(method, index + 2), arguments[index])) return NO;
+  }
+  return YES;
+}
+
+static BOOL CWUIShape(Class cls) {
+  const char *initArgs[] = { @encode(long long), @encode(id) };
+  const char *sourceArgs[] = { @encode(id), @encode(id) };
+  return CWMethod(cls, YES, @selector(alloc), @encode(id), NULL, 0)
+    && CWMethod(cls, YES, @selector(isAvailable), @encode(bool), NULL, 0)
+    && CWMethod(cls, NO, @selector(initWithTool:prompt:), @encode(id), initArgs, 2)
+    && CWMethod(cls, NO, @selector(setSourceResponder:sourceTextInput:), @encode(void), sourceArgs, 2)
+    && CWMethod(cls, NO, @selector(startWritingTools), @encode(void), NULL, 0)
+    && CWMethod(cls, NO, @selector(isWritingToolsActive), @encode(bool), NULL, 0);
+}
+
+static BOOL CWStyle(NSString *style, long long *tool) {
+  // These are WTRequestedTool values, NOT TextComposer rewritingType strings.
+  // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/PAL/pal/spi/cocoa/WritingToolsSPI.h
+  if ([style isEqualToString:@"default"]) *tool = 2;
+  else if ([style isEqualToString:@"formal"]) *tool = 12;
+  else if ([style isEqualToString:@"casual"]) *tool = 11;
+  else return NO;
+  return YES;
+}
+
+static void CWRefreshSession(void) {
+  ClarifyPrivateWritingToolsSession *session = CWSession;
+  if (!session) return;
+  @try {
+    if (!CWMethod(object_getClass(session.controller), NO, @selector(isWritingToolsActive), @encode(bool), NULL, 0)) return;
+    bool active = [session.controller isWritingToolsActive];
+    if (active) session.observedActive = YES;
+    if (!active && session.observedActive) {
+      UITextView *view = session.textView;
+      if (view && objc_getAssociatedObject(view, CWSessionKey) == session)
+        objc_setAssociatedObject(view, CWSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+      CWSession = nil;
+    }
+  } @catch (__unused NSException *exception) {
+    // Unknown lifecycle: retain the slot. Never infer cancellation from an error.
+  }
+}
+
+static void CWObserveSession(ClarifyPrivateWritingToolsSession *session) {
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    if (CWSession != session) return;
+    CWRefreshSession();
+    if (CWSession == session && NSProcessInfo.processInfo.systemUptime < session.deadline)
+      CWObserveSession(session);
+    // After 30 seconds, stop polling. isBusy/open can still observe a known end.
+    // An unconfirmed session keeps its slot; no overlapping request is allowed.
+  });
+}
+
+static NSDictionary<NSString *, id> *CWReply(NSString *code, NSString *error, NSString *diagnostics) {
+  // No source, result, operation ID or exception text in diagnostics. This
+  // rejected route produces no output (and therefore cannot exceed 8k output).
+  return @{ @"text": @"", @"error": error, @"code": code,
+            @"diagnostics": diagnostics, @"route": @"private_textcomposer" };
+}
+
+@implementation ClarifyPrivateWritingToolsBridge
++ (NSDictionary<NSString *, id> *)probe {
+  if (!NSThread.isMainThread) return @{ @"code": @"main_thread_required" };
+  @try {
+    CWLoad();
+    Class tc = NSClassFromString(@"TCTextCompositionAssistant");
+    Class ui = NSClassFromString(@"WTWritingToolsController");
+    SEL rewrite = NSSelectorFromString(@"requestRewritingOfAttributedString:range:rewritingType:options:completionHandler:");
+    const char *args[] = { @encode(id), @encode(NSRange), @encode(id), @encode(id), "@?" };
+    return @{ @"platformAvailable": @(CWPlatform()),
+      @"textComposerLoaded": @(CWTextComposerHandle != NULL),
+      @"writingToolsUILoaded": @(CWWritingToolsHandle != NULL),
+      @"assistantClass": @(tc != Nil), @"controllerClass": @(ui != Nil),
+      @"sharedAssistantSignature": @(CWMethod(tc, YES, NSSelectorFromString(@"sharedAssistant"), @encode(id), NULL, 0)),
+      @"rewriteSelector": @(tc && class_getInstanceMethod(tc, rewrite) != NULL),
+      @"rewriteOuterSignature": @(CWMethod(tc, NO, rewrite, @encode(void), args, 5)),
+      @"callbackVerified": @NO, @"rewriteIdentifiersVerified": @NO,
+      @"directAvailable": @NO, @"controllerSignatures": @(CWUIShape(ui)),
+      @"code": @"direct_contract_unverified" };
+  } @catch (__unused NSException *exception) {
+    return @{ @"code": @"probe_exception", @"directAvailable": @NO };
+  }
+}
+
++ (BOOL)isBusy {
+  if (!NSThread.isMainThread) return YES;
+  CWRefreshSession();
+  return CWSession != nil;
+}
+
++ (void)rewrite:(NSString *)source style:(NSString *)style operationID:(NSString *)operationID
+     completion:(void (^)(NSDictionary<NSString *, id> *))completion {
+  if (!NSThread.isMainThread) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      completion(CWReply(@"main_thread_required", @"Main thread required.", @"request_rejected"));
+    });
+    return;
+  }
+  long long tool = 0;
+  NSDictionary *reply;
+  if (source.length == 0 || source.length > 2000 || operationID.length == 0 || operationID.length > 128 || !CWStyle(style, &tool)) {
+    reply = CWReply(@"invalid_input", @"Invalid private rewrite input.", @"request_rejected");
+  } else if ([self isBusy]) {
+    reply = CWReply(@"busy", @"A private writing session is still pending.", @"completion_unconfirmed");
+  } else {
+    // Runtime headers expose only `id /* block */`, not its argument contract.
+    // They also do not establish rewritingType string constants. Never call the
+    // assistant, synthesize a callback ABI, or borrow WTRequestedTool integers.
+    // https://github.com/qingralf/iOS26-Runtime-Headers/blob/cbf1d4c4122f3c6807eba36693581882640e5c6c/PrivateFrameworks/TextComposer.framework/TCTextCompositionAssistant.h
+    reply = CWReply(@"direct_contract_unverified", @"Private rewrite callback and style identifiers are not verified.",
+                    @"callback_unverified;rewriting_type_unverified;model_work_started=0");
+  }
+  // Synchronous rejection has no in-flight work, late callback, timeout, retry
+  // or fallback. Keep source unchanged; the caller retains its original draft.
+  completion(reply);
+}
+
++ (void)cancelOperation:(NSString *)operationID {
+  if (!NSThread.isMainThread) return;
+  (void)operationID;
+  // No direct request can start. Do not cancel UI owned by a different contract
+  // or clear an uncertain session slot without evidence that it has finished.
+}
+
++ (BOOL)openToolForTextView:(UITextView *)textView style:(NSString *)style
+               diagnostics:(NSString * __autoreleasing *)diagnostics {
+  if (diagnostics) *diagnostics = @"ui_request_rejected";
+  if (!NSThread.isMainThread) {
+    if (diagnostics) *diagnostics = @"main_thread_required";
+    return NO;
+  }
+  @try {
+    long long tool = 0;
+    if (!CWPlatform() || !CWStyle(style, &tool) || !textView.window || !textView.editable
+        || textView.text.length == 0 || textView.text.length > 2000
+        || UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return NO;
+    if ([self isBusy]) {
+      if (diagnostics) *diagnostics = @"busy;completion_unconfirmed";
+      return NO;
+    }
+    CWLoad();
+    Class cls = NSClassFromString(@"WTWritingToolsController");
+    if (!CWUIShape(cls)) {
+      if (diagnostics) *diagnostics = @"controller_signature_unavailable";
+      return NO;
+    }
+    if (![cls isAvailable]) {
+      if (diagnostics) *diagnostics = @"controller_unavailable";
+      return NO;
+    }
+    if (![textView becomeFirstResponder]) return NO;
+    id allocated = [cls alloc];
+    if (!allocated || !CWUIShape(object_getClass(allocated))) return NO;
+    id controller = [allocated initWithTool:tool prompt:nil];
+    if (!controller || !CWUIShape(object_getClass(controller))) return NO;
+    [controller setSourceResponder:textView sourceTextInput:textView];
+    ClarifyPrivateWritingToolsSession *session = [ClarifyPrivateWritingToolsSession new];
+    session.controller = controller;
+    session.textView = textView;
+    session.deadline = NSProcessInfo.processInfo.systemUptime + 30.0;
+    CWSession = session;
+    objc_setAssociatedObject(textView, CWSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // Retain before invocation, including when start throws after side effects.
+    CWObserveSession(session);
+    if (!CWMethod(object_getClass(controller), NO, @selector(startWritingTools), @encode(void), NULL, 0)) return NO;
+    [controller startWritingTools];
+    CWRefreshSession();
+    if (diagnostics) *diagnostics = @"ui_start_invoked;result_unconfirmed";
+    return YES;
+  } @catch (__unused NSException *exception) {
+    if (diagnostics) *diagnostics = @"ui_exception;result_unconfirmed";
+    return NO;
+  }
+}
+@end
