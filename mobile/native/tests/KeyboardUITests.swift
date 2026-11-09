@@ -1552,8 +1552,14 @@ final class KeyboardUITests: XCTestCase {
         XCTAssertNotNil(preview)
         if let preview = preview {
           XCTAssertTrue(keyboard.view.bounds.contains(preview.frame))
-          // The A preview extends above the first key row, as in the reference.
-          XCTAssertLessThan(preview.frame.minY, grid.frame.minY)
+          // The grid includes a top inset; compare with an actual first-row
+          // key rather than treating the container's edge as the key row.
+          let firstRowKey = descendants(grid).compactMap { $0 as? UIButton }
+            .first { $0.title(for: .normal)?.lowercased() == "q" }
+          XCTAssertNotNil(firstRowKey)
+          if let firstRowKey = firstRowKey {
+            XCTAssertLessThan(preview.frame.minY, firstRowKey.convert(firstRowKey.bounds, to: keyboard.view).minY)
+          }
         }
         let renderer = UIGraphicsImageRenderer(bounds: keyboard.view.bounds)
         let image = renderer.image { keyboard.view.layer.render(in: $0.cgContext) }
