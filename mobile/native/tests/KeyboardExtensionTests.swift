@@ -120,6 +120,10 @@ final class KeyboardExtensionTests: XCTestCase {
     if !row(names).exists {
       let add = settings.cells["AddNewKeyboard"]
       XCTAssertTrue(add.waitForExistence(timeout: 5), settings.debugDescription); add.tap()
+      // The regional row can be far below the initial viewport in this list.
+      let search = settings.searchFields["Search"]
+      XCTAssertTrue(search.waitForExistence(timeout: 5), settings.debugDescription)
+      search.tap(); search.typeText(group)
       // iOS can list regional choices directly or group them under a language.
       let choices = row(names), grouped = row([group], exact: true)
       var selected = false
