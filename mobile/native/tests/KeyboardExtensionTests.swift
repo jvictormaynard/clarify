@@ -137,6 +137,10 @@ final class KeyboardExtensionTests: XCTestCase {
         settings.swipeUp()
       }
       XCTAssertTrue(selected, "Exact native keyboard unavailable: \(language). \(settings.debugDescription)")
+      // iOS can default to adding this language to an existing bilingual keyboard.
+      let regionalSetup = settings.navigationBars.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", names, names)).firstMatch
+      let separate = settings.cells.matching(NSPredicate(format: "label == %@", "Add New Keyboard")).firstMatch
+      if regionalSetup.exists && separate.waitForExistence(timeout: 2) { separate.tap() }
       let done = settings.navigationBars.buttons["Done"]
       if done.waitForExistence(timeout: 2) { done.tap() }
       XCTAssertTrue(row(names).waitForExistence(timeout: 5), "Keyboard was not added: \(language). \(settings.debugDescription)")
