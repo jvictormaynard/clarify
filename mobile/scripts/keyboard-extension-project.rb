@@ -9,145 +9,80 @@ container = project.new_target(:application, 'ActivationContainer', :ios, '16.4'
 container.add_dependency(keyboard); tests.add_dependency(app)
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionHost.swift')))
 shared_root = File.join(fixture, 'Shared'); Dir.mkdir(shared_root)
-# Runtime experiments stay in the isolated simulator fixture. Do not link this
-# probe into the distributed app or change the active keyboard's input state.
-runtime_probe = File.join(fixture, 'KeyboardReferenceProbe.m')
-File.write(runtime_probe, <<~OBJC)
-  #import <UIKit/UIKit.h>
-  #import <objc/runtime.h>
-  #import <TargetConditionals.h>
-  #import <math.h>
-  #import <string.h>
-  #if TARGET_OS_SIMULATOR
-  static id ReferenceObject(id target, NSString *name, NSMutableDictionary *errors) {
-    if (!target) return nil;
-    SEL selector = NSSelectorFromString(name);
-    NSMethodSignature *signature = [target methodSignatureForSelector:selector];
-    if (!signature || signature.numberOfArguments != 2 || signature.methodReturnType[0] != '@' ||
-        signature.methodReturnType[1] == '?' || signature.methodReturnLength != sizeof(id)) return nil;
-    @try {
-      NSInvocation *call = [NSInvocation invocationWithMethodSignature:signature];
-      call.target = target; call.selector = selector; [call invoke];
-      __unsafe_unretained id value = nil; [call getReturnValue:&value];
-      return value;
-    } @catch (NSException *error) { errors[name] = error.name; return nil; }
-  }
-  static id ReferenceScalar(id target, NSString *name, NSMutableDictionary *errors) {
-    if (!target) return [NSNull null];
-    NSMethodSignature *signature = [target methodSignatureForSelector:NSSelectorFromString(name)];
-    BOOL isDouble = signature && strcmp(signature.methodReturnType, @encode(double)) == 0;
-    BOOL isRect = signature && strcmp(signature.methodReturnType, @encode(CGRect)) == 0;
-    if (!signature || signature.numberOfArguments != 2 || (!isDouble && !isRect) ||
-        signature.methodReturnLength != (isDouble ? sizeof(double) : sizeof(CGRect))) return [NSNull null];
-    @try {
-      NSInvocation *call = [NSInvocation invocationWithMethodSignature:signature];
-      call.target = target; call.selector = NSSelectorFromString(name); [call invoke];
-      if (isDouble) { double value = 0; [call getReturnValue:&value]; return isfinite(value) ? @(value) : [NSNull null]; }
-      CGRect rect = CGRectZero; [call getReturnValue:&rect];
-      if (!isfinite(rect.origin.x) || !isfinite(rect.origin.y) || !isfinite(rect.size.width) || !isfinite(rect.size.height)) return [NSNull null];
-      return @{@"x": @(rect.origin.x), @"y": @(rect.origin.y), @"width": @(rect.size.width), @"height": @(rect.size.height)};
-    } @catch (NSException *error) { errors[name] = error.name; return [NSNull null]; }
-  }
-  static void ReferenceTree(id tree, NSMutableArray *nodes, NSUInteger depth, NSMutableDictionary *errors) {
-    if (!tree || depth > 6 || nodes.count >= 200) return;
-    id name = ReferenceObject(tree, @"name", errors), text = ReferenceObject(tree, @"displayString", errors);
-    id geometry = ReferenceObject(tree, @"geometry", errors);
-    [nodes addObject:@{@"class": NSStringFromClass([tree class]),
-      @"name": [name isKindOfClass:NSString.class] ? name : @"",
-      @"displayString": [text isKindOfClass:NSString.class] ? text : @"",
-      @"frame": ReferenceScalar(tree, @"frame", errors),
-      @"displayFrame": ReferenceScalar(geometry, @"displayFrame", errors),
-      @"symbolFrame": ReferenceScalar(geometry, @"symbolFrame", errors),
-      @"roundRectRadius": ReferenceScalar(geometry, @"roundRectRadius", errors)}];
-    id children = ReferenceObject(tree, @"subtrees", errors);
-    if ([children isKindOfClass:NSArray.class]) {
-      for (id child in children) { if (nodes.count >= 200) break; ReferenceTree(child, nodes, depth + 1, errors); }
-    }
-  }
-  static void CaptureKeyboardRuntimeReference(void) {
-    NSDictionary *selectors = @{
-      @"UIKeyboardImpl": @[@"sharedInstance", @"activeInstance", @"initWithFrame:", @"inputManager", @"layout"],
-      @"UIKeyboardAutomatic": @[@"sharedInstance", @"initWithFrame:"],
-      @"UIKeyboardLayoutStar": @[@"initWithFrame:", @"keyplane", @"keyplaneView", @"renderingContext"],
-      @"UIKBRenderFactory": @[@"init", @"lightKeycapsFontName", @"lightTextFontName", @"renderConfig"],
-      @"UIKBRenderConfig": @[@"defaultConfig", @"darkConfig", @"blurRadius", @"keycapOpacity"],
-      @"UIKBRenderTraits": @[@"symbolStyle", @"geometry", @"highlightedVariantTraits"],
-      @"UIKBTextStyle": @[@"font", @"fontName", @"fontSize"],
-      @"UIKBKeyViewAnimator": @[@"transitionKeyView:fromState:toState:completion:", @"delayedDeactivationTimeForKeyView:"],
-      @"TUIKeyboardContentView": @[@"initWithFrame:"],
-      @"TUIKeyplaneView": @[@"initWithFrame:"]
-    };
-    NSMutableDictionary *classes = [NSMutableDictionary dictionary];
-    for (NSString *name in selectors) {
-      Class cls = NSClassFromString(name);
-      NSMutableDictionary *instance = [NSMutableDictionary dictionary], *type = [NSMutableDictionary dictionary];
-      for (NSString *nameOfSelector in selectors[name]) {
-        SEL selector = NSSelectorFromString(nameOfSelector);
-        Method method = cls ? class_getInstanceMethod(cls, selector) : NULL;
-        if (method) instance[nameOfSelector] = @(method_getTypeEncoding(method));
-        method = cls ? class_getClassMethod(cls, selector) : NULL;
-        if (method) type[nameOfSelector] = @(method_getTypeEncoding(method));
+# Public-font raster experiment stays in the isolated simulator host only.
+font_reference = File.join(fixture, 'KeyboardFontReference.swift')
+File.write(font_reference, <<~SWIFT)
+  import UIKit
+  #if targetEnvironment(simulator)
+  @MainActor
+  enum KeyboardFontReference {
+    static func capture(completion: @escaping (String) -> Void) {
+      let root = URL(fileURLWithPath: #{shared_root.inspect}).appendingPathComponent("font-reference")
+      do { try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false) }
+      catch { completion("failed: output exists or cannot be created"); return }
+      let weights: [(String, UIFont.Weight)] = [("light", .light), ("regular", .regular), ("medium", .medium)]
+      let widths: [(String, UIFont.Width)] = [("standard", .standard), ("condensed", .condensed), ("compressed", .compressed)]
+      var variants: [(CGFloat, String, UIFont.Weight, String, UIFont.Width, Bool)] = []
+      for size in [CGFloat(21), 21.5, 22, 22.5, 23, 24, 25, 26] {
+        for (weightName, weight) in weights { for (widthName, width) in widths { for uppercase in [false, true] {
+          variants.append((size, weightName, weight, widthName, width, uppercase))
+        } } }
       }
-      classes[name] = @{@"available": @(cls != Nil), @"instanceSelectors": instance, @"classSelectors": type};
-    }
-    NSMutableArray *fonts = [NSMutableArray array];
-    for (NSString *name in @[@".SFUI-Regular", @".SFCompact-Regular", @"SFCompact-Regular", @".SFCompactDisplay-Regular", @".Keycaps-Keys"]) {
-      UIFont *font = [UIFont fontWithName:name size:25];
-      [fonts addObject:@{@"requested": name, @"resolved": font.fontName ?: [NSNull null]}];
-    }
-    UIFont *font = [UIFont systemFontOfSize:25];
-    NSMutableDictionary *errors = [NSMutableDictionary dictionary];
-    // Read the existing engine only. sharedInstance can create an engine, so
-    // it is deliberately not called in the host or installed extension.
-    id impl = ReferenceObject(NSClassFromString(@"UIKeyboardImpl"), @"activeInstance", errors);
-    id layout = ReferenceObject(impl, @"layout", errors);
-    id plane = ReferenceObject(layout, @"keyplane", errors);
-    NSMutableArray *nodes = [NSMutableArray array]; ReferenceTree(plane, nodes, 0, errors);
-    NSMutableDictionary *defaults = [NSMutableDictionary dictionary];
-    @try {
-      Class factoryClass = NSClassFromString(@"UIKBRenderFactory");
-      id factory = factoryClass ? [[factoryClass alloc] init] : nil;
-      for (NSString *name in @[@"lightKeycapsFontName", @"lightTextFontName"]) {
-        id value = ReferenceObject(factory, name, errors);
-        defaults[name] = [value isKindOfClass:NSString.class] ? value : [NSNull null];
+      var records: [[String: Any]] = [], index = 0
+      func next() {
+        guard index < variants.count else {
+          let manifest: [String: Any] = ["schema": 1, "os": ProcessInfo.processInfo.operatingSystemVersionString,
+            "scale": UIScreen.main.scale, "templateWidth": 402, "images": records,
+            "scope": "Public UIFont candidates on the measured portrait template; compare raster fit, not Apple font identity or all-device parity"]
+          do {
+            let data = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])
+            try data.write(to: root.appendingPathComponent("manifest.json"), options: .atomic)
+            completion("complete")
+          } catch { completion("failed: manifest") }
+          return
+        }
+        let (size, weightName, weight, widthName, width, uppercase) = variants[index]
+        let font = UIFont.systemFont(ofSize: size, weight: weight, width: width)
+        let sizeName = String(format: "%.1f", Double(size)).replacingOccurrences(of: ".", with: "p")
+        let name = "font-" + sizeName + "-" + weightName + "-" + widthName + "-" + (uppercase ? "upper" : "lower") + ".png"
+        do {
+          try autoreleasepool {
+            let canvas = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 151))
+            canvas.overrideUserInterfaceStyle = .light; canvas.backgroundColor = .white
+            var keys: [[String: Any]] = []
+            // Match the current 402-point portrait key frames and pixel phases.
+            let rows: [(String, CGFloat)] = [("qwertyuiop", 6.5), ("asdfghjkl", 26.25), ("zxcvbnm", 65.75)]
+            for (row, entry) in rows.enumerated() {
+              for (column, letter) in entry.0.enumerated() {
+                let title = uppercase ? String(letter).uppercased() : String(letter)
+                let button = UIButton(type: .custom)
+                button.frame = CGRect(x: entry.1 + CGFloat(column) * 39.5, y: CGFloat(row) * 54, width: 33.5, height: 43)
+                button.setTitle(title, for: .normal); button.setTitleColor(.black, for: .normal)
+                button.titleLabel?.font = font; canvas.addSubview(button)
+                keys.append(["letter": String(letter), "title": title, "x": button.frame.minX, "y": button.frame.minY,
+                  "width": button.frame.width, "height": button.frame.height])
+              }
+            }
+            canvas.layoutIfNeeded()
+            let format = UIGraphicsImageRendererFormat(); format.scale = UIScreen.main.scale; format.opaque = true
+            let image = UIGraphicsImageRenderer(bounds: canvas.bounds, format: format).image { canvas.layer.render(in: $0.cgContext) }
+            guard let bytes = image.pngData() else { throw CocoaError(.fileWriteUnknown) }
+            try bytes.write(to: root.appendingPathComponent(name), options: .atomic)
+            records.append(["file": name, "size": size, "weight": weightName, "width": widthName,
+              "weightValue": weight.rawValue, "widthValue": width.rawValue, "uppercase": uppercase,
+              "resolvedFont": font.fontName, "pointSize": font.pointSize,
+              "descriptor": font.fontDescriptor.fontAttributes.description, "keys": keys])
+          }
+        } catch { completion("failed: raster"); return }
+        index += 1
+        DispatchQueue.main.async { next() }
       }
-    } @catch (NSException *error) { errors[@"renderFactoryInit"] = error.name; }
-    id config = ReferenceObject(NSClassFromString(@"UIKBRenderConfig"), @"defaultConfig", errors);
-    defaults[@"blurRadius"] = ReferenceScalar(config, @"blurRadius", errors);
-    defaults[@"keycapOpacity"] = ReferenceScalar(config, @"keycapOpacity", errors);
-    NSMutableArray *layoutMethods = [NSMutableArray array];
-    unsigned int methodCount = 0; Method *methods = layout ? class_copyMethodList([layout class], &methodCount) : NULL;
-    for (unsigned int i = 0; i < methodCount; i++) {
-      NSString *name = NSStringFromSelector(method_getName(methods[i]));
-      if ([name rangeOfString:@"render" options:NSCaseInsensitiveSearch].location != NSNotFound ||
-          [name rangeOfString:@"font" options:NSCaseInsensitiveSearch].location != NSNotFound) [layoutMethods addObject:name];
+      next()
     }
-    free(methods);
-    NSArray *arguments = NSProcessInfo.processInfo.arguments;
-    NSString *scenario = [arguments containsObject:@"--native-keyboard-reference"] ? @"ordinary-system" :
-      ([arguments containsObject:@"--system-keyboard"] ? @"secure-system" :
-      ([NSBundle.mainBundle.bundleIdentifier hasSuffix:@".keyboard"] ? @"extension" : @"extension-host"));
-    NSDictionary *report = @{@"os": NSProcessInfo.processInfo.operatingSystemVersionString, @"scenario": scenario,
-      @"process": NSBundle.mainBundle.bundleIdentifier ?: @"unknown", @"classes": classes,
-      @"fontCandidates": fonts, @"systemFont25": font.fontName,
-      @"liveReference": @{@"implementationClass": impl ? NSStringFromClass([impl class]) : @"none",
-        @"layoutClass": layout ? NSStringFromClass([layout class]) : @"none", @"keyplaneNodes": nodes,
-        @"renderDefaults": defaults, @"layoutRenderingMethods": layoutMethods, @"exceptions": errors},
-      @"scope": @"Guarded read-only private getter experiment in isolated simulator fixture. No engine embedding, input mutation or parity proof."};
-    NSData *data = [NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:NULL];
-    NSString *name = [NSString stringWithFormat:@"keyboard-runtime-%@-%@.json", NSBundle.mainBundle.bundleIdentifier, scenario];
-    [data writeToFile:[@#{shared_root.inspect} stringByAppendingPathComponent:name] atomically:YES];
-  }
-  __attribute__((constructor)) static void ScheduleKeyboardRuntimeReference(void) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-      CaptureKeyboardRuntimeReference();
-    });
   }
   #endif
-OBJC
-[app, keyboard].each do |target|
-  target.source_build_phase.add_file_reference(project.main_group.new_file(runtime_probe))
-end
+SWIFT
+app.source_build_phase.add_file_reference(project.main_group.new_file(font_reference))
 shared_source = File.join(fixture, 'SharedState.swift')
 File.write(shared_source, File.read(File.join(root, 'modules/clarify-core/ios/SharedState.swift')).sub(/  init\?\(\) \{.*?\n  \}/m, "  init?() { self.root = URL(fileURLWithPath: #{shared_root.inspect}) }"))
 app.source_build_phase.add_file_reference(project.main_group.new_file(shared_source))

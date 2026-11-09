@@ -125,6 +125,9 @@ final class KeyboardExtensionTests: XCTestCase {
     app.buttons["Toggle appearance"].tap()
     try captureKeyboardReference("\(prefix)-dark-lowercase", uppercase: false, in: app)
     pages("dark")
+    app.buttons["Toggle backdrop"].tap()
+    try captureKeyboardReference("\(prefix)-dark-blue-lowercase", uppercase: false, in: app)
+    app.buttons["Toggle backdrop"].tap()
     app.buttons["Toggle appearance"].tap()
     XCTAssertTrue(control(["q"]).waitForExistence(timeout: 5), app.debugDescription)
   }
@@ -174,6 +177,10 @@ final class KeyboardExtensionTests: XCTestCase {
     expectText("Q", in: app)
     try captureKeyboardReference("apple-default-lowercase", uppercase: false, in: app)
     try capturePagesAndDarkAppearance("apple", in: app)
+    let samples = app.buttons["font-reference-status"]
+    samples.tap()
+    let captured = expectation(for: NSPredicate(format: "value == %@", "complete"), evaluatedWith: samples)
+    wait(for: [captured], timeout: 60)
   }
   func testInstalledKeyboardTypingAndActivation() throws {
     continueAfterFailure = false

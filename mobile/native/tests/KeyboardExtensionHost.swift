@@ -26,6 +26,7 @@ final class KeyboardHostController: UIViewController {
   private var sampledHeights: [CGFloat] = []
   private var visibleHeights: [CGFloat] = []
   private var displayLink: CADisplayLink?
+  private var blueBackdrop = false
   override func viewDidLoad() {
     super.viewDidLoad(); view.backgroundColor = .systemBackground
     field.borderStyle = .roundedRect; field.placeholder = "Type here"; field.accessibilityIdentifier = "composer"
@@ -48,7 +49,21 @@ final class KeyboardHostController: UIViewController {
       self.field.keyboardAppearance = dark ? .dark : .light
       self.field.reloadInputViews()
     }, for: .touchUpInside)
-    for element in [field, trace, returnTrace, dismiss, reset, activate, appearance] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
+    let backdrop = UIButton(type: .system); backdrop.setTitle("Toggle backdrop", for: .normal)
+    backdrop.addAction(UIAction { [weak self] _ in
+      guard let self = self else { return }
+      self.blueBackdrop.toggle()
+      self.view.backgroundColor = self.blueBackdrop ? UIColor(red: 0.12, green: 0.26, blue: 0.4, alpha: 1) : .systemBackground
+    }, for: .touchUpInside)
+    let fonts = UIButton(type: .system); fonts.setTitle("Capture font samples", for: .normal)
+    fonts.accessibilityIdentifier = "font-reference-status"; fonts.accessibilityValue = "idle"
+    fonts.isHidden = !ProcessInfo.processInfo.arguments.contains("--native-keyboard-reference")
+    fonts.addAction(UIAction { [weak fonts] _ in
+      guard let fonts = fonts, fonts.accessibilityValue == "idle" else { return }
+      fonts.accessibilityValue = "capturing"
+      KeyboardFontReference.capture { [weak fonts] result in fonts?.accessibilityValue = result }
+    }, for: .touchUpInside)
+    for element in [field, trace, returnTrace, dismiss, reset, activate, appearance, backdrop, fonts] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
     NSLayoutConstraint.activate([
       trace.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
       trace.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20), trace.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
@@ -57,6 +72,8 @@ final class KeyboardHostController: UIViewController {
       returnTrace.topAnchor.constraint(equalTo: reset.bottomAnchor, constant: 16), returnTrace.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       activate.topAnchor.constraint(equalTo: returnTrace.bottomAnchor, constant: 16), activate.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       appearance.topAnchor.constraint(equalTo: activate.bottomAnchor, constant: 12), appearance.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
+      backdrop.topAnchor.constraint(equalTo: appearance.bottomAnchor, constant: 12), backdrop.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
+      fonts.topAnchor.constraint(equalTo: backdrop.bottomAnchor, constant: 12), fonts.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       field.leadingAnchor.constraint(equalTo: trace.leadingAnchor), field.trailingAnchor.constraint(equalTo: trace.trailingAnchor),
       field.heightAnchor.constraint(equalToConstant: 44), field.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8)
     ])

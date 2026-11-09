@@ -78,17 +78,14 @@ try {
   const preflight = path.join(fixture, 'Shared/container-preflight.json');
   if (fs.existsSync(preflight)) fs.copyFileSync(preflight, path.join(results, 'container-preflight.json'));
   const shared = path.join(fixture, 'Shared');
-  if (fs.existsSync(shared)) {
-    for (const name of fs.readdirSync(shared).filter(name => /^keyboard-runtime-[a-zA-Z0-9.-]+\.json$/.test(name))) {
-      fs.copyFileSync(path.join(shared, name), path.join(results, name));
+  const fonts = path.join(shared, 'font-reference');
+  if (fs.existsSync(fonts)) fs.cpSync(fonts, path.join(results, 'font-reference'), { recursive: true });
+  if (exitCode === 0) {
+    const manifest = path.join(fonts, 'manifest.json');
+    const samples = fs.existsSync(manifest) ? JSON.parse(fs.readFileSync(manifest, 'utf8')).images : [];
+    if (samples.length !== 144 || !samples.every(sample => /^font-[a-z0-9.-]+\.png$/.test(sample.file) && fs.existsSync(path.join(fonts, sample.file)))) {
+      console.error('Incomplete public-font raster reference.'); exitCode = 1;
     }
-  }
-  if (exitCode === 0 && ![
-    'keyboard-runtime-com.clarify.fixture.host-ordinary-system.json',
-    'keyboard-runtime-com.clarify.fixture.container.keyboard-extension.json',
-  ].every(name => fs.existsSync(path.join(results, name)))) {
-    console.error('Missing runtime reference from the ordinary Apple host or installed extension.');
-    exitCode = 1;
   }
   for (const name of ['KeyboardViewController.swift', 'App.plist', 'Keyboard.plist', 'Container.plist', 'Tests.plist']) {
     const source = path.join(fixture, name);
