@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    'pt-BR': `Clarify ${version} (${build}): a reescrita privada agora usa a ação do editor UIKit, que configura o controlador, o delegado de texto e o teclado. Teste a abertura sem tocar em Abrir Ferramentas de Escrita. A tela distingue solicitação, sessão observada e falta de início após oito segundos. Aceite o resultado nos controles da Apple e confira o editor antes de traduzir. Feche e tente abrir novamente. TextComposer continua apenas como inspeção. Suítes de testes omitidas conforme solicitado.`,
+    'en-US': `Clarify ${version} (${build}): private rewriting now uses the UIKit editor action, which sets up the controller, text delegate and keyboard lifecycle. Test startup without tapping Open Writing Tools. Status distinguishes the request, observed session and no startup observed after eight seconds. Accept the result in Apple's controls and verify the editor before translating. Close and try opening it again. TextComposer remains an interface probe. Test suites were skipped as requested.`,
+    'es-ES': `Clarify ${version} (${build}): la reescritura privada usa la acción del editor UIKit para configurar controlador, delegado y teclado. Prueba el inicio sin tocar Abrir Herramientas de Escritura. El estado distingue solicitud, sesión observada y falta de inicio tras ocho segundos. Acepta el resultado y revisa el editor antes de traducir. Cierra e intenta abrir de nuevo. TextComposer sigue como inspección. Pruebas omitidas según lo solicitado.`,
   };
 }
 
@@ -106,7 +106,17 @@ async function publish({ env = process.env, fetch = globalThis.fetch,
       if (!attached) {
         const membership = await list('betaGroups/' + group.id + '/builds?limit=100');
         if (!membership.data.some(item => item.id === build.id)) {
-          await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            try {
+              await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            } catch (error) {
+              // Auto-distribution can reject a redundant association before its
+              // group membership is visible. Never accept 422 as availability:
+              // retry the reads and require real membership and testing state.
+              if (!String(error.message).startsWith('Apple API 422 ')) throw error;
+              log('Apple group association is pending; verifying membership again.');
+              await sleep(30_000);
+              continue;
+            }
         }
         const localizations = await list('builds/' + build.id + '/betaBuildLocalizations');
         for (const [locale, whatsNew] of Object.entries(releaseNotes(selected.version, selected.build))) {
