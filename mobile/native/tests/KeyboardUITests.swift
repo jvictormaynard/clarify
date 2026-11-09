@@ -190,32 +190,31 @@ final class KeyboardUITests: XCTestCase {
       }
     }
   }
-  func testReopeningAppliesHostInputTraitsWithoutATextChange() async throws {
-    try await MainActor.run {
-      let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-      let host = UIViewController(); window.rootViewController = host; window.makeKeyAndVisible()
-      defer { window.isHidden = true }
-      let keyboard = SelectionKeyboard()
-      host.addChild(keyboard); host.view.addSubview(keyboard.view); keyboard.didMove(toParent: host)
-      let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
-      keyboard.field.before = "Q"
-      let cases: [(UIKeyboardAppearance, UIReturnKeyType, UIUserInterfaceStyle)] = [
-        (.light, .search, .dark), (.dark, .done, .light), (.default, .default, .dark)
-      ]
-      for (appearance, returnType, expectedStyle) in cases {
-        // The remote proxy can lag behind the host's current appearance.
-        keyboard.field.keyboardAppearance = appearance; keyboard.field.returnKeyType = returnType
-        host.setOverrideTraitCollection(UITraitCollection(userInterfaceStyle: expectedStyle), forChild: keyboard)
-        keyboard.beginAppearanceTransition(true, animated: false); keyboard.endAppearanceTransition()
-        keyboard.view.layoutIfNeeded()
-        XCTAssertEqual(keyboard.traitCollection.userInterfaceStyle, expectedStyle)
-        XCTAssertEqual(keyboard.view.overrideUserInterfaceStyle, .unspecified)
-        XCTAssertEqual(keyboard.view.traitCollection.userInterfaceStyle, expectedStyle)
-        XCTAssertEqual(grid.traitCollection.userInterfaceStyle, expectedStyle)
-        XCTAssertEqual(grid.returnType, returnType)
-        XCTAssertEqual(keyboard.field.before, "Q", "Applying input traits must not modify the draft")
-        keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
-      }
+  @MainActor
+  func testReopeningAppliesHostInputTraitsWithoutATextChange() throws {
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+    let host = UIViewController(); window.rootViewController = host; window.makeKeyAndVisible()
+    defer { window.isHidden = true }
+    let keyboard = SelectionKeyboard()
+    host.addChild(keyboard); host.view.addSubview(keyboard.view); keyboard.didMove(toParent: host)
+    let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+    keyboard.field.before = "Q"
+    let cases: [(UIKeyboardAppearance, UIReturnKeyType, UIUserInterfaceStyle)] = [
+      (.light, .search, .dark), (.dark, .done, .light), (.default, .default, .dark)
+    ]
+    for (appearance, returnType, expectedStyle) in cases {
+      // The remote proxy can lag behind the host's current appearance.
+      keyboard.field.keyboardAppearance = appearance; keyboard.field.returnKeyType = returnType
+      host.setOverrideTraitCollection(UITraitCollection(userInterfaceStyle: expectedStyle), forChild: keyboard)
+      keyboard.beginAppearanceTransition(true, animated: false); keyboard.endAppearanceTransition()
+      keyboard.view.layoutIfNeeded()
+      XCTAssertEqual(keyboard.traitCollection.userInterfaceStyle, expectedStyle)
+      XCTAssertEqual(keyboard.view.overrideUserInterfaceStyle, .unspecified)
+      XCTAssertEqual(keyboard.view.traitCollection.userInterfaceStyle, expectedStyle)
+      XCTAssertEqual(grid.traitCollection.userInterfaceStyle, expectedStyle)
+      XCTAssertEqual(grid.returnType, returnType)
+      XCTAssertEqual(keyboard.field.before, "Q", "Applying input traits must not modify the draft")
+      keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
     }
   }
   func testOwnTypingCapitalizesTheNextSentenceWithoutAHostNotification() async throws {
