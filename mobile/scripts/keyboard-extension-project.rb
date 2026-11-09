@@ -33,6 +33,7 @@ File.write(font_reference, <<~SWIFT)
         guard index < variants.count else {
           let manifest: [String: Any] = ["schema": 1, "os": ProcessInfo.processInfo.operatingSystemVersionString,
             "scale": UIScreen.main.scale, "templateWidth": 402, "images": records,
+            "frameAlignment": "Edges rounded to the device pixel grid, matching UIStackView's observed key frames",
             "scope": "Public UIFont candidates on the measured portrait template; compare raster fit, not Apple font identity or all-device parity"]
           do {
             let data = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])
@@ -56,7 +57,10 @@ File.write(font_reference, <<~SWIFT)
               for (column, letter) in entry.0.enumerated() {
                 let title = uppercase ? String(letter).uppercased() : String(letter)
                 let button = UIButton(type: .custom)
-                button.frame = CGRect(x: entry.1 + CGFloat(column) * 39.5, y: CGFloat(row) * 54, width: 33.5, height: 43)
+                let scale = UIScreen.main.scale
+                let left = ((entry.1 + CGFloat(column) * 39.5) * scale).rounded() / scale
+                let right = ((entry.1 + CGFloat(column) * 39.5 + 33.5) * scale).rounded() / scale
+                button.frame = CGRect(x: left, y: CGFloat(row) * 54, width: right - left, height: 43)
                 button.setTitle(title, for: .normal); button.setTitleColor(.black, for: .normal)
                 button.titleLabel?.font = font; canvas.addSubview(button)
                 keys.append(["letter": String(letter), "title": title, "x": button.frame.minX, "y": button.frame.minY,

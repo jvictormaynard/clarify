@@ -7,6 +7,10 @@ private final class KeyButton: UIButton {
   var acceptsPoint: ((CGPoint) -> Bool)?
   weak var grid: KeyGridView?
   var isGlobe = false
+  var titleVerticalOffset: CGFloat = 0
+  override func titleRect(forContentRect contentRect: CGRect) -> CGRect {
+    super.titleRect(forContentRect: contentRect).offsetBy(dx: 0, dy: titleVerticalOffset)
+  }
   // Keep the original UIKit touch identity, but let the grid transfer a press
   // to a neighbouring key. UIButton's default tracking drops such releases.
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { grid?.track(touches, phase: .began, event: event) }
@@ -288,9 +292,10 @@ final class KeyGridView: UIView {
       // with a fixed gray that can match the host application's background.
       if traits.userInterfaceStyle == .dark {
         let stronger = traits.accessibilityContrast == .high
+        // The iOS 26 gray tint was measured over both black and blue materials.
         return UIAccessibility.isReduceTransparencyEnabled
           ? UIColor(white: stronger ? 0.6 : 0.47, alpha: 1)
-          : UIColor(white: 1, alpha: stronger ? 0.36 : 0.24)
+          : UIColor(white: modern && !stronger ? 0.71 : 1, alpha: stronger ? 0.36 : 0.24)
       }
       return special && !modern ? UIColor(white: 0.68, alpha: 1) : .white
     }
@@ -300,6 +305,9 @@ final class KeyGridView: UIView {
     button.layer.shadowOffset = CGSize(width: 0, height: 1); button.layer.shadowRadius = 0
     button.setTitle(title, for: .normal); button.setTitleColor(.label, for: .normal); button.tintColor = .label
     button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 16 : 25)
+    // The measured iOS 26 lowercase baseline sits 7 pixels higher at @3.
+    // Offset the title only; keep key bounds and touch ownership unchanged.
+    if modern, title.count == 1, title.allSatisfy(\.isLowercase) { button.titleVerticalOffset = -7.0 / 3.0 }
     button.accessibilityLabel = title; button.accessibilityTraits = .keyboardKey
     button.acceptsPoint = { [weak self, weak button] point in
       guard let self = self, let button = button else { return false }
