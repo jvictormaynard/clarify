@@ -366,13 +366,18 @@ final class KeyGridView: UIView {
       if highlighted {
         self.onKeyPress?()
         let currentTitle = key.title(for: .normal) ?? title
-        if currentTitle.count == 1, self.accentBar == nil, let container = self.previewContainer {
+        if currentTitle.count == 1, self.showsPressPreview(for: key), self.accentBar == nil, let container = self.previewContainer {
           self.preview.show(currentTitle, key: key.convert(key.bounds, to: container), in: container, color: key.restingColor)
         }
       } else { self.preview.removeFromSuperview() }
     }
     button.addAction(UIAction { _ in action() }, for: .touchUpInside)
     return button
+  }
+  private func showsPressPreview(for key: KeyButton) -> Bool {
+    // A Shift slide changes casing without the popup used by a direct tap.
+    guard usesModernKeyAppearance, let slide = shiftSlide else { return true }
+    return presses[slide.id] !== key
   }
   private func configureTitle(_ button: KeyButton, title: String) {
     button.setTitle(title, for: .normal); button.accessibilityLabel = title
@@ -408,7 +413,7 @@ final class KeyGridView: UIView {
         let next = upper ? title.uppercased() : title.lowercased()
         if next != title {
           configureTitle(button, title: next); configureAccentActions(button, title: next)
-          if button.isHighlighted, accentBar == nil, let container = previewContainer {
+          if button.isHighlighted, showsPressPreview(for: button), accentBar == nil, let container = previewContainer {
             preview.show(next, key: button.convert(button.bounds, to: container), in: container, color: button.restingColor)
           }
         }
