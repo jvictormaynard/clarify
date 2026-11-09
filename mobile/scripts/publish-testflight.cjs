@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    'pt-BR': `Clarify ${version} (${build}): correção do bloqueio dos testes Apple. Atividade da conta ou do computador não bloqueia mais o teste local. Ditado e sessões Apple em andamento continuam protegidos. Os botões ficam antes do relatório; erros mostram o motivo exato. Teste o controlador privado e Compare with Writing Tools. A rota TextComposer continua apenas como inspeção de interface. O original é preservado em caso de falha. Suítes de testes omitidas conforme solicitado.`,
+    'en-US': `Clarify ${version} (${build}): fixes blocked Apple tests. Account and computer activity no longer blocks the local test. Active dictation and Apple sessions remain protected. Action buttons appear before the report; errors show the exact blocking reason. Try the private controller and Compare with Writing Tools. TextComposer remains an interface probe. The source is preserved on failure. Test suites were skipped as requested.`,
+    'es-ES': `Clarify ${version} (${build}): corrige el bloqueo de las pruebas Apple. La actividad de la cuenta o del ordenador ya no bloquea la prueba local. Se protegen el dictado y las sesiones Apple activas. Los botones aparecen antes del informe; los errores muestran el motivo exacto. Prueba el controlador privado y Compare with Writing Tools. TextComposer sigue siendo una inspección de interfaz. Se conserva el original si falla. Pruebas omitidas según lo solicitado.`,
   };
 }
 
@@ -106,7 +106,17 @@ async function publish({ env = process.env, fetch = globalThis.fetch,
       if (!attached) {
         const membership = await list('betaGroups/' + group.id + '/builds?limit=100');
         if (!membership.data.some(item => item.id === build.id)) {
-          await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            try {
+              await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            } catch (error) {
+              // Auto-distribution can reject a redundant association before its
+              // group membership is visible. Never accept 422 as availability:
+              // retry the reads and require real membership and testing state.
+              if (!String(error.message).startsWith('Apple API 422 ')) throw error;
+              log('Apple group association is pending; verifying membership again.');
+              await sleep(30_000);
+              continue;
+            }
         }
         const localizations = await list('builds/' + build.id + '/betaBuildLocalizations');
         for (const [locale, whatsNew] of Object.entries(releaseNotes(selected.version, selected.build))) {
