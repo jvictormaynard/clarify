@@ -242,14 +242,30 @@ class LedgerTests(TransactionTestCase):
         self.assertEqual(funding.public_summary()["received_usd"], "110.000000000")
 
     def test_reset_does_not_release_unsettled_provider_reservations(self):
-        operation, _ = self.reserve()
-        ledger.authorize(operation, Decimal("0.001"))
-        _, reset = funding.week_bounds()
         from unittest.mock import patch
 
+        _, reset = funding.week_bounds()
+        # Admit work one minute before the reset, while its three-minute lease
+        # still extends into the next week.
+        with patch(
+            "django.utils.timezone.now", return_value=reset - timedelta(minutes=1)
+        ):
+            operation, _ = self.reserve()
+            ledger.authorize(operation, Decimal("0.001"))
         with patch("django.utils.timezone.now", return_value=reset):
             funding.distribute()
             before = Decimal(funding.public_summary()["available_usd"])
+            ledger.expire_leases()
+            self.assertEqual(Decimal(funding.public_summary()["available_usd"]), before)
+            self.assertEqual(
+                Treasury.objects.get().processing_reserved, operation.reserved_cost
+            )
+            operation.refresh_from_db()
+            self.assertEqual(operation.state, "running")
+        with patch(
+            "django.utils.timezone.now",
+            return_value=operation.lease_until + timedelta(seconds=1),
+        ):
             ledger.expire_leases()
             after = Decimal(funding.public_summary()["available_usd"])
         self.assertEqual(after - before, operation.reserved_cost - Decimal("0.001"))
