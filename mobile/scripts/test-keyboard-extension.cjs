@@ -90,7 +90,11 @@ try {
     console.error('Missing runtime reference from the ordinary Apple host or installed extension.');
     exitCode = 1;
   }
-  for (const name of ['KeyboardViewController.swift', 'App.plist', 'Keyboard.plist', 'Container.plist', 'Tests.plist']) {
+  if (exitCode === 0 && !fs.readdirSync(results).some(name => /^keyboard-runtime-trait-trace-[A-Fa-f0-9-]+\.json$/.test(name))) {
+    console.error('Missing public trait trace from the diagnostic keyboard subclass.');
+    exitCode = 1;
+  }
+  for (const name of ['KeyboardViewController.swift', 'TraitReferenceKeyboard.swift', 'App.plist', 'Keyboard.plist', 'Container.plist', 'Tests.plist']) {
     const source = path.join(fixture, name);
     if (fs.existsSync(source)) fs.copyFileSync(source, path.join(results, 'generated-' + name));
   }
@@ -102,6 +106,6 @@ try {
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
   fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, internalManualReturn,
-    completeKeyboardAcceptance: !internalManualReturn && !strictOpeningHeight && !keyboardHeightDiagnostics && exitCode === 0, exitCode }, null, 2));
+    traitReferenceDiagnostic: true, completeKeyboardAcceptance: false, exitCode }, null, 2));
 }
 process.exitCode = exitCode;
