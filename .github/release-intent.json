@@ -1,14 +1,10 @@
 {
   "schema": 2,
-  "component": "mobile",
-  "version": "0.14.2",
-  "base_sha": "d8bf53e288ff34db2482b6c566ac0d8ccbf0bb89",
-  "notes": "TestFlight 0.14.2 build 74 includes merged keyboard PR #276 (equal letter widths, half-key staggering and row-first touch routing) and merged PR #281 (deterministic catalog discovery UI checks). PR #281 passed required CI run 42532495122 with native contracts, both app UI profiles, keyboard tests and unsigned compilation. The normal account refresh uses the unchanged monotonic clock and 60-second gate; only the existing isolated UI-fixture build uses a fixed refresh clock. Accepted operation UUID, cancellation, deactivation and no-late-processing checks remain. Complete Apple inventory run 42535059295 finished at 2026-11-08T23:25:12Z; highest uploaded build 72. Git and checked-in reservations reach 73; build 74 exceeds both. Prepared build 73 had no tag, signing, IPA or upload and is not reused after the source repair. Apple rewriting prototype branches remain excluded. Use standard signed TestFlight validation with internal_testing=false; require exact-source green canonical main CI, immutable tag, verified signed app/two-extension identity, confirmed upload, Apple processing, existing internal group availability and sealed evidence. Full Apple keyboard parity, physical typing accuracy, haptics/sound and UI behavior when automatic refresh starts during a gesture remain unverified. TestFlight authorization does not include App Store submission or public release. Preparation base includes current main d8bf53e288ff34db2482b6c566ac0d8ccbf0bb89, including the desktop 0.16.1 version and changelog. Mobile source is unchanged from the reviewed keyboard and UI-fixture repairs.",
+  "component": "desktop",
+  "version": "0.16.2",
+  "base_sha": "352643b1a779a850398a8de86cd07f3aacf0b229",
+  "notes": "Refresh desktop preparation on current main after the mobile 0.14.2 build 74 metadata merge. Preserve mobile identity and earlier immutable v0.16.0 failed build. Desktop 0.16.1 had green preparation-merge CI but no tag or candidate before main advanced. Retain the reviewed desktop features and dependency integration, the mobile catalog barrier and deterministic weekly-reset ledger test. The old Windows fixture startup cause remains unconfirmed; all validation stays enabled. Require exact preparation-merge main CI, an immutable stable candidate, Windows acceptance of its final digest and explicit publication. No iOS signing or App Store publication is authorized here.",
   "evidence": {
-    "build": "74",
-    "highest_build": "73",
-    "pending_builds_checked": true,
-    "checked_at": "2026-11-08T23:25:12Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/42535059295"
+    "report_url": "https://github.com/jvictormaynard/clarify/issues/279"
   }
 }
