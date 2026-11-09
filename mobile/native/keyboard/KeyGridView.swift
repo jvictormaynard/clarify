@@ -380,15 +380,17 @@ final class KeyGridView: UIView {
     let uppercaseLetter = title.count == 1 && title.allSatisfy(\.isUppercase)
     let compactGlyph = uppercaseLetter || (title.count == 1 && "0123456789".contains(title))
     let bracketGlyph = title.count == 1 && "()[]{}".contains(title)
+    let sentenceMark = title == "?" || title == "!"
     button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 16 :
-      (modern && compactGlyph ? 21 : (modern && bracketGlyph ? 22.5 : 25)))
+      (modern && compactGlyph ? 21 : (modern && (bracketGlyph || sentenceMark) ? 22.5 : 25)))
     button.titleVerticalOffset = 0
-    // The iOS 26 references have smaller capitals, digits and brackets.
+    // The iOS 26 references use smaller glyphs in these groups.
     // Offset titles only; keep key bounds and touch ownership unchanged.
     if modern, title.count == 1 {
       if title.allSatisfy(\.isLowercase) { button.titleVerticalOffset = -7.0 / 3.0 }
       else if compactGlyph { button.titleVerticalOffset = -4.0 / 3.0 }
       else if bracketGlyph { button.titleVerticalOffset = -3 }
+      else if sentenceMark { button.titleVerticalOffset = -1 }
     }
   }
   private func configureAccentActions(_ button: KeyButton, title: String) {
