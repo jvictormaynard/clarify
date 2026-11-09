@@ -17,6 +17,10 @@ final class AppleWritingToolsController: UIViewController, UITextViewDelegate {
   private var privateStartupMonitor: Task<Void, Never>?
   private let editor = UITextView()
   private let translationHint = UILabel()
+  private var writingToolsActive: Bool {
+    if #available(iOS 18.0, *) { return editor.isWritingToolsActive }
+    return false
+  }
   private var privateInstructions: String {
     L("Accept the result in Apple's controls. If Replace appears, tap it. Verify the editor text before translating.")
   }
@@ -38,7 +42,7 @@ final class AppleWritingToolsController: UIViewController, UITextViewDelegate {
     // Invocation is not proof that a model generated or that an edit was accepted.
     if privateSessionEnded {
       showPrivateState("Apple Writing Tools ended. Verify the editor text before translating.", code: "session_ended;result_unconfirmed")
-    } else if privateSessionObserved || editor.isWritingToolsActive {
+    } else if privateSessionObserved || writingToolsActive {
       showPrivateState("Apple Writing Tools is active. Rewrite completion is not confirmed.", code: "session_observed;rewrite_unconfirmed")
     } else {
       showPrivateState(invoked ? "Private rewrite requested. Waiting for Apple Writing Tools to start." :
@@ -58,7 +62,7 @@ final class AppleWritingToolsController: UIViewController, UITextViewDelegate {
         do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
         guard let self, self.view.window != nil else { return }
         if self.privateSessionEnded { return }
-        if self.privateSessionObserved || self.editor.isWritingToolsActive {
+        if self.privateSessionObserved || self.writingToolsActive {
           self.showPrivateState("Apple Writing Tools is active. Rewrite completion is not confirmed.", code: "session_observed;rewrite_unconfirmed")
           return
         }
