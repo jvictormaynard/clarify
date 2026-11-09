@@ -603,20 +603,24 @@ class CandidateTests(unittest.TestCase):
         opener.open.side_effect = HTTPError(
             API.base, 302, "redirect", {"Location": location}, None
         )
-        with (
-            patch.object(candidate, "build_opener", return_value=opener),
-            patch.object(
-                candidate, "urlopen", return_value=io.BytesIO(b"candidate")
-            ) as redirected,
+        for path, accept in (
+            ("/actions/artifacts/456/zip", "application/vnd.github+json"),
+            ("/releases/assets/789", "application/octet-stream"),
         ):
-            self.assertEqual(
-                candidate.download(API(), "/actions/artifacts/456/zip"), b"candidate"
-            )
-            redirected.assert_called_once_with(location, timeout=60)
-            self.assertEqual(
-                opener.open.call_args.args[0].get_header("Authorization"),
-                "Bearer " + API.token,
-            )
+            with (
+                self.subTest(path=path),
+                patch.object(candidate, "build_opener", return_value=opener),
+                patch.object(
+                    candidate, "urlopen", return_value=io.BytesIO(b"candidate")
+                ) as redirected,
+            ):
+                self.assertEqual(candidate.download(API(), path), b"candidate")
+                redirected.assert_called_once_with(location, timeout=60)
+                request = opener.open.call_args.args[0]
+                self.assertEqual(
+                    request.get_header("Authorization"), "Bearer " + API.token
+                )
+                self.assertEqual(request.get_header("Accept"), accept)
         opener.open.side_effect = HTTPError(
             API.base,
             302,
