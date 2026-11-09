@@ -8303,5 +8303,30 @@
     "pt": "Na tela de resultado privada, toque em Substituir (Replace) para aplicar a reescrita. Confira o texto do editor antes de traduzir. A marca de confirmação pode fechar a tela sem aplicar o resultado.",
     "en": "In the private result sheet, tap Replace to apply the rewrite. Check the editor text before translating. The checkmark can close the sheet without applying the result.",
     "es": "En el resultado privado, toca Reemplazar (Replace) para aplicar la reescritura. Revisa el editor antes de traducir. La marca de confirmación puede cerrar la pantalla sin aplicar el resultado."
+  },
+  "Accept the result in Apple's controls. If Replace appears, tap it. Verify the editor text before translating.": {
+    "pt": "Aceite o resultado nos controles da Apple. Se Substituir (Replace) aparecer, toque nele. Confira o texto do editor antes de traduzir.",
+    "en": "Accept the result in Apple's controls. If Replace appears, tap it. Verify the editor text before translating.",
+    "es": "Acepta el resultado en los controles de Apple. Si aparece Reemplazar (Replace), tócalo. Revisa el editor antes de traducir."
+  },
+  "Apple Writing Tools is active. Rewrite completion is not confirmed.": {
+    "pt": "As Ferramentas de Escrita da Apple estão ativas. A conclusão da reescrita não foi confirmada.",
+    "en": "Apple Writing Tools is active. Rewrite completion is not confirmed.",
+    "es": "Las Herramientas de Escritura de Apple están activas. No se ha confirmado el final de la reescritura."
+  },
+  "Private rewrite requested. Waiting for Apple Writing Tools to start.": {
+    "pt": "Reescrita privada solicitada. Aguardando o início das Ferramentas de Escrita da Apple.",
+    "en": "Private rewrite requested. Waiting for Apple Writing Tools to start.",
+    "es": "Reescritura privada solicitada. Esperando el inicio de las Herramientas de Escritura de Apple."
+  },
+  "Apple Writing Tools did not start. No automatic rewrite was confirmed.": {
+    "pt": "As Ferramentas de Escrita da Apple não iniciaram. Nenhuma reescrita automática foi confirmada.",
+    "en": "Apple Writing Tools did not start. No automatic rewrite was confirmed.",
+    "es": "Las Herramientas de Escritura de Apple no iniciaron. No se confirmó ninguna reescritura automática."
+  },
+  "Apple Writing Tools ended. Verify the editor text before translating.": {
+    "pt": "As Ferramentas de Escrita da Apple encerraram. Confira o texto do editor antes de traduzir.",
+    "en": "Apple Writing Tools ended. Verify the editor text before translating.",
+    "es": "Las Herramientas de Escritura de Apple finalizaron. Revisa el editor antes de traducir."
   }
 }

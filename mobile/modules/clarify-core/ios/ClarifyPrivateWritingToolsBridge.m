@@ -15,6 +15,11 @@
 - (void)startWritingTools;
 - (void)endWritingTools;
 - (bool)isWritingToolsActive;
+- (void)_startRewritingFromCandidateBar;
+- (void)_startWritingToolsWithTool:(id)tool prompt:(id)prompt sender:(id)sender;
+- (void)_endWritingTools;
+- (bool)_isWritingToolsActive;
+- (bool)_supportsWritingTools;
 @end
 
 static const void *CWSessionKey = &CWSessionKey;
@@ -22,7 +27,6 @@ static void *CWTextComposerHandle;
 static void *CWWritingToolsHandle;
 
 @interface ClarifyPrivateWritingToolsSession : NSObject
-@property (nonatomic, strong) id controller;
 @property (nonatomic, weak) UITextView *textView;
 @property (nonatomic) BOOL observedActive;
 @property (nonatomic) BOOL endRequested;
@@ -35,6 +39,14 @@ static void *CWWritingToolsHandle;
 // One UI session, including uncertain startup. No direct service work is admitted.
 static ClarifyPrivateWritingToolsSession *CWSession;
 static NSString *CWLastEndState = @"none";
+
+// Let UIKit own its controller, delegate, keyboard suppression and teardown.
+// Direct WTWritingToolsController allocation bypasses this responder setup.
+// iOS 26 selector declarations:
+// https://github.com/qingralf/iOS26-Runtime-Headers/blob/cbf1d4c4122f3c6807eba36693581882640e5c6c/PrivateFrameworks/UIKitCore.framework/UIResponder.h
+// Responder setup and string tool identifiers from recovered UIKit methods:
+// https://github.com/EthanArbuckle/iPhone18-3_26.1_23B85_Restore/blob/90aa0cfe59d9682b4265e1354c8b19ec3c7823ab/System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore/UIResponder.mm
+// https://github.com/EthanArbuckle/iPhone17-1_18.2_22C152_Restore/blob/e26ed4563f78871c59d2d96856756a65d62517e5/System/Library/PrivateFrameworks/WritingToolsUI.framework/WTWritingToolsController.m
 
 static BOOL CWPlatform(void) {
 #if TARGET_OS_IOS && !TARGET_OS_SIMULATOR && !TARGET_OS_MACCATALYST
@@ -101,12 +113,22 @@ static BOOL CWStyle(NSString *style, long long *tool) {
   return YES;
 }
 
+static BOOL CWResponderShape(Class cls) {
+  const char *args[] = { @encode(id), @encode(id), @encode(id) };
+  return CWMethod(cls, NO, @selector(_startRewritingFromCandidateBar), @encode(void), NULL, 0)
+    && CWMethod(cls, NO, @selector(_startWritingToolsWithTool:prompt:sender:), @encode(void), args, 3)
+    && CWMethod(cls, NO, @selector(_endWritingTools), @encode(void), NULL, 0)
+    && CWMethod(cls, NO, @selector(_isWritingToolsActive), @encode(bool), NULL, 0)
+    && CWMethod(cls, NO, @selector(_supportsWritingTools), @encode(bool), NULL, 0);
+}
+
 static void CWRefreshSession(void) {
   ClarifyPrivateWritingToolsSession *session = CWSession;
   if (!session) return;
   @try {
-    if (!CWMethod(object_getClass(session.controller), NO, @selector(isWritingToolsActive), @encode(bool), NULL, 0)) return;
-    bool active = [session.controller isWritingToolsActive];
+    UITextView *owner = session.textView;
+    if (!CWResponderShape(object_getClass(owner))) return;
+    bool active = [owner _isWritingToolsActive];
     if (active) session.observedActive = YES;
     if (!active && (session.observedActive || session.endRequested)) {
       UITextView *view = session.textView;
@@ -135,13 +157,12 @@ static NSDictionary *CWLifecycle(void) {
   ClarifyPrivateWritingToolsSession *session = CWSession;
   id active = @"unavailable";
   @try {
-    if (session && CWMethod(object_getClass(session.controller), NO,
-        @selector(isWritingToolsActive), @encode(bool), NULL, 0))
-      active = @([session.controller isWritingToolsActive]);
+    if (session && CWResponderShape(object_getClass(session.textView)))
+      active = @([session.textView _isWritingToolsActive]);
   } @catch (__unused NSException *exception) { active = @"read_failed"; }
   return @{ @"sessionPresent": @(session != nil),
     @"observedActive": @(session.observedActive), @"endRequested": @(session.endRequested),
-    @"controllerActive": active, @"lastEndState": CWLastEndState };
+    @"responderActive": active, @"route": @"uikit_responder", @"lastEndState": CWLastEndState };
 }
 
 static NSDictionary<NSString *, id> *CWReply(NSString *code, NSString *error, NSString *diagnostics) {
@@ -190,6 +211,11 @@ static NSString *CWExtendedRewriteTypes(void) {
       @"controllerStartEncoding": CWEncoding(ui, NO, @selector(startWritingTools)),
       @"controllerActiveEncoding": CWEncoding(ui, NO, @selector(isWritingToolsActive)),
       @"controllerEndEncoding": CWEncoding(ui, NO, @selector(endWritingTools)),
+      @"responderSignatures": @(CWResponderShape(UITextView.class)),
+      @"responderStartEncoding": CWEncoding(UITextView.class, NO, @selector(_startWritingToolsWithTool:prompt:sender:)),
+      @"responderRewriteEncoding": CWEncoding(UITextView.class, NO, @selector(_startRewritingFromCandidateBar)),
+      @"responderEndEncoding": CWEncoding(UITextView.class, NO, @selector(_endWritingTools)),
+      @"responderActiveEncoding": CWEncoding(UITextView.class, NO, @selector(_isWritingToolsActive)),
       @"lifecycle": CWLifecycle(),
       @"iOS": UIDevice.currentDevice.systemVersion,
       @"code": @"direct_contract_unverified" };
@@ -257,23 +283,19 @@ static NSString *CWExtendedRewriteTypes(void) {
       return NO;
     }
     CWLoad();
-    Class cls = NSClassFromString(@"WTWritingToolsController");
-    if (!CWUIShape(cls)) {
-      if (diagnostics) *diagnostics = @"controller_signature_unavailable";
+    if (!CWResponderShape(object_getClass(textView))) {
+      if (diagnostics) *diagnostics = @"responder_signature_unavailable";
       return NO;
     }
-    if (![cls isAvailable]) {
-      if (diagnostics) *diagnostics = @"controller_unavailable";
+    if (![textView becomeFirstResponder] || ![textView _supportsWritingTools]) {
+      if (diagnostics) *diagnostics = @"responder_unavailable";
       return NO;
     }
-    if (![textView becomeFirstResponder]) return NO;
-    id allocated = [cls alloc];
-    if (!allocated || !CWUIShape(object_getClass(allocated))) return NO;
-    id controller = [allocated initWithTool:tool prompt:nil];
-    if (!controller || !CWUIShape(object_getClass(controller))) return NO;
-    [controller setSourceResponder:textView sourceTextInput:textView];
+    if ([textView _isWritingToolsActive]) {
+      if (diagnostics) *diagnostics = @"responder_already_active";
+      return NO;
+    }
     ClarifyPrivateWritingToolsSession *session = [ClarifyPrivateWritingToolsSession new];
-    session.controller = controller;
     session.textView = textView;
     session.deadline = NSProcessInfo.processInfo.systemUptime + 30.0;
     CWSession = session;
@@ -281,10 +303,15 @@ static NSString *CWExtendedRewriteTypes(void) {
     // Retain before invocation, including when start throws after side effects.
     CWLastEndState = @"none";
     CWObserveSession(session, ++session.observationGeneration);
-    if (!CWMethod(object_getClass(controller), NO, @selector(startWritingTools), @encode(void), NULL, 0)) return NO;
-    [controller startWritingTools];
+    if ([style isEqualToString:@"default"]) [textView _startRewritingFromCandidateBar];
+    else {
+      // These are responder NSString tool identifiers, not numeric WTRequestedTool.
+      NSString *identifier = [style isEqualToString:@"formal"] ?
+        @"WTUIRequestedToolRewriteProfessional" : @"WTUIRequestedToolRewriteFriendly";
+      [textView _startWritingToolsWithTool:identifier prompt:nil sender:nil];
+    }
     CWRefreshSession();
-    if (diagnostics) *diagnostics = @"ui_start_invoked;result_unconfirmed";
+    if (diagnostics) *diagnostics = @"responder_start_requested;rewrite_unconfirmed";
     return YES;
   } @catch (__unused NSException *exception) {
     if (diagnostics) *diagnostics = @"ui_exception;result_unconfirmed";
@@ -297,9 +324,8 @@ static NSString *CWExtendedRewriteTypes(void) {
   ClarifyPrivateWritingToolsSession *session = CWSession;
   if (session.endRequested) { CWRefreshSession(); return; }
   @try {
-    id controller = session.controller;
-    if (CWMethod(object_getClass(controller), NO, @selector(endWritingTools), @encode(void), NULL, 0)) {
-      [controller endWritingTools];
+    if (CWResponderShape(object_getClass(textView))) {
+      [textView _endWritingTools];
       // Apple can finish ending asynchronously, including a session whose active
       // state was never observed. Keep exclusion until inactivity is confirmed.
       if (CWSession == session) {

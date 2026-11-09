@@ -7,15 +7,18 @@ import Translation
 
 // A separate, transient editor. System edits never enter dictation or history.
 @MainActor
-final class AppleWritingToolsController: UIViewController {
+final class AppleWritingToolsController: UIViewController, UITextViewDelegate {
   private let source: String
   private let target: String
   private let privateStyle: String?
   private var attemptedPrivateController = false
+  private var privateSessionObserved = false
+  private var privateSessionEnded = false
+  private var privateStartupMonitor: Task<Void, Never>?
   private let editor = UITextView()
   private let translationHint = UILabel()
   private var privateInstructions: String {
-    L("In the private result sheet, tap Replace to apply the rewrite. Check the editor text before translating. The checkmark can close the sheet without applying the result.")
+    L("Accept the result in Apple's controls. If Replace appears, tap it. Verify the editor text before translating.")
   }
 
   init(source: String, target: String, privateStyle: String? = nil) {
@@ -33,14 +36,57 @@ final class AppleWritingToolsController: UIViewController {
     var details: NSString?
     let invoked = ClarifyPrivateWritingToolsBridge.openTool(textView: editor, style: style, diagnostics: &details)
     // Invocation is not proof that a model generated or that an edit was accepted.
-    let state = L(invoked ? "Controlador privado chamado. Confira se a Apple iniciou a reescrita." :
-      "O controlador privado não pôde ser iniciado. O original foi preservado.")
-    translationHint.text = state + "\n" + privateInstructions + "\n" + ((details as String?) ?? "")
+    if privateSessionEnded {
+      showPrivateState("Apple Writing Tools ended. Verify the editor text before translating.", code: "session_ended;result_unconfirmed")
+    } else if privateSessionObserved || editor.isWritingToolsActive {
+      showPrivateState("Apple Writing Tools is active. Rewrite completion is not confirmed.", code: "session_observed;rewrite_unconfirmed")
+    } else {
+      showPrivateState(invoked ? "Private rewrite requested. Waiting for Apple Writing Tools to start." :
+        "O controlador privado não pôde ser iniciado. O original foi preservado.", code: (details as String?) ?? "")
+      if invoked { monitorPrivateStartup() }
+    }
+  }
+
+  private func showPrivateState(_ message: String, code: String) {
+    translationHint.text = L(message) + "\n" + privateInstructions + "\n" + code
+  }
+
+  private func monitorPrivateStartup() {
+    privateStartupMonitor?.cancel()
+    privateStartupMonitor = Task { @MainActor [weak self] in
+      for _ in 0..<16 {
+        do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+        guard let self, self.view.window != nil else { return }
+        if self.privateSessionEnded { return }
+        if self.privateSessionObserved || self.editor.isWritingToolsActive {
+          self.showPrivateState("Apple Writing Tools is active. Rewrite completion is not confirmed.", code: "session_observed;rewrite_unconfirmed")
+          return
+        }
+      }
+      self?.showPrivateState("Apple Writing Tools did not start. No automatic rewrite was confirmed.", code: "responder_start_not_observed")
+    }
+  }
+
+  func textViewWritingToolsWillBegin(_ textView: UITextView) {
+    guard privateStyle != nil else { return }
+    privateSessionObserved = true
+    privateSessionEnded = false
+    privateStartupMonitor?.cancel()
+    showPrivateState("Apple Writing Tools is active. Rewrite completion is not confirmed.", code: "session_observed;rewrite_unconfirmed")
+  }
+
+  func textViewWritingToolsDidEnd(_ textView: UITextView) {
+    guard privateStyle != nil else { return }
+    privateSessionObserved = false
+    privateSessionEnded = true
+    privateStartupMonitor?.cancel()
+    showPrivateState("Apple Writing Tools ended. Verify the editor text before translating.", code: "session_ended;result_unconfirmed")
   }
 
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated)
     if isBeingDismissed || navigationController?.isBeingDismissed == true {
+      privateStartupMonitor?.cancel()
       ClarifyPrivateWritingToolsBridge.endTool(textView: editor)
     }
   }
@@ -55,6 +101,7 @@ final class AppleWritingToolsController: UIViewController {
     notice.text = L("As Ferramentas de Escrita usam os controles da Apple e podem usar o Private Cloud Compute. O botão Traduzir usa o idioma de saída do Clarify e processa a tradução neste iPhone.")
     notice.numberOfLines = 0; notice.font = .preferredFont(forTextStyle: .footnote)
     editor.text = source; editor.font = .preferredFont(forTextStyle: .body)
+    editor.delegate = self
     editor.adjustsFontForContentSizeCategory = true
     editor.accessibilityLabel = L("Texto para processar")
     if #available(iOS 18.0, *) { editor.writingToolsBehavior = .complete }
@@ -101,6 +148,7 @@ final class AppleWritingToolsController: UIViewController {
   }
 
   @objc private func openTools() {
+    privateStartupMonitor?.cancel()
     if #available(iOS 18.2, *) {
       guard UIWritingToolsCoordinator.isWritingToolsAvailable else { return }
       editor.becomeFirstResponder()
@@ -137,6 +185,7 @@ final class AppleWritingToolsController: UIViewController {
     #endif
   }
   @objc private func close() {
+    privateStartupMonitor?.cancel()
     ClarifyPrivateWritingToolsBridge.endTool(textView: editor)
     dismiss(animated: true)
   }

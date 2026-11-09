@@ -699,15 +699,17 @@ The private-API experiment is separate from normal dictation. **Inspect private
 interfaces** reads class, selector and signature metadata on the actual device.
 The TextComposer direct route remains a contract probe: its callback and rewrite
 identifiers are not verified, so this build starts no direct model request.
-The private Writing Tools controller route attempts to select Rewrite, Professional
-or Friendly from the chosen lab style and start the system session. It can display
-Apple UI and use local or cloud processing. A successful invocation is not proof
-that rewriting completed; inspect the editor before accepting or translating.
-In the private result sheet, tap **Replace** to apply the rewrite before
-translating. Its checkmark can close the sheet without changing the editor.
+The private route uses UIKit's text-responder action to request Rewrite,
+Professional or Friendly from the chosen lab style. UIKit owns its controller,
+text delegate and keyboard lifecycle. Clarify does not construct a separate
+Writing Tools controller. This route can display Apple UI and use local or cloud
+processing. Session activity is observed through the text view and its delegate;
+an invocation alone never confirms startup or rewriting. A startup with no
+observed session is reported after eight seconds. Accept the result in Apple's
+controls; if **Replace** appears, tap it. Verify the editor text before translating.
 Closing requests a verified end and observes asynchronous completion. Continued
 activity or unknown lifecycle state keeps the session excluded. The interface
-report includes end-method encoding, controller activity and end-request state.
+report includes responder method encodings, session activity and end-request state.
 Unknown signatures and failures preserve the source. Diagnostics stay in screen
 memory and contain no transcript, recording, credentials or exception body.
 The isolated lab does not wait for account synchronization or paired-computer
