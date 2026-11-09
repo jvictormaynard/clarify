@@ -154,6 +154,8 @@ final class KeyboardExtensionTests: XCTestCase {
     expectText("1", in: app)
     XCTAssertTrue(app.keys.matching(NSPredicate(format: "label IN %@", ["q", "Q"])).firstMatch.waitForExistence(timeout: 5),
                   "Releasing the number slide must return to letters")
+    XCTAssertTrue(app.keys["Q"].waitForExistence(timeout: 5),
+                  "An initial numeric prefix must preserve sentence capitalization")
   }
   private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
     let app = XCUIApplication(); app.terminate()

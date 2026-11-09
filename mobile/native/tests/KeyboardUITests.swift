@@ -231,6 +231,25 @@ final class KeyboardUITests: XCTestCase {
         letter.sendActions(for: .touchUpInside)
         XCTAssertEqual(keyboard.field.before, "Olá" + punctuation + " Q")
       }
+      let cases: [(UITextAutocapitalizationType, String, KeyboardState.Shift)] = [
+        (.sentences, "", .once), (.sentences, "word ", .off), (.words, "", .off),
+        (.none, "", .off), (.allCharacters, "", .caps)
+      ]
+      for (type, prefix, expected) in cases {
+        keyboard.field.autocapitalizationType = type
+        keyboard.field.before = prefix; keyboard.textDidChange(nil)
+        let mode = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "123" })
+        mode.sendActions(for: .touchUpInside)
+        let digit = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "1" })
+        digit.sendActions(for: .touchUpInside)
+        XCTAssertEqual(keyboard.field.before, prefix + "1")
+        XCTAssertEqual(grid.model.shift, expected, "Apply host capitalization to local digit insertion without a notification")
+        let letters = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "ABC" })
+        letters.sendActions(for: .touchUpInside)
+        XCTAssertNotNil(self.descendants(grid).compactMap { $0 as? UIButton }.first {
+          $0.title(for: .normal) == (expected == .off ? "q" : "Q")
+        })
+      }
     }
   }
   func testUnchangedLayoutKeepsTheKeysThatMayStillBeTrackingAnotherFinger() async throws {
