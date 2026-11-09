@@ -2,6 +2,16 @@ import XCTest
 @testable import ClarifyContracts
 
 final class AppleRewriteTests: XCTestCase {
+  func testLabAllowsRemoteRefreshButStillExcludesActiveWork() {
+    XCTAssertNil(AppleLabAdmission(remoteBusy: true).blockReason)
+    for phase in [DictationPhase.recording, .locked, .transcribing, .rewriting] {
+      XCTAssertEqual(AppleLabAdmission(phase: phase, remoteBusy: true).blockReason, "dictation_busy")
+    }
+    XCTAssertEqual(AppleLabAdmission(labBusy: true).blockReason, "apple_test_busy")
+    XCTAssertEqual(AppleLabAdmission(privateBusy: true).blockReason, "private_session_busy")
+    XCTAssertEqual(AppleLabAdmission(active: false).blockReason, "app_inactive")
+  }
+
   private func runtime(available: Bool = true, detected: [String] = ["en"],
     supported: Set<String> = ["en", "pt", "es", "de"],
     generate: @escaping (String, String) async throws -> String = { _, _ in "Edited text." }) -> AppleRewriteRuntime {

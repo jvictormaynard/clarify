@@ -8263,5 +8263,40 @@
     "pt": "Uma sessão privada de escrita ainda está pendente.",
     "en": "A private writing session is still pending.",
     "es": "Hay una sesión privada de escritura pendiente."
+  },
+  "Keep Clarify in the foreground to run this test.": {
+    "pt": "Mantenha o Clarify em primeiro plano para executar este teste.",
+    "en": "Keep Clarify in the foreground to run this test.",
+    "es": "Mantén Clarify en primer plano para ejecutar esta prueba."
+  },
+  "An Apple test is running. Cancel it or wait for it to finish.": {
+    "pt": "Um teste da Apple está em andamento. Cancele-o ou aguarde o término.",
+    "en": "An Apple test is running. Cancel it or wait for it to finish.",
+    "es": "Hay una prueba de Apple en curso. Cancélala o espera a que termine."
+  },
+  "Close the private Writing Tools editor before starting another test.": {
+    "pt": "Feche o editor privado das Ferramentas de Escrita antes de iniciar outro teste.",
+    "en": "Close the private Writing Tools editor before starting another test.",
+    "es": "Cierra el editor privado de Herramientas de Escritura antes de iniciar otra prueba."
+  },
+  "Close the QR scanner before starting an Apple test.": {
+    "pt": "Feche o leitor de QR antes de iniciar um teste da Apple.",
+    "en": "Close the QR scanner before starting an Apple test.",
+    "es": "Cierra el lector de QR antes de iniciar una prueba de Apple."
+  },
+  "Finish or cancel dictation before starting an Apple test.": {
+    "pt": "Conclua ou cancele o ditado antes de iniciar um teste da Apple.",
+    "en": "Finish or cancel dictation before starting an Apple test.",
+    "es": "Termina o cancela el dictado antes de iniciar una prueba de Apple."
+  },
+  "Close the current sheet before opening Writing Tools.": {
+    "pt": "Feche a tela atual antes de abrir as Ferramentas de Escrita.",
+    "en": "Close the current sheet before opening Writing Tools.",
+    "es": "Cierra la pantalla actual antes de abrir Herramientas de Escritura."
+  },
+  "The Apple test could not start. Inspect the interface report.": {
+    "pt": "Não foi possível iniciar o teste da Apple. Inspecione o relatório de interface.",
+    "en": "The Apple test could not start. Inspect the interface report.",
+    "es": "No se pudo iniciar la prueba de Apple. Inspecciona el informe de interfaz."
   }
 }

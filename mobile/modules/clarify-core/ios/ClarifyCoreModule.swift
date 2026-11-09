@@ -6,6 +6,31 @@ public class ClarifyCoreModule: Module {
   private var computerScanning = false
   private var appleRewriteTask: Task<Void, Never>?
   private var appleRewriteID: String?
+  private var appleLabLastRejection = "none"
+  private var appleLabLastAdmission: [String: Any] = [:]
+  @MainActor private func appleLabAdmission() -> AppleLabAdmission {
+    AppleLabAdmission(active: UIApplication.shared.applicationState == .active,
+      labBusy: appleRewriteTask != nil,
+      privateBusy: ClarifyPrivateWritingToolsBridge.isBusy(), scanning: computerScanning,
+      phase: ClarifyAudioSession.shared.state.phase,
+      remoteBusy: ProcessingDestination.shared.isBusy)
+  }
+  @MainActor private func rejectAppleLab(_ promise: Promise, reason: String) {
+    appleLabLastRejection = reason
+    appleLabLastAdmission = appleLabAdmission().snapshot
+    appleLabLastAdmission["blockedBy"] = reason
+    let message: String
+    switch reason {
+    case "app_inactive": message = "Keep Clarify in the foreground to run this test."
+    case "apple_test_busy": message = "An Apple test is running. Cancel it or wait for it to finish."
+    case "private_session_busy": message = "Close the private Writing Tools editor before starting another test."
+    case "scanner_open": message = "Close the QR scanner before starting an Apple test."
+    case "dictation_busy": message = "Finish or cancel dictation before starting an Apple test."
+    case "presentation_busy": message = "Close the current sheet before opening Writing Tools."
+    default: message = "The Apple test could not start. Inspect the interface report."
+    }
+    promise.reject("APPLE_REWRITE", L(message) + " [" + reason + "]")
+  }
   public func definition() -> ModuleDefinition {
     Name("ClarifyCore")
     Constant("uiLanguage") { ClarifyLocale.language }
@@ -88,135 +113,144 @@ public class ClarifyCoreModule: Module {
       AppleRewriteEngine.availability()
     }.runOnQueue(.main)
     AsyncFunction("rewriteWithApple") { (id: String, source: String, language: String, style: String, promise: Promise) in
-      guard UUID(uuidString: id) != nil, let language = OutputLanguage(rawValue: language),
-        let style = OutputStyle(rawValue: style) else {
-        promise.reject("APPLE_REWRITE", L("The rewrite request is invalid.")); return
-      }
-      guard self.appleRewriteTask == nil, !ClarifyPrivateWritingToolsBridge.isBusy(), !self.computerScanning,
-        !ClarifyAudioSession.shared.state.phase.busy, !ProcessingDestination.shared.isBusy,
-        UIApplication.shared.applicationState == .active else {
-        promise.reject("APPLE_REWRITE", L("Finish the current operation before testing Apple Intelligence.")); return
-      }
-      self.appleRewriteID = id
-      let preferences = OutputPreferences(language: language, style: style)
-      self.appleRewriteTask = Task { @MainActor in
-        defer {
-          if self.appleRewriteID == id { self.appleRewriteID = nil; self.appleRewriteTask = nil }
+      Task { @MainActor in
+        guard UUID(uuidString: id) != nil, let language = OutputLanguage(rawValue: language),
+          let style = OutputStyle(rawValue: style) else {
+          promise.reject("APPLE_REWRITE", L("The rewrite request is invalid.")); return
         }
-        do {
-          let result = try await AppleRewriteEngine.rewrite(source, preferences: preferences)
-          try Task.checkCancellation()
-          guard self.appleRewriteID == id, UIApplication.shared.applicationState == .active else { throw CancellationError() }
-          promise.resolve(result)
-        } catch is CancellationError {
-          promise.reject("APPLE_REWRITE", L("Cancelled"))
-        } catch {
-          promise.reject("APPLE_REWRITE", error.localizedDescription)
+        if let reason = self.appleLabAdmission().blockReason {
+          self.rejectAppleLab(promise, reason: reason); return
+        }
+        self.appleRewriteID = id
+        let preferences = OutputPreferences(language: language, style: style)
+        self.appleRewriteTask = Task { @MainActor in
+          defer {
+            if self.appleRewriteID == id { self.appleRewriteID = nil; self.appleRewriteTask = nil }
+          }
+          do {
+            let result = try await AppleRewriteEngine.rewrite(source, preferences: preferences)
+            try Task.checkCancellation()
+            guard self.appleRewriteID == id, UIApplication.shared.applicationState == .active else { throw CancellationError() }
+            promise.resolve(result)
+          } catch is CancellationError {
+            promise.reject("APPLE_REWRITE", L("Cancelled"))
+          } catch {
+            promise.reject("APPLE_REWRITE", error.localizedDescription)
+          }
         }
       }
     }.runOnQueue(.main)
     AsyncFunction("rewriteWithAppleReport") { (id: String, source: String, language: String, style: String, deterministic: Bool, promise: Promise) in
-      guard UUID(uuidString: id) != nil, let language = OutputLanguage(rawValue: language),
-        let style = OutputStyle(rawValue: style) else {
-        promise.reject("APPLE_REWRITE", L("The rewrite request is invalid.")); return
-      }
-      guard self.appleRewriteTask == nil, !ClarifyPrivateWritingToolsBridge.isBusy(), !self.computerScanning,
-        !ClarifyAudioSession.shared.state.phase.busy, !ProcessingDestination.shared.isBusy,
-        UIApplication.shared.applicationState == .active else {
-        promise.reject("APPLE_REWRITE", L("Finish the current operation before testing Apple Intelligence.")); return
-      }
-      self.appleRewriteID = id
-      let preferences = OutputPreferences(language: language, style: style)
-      self.appleRewriteTask = Task { @MainActor in
-        defer {
-          if self.appleRewriteID == id { self.appleRewriteID = nil; self.appleRewriteTask = nil }
+      Task { @MainActor in
+        guard UUID(uuidString: id) != nil, let language = OutputLanguage(rawValue: language),
+          let style = OutputStyle(rawValue: style) else {
+          promise.reject("APPLE_REWRITE", L("The rewrite request is invalid.")); return
         }
-        do {
-          let result = try await AppleRewriteEngine.rewriteReport(source, preferences: preferences, deterministic: deterministic)
-          try Task.checkCancellation()
-          guard self.appleRewriteID == id, UIApplication.shared.applicationState == .active else { throw CancellationError() }
-          promise.resolve(result.snapshot)
-        } catch is CancellationError {
-          promise.reject("APPLE_REWRITE", L("Cancelled"))
-        } catch {
-          promise.reject("APPLE_REWRITE", error.localizedDescription)
+        if let reason = self.appleLabAdmission().blockReason {
+          self.rejectAppleLab(promise, reason: reason); return
+        }
+        self.appleRewriteID = id
+        let preferences = OutputPreferences(language: language, style: style)
+        self.appleRewriteTask = Task { @MainActor in
+          defer {
+            if self.appleRewriteID == id { self.appleRewriteID = nil; self.appleRewriteTask = nil }
+          }
+          do {
+            let result = try await AppleRewriteEngine.rewriteReport(source, preferences: preferences, deterministic: deterministic)
+            try Task.checkCancellation()
+            guard self.appleRewriteID == id, UIApplication.shared.applicationState == .active else { throw CancellationError() }
+            promise.resolve(result.snapshot)
+          } catch is CancellationError {
+            promise.reject("APPLE_REWRITE", L("Cancelled"))
+          } catch {
+            promise.reject("APPLE_REWRITE", error.localizedDescription)
+          }
         }
       }
     }.runOnQueue(.main)
     AsyncFunction("rewriteWithPrivateAppleReport") { (id: String, source: String, language: String, style: String, promise: Promise) in
-      guard UUID(uuidString: id) != nil, let language = OutputLanguage(rawValue: language),
-        let style = OutputStyle(rawValue: style) else {
-        promise.reject("APPLE_REWRITE", L("The rewrite request is invalid.")); return
-      }
-      guard self.appleRewriteTask == nil, !ClarifyPrivateWritingToolsBridge.isBusy(), !self.computerScanning,
-        !ClarifyAudioSession.shared.state.phase.busy, !ProcessingDestination.shared.isBusy,
-        UIApplication.shared.applicationState == .active else {
-        promise.reject("APPLE_REWRITE", L("Finish the current operation before testing Apple Intelligence.")); return
-      }
-      self.appleRewriteID = id
-      let preferences = OutputPreferences(language: language, style: style)
-      self.appleRewriteTask = Task { @MainActor in
-        defer {
-          if self.appleRewriteID == id { self.appleRewriteID = nil; self.appleRewriteTask = nil }
+      Task { @MainActor in
+        guard UUID(uuidString: id) != nil, let language = OutputLanguage(rawValue: language),
+          let style = OutputStyle(rawValue: style) else {
+          promise.reject("APPLE_REWRITE", L("The rewrite request is invalid.")); return
         }
-        do {
-          let result = try await ApplePrivateRewrite.report(source, preferences: preferences, operationID: id)
-          try Task.checkCancellation()
-          guard self.appleRewriteID == id, UIApplication.shared.applicationState == .active else { throw CancellationError() }
-          promise.resolve(result.snapshot)
-        } catch is CancellationError {
-          promise.reject("APPLE_REWRITE", L("Cancelled"))
-        } catch {
-          promise.reject("APPLE_REWRITE", error.localizedDescription)
+        if let reason = self.appleLabAdmission().blockReason {
+          self.rejectAppleLab(promise, reason: reason); return
+        }
+        self.appleRewriteID = id
+        let preferences = OutputPreferences(language: language, style: style)
+        self.appleRewriteTask = Task { @MainActor in
+          defer {
+            if self.appleRewriteID == id { self.appleRewriteID = nil; self.appleRewriteTask = nil }
+          }
+          do {
+            let result = try await ApplePrivateRewrite.report(source, preferences: preferences, operationID: id)
+            try Task.checkCancellation()
+            guard self.appleRewriteID == id, UIApplication.shared.applicationState == .active else { throw CancellationError() }
+            promise.resolve(result.snapshot)
+          } catch is CancellationError {
+            promise.reject("APPLE_REWRITE", L("Cancelled"))
+          } catch {
+            promise.reject("APPLE_REWRITE", error.localizedDescription)
+          }
         }
       }
     }.runOnQueue(.main)
     AsyncFunction("getPrivateAppleRewriteProbe") { (promise: Promise) in
       Task { @MainActor in
-        guard UIApplication.shared.applicationState == .active else {
-          promise.reject("APPLE_REWRITE", L("Finish the current operation before testing Apple Intelligence.")); return
-        }
-        promise.resolve(ClarifyPrivateWritingToolsBridge.probe())
+        var report = ClarifyPrivateWritingToolsBridge.probe()
+        report["admission"] = self.appleLabAdmission().snapshot
+        report["lastRejectedBy"] = self.appleLabLastRejection
+        report["lastRejectedAdmission"] = self.appleLabLastAdmission
+        report["mainThread"] = Thread.isMainThread
+        promise.resolve(report)
       }
     }.runOnQueue(.main)
     AsyncFunction("openAppleWritingTools") { (source: String, language: String, promise: Promise) in
       Task { @MainActor in
-      guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-        source.utf8.count <= AppleRewriteEngine.maxInputBytes,
-        OutputLanguage(rawValue: language) != nil,
-        self.appleRewriteTask == nil, !ClarifyPrivateWritingToolsBridge.isBusy(), !self.computerScanning,
-        !ClarifyAudioSession.shared.state.phase.busy, !ProcessingDestination.shared.isBusy,
-        UIApplication.shared.applicationState == .active,
-        let presenter = self.appContext?.utilities?.currentViewController(),
-        presenter.presentedViewController == nil else {
-        promise.reject("APPLE_REWRITE", L("Finish the current operation before testing Apple Intelligence.")); return
-      }
-      let editor = AppleWritingToolsController(source: source, target: language)
-      presenter.present(UINavigationController(rootViewController: editor), animated: true) { promise.resolve(nil) }
+        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+          source.utf8.count <= AppleRewriteEngine.maxInputBytes,
+          OutputLanguage(rawValue: language) != nil else {
+          promise.reject("APPLE_REWRITE", L("The rewrite request is invalid.")); return
+        }
+        if let reason = self.appleLabAdmission().blockReason {
+          self.rejectAppleLab(promise, reason: reason); return
+        }
+        guard let presenter = self.appContext?.utilities?.currentViewController(),
+          presenter.presentedViewController == nil else {
+          self.rejectAppleLab(promise, reason: "presentation_busy"); return
+        }
+        let editor = AppleWritingToolsController(source: source, target: language)
+        presenter.present(UINavigationController(rootViewController: editor), animated: true) { promise.resolve(nil) }
       }
     }.runOnQueue(.main)
     AsyncFunction("openPrivateAppleWritingTools") { (source: String, language: String, style: String, promise: Promise) in
       Task { @MainActor in
-      guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-        source.utf8.count <= AppleRewriteEngine.maxInputBytes,
-        OutputLanguage(rawValue: language) != nil,
-        OutputStyle(rawValue: style) != nil,
-        self.appleRewriteTask == nil, !ClarifyPrivateWritingToolsBridge.isBusy(), !self.computerScanning,
-        !ClarifyAudioSession.shared.state.phase.busy, !ProcessingDestination.shared.isBusy,
-        UIApplication.shared.applicationState == .active,
-        let presenter = self.appContext?.utilities?.currentViewController(),
-        presenter.presentedViewController == nil else {
-        promise.reject("APPLE_REWRITE", L("Finish the current operation before testing Apple Intelligence.")); return
-      }
-      let editor = AppleWritingToolsController(source: source, target: language, privateStyle: style)
-      presenter.present(UINavigationController(rootViewController: editor), animated: true) { promise.resolve(nil) }
+        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+          source.utf8.count <= AppleRewriteEngine.maxInputBytes,
+          OutputLanguage(rawValue: language) != nil,
+          OutputStyle(rawValue: style) != nil else {
+          promise.reject("APPLE_REWRITE", L("The rewrite request is invalid.")); return
+        }
+        if let reason = self.appleLabAdmission().blockReason {
+          self.rejectAppleLab(promise, reason: reason); return
+        }
+        guard let presenter = self.appContext?.utilities?.currentViewController(),
+          presenter.presentedViewController == nil else {
+          self.rejectAppleLab(promise, reason: "presentation_busy"); return
+        }
+        let editor = AppleWritingToolsController(source: source, target: language, privateStyle: style)
+        presenter.present(UINavigationController(rootViewController: editor), animated: true) { promise.resolve(nil) }
       }
     }.runOnQueue(.main)
     AsyncFunction("cancelAppleRewrite") { (id: String, promise: Promise) in
-      guard self.appleRewriteID == id, let task = self.appleRewriteTask else { promise.resolve(nil); return }
-      task.cancel()
-      ClarifyPrivateWritingToolsBridge.cancelOperation(id)
-      Task { @MainActor in await task.value; promise.resolve(nil) }
+      Task { @MainActor in
+        guard self.appleRewriteID == id, let task = self.appleRewriteTask else { promise.resolve(nil); return }
+        task.cancel()
+        ClarifyPrivateWritingToolsBridge.cancelOperation(id)
+        await task.value
+        promise.resolve(nil)
+      }
     }.runOnQueue(.main)
     AsyncFunction("setOutputPreference") { (key: String, value: String) -> [String: String] in
       guard let store = SharedState() else { throw ClarifyError(L("Não foi possível acessar os dados do teclado.")) }

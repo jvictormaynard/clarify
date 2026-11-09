@@ -705,6 +705,11 @@ Apple UI and use local or cloud processing. A successful invocation is not proof
 that rewriting completed; inspect the editor before accepting or translating.
 Unknown signatures and failures preserve the source. Diagnostics stay in screen
 memory and contain no transcript, recording, credentials or exception body.
+The isolated lab does not wait for account synchronization or paired-computer
+activity. It still excludes active dictation, another Apple test, a private
+Writing Tools session, an open scanner or a backgrounded app. Rejections identify
+the exact condition. The interface report includes current admission state and
+the last rejection, without account identity or source text.
 Automatic processing checks availability and accepts up to 2,000 UTF-8
 bytes. An unavailable model, unsupported language, context limit or refusal
 returns an error and preserves the source. It has no cloud fallback and does not

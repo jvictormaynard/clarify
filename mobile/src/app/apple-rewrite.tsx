@@ -20,6 +20,7 @@ export default function AppleRewrite() {
   const [nativeOpening, setNativeOpening] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [privateProbe, setPrivateProbe] = useState('');
+  const [privateError, setPrivateError] = useState('');
   const [probing, setProbing] = useState(false);
   const probeGeneration = useRef(0);
   useEffect(() => () => { ++probeGeneration.current; }, []);
@@ -61,22 +62,25 @@ export default function AppleRewrite() {
   const inspectPrivate = async () => {
     if (probing) return;
     const generation = ++probeGeneration.current;
-    setProbing(true); setPrivateProbe(''); setLoadError('');
+    setProbing(true); setPrivateProbe(''); setLoadError(''); setPrivateError('');
     try {
       const report = await Core.getPrivateAppleRewriteProbe();
       if (generation === probeGeneration.current) setPrivateProbe(JSON.stringify(report, null, 2).slice(0, 16000));
-    } catch (error) { if (generation === probeGeneration.current) setLoadError(errorMessage(error)); }
+    } catch (error) { if (generation === probeGeneration.current) setPrivateError(errorMessage(error)); }
     finally { if (generation === probeGeneration.current) setProbing(false); }
   };
   const openNative = async (privateController = false) => {
     if (nativeOpening) return;
-    setNativeOpening(true); setLoadError('');
+    setNativeOpening(true); setLoadError(''); setPrivateError('');
     try {
       await session.cancel();
       Keyboard.dismiss();
       if (privateController) await Core.openPrivateAppleWritingTools(model.source, language, model.preferences.style);
       else await Core.openAppleWritingTools(model.source, language);
-    } catch (error) { setLoadError(errorMessage(error)); }
+    } catch (error) {
+      if (privateController) setPrivateError(errorMessage(error));
+      else setLoadError(errorMessage(error));
+    }
     finally { setNativeOpening(false); }
   };
   return <>
@@ -118,10 +122,11 @@ export default function AppleRewrite() {
       <Text style={[ui.section, { color: c.text }]}>{t('Experimento com APIs privadas da Apple')}</Text>
       <Text style={[ui.small, { color: c.muted }]}>{t('Estas rotas podem usar modelos locais ou na nuvem da Apple. Elas podem estar indisponíveis neste iOS. O original é preservado em caso de falha.')}</Text>
       <Button disabled={model.busy || nativeOpening} loading={probing} onPress={() => void inspectPrivate()}>{t('Inspecionar interfaces privadas')}</Button>
-      {!!privateProbe && <Text selectable style={[ui.small, { color: c.muted }]}>{privateProbe}</Text>}
       <Text style={[ui.small, { color: c.muted }]}>{t('A rota direta é uma inspeção de interface nesta build. Ela ainda não inicia uma reescrita.')}</Text>
       <Button testID="apple.private.rewrite" disabled={!preferencesLoaded || model.busy || nativeOpening || !model.source.trim()} onPress={() => void session.run('private')}>{t('Verificar rota privada TextComposer')}</Button>
       <Button testID="apple.private.controller" disabled={!preferencesLoaded || model.busy || nativeOpening || !model.source.trim()} onPress={() => void openNative(true)}>{t('Testar controlador privado das Ferramentas de Escrita')}</Button>
+      {!!privateError && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{privateError}</Text>}
+      {!!privateProbe && <Text selectable style={[ui.small, { color: c.muted }]}>{privateProbe}</Text>}
     </Card>
     {!!model.report && <Card>
       <Button onPress={() => setShowDetails(value => !value)}>{t(showDetails ? 'Ocultar detalhes do teste' : 'Mostrar detalhes do teste')}</Button>
