@@ -354,6 +354,59 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(grid.model.page, .letters)
       XCTAssertNotNil(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("buscar") },
                       "Apply host traits to the retained row when insertion changes pages")
+      grid.onInsert = { text += $0 }
+      @MainActor func shiftKey() throws -> UIButton {
+        try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("Maiúsculas") })
+      }
+      let beforeShift = text, shift = try shiftKey(), lowerQ = try key("q"), lowerFrame = lowerQ.frame
+      let shiftPoint = center(shift), letterPoint = center(lowerQ)
+      grid.beginPress("shift-slide", at: shiftPoint)
+      XCTAssertTrue(shift.isDescendant(of: grid) && lowerQ.isDescendant(of: grid), "Casing must keep both UIKit touch receivers attached")
+      XCTAssertEqual(lowerQ.title(for: .normal), "Q")
+      XCTAssertEqual(lowerQ.frame, lowerFrame, "A casing change must keep the key's hit bounds")
+      let accent = try key("A")
+      XCTAssertTrue(accent.accessibilityCustomActions?.contains { $0.name == "Á" } == true)
+      grid.endPress("shift-slide", at: letterPoint); grid.endPress("shift-slide", at: letterPoint)
+      XCTAssertEqual(text, beforeShift + "Q", "A Shift slide inserts its capital exactly once")
+      XCTAssertEqual(lowerQ.title(for: .normal), "q")
+      grid.model.toggleShift(); grid.model.toggleShift(); grid.rebuild()
+      for cancel in [true, false] {
+        grid.beginPress("aborted-shift", at: center(try shiftKey()))
+        if cancel { grid.cancelPress("aborted-shift") }
+        else { grid.endPress("aborted-shift", at: CGPoint(x: -30, y: -30)) }
+        grid.endPress("aborted-shift", at: letterPoint)
+        XCTAssertEqual(text, beforeShift + "Q")
+        XCTAssertEqual(grid.model.shift, .off)
+        XCTAssertTrue(grid.model.shiftIsManual, "Cancelled Shift must preserve the user's explicit lowercase choice")
+      }
+      let chordShift = try shiftKey(), chordPoint = center(chordShift)
+      grid.beginPress("shift-chord", at: chordPoint)
+      for title in ["Q", "W"] {
+        let point = center(try key(title))
+        grid.beginPress("chord-letter", at: point); grid.endPress("chord-letter", at: point)
+        XCTAssertTrue(chordShift.isDescendant(of: grid))
+      }
+      grid.endPress("shift-chord", at: chordPoint)
+      XCTAssertEqual(text, beforeShift + "QQW")
+      XCTAssertEqual(grid.model.shift, .off, "A consumed Shift chord must not arm the next letter")
+      grid.beginPress("cancelled-owner", at: center(try shiftKey()))
+      let heldLetter = try key("Q"), heldLetterPoint = center(heldLetter)
+      grid.beginPress("held-letter", at: heldLetterPoint); grid.cancelPress("cancelled-owner")
+      XCTAssertTrue(heldLetter.isDescendant(of: grid))
+      grid.endPress("held-letter", at: heldLetterPoint)
+      XCTAssertEqual(text, beforeShift + "QQWq", "Releasing Shift must not lose another finger's letter")
+      let tapPoint = center(try shiftKey())
+      grid.beginPress("shift-tap", at: tapPoint); grid.endPress("shift-tap", at: tapPoint)
+      XCTAssertEqual(grid.model.shift, .once, "A plain Shift tap still arms one capital")
+      let capitalPoint = center(try key("Q"))
+      grid.beginPress("capital", at: capitalPoint); grid.endPress("capital", at: capitalPoint)
+      XCTAssertEqual(text, beforeShift + "QQWqQ")
+      XCTAssertEqual(grid.model.shift, .off)
+      let pageShift = center(try shiftKey()), pageMode = center(try key("123"))
+      grid.beginPress("page-shift", at: pageShift); grid.beginPress("page-mode", at: pageMode)
+      grid.endPress("page-mode", at: pageMode); grid.endPress("page-shift", at: pageShift)
+      XCTAssertEqual(grid.model.page, .numbers, "A late Shift release must not toggle another finger's page choice")
+      XCTAssertEqual(text, beforeShift + "QQWqQ")
     }
   }
   func testCustomVocabularyIsNotReplacedAndQuotedWordsStillCorrect() async {

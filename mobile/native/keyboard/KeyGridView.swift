@@ -7,6 +7,7 @@ private final class KeyButton: UIButton {
   var acceptsPoint: ((CGPoint) -> Bool)?
   weak var grid: KeyGridView?
   var isGlobe = false
+  var isShift = false
   var startsNumberSlide = false
   var titleVerticalOffset: CGFloat = 0
   override func titleRect(forContentRect contentRect: CGRect) -> CGRect {
@@ -55,6 +56,7 @@ final class KeyGridView: UIView {
   private var touchRows: [(view: UIView, keys: [KeyButton])] = []
   private var presses: [AnyHashable: KeyButton] = [:]
   private var numberSlide: (id: AnyHashable, key: KeyButton, row: UIStackView)?
+  private var shiftSlide: (id: AnyHashable, key: KeyButton, used: Bool)?
   private var rebuildPending = false
   private var layoutSignature = ""
   private var usesModernKeyAppearance: Bool {
@@ -81,6 +83,9 @@ final class KeyGridView: UIView {
       model.page = .numbers; rebuild()
     }
     presses[id] = key; key.isHighlighted = true
+    if key.isShift, model.page == .letters, model.shift == .off, presses.count == 1 {
+      shiftSlide = (id, key, false); refreshLetterCasing()
+    }
     if key.isGlobe { onNextKeyboard?(key, event) } else { key.sendActions(for: .touchDown) }
   }
   func movePress(_ id: AnyHashable, to point: CGPoint, event: UIEvent? = nil) {
@@ -99,9 +104,13 @@ final class KeyGridView: UIView {
     guard let key = presses.removeValue(forKey: id) else { return }
     let slide = numberSlide
     let ownsSlide = slide?.id == id
+    let shift = shiftSlide
+    let ownsShift = shift?.id == id
     let inside = releaseKey(at: point) != nil && accentBar == nil
     if !presses.values.contains(where: { $0 === key }) { key.isHighlighted = false }
     if ownsSlide, key === slide?.key { key.sendActions(for: .touchCancel) }
+    else if ownsShift, key === shift?.key,
+            (!inside || shift?.used == true || model.page != .letters) { key.sendActions(for: .touchCancel) }
     else if key.isGlobe { onNextKeyboard?(key, event) }
     else { key.sendActions(for: inside ? .touchUpInside : .touchCancel) }
     if ownsSlide {
@@ -110,12 +119,14 @@ final class KeyGridView: UIView {
       // Refresh the retained row too, even if insertion already changed pages.
       layoutSignature = ""; rebuild()
     }
+    if ownsShift { shiftSlide = nil; refreshLetterCasing() }
     finishPresses()
   }
   func cancelPress(_ id: AnyHashable) {
     guard let key = presses.removeValue(forKey: id) else { return }
     if !presses.values.contains(where: { $0 === key }) { key.isHighlighted = false }
     key.sendActions(for: .touchCancel)
+    if shiftSlide?.id == id { shiftSlide = nil; refreshLetterCasing() }
     if numberSlide?.id == id { numberSlide = nil; model.page = .letters; layoutSignature = ""; rebuild() }
     finishPresses()
   }
@@ -197,6 +208,7 @@ final class KeyGridView: UIView {
         let title = model.page == .letters ? "" : (model.page == .numbers ? "#+=" : "123")
         let mode = key(title, special: true) { [weak self] in self?.changeShiftOrSymbols() }
         if model.page == .letters {
+          mode.isShift = true
           mode.setImage(UIImage(systemName: model.shift == .caps ? "capslock.fill" : (model.shift == .once ? "shift.fill" : "shift")), for: .normal)
           mode.accessibilityLabel = model.shift == .caps ? L("Desativar maiúsculas") : L("Maiúsculas")
         }
@@ -206,16 +218,15 @@ final class KeyGridView: UIView {
         let button = key(text) { [weak self] in
           guard let self = self else { return }
           if self.suppressKey { self.suppressKey = false; return }
-          let value = text.allSatisfy(\.isLetter) ? (self.model.shift == .off ? text.lowercased() : text.uppercased()) : text
+          let value = text.allSatisfy(\.isLetter) ?
+            (self.model.shift == .off && self.shiftSlide == nil ? text.lowercased() : text.uppercased()) : text
           self.insert(value)
         }
         if !KeyboardState.accents(for: text).isEmpty {
           let long = UILongPressGestureRecognizer(target: self, action: #selector(accent(_:)))
           long.minimumPressDuration = 0.35; button.addGestureRecognizer(long)
           // VoiceOver exposes accents without requiring a drag.
-          button.accessibilityCustomActions = KeyboardState.accents(for: text).dropFirst().map { value in
-            UIAccessibilityCustomAction(name: value) { [weak self] _ in self?.insert(value); return true }
-          }
+          configureAccentActions(button, title: text)
         }
         row.addArrangedSubview(button)
       }
@@ -331,17 +342,9 @@ final class KeyGridView: UIView {
     button.layer.cornerCurve = modern ? .circular : .continuous
     button.layer.shadowColor = UIColor.black.cgColor; button.layer.shadowOpacity = modern ? 0 : 0.12
     button.layer.shadowOffset = CGSize(width: 0, height: 1); button.layer.shadowRadius = 0
-    button.setTitle(title, for: .normal); button.setTitleColor(.label, for: .normal); button.tintColor = .label
-    let uppercaseLetter = title.count == 1 && title.allSatisfy(\.isUppercase)
-    let compactGlyph = uppercaseLetter || (title.count == 1 && "0123456789".contains(title))
-    button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 16 : (modern && compactGlyph ? 21 : 25))
-    // The iOS 26 references have smaller capitals and digits.
-    // Offset titles only; keep key bounds and touch ownership unchanged.
-    if modern, title.count == 1 {
-      if title.allSatisfy(\.isLowercase) { button.titleVerticalOffset = -7.0 / 3.0 }
-      else if compactGlyph { button.titleVerticalOffset = -4.0 / 3.0 }
-    }
-    button.accessibilityLabel = title; button.accessibilityTraits = .keyboardKey
+    configureTitle(button, title: title)
+    button.setTitleColor(.label, for: .normal); button.tintColor = .label
+    button.accessibilityTraits = .keyboardKey
     button.acceptsPoint = { [weak self, weak button] point in
       guard let self = self, let button = button else { return false }
       guard self.accentBar == nil, button.isDescendant(of: self.stack) else {
@@ -354,15 +357,55 @@ final class KeyGridView: UIView {
       guard let self = self else { return }
       if highlighted {
         self.onKeyPress?()
-        if title.count == 1, self.accentBar == nil, let container = self.previewContainer {
-          self.preview.show(title, key: key.convert(key.bounds, to: container), in: container, color: key.restingColor)
+        let currentTitle = key.title(for: .normal) ?? title
+        if currentTitle.count == 1, self.accentBar == nil, let container = self.previewContainer {
+          self.preview.show(currentTitle, key: key.convert(key.bounds, to: container), in: container, color: key.restingColor)
         }
       } else { self.preview.removeFromSuperview() }
     }
     button.addAction(UIAction { _ in action() }, for: .touchUpInside)
     return button
   }
-  private func insert(_ text: String) { model.didInsert(text); onInsert?(text); rebuild() }
+  private func configureTitle(_ button: KeyButton, title: String) {
+    button.setTitle(title, for: .normal); button.accessibilityLabel = title
+    let modern = usesModernKeyAppearance
+    let uppercaseLetter = title.count == 1 && title.allSatisfy(\.isUppercase)
+    let compactGlyph = uppercaseLetter || (title.count == 1 && "0123456789".contains(title))
+    button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 16 : (modern && compactGlyph ? 21 : 25))
+    button.titleVerticalOffset = 0
+    // The iOS 26 references have smaller capitals and digits.
+    // Offset titles only; keep key bounds and touch ownership unchanged.
+    if modern, title.count == 1 {
+      if title.allSatisfy(\.isLowercase) { button.titleVerticalOffset = -7.0 / 3.0 }
+      else if compactGlyph { button.titleVerticalOffset = -4.0 / 3.0 }
+    }
+  }
+  private func configureAccentActions(_ button: KeyButton, title: String) {
+    button.accessibilityCustomActions = KeyboardState.accents(for: title).dropFirst().map { value in
+      UIAccessibilityCustomAction(name: value) { [weak self] _ in self?.insert(value); return true }
+    }
+  }
+  private func refreshLetterCasing() {
+    // Keep UIKit's touch receivers attached while Shift changes their titles.
+    let upper = shiftSlide != nil || model.shift != .off
+    for button in touchRows.flatMap({ $0.keys }) {
+      if button.isShift {
+        button.setImage(UIImage(systemName: model.shift == .caps ? "capslock.fill" : (upper ? "shift.fill" : "shift")), for: .normal)
+      } else if let title = button.title(for: .normal), title.count == 1, title.allSatisfy(\.isLetter) {
+        let next = upper ? title.uppercased() : title.lowercased()
+        if next != title {
+          configureTitle(button, title: next); configureAccentActions(button, title: next)
+          if button.isHighlighted, accentBar == nil, let container = previewContainer {
+            preview.show(next, key: button.convert(button.bounds, to: container), in: container, color: button.restingColor)
+          }
+        }
+      }
+    }
+  }
+  private func insert(_ text: String) {
+    if text.contains(where: \.isLetter) { shiftSlide?.used = true }
+    model.didInsert(text); onInsert?(text); rebuild()
+  }
   private func changeShiftOrSymbols() {
     if model.page == .letters {
       let now = Date(); model.toggleShift(caps: now.timeIntervalSince(lastShift) < 0.3); lastShift = now
