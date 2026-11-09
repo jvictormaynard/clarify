@@ -176,6 +176,44 @@ final class KeyboardExtensionTests: XCTestCase {
     XCTAssertTrue(app.keys["q"].waitForExistence(timeout: 5),
                   "Temporary Shift must insert a capital and return to lowercase")
   }
+  private func checkCapsLock(_ name: String, in app: XCUIApplication) throws {
+    expectText("1QQ", in: app)
+    XCTAssertTrue(app.keys["q"].waitForExistence(timeout: 5), "Caps Lock must start from lowercase")
+    let shift = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label IN %@", "shift",
+      ["Caps lock", "Shift", "shift", "Maiúsculas", "maiúsculas"])).firstMatch
+    XCTAssertTrue(shift.waitForExistence(timeout: 5), app.debugDescription)
+    let frame = shift.frame, window = app.windows.firstMatch, windowFrame = window.frame
+    XCTAssertTrue(!frame.isEmpty && windowFrame.contains(frame))
+    let coordinate = window.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: frame.midX - windowFrame.minX, dy: frame.midY - windowFrame.minY))
+    captureKeyboardAppearance("\(name)-before", in: app)
+    func perform(_ phase: String, source: CGRect, action: () -> Void) throws {
+      let started = Date().timeIntervalSince1970, startedUptime = ProcessInfo.processInfo.systemUptime
+      action()
+      let ended = Date().timeIntervalSince1970, endedUptime = ProcessInfo.processInfo.systemUptime
+      captureKeyboardAppearance("\(name)-\(phase)", in: app)
+      let data = try JSONSerialization.data(withJSONObject: ["name": name, "phase": phase,
+        "startedUTC": started, "endedUTC": ended, "startedUptime": startedUptime, "endedUptime": endedUptime,
+        "sourceAXFrame": ["x": source.minX, "y": source.minY, "width": source.width, "height": source.height],
+        "syntheticResult": app.textFields["composer"].value as? String ?? "",
+        "timingScope": "XCTest action API bounds, not actual touch delivery or physical latency"], options: [.sortedKeys])
+      let trace = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+      trace.name = "\(name)-\(phase)-action-trace"; trace.lifetime = .keepAlways; add(trace)
+    }
+    // Keep both Shift taps anchored to the host window while its key changes.
+    try perform("enabled", source: frame) { coordinate.doubleTap() }
+    let upper = app.keys["Q"]
+    XCTAssertTrue(upper.waitForExistence(timeout: 5), "Double-tap Shift must enable capitals")
+    try perform("first", source: upper.frame) { upper.tap() }
+    expectText("1QQQ", in: app)
+    XCTAssertTrue(upper.waitForExistence(timeout: 5), "Caps Lock must survive the first letter")
+    try perform("second", source: upper.frame) { upper.tap() }
+    expectText("1QQQQ", in: app)
+    XCTAssertTrue(upper.waitForExistence(timeout: 5), "Caps Lock must survive the second letter")
+    try perform("after", source: frame) { coordinate.tap() }
+    expectText("1QQQQ", in: app)
+    XCTAssertTrue(app.keys["q"].waitForExistence(timeout: 5), "A Shift tap must turn Caps Lock off")
+  }
   private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
     let app = XCUIApplication(); app.terminate()
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
@@ -246,6 +284,7 @@ final class KeyboardExtensionTests: XCTestCase {
     wait(for: [sameLanguage], timeout: 10)
     try checkNumberSlide("apple-\(language)-number-slide", in: app)
     try checkTemporaryShiftSlide("apple-\(language)-shift-slide", in: app)
+    try checkCapsLock("apple-\(language)-caps-lock", in: app)
     app.terminate()
   }
   private func capturePagesAndDarkAppearance(_ prefix: String, in app: XCUIApplication) throws {
@@ -438,6 +477,7 @@ final class KeyboardExtensionTests: XCTestCase {
     selectClarifyKeyboard(in: app)
     try checkNumberSlide("clarify-number-slide", in: app)
     try checkTemporaryShiftSlide("clarify-shift-slide", in: app)
+    try checkCapsLock("clarify-caps-lock", in: app)
   }
   // Keep the original installed acceptance first, before changing enabled languages.
   func testZ1NativeEnglishUSReference() throws {
