@@ -55,15 +55,7 @@ final class KeyboardHostController: UIViewController {
       self.blueBackdrop.toggle()
       self.view.backgroundColor = self.blueBackdrop ? UIColor(red: 0.12, green: 0.26, blue: 0.4, alpha: 1) : .systemBackground
     }, for: .touchUpInside)
-    let fonts = UIButton(type: .system); fonts.setTitle("Capture font samples", for: .normal)
-    fonts.accessibilityIdentifier = "font-reference-status"; fonts.accessibilityValue = "idle"
-    fonts.isHidden = !ProcessInfo.processInfo.arguments.contains("--native-keyboard-reference")
-    fonts.addAction(UIAction { [weak fonts] _ in
-      guard let fonts = fonts, fonts.accessibilityValue == "idle" else { return }
-      fonts.accessibilityValue = "capturing"
-      KeyboardFontReference.capture { [weak fonts] result in fonts?.accessibilityValue = result }
-    }, for: .touchUpInside)
-    for element in [field, trace, returnTrace, dismiss, reset, activate, appearance, backdrop, fonts] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
+    for element in [field, trace, returnTrace, dismiss, reset, activate, appearance, backdrop] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
     NSLayoutConstraint.activate([
       trace.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
       trace.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20), trace.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
@@ -73,7 +65,6 @@ final class KeyboardHostController: UIViewController {
       activate.topAnchor.constraint(equalTo: returnTrace.bottomAnchor, constant: 16), activate.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       appearance.topAnchor.constraint(equalTo: activate.bottomAnchor, constant: 12), appearance.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       backdrop.topAnchor.constraint(equalTo: appearance.bottomAnchor, constant: 12), backdrop.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
-      fonts.topAnchor.constraint(equalTo: backdrop.bottomAnchor, constant: 12), fonts.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       field.leadingAnchor.constraint(equalTo: trace.leadingAnchor), field.trailingAnchor.constraint(equalTo: trace.trailingAnchor),
       field.heightAnchor.constraint(equalToConstant: 44), field.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8)
     ])

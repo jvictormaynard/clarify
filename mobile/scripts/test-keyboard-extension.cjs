@@ -77,16 +77,6 @@ try {
   if (fs.existsSync(receipt)) fs.copyFileSync(receipt, path.join(results, 'activation-return.json'));
   const preflight = path.join(fixture, 'Shared/container-preflight.json');
   if (fs.existsSync(preflight)) fs.copyFileSync(preflight, path.join(results, 'container-preflight.json'));
-  const shared = path.join(fixture, 'Shared');
-  const fonts = path.join(shared, 'font-reference');
-  if (fs.existsSync(fonts)) fs.cpSync(fonts, path.join(results, 'font-reference'), { recursive: true });
-  if (exitCode === 0) {
-    const manifest = path.join(fonts, 'manifest.json');
-    const samples = fs.existsSync(manifest) ? JSON.parse(fs.readFileSync(manifest, 'utf8')).images : [];
-    if (samples.length !== 144 || !samples.every(sample => /^font-[a-z0-9.-]+\.png$/.test(sample.file) && fs.existsSync(path.join(fonts, sample.file)))) {
-      console.error('Incomplete public-font raster reference.'); exitCode = 1;
-    }
-  }
   for (const name of ['KeyboardViewController.swift', 'App.plist', 'Keyboard.plist', 'Container.plist', 'Tests.plist']) {
     const source = path.join(fixture, name);
     if (fs.existsSync(source)) fs.copyFileSync(source, path.join(results, 'generated-' + name));

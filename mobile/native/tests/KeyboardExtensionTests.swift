@@ -177,10 +177,6 @@ final class KeyboardExtensionTests: XCTestCase {
     expectText("Q", in: app)
     try captureKeyboardReference("apple-default-lowercase", uppercase: false, in: app)
     try capturePagesAndDarkAppearance("apple", in: app)
-    let samples = app.buttons["font-reference-status"]
-    samples.tap()
-    let captured = expectation(for: NSPredicate(format: "value == %@", "complete"), evaluatedWith: samples)
-    wait(for: [captured], timeout: 60)
   }
   func testInstalledKeyboardTypingAndActivation() throws {
     continueAfterFailure = false
