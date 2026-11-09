@@ -1121,6 +1121,29 @@ final class KeyboardUITests: XCTestCase {
         grid.model.page = page; grid.rebuild()
         for width in [CGFloat(320), 393, 852] {
           grid.frame.size.width = width; grid.layoutIfNeeded()
+          let currentButtons = descendants(grid).compactMap { $0 as? UIButton }
+          if page == .letters {
+            let q = currentButtons.first { $0.title(for: .normal)?.lowercased() == "q" }!
+            let a = currentButtons.first { $0.title(for: .normal)?.lowercased() == "a" }!
+            let l = currentButtons.first { $0.title(for: .normal)?.lowercased() == "l" }!
+            let z = currentButtons.first { $0.title(for: .normal)?.lowercased() == "z" }!
+            XCTAssertEqual(a.bounds.width, q.bounds.width, accuracy: 0.5)
+            XCTAssertEqual(z.bounds.width, q.bounds.width, accuracy: 0.5)
+            let qRect = q.convert(q.bounds, to: grid), aRect = a.convert(a.bounds, to: grid)
+            XCTAssertEqual(aRect.midX, qRect.midX + (q.bounds.width + 6) / 2, accuracy: 0.5)
+            // Each row owns its side margins, including points near its top and
+            // bottom. A global rectangle search can select the row above here.
+            for (x, expected) in [(CGFloat(1), a), (width - 1, l)] {
+              for y in [aRect.minY + 1, aRect.midY, aRect.maxY - 1] {
+                let point = CGPoint(x: x, y: y)
+                XCTAssertTrue(grid.hitTest(point, with: nil) === expected,
+                              "Row margin selected another row at \(point), width \(width)")
+                inserted = []
+                grid.beginPress("row-margin", at: point); grid.endPress("row-margin", at: point)
+                XCTAssertEqual(inserted.map { $0.lowercased() }, [expected.title(for: .normal)!.lowercased()])
+              }
+            }
+          }
           for y in stride(from: CGFloat(1), to: grid.bounds.height, by: 12) {
             for x in stride(from: CGFloat(1), to: width, by: 12) {
               let point = CGPoint(x: x, y: y)
@@ -1128,6 +1151,13 @@ final class KeyboardUITests: XCTestCase {
                 XCTFail("Dead area at \(point), page \(page), width \(width)"); return
               }
               XCTAssertTrue(hit.point(inside: hit.convert(point, from: grid), with: nil))
+              // Exercise the touch owner too. Calling sendActions alone does
+              // not prove that a touch in the expanded area inserts anything.
+              if let title = hit.title(for: .normal), title.count == 1 {
+                inserted = []
+                grid.beginPress("gap-sweep", at: point); grid.endPress("gap-sweep", at: point)
+                XCTAssertEqual(inserted.map { $0.lowercased() }, [title.lowercased()])
+              }
             }
           }
         }

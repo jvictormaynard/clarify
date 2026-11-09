@@ -158,6 +158,14 @@ final class AppFlowUITests: XCTestCase {
     press("actions.choose")
     press("actions.option.saved:rewrite:1")
   }
+  func waitForCatalogDiscovery() {
+    let progress = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH 'actions.operation.' AND identifier != 'actions.operation.starting'")).firstMatch
+    XCTAssertTrue(progress.waitForExistence(timeout: 10), "Accepted UUID must arrive before discovery completes")
+    XCTAssertNotNil(UUID(uuidString: progress.identifier.replacingOccurrences(of: "actions.operation.", with: "")))
+    // Automatic account refresh also loads this catalog. The barrier proves
+    // discovery is pending; its request count is not an operation count.
+    XCTAssertGreaterThanOrEqual(fixture("/__fixture/wait-catalog")["held"] as? Int ?? 0, 1)
+  }
   func verifyActions() {
     tab("Ações")
     let text = app.textViews["actions.text"]
@@ -173,11 +181,7 @@ final class AppFlowUITests: XCTestCase {
     let previousPosts = (fixture("/__fixture/state")["processing"] as? [Any])?.count
     _ = fixture("/__fixture/control", values: ["catalog": "slow"])
     press("actions.run")
-    let progress = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH 'actions.operation.' AND identifier != 'actions.operation.starting'")).firstMatch
-    XCTAssertTrue(progress.waitForExistence(timeout: 10), "Accepted UUID must arrive before discovery completes")
-    let identifier = progress.identifier.replacingOccurrences(of: "actions.operation.", with: "")
-    XCTAssertNotNil(UUID(uuidString: identifier))
-    XCTAssertEqual(fixture("/__fixture/wait-catalog")["held"] as? Int, 1)
+    waitForCatalogDiscovery()
     XCTAssertFalse(app.buttons["actions.copy"].exists)
     capture("actions-slow-catalog-accepted")
     press("actions.cancel")
@@ -192,9 +196,7 @@ final class AppFlowUITests: XCTestCase {
     enter("off", in: text, name: "deactivated-composer", replacing: true)
     _ = fixture("/__fixture/control", values: ["catalog": "slow"])
     press("actions.run")
-    XCTAssertTrue(progress.waitForExistence(timeout: 10))
-    XCTAssertNotNil(UUID(uuidString: progress.identifier.replacingOccurrences(of: "actions.operation.", with: "")))
-    XCTAssertEqual(fixture("/__fixture/wait-catalog")["held"] as? Int, 1)
+    waitForCatalogDiscovery()
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
       CFNotificationName("com.clarify.app-flow.deactivate" as CFString), nil, nil, true)
     absent(app.buttons["actions.cancel"])
@@ -419,7 +421,7 @@ final class AppFlowUITests: XCTestCase {
     let previousPosts = (fixture("/__fixture/state")["processing"] as? [Any])?.count
     _ = fixture("/__fixture/control", values: ["catalog": "slow"])
     press("actions.run")
-    XCTAssertEqual(fixture("/__fixture/wait-catalog")["held"] as? Int, 1)
+    waitForCatalogDiscovery()
     capture("compact-cancel-ready")
     press("actions.cancel"); absent(app.buttons["actions.cancel"])
     _ = fixture("/__fixture/control", values: ["release": true])

@@ -390,7 +390,11 @@ def download(api, path):
         api.base + path,
         headers={
             "Authorization": "Bearer " + api.token,
-            "Accept": "application/octet-stream",
+            "Accept": (
+                "application/vnd.github+json"
+                if path.startswith("/actions/artifacts/")
+                else "application/octet-stream"
+            ),
         },
     )
     try:
