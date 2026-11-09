@@ -22,12 +22,13 @@
 - (bool)_supportsWritingTools;
 @end
 
-static const void *CWSessionKey = &CWSessionKey;
 static void *CWTextComposerHandle;
 static void *CWWritingToolsHandle;
 
 @interface ClarifyPrivateWritingToolsSession : NSObject
-@property (nonatomic, weak) UITextView *textView;
+// Keep the responder alive through asynchronous end. The global session is the
+// sole bridge owner; no associated-object back-reference creates a retain cycle.
+@property (nonatomic, strong) UITextView *textView;
 @property (nonatomic) BOOL observedActive;
 @property (nonatomic) BOOL endRequested;
 @property (nonatomic) NSUInteger observationGeneration;
@@ -131,9 +132,6 @@ static void CWRefreshSession(void) {
     bool active = [owner _isWritingToolsActive];
     if (active) session.observedActive = YES;
     if (!active && (session.observedActive || session.endRequested)) {
-      UITextView *view = session.textView;
-      if (view && objc_getAssociatedObject(view, CWSessionKey) == session)
-        objc_setAssociatedObject(view, CWSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
       CWSession = nil;
       CWLastEndState = session.endRequested ? @"end_confirmed" : @"inactive_after_active";
     }
@@ -299,7 +297,6 @@ static NSString *CWExtendedRewriteTypes(void) {
     session.textView = textView;
     session.deadline = NSProcessInfo.processInfo.systemUptime + 30.0;
     CWSession = session;
-    objc_setAssociatedObject(textView, CWSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     // Retain before invocation, including when start throws after side effects.
     CWLastEndState = @"none";
     CWObserveSession(session, ++session.observationGeneration);
