@@ -381,10 +381,10 @@ class KeyboardViewController: UIInputViewController {
     updateSuggestions()
   }
   private func updateInputTraits() {
-    let proxy = textDocumentProxy
-    let appearance: UIUserInterfaceStyle = proxy.keyboardAppearance == .dark ? .dark : (proxy.keyboardAppearance == .light ? .light : .unspecified)
-    let returnType = proxy.returnKeyType ?? .default
-    if view.overrideUserInterfaceStyle != appearance { view.overrideUserInterfaceStyle = appearance }
+    // UIKit updates the controller's appearance traits even when the proxy's
+    // keyboardAppearance still describes the previous host appearance.
+    // Let the view inherit those traits instead of pinning it to stale data.
+    let returnType = textDocumentProxy.returnKeyType ?? .default
     if keys.returnType != returnType { keys.returnType = returnType; keys.rebuild() }
   }
   private func updateCapitalization() {

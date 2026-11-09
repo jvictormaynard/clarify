@@ -148,79 +148,6 @@ OBJC
 [app, keyboard].each do |target|
   target.source_build_phase.add_file_reference(project.main_group.new_file(runtime_probe))
 end
-# Temporary public-trait observation in the simulator fixture. Keep the product
-# controller byte-identical; the subclass records state after its callbacks.
-trait_probe = File.join(fixture, 'TraitReferenceKeyboard.swift')
-File.write(trait_probe, <<~SWIFT)
-  import UIKit
-  #if targetEnvironment(simulator)
-  final class TraitReferenceKeyboard: KeyboardViewController {
-    private let traceID = UUID().uuidString
-    private var samples: [[String: Any]] = []
-    private var lastState: Data?
-    private var sampleTimer: Timer?
-    private var ticks = 0
-    private var callbacks: [String: Int] = [:]
-    override func viewDidLoad() {
-      super.viewDidLoad(); captureTraits("load")
-      sampleTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] timer in
-        guard let self = self else { timer.invalidate(); return }
-        self.ticks += 1
-        self.captureTraits("sample")
-        if self.ticks >= 720 { timer.invalidate(); self.sampleTimer = nil }
-      }
-    }
-    override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); captureTraits("willAppear") }
-    override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); captureTraits("didAppear") }
-    override func viewDidLayoutSubviews() { super.viewDidLayoutSubviews(); captureTraits("layout") }
-    override func textDidChange(_ textInput: UITextInput?) { super.textDidChange(textInput); captureTraits("text") }
-    override func selectionDidChange(_ textInput: UITextInput?) { super.selectionDidChange(textInput); captureTraits("selection") }
-    deinit { sampleTimer?.invalidate() }
-    private func captureTraits(_ event: String) {
-      guard isViewLoaded else { return }
-      callbacks[event, default: 0] += 1
-      var queue: [UIView] = [view], button: UIButton?
-      var inspected = 0
-      while !queue.isEmpty, inspected < 400 {
-        let candidate = queue.removeFirst(); inspected += 1
-        if let key = candidate as? UIButton, ["q", "Q", "1", "["].contains(key.accessibilityLabel ?? "") { button = key; break }
-        queue.append(contentsOf: candidate.subviews)
-      }
-      var state: [String: Any] = [
-        "proxyAppearance": textDocumentProxy.keyboardAppearance?.rawValue ?? -1,
-        "proxyReturnType": textDocumentProxy.returnKeyType?.rawValue ?? -1,
-        "controllerStyle": traitCollection.userInterfaceStyle.rawValue,
-        "controllerOverride": overrideUserInterfaceStyle.rawValue,
-        "rootStyle": view.traitCollection.userInterfaceStyle.rawValue,
-        "rootOverride": view.overrideUserInterfaceStyle.rawValue,
-        "windowStyle": view.window?.traitCollection.userInterfaceStyle.rawValue ?? -1
-      ]
-      if let key = button {
-        var parents: [[String: Any]] = [], current: UIView? = key
-        while let item = current, parents.count < 12 {
-          parents.append(["class": String(describing: type(of: item)), "style": item.traitCollection.userInterfaceStyle.rawValue,
-            "override": item.overrideUserInterfaceStyle.rawValue]); current = item.superview
-        }
-        state["key"] = key.accessibilityLabel ?? ""
-        state["parents"] = parents
-        state["keyBackgroundComponents"] = key.backgroundColor?.resolvedColor(with: key.traitCollection).cgColor.components ?? []
-        state["keyBackgroundUnderRootTraits"] = key.backgroundColor?.resolvedColor(with: view.traitCollection).cgColor.components ?? []
-        state["keyLayerBackgroundComponents"] = key.layer.backgroundColor?.components ?? []
-      }
-      guard let encoded = try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), encoded != lastState,
-        samples.count < 128 else { return }
-      lastState = encoded
-      state["event"] = event; state["callbacks"] = callbacks; state["uptime"] = ProcessInfo.processInfo.systemUptime
-      samples.append(state)
-      if let data = try? JSONSerialization.data(withJSONObject: ["scope": "Simulator-only public trait trace; no draft content", "instanceID": traceID,
-        "processID": ProcessInfo.processInfo.processIdentifier, "samples": samples], options: [.sortedKeys]) {
-        try? data.write(to: URL(fileURLWithPath: #{shared_root.inspect}).appendingPathComponent("keyboard-runtime-trait-trace-" + traceID + ".json"), options: .atomic)
-      }
-    }
-  }
-  #endif
-SWIFT
-keyboard.source_build_phase.add_file_reference(project.main_group.new_file(trait_probe))
 shared_source = File.join(fixture, 'SharedState.swift')
 File.write(shared_source, File.read(File.join(root, 'modules/clarify-core/ios/SharedState.swift')).sub(/  init\?\(\) \{.*?\n  \}/m, "  init?() { self.root = URL(fileURLWithPath: #{shared_root.inspect}) }"))
 app.source_build_phase.add_file_reference(project.main_group.new_file(shared_source))
@@ -318,7 +245,7 @@ info = { 'CFBundleDisplayName' => 'Clarify', 'CFBundleName' => 'ClarifyKeyboard'
   'CFBundleIdentifier' => '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundleExecutable' => '$(EXECUTABLE_NAME)',
   'CFBundlePackageType' => 'XPC!', 'CFBundleShortVersionString' => '1.0', 'CFBundleVersion' => '1',
   'NSExtension' => { 'NSExtensionPointIdentifier' => 'com.apple.keyboard-service',
-    'NSExtensionPrincipalClass' => '$(PRODUCT_MODULE_NAME).TraitReferenceKeyboard',
+    'NSExtensionPrincipalClass' => '$(PRODUCT_MODULE_NAME).KeyboardViewController',
     'NSExtensionAttributes' => { 'IsASCIICapable' => true, 'PrimaryLanguage' => 'pt-BR', 'RequestsOpenAccess' => true } } }
 Xcodeproj::Plist.write_to_path(info, File.join(fixture, 'Keyboard.plist'))
 keyboard.build_configurations.each do |config|
