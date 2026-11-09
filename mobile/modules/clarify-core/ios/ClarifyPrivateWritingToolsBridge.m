@@ -25,6 +25,8 @@ static void *CWWritingToolsHandle;
 @property (nonatomic, strong) id controller;
 @property (nonatomic, weak) UITextView *textView;
 @property (nonatomic) BOOL observedActive;
+@property (nonatomic) BOOL endRequested;
+@property (nonatomic) NSUInteger observationGeneration;
 @property (nonatomic) NSTimeInterval deadline;
 @end
 @implementation ClarifyPrivateWritingToolsSession
@@ -32,6 +34,7 @@ static void *CWWritingToolsHandle;
 
 // One UI session, including uncertain startup. No direct service work is admitted.
 static ClarifyPrivateWritingToolsSession *CWSession;
+static NSString *CWLastEndState = @"none";
 
 static BOOL CWPlatform(void) {
 #if TARGET_OS_IOS && !TARGET_OS_SIMULATOR && !TARGET_OS_MACCATALYST
@@ -105,26 +108,40 @@ static void CWRefreshSession(void) {
     if (!CWMethod(object_getClass(session.controller), NO, @selector(isWritingToolsActive), @encode(bool), NULL, 0)) return;
     bool active = [session.controller isWritingToolsActive];
     if (active) session.observedActive = YES;
-    if (!active && session.observedActive) {
+    if (!active && (session.observedActive || session.endRequested)) {
       UITextView *view = session.textView;
       if (view && objc_getAssociatedObject(view, CWSessionKey) == session)
         objc_setAssociatedObject(view, CWSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
       CWSession = nil;
+      CWLastEndState = session.endRequested ? @"end_confirmed" : @"inactive_after_active";
     }
   } @catch (__unused NSException *exception) {
     // Unknown lifecycle: retain the slot. Never infer cancellation from an error.
   }
 }
 
-static void CWObserveSession(ClarifyPrivateWritingToolsSession *session) {
+static void CWObserveSession(ClarifyPrivateWritingToolsSession *session, NSUInteger generation) {
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-    if (CWSession != session) return;
+    if (CWSession != session || session.observationGeneration != generation) return;
     CWRefreshSession();
     if (CWSession == session && NSProcessInfo.processInfo.systemUptime < session.deadline)
-      CWObserveSession(session);
+      CWObserveSession(session, generation);
     // After 30 seconds, stop polling. isBusy/open can still observe a known end.
     // An unconfirmed session keeps its slot; no overlapping request is allowed.
   });
+}
+
+static NSDictionary *CWLifecycle(void) {
+  ClarifyPrivateWritingToolsSession *session = CWSession;
+  id active = @"unavailable";
+  @try {
+    if (session && CWMethod(object_getClass(session.controller), NO,
+        @selector(isWritingToolsActive), @encode(bool), NULL, 0))
+      active = @([session.controller isWritingToolsActive]);
+  } @catch (__unused NSException *exception) { active = @"read_failed"; }
+  return @{ @"sessionPresent": @(session != nil),
+    @"observedActive": @(session.observedActive), @"endRequested": @(session.endRequested),
+    @"controllerActive": active, @"lastEndState": CWLastEndState };
 }
 
 static NSDictionary<NSString *, id> *CWReply(NSString *code, NSString *error, NSString *diagnostics) {
@@ -172,6 +189,8 @@ static NSString *CWExtendedRewriteTypes(void) {
       @"controllerSourceEncoding": CWEncoding(ui, NO, @selector(setSourceResponder:sourceTextInput:)),
       @"controllerStartEncoding": CWEncoding(ui, NO, @selector(startWritingTools)),
       @"controllerActiveEncoding": CWEncoding(ui, NO, @selector(isWritingToolsActive)),
+      @"controllerEndEncoding": CWEncoding(ui, NO, @selector(endWritingTools)),
+      @"lifecycle": CWLifecycle(),
       @"iOS": UIDevice.currentDevice.systemVersion,
       @"code": @"direct_contract_unverified" };
   } @catch (__unused NSException *exception) {
@@ -260,7 +279,8 @@ static NSString *CWExtendedRewriteTypes(void) {
     CWSession = session;
     objc_setAssociatedObject(textView, CWSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     // Retain before invocation, including when start throws after side effects.
-    CWObserveSession(session);
+    CWLastEndState = @"none";
+    CWObserveSession(session, ++session.observationGeneration);
     if (!CWMethod(object_getClass(controller), NO, @selector(startWritingTools), @encode(void), NULL, 0)) return NO;
     [controller startWritingTools];
     CWRefreshSession();
@@ -274,17 +294,24 @@ static NSString *CWExtendedRewriteTypes(void) {
 
 + (void)endToolForTextView:(UITextView *)textView {
   if (!NSThread.isMainThread || CWSession.textView != textView) return;
+  ClarifyPrivateWritingToolsSession *session = CWSession;
+  if (session.endRequested) { CWRefreshSession(); return; }
   @try {
-    id controller = CWSession.controller;
+    id controller = session.controller;
     if (CWMethod(object_getClass(controller), NO, @selector(endWritingTools), @encode(void), NULL, 0)) {
       [controller endWritingTools];
-      // An explicit end request plus an inactive controller is a confirmed end.
-      if (CWMethod(object_getClass(controller), NO, @selector(isWritingToolsActive), @encode(bool), NULL, 0)
-          && ![controller isWritingToolsActive]) {
-        objc_setAssociatedObject(textView, CWSessionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        CWSession = nil;
+      // Apple can finish ending asynchronously, including a session whose active
+      // state was never observed. Keep exclusion until inactivity is confirmed.
+      if (CWSession == session) {
+        session.endRequested = YES;
+        CWLastEndState = @"end_requested";
+        session.deadline = NSProcessInfo.processInfo.systemUptime + 30.0;
+        CWRefreshSession();
+        if (CWSession == session) CWObserveSession(session, ++session.observationGeneration);
       }
-    }
-  } @catch (__unused NSException *exception) { /* Keep an uncertain session occupied. */ }
+    } else { CWLastEndState = @"end_signature_unavailable"; }
+  } @catch (__unused NSException *exception) {
+    CWLastEndState = @"end_exception"; // Keep an uncertain session occupied.
+  }
 }
 @end

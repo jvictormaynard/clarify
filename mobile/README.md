@@ -703,6 +703,11 @@ The private Writing Tools controller route attempts to select Rewrite, Professio
 or Friendly from the chosen lab style and start the system session. It can display
 Apple UI and use local or cloud processing. A successful invocation is not proof
 that rewriting completed; inspect the editor before accepting or translating.
+In the private result sheet, tap **Replace** to apply the rewrite before
+translating. Its checkmark can close the sheet without changing the editor.
+Closing requests a verified end and observes asynchronous completion. Continued
+activity or unknown lifecycle state keeps the session excluded. The interface
+report includes end-method encoding, controller activity and end-request state.
 Unknown signatures and failures preserve the source. Diagnostics stay in screen
 memory and contain no transcript, recording, credentials or exception body.
 The isolated lab does not wait for account synchronization or paired-computer

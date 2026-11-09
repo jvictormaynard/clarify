@@ -8298,5 +8298,10 @@
     "pt": "Não foi possível iniciar o teste da Apple. Inspecione o relatório de interface.",
     "en": "The Apple test could not start. Inspect the interface report.",
     "es": "No se pudo iniciar la prueba de Apple. Inspecciona el informe de interfaz."
+  },
+  "In the private result sheet, tap Replace to apply the rewrite. Check the editor text before translating. The checkmark can close the sheet without applying the result.": {
+    "pt": "Na tela de resultado privada, toque em Substituir (Replace) para aplicar a reescrita. Confira o texto do editor antes de traduzir. A marca de confirmação pode fechar a tela sem aplicar o resultado.",
+    "en": "In the private result sheet, tap Replace to apply the rewrite. Check the editor text before translating. The checkmark can close the sheet without applying the result.",
+    "es": "En el resultado privado, toca Reemplazar (Replace) para aplicar la reescritura. Revisa el editor antes de traducir. La marca de confirmación puede cerrar la pantalla sin aplicar el resultado."
   }
 }

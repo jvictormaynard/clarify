@@ -14,6 +14,9 @@ final class AppleWritingToolsController: UIViewController {
   private var attemptedPrivateController = false
   private let editor = UITextView()
   private let translationHint = UILabel()
+  private var privateInstructions: String {
+    L("In the private result sheet, tap Replace to apply the rewrite. Check the editor text before translating. The checkmark can close the sheet without applying the result.")
+  }
 
   init(source: String, target: String, privateStyle: String? = nil) {
     self.source = source; self.target = target; self.privateStyle = privateStyle
@@ -32,7 +35,7 @@ final class AppleWritingToolsController: UIViewController {
     // Invocation is not proof that a model generated or that an edit was accepted.
     let state = L(invoked ? "Controlador privado chamado. Confira se a Apple iniciou a reescrita." :
       "O controlador privado não pôde ser iniciado. O original foi preservado.")
-    translationHint.text = state + "\n" + ((details as String?) ?? "")
+    translationHint.text = state + "\n" + privateInstructions + "\n" + ((details as String?) ?? "")
   }
 
   override func viewDidDisappear(_ animated: Bool) {
@@ -71,7 +74,7 @@ final class AppleWritingToolsController: UIViewController {
     translate.addTarget(self, action: #selector(translateCurrentText), for: .touchUpInside)
     translationHint.numberOfLines = 0
     translationHint.font = .preferredFont(forTextStyle: .footnote)
-    translationHint.text = L("Aceite a reescrita com ✓. Depois, toque em Traduzir. A tradução usa o texto deste editor e é processada neste iPhone.")
+    translationHint.text = privateStyle != nil ? privateInstructions : L("Aceite a reescrita com ✓. Depois, toque em Traduzir. A tradução usa o texto deste editor e é processada neste iPhone.")
     for button in [tools, languages, translate] {
       button.titleLabel?.numberOfLines = 0
       button.titleLabel?.textAlignment = .center
