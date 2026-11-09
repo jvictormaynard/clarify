@@ -77,6 +77,19 @@ try {
   if (fs.existsSync(receipt)) fs.copyFileSync(receipt, path.join(results, 'activation-return.json'));
   const preflight = path.join(fixture, 'Shared/container-preflight.json');
   if (fs.existsSync(preflight)) fs.copyFileSync(preflight, path.join(results, 'container-preflight.json'));
+  const shared = path.join(fixture, 'Shared');
+  if (fs.existsSync(shared)) {
+    for (const name of fs.readdirSync(shared).filter(name => /^keyboard-runtime-[a-zA-Z0-9.-]+\.json$/.test(name))) {
+      fs.copyFileSync(path.join(shared, name), path.join(results, name));
+    }
+  }
+  if (exitCode === 0 && ![
+    'keyboard-runtime-com.clarify.fixture.host-ordinary-system.json',
+    'keyboard-runtime-com.clarify.fixture.container.keyboard-extension.json',
+  ].every(name => fs.existsSync(path.join(results, name)))) {
+    console.error('Missing runtime reference from the ordinary Apple host or installed extension.');
+    exitCode = 1;
+  }
   for (const name of ['KeyboardViewController.swift', 'App.plist', 'Keyboard.plist', 'Container.plist', 'Tests.plist']) {
     const source = path.join(fixture, name);
     if (fs.existsSync(source)) fs.copyFileSync(source, path.join(results, 'generated-' + name));

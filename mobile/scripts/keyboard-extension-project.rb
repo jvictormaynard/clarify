@@ -9,6 +9,68 @@ container = project.new_target(:application, 'ActivationContainer', :ios, '16.4'
 container.add_dependency(keyboard); tests.add_dependency(app)
 app.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/tests/KeyboardExtensionHost.swift')))
 shared_root = File.join(fixture, 'Shared'); Dir.mkdir(shared_root)
+# Runtime metadata stays in the isolated simulator fixture. Do not link this
+# probe into the distributed app or invoke the discovered private selectors.
+runtime_probe = File.join(fixture, 'KeyboardReferenceProbe.m')
+File.write(runtime_probe, <<~OBJC)
+  #import <UIKit/UIKit.h>
+  #import <objc/runtime.h>
+  #import <TargetConditionals.h>
+  #if TARGET_OS_SIMULATOR
+  static void CaptureKeyboardRuntimeReference(void) {
+    NSDictionary *selectors = @{
+      @"UIKeyboardImpl": @[@"sharedInstance", @"activeInstance", @"initWithFrame:", @"inputManager", @"layout"],
+      @"UIKeyboardAutomatic": @[@"sharedInstance", @"initWithFrame:"],
+      @"UIKeyboardLayoutStar": @[@"initWithFrame:", @"keyplane", @"keyplaneView", @"renderingContext"],
+      @"UIKBRenderFactory": @[@"init", @"lightKeycapsFontName", @"lightTextFontName", @"renderConfig"],
+      @"UIKBRenderConfig": @[@"defaultConfig", @"darkConfig", @"blurRadius", @"keycapOpacity"],
+      @"UIKBRenderTraits": @[@"symbolStyle", @"geometry", @"highlightedVariantTraits"],
+      @"UIKBTextStyle": @[@"font", @"fontName", @"fontSize"],
+      @"UIKBKeyViewAnimator": @[@"transitionKeyView:fromState:toState:completion:", @"delayedDeactivationTimeForKeyView:"],
+      @"TUIKeyboardContentView": @[@"initWithFrame:"],
+      @"TUIKeyplaneView": @[@"initWithFrame:"]
+    };
+    NSMutableDictionary *classes = [NSMutableDictionary dictionary];
+    for (NSString *name in selectors) {
+      Class cls = NSClassFromString(name);
+      NSMutableDictionary *instance = [NSMutableDictionary dictionary], *type = [NSMutableDictionary dictionary];
+      for (NSString *nameOfSelector in selectors[name]) {
+        SEL selector = NSSelectorFromString(nameOfSelector);
+        Method method = cls ? class_getInstanceMethod(cls, selector) : NULL;
+        if (method) instance[nameOfSelector] = @(method_getTypeEncoding(method));
+        method = cls ? class_getClassMethod(cls, selector) : NULL;
+        if (method) type[nameOfSelector] = @(method_getTypeEncoding(method));
+      }
+      classes[name] = @{@"available": @(cls != Nil), @"instanceSelectors": instance, @"classSelectors": type};
+    }
+    NSMutableArray *fonts = [NSMutableArray array];
+    for (NSString *name in @[@".SFUI-Regular", @".SFCompact-Regular", @"SFCompact-Regular", @".SFCompactDisplay-Regular"]) {
+      UIFont *font = [UIFont fontWithName:name size:25];
+      [fonts addObject:@{@"requested": name, @"resolved": font.fontName ?: [NSNull null]}];
+    }
+    UIFont *font = [UIFont systemFontOfSize:25];
+    NSArray *arguments = NSProcessInfo.processInfo.arguments;
+    NSString *scenario = [arguments containsObject:@"--native-keyboard-reference"] ? @"ordinary-system" :
+      ([arguments containsObject:@"--system-keyboard"] ? @"secure-system" :
+      ([NSBundle.mainBundle.bundleIdentifier hasSuffix:@".keyboard"] ? @"extension" : @"extension-host"));
+    NSDictionary *report = @{@"os": NSProcessInfo.processInfo.operatingSystemVersionString, @"scenario": scenario,
+      @"process": NSBundle.mainBundle.bundleIdentifier ?: @"unknown", @"classes": classes,
+      @"fontCandidates": fonts, @"systemFont25": font.fontName,
+      @"scope": @"Metadata only. No private selector invoked; availability does not establish engine embedding or behavior."};
+    NSData *data = [NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:NULL];
+    NSString *name = [NSString stringWithFormat:@"keyboard-runtime-%@-%@.json", NSBundle.mainBundle.bundleIdentifier, scenario];
+    [data writeToFile:[@#{shared_root.inspect} stringByAppendingPathComponent:name] atomically:YES];
+  }
+  __attribute__((constructor)) static void ScheduleKeyboardRuntimeReference(void) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+      CaptureKeyboardRuntimeReference();
+    });
+  }
+  #endif
+OBJC
+[app, keyboard].each do |target|
+  target.source_build_phase.add_file_reference(project.main_group.new_file(runtime_probe))
+end
 shared_source = File.join(fixture, 'SharedState.swift')
 File.write(shared_source, File.read(File.join(root, 'modules/clarify-core/ios/SharedState.swift')).sub(/  init\?\(\) \{.*?\n  \}/m, "  init?() { self.root = URL(fileURLWithPath: #{shared_root.inspect}) }"))
 app.source_build_phase.add_file_reference(project.main_group.new_file(shared_source))
