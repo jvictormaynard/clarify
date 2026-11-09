@@ -108,6 +108,53 @@ final class KeyboardExtensionTests: XCTestCase {
     let tree = XCTAttachment(string: app.debugDescription)
     tree.name = "\(name)-accessibility"; tree.lifetime = .keepAlways; add(tree)
   }
+  private func selectClarifyKeyboard(in app: XCUIApplication) {
+    let keyboard = app.buttons["clarify.keyboard.record"]
+    let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
+    // The first keyboard can still be loading after Settings changes its list.
+    // Wait for either input view before deciding whether a switch is needed.
+    let inputReady = expectation(for: NSPredicate { _, _ in keyboard.exists || globe.exists }, evaluatedWith: nil)
+    wait(for: [inputReady], timeout: 30)
+    if !keyboard.exists {
+      XCTAssertTrue(globe.exists, app.debugDescription)
+      globe.press(forDuration: 1)
+      let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
+      XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
+    }
+    XCTAssertTrue(keyboard.waitForExistence(timeout: 30), app.debugDescription)
+  }
+  private func checkNumberSlide(_ name: String, in app: XCUIApplication) throws {
+    let field = app.textFields["composer"]
+    XCTAssertTrue(["", "Type here"].contains(field.value as? String ?? ""), "The gesture needs a fresh draft")
+    let numbers = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", "more", "123")).firstMatch
+    let letter = app.keys.matching(NSPredicate(format: "label IN %@", ["q", "Q"])).firstMatch
+    XCTAssertTrue(numbers.waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription)
+    let source = numbers.frame, destination = letter.frame
+    let window = app.windows.firstMatch, windowFrame = window.frame
+    XCTAssertTrue(!source.isEmpty && !destination.isEmpty && windowFrame.contains(source) && windowFrame.contains(destination))
+    let origin = window.coordinate(withNormalizedOffset: .zero)
+    let start = origin.withOffset(CGVector(dx: source.midX - windowFrame.minX, dy: source.midY - windowFrame.minY))
+    let finish = origin.withOffset(CGVector(dx: destination.midX - windowFrame.minX, dy: destination.midY - windowFrame.minY))
+    captureKeyboardAppearance("\(name)-before", in: app)
+    let started = Date().timeIntervalSince1970, startedUptime = ProcessInfo.processInfo.systemUptime
+    // Q and 1 share the measured first-row position. The page changes while held.
+    // Anchor both coordinates to the window: Q disappears when 123 is pressed.
+    start.press(forDuration: 0.1, thenDragTo: finish)
+    let ended = Date().timeIntervalSince1970, endedUptime = ProcessInfo.processInfo.systemUptime
+    captureKeyboardAppearance("\(name)-after", in: app)
+    func rect(_ value: CGRect) -> [String: CGFloat] {
+      ["x": value.minX, "y": value.minY, "width": value.width, "height": value.height]
+    }
+    let data = try JSONSerialization.data(withJSONObject: ["name": name, "startedUTC": started, "endedUTC": ended,
+      "startedUptime": startedUptime, "endedUptime": endedUptime, "sourceAXFrame": rect(source), "destinationAXFrame": rect(destination),
+      "syntheticResult": field.value as? String ?? "", "timingScope": "XCTest action API bounds, not actual touch delivery or physical latency"], options: [.sortedKeys])
+    let trace = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+    trace.name = "\(name)-action-trace"; trace.lifetime = .keepAlways; add(trace)
+    expectText("1", in: app)
+    XCTAssertTrue(app.keys.matching(NSPredicate(format: "label IN %@", ["q", "Q"])).firstMatch.waitForExistence(timeout: 5),
+                  "Releasing the number slide must return to letters")
+  }
   private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
     let app = XCUIApplication(); app.terminate()
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
@@ -172,6 +219,11 @@ final class KeyboardExtensionTests: XCTestCase {
     try captureKeyboardReference("apple-\(language)-lowercase", uppercase: false, in: app)
     try capturePagesAndDarkAppearance("apple-\(language)", in: app)
     XCTAssertEqual(observed.value as? String, language, "The language must remain selected through all pages")
+    app.terminate()
+    app.launch(); app.textFields["composer"].tap()
+    let sameLanguage = expectation(for: NSPredicate(format: "value == %@", language), evaluatedWith: app.staticTexts["input-language"])
+    wait(for: [sameLanguage], timeout: 10)
+    try checkNumberSlide("apple-\(language)-number-slide", in: app)
     app.terminate()
   }
   private func capturePagesAndDarkAppearance(_ prefix: String, in app: XCUIApplication) throws {
@@ -281,18 +333,7 @@ final class KeyboardExtensionTests: XCTestCase {
     activateHost(app)
     app.textFields["composer"].tap()
     let keyboard = app.buttons["clarify.keyboard.record"]
-    let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
-    // The first keyboard can still be loading after Settings changes its list.
-    // Wait for either input view before deciding whether a switch is needed.
-    let inputReady = expectation(for: NSPredicate { _, _ in keyboard.exists || globe.exists }, evaluatedWith: nil)
-    wait(for: [inputReady], timeout: 30)
-    if !keyboard.exists {
-      XCTAssertTrue(globe.exists, app.debugDescription)
-      globe.press(forDuration: 1)
-      let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
-      XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
-    }
-    XCTAssertTrue(keyboard.waitForExistence(timeout: 30), app.debugDescription)
+    selectClarifyKeyboard(in: app)
     XCTAssertTrue(app.buttons["clarify.keyboard.start"].waitForExistence(timeout: 5),
                   "The installed extension must receive Full Access before testing activation")
     try checkTrace(in: app, opening: "Switching to the extension", strict: strictHeight)
@@ -370,6 +411,10 @@ final class KeyboardExtensionTests: XCTestCase {
       }, evaluatedWith: nil)
       wait(for: [back], timeout: 30)
     }
+    // Test this interaction only after the original typing and activation gates.
+    app.terminate(); app.launch(); app.textFields["composer"].tap()
+    selectClarifyKeyboard(in: app)
+    try checkNumberSlide("clarify-number-slide", in: app)
   }
   // Keep the original installed acceptance first, before changing enabled languages.
   func testZ1NativeEnglishUSReference() throws {
