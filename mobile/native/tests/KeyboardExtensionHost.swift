@@ -22,6 +22,7 @@ final class KeyboardHostController: UIViewController {
   private let field = UITextField()
   private let trace = UILabel()
   private let returnTrace = UILabel()
+  private let inputLanguage = UILabel()
   private var heights: [CGFloat] = []
   private var sampledHeights: [CGFloat] = []
   private var visibleHeights: [CGFloat] = []
@@ -34,6 +35,7 @@ final class KeyboardHostController: UIViewController {
     field.isSecureTextEntry = ProcessInfo.processInfo.arguments.contains("--system-keyboard")
     trace.text = "Keyboard frame trace"; trace.accessibilityIdentifier = "keyboard-frames"
     returnTrace.text = "Return trace"; returnTrace.accessibilityIdentifier = "return-trace"
+    inputLanguage.text = "Input language"; inputLanguage.accessibilityIdentifier = "input-language"
     NotificationCenter.default.addObserver(self, selector: #selector(publishReturnTrace), name: UIApplication.didBecomeActiveNotification, object: nil)
     let dismiss = UIButton(type: .system); dismiss.setTitle("Dismiss", for: .normal)
     dismiss.addAction(UIAction { [weak self] _ in self?.field.resignFirstResponder() }, for: .touchUpInside)
@@ -55,7 +57,7 @@ final class KeyboardHostController: UIViewController {
       self.blueBackdrop.toggle()
       self.view.backgroundColor = self.blueBackdrop ? UIColor(red: 0.12, green: 0.26, blue: 0.4, alpha: 1) : .systemBackground
     }, for: .touchUpInside)
-    for element in [field, trace, returnTrace, dismiss, reset, activate, appearance, backdrop] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
+    for element in [field, trace, returnTrace, inputLanguage, dismiss, reset, activate, appearance, backdrop] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
     NSLayoutConstraint.activate([
       trace.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
       trace.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20), trace.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
@@ -65,6 +67,7 @@ final class KeyboardHostController: UIViewController {
       activate.topAnchor.constraint(equalTo: returnTrace.bottomAnchor, constant: 16), activate.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       appearance.topAnchor.constraint(equalTo: activate.bottomAnchor, constant: 12), appearance.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       backdrop.topAnchor.constraint(equalTo: appearance.bottomAnchor, constant: 12), backdrop.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
+      inputLanguage.topAnchor.constraint(equalTo: backdrop.bottomAnchor, constant: 12), inputLanguage.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       field.leadingAnchor.constraint(equalTo: trace.leadingAnchor), field.trailingAnchor.constraint(equalTo: trace.trailingAnchor),
       field.heightAnchor.constraint(equalToConstant: 44), field.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8)
     ])
@@ -77,6 +80,8 @@ final class KeyboardHostController: UIViewController {
   }
   @objc private func sampleFrame() {
     guard field.isFirstResponder else { return }
+    let language = field.textInputMode?.primaryLanguage ?? "unavailable"
+    if inputLanguage.accessibilityValue != language { inputLanguage.accessibilityValue = language }
     let height = view.keyboardLayoutGuide.layoutFrame.height
     let visible = view.bounds.maxY - (field.layer.presentation()?.frame.maxY ?? field.frame.maxY) - 8
     let changed = (height > 0 && sampledHeights.last != height) || (visible > 0 && visibleHeights.last != visible)

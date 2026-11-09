@@ -92,17 +92,71 @@ final class KeyboardExtensionTests: XCTestCase {
       keys.append(["letter": lower, "label": key.label, "x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height])
     }
     let data = try JSONSerialization.data(withJSONObject: ["name": name, "uppercase": uppercase, "keys": keys,
+      "inputLanguage": app.staticTexts["input-language"].value as? String ?? "unavailable",
       "os": ProcessInfo.processInfo.operatingSystemVersionString,
       "coordinateMeaning": "Accessibility frames in screen points; not visible bounds or adaptive touch targets"], options: [.sortedKeys])
     let geometry = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
     geometry.name = "\(name)-geometry"; geometry.lifetime = .keepAlways; add(geometry)
   }
   private func captureKeyboardAppearance(_ name: String, in app: XCUIApplication) {
+    let language = app.staticTexts["input-language"].value as? String ?? "unavailable"
+    let inputMode = XCTAttachment(string: language)
+    inputMode.name = "\(name)-input-language"; inputMode.lifetime = .keepAlways; add(inputMode)
     let screen = XCTAttachment(screenshot: app.screenshot())
     screen.name = name; screen.lifetime = .keepAlways; add(screen)
     // AX frames are reference coordinates, not visible shapes or adaptive targets.
     let tree = XCTAttachment(string: app.debugDescription)
     tree.name = "\(name)-accessibility"; tree.lifetime = .keepAlways; add(tree)
+  }
+  private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
+    let app = XCUIApplication(); app.terminate()
+    let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+    settings.terminate(); settings.launch()
+    open("General", in: settings); open("Keyboard", in: settings); open("Keyboards", in: settings)
+    func row(_ names: [String], exact: Bool = false) -> XCUIElement {
+      let predicates = names.map { NSPredicate(format: exact ? "label == %@" : "label BEGINSWITH %@", $0) }
+      return settings.cells.matching(NSCompoundPredicate(orPredicateWithSubpredicates: predicates)).firstMatch
+    }
+    if !row(names).exists {
+      let add = settings.cells["AddNewKeyboard"]
+      XCTAssertTrue(add.waitForExistence(timeout: 5), settings.debugDescription); add.tap()
+      // iOS can list regional choices directly or group them under a language.
+      let choices = row(names), grouped = row([group], exact: true)
+      var selected = false
+      for _ in 0..<8 {
+        if choices.exists && choices.isHittable { choices.tap(); selected = true; break }
+        if grouped.exists && grouped.isHittable {
+          grouped.tap()
+          XCTAssertTrue(choices.waitForExistence(timeout: 5), settings.debugDescription)
+          choices.tap(); selected = true; break
+        }
+        settings.swipeUp()
+      }
+      XCTAssertTrue(selected, "Exact native keyboard unavailable: \(language). \(settings.debugDescription)")
+      let done = settings.navigationBars.buttons["Done"]
+      if done.waitForExistence(timeout: 2) { done.tap() }
+      XCTAssertTrue(row(names).waitForExistence(timeout: 5), "Keyboard was not added: \(language). \(settings.debugDescription)")
+    }
+    app.launchArguments = ["--native-keyboard-reference"]; app.launch()
+    app.textFields["composer"].tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+    let observed = app.staticTexts["input-language"]
+    if observed.value as? String != language {
+      let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
+      XCTAssertTrue(globe.waitForExistence(timeout: 5), app.debugDescription); globe.press(forDuration: 1)
+      let choices = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", names)).firstMatch
+      XCTAssertTrue(choices.waitForExistence(timeout: 5), app.debugDescription); choices.tap()
+    }
+    let exactLanguage = expectation(for: NSPredicate(format: "value == %@", language), evaluatedWith: observed)
+    wait(for: [exactLanguage], timeout: 10)
+    XCTAssertFalse(app.buttons["clarify.keyboard.record"].exists, "The language reference must use Apple's keyboard")
+    try captureKeyboardReference("apple-\(language)-uppercase", uppercase: true, in: app)
+    app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Q")).firstMatch.tap()
+    expectText("Q", in: app)
+    try captureKeyboardReference("apple-\(language)-lowercase", uppercase: false, in: app)
+    try capturePagesAndDarkAppearance("apple-\(language)", in: app)
+    XCTAssertEqual(observed.value as? String, language, "The language must remain selected through all pages")
+    app.terminate()
   }
   private func capturePagesAndDarkAppearance(_ prefix: String, in app: XCUIApplication) throws {
     func control(_ labels: [String]) -> XCUIElement {
@@ -300,5 +354,14 @@ final class KeyboardExtensionTests: XCTestCase {
       }, evaluatedWith: nil)
       wait(for: [back], timeout: 30)
     }
+  }
+  // Keep the original installed acceptance first, before changing enabled languages.
+  func testZ1NativeEnglishUSReference() throws {
+    continueAfterFailure = false; executionTimeAllowance = 300
+    try captureNativeLanguage("en-US", names: ["English (US)", "English (United States)"], group: "English")
+  }
+  func testZ2NativePortugueseBrazilReference() throws {
+    continueAfterFailure = false; executionTimeAllowance = 300
+    try captureNativeLanguage("pt-BR", names: ["Portuguese (Brazil)", "Português (Brasil)"], group: "Portuguese")
   }
 }
