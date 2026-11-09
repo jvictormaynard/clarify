@@ -123,14 +123,9 @@ final class KeyboardExtensionTests: XCTestCase {
     }
     XCTAssertTrue(keyboard.waitForExistence(timeout: 30), app.debugDescription)
   }
-  private func checkNumberSlide(_ name: String, in app: XCUIApplication) throws {
+  private func performKeySlide(_ name: String, from sourceElement: XCUIElement, to destinationElement: XCUIElement, in app: XCUIApplication) throws {
     let field = app.textFields["composer"]
-    XCTAssertTrue(["", "Type here"].contains(field.value as? String ?? ""), "The gesture needs a fresh draft")
-    let numbers = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", "more", "123")).firstMatch
-    let letter = app.keys.matching(NSPredicate(format: "label IN %@", ["q", "Q"])).firstMatch
-    XCTAssertTrue(numbers.waitForExistence(timeout: 5), app.debugDescription)
-    XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription)
-    let source = numbers.frame, destination = letter.frame
+    let source = sourceElement.frame, destination = destinationElement.frame
     let window = app.windows.firstMatch, windowFrame = window.frame
     XCTAssertTrue(!source.isEmpty && !destination.isEmpty && windowFrame.contains(source) && windowFrame.contains(destination))
     let origin = window.coordinate(withNormalizedOffset: .zero)
@@ -138,8 +133,7 @@ final class KeyboardExtensionTests: XCTestCase {
     let finish = origin.withOffset(CGVector(dx: destination.midX - windowFrame.minX, dy: destination.midY - windowFrame.minY))
     captureKeyboardAppearance("\(name)-before", in: app)
     let started = Date().timeIntervalSince1970, startedUptime = ProcessInfo.processInfo.systemUptime
-    // Q and 1 share the measured first-row position. The page changes while held.
-    // Anchor both coordinates to the window: Q disappears when 123 is pressed.
+    // Anchor both coordinates to the window: page/case changes replace keys.
     start.press(forDuration: 0.1, thenDragTo: finish)
     let ended = Date().timeIntervalSince1970, endedUptime = ProcessInfo.processInfo.systemUptime
     captureKeyboardAppearance("\(name)-after", in: app)
@@ -151,11 +145,36 @@ final class KeyboardExtensionTests: XCTestCase {
       "syntheticResult": field.value as? String ?? "", "timingScope": "XCTest action API bounds, not actual touch delivery or physical latency"], options: [.sortedKeys])
     let trace = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
     trace.name = "\(name)-action-trace"; trace.lifetime = .keepAlways; add(trace)
+  }
+  private func checkNumberSlide(_ name: String, in app: XCUIApplication) throws {
+    let field = app.textFields["composer"]
+    XCTAssertTrue(["", "Type here"].contains(field.value as? String ?? ""), "The gesture needs a fresh draft")
+    let numbers = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", "more", "123")).firstMatch
+    let letter = app.keys.matching(NSPredicate(format: "label IN %@", ["q", "Q"])).firstMatch
+    XCTAssertTrue(numbers.waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription)
+    // Q and 1 share the measured first-row position while the page changes.
+    try performKeySlide(name, from: numbers, to: letter, in: app)
     expectText("1", in: app)
     XCTAssertTrue(app.keys.matching(NSPredicate(format: "label IN %@", ["q", "Q"])).firstMatch.waitForExistence(timeout: 5),
                   "Releasing the number slide must return to letters")
     XCTAssertTrue(app.keys["Q"].waitForExistence(timeout: 5),
                   "An initial numeric prefix must preserve sentence capitalization")
+  }
+  private func checkTemporaryShiftSlide(_ name: String, in app: XCUIApplication) throws {
+    expectText("1", in: app)
+    let upper = app.keys["Q"]
+    XCTAssertTrue(upper.waitForExistence(timeout: 5), app.debugDescription); upper.tap()
+    expectText("1Q", in: app)
+    let lower = app.keys["q"]
+    XCTAssertTrue(lower.waitForExistence(timeout: 5), "The setup must consume sentence capitalization")
+    let shift = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label IN %@", "shift",
+      ["Caps lock", "Shift", "shift", "Maiúsculas", "maiúsculas"])).firstMatch
+    XCTAssertTrue(shift.waitForExistence(timeout: 5), app.debugDescription)
+    try performKeySlide(name, from: shift, to: lower, in: app)
+    expectText("1QQ", in: app)
+    XCTAssertTrue(app.keys["q"].waitForExistence(timeout: 5),
+                  "Temporary Shift must insert a capital and return to lowercase")
   }
   private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
     let app = XCUIApplication(); app.terminate()
@@ -226,6 +245,7 @@ final class KeyboardExtensionTests: XCTestCase {
     let sameLanguage = expectation(for: NSPredicate(format: "value == %@", language), evaluatedWith: app.staticTexts["input-language"])
     wait(for: [sameLanguage], timeout: 10)
     try checkNumberSlide("apple-\(language)-number-slide", in: app)
+    try checkTemporaryShiftSlide("apple-\(language)-shift-slide", in: app)
     app.terminate()
   }
   private func capturePagesAndDarkAppearance(_ prefix: String, in app: XCUIApplication) throws {
@@ -417,6 +437,7 @@ final class KeyboardExtensionTests: XCTestCase {
     app.terminate(); app.launch(); app.textFields["composer"].tap()
     selectClarifyKeyboard(in: app)
     try checkNumberSlide("clarify-number-slide", in: app)
+    try checkTemporaryShiftSlide("clarify-shift-slide", in: app)
   }
   // Keep the original installed acceptance first, before changing enabled languages.
   func testZ1NativeEnglishUSReference() throws {
