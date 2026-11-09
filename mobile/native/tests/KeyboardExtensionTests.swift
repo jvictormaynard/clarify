@@ -175,19 +175,19 @@ final class KeyboardExtensionTests: XCTestCase {
     app.terminate()
   }
   private func capturePagesAndDarkAppearance(_ prefix: String, in app: XCUIApplication) throws {
-    func control(_ labels: [String]) -> XCUIElement {
-      app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+    func control(_ labels: [String], identifier: String = "") -> XCUIElement {
+      app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@ OR (identifier != '' AND identifier == %@)", labels, identifier)).firstMatch
     }
     func pages(_ suffix: String) {
-      let numbers = control(["numbers", "123"])
+      let numbers = control(["numbers", "123"], identifier: "more")
       XCTAssertTrue(numbers.waitForExistence(timeout: 5), app.debugDescription); numbers.tap()
       XCTAssertTrue(control(["1"]).waitForExistence(timeout: 5), app.debugDescription)
       captureKeyboardAppearance("\(prefix)-\(suffix)-numbers", in: app)
-      let symbols = control(["symbols", "#+="])
+      let symbols = control(["symbols", "#+="], identifier: "shift")
       XCTAssertTrue(symbols.waitForExistence(timeout: 5), app.debugDescription); symbols.tap()
       XCTAssertTrue(control(["["]).waitForExistence(timeout: 5), app.debugDescription)
       captureKeyboardAppearance("\(prefix)-\(suffix)-symbols", in: app)
-      let letters = control(["letters", "ABC"])
+      let letters = control(["letters", "ABC"], identifier: "more")
       XCTAssertTrue(letters.waitForExistence(timeout: 5), app.debugDescription); letters.tap()
       XCTAssertTrue(control(["q"]).waitForExistence(timeout: 5), app.debugDescription)
     }
