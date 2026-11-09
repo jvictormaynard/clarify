@@ -18,13 +18,13 @@ export default function AppleRewrite() {
   const [availability, setAvailability] = useState<AppleRewriteAvailability>();
   const [loadError, setLoadError] = useState('');
   const [nativeOpening, setNativeOpening] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
+  const [expandedReport, setExpandedReport] = useState<object | null>(null);
+  const showDetails = !!model.report && expandedReport === model.report;
   const [privateProbe, setPrivateProbe] = useState('');
   const [privateError, setPrivateError] = useState('');
   const [probing, setProbing] = useState(false);
   const probeGeneration = useRef(0);
   useEffect(() => () => { ++probeGeneration.current; }, []);
-  useEffect(() => setShowDetails(false), [model.report]);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(() => Keyboard.isVisible());
   const availabilityGeneration = useRef(0);
@@ -129,7 +129,7 @@ export default function AppleRewrite() {
       {!!privateProbe && <Text selectable style={[ui.small, { color: c.muted }]}>{privateProbe}</Text>}
     </Card>
     {!!model.report && <Card>
-      <Button onPress={() => setShowDetails(value => !value)}>{t(showDetails ? 'Ocultar detalhes do teste' : 'Mostrar detalhes do teste')}</Button>
+      <Button onPress={() => setExpandedReport(showDetails ? null : model.report ?? null)}>{t(showDetails ? 'Ocultar detalhes do teste' : 'Mostrar detalhes do teste')}</Button>
       {showDetails && <>
         <Text selectable style={[ui.small, { color: c.muted }]}>{model.report.stage} · {model.report.code || 'OK'} · {model.elapsedMS} ms</Text>
         {!!model.report.route && <Text selectable style={[ui.small, { color: c.muted }]}>{model.report.route}</Text>}
