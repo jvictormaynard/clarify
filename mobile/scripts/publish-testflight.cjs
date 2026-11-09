@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    'pt-BR': `Clarify ${version} (${build}): corrige um caso de encerramento assíncrono do controlador privado. Na tela de resultado privada, toque em Substituir (Replace) antes de traduzir. Confira se o editor recebeu a reescrita. Feche com Finish e tente abrir novamente. O relatório inclui o estado do encerramento. TextComposer continua apenas como inspeção. Suítes de testes omitidas conforme solicitado.`,
+    'en-US': `Clarify ${version} (${build}): repairs an asynchronous close case in the private controller. In the private result sheet, tap Replace before translating. Verify that the editor contains the rewrite. Close with Finish and try opening it again. The report includes end-request and controller state. TextComposer remains an interface probe. Test suites were skipped as requested.`,
+    'es-ES': `Clarify ${version} (${build}): corrige un caso de cierre asíncrono del controlador privado. En el resultado privado, toca Reemplazar (Replace) antes de traducir. Revisa el texto del editor. Cierra con Finish e intenta abrir de nuevo. El informe incluye el estado del cierre. TextComposer sigue como inspección de interfaz. Pruebas omitidas según lo solicitado.`,
   };
 }
 
@@ -106,7 +106,17 @@ async function publish({ env = process.env, fetch = globalThis.fetch,
       if (!attached) {
         const membership = await list('betaGroups/' + group.id + '/builds?limit=100');
         if (!membership.data.some(item => item.id === build.id)) {
-          await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            try {
+              await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            } catch (error) {
+              // Auto-distribution can reject a redundant association before its
+              // group membership is visible. Never accept 422 as availability:
+              // retry the reads and require real membership and testing state.
+              if (!String(error.message).startsWith('Apple API 422 ')) throw error;
+              log('Apple group association is pending; verifying membership again.');
+              await sleep(30_000);
+              continue;
+            }
         }
         const localizations = await list('builds/' + build.id + '/betaBuildLocalizations');
         for (const [locale, whatsNew] of Object.entries(releaseNotes(selected.version, selected.build))) {
