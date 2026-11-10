@@ -5,14 +5,20 @@ import vm from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
 import { actionReplacement, ownsActionLibrary } from '../src/account-text-actions.ts';
+import { actionChoices } from '../src/text-actions.ts';
 
 test('failed action save keeps draft and exact CAS; context change blocks save', async () => {
   const row = { id: 'one', name: 'Original', prompt: 'Original prompt', kind: 'custom', enabled: true, revision: '1' };
   const base = { context: 'owner', lease: 'lease', revision: '9007199254740993', actions: [row] };
-  const state = { account: { historyContext: 'owner', signedIn: true, mode: 'hosted' }, state: {}, refresh: async () => {} };
+  let nativeCatalog = {};
+  const state = { account: { historyContext: 'owner', signedIn: true, mode: 'hosted', textActionsStatus: 'unavailable', textActions: [] },
+    state: {}, refresh: async () => {}, refreshAccount: async () => Object.assign(state.account, nativeCatalog) };
   const slots = [], refs = [], calls = [];
-  let slot = 0, ref = 0, reject = true;
-  const core = { getAccountTextActions: async () => base, newOperationID: () => 'copy',
+  let slot = 0, ref = 0, reject = true, effect;
+  const core = { getAccountTextActions: async () => {
+    nativeCatalog = { textActionsStatus: 'ready', textActions: [{ ...row, ready: true }] };
+    return base;
+  }, newOperationID: () => 'copy',
     saveAccountTextActions: async (...args) => { calls.push(args); if (reject) throw new Error('Conflict'); return base; } };
   const jsx = (type, props) => ({ type, props: props ?? {} }), exports = {};
   const source = fs.readFileSync(new URL('../src/components/account-text-actions.tsx', import.meta.url), 'utf8');
@@ -20,7 +26,7 @@ test('failed action save keeps draft and exact CAS; context change blocks save',
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
     if (name === 'react') return {
       useState(initial) { const i = slot++; if (!(i in slots)) slots[i] = initial; return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value; }]; },
-      useRef(initial) { return refs[ref++] ??= { current: initial }; }, useEffect() {}, useLayoutEffect(effect) { effect(); },
+      useRef(initial) { return refs[ref++] ??= { current: initial }; }, useEffect(fn) { effect ??= fn; }, useLayoutEffect(effect) { effect(); },
     };
     if (name === 'expo-router') return { useIsFocused: () => true };
     if (name === 'react-native') return { Text: 'Text', View: 'View', Switch: 'Switch', Alert: { alert() {} } };
@@ -40,7 +46,13 @@ test('failed action save keeps draft and exact CAS; context change blocks save',
   }
   const button = (tree, label) => all(tree, 'Button').find(node => node.props.children === label);
   const settle = () => new Promise(resolve => setImmediate(resolve));
+  render();
+  assert.equal(actionChoices(state.account).length, 0);
+  effect(); await settle();
+  assert.equal(actionChoices(state.account)[0]?.key, 'saved:one:1', 'Initial management discovery must update the composer catalog');
+  state.account.textActionsStatus = 'unavailable';
   button(render(), 'Atualizar lista').props.onPress(); await settle();
+  assert.equal(actionChoices(state.account)[0]?.key, 'saved:one:1', 'Reload must also update the composer catalog');
   button(render(), 'Original').props.onPress();
   const editor = render();
   all(editor, 'Input')[1].props.onChangeText('Retained instructions');
