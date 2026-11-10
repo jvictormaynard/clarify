@@ -8498,5 +8498,15 @@
     "en": "Apple review stopped after an audio interruption. The transcript was preserved.",
     "pt": "A revisão da Apple parou após uma interrupção de áudio. A transcrição foi preservada.",
     "es": "La revisión de Apple se detuvo tras una interrupción de audio. Se conservó la transcripción."
+  },
+  "Hold the microphone button to dictate here, or use the Clarify keyboard.": {
+    "en": "Hold the microphone button to dictate here, or use the Clarify keyboard.",
+    "pt": "Segure o botão do microfone para ditar aqui ou use o teclado Clarify.",
+    "es": "Mantén pulsado el botón del micrófono para dictar aquí o usa el teclado Clarify."
+  },
+  "Activate Clarify, then hold the microphone button to dictate.": {
+    "en": "Activate Clarify, then hold the microphone button to dictate.",
+    "pt": "Ative o Clarify e segure o botão do microfone para ditar.",
+    "es": "Activa Clarify y mantén pulsado el botón del micrófono para dictar."
   }
 }

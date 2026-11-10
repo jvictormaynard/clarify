@@ -93,8 +93,8 @@ export default function Home() {
         <ScreenHeader title={t('Ditado')} />
         <NavigationRow testID="home.destination" title={t(destinationLabel(account))} icon={account?.mode === 'computer' ? 'desktopcomputer' : 'cloud'} onPress={() => router.push('/processing')} />
         <MicrophoneSwitch />
-        {account?.mode === 'computer' && <RecordButton />}
-        <Text style={[ui.small, { color: c.muted, marginTop: -8 }]}>{state.sessionActive ? t('O Clarify está ativo para receber ditados do teclado.') : t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>
+        <RecordButton />
+        <Text style={[ui.small, { color: c.muted, marginTop: -8 }]}>{state.sessionActive ? t('Hold the microphone button to dictate here, or use the Clarify keyboard.') : t('Activate Clarify, then hold the microphone button to dictate.')}</Text>
         {state.phase === 'error' && !state.textOperation && state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(state.message)}</Text>}
       </View>}
       renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { color: c.text, paddingTop: 16, paddingBottom: 12 }]}>{historyDayTitle(section.date, today, uiLanguage, t("Hoje"))}</Text>}
