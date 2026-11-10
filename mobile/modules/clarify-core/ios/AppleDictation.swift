@@ -34,7 +34,7 @@ enum AppleDictationPreference {
   }
   static func validate(preferences: OutputPreferences, policy: DictationPolicy) throws {
     guard available else { throw ClarifyError(L("Apple rewriting requires iOS 26 and available Apple Intelligence Writing Tools.")) }
-    guard [.default, .formal, .casual].contains(preferences.style) else {
+    guard [.default, .natural, .formal, .casual].contains(preferences.style) else {
       throw ClarifyError(L("Choose Default, Formal or Casual in Output settings for Apple rewriting."))
     }
     guard [.legacy, .natural, .clarity, .preserve, .light].contains(policy.mode) else {

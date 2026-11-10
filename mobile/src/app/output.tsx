@@ -78,7 +78,7 @@ export default function Output() {
     finally { saving.current = false; setPending(false); }
   }
   const styles = appleSettings?.enabled
-    ? outputStyles.filter(item => ['default', 'formal', 'casual'].includes(item.value)) : outputStyles;
+    ? outputStyles.filter(item => ['default', 'natural', 'formal', 'casual'].includes(item.value)) : outputStyles;
   const legacy = preferences && !styles.some(item => item.value === preferences.style);
   return <ScrollView testID="app.output" style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={ui.content} contentInsetAdjustmentBehavior="automatic">
     <Text style={[ui.small, { color: c.muted }]}>{t('As alterações valem para a próxima operação.')}</Text>

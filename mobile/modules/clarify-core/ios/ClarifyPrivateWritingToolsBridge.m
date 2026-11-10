@@ -74,7 +74,7 @@ static NSString *CWConstant(const char *symbol) {
   return [value isKindOfClass:NSString.class] ? value : nil;
 }
 static NSString *CWRewriteType(NSString *style) {
-  if ([style isEqualToString:@"default"]) return CWConstant("TCTextCompositionAssistantRewritingTypeMagic");
+  if ([style isEqualToString:@"default"] || [style isEqualToString:@"natural"]) return CWConstant("TCTextCompositionAssistantRewritingTypeMagic");
   if ([style isEqualToString:@"formal"]) return CWConstant("TCTextCompositionAssistantRewritingTypeProfessional");
   if ([style isEqualToString:@"casual"]) return CWConstant("TCTextCompositionAssistantRewritingTypeFriendly");
   return nil;
