@@ -434,8 +434,8 @@ final class KeyboardUITests: XCTestCase {
         gesture.sampleState = phase; gesture.samplePoint = point
         _ = grid.perform(NSSelectorFromString("accent:"), with: gesture)
       }
-      @MainActor func startAccent() throws -> AccentGesture {
-        let letter = try key("e"), gesture = AccentGesture()
+      @MainActor func startAccent(_ title: String = "e") throws -> AccentGesture {
+        let letter = try key(title), gesture = AccentGesture()
         letter.addGestureRecognizer(gesture)
         grid.beginPress("accent", at: center(letter)); emit(gesture, .began)
         // UIKit cancels the key's original touch when its recognizer accepts.
@@ -483,6 +483,34 @@ final class KeyboardUITests: XCTestCase {
       emit(reentrant, .ended)
       XCTAssertEqual(text, beforeCallback + "eq", "Insertion callbacks must see the completed accent's suppression cleared")
       grid.onInsert = { text += $0 }
+      let pickerHost = UIView(frame: CGRect(x: 0, y: 0, width: grid.bounds.width, height: grid.bounds.height + 58))
+      let toolbarCover = UIView(frame: CGRect(x: 0, y: 7, width: grid.bounds.width, height: 44))
+      grid.frame.origin.y = 58
+      pickerHost.addSubview(grid); pickerHost.addSubview(toolbarCover)
+      for title in ["e", "u"] {
+        let letter = try key(title), beforeJitter = text, held = try startAccent(title)
+        let picker = try XCTUnwrap(grid.subviews.compactMap { $0 as? UIStackView }.first {
+          $0.arrangedSubviews.contains { ($0 as? UIButton)?.title(for: .normal) == title }
+        })
+        let basePoint = try accentPoint(title)
+        let sourcePoint = letter.convert(CGPoint(x: letter.bounds.midX, y: letter.bounds.midY), to: picker)
+        XCTAssertEqual(basePoint.x, sourcePoint.x, accuracy: 0.5, "The base choice must align with the held key")
+        XCTAssertLessThanOrEqual(picker.frame.maxY, letter.convert(letter.bounds, to: grid).minY)
+        XCTAssertGreaterThanOrEqual(picker.frame.minX, 6); XCTAssertLessThanOrEqual(picker.frame.maxX, grid.bounds.width - 6)
+        XCTAssertTrue(pickerHost.subviews.last === grid, "Sibling toolbars must not cover the picker above the held key")
+        let pickerPoint = picker.convert(basePoint, to: pickerHost)
+        let receiver = try XCTUnwrap(pickerHost.hitTest(pickerPoint, with: nil))
+        XCTAssertTrue(receiver === picker || receiver.isDescendant(of: picker), "A second finger on the picker must not reach toolbar actions")
+        grid.isUserInteractionEnabled = false
+        XCTAssertTrue(pickerHost.hitTest(pickerPoint, with: nil) === toolbarCover)
+        grid.isUserInteractionEnabled = true
+        let foreignPoint = picker.convert(basePoint, to: grid)
+        grid.beginPress("picker-foreign", at: foreignPoint); grid.endPress("picker-foreign", at: foreignPoint)
+        XCTAssertEqual(text, beforeJitter, "Only the held accent gesture may insert a choice")
+        emit(held, .changed, at: CGPoint(x: sourcePoint.x + 1, y: sourcePoint.y))
+        emit(held, .ended)
+        XCTAssertEqual(text, beforeJitter + title, "Small finger movement must retain the displayed base choice")
+      }
       var clock: TimeInterval = 100, offsets: [Int] = [], finishes = 0
       grid.cursorUptime = { clock }; grid.onMoveCursor = { offsets.append($0); return true }
       grid.onEndCursor = { finishes += 1 }

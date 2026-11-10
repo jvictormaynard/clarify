@@ -236,8 +236,12 @@ final class KeyGridView: UIView {
     return result
   }
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    if !isHidden, isUserInteractionEnabled, alpha > 0.01, let bar = accentBar,
+       bar.frame.contains(point), let hit = bar.hitTest(bar.convert(point, from: self), with: event) {
+      return hit
+    }
     let hit = super.hitTest(point, with: event)
-    // Leave the accent picker and UIKit's hidden/disabled/outside rules intact.
+    // Keep ordinary keys inside UIKit's hidden/disabled/outside rules.
     guard hit != nil, accentBar == nil else { return hit }
     return nearestKey(at: point) ?? hit
   }
@@ -537,19 +541,33 @@ final class KeyGridView: UIView {
       guard accentBar == nil, spacePress?.active != true else { return }
       preview.removeFromSuperview()
       suppressKey = true
-      let choices = KeyboardState.accents(for: title)
+      var choices = KeyboardState.accents(for: title)
       let bar = UIStackView(); bar.axis = .horizontal; bar.distribution = .fillEqually; bar.spacing = 2
       let width = min(bounds.width - 12, CGFloat(choices.count) * 42)
       let center = button.convert(CGPoint(x: button.bounds.midX, y: 0), to: self)
-      bar.frame = CGRect(x: min(max(6, center.x - width / 2), bounds.width - width - 6), y: 0, width: width, height: 46)
+      let cell = (width - CGFloat(choices.count - 1) * bar.spacing) / CGFloat(choices.count)
+      var baseIndex = 0, origin: CGFloat = 6, distance = CGFloat.greatestFiniteMagnitude
+      // Keep the base choice over the held key, including keys near the right edge.
+      for index in choices.indices {
+        let relativeCenter = cell / 2 + CGFloat(index) * (cell + bar.spacing)
+        let candidate = min(max(6, center.x - relativeCenter), bounds.width - width - 6)
+        let gap = abs(candidate + relativeCenter - center.x)
+        if gap < distance { baseIndex = index; origin = candidate; distance = gap }
+      }
+      let base = choices.removeFirst(); choices.insert(base, at: baseIndex)
+      bar.frame = CGRect(x: origin, y: center.y - 52, width: width, height: 46)
       bar.backgroundColor = .secondarySystemBackground; bar.layer.cornerRadius = 8
       accentKeys = choices.map { value in let key = key(value) {}; bar.addArrangedSubview(key); return key }
       accentBar = bar; activeAccentGesture = gesture; addSubview(bar); selectedAccent = title
+      // The picker extends above the grid into the controller's toolbar area.
+      superview?.bringSubviewToFront(self)
     }
     guard activeAccentGesture === gesture, let bar = accentBar else { return }
     if gesture.state == .began || gesture.state == .changed {
       let point = gesture.location(in: bar)
-      let index = gesture.state == .began ? 0 : max(0, min(accentKeys.count - 1, Int(point.x / max(1, bar.bounds.width) * CGFloat(accentKeys.count))))
+      bar.layoutIfNeeded()
+      let index = gesture.state == .began ? (accentKeys.firstIndex { $0.title(for: .normal) == title } ?? 0) :
+        (accentKeys.indices.min { abs(accentKeys[$0].frame.midX - point.x) < abs(accentKeys[$1].frame.midX - point.x) } ?? 0)
       for (i, key) in accentKeys.enumerated() { key.backgroundColor = i == index ? .systemBlue : .clear; key.setTitleColor(i == index ? .white : .label, for: .normal) }
       selectedAccent = accentKeys[index].title(for: .normal)
     }
