@@ -18,11 +18,15 @@ final class AppFlowUITests: XCTestCase {
   @discardableResult func reveal(_ element: XCUIElement, identifier: String) -> Bool {
     for attempt in 0...12 {
       let page = app.scrollViews.containing(element.elementType, identifier: identifier).firstMatch
-      let viewport = page.exists ? page.frame.intersection(app.frame) : app.frame
+      var viewport = page.exists ? page.frame.intersection(app.frame) : app.frame
+      let tabBar = app.tabBars.firstMatch
+      if tabBar.exists && tabBar.isHittable && viewport.intersects(tabBar.frame) {
+        viewport.size.height = max(0, tabBar.frame.minY - viewport.minY)
+      }
       let frame = element.frame
       let located = !frame.isNull && !frame.isInfinite && frame.width > 0 && frame.height > 0
       let center = CGPoint(x: frame.midX, y: frame.midY)
-      // Require the target inside the scroll viewport even when AX reports hittable.
+      // A partly exposed control can be hittable while its center is under the tab bar.
       if located && element.isHittable && viewport.contains(center) { return true }
       if attempt == 12 { break }
       if page.exists && page.frame.height > 0 && page.frame.intersects(app.frame) {
@@ -401,6 +405,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
     XCTAssertEqual(text.value as? String, draft)
     press("actions.refresh")
+    absent(app.staticTexts["actions.catalog-status"])
     enter("ok", in: text, name: "compact-result", replacing: true)
     press("actions.choose"); capture("compact-action-sheet")
     press("actions.option.saved:translation:1"); press("actions.language")
