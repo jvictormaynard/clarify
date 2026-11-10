@@ -1383,6 +1383,11 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(command.action, "text_action"); XCTAssertEqual(command.actionID, custom.id); XCTAssertEqual(command.actionRevision, custom.revision)
       XCTAssertEqual(command.outputPreferences?.language, .de)
       XCTAssertEqual(command.language, "de"); XCTAssertEqual(store.outputPreferences().language, .de)
+      // Complete this operation before testing another settings change.
+      state.operationID = command.operationID; state.textOperation = true; state.phase = .ready
+      state.text = "Summary result"; state.heartbeat = Date().timeIntervalSince1970
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      XCTAssertEqual(store.receipt(), command.operationID)
       let commandCount = store.commands().count
       for (mode, title) in [("legacy", "Usar configuração do destino"), ("natural", "Usar instruções de ditado"), ("light", "Ajustar apenas espaços")] {
         state.dictationMode = mode
