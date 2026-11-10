@@ -8633,5 +8633,10 @@
     "en": "Choose Improve clarity in Output settings for Apple rewriting.",
     "pt": "Selecione Melhorar a clareza nos ajustes de saída para usar a reescrita com Apple.",
     "es": "Selecciona Mejorar la claridad en los ajustes de salida para usar la reescritura Apple."
+  },
+  "Automatic Apple rewriting is unavailable. Disable Apple rewriting in Settings to use standard processing.": {
+    "en": "Automatic Apple rewriting is unavailable. Disable Apple rewriting in Settings to use standard processing.",
+    "pt": "A reescrita automática com Apple está indisponível. Desative a reescrita com Apple nos Ajustes para usar o processamento padrão.",
+    "es": "La reescritura automática con Apple no está disponible. Desactiva la reescritura Apple en Ajustes para usar el procesamiento habitual."
   }
 }

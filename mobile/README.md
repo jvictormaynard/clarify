@@ -672,6 +672,15 @@ activity is ended at the next app launch; stale content asks to open Clarify.
 Live Activities must be enabled on the device. iOS controls placement and priority.
 This does not replace the system's microphone icon or orange privacy indicator.
 
+Automatic Apple rewriting is currently blocked. The build 84 device crash report
+confirms SIGTRAP inside `TCTextCompositionXPCServer.Server.init()`, before model
+inference. This initializer is no longer invoked. Neither method presence nor
+protocol conformance proved it was usable. A verified client entry point is
+required before this route can be enabled again. Existing enabled installations
+must disable Apple rewriting to resume standard processing; no alternate model
+is selected silently. Build 84 remains the last published candidate and is unsafe
+for this test. The containment change has not been published or device-tested.
+
 Settings includes optional **Apple rewriting** for normal dictation. It is off
 by default. Use Improve clarity and Keep my tone, Formal or Casual. Saved Natural/legacy modes remain compatible. Keep my words bypasses Apple rewriting and translation. The
 transcription destination must support the explicit Preserve policy. Clarify

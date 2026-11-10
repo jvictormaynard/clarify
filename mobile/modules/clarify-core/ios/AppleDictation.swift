@@ -13,14 +13,13 @@ enum AppleDictationPreference {
 
 }
 @MainActor enum AppleDictation {
-  static var available: Bool {
-    if #available(iOS 26.0, *) { return UIWritingToolsCoordinator.isWritingToolsAvailable }
-    return false
-  }
+  // Build 84 trapped inside the private service initializer before inference.
+  // Keep automatic admission closed until a real client entry point is verified.
+  static var available: Bool { false }
   static func snapshot() -> [String: Any] {
     ["enabled": AppleDictationPreference.enabled, "available": available,
       "message": L(available ? "Apple rewrites dictation automatically. No Apple editor is shown." :
-        "Apple rewriting requires iOS 26 and available Apple Intelligence Writing Tools.")]
+        "Automatic Apple rewriting is unavailable. Disable Apple rewriting in Settings to use standard processing.")]
   }
   static func setEnabled(_ value: Bool) throws -> [String: Any] {
     guard !ClarifyAudioSession.shared.state.phase.busy, !busy, (!value || !ClarifyPrivateWritingToolsBridge.isBusy()) else {
@@ -38,7 +37,7 @@ enum AppleDictationPreference {
     return snapshot()
   }
   static func validate(preferences: OutputPreferences, policy: DictationPolicy) throws {
-    guard available else { throw ClarifyError(L("Apple rewriting requires iOS 26 and available Apple Intelligence Writing Tools.")) }
+    guard available else { throw ClarifyError(L("Automatic Apple rewriting is unavailable. Disable Apple rewriting in Settings to use standard processing.")) }
     guard [.default, .natural, .formal, .casual].contains(preferences.style) else {
       throw ClarifyError(L("Choose Default, Formal or Casual in Output settings for Apple rewriting."))
     }
