@@ -41,6 +41,7 @@ export interface ComputerActionReadiness { dictate: boolean; rewrite: boolean; t
 export type OutputLanguage = ContractOutputLanguage;
 export type OutputStyle = 'default' | ContractOutputStyle;
 export interface OutputPreferences { language: OutputLanguage; style: OutputStyle }
+export interface AppleDictationSettings { enabled: boolean; available: boolean; message: string }
 export interface AppleRewriteAvailability {
   available: boolean; reason: string; message: string; supportedLanguages: string[]; maxInputBytes: number;
 }
@@ -105,6 +106,8 @@ export default requireNativeModule<{
   getKeyboardAutocorrectEnabled(): Promise<boolean>;
   setKeyboardAutocorrectEnabled(enabled: boolean): Promise<void>;
   getOutputPreferences(): Promise<OutputPreferences>;
+  getAppleDictationSettings(): Promise<AppleDictationSettings>;
+  setAppleDictationEnabled(enabled: boolean): Promise<AppleDictationSettings>;
   getAppleRewriteAvailability(): Promise<AppleRewriteAvailability>;
   rewriteWithApple(id: string, source: string, language: string, style: string): Promise<string>;
   rewriteWithAppleReport(id: string, source: string, language: string, style: string, deterministic: boolean): Promise<AppleRewriteReport>;

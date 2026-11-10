@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, ScrollView, Text } from 'react-native';
-import Core, { type OutputPreferences } from '../../modules/clarify-core';
+import Core, { type AppleDictationSettings, type OutputPreferences } from '../../modules/clarify-core';
 import { Button, ChoiceRow, Section, ui, usePalette } from '../components/ui';
 import { isBusy, useClarify } from '../state/clarify';
 import { errorMessage } from '../errors';
@@ -14,12 +14,15 @@ export default function Output() {
   const c = usePalette();
   const { account, state, accountBusy, accountCommand, computerCommand } = useClarify();
   const [preferences, setPreferences] = useState<OutputPreferences>();
+  const [appleSettings, setAppleSettings] = useState<AppleDictationSettings>();
+  const [appleError, setAppleError] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [supportChecked, setSupportChecked] = useState(false);
   const saving = useRef(false);
   const generation = useRef(0);
+  const appleGeneration = useRef(0);
   const supportGeneration = useRef(0);
   const refreshInFlight = useRef(false);
   const supported = account?.outputPreferencesSupported === true;
@@ -33,6 +36,16 @@ export default function Output() {
     setError('');
     try { const next = await Core.getOutputPreferences(); if (request === generation.current) setPreferences(next); }
     catch (error) { if (request === generation.current) setError(errorMessage(error)); }
+  }, []);
+  const loadApple = useCallback(async () => {
+    const request = ++appleGeneration.current;
+    setAppleError('');
+    try {
+      const next = await Core.getAppleDictationSettings();
+      if (request === appleGeneration.current) setAppleSettings(next);
+    } catch (error) {
+      if (request === appleGeneration.current) setAppleError(errorMessage(error));
+    }
   }, []);
   const refreshSupport = useCallback(async () => {
     const { mode, busy } = destination.current;
@@ -49,9 +62,10 @@ export default function Output() {
   }, [accountCommand, computerCommand]);
   useFocusEffect(useCallback(() => {
     void load();
+    void loadApple();
     if (account?.mode && !destination.current.supported) void refreshSupport();
-    return () => { ++generation.current; ++supportGeneration.current; };
-  }, [load, refreshSupport, account?.mode]));
+    return () => { ++generation.current; ++appleGeneration.current; ++supportGeneration.current; };
+  }, [load, loadApple, refreshSupport, account?.mode]));
   async function save(key: 'language' | 'style', value: string) {
     const clearsOverride = key === 'language' ? value === 'auto' : value === 'default';
     if ((!supported && !clearsOverride) || saving.current || refreshInFlight.current) return;
@@ -63,9 +77,15 @@ export default function Output() {
     } catch (error) { if (request === generation.current) setError(errorMessage(error)); }
     finally { saving.current = false; setPending(false); }
   }
-  const legacy = preferences && !['default', ...outputStyles.map(item => item.value)].includes(preferences.style);
+  const styles = appleSettings?.enabled
+    ? outputStyles.filter(item => ['default', 'formal', 'casual'].includes(item.value)) : outputStyles;
+  const legacy = preferences && !styles.some(item => item.value === preferences.style);
   return <ScrollView testID="app.output" style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={ui.content} contentInsetAdjustmentBehavior="automatic">
     <Text style={[ui.small, { color: c.muted }]}>{t('As alterações valem para a próxima operação.')}</Text>
+    {!!appleError && <>
+      <Text testID="output.apple-error" accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(appleError)}</Text>
+      <Button testID="output.apple-retry" onPress={() => void loadApple()}>{t('Tentar carregar novamente')}</Button>
+    </>}
     {!supported && supportChecked && !error && <Text accessibilityRole="alert" style={[ui.body, { color: c.muted }]}>{t('Atualize o Clarify neste destino para mudar a saída do ditado.')}</Text>}
     {!!error && <Text testID="output.error" accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(error)}</Text>}
     {(!supported || !!error) && <Button testID="output.refresh" loading={refreshing}
@@ -79,9 +99,12 @@ export default function Output() {
           onPress={() => void save('language', item.value)} />)}
       </Section>
       <Section title={t('Estilo')}>
-        {outputStyles.map(item => <ChoiceRow key={item.value} testID={`output.style.${item.value}`} title={t(item.label)}
+        {appleSettings?.enabled && <Text style={[ui.small, { color: c.muted }]}>{t('A reescrita com Apple aceita apenas os estilos Padrão, Formal ou Casual.')}</Text>}
+        {styles.map(item => <ChoiceRow key={item.value} testID={`output.style.${item.value}`} title={t(item.label)}
           selected={preferences.style === item.value} disabled={pending || refreshing || (!supported && item.value !== 'default')} onPress={() => void save('style', item.value)} />)}
-        {legacy && <ChoiceRow title={t(outputStyleLabel(preferences.style))} selected disabled onPress={() => {}} />}
+        {legacy && <ChoiceRow testID="output.style.unsupported" title={t(outputStyleLabel(preferences.style))}
+          detail={appleSettings?.enabled ? t('O estilo salvo não é compatível com a reescrita com Apple. Selecione Padrão, Formal ou Casual.') : undefined}
+          selected disabled onPress={() => {}} />}
       </Section>
     </>}
     {pending && <ActivityIndicator accessibilityLabel={t('Salvando…')} />}
