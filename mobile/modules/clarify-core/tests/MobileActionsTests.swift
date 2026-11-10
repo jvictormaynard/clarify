@@ -22,8 +22,9 @@ final class MobileActionsTests: XCTestCase {
     for computer in [false, true] {
       for kind in ["rewrite", "translation", "custom"] {
         let f = try Fixture(computer: computer); defer { f.cleanup() }
-        let descriptor: [String: Any] = ["id": "summary", "revision": Int64.max, "name": "Action", "kind": kind, "enabled": true, "ready": true, "prompt": "Fixture instruction"]
-        f.computerCatalog = [descriptor]; f.hostedCatalog = ["revision": 1, "actions": [descriptor]]
+        let descriptor: [String: Any] = ["id": "summary", "revision": Int64.max, "name": "Action", "kind": kind, "enabled": true]
+        f.computerCatalog = [descriptor.merging(["ready": true]) { _, new in new }]
+        f.hostedCatalog = ["revision": 1, "actions": [descriptor.merging(["prompt": "Fixture instruction"]) { _, new in new }]]
         f.supportsPreferences = true
         let preferences = OutputPreferences(language: .es)
         f.provenance = ["output_language_requested": "es", "output_language_applied": "es", "output_language_status": "applied"]
@@ -245,6 +246,7 @@ final class MobileActionsTests: XCTestCase {
     var catalogStatus = 200
     var catalogFailure: Error?
     var supportsPreferences = false
+    var supportsDictationPolicy = false
     var dictateReady = false
     var computerCatalog: Any? = [["id": "summary", "revision": Int64.max, "name": "Summary", "kind": "custom", "enabled": true, "ready": true]]
     var hostedCatalog: [String: Any] = ["revision": 1, "actions": [["id": "summary", "revision": Int64.max, "name": "Summary", "kind": "custom", "enabled": true, "prompt": "Private prompt"]]]
@@ -293,6 +295,12 @@ final class MobileActionsTests: XCTestCase {
         }
         raw.merge(provenance) { _, new in new }
       } else { raw = [:] }
+      if supportsDictationPolicy && ["/v1/account", "/v1/computer/status"].contains(path) {
+        var contract = ProcessingContractData.value.filter { !["limits", "errors"].contains($0.key) }
+        contract["text_input_bytes"] = path == "/v1/account" ? ProcessingContractData.accountTextInputBytes : ProcessingContractData.computerTextInputBytes
+        contract["text_output_bytes"] = path == "/v1/account" ? ProcessingContractData.accountTextOutputBytes : ProcessingContractData.computerTextOutputBytes
+        raw["processing_contract"] = contract
+      }
       return (try JSONSerialization.data(withJSONObject: raw), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
     }
     func resume() { pausePath = nil; suspended?.resume(); suspended = nil }
@@ -553,7 +561,7 @@ final class MobileActionsTests: XCTestCase {
   @MainActor func testKeepWordsOmitsSavedToneAndLanguageWithoutClearingThem() async throws {
     for computer in [false, true] {
       let f = try Fixture(computer: computer); defer { f.cleanup() }
-      f.supportsPreferences = true; f.dictateReady = true
+      f.supportsPreferences = true; f.supportsDictationPolicy = true; f.dictateReady = true
       if computer { try await f.computer.refresh() } else { try await f.account.refreshTextActions() }
       let saved = OutputPreferences(language: .es, style: .formal)
       let policy = DictationPolicy(mode: .preserve)
