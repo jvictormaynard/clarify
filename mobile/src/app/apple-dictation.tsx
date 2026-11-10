@@ -87,6 +87,8 @@ export default function AppleDictation() {
       <Text style={[ui.body, { color: c.text }]}>{t('Requer iOS 26, Apple Intelligence e o modo de ditado Natural. Use apenas os estilos Padrão, Formal ou Casual.')}</Text>
       <Text style={[ui.body, { color: c.text }]}>{t('Dite com o Clarify aberto em primeiro plano. Ao iniciar pelo teclado, será necessário abrir o Clarify. Mantenha o app em primeiro plano durante a revisão da Apple.')}</Text>
       <Text style={[ui.small, { color: c.muted }]}>{t('Selecione Natural e um estilo compatível em Saída do ditado antes de ativar.')}</Text>
+      <Text style={[ui.small, { color: c.muted }]}>{t('Expanded snippets are preserved. Apple style and language changes are not applied to them in this build.')}</Text>
+      <Text style={[ui.small, { color: c.muted }]}>{t('Use short recordings. Apple review accepts up to 2,000 bytes of transcribed text.')}</Text>
     </Section>
     <Card>
       <NavigationRow testID="apple-dictation.output" title={t('Saída do ditado')} icon="textformat" onPress={() => router.push('/output')} />

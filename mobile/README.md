@@ -682,7 +682,27 @@ activity is ended at the next app launch; stale content asks to open Clarify.
 Live Activities must be enabled on the device. iOS controls placement and priority.
 This does not replace the system's microphone icon or orange privacy indicator.
 
-Settings includes an **Apple Intelligence test** screen for short transcripts.
+Settings includes optional **Apple rewriting** for normal dictation. It is off
+by default. Use Natural dictation mode and Default, Formal or Casual style. The
+transcription destination must support the explicit Preserve policy. Clarify
+requests source-only transcription, opens Apple's review editor, and returns the
+accepted result to normal result delivery and account-scoped history. Use
+**Use result** after accepting Apple's changes. A different output language opens
+local translation; accept its result with **Use result** as well.
+
+Dictate with Clarify in the foreground. A keyboard attempt in another app asks
+you to open Clarify before recording; microphone activation then keeps Clarify
+open for review. Return to the previous app after accepting the result to use
+the normal insertion path. Cancellation, backgrounding during review, oversized
+input or a failed review preserves the transcript for manual insertion/history.
+Apple input is limited to 2,000 UTF-8 bytes. Expanded snippet text is preserved
+without Apple style or language changes, with an explicit recovery message;
+the current transcription response does not identify standalone snippets.
+Other dictation modes are rejected while Apple rewriting is enabled. Disabling
+the option restores the existing processing route. Text-action processing is
+unchanged. The option does not change account authority or transcription routing.
+
+Settings also includes an **Apple Intelligence test** screen for short transcripts.
 Paste the source text, choose a language and writing style, then run the rewrite.
 Automatic processing uses Apple's on-device model for cleanup and style, then
 TranslationSession for an explicitly selected target language on iOS 26 or later.

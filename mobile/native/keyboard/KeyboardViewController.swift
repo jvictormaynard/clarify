@@ -490,11 +490,14 @@ class KeyboardViewController: UIInputViewController {
       operationID = state.operationID; documentID = nil; recordingRequest.reset()
     }
     let available = hasFullAccess && state.configured
-    activation?.view.isHidden = !hasFullAccess || state.isLive
-    mic.isEnabled = available && state.isLive && !state.phase.busy && recordingRequest.action == nil
+    let needsAppleApp = state.errorCode == "apple_dictation_foreground"
+    activation?.view.isHidden = !hasFullAccess || (state.isLive && !needsAppleApp)
+    mic.isEnabled = available && state.isLive && !needsAppleApp && !state.phase.busy && recordingRequest.action == nil
     insert.isHidden = !canInsertResult
     if !hasFullAccess {
       status.text = L("Ative o Acesso Total"); detail.text = L("Ajustes > Geral > Teclado > Clarify")
+    } else if needsAppleApp {
+      status.text = L("Open Clarify"); detail.text = state.message
     } else if state.isLive, state.phase == .error {
       status.text = L("Não foi possível concluir"); detail.text = state.message
     } else if !state.configured {
@@ -560,7 +563,7 @@ class KeyboardViewController: UIInputViewController {
   private func updateRecordingPanel() {
     let pending = recordingRequest.action
     // A saved audio interruption must not cover the keys after the session ends.
-    let error = outputPreferenceError != nil || (state.isLive && state.phase == .error && state.message != nil && dismissedError != errorIdentity)
+    let error = outputPreferenceError != nil || (state.isLive && state.phase == .error && state.errorCode != "apple_dictation_foreground" && state.message != nil && dismissedError != errorIdentity)
     let visible = hasFullAccess && ((state.isLive && (state.phase.busy || pending != nil)) || error)
     let recording = [.recording, .locked].contains(state.phase) && pending != "cancel"
     let processing = [.transcribing, .rewriting].contains(state.phase) || pending == "finish"

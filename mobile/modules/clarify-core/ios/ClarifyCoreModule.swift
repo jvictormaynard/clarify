@@ -259,6 +259,15 @@ public class ClarifyCoreModule: Module {
     AsyncFunction("getDictationPolicy") { () -> [String: String] in
       DictationPolicyStore().read(scope: ProcessingDestination.shared.historyScope ?? "").snapshot
     }.runOnQueue(.main)
+    AsyncFunction("getAppleDictationSettings") { (promise: Promise) in
+      Task { @MainActor in promise.resolve(AppleDictation.snapshot()) }
+    }.runOnQueue(.main)
+    AsyncFunction("setAppleDictationEnabled") { (enabled: Bool, promise: Promise) in
+      Task { @MainActor in
+        do { promise.resolve(try AppleDictation.setEnabled(enabled)) }
+        catch { promise.reject("APPLE_DICTATION", error.localizedDescription) }
+      }
+    }.runOnQueue(.main)
     AsyncFunction("setDictationPolicy") { (mode: String, actionID: String, revision: String, language: String, context: String) -> [String: String] in
       let destination = ProcessingDestination.shared
       guard destination.configured, context == destination.historyContext, let scope = destination.historyScope,
@@ -400,6 +409,9 @@ public class ClarifyCoreModule: Module {
         guard UIApplication.shared.applicationState == .active,
               ClarifyAudioSession.shared.state.sessionActive, !ClarifyAudioSession.shared.state.phase.busy,
               let request = SharedState()?.consumeActivation(token) else { promise.resolve(false); return }
+        // Apple review needs the containing app. Keep it open for recording;
+        // returning to the source app here would force background dictation.
+        guard !AppleDictationPreference.enabled else { promise.resolve(false); return }
         promise.resolve(ClarifyReturnBridge.openSource(bundleID: request.sourceBundleID))
       }
     }.runOnQueue(.main)

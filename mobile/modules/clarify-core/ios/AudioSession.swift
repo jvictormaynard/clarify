@@ -25,6 +25,7 @@ final class ClarifyAudioSession: NSObject {
   private var backgroundTask = UIBackgroundTaskIdentifier.invalid
   private lazy var libraryResult = Result { try LocalLibrary.openDefault() }
   private var clipPolicy = DictationPolicy.legacy
+  private var clipAppleReview = false
   private var clipPreferences = OutputPreferences()
   private var clipHistory = ProcessingDestination.shared.captureHistory()
   private(set) var state = DictationSnapshot()
@@ -275,11 +276,25 @@ final class ClarifyAudioSession: NSObject {
       throw ComputerConnection.shared.status == "offline" ? ComputerFailure.offline : ComputerFailure.notReady
     }
     let frozenPreferences = preferences ?? store?.outputPreferences() ?? OutputPreferences()
-    _ = try frozenPreferences.requestFields(supported: ProcessingDestination.shared.outputPreferencesSupported, dictation: true)
     let policy = DictationPolicyStore().read(scope: ProcessingDestination.shared.historyScope ?? "")
-    _ = try ProcessingDestination.shared.dictationFields(policy)
-    try ProcessingDestination.shared.processingCapabilities.validate(frozenPreferences)
-    clipPolicy = policy
+    let apple = AppleDictationPreference.enabled
+    if apple {
+      try MainActor.assumeIsolated {
+        guard UIApplication.shared.applicationState == .active else {
+          throw ClarifyError(L("Open Clarify to dictate with Apple Writing Tools."), code: "apple_dictation_foreground")
+        }
+        guard !AppleDictation.busy, !ClarifyPrivateWritingToolsBridge.isBusy() else {
+          throw ClarifyError(L("Close the current Apple editor before starting another review."))
+        }
+        try AppleDictation.validate(preferences: frozenPreferences, policy: policy)
+      }
+    } else {
+      _ = try frozenPreferences.requestFields(supported: ProcessingDestination.shared.outputPreferencesSupported, dictation: true)
+      _ = try ProcessingDestination.shared.dictationFields(policy)
+      try ProcessingDestination.shared.processingCapabilities.validate(frozenPreferences)
+    }
+    clipAppleReview = apple
+    clipPolicy = apple ? DictationPolicy(mode: .preserve) : policy
     clipPreferences = frozenPreferences
     try? importKeyboardVocabulary()
     clipHistory = ProcessingDestination.shared.captureHistory()
@@ -327,6 +342,7 @@ final class ClarifyAudioSession: NSObject {
     let historyOwner = clipHistory
     let preferences = clipPreferences
     let policy = clipPolicy
+    let apple = clipAppleReview
     startedAt = nil
     guard let url = closeFile(finalize: true) else { fail(L("Não foi possível gravar o áudio.")); return }
     playCue(starting: false)
@@ -354,12 +370,37 @@ final class ClarifyAudioSession: NSObject {
         self.endBackgroundTask(backgroundID)
       }
       do {
-        let outcome = try await ProcessingDestination.shared.dictate(url, operationID: id, library: self.library(), preferences: preferences, policy: policy)
+        var outcome = try await ProcessingDestination.shared.dictate(url, operationID: id, library: self.library(),
+          preferences: apple ? OutputPreferences() : preferences, policy: policy)
         guard !Task.isCancelled, self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(historyOwner) else { return }
+        if apple {
+          // The transport returned source-only text, including its one-pass
+          // snippet substitution. Never rewrite remotely and then rewrite again.
+          let source = outcome.text
+          self.state.phase = .rewriting; self.publish()
+          do {
+            // Preserve saved snippet text rather than automatically transform a
+            // response whose wire contract does not identify standalone snippets.
+            guard source == outcome.transcript else {
+              throw ClarifyError(L("Saved snippet text was preserved. Apple style and language changes were not applied."))
+            }
+            let text = try await AppleDictation.review(source, preferences: preferences, operationID: id)
+            try Task.checkCancellation()
+            guard self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(historyOwner) else { return }
+            outcome = ProcessingDictation(transcript: outcome.transcript, text: text, rewritten: text != source, successful: true)
+          } catch is CancellationError { throw CancellationError() }
+          catch {
+            try Task.checkCancellation()
+            guard self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(historyOwner) else { return }
+            self.state.message = error.localizedDescription
+            self.state.errorCode = "apple_review_failed"; self.state.errorPhase = "rewriting"
+            outcome = ProcessingDictation(transcript: outcome.transcript, text: source, rewritten: false, successful: false)
+          }
+        }
         let transcript = outcome.transcript
         self.state.text = outcome.text
         self.state.phase = outcome.successful ? .ready : .error
-        if !outcome.successful { self.state.message = L(outcome.outputPreferenceFailed ? OutputPreferences.unappliedMessage : "A reescrita falhou. Você pode inserir a transcrição original.") }
+        if !outcome.successful, self.state.message == nil { self.state.message = L(outcome.outputPreferenceFailed ? OutputPreferences.unappliedMessage : "A reescrita falhou. Você pode inserir a transcrição original.") }
         if outcome.outputPreferenceFailed { self.state.errorCode = "output_preferences_unapplied"; self.state.errorPhase = "rewriting" }
         // Save only the terminal result of this still-current operation. The
         // original remains available when rewriting fails; audio is never kept.
@@ -451,6 +492,7 @@ final class ClarifyAudioSession: NSObject {
     deactivate(); libraryChanged()
   }
   func cancel() {
+    MainActor.assumeIsolated { AppleDictation.cancel(state.operationID) }
     if ProcessingDestination.shared.computerMode, let id = state.operationID {
       MainActor.assumeIsolated { ComputerConnection.shared.cancelOperation(id) }
     }

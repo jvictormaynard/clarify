@@ -11,6 +11,8 @@ final class AppleWritingToolsController: UIViewController, UITextViewDelegate {
   private let source: String
   private let target: String
   private let privateStyle: String?
+  private let useResult: ((String?) -> Void)?
+  private var reviewCompleted = false
   private var attemptedPrivateController = false
   private var privateSessionObserved = false
   private var privateSessionEnded = false
@@ -25,8 +27,8 @@ final class AppleWritingToolsController: UIViewController, UITextViewDelegate {
     L("Accept the result in Apple's controls. If Replace appears, tap it. Verify the editor text before translating.")
   }
 
-  init(source: String, target: String, privateStyle: String? = nil) {
-    self.source = source; self.target = target; self.privateStyle = privateStyle
+  init(source: String, target: String, privateStyle: String? = nil, useResult: ((String?) -> Void)? = nil) {
+    self.source = source; self.target = target; self.privateStyle = privateStyle; self.useResult = useResult
     super.init(nibName: nil, bundle: nil)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -92,6 +94,7 @@ final class AppleWritingToolsController: UIViewController, UITextViewDelegate {
     if isBeingDismissed || navigationController?.isBeingDismissed == true {
       privateStartupMonitor?.cancel()
       ClarifyPrivateWritingToolsBridge.endTool(textView: editor)
+      if useResult != nil, !reviewCompleted { completeReview(nil) }
     }
   }
 
@@ -99,8 +102,12 @@ final class AppleWritingToolsController: UIViewController, UITextViewDelegate {
     super.viewDidLoad()
     title = L("Ferramentas de Escrita da Apple")
     view.backgroundColor = .systemBackground
-    navigationItem.rightBarButtonItem = UIBarButtonItem(title: L("Concluir"), style: .done,
+    navigationItem.rightBarButtonItem = UIBarButtonItem(title: L(useResult == nil ? "Concluir" : "Use result"), style: .done,
       target: self, action: #selector(close))
+    if useResult != nil {
+      navigationItem.leftBarButtonItem = UIBarButtonItem(title: L("Cancelar"), style: .plain,
+        target: self, action: #selector(cancelReview))
+    }
     let notice = UILabel()
     notice.text = L("As Ferramentas de Escrita usam os controles da Apple e podem usar o Private Cloud Compute. O botão Traduzir usa o idioma de saída do Clarify e processa a tradução neste iPhone.")
     notice.numberOfLines = 0; notice.font = .preferredFont(forTextStyle: .footnote)
@@ -183,15 +190,38 @@ final class AppleWritingToolsController: UIViewController, UITextViewDelegate {
       editor.resignFirstResponder()
       // Freeze the accepted editor contents, including Writing Tools changes.
       // The result is read-only in another sheet; never replace the source.
-      let content = AppleTranslationPreparation(source: currentText, target: target, translateText: translateText)
+      let accept: ((String) -> Void)? = useResult == nil ? nil : { [weak self] text in self?.completeReview(text) }
+      let content = AppleTranslationPreparation(source: currentText, target: target, translateText: translateText,
+        useResult: translateText ? accept : nil)
       present(UIHostingController(rootView: content), animated: true)
     }
     #endif
   }
   @objc private func close() {
     privateStartupMonitor?.cancel()
+    if useResult != nil {
+      guard !writingToolsActive else {
+        translationHint.text = L("Accept or cancel the change in Apple's controls before using the result."); return
+      }
+      let text = (editor.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !text.isEmpty, text.utf8.count <= AppleRewriteEngine.maxOutputBytes else {
+        translationHint.text = L("The result is empty or too long. The transcript was preserved."); return
+      }
+      let language = NLLanguageRecognizer.dominantLanguage(for: text)?.rawValue
+      if target == "auto" || target == language { completeReview(text) }
+      else { openTranslation(translateText: true) }
+      return
+    }
     ClarifyPrivateWritingToolsBridge.endTool(textView: editor)
     dismiss(animated: true)
+  }
+  @objc private func cancelReview() { completeReview(nil) }
+  private func completeReview(_ text: String?) {
+    guard !reviewCompleted else { return }
+    reviewCompleted = true
+    privateStartupMonitor?.cancel()
+    ClarifyPrivateWritingToolsBridge.endTool(textView: editor)
+    useResult?(text)
   }
 }
 
@@ -201,6 +231,7 @@ private struct AppleTranslationPreparation: View {
   let source: String
   let target: String
   let translateText: Bool
+  var useResult: ((String) -> Void)? = nil
   @Environment(\.dismiss) private var dismiss
   @State private var configuration: TranslationSession.Configuration?
   @State private var status = ""
@@ -218,6 +249,7 @@ private struct AppleTranslationPreparation: View {
           if !result.isEmpty {
             Text(L("Resultado")).font(.headline)
             Text(result).textSelection(.enabled).accessibilityIdentifier("apple.native.translation.result")
+            if let useResult { Button(L("Use result")) { useResult(result) } }
           }
         }.padding()
       }

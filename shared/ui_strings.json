@@ -8328,5 +8328,165 @@
     "pt": "As Ferramentas de Escrita da Apple encerraram. Confira o texto do editor antes de traduzir.",
     "en": "Apple Writing Tools ended. Verify the editor text before translating.",
     "es": "Las Herramientas de Escritura de Apple finalizaron. Revisa el editor antes de traducir."
+  },
+  "Reescrita com Apple": {
+    "en": "Apple rewriting",
+    "pt": "Reescrita com Apple",
+    "es": "Reescritura con Apple"
+  },
+  "Desativada por padrão. Quando desativada, o processamento atual continua. O destino da transcrição não muda.": {
+    "en": "Off by default. When off, current processing continues. The transcription destination does not change.",
+    "pt": "Desativada por padrão. Quando desativada, o processamento atual continua. O destino da transcrição não muda.",
+    "es": "Desactivada de forma predeterminada. Cuando está desactivada, continúa el procesamiento actual. El destino de la transcripción no cambia."
+  },
+  "Reescrita com Apple disponível.": {
+    "en": "Apple rewriting is available.",
+    "pt": "Reescrita com Apple disponível.",
+    "es": "La reescritura con Apple está disponible."
+  },
+  "Reescrita com Apple indisponível.": {
+    "en": "Apple rewriting is unavailable.",
+    "pt": "Reescrita com Apple indisponível.",
+    "es": "La reescritura con Apple no está disponible."
+  },
+  "Aguarde o fim da operação para alterar esta opção.": {
+    "en": "Wait for the operation to finish before changing this option.",
+    "pt": "Aguarde o fim da operação para alterar esta opção.",
+    "es": "Espere a que termine la operación para cambiar esta opción."
+  },
+  "O Clarify transcreve o áudio. As Ferramentas de Escrita da Apple abrem para revisão. Você aceita o texto final reescrito.": {
+    "en": "Clarify transcribes the audio. Apple Writing Tools opens for review. You accept the final rewritten text.",
+    "pt": "O Clarify transcreve o áudio. As Ferramentas de Escrita da Apple abrem para revisão. Você aceita o texto final reescrito.",
+    "es": "Clarify transcribe el audio. Las Herramientas de Escritura de Apple se abren para la revisión. Usted acepta el texto final reescrito."
+  },
+  "A tradução para o idioma de saída selecionado ocorre no dispositivo. O resultado final volta ao resultado e ao histórico normais do Clarify.": {
+    "en": "Translation into the selected output language runs on the device. The final text returns to the normal Clarify result and history.",
+    "pt": "A tradução para o idioma de saída selecionado ocorre no dispositivo. O resultado final volta ao resultado e ao histórico normais do Clarify.",
+    "es": "La traducción al idioma de salida seleccionado se realiza en el dispositivo. El texto final vuelve al resultado y al historial normales de Clarify."
+  },
+  "Requisitos": {
+    "en": "Requirements",
+    "pt": "Requisitos",
+    "es": "Requisitos"
+  },
+  "Requer iOS 26, Apple Intelligence e o modo de ditado Natural. Use apenas os estilos Padrão, Formal ou Casual.": {
+    "en": "Requires iOS 26, Apple Intelligence and Natural dictation mode. Use only Default, Formal or Casual styles.",
+    "pt": "Requer iOS 26, Apple Intelligence e o modo de ditado Natural. Use apenas os estilos Padrão, Formal ou Casual.",
+    "es": "Requiere iOS 26, Apple Intelligence y el modo de dictado Natural. Use solo los estilos Predeterminado, Formal o Casual."
+  },
+  "Dite com o Clarify aberto em primeiro plano. Ao iniciar pelo teclado, será necessário abrir o Clarify. Mantenha o app em primeiro plano durante a revisão da Apple.": {
+    "en": "Dictate with Clarify open in the foreground. Starting from the keyboard requires opening Clarify. Keep the app in the foreground during Apple review.",
+    "pt": "Dite com o Clarify aberto em primeiro plano. Ao iniciar pelo teclado, será necessário abrir o Clarify. Mantenha o app em primeiro plano durante a revisão da Apple.",
+    "es": "Dicte con Clarify abierto en primer plano. Al iniciar desde el teclado, será necesario abrir Clarify. Mantenga la app en primer plano durante la revisión de Apple."
+  },
+  "Selecione Natural e um estilo compatível em Saída do ditado antes de ativar.": {
+    "en": "Select Natural and a supported style in Dictation output before enabling.",
+    "pt": "Selecione Natural e um estilo compatível em Saída do ditado antes de ativar.",
+    "es": "Seleccione Natural y un estilo compatible en Salida del dictado antes de activar."
+  },
+  "A reescrita com Apple aceita apenas os estilos Padrão, Formal ou Casual.": {
+    "en": "Apple rewriting supports only Default, Formal or Casual styles.",
+    "pt": "A reescrita com Apple aceita apenas os estilos Padrão, Formal ou Casual.",
+    "es": "La reescritura con Apple solo admite los estilos Predeterminado, Formal o Casual."
+  },
+  "O estilo salvo não é compatível com a reescrita com Apple. Selecione Padrão, Formal ou Casual.": {
+    "en": "The saved style is not supported by Apple rewriting. Select Default, Formal or Casual.",
+    "pt": "O estilo salvo não é compatível com a reescrita com Apple. Selecione Padrão, Formal ou Casual.",
+    "es": "El estilo guardado no es compatible con la reescritura con Apple. Seleccione Predeterminado, Formal o Casual."
+  },
+  "Wait for the operation to finish before changing Apple rewriting.": {
+    "en": "Wait for the operation to finish before changing Apple rewriting.",
+    "pt": "Aguarde o fim da operação antes de alterar a reescrita com Apple.",
+    "es": "Espera a que termine la operación antes de cambiar la reescritura con Apple."
+  },
+  "Apple rewriting requires iOS 26 and available Apple Intelligence Writing Tools.": {
+    "en": "Apple rewriting requires iOS 26 and available Apple Intelligence Writing Tools.",
+    "pt": "A reescrita com Apple requer iOS 26 e as Ferramentas de Escrita do Apple Intelligence disponíveis.",
+    "es": "La reescritura con Apple requiere iOS 26 y las Herramientas de Escritura de Apple Intelligence disponibles."
+  },
+  "Dictate in Clarify and review Apple's result before returning to the keyboard.": {
+    "en": "Dictate in Clarify and review Apple's result before returning to the keyboard.",
+    "pt": "Dite no Clarify e revise o resultado da Apple antes de voltar ao teclado.",
+    "es": "Dicta en Clarify y revisa el resultado de Apple antes de volver al teclado."
+  },
+  "Choose Default, Formal or Casual in Output settings for Apple rewriting.": {
+    "en": "Choose Default, Formal or Casual in Output settings for Apple rewriting.",
+    "pt": "Escolha Padrão, Formal ou Casual em Saída do ditado para usar a reescrita com Apple.",
+    "es": "Elige Predeterminado, Formal o Casual en Salida del dictado para usar la reescritura con Apple."
+  },
+  "Choose Natural dictation mode in Output settings for Apple rewriting.": {
+    "en": "Choose Natural dictation mode in Output settings for Apple rewriting.",
+    "pt": "Escolha o modo de ditado Natural em Saída do ditado para usar a reescrita com Apple.",
+    "es": "Elige el modo de dictado Natural en Salida del dictado para usar la reescritura con Apple."
+  },
+  "Refresh the transcription destination. Apple rewriting requires transcription without server rewriting.": {
+    "en": "Refresh the transcription destination. Apple rewriting requires transcription without server rewriting.",
+    "pt": "Atualize o destino da transcrição. A reescrita com Apple requer transcrição sem reescrita no servidor.",
+    "es": "Actualiza el destino de transcripción. La reescritura con Apple requiere transcripción sin reescritura en el servidor."
+  },
+  "Apple review could not open. The transcript was preserved. Keep Clarify open and use a shorter recording.": {
+    "en": "Apple review could not open. The transcript was preserved. Keep Clarify open and use a shorter recording.",
+    "pt": "Não foi possível abrir a revisão da Apple. A transcrição foi preservada. Mantenha o Clarify aberto e use uma gravação menor.",
+    "es": "No se pudo abrir la revisión de Apple. Se conservó la transcripción. Mantén Clarify abierto y usa una grabación más corta."
+  },
+  "Close the current Apple editor before starting another review.": {
+    "en": "Close the current Apple editor before starting another review.",
+    "pt": "Feche o editor atual da Apple antes de iniciar outra revisão.",
+    "es": "Cierra el editor actual de Apple antes de iniciar otra revisión."
+  },
+  "Close the current sheet before starting Apple review.": {
+    "en": "Close the current sheet before starting Apple review.",
+    "pt": "Feche a tela atual antes de iniciar a revisão da Apple.",
+    "es": "Cierra la pantalla actual antes de iniciar la revisión de Apple."
+  },
+  "Apple review was cancelled. The transcript was preserved.": {
+    "en": "Apple review was cancelled. The transcript was preserved.",
+    "pt": "A revisão da Apple foi cancelada. A transcrição foi preservada.",
+    "es": "Se canceló la revisión de Apple. Se conservó la transcripción."
+  },
+  "Apple review stopped when Clarify closed. The transcript was preserved.": {
+    "en": "Apple review stopped when Clarify closed. The transcript was preserved.",
+    "pt": "A revisão da Apple parou quando o Clarify saiu de primeiro plano. A transcrição foi preservada.",
+    "es": "La revisión de Apple se detuvo cuando Clarify salió del primer plano. Se conservó la transcripción."
+  },
+  "Accept or cancel the change in Apple's controls before using the result.": {
+    "en": "Accept or cancel the change in Apple's controls before using the result.",
+    "pt": "Aceite ou cancele a alteração nos controles da Apple antes de usar o resultado.",
+    "es": "Acepta o cancela el cambio en los controles de Apple antes de usar el resultado."
+  },
+  "The result is empty or too long. The transcript was preserved.": {
+    "en": "The result is empty or too long. The transcript was preserved.",
+    "pt": "O resultado está vazio ou é muito longo. A transcrição foi preservada.",
+    "es": "El resultado está vacío o es demasiado largo. Se conservó la transcripción."
+  },
+  "Use result": {
+    "en": "Use result",
+    "pt": "Usar resultado",
+    "es": "Usar resultado"
+  },
+  "Open Clarify to dictate with Apple Writing Tools.": {
+    "en": "Open Clarify to dictate with Apple Writing Tools.",
+    "pt": "Abra o Clarify para ditar com as Ferramentas de Escrita da Apple.",
+    "es": "Abre Clarify para dictar con las Herramientas de Escritura de Apple."
+  },
+  "Open Clarify": {
+    "en": "Open Clarify",
+    "pt": "Abrir Clarify",
+    "es": "Abrir Clarify"
+  },
+  "Saved snippet text was preserved. Apple style and language changes were not applied.": {
+    "en": "Saved snippet text was preserved. Apple style and language changes were not applied.",
+    "pt": "O texto salvo do snippet foi preservado. As alterações de estilo e idioma da Apple não foram aplicadas.",
+    "es": "Se conservó el texto guardado del snippet. No se aplicaron los cambios de estilo e idioma de Apple."
+  },
+  "Expanded snippets are preserved. Apple style and language changes are not applied to them in this build.": {
+    "en": "Expanded snippets are preserved. Apple style and language changes are not applied to them in this build.",
+    "pt": "Os snippets expandidos são preservados. As alterações de estilo e idioma da Apple não são aplicadas a eles nesta build.",
+    "es": "Se conservan los snippets expandidos. Esta build no les aplica cambios de estilo e idioma de Apple."
+  },
+  "Use short recordings. Apple review accepts up to 2,000 bytes of transcribed text.": {
+    "en": "Use short recordings. Apple review accepts up to 2,000 bytes of transcribed text.",
+    "pt": "Use gravações curtas. A revisão da Apple aceita até 2.000 bytes de texto transcrito.",
+    "es": "Usa grabaciones cortas. La revisión de Apple acepta hasta 2.000 bytes de texto transcrito."
   }
 }
