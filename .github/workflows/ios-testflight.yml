@@ -22,6 +22,11 @@ jobs:
           #import <objc/runtime.h>
           #import <dlfcn.h>
           #import <stdio.h>
+          uintptr_t inspection_imps[3];
+          static void capture(const char *name,const char *selector,int index) {
+            Class cls=objc_getClass(name); Method method=cls?class_getInstanceMethod(cls,sel_registerName(selector)):NULL;
+            inspection_imps[index]=(uintptr_t)(method?method_getImplementation(method):NULL);
+          }
           __attribute__((noinline)) void probe_ready(void) { puts("inspection_ready"); }
           static void describe(const char *name) {
             Class cls = objc_getClass(name);
@@ -44,6 +49,9 @@ jobs:
             describe("TCGenerativeExperiencesRunner");
             describe("TCTextCompositionAssistant");
             describe("_TtC12TextComposer26TCTextCompositionXPCClient");
+            capture("TCGenerativeExperiencesRunner","requestRewritingOfAttributedString:range:rewritingType:options:completionHandler:",0);
+            capture("TCTextCompositionAssistant","requestRewritingOfInput:rewritingType:completionHandler:",1);
+            capture("TCTextCompositionAssistant","requestRewritingOfAttributedString:range:rewritingType:options:completionHandler:",2);
             probe_ready();
           } return 0; }
           OBJC
@@ -53,12 +61,7 @@ jobs:
           settings set target.disable-aslr false
           breakpoint set --name probe_ready
           run
-          image lookup -r -n 'TCGenerativeExperiencesRunner'
-          image lookup -r -n 'requestRewritingOfInput'
-          disassemble --name '-[TCGenerativeExperiencesRunner requestRewritingOfAttributedString:range:rewritingType:options:completionHandler:]' --count 250
-          disassemble --name '-[TCTextCompositionAssistant requestRewritingOfInput:rewritingType:completionHandler:]' --count 300
-          disassemble --name '-[TCTextCompositionAssistant requestRewritingOfAttributedString:range:rewritingType:options:completionHandler:]' --count 250
-          image dump symtab TextComposer
+          script [lldb.debugger.HandleCommand(c) for c in ["image lookup -r -n 'TCGenerativeExperiencesRunner'", "image lookup -r -n 'requestRewritingOfInput'", 'disassemble --start-address `inspection_imps[0]` --count 250', 'disassemble --start-address `inspection_imps[1]` --count 300', 'disassemble --start-address `inspection_imps[2]` --count 250', 'image dump symtab TextComposer']]
           quit
           LLDB
           lldb --batch --source "$RUNNER_TEMP/client-contract/commands.lldb" "$RUNNER_TEMP/client-contract/probe" > "$RUNNER_TEMP/client-contract/disassembly.txt" 2>&1 || true
