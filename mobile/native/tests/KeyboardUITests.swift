@@ -36,11 +36,12 @@ private final class Field: NSObject, UITextDocumentProxy {
   var after = ""
   var contextAvailable = true
   var contextLimit = 50
+  var afterContextLimit: Int?
   var deferCaretContext = false
   var retainedCaretContext: (before: String, after: String)?
   func flushCaretContext() { retainedCaretContext = nil }
   var documentContextBeforeInput: String? { contextAvailable ? String((retainedCaretContext?.before ?? before).suffix(contextLimit)) : nil }
-  var documentContextAfterInput: String? { contextAvailable ? String((retainedCaretContext?.after ?? after).prefix(contextLimit)) : nil }
+  var documentContextAfterInput: String? { contextAvailable ? String((retainedCaretContext?.after ?? after).prefix(afterContextLimit ?? contextLimit)) : nil }
   var documentInputMode: UITextInputMode? { nil }
   var selectedText: String?
   var hasText: Bool { !before.isEmpty || !after.isEmpty }
@@ -1478,7 +1479,7 @@ final class KeyboardUITests: XCTestCase {
         shortcut.reset(); field.before = text; field.after = ""; field.selectedText = nil
         field.contextAvailable = true; field.isSecureTextEntry = false; field.keyboardType = .default
         field.didInsert = nil; field.didAdjust = nil; field.deferCaretContext = false
-        field.flushCaretContext(); time += 1
+        field.afterContextLimit = nil; field.flushCaretContext(); time += 1
       }
       start("1QQQQeq"); shortcut.insert(" ", into: field); time += 0.1
       shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "1QQQQeq. ")
@@ -1575,6 +1576,38 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertTrue(shortcut.moveCursor(-1, in: field)); field.flushCaretContext(); field.after = "foo"
       XCTAssertFalse(shortcut.moveCursor(-1, in: field), "A left move must not permit an external extension on the right")
       XCTAssertEqual(field.before, "abcde")
+      start("1QQQQeq. Q"); shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertTrue(shortcut.moveCursor(-1, in: field))
+      field.afterContextLimit = 1
+      XCTAssertTrue(shortcut.moveCursor(-2, in: field), "A confirmed left move must tolerate a shorter following window")
+      XCTAssertTrue(shortcut.moveCursor(-2, in: field)); XCTAssertEqual(field.before, "1QQQ")
+      start("1QQQQeq.X"); field.after = " Q"; field.afterContextLimit = 1
+      shortcut.prepareCursor(in: field)
+      field.didAdjust = { field.retainedCaretContext = (field.before, "") }
+      XCTAssertTrue(shortcut.moveCursor(1, in: field)); XCTAssertEqual(field.before, "1QQQQeq.X ")
+      field.didAdjust = nil; field.flushCaretContext()
+      XCTAssertTrue(shortcut.moveCursor(1, in: field), "A confirmed right move must accept newly exposed following text")
+      XCTAssertEqual(field.before, "1QQQQeq.X Q"); XCTAssertEqual(field.after, "")
+      for change in 0..<6 {
+        start("abcdef"); field.after = "ghi"; shortcut.prepareCursor(in: field)
+        XCTAssertTrue(shortcut.moveCursor(1, in: field))
+        switch change {
+        case 0: field.documentIdentifier = UUID()
+        case 1: field.selectedText = "selected"
+        case 2: field.isSecureTextEntry = true
+        case 3: field.contextAvailable = false
+        case 4: field.after = "unrelated"
+        default: field.before = "external"
+        }
+        XCTAssertFalse(shortcut.moveCursor(1, in: field), "A window refresh must retain the other cursor guards")
+      }
+      start("abcdef"); field.after = "g"; shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(1, in: field)); field.after = String(repeating: "h", count: 65)
+      field.afterContextLimit = 65
+      XCTAssertFalse(shortcut.moveCursor(1, in: field), "A newly exposed tail must stay within the refresh bound")
+      start("abcdef"); field.after = "g"; shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(1, in: field)); shortcut.endCursor(); field.after = "h"
+      XCTAssertFalse(shortcut.moveCursor(1, in: field), "Refresh permission must end with the cursor gesture")
     }
   }
   func testInsertionRejectsAResultClearedByAnotherDestinationBeforeTheNextPoll() async throws {

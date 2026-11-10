@@ -21,6 +21,7 @@ final class TypingAssistant {
   private struct CursorSnapshot {
     var context: TypingContext
     var offset = 0
+    var lastMovement = 0
   }
   private var cursorSnapshots: [CursorSnapshot] = []
   private var inputGeneration: UInt = 0
@@ -57,15 +58,21 @@ final class TypingAssistant {
   private func cursorMatches(_ actual: TypingContext, _ snapshot: CursorSnapshot) -> Bool {
     let expected = snapshot.context
     guard actual.document == expected.document, !actual.hasSelection else { return false }
-    // A baseline is exact. Only an owned move can expose or trim a window edge.
-    // Empty sides still have to agree; they must not accept an external edit.
+    // Preparation is exact. Only an owned move permits a bounded window refresh.
     let before = actual.before == expected.before || (!actual.before.isEmpty && !expected.before.isEmpty &&
       ((snapshot.offset < 0 && actual.before.hasSuffix(expected.before)) ||
        (snapshot.offset > 0 && expected.before.hasSuffix(actual.before))))
     let after = actual.after == expected.after || (!actual.after.isEmpty && !expected.after.isEmpty &&
       ((snapshot.offset > 0 && actual.after.hasPrefix(expected.after)) ||
        (snapshot.offset < 0 && expected.after.hasPrefix(actual.after))))
-    return before && after
+    // UIKit can replace its optimistic following context between drag events.
+    // Require the exact preceding anchor, including the character we moved over.
+    // A newly exposed tail can be indistinguishable from an external tail edit.
+    let refreshedAfter = !actual.before.isEmpty && actual.before == expected.before &&
+      actual.after.utf16.count <= 64 &&
+      ((snapshot.lastMovement > 0 && actual.after.hasPrefix(expected.after)) ||
+       (snapshot.lastMovement < 0 && !actual.after.isEmpty && expected.after.hasPrefix(actual.after)))
+    return before && (after || refreshedAfter)
   }
   func moveCursor(_ offset: Int, in proxy: UITextDocumentProxy) -> Bool {
     let preparedGeneration = inputGeneration
@@ -76,11 +83,14 @@ final class TypingAssistant {
       endCursor(); return false
     }
     var snapshots = Array(cursorSnapshots[confirmed...])
-    if snapshots.count == 1 { target = CursorSnapshot(context: observed); snapshots = [target] }
+    if snapshots.count == 1 {
+      target = CursorSnapshot(context: observed, lastMovement: target.lastMovement); snapshots = [target]
+    }
     let moved = offset < 0 ? String(target.context.before.suffix(-offset)) : String(target.context.after.prefix(offset))
     if moved.isEmpty { return true }
     let adjustment = (offset < 0 ? -1 : 1) * moved.utf16.count
     target.offset += adjustment
+    target.lastMovement = adjustment
     if offset < 0 {
       target.context.before = String(target.context.before.dropLast(moved.count)); target.context.after = moved + target.context.after
     } else {
@@ -88,7 +98,7 @@ final class TypingAssistant {
     }
     // A repeated position does not confirm a round trip while context is delayed.
     // Keep the earliest matching position and every unconfirmed movement after it.
-    // Retain only this bounded session's known positions, never arbitrary edits.
+    // Retain only this bounded session's positions and anchored window refreshes.
     guard snapshots.count < 64 else { endCursor(); return false }
     snapshots.append(target)
     invalidateSpace(); correction.reset()
@@ -99,7 +109,9 @@ final class TypingAssistant {
           let confirmed = snapshots.firstIndex(where: { cursorMatches(current, $0) }),
           inputGeneration == generation else { return false }
     cursorSnapshots = Array(snapshots[confirmed...])
-    if cursorSnapshots.count == 1 { cursorSnapshots = [CursorSnapshot(context: current)] }
+    if cursorSnapshots.count == 1 {
+      cursorSnapshots = [CursorSnapshot(context: current, lastMovement: target.lastMovement)]
+    }
     return true
   }
   private func matches(_ actual: TypingContext?, _ expected: TypingContext) -> Bool {
