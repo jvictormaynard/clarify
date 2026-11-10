@@ -26,6 +26,9 @@ enum AppleDictationPreference {
         policy: DictationPolicyStore().read(scope: destination.historyScope ?? ""))
     }
     UserDefaults.standard.set(value, forKey: AppleDictationPreference.key)
+    if !value, ClarifyAudioSession.shared.state.errorCode == "apple_dictation_foreground" {
+      ClarifyAudioSession.shared.clearResult()
+    }
     return snapshot()
   }
   static func validate(preferences: OutputPreferences, policy: DictationPolicy) throws {
@@ -123,7 +126,7 @@ enum AppleDictationPreference {
   private static func presenter() -> UIViewController? {
     let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
       .filter { $0.activationState == .foregroundActive }.flatMap(\.windows).first { $0.isKeyWindow }
-    func top(_ controller: UIViewController?) -> UIViewController? {
+    @MainActor func top(_ controller: UIViewController?) -> UIViewController? {
       if let shown = controller?.presentedViewController { return top(shown) }
       if let navigation = controller as? UINavigationController { return top(navigation.visibleViewController) }
       if let tabs = controller as? UITabBarController { return top(tabs.selectedViewController) }
