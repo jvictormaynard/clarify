@@ -693,8 +693,11 @@ local translation; accept its result with **Use result** as well.
 Dictate with Clarify in the foreground. A keyboard attempt in another app asks
 you to open Clarify before recording; microphone activation then keeps Clarify
 open for review. Return to the previous app after accepting the result to use
-the normal insertion path. Cancellation, backgrounding during review, oversized
+the normal insertion path. Canceling Apple's review, an audio interruption,
+backgrounding during review, oversized
 input or a failed review preserves the transcript for manual insertion/history.
+Canceling the whole dictation operation still discards that operation, and
+account/destination changes still reject its stale result.
 Apple input is limited to 2,000 UTF-8 bytes. Expanded snippet text is preserved
 without Apple style or language changes, with an explicit recovery message;
 the current transcription response does not identify standalone snippets.

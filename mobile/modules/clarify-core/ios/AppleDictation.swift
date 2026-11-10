@@ -86,13 +86,23 @@ enum AppleDictationPreference {
               finish(owner, result: .failure(ClarifyError(L("Apple review stopped when Clarify closed. The transcript was preserved."))))
             }
           }
-        presenter.present(navigation, animated: true)
+        presenter.present(navigation, animated: true) {
+          // Cancellation can arrive during the presentation transition.
+          if pending !== owner, presenter.presentedViewController === navigation {
+            presenter.dismiss(animated: true)
+          }
+        }
       }
     }, onCancel: { Task { @MainActor in cancel(operationID) } })
   }
   static func cancel(_ id: String?) {
-    guard let owner = pending, owner.id == id else { return }
+    guard let owner = pending, id == nil || owner.id == id else { return }
     finish(owner, result: .failure(CancellationError()))
+  }
+  static func stopForAudioInterruption(_ id: String?) -> Bool {
+    guard let owner = pending, owner.id == id else { return false }
+    finish(owner, result: .failure(ClarifyError(L("Apple review stopped after an audio interruption. The transcript was preserved."))))
+    return true
   }
   private static func finish(_ owner: Pending, result: Result<String, Error>) {
     guard pending === owner else { return }
@@ -102,7 +112,12 @@ enum AppleDictationPreference {
     let navigation = owner.navigation
     owner.navigation = nil
     // The editor requests verified responder teardown when its view disappears.
-    navigation?.dismiss(animated: true)
+    if let navigation, let presenter = navigation.presentingViewController,
+      presenter.presentedViewController === navigation {
+      // Dismiss the owned root from its presenter, including a translation sheet
+      // above it. Dismissing navigation itself can close only that child sheet.
+      presenter.dismiss(animated: true)
+    }
     owner.continuation.resume(with: result)
   }
   private static func presenter() -> UIViewController? {

@@ -8488,5 +8488,15 @@
     "en": "Use short recordings. Apple review accepts up to 2,000 bytes of transcribed text.",
     "pt": "Use gravações curtas. A revisão da Apple aceita até 2.000 bytes de texto transcrito.",
     "es": "Usa grabaciones cortas. La revisión de Apple acepta hasta 2.000 bytes de texto transcrito."
+  },
+  "The transcription destination did not confirm source-only processing. The original transcript was preserved.": {
+    "en": "The transcription destination did not confirm source-only processing. The original transcript was preserved.",
+    "pt": "O destino da transcrição não confirmou o processamento sem reescrita. A transcrição original foi preservada.",
+    "es": "El destino de transcripción no confirmó el procesamiento sin reescritura. Se conservó la transcripción original."
+  },
+  "Apple review stopped after an audio interruption. The transcript was preserved.": {
+    "en": "Apple review stopped after an audio interruption. The transcript was preserved.",
+    "pt": "A revisão da Apple parou após uma interrupção de áudio. A transcrição foi preservada.",
+    "es": "La revisión de Apple se detuvo tras una interrupción de audio. Se conservó la transcripción."
   }
 }

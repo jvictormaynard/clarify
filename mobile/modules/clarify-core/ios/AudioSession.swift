@@ -186,6 +186,7 @@ final class ClarifyAudioSession: NSObject {
     }
   }
   func deactivate() {
+    if preserveAppleReviewForAudioStop() { return }
     cancel()
     stopAudio()
     publish()
@@ -202,6 +203,15 @@ final class ClarifyAudioSession: NSObject {
     try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     timer?.invalidate(); timer = nil
     state.sessionActive = false
+  }
+  private func preserveAppleReviewForAudioStop() -> Bool {
+    guard state.phase == .rewriting, !state.textOperation, clipAppleReview else { return false }
+    let stopped = MainActor.assumeIsolated { AppleDictation.stopForAudioInterruption(state.operationID) }
+    guard stopped else { return false }
+    // Keep the task alive long enough to save its source-preserving terminal
+    // outcome. Account/destination invalidation clears identity before this path.
+    stopAudio(); publish()
+    return true
   }
   private func publishMeter() {
     let now = Date().timeIntervalSince1970
@@ -376,9 +386,13 @@ final class ClarifyAudioSession: NSObject {
         if apple {
           // The transport returned source-only text, including its one-pass
           // snippet substitution. Never rewrite remotely and then rewrite again.
-          let source = outcome.text
+          let acceptedSource = outcome.successful && !outcome.outputPreferenceFailed && !outcome.rewritten
+          let source = acceptedSource ? outcome.text : outcome.transcript
           self.state.phase = .rewriting; self.publish()
           do {
+            guard acceptedSource else {
+              throw ClarifyError(L("The transcription destination did not confirm source-only processing. The original transcript was preserved."))
+            }
             // Preserve saved snippet text rather than automatically transform a
             // response whose wire contract does not identify standalone snippets.
             guard source == outcome.transcript else {
@@ -394,7 +408,8 @@ final class ClarifyAudioSession: NSObject {
             guard self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(historyOwner) else { return }
             self.state.message = error.localizedDescription
             self.state.errorCode = "apple_review_failed"; self.state.errorPhase = "rewriting"
-            outcome = ProcessingDictation(transcript: outcome.transcript, text: source, rewritten: false, successful: false)
+            outcome = ProcessingDictation(transcript: outcome.transcript, text: source, rewritten: false,
+              successful: false, outputPreferenceFailed: !acceptedSource)
           }
         }
         let transcript = outcome.transcript
@@ -544,18 +559,25 @@ final class ClarifyAudioSession: NSObject {
   @objc private func interrupted(_ notification: Notification) {
     guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
           AVAudioSession.InterruptionType(rawValue: raw) == .began else { return }
-    DispatchQueue.main.async { self.deactivate(); self.fail(L("O áudio foi interrompido. Abra o Clarify para reativar o microfone.")) }
+    DispatchQueue.main.async {
+      if self.preserveAppleReviewForAudioStop() { return }
+      self.deactivate(); self.fail(L("O áudio foi interrompido. Abra o Clarify para reativar o microfone."))
+    }
   }
   @objc private func routeChanged(_ notification: Notification) {
     guard let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
           let reason = AVAudioSession.RouteChangeReason(rawValue: raw),
           [.oldDeviceUnavailable, .newDeviceAvailable].contains(reason) else { return }
     DispatchQueue.main.async {
-      if self.state.sessionActive { self.deactivate(); self.fail(L("O dispositivo de áudio mudou. Ative o microfone novamente.")) }
+      if self.state.sessionActive {
+        if self.preserveAppleReviewForAudioStop() { return }
+        self.deactivate(); self.fail(L("O dispositivo de áudio mudou. Ative o microfone novamente."))
+      }
     }
   }
   @objc private func mediaReset() {
     DispatchQueue.main.async {
+      if self.preserveAppleReviewForAudioStop() { self.engine = AVAudioEngine(); return }
       self.deactivate(); self.engine = AVAudioEngine()
       self.fail(L("O áudio foi reiniciado pelo iOS. Ative o microfone novamente."))
     }
