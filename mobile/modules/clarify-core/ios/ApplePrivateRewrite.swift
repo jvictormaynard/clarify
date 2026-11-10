@@ -12,7 +12,7 @@ enum ApplePrivateRewrite {
       return AppleRewriteReport(result: "", error: "Use a shorter text for the Apple Intelligence prototype.",
         code: "private_input_limit", stage: "private_service", candidate: "", rewritten: "", elapsedMS: 0)
     }
-    let reply: [String: Any] = await withTaskCancellationHandler(operation: {
+    let reply: [String: Any] = try await withTaskCancellationHandler(operation: {
       try Task.checkCancellation()
       return await withCheckedContinuation { continuation in
         ClarifyPrivateWritingToolsBridge.rewrite(source, style: preferences.style.rawValue,

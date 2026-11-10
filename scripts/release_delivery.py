@@ -1,7 +1,7 @@
 """Prepare reviewed client releases and promote only their exact green source.
 
-This module uses the GitHub API, not downloaded workflow artifacts. It does not
-execute version files, accept arbitrary repositories, or accept arbitrary refs.
+This module uses the GitHub API and the shared CI evidence authenticator. It does
+not execute version files, accept arbitrary repositories, or accept arbitrary refs.
 """
 
 from __future__ import annotations
@@ -19,6 +19,11 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from ci import evidence
+from ci.tasks import release_jobs
+
 REPOSITORY = "jvictormaynard/clarify"
 INTENT = ".github/release-intent.json"
 CI_PATH = ".github/workflows/ci.yml"
@@ -33,7 +38,7 @@ ASSETS = {
     "Clarify-portable-update.json",
     "Clarify-portable-update.json.sig",
 }
-COMMON_CHECKS = {"CI required"}
+COMMON_CHECKS = {"CI required", "Repository and delivery policy"}
 COMMUNITY_NOTICE = """This is an unsigned community portable release.
 
 Windows SmartScreen may show a warning because the executable does not have a paid Authenticode publisher signature. Verify Clarify.exe with Clarify.exe.sha256 before launching it.
@@ -551,8 +556,9 @@ def dedicated_plan(api, source, intent):
     return True
 
 
-def check_jobs(api, run_id, component):
-    jobs = api.pages(f"/actions/runs/{int(run_id)}/jobs?filter=latest", "jobs")
+def check_jobs(api, run, component):
+    attempt = int(run.get("run_attempt", 1))
+    jobs = api.pages(f"/actions/runs/{int(run['id'])}/attempts/{attempt}/jobs", "jobs")
     require(component in WORKFLOWS, "Unknown release component")
     required = COMMON_CHECKS
     for name in required:
@@ -563,6 +569,12 @@ def check_jobs(api, run_id, component):
             and matches[0].get("status") == "completed",
             "Required CI job is not green: " + name,
         )
+
+    coverage = evidence.release_coverage(api, run, run["head_sha"])
+    require(
+        release_jobs(component) <= coverage,
+        "Authenticated CI coverage is incomplete for " + component,
+    )
 
 
 def tag_source(api, tag):
@@ -661,6 +673,20 @@ def publication_runs(api, intent, source):
     return runs
 
 
+def require_main_source(api, source):
+    """Require the exact reviewed source to remain reachable in canonical main."""
+    source = sha(source)
+    main = sha(api.request("GET", "/git/ref/heads/main")["object"]["sha"])
+    if main == source:
+        return
+    comparison = api.request("GET", f"/compare/{source}...{main}")
+    require(
+        comparison.get("status") == "ahead"
+        and comparison.get("merge_base_commit", {}).get("sha") == source,
+        "Reviewed source is not reachable in canonical main",
+    )
+
+
 def promote(api, event):
     require(
         event.get("repository", {}).get("full_name") == REPOSITORY,
@@ -669,16 +695,13 @@ def promote(api, event):
     supplied = event["workflow_run"]
     run = api.request("GET", f"/actions/runs/{int(supplied['id'])}")
     source = validate_run(api, run, supplied.get("head_sha"))
-    require(
-        api.request("GET", "/git/ref/heads/main")["object"]["sha"] == source,
-        "CI source is stale against main",
-    )
+    require_main_source(api, source)
     intent = intent_at(api, source)
     if intent is None:
         return "no-intent"
     if not dedicated_plan(api, source, intent):
         return "no-preparation-pr"
-    check_jobs(api, run["id"], intent["component"])
+    check_jobs(api, run, intent["component"])
     tag = release_tag(intent)
     existing = tag_source(api, tag)
     require(
@@ -693,10 +716,7 @@ def promote(api, event):
         require(existing == source, "Publication run has no matching source tag")
         return "already-dispatched"
     # Recheck immediately before mutation. A later main push cannot move this tag.
-    require(
-        api.request("GET", "/git/ref/heads/main")["object"]["sha"] == source,
-        "Main advanced before promotion",
-    )
+    require_main_source(api, source)
     if existing is None:
         obj = api.request(
             "POST",
@@ -732,7 +752,7 @@ def promote(api, event):
 
 def verify_source(api, component, source, tag, *, reuse_proof=None):
     """Authorize tested source through the reviewed intent and canonical CI gate."""
-    sha(source)
+    require_main_source(api, source)
     intent = intent_at(api, source)
     require(
         intent is not None
@@ -754,7 +774,7 @@ def verify_source(api, component, source, tag, *, reuse_proof=None):
     require(bool(runs), "No post-merge CI exists for the publication source")
     run = max(runs, key=lambda item: (item["id"], item.get("run_attempt", 1)))
     validate_run(api, run, source)
-    check_jobs(api, run["id"], component)
+    check_jobs(api, run, component)
     if reuse_proof is not None:
         require(component == "mobile", "CI reuse is only for internal TestFlight")
         reuse_proof.update(internal_ci_proof(api, run, source))

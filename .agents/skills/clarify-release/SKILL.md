@@ -53,12 +53,14 @@ future rollout gates in `docs/windows-distribution.md`.
 
 6. After maintainer review and merge, require canonical successful main push
    `CI` at `.github/workflows/ci.yml`, exact merge SHA and its unique completed
-   successful `CI required`. Ordinary CI owns its component graph. Do not copy
+   successful `CI required`, policy and authenticated full desktop coverage.
+   Ordinary CI owns its component graph. Do not copy
    old component job names into release consumers.
 
 ## Build a candidate
 
-Main must still identify the reviewed source at candidate creation. Create an
+The reviewed source must remain reachable in canonical main. Later unrelated
+merges do not invalidate that fixed candidate. Create an
 immutable annotated stable tag on that source only when authorized. With
 `CLARIFY_RELEASE_PROMOTION_ENABLED=true`, promotion can create the tag and
 explicitly dispatch the stable candidate build. Unset/false remains inactive.

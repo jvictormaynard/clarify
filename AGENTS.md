@@ -37,9 +37,11 @@ scope, worktrees, test selection, file retention, review, and completion.
   integrates and validates; reviewers inspect the fixed candidate read-only.
 - Use the pinned requirements and npm/Cargo lockfiles. Qt needs
   `PySide6-Essentials`, not the full `PySide6`/Addons distribution.
-- Use `scripts/ci.py --plan` and the [shared validation plan](docs/ci-delivery.md).
-  Run focused checks during implementation and selected checks on the final
-  candidate. Tests use isolated profiles and fake providers, keys, and audio.
+- Follow the [shared validation plan](docs/ci-delivery.md) for focused quick local
+  checks and complete affected validation in remote CI. The
+  [workflow](docs/agents/workflow.md#validation-by-affected-contract) defines when
+  to repeat checks and collect direct UI proof. Tests use isolated profiles and
+  fake providers, keys, and audio.
 - Apply [test retention](docs/agents/workflow.md#tests-worth-retaining): keep only
   necessary regression coverage, reuse cases, and leave one-time probes temporary.
 - Keep PR-only captures, logs, runtime state, and scratch files outside Git.

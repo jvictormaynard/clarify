@@ -9,12 +9,14 @@ import unittest
 from unittest.mock import patch
 
 from ci import impact
-from ci.tasks import JOBS, STANDARD, commands
+from ci.tasks import JOBS, commands
 
 
 class DeliveryPolicyTests(unittest.TestCase):
     def test_dependency_closure(self):
         cases = {
+            "desktop/src/pages/history-page.tsx": {"settings_unit", "settings_browser"},
+            "desktop/src/styles/pages.css": {"settings_unit", "settings_browser"},
             "requirements-lock-linux.txt": {
                 "python",
                 "qt",
@@ -74,6 +76,8 @@ class DeliveryPolicyTests(unittest.TestCase):
     def test_electron_selection_keeps_independent_lanes_out(self):
         renderer = {"settings_unit", "settings_browser", "desktop_shell"}
         cases = {
+            "desktop/src/pages/history-page.tsx": {"settings_unit", "settings_browser"},
+            "desktop/src/styles/pages.css": {"settings_unit", "settings_browser"},
             "desktop/src/WorkflowPill.tsx": renderer,
             "desktop/public/icon.svg": renderer,
             "desktop/electron/main.cjs": {"desktop_shell"},
@@ -159,21 +163,48 @@ class DeliveryPolicyTests(unittest.TestCase):
                 impact.select_jobs(["README.md"], repo=Path(".")), set(JOBS)
             )
 
-    def test_main_is_full_standard_and_extended_is_scheduled_or_manual(self):
-        with patch.object(
-            impact,
-            "changed_paths",
-            side_effect=AssertionError("Main must not use path selection"),
+    def test_main_selects_the_push_range_and_uncertainty_keeps_full_validation(self):
+        with (
+            patch.object(
+                impact, "changed_paths", return_value=["server/start.py"]
+            ) as diff,
+            patch.object(impact, "git_links", return_value=False),
         ):
             self.assertEqual(
-                impact.event_jobs(Path("."), "push", {}, "a" * 40), STANDARD
+                impact.event_jobs(Path("."), "push", {"before": "b" * 40}, "a" * 40),
+                {"server"},
             )
+        diff.assert_called_once_with(Path("."), "b" * 40, "a" * 40)
+        self.assertEqual(impact.event_jobs(Path("."), "push", {}, "a" * 40), set(JOBS))
         for name in ("schedule", "workflow_dispatch"):
             self.assertEqual(
                 impact.event_jobs(Path("."), name, {}, "a" * 40), set(JOBS)
             )
+        self.assertEqual(
+            impact.event_jobs(
+                Path("."),
+                "workflow_dispatch",
+                {"inputs": {"scope": "mobile"}},
+                "a" * 40,
+            ),
+            {"mobile", "ios", "audit"},
+        )
         with self.assertRaises(ValueError):
             impact.event_jobs(Path("."), "untrusted-event", {}, "a" * 40)
+
+    def test_known_release_tools_and_headless_units_do_not_select_product_builds(self):
+        for path in (
+            "scripts/release_candidate.py",
+            "scripts/release_delivery.py",
+            "scripts/app_store_handoff.py",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(impact.select_jobs([path]), {"static"})
+        self.assertEqual(
+            impact.select_jobs(["desktop/unit-tests/settings-state.test.ts"]),
+            {"settings_unit"},
+        )
+        self.assertEqual(impact.select_jobs(["new-unclassified-tool.sh"]), set(JOBS))
 
     def test_pull_request_tests_the_complete_merge_against_base(self):
         event = {"pull_request": {"base": {"sha": "a" * 40}, "head": {"sha": "c" * 40}}}
@@ -322,6 +353,38 @@ class NativeCatalogSelectionTests(unittest.TestCase):
             {"pull_request": {"base": {"sha": self.base}}},
             head,
         )
+
+    def test_release_scope_uses_tested_intent_and_keeps_other_changed_consumers(self):
+        from ci.tasks import release_jobs
+
+        self.intent_path.write_text(
+            '{"schema":2,"component":"desktop"}', encoding="utf-8"
+        )
+        head = self.commit()
+        # A dirty working copy cannot substitute the component tested by the event.
+        self.intent_path.write_text(
+            '{"schema":2,"component":"mobile"}', encoding="utf-8"
+        )
+        self.assertEqual(self.select(head), release_jobs("desktop"))
+        self.assertEqual(
+            impact.event_jobs(self.root, "push", {"before": self.base}, head),
+            release_jobs("desktop"),
+        )
+        self.intent_path.write_text(
+            '{"schema":2,"component":"desktop"}', encoding="utf-8"
+        )
+        (self.root / "server").mkdir()
+        (self.root / "server/api.py").write_text("# changed\n", encoding="utf-8")
+        self.assertEqual(
+            self.select(self.commit()), release_jobs("desktop") | {"server"}
+        )
+        for malformed in (
+            "null",
+            '{"schema":2,"component":"other"}',
+            '{"schema":2,"component":"desktop","component":"mobile"}',
+        ):
+            self.intent_path.write_text(malformed, encoding="utf-8")
+            self.assertEqual(self.select(self.commit()), set(JOBS))
 
     def test_desktop_translation_selection_uses_tested_catalogs_not_working_files(self):
         shared = self.root / "shared"

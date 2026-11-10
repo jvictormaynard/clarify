@@ -72,8 +72,9 @@ latest release. Preview/native testing does not accept a different stable build.
    `version.py`, root `package.json`, `CHANGELOG.md` and `.github/release-intent.json`.
    Review the dated changelog section and comparison links. A maintainer can
    review and merge their own PR. No second-person approval is required.
-4. Require successful canonical `CI` and its terminal `CI required` on the exact
-   merge. Main must still identify that commit when candidate creation starts.
+4. Require successful canonical `CI`, repository policy and full desktop target
+   coverage on the exact merge. The reviewed source must remain reachable in main.
+   Later unrelated merges do not invalidate it.
 5. Create the immutable annotated `vX.Y.Z` tag on that source, or let enabled
    promotion do so. Never move or reuse a tag. Dispatch **Desktop Release** on
    that tag with `action=build-candidate`, `channel=stable`, exact `source_sha`.
@@ -167,12 +168,20 @@ below. Schema 1 is retired; do not retain both authorization systems.
 
 Release checks authenticate canonical `jvictormaynard/clarify`, workflow name
 `CI`, path `.github/workflows/ci.yml`, completed successful main `push`, exact
-source SHA, and one completed successful `CI required`. Component job names and
-their graph belong to ordinary CI. Release consumers do not duplicate that
-inventory. Reviewed preparation additionally requires one exact merged PR,
-canonical branch/title, maintainer merge and metadata-only source comparison.
-Main freshness is required at promotion/build; a later main push cannot change
-an already selected candidate's immutable source.
+source SHA, and one completed successful `CI required` and repository policy job.
+A green aggregate alone does not prove release coverage. Release consumers require
+all jobs in `ci.tasks.release_jobs(component)`, through the authenticated main
+coverage receipt from `ci.evidence.release_coverage`. That receipt covers selected
+successful jobs and any strictly authenticated reused PR coverage. Missing receipts
+or incomplete target coverage block the release. Policy is a separate gate.
+Component job names and their graph remain owned by ordinary CI.
+
+Reviewed preparation additionally requires one exact merged PR, canonical
+branch/title, maintainer merge and metadata-only source comparison. Promotion,
+stable candidate start and publication require the exact reviewed source to remain
+reachable in canonical main. Later unrelated merges do not invalidate it. Existing
+version, tag, supersession, candidate acceptance, hash and provenance checks still
+apply. Promotion never moves a tag, and publication never rebuilds accepted bytes.
 
 Enabled **Release Promotion** handles only a dedicated preparation merge. It
 creates the immutable tag and dispatches `action=build-candidate, channel=stable`
