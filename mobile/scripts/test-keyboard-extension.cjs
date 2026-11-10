@@ -5,6 +5,7 @@ const { spawn, spawnSync } = require('node:child_process');
 const strictOpeningHeight = process.argv.includes('--check-opening-height');
 const keyboardHeightDiagnostics = process.env.CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS === '1';
 const internalManualReturn = process.env.CLARIFY_INTERNAL_MANUAL_RETURN === '1';
+const cursorDiagnostics = true; // Isolated trace branch only; never production acceptance.
 if (![undefined, '0', '1'].includes(process.env.CLARIFY_INTERNAL_MANUAL_RETURN)) throw new Error('Invalid manual-return test mode.');
 if (internalManualReturn && (strictOpeningHeight || keyboardHeightDiagnostics)) throw new Error('Manual return cannot be combined with diagnostics.');
 if (process.argv.slice(2).some(argument => argument !== '--check-opening-height')) throw new Error('Unknown installed keyboard test argument.');
@@ -28,6 +29,7 @@ const results = fs.mkdtempSync(path.join(output, 'installed-keyboard-'));
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-extension-'));
 let exitCode = 1;
 let recording;
+let cursorTraceCapture = { captured: false };
 try {
   run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture, String(strictOpeningHeight)]);
   if (!keyboardHeightDiagnostics) {
@@ -69,6 +71,18 @@ try {
   spawnSync('xcrun', ['simctl', 'io', device.udid, 'screenshot', path.join(results, 'final-screen.png')], { stdio: 'ignore' });
   const logs = spawnSync('xcrun', ['simctl', 'spawn', device.udid, 'log', 'show', '--style', 'compact', '--last', '15m', '--predicate', 'process IN {"ClarifyKeyboard", "ActivationContainer", "KeyboardHost"}'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   fs.writeFileSync(path.join(results, 'extension-log.txt'), (logs.stdout ?? '') + (logs.stderr ?? ''));
+  if (cursorDiagnostics) {
+    const trace = spawnSync('xcrun', ['simctl', 'spawn', device.udid, 'log', 'show', '--style', 'compact', '--last', '15m',
+      '--predicate', 'process == "ClarifyKeyboard" AND (eventMessage BEGINSWITH "ClarifyCursorTrace" OR eventMessage BEGINSWITH "ClarifyCursorGrid")'],
+    { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+    const text = trace.stdout ?? '';
+    cursorTraceCapture = { status: trace.status, signal: trace.signal, error: trace.error?.message ?? null, stderr: trace.stderr ?? '',
+      captured: trace.status === 0 && !trace.error && text.includes('ClarifyCursorTrace') && text.includes('ClarifyCursorGrid') &&
+        text.includes('stage=move offset=') && text.includes('callback=') };
+    fs.writeFileSync(path.join(results, 'cursor-trace-log.txt'), text);
+    fs.writeFileSync(path.join(results, 'cursor-trace-capture.json'), JSON.stringify(cursorTraceCapture, null, 2));
+    if (!cursorTraceCapture.captured && exitCode === 0) exitCode = 1;
+  }
   const events = path.join(fixture, 'Shared/container-events.json');
   if (fs.existsSync(events)) fs.copyFileSync(events, path.join(results, 'container-events.json'));
   const ready = path.join(fixture, 'Shared/container-ready.json');
@@ -77,7 +91,7 @@ try {
   if (fs.existsSync(receipt)) fs.copyFileSync(receipt, path.join(results, 'activation-return.json'));
   const preflight = path.join(fixture, 'Shared/container-preflight.json');
   if (fs.existsSync(preflight)) fs.copyFileSync(preflight, path.join(results, 'container-preflight.json'));
-  for (const name of ['KeyboardViewController.swift', 'App.plist', 'Keyboard.plist', 'Container.plist', 'Tests.plist']) {
+  for (const name of ['KeyboardViewController.swift', 'KeyGridView.swift', 'TypingAssistant.swift', 'App.plist', 'Keyboard.plist', 'Container.plist', 'Tests.plist']) {
     const source = path.join(fixture, name);
     if (fs.existsSync(source)) fs.copyFileSync(source, path.join(results, 'generated-' + name));
   }
@@ -88,7 +102,7 @@ try {
   if (fs.existsSync(projectFile)) fs.copyFileSync(projectFile, path.join(results, 'generated-project.pbxproj'));
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
-  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, internalManualReturn,
-    completeKeyboardAcceptance: !internalManualReturn && !strictOpeningHeight && !keyboardHeightDiagnostics && exitCode === 0, exitCode }, null, 2));
+  fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, internalManualReturn, cursorDiagnostics, cursorTraceCapture,
+    completeKeyboardAcceptance: !cursorDiagnostics && !internalManualReturn && !strictOpeningHeight && !keyboardHeightDiagnostics && exitCode === 0, exitCode }, null, 2));
 }
 process.exitCode = exitCode;

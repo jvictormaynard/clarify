@@ -2,6 +2,12 @@ gem 'xcodeproj', '= 1.27.0'
 require 'xcodeproj'
 root, fixture, strict_opening_height = ARGV
 height_diagnostics = ENV['CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS'] == '1'
+# Isolated cursor-trace branch only. Never merge these generated-copy probes.
+cursor_diagnostics = true
+def cursor_trace_replace(source, needle, replacement)
+  raise "Cursor trace source boundary changed: #{needle.lines.first}" unless source.scan(needle).length == 1
+  source.sub(needle, replacement)
+end
 project = Xcodeproj::Project.new(File.join(fixture, 'KeyboardExtension.xcodeproj'))
 app = project.new_target(:application, 'KeyboardHost', :ios, '16.4')
 keyboard = project.new_target(:app_extension, 'ClarifyKeyboard', :ios, '16.4')
@@ -64,6 +70,71 @@ tests.source_build_phase.add_file_reference(project.main_group.new_file(File.joi
 
     + (void)activeArbiterCheck
     OBJC
+  end
+  if cursor_diagnostics && name == 'KeyGridView.swift'
+    original = File.read(source)
+    original = cursor_trace_replace(original, '      switch phase {', <<~'SWIFT'.rstrip)
+          NSLog("ClarifyCursorGrid %@", "t=\(ProcessInfo.processInfo.systemUptime) phase=\(phase.rawValue) id=\(id) x=\(point.x) token=\(spacePress?.token.uuidString ?? "nil") active=\(spacePress?.active ?? false) movable=\(spacePress?.movable ?? false)")
+          switch phase {
+    SWIFT
+    original = cursor_trace_replace(original, '        let offset = Int(distance / 6)', <<~'SWIFT'.rstrip)
+            let offset = Int(distance / 6)
+            NSLog("ClarifyCursorGrid %@", "t=\(ProcessInfo.processInfo.systemUptime) delta=\(point.x - space.x) remainder=\(space.remainder) offset=\(offset) movable=\(space.movable) token=\(space.token)")
+    SWIFT
+    original = cursor_trace_replace(original, 'onMoveCursor?(offset) != true', 'tracedCursorMove(offset) != true')
+    original = cursor_trace_replace(original, '  private func finishSpacePress() {', <<~'SWIFT'.rstrip)
+      private func tracedCursorMove(_ offset: Int) -> Bool? {
+        let result = onMoveCursor?(offset)
+        NSLog("ClarifyCursorGrid %@", "t=\(ProcessInfo.processInfo.systemUptime) callback=\(String(describing: result)) offset=\(offset) token=\(spacePress?.token.uuidString ?? "nil")")
+        return result
+      }
+      private func finishSpacePress() {
+        NSLog("ClarifyCursorGrid %@", "t=\(ProcessInfo.processInfo.systemUptime) cleanup token=\(spacePress?.token.uuidString ?? "nil") active=\(spacePress?.active ?? false) movable=\(spacePress?.movable ?? false)")
+    SWIFT
+    source = File.join(fixture, name); File.write(source, original)
+  end
+  if cursor_diagnostics && name == 'TypingAssistant.swift'
+    original = File.read(source)
+    original = cursor_trace_replace(original, '  func prepareCursor(in proxy: UITextDocumentProxy) {', '  func prepareCursor(in proxy: UITextDocumentProxy) { cursorTrace("prepare")')
+    original = cursor_trace_replace(original, '  func endCursor() { inputGeneration', '  func endCursor() { cursorTrace("end"); inputGeneration')
+    original = cursor_trace_replace(original, '  func moveCursor(_ offset: Int, in proxy: UITextDocumentProxy) -> Bool {', '  func moveCursor(_ offset: Int, in proxy: UITextDocumentProxy) -> Bool { cursorTrace("move offset=\(offset)")')
+    original = cursor_trace_replace(original, '      endCursor(); return false', '      cursorTrace("pre-reject"); endCursor(); return false')
+    original = cursor_trace_replace(original, '    if moved.isEmpty { return true }', '    if moved.isEmpty { cursorTrace("boundary-noop"); return true }')
+    original = cursor_trace_replace(original, '    snapshots.append(target)', '    snapshots.append(target); cursorTrace("request adjustment=\(adjustment)", snapshots)')
+    original = cursor_trace_replace(original, '          inputGeneration == generation else { return false }', '          inputGeneration == generation else { cursorTrace("post-reject expectedGeneration=\(generation)", snapshots); return false }')
+    original = cursor_trace_replace(original, '    return before && after', '    cursorTrace("match offset=\(snapshot.offset) before=\(before) after=\(after)"); return before && after')
+    original = cursor_trace_replace(original, (<<~'SWIFT').lines.map { |line| '  ' + line }.join.rstrip, <<~'SWIFT'.rstrip)
+      private func context(_ proxy: UITextDocumentProxy) -> TypingContext? {
+        guard let before = proxy.documentContextBeforeInput else { return nil }
+        return TypingContext(document: proxy.documentIdentifier, before: before,
+          after: proxy.documentContextAfterInput ?? "", hasSelection: proxy.selectedText?.isEmpty == false)
+      }
+    SWIFT
+      private func cursorTrace(_ stage: String, _ snapshots: [CursorSnapshot]? = nil) {
+        let values = (snapshots ?? cursorSnapshots).map {
+          "d=\($0.context.document) o=\($0.offset) b=\($0.context.before.utf16.count):\($0.context.before.hashValue) a=\($0.context.after.utf16.count):\($0.context.after.hashValue)"
+        }.joined(separator: ";")
+        NSLog("ClarifyCursorTrace %@", "t=\(ProcessInfo.processInfo.systemUptime) gen=\(inputGeneration) stage=\(stage) snapshots=[\(values)]")
+      }
+      private func cursorTraceSecure(_ proxy: UITextDocumentProxy) -> Bool? {
+        let value = proxy.isSecureTextEntry
+        cursorTrace("secure=\(String(describing: value))")
+        return value
+      }
+      private func context(_ proxy: UITextDocumentProxy) -> TypingContext? {
+        let started = ProcessInfo.processInfo.systemUptime
+        guard let before = proxy.documentContextBeforeInput else { cursorTrace("context before=nil start=\(started)"); return nil }
+        let document = proxy.documentIdentifier
+        let after = proxy.documentContextAfterInput
+        let selection = proxy.selectedText
+        cursorTrace("context start=\(started) order=before-document-after-selection doc=\(document) before=\(before.utf16.count):\(before.hashValue) after=\(String(describing: after?.utf16.count)):\(String(describing: after?.hashValue)) selection=\(String(describing: selection?.utf16.count))")
+        return TypingContext(document: document, before: before, after: after ?? "", hasSelection: selection?.isEmpty == false)
+      }
+    SWIFT
+    # Instrument existing secure reads only in the cursor methods, once per read.
+    first = original.index('  func prepareCursor('); last = original.index('  private func matches(')
+    original[first...last] = original[first...last].gsub('proxy.isSecureTextEntry', 'cursorTraceSecure(proxy)')
+    source = File.join(fixture, name); File.write(source, original)
   end
   keyboard.source_build_phase.add_file_reference(project.main_group.new_file(source))
 end
