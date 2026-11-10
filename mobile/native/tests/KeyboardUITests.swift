@@ -36,8 +36,11 @@ private final class Field: NSObject, UITextDocumentProxy {
   var after = ""
   var contextAvailable = true
   var contextLimit = 50
-  var documentContextBeforeInput: String? { contextAvailable ? String(before.suffix(contextLimit)) : nil }
-  var documentContextAfterInput: String? { contextAvailable ? String(after.prefix(contextLimit)) : nil }
+  var deferCaretContext = false
+  var retainedCaretContext: (before: String, after: String)?
+  func flushCaretContext() { retainedCaretContext = nil }
+  var documentContextBeforeInput: String? { contextAvailable ? String((retainedCaretContext?.before ?? before).suffix(contextLimit)) : nil }
+  var documentContextAfterInput: String? { contextAvailable ? String((retainedCaretContext?.after ?? after).prefix(contextLimit)) : nil }
   var documentInputMode: UITextInputMode? { nil }
   var selectedText: String?
   var hasText: Bool { !before.isEmpty || !after.isEmpty }
@@ -55,11 +58,12 @@ private final class Field: NSObject, UITextDocumentProxy {
   }
   func deleteBackward() { if !before.isEmpty { before.removeLast() } }
   func adjustTextPosition(byCharacterOffset offset: Int) {
-    if offset < 0 {
-      for _ in 0..<min(before.count, -max(-32, offset)) { after.insert(before.removeLast(), at: after.startIndex) }
-    } else {
-      for _ in 0..<min(after.count, offset) { before.append(after.removeFirst()) }
-    }
+    if deferCaretContext, retainedCaretContext == nil { retainedCaretContext = (before, after) }
+    let text = before + after
+    let position = min(text.utf16.count, max(0, before.utf16.count + offset))
+    let index16 = text.utf16.index(text.utf16.startIndex, offsetBy: position)
+    guard let index = String.Index(index16, within: text) else { return }
+    before = String(text[..<index]); after = String(text[index...])
     didAdjust?()
   }
   func setMarkedText(_ markedText: String, selectedRange: NSRange) {}
@@ -1473,7 +1477,8 @@ final class KeyboardUITests: XCTestCase {
       @MainActor func start(_ text: String = "word") {
         shortcut.reset(); field.before = text; field.after = ""; field.selectedText = nil
         field.contextAvailable = true; field.isSecureTextEntry = false; field.keyboardType = .default
-        field.didInsert = nil; time += 1
+        field.didInsert = nil; field.didAdjust = nil; field.deferCaretContext = false
+        field.flushCaretContext(); time += 1
       }
       start("1QQQQeq"); shortcut.insert(" ", into: field); time += 0.1
       shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "1QQQQeq. ")
@@ -1535,6 +1540,41 @@ final class KeyboardUITests: XCTestCase {
       start(); field.didAdjust = { shortcut.endCursor() }; shortcut.prepareCursor(in: field)
       XCTAssertFalse(shortcut.moveCursor(-1, in: field)); field.didAdjust = nil
       XCTAssertFalse(shortcut.moveCursor(1, in: field), "A cancelled movement callback must not rearm the cursor session")
+      for text in ["abcdef", String(repeating: "abcdefghij", count: 12)] {
+        start(text); field.deferCaretContext = true; shortcut.prepareCursor(in: field)
+        XCTAssertTrue(shortcut.moveCursor(-1, in: field))
+        field.flushCaretContext()
+        XCTAssertTrue(shortcut.moveCursor(-1, in: field), "A later proxy update must recognize the first owned movement")
+        XCTAssertTrue(shortcut.moveCursor(-1, in: field), "Further movement must work while context is delayed")
+        XCTAssertEqual(field.before, String(text.dropLast(3))); XCTAssertEqual(field.after, String(text.suffix(3)))
+        field.flushCaretContext()
+        XCTAssertTrue(shortcut.moveCursor(2, in: field))
+        field.flushCaretContext(); shortcut.endCursor()
+        XCTAssertEqual(field.before, String(text.dropLast())); XCTAssertEqual(field.after, String(text.suffix(1)))
+      }
+      start("abcdef"); field.deferCaretContext = true; shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertTrue(shortcut.moveCursor(1, in: field))
+      field.retainedCaretContext = ("abcde", "f")
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field), "An intermediate proxy update after a round trip must remain owned")
+      field.flushCaretContext()
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertEqual(field.before, "abcd"); XCTAssertEqual(field.after, "ef")
+      start("a👩🏼‍🏫e\u{301}"); shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertEqual(field.before, "a👩🏼‍🏫")
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertEqual(field.before, "a")
+      XCTAssertTrue(shortcut.moveCursor(2, in: field)); XCTAssertEqual(field.before, "a👩🏼‍🏫e\u{301}")
+      start("abcdef"); field.deferCaretContext = true; shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); field.flushCaretContext(); field.after = "external edit"
+      XCTAssertFalse(shortcut.moveCursor(-1, in: field)); XCTAssertEqual(field.before, "abcde")
+      for editBefore in [true, false] {
+        start("abcdef"); field.after = "ghi"; shortcut.prepareCursor(in: field)
+        if editBefore { field.before = "Xabcdef" } else { field.after = "ghij" }
+        XCTAssertFalse(shortcut.moveCursor(-1, in: field), "A baseline must reject prefix- or suffix-preserving external edits")
+        XCTAssertEqual(field.before, editBefore ? "Xabcdef" : "abcdef")
+      }
+      start("abcdef"); field.deferCaretContext = true; shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); field.flushCaretContext(); field.after = "foo"
+      XCTAssertFalse(shortcut.moveCursor(-1, in: field), "A left move must not permit an external extension on the right")
+      XCTAssertEqual(field.before, "abcde")
     }
   }
   func testInsertionRejectsAResultClearedByAnotherDestinationBeforeTheNextPoll() async throws {

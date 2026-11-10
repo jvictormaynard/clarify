@@ -18,7 +18,11 @@ final class TypingAssistant {
   }
   private let now: () -> TimeInterval
   private var pendingSpace: (context: TypingContext, time: TimeInterval)?
-  private var cursorContext: TypingContext?
+  private struct CursorSnapshot {
+    var context: TypingContext
+    var offset = 0
+  }
+  private var cursorSnapshots: [CursorSnapshot] = []
   private var inputGeneration: UInt = 0
   private let checker = UITextChecker()
   private var correction = TypingCorrection()
@@ -40,28 +44,62 @@ final class TypingAssistant {
     vocabularyWords = Set(words.flatMap { $0.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init) })
   }
   func reset() { invalidateSpace(); correction.reset() }
-  private func invalidateSpace() { inputGeneration &+= 1; pendingSpace = nil; cursorContext = nil }
+  private func invalidateSpace() { inputGeneration &+= 1; pendingSpace = nil; cursorSnapshots = [] }
   func prepareCursor(in proxy: UITextDocumentProxy) {
     endCursor()
     let generation = inputGeneration
     let captured = proxy.isSecureTextEntry != true ? context(proxy) : nil
-    if generation == inputGeneration, captured?.hasSelection == false { cursorContext = captured }
+    if generation == inputGeneration, let captured, !captured.hasSelection {
+      cursorSnapshots = [CursorSnapshot(context: captured)]
+    }
   }
-  func endCursor() { inputGeneration &+= 1; cursorContext = nil }
+  func endCursor() { inputGeneration &+= 1; cursorSnapshots = [] }
+  private func cursorMatches(_ actual: TypingContext, _ snapshot: CursorSnapshot) -> Bool {
+    let expected = snapshot.context
+    guard actual.document == expected.document, !actual.hasSelection else { return false }
+    // A baseline is exact. Only an owned move can expose or trim a window edge.
+    // Empty sides still have to agree; they must not accept an external edit.
+    let before = actual.before == expected.before || (!actual.before.isEmpty && !expected.before.isEmpty &&
+      ((snapshot.offset < 0 && actual.before.hasSuffix(expected.before)) ||
+       (snapshot.offset > 0 && expected.before.hasSuffix(actual.before))))
+    let after = actual.after == expected.after || (!actual.after.isEmpty && !expected.after.isEmpty &&
+      ((snapshot.offset > 0 && actual.after.hasPrefix(expected.after)) ||
+       (snapshot.offset < 0 && expected.after.hasPrefix(actual.after))))
+    return before && after
+  }
   func moveCursor(_ offset: Int, in proxy: UITextDocumentProxy) -> Bool {
     let preparedGeneration = inputGeneration
     guard offset != 0, (-32...32).contains(offset), proxy.isSecureTextEntry != true,
-          let captured = cursorContext, !captured.hasSelection, context(proxy) == captured,
+          var target = cursorSnapshots.last, let observed = context(proxy),
+          let confirmed = cursorSnapshots.firstIndex(where: { cursorMatches(observed, $0) }),
           inputGeneration == preparedGeneration else {
-      cursorContext = nil; return false
+      endCursor(); return false
     }
+    var snapshots = Array(cursorSnapshots[confirmed...])
+    if snapshots.count == 1 { target = CursorSnapshot(context: observed); snapshots = [target] }
+    let moved = offset < 0 ? String(target.context.before.suffix(-offset)) : String(target.context.after.prefix(offset))
+    if moved.isEmpty { return true }
+    let adjustment = (offset < 0 ? -1 : 1) * moved.utf16.count
+    target.offset += adjustment
+    if offset < 0 {
+      target.context.before = String(target.context.before.dropLast(moved.count)); target.context.after = moved + target.context.after
+    } else {
+      target.context.before += moved; target.context.after = String(target.context.after.dropFirst(moved.count))
+    }
+    // A repeated position does not confirm a round trip while context is delayed.
+    // Keep the earliest matching position and every unconfirmed movement after it.
+    // Retain only this bounded session's known positions, never arbitrary edits.
+    guard snapshots.count < 64 else { endCursor(); return false }
+    snapshots.append(target)
     invalidateSpace(); correction.reset()
     let generation = inputGeneration
-    // UIKit owns character boundaries and clamps at the document's edges.
-    proxy.adjustTextPosition(byCharacterOffset: offset)
-    guard inputGeneration == generation, proxy.isSecureTextEntry != true,
-          let current = context(proxy), current.document == captured.document, !current.hasSelection else { return false }
-    cursorContext = current
+    // The proxy offset uses UTF-16 units; the drag steps over whole characters.
+    proxy.adjustTextPosition(byCharacterOffset: adjustment)
+    guard let current = context(proxy), proxy.isSecureTextEntry != true,
+          let confirmed = snapshots.firstIndex(where: { cursorMatches(current, $0) }),
+          inputGeneration == generation else { return false }
+    cursorSnapshots = Array(snapshots[confirmed...])
+    if cursorSnapshots.count == 1 { cursorSnapshots = [CursorSnapshot(context: current)] }
     return true
   }
   private func matches(_ actual: TypingContext?, _ expected: TypingContext) -> Bool {
