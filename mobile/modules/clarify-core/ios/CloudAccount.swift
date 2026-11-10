@@ -963,8 +963,7 @@ final class CloudAccount {
   }
   @MainActor func dictate(_ audio: URL, operationID: String, library: LocalLibrary,
     preferences: OutputPreferences = OutputPreferences(), policy: DictationPolicy = .legacy) async throws -> CloudDictation {
-    let effectivePreferences = preferences.forDictation(policy, toneAllowed: processingCapabilities.value["dictation_editing"] == nil ? nil :
-      policy.canApplyTone(capabilities: processingCapabilities, catalog: textActions, computer: false, outputLanguage: preferences.language))
+    let effectivePreferences = policy.frozenPreferences(preferences, capabilities: processingCapabilities, catalog: textActions, computer: false)
     guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
     let identity = captureTextIdentity()
     try await waitForAutomaticRefresh()

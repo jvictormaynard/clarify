@@ -3,13 +3,13 @@ import type { SettingsPageProps } from "../settings/use-settings";
 import { ApplicationWritingStyles } from "../components/application-writing-styles";
 import { Picker, Row, Section, SettingsDisclosure, TextArea, Toggle } from "../components/ui";
 import { WorkflowRoute } from "../components/workflow-route";
-import { textActionLanguages, AfterDictationAction } from "../components/after-dictation-action";
+import { textActionLanguages, TextEditing, AutomaticSavedAction } from "../components/after-dictation-action";
 
 export function StylePage({ controller: c }: SettingsPageProps) {
   const managed = !!(c.state.accountState?.managed || c.state.accountState?.signedIn);
   return <>
     <Section title={t("Seu texto")}>
-    <AfterDictationAction controller={c} />
+    <TextEditing controller={c} />
     <ApplicationWritingStyles controller={c} />
     <SettingsDisclosure title={t("Mais opções")}>
       <Section title={t("Idioma de saída")}>
@@ -22,7 +22,7 @@ export function StylePage({ controller: c }: SettingsPageProps) {
           <p className="hint" role="status">{t("O idioma fica salvo. Sem revisão, o ditado não é traduzido.")}</p>}
       </Section>
       <ApplicationWritingStyles controller={c} rulesOnly />
-      <AfterDictationAction controller={c} advanced />
+      <AutomaticSavedAction key={c.state.textActionContext} controller={c} />
       {!managed && <Section title={t("Revisão com IA")}>
         <SettingsDisclosure title={t("Modelo e instruções da revisão")}>
           <Row title={t("Revisar transcrições de")}>

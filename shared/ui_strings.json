@@ -7938,5 +7938,10 @@
     "pt": "O idioma fica salvo. Sem revisão, o ditado não é traduzido.",
     "en": "The language stays saved. Without text editing, dictation is not translated.",
     "es": "El idioma queda guardado. Sin edición del texto, el dictado no se traduce."
+  },
+  "Não aplicar ação automaticamente": {
+    "pt": "Não aplicar ação automaticamente",
+    "en": "Do not apply an action automatically",
+    "es": "No aplicar una acción automáticamente"
   }
 }

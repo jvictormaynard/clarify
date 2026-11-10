@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
   s.name = 'ClarifyCore'
   s.version = '0.1.0'
-  s.summary = 'Clarify iOS microphone session and Groq processing'
+  s.summary = 'Clarify iOS capture and account or paired-computer processing'
   s.description = s.summary
   s.license = { :type => 'MIT' }
   s.author = 'Clarify contributors'

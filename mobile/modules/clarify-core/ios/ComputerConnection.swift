@@ -287,9 +287,8 @@ final class ComputerConnection {
   @MainActor func process(_ operationID: String, action: String? = nil, text: String? = nil, wav: Data? = nil,
     language: String = ClarifyLocale.language, savedAction: TextActionDescriptor? = nil,
     preferences: OutputPreferences = OutputPreferences(), policy: DictationPolicy = .legacy) async throws -> ComputerResult {
-    let effectivePreferences = action == nil ? preferences.forDictation(policy,
-      toneAllowed: processingCapabilities.value["dictation_editing"] == nil ? nil :
-        policy.canApplyTone(capabilities: processingCapabilities, catalog: textActions, computer: true, outputLanguage: preferences.language)) : preferences
+    let effectivePreferences = action == nil
+      ? policy.frozenPreferences(preferences, capabilities: processingCapabilities, catalog: textActions, computer: true) : preferences
     try Task.checkCancellation()
     guard let localID = UUID(uuidString: operationID) else { throw ComputerFailure.notReady }
     let key = localID.uuidString

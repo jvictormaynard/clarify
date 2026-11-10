@@ -1383,6 +1383,31 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(command.action, "text_action"); XCTAssertEqual(command.actionID, custom.id); XCTAssertEqual(command.actionRevision, custom.revision)
       XCTAssertEqual(command.outputPreferences?.language, .de)
       XCTAssertEqual(command.language, "de"); XCTAssertEqual(store.outputPreferences().language, .de)
+      let commandCount = store.commands().count
+      for (mode, title) in [("legacy", "Usar configuração do destino"), ("natural", "Usar instruções de ditado"), ("light", "Ajustar apenas espaços")] {
+        state.dictationMode = mode
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+        let compatibility = self.menuElements(capsule.menu).compactMap { $0 as? UIAction }.filter { $0.title == L(title) }
+        XCTAssertEqual(compatibility.count, 1)
+        XCTAssertTrue(try XCTUnwrap(compatibility.first).attributes.contains(.disabled))
+        XCTAssertEqual(compatibility.first?.state, .on)
+        let more = try XCTUnwrap(self.menuElements(capsule.menu).compactMap { $0 as? UIMenu }.first { $0.title == L("Mais opções") })
+        XCTAssertFalse(self.menuElements(more).contains { ($0 as? UIAction)?.title == L(title) })
+        XCTAssertEqual(store.commands().count, commandCount)
+      }
+      for style in [OutputStyle.very_casual, .informal, .organized] {
+        _ = try store.setOutputPreference("style", value: style.rawValue); keyboard.refreshFromStore()
+        let oldTone = try XCTUnwrap(self.menuElements(capsule.menu).compactMap { $0 as? UIAction }.first { $0.title == style.title })
+        XCTAssertEqual(oldTone.state, .on); XCTAssertTrue(oldTone.attributes.contains(.disabled))
+        XCTAssertEqual(store.outputPreferences().style, style)
+      }
+      state.dictationMode = "action"; state.dictationActionID = custom.id
+      try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+      let turnOff = try XCTUnwrap(self.menuElements(capsule.menu).compactMap { $0 as? UIAction }.first { $0.title == L("Não aplicar ação automaticamente") })
+      XCTAssertFalse(turnOff.attributes.contains(.disabled)); self.invoke(turnOff)
+      let policyCommand = try XCTUnwrap(store.commands().last?.1)
+      XCTAssertEqual(policyCommand.action, "dictation_policy"); XCTAssertEqual(policyCommand.text, "clarity")
+      XCTAssertEqual(store.outputPreferences().style, .organized)
     }
   }
   func testAccountSelectedTextMenuPreservesDictionaryAndRejectsSecureOrOversizedSelections() async throws {

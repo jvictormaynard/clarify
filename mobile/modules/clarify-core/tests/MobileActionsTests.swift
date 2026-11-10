@@ -67,7 +67,7 @@ final class MobileActionsTests: XCTestCase {
       let capabilities = try ProcessingCapabilities(raw)
       let policy = DictationPolicy(mode: .clarity)
       XCTAssertEqual(policy.canApplyTone(capabilities: capabilities, catalog: catalog, computer: true), allowed)
-      XCTAssertEqual(saved.forDictation(policy, toneAllowed: allowed).style, allowed ? .formal : .default)
+      XCTAssertEqual(policy.frozenPreferences(saved, capabilities: capabilities, catalog: catalog, computer: true).style, allowed ? .formal : .default)
       XCTAssertEqual(saved.style, .formal)
     }
     raw["dictation_editing"] = ["legacy": true, "natural": true, "clarity": false, "action": true, "legacy_translated": false, "natural_translated": false]
@@ -76,6 +76,15 @@ final class MobileActionsTests: XCTestCase {
       let policy = DictationPolicy(mode: mode)
       XCTAssertTrue(policy.canApplyTone(capabilities: inlineOnly, catalog: catalog, computer: true))
       XCTAssertFalse(policy.canApplyTone(capabilities: inlineOnly, catalog: catalog, computer: true, outputLanguage: .es))
+    }
+    raw.removeValue(forKey: "dictation_editing")
+    let older = try ProcessingCapabilities(raw)
+    for computer in [false, true] {
+      for mode in [DictationMode.legacy, .natural, .action, .clarity, .preserve, .light] {
+        let policy = DictationPolicy(mode: mode)
+        XCTAssertEqual(policy.frozenPreferences(saved, capabilities: older, catalog: catalog, computer: computer),
+          [.preserve, .light].contains(mode) ? OutputPreferences() : saved)
+      }
     }
     raw["dictation_editing"] = ["legacy": true, "natural": true, "clarity": 1, "action": true, "legacy_translated": true, "natural_translated": true] as [String: Any]
     XCTAssertThrowsError(try ProcessingCapabilities(raw))

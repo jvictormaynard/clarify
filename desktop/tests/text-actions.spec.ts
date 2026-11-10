@@ -459,3 +459,60 @@ test("after dictation: custom saved names stay literal in main and advanced pick
   await openDisclosure(page, "Mais opções");
   await expect(page.getByRole("combobox", { name: "Ação após o ditado", exact: true })).toContainText("Rewrite");
 });
+
+test("after dictation: removing a legacy saved action selects clarity without enabling review", async ({ page, settingsFixture }) => {
+  await settingsFixture.rpc("savePreference", "setDictationCleanupLevel", [""]);
+  const before = await settingsFixture.rpc("snapshot");
+  await settingsFixture.rpc("setAfterDictationTextAction", "translation", "de", before.textActionContext, before.textActionsRevision);
+  await settingsFixture.rpc("selectWorkflow", "refinement");
+  await settingsFixture.rpc("savePreference", "setRouteEnabled", [false]);
+  await page.reload(); await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  const editing = page.getByRole("combobox", { name: "Edição do texto", exact: true });
+  await expect(editing).toContainText("Tradução");
+  await openDisclosure(page, "Mais opções");
+  await expect(page.getByRole("button", { name: "Deutsch", exact: true })).toBeVisible();
+  const unchanged = await settingsFixture.rpc("snapshot");
+  expect(unchanged.dictationCleanupLevel).toBe("");
+  expect(unchanged.afterDictationTextActionLanguage).toBe("de");
+  await page.getByRole("combobox", { name: "Ação automática salva", exact: true }).click();
+  await page.getByRole("option", { name: "Nenhuma", exact: true }).click();
+  await expect(editing).toContainText("Melhorar a clareza");
+  const saved = await settingsFixture.rpc("snapshot");
+  expect(saved.dictationCleanupLevel).toBe("clarity");
+  expect(saved.afterDictationTextActionId).toBe("");
+  expect(saved.dictationCleanupRefinementAllowed).toBe(false);
+  await editing.click();
+  await expect(page.getByRole("option", { name: "Instruções atuais", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: "Ajustes mínimos", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape"); await expect(editing).toBeFocused();
+  await page.reload(); await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await expect(editing).toContainText("Melhorar a clareza");
+});
+
+test("after dictation: translation keeps its selected revision and cancels when the catalog context changes", async ({ page, settingsFixture }) => {
+  await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await openDisclosure(page, "Mais opções");
+  await page.getByRole("combobox", { name: "Ação automática salva", exact: true }).click();
+  await page.getByRole("option", { name: "Aplicar ação de texto", exact: true }).click();
+  const select = page.getByRole("combobox", { name: "Ação após o ditado", exact: true });
+  await select.click(); await page.getByRole("option", { name: "Tradução", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Idioma da tradução", exact: true });
+  const before = await settingsFixture.rpc("snapshot");
+  const { revision: _revision, ...translation } = before.textActions!.find(action => action.id === "translation")!;
+  await settingsFixture.rpc("saveTextAction", { ...translation, prompt: "New saved translation instructions." }, before.textActionContext, before.textActionsRevision);
+  await dialog.getByRole("combobox", { name: "Idioma de destino", exact: true }).click();
+  await page.getByRole("option", { name: "Inglês", exact: true }).click();
+  await dialog.getByRole("button", { name: "Aplicar", exact: true }).click();
+  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).lastError).not.toBe("");
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(dialog).toBeVisible();
+  expect((await settingsFixture.rpc("snapshot")).afterDictationTextActionId).toBe("");
+  await page.route("**/__test_rpc", async route => {
+    const request = route.request().postDataJSON();
+    const result = await settingsFixture.rpc(request.method, ...(request.args ?? []));
+    await route.fulfill({ json: { result: { ...result, textActionContext: "changed-context" } } });
+  });
+  await expect(dialog).toBeHidden();
+  await expect(select).toHaveCount(0);
+  expect((await settingsFixture.rpc("snapshot")).afterDictationTextActionId).toBe("");
+});

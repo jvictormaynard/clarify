@@ -771,7 +771,7 @@ class KeyboardViewController: UIInputViewController {
     }
     if [.default, .very_casual, .informal, .organized].contains(captured.preferences.style) {
       let old = captured.preferences.style
-      styleChoices.append(preference("style", old.rawValue, old.title, selected: true))
+      styleChoices.append(UIAction(title: old.title, attributes: .disabled, state: .on) { _ in })
     }
 
     func policy(_ mode: String, title: String, saved: TextActionDescriptor? = nil) -> UIAction {
@@ -790,12 +790,13 @@ class KeyboardViewController: UIInputViewController {
     if let title = legacyTitles[captured.dictationMode] {
       editing.append(UIAction(title: L(title), attributes: .disabled, state: .on) { _ in })
     }
-    var options: [UIMenuElement] = [language, policy("legacy", title: L("Usar configuração do destino")),
-      policy("natural", title: L("Usar instruções de ditado")), policy("light", title: L("Ajustar apenas espaços"))]
+    var options: [UIMenuElement] = [language]
     if !captured.preferencesSupported {
       options.append(preference("style", "default", L("Padrão"), selected: captured.preferences.style == .default))
     }
-    options.append(UIMenu(title: L("Aplicar ação de texto"), children: captured.catalog.actions.map {
+    let automaticActionOff = policy("clarity", title: L("Não aplicar ação automaticamente"))
+    automaticActionOff.state = captured.dictationMode == "action" ? .off : .on
+    options.append(UIMenu(title: L("Aplicar ação de texto"), children: [automaticActionOff] + captured.catalog.actions.filter { $0.enabled }.map {
       policy("action", title: $0.name, saved: $0)
     }))
     var output: [UIMenuElement] = [UIMenu(title: L("Edição do texto"), options: .displayInline, children: editing)]

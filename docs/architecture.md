@@ -85,9 +85,10 @@ recognition from editing and accounts for local review permission, the refinemen
 route and the selected saved action. Inline audio editing and translated output
 have separate readiness flags. Mobile uses that map to hide an inapplicable
 tone without clearing its saved preference. The iOS app stores the policy per account or paired
-computer and freezes it when recording starts. Explicit natural mode removes the
-computer's selected post-dictation action and cleanup override while retaining
-its normal processing route. History records the actual rewrite flag independently
+computer and freezes it when recording starts. Older saved natural mode removes
+the computer's selected post-dictation action and cleanup override while retaining
+its normal processing route. Compatibility modes remain readable but are not
+offered for new selections. History records the actual rewrite flag independently
 of successful snippet expansion. Account action editing uses the same revision
 contract as desktop; full definitions and edit leases stay in the containing app.
 Existing mobile installations retain the destination's policy until an explicit
@@ -111,10 +112,11 @@ serializes quota reservations and cost settlement.
 `shared/rewrite_prompts.py` owns transformation prompts and the composition of
 writing style and output language for desktop and hosted processing. Base rewrite
 and style rules do not select a language. The selected output preference supplies
-the language instruction after the task policy. The generated Swift prompt
-is a compatibility projection of that owner; clients do not maintain separate
-prompt definitions. Keep my words and legacy minimal cleanup suppress saved tone
-and output-language overrides for dictation without clearing those preferences.
+the language instruction after the task policy. The iOS app sends text and output
+preferences to the account or paired computer; it does not contain a second
+provider client or embedded rewrite prompt. Keep my words and legacy minimal
+cleanup suppress saved tone and output-language overrides for dictation without
+clearing those preferences.
 Manual text actions still use their captured tone and language. Faithful rewrite
 and translation reject extreme shortening before replacing a selection; this
 size check does not prove semantic completeness. Custom actions may summarize.

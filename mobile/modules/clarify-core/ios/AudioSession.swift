@@ -121,12 +121,7 @@ final class ClarifyAudioSession: NSObject {
     let policy = DictationPolicyStore().read(scope: destination.historyScope ?? "")
     state.dictationMode = policy.mode.rawValue
     state.dictationActionID = policy.actionID
-    state.dictationModes = ["legacy", "natural", "preserve", "light", "clarity", "action"].filter { mode in
-      if mode == "legacy" { return true }
-      if mode == "action" { return destination.processingCapabilities.dictationActions }
-      return destination.processingCapabilities.explicitPolicy &&
-        (mode == "natural" || destination.processingCapabilities.supports("cleanup_levels", mode))
-    }
+    state.dictationModes = DictationPolicy.selectableModes(capabilities: destination.processingCapabilities)
     state.toneAllowed = destination.configured && destination.outputPreferencesSupported &&
       policy.canApplyTone(capabilities: destination.processingCapabilities, catalog: destination.textActions, computer: destination.computerMode,
         outputLanguage: store?.outputPreferences().language ?? .auto)
@@ -300,8 +295,8 @@ final class ClarifyAudioSession: NSObject {
     }
     let policy = DictationPolicyStore().read(scope: ProcessingDestination.shared.historyScope ?? "")
     let savedPreferences = preferences ?? store?.outputPreferences() ?? OutputPreferences()
-    let frozenPreferences = savedPreferences.forDictation(policy, toneAllowed: ProcessingDestination.shared.processingCapabilities.value["dictation_editing"] == nil ? nil :
-      policy.canApplyTone(capabilities: ProcessingDestination.shared.processingCapabilities, catalog: ProcessingDestination.shared.textActions, computer: ProcessingDestination.shared.computerMode, outputLanguage: savedPreferences.language))
+    let frozenPreferences = policy.frozenPreferences(savedPreferences, capabilities: ProcessingDestination.shared.processingCapabilities,
+      catalog: ProcessingDestination.shared.textActions, computer: ProcessingDestination.shared.computerMode)
     _ = try frozenPreferences.requestFields(supported: ProcessingDestination.shared.outputPreferencesSupported, dictation: true)
     _ = try ProcessingDestination.shared.dictationFields(policy)
     try ProcessingDestination.shared.processingCapabilities.validate(frozenPreferences)

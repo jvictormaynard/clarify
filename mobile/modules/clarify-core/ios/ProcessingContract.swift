@@ -86,6 +86,21 @@ struct DictationPolicy: Codable, Equatable {
     }
     return true
   }
+  static func selectableModes(capabilities: ProcessingCapabilities) -> [String] {
+    var modes = ["clarity", "preserve"].filter {
+      capabilities.explicitPolicy && capabilities.supports("cleanup_levels", $0)
+    }
+    if capabilities.dictationActions { modes.append("action") }
+    return modes
+  }
+  func frozenPreferences(_ saved: OutputPreferences, capabilities: ProcessingCapabilities,
+    catalog: TextActionCatalog, computer: Bool) -> OutputPreferences {
+    if [.preserve, .light].contains(mode) { return OutputPreferences() }
+    // Services without the optional readiness map keep their existing request behavior.
+    guard capabilities.value["dictation_editing"] != nil else { return saved }
+    return canApplyTone(capabilities: capabilities, catalog: catalog, computer: computer, outputLanguage: saved.language)
+      ? saved : OutputPreferences(language: saved.language)
+  }
   func accepts(_ raw: [String: Any]) -> Bool {
     if mode == .action {
       return raw["text_action_id"] as? String == actionID &&
@@ -134,14 +149,5 @@ enum TextRetention {
     var seen = Set<String>()
     let unique = sentences.filter { seen.insert($0).inserted }
     return unique.count < sentences.count && unique.joined(separator: " ") == result
-  }
-}
-
-// App/core only: the keyboard shares saved preferences without processing policy dependencies.
-extension OutputPreferences {
-  func forDictation(_ policy: DictationPolicy, toneAllowed: Bool? = nil) -> OutputPreferences {
-    // Keep the saved choices for explicit text actions and later clarity edits.
-    if [.preserve, .light].contains(policy.mode) { return OutputPreferences() }
-    return toneAllowed == false ? OutputPreferences(language: language) : self
   }
 }

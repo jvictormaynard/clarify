@@ -5,15 +5,16 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { outputStyleLabel, outputStyles } from '../src/output-preferences.ts';
+import { dictationPolicyOptions } from '../src/dictation-policy.ts';
 import { targetLanguages } from '../src/text-actions.ts';
 
-function fixture(preferences, { supported = true, fail = false, mode = 'hosted', freshSupport = supported, refreshFails = false, busy = false, policyOnly = false, processingContract, policyMode = 'legacy' } = {}) {
+function fixture(preferences, { supported = true, fail = false, mode = 'hosted', freshSupport = supported, refreshFails = false, busy = false, policyOnly = false, processingContract, policyMode = 'legacy', textActions = [], actionID = '', actionRevision = '' } = {}) {
   const source = fs.readFileSync(new URL(policyOnly ? '../src/components/dictation-policy.tsx' : '../src/app/output.tsx', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const slots = [], refs = [], memos = [], calls = [], refreshes = [];
   let index = 0, refIndex = 0, memoIndex = 0, focused, cleanup;
-  const account = { mode, outputPreferencesSupported: supported, historyContext: 'fixture', textActions: [], processingContract,
-    computer: { textActions: [], processingContract } };
+  const account = { mode, outputPreferencesSupported: supported, historyContext: 'fixture', textActions, processingContract,
+    computer: { textActions, processingContract } };
   const state = { phase: busy ? 'recording' : 'idle' };
   const refresh = async destination => {
     refreshes.push(destination);
@@ -42,13 +43,18 @@ function fixture(preferences, { supported = true, fail = false, mode = 'hosted',
     if (name === '../components/ui' || name === './ui') return { Button: 'Button', TextButton: 'TextButton', ChoiceRow: 'ChoiceRow', Section: 'Section', ui: {}, usePalette: () => ({}) };
     if (name === '../state/clarify') return { isBusy: state => state.phase === 'recording', useClarify: () => ({ account, state, accountBusy: false, accountCommand, computerCommand }) };
     if (name === '../errors') return { errorMessage: error => error.message };
+    if (name === '../dictation-policy') return { dictationPolicyOptions };
     if (name === '../output-preferences') return { outputStyleLabel, outputStyles };
     if (name === '../text-actions') return { targetLanguages };
     if (name === '../components/dictation-policy') return { DictationPolicyControls: 'DictationPolicyControls' };
     if (name === '../i18n') return { t: text => text };
     if (name === '../../modules/clarify-core') return { __esModule: true, default: {
       getOutputPreferences: async () => ({ ...preferences }),
-      getDictationPolicy: async () => ({ mode: policyMode, actionID: '', actionRevision: '', language: 'auto' }),
+      getDictationPolicy: async () => ({ mode: policyMode, actionID, actionRevision, language: 'auto' }),
+      setDictationPolicy: async (mode, actionID, actionRevision, language, context) => {
+        calls.push([mode, actionID, actionRevision, language, context]);
+        return { mode, actionID, actionRevision, language };
+      },
       setOutputPreference: async (key, value) => {
         calls.push([key, value]); if (fail) throw new Error('Save failed');
         preferences = { ...preferences, [key]: value }; return preferences;
@@ -76,9 +82,9 @@ test('dictation policies keep old destinations usable without detailed capabilit
       const f = fixture({ language: 'auto', style: 'default' }, { mode, policyOnly: true, processingContract });
       await f.flush();
       f.find('output.more').props.onPress();
-      assert.equal(f.find('output.policy.legacy').props.disabled, false);
+      assert.equal(f.find('output.policy.compatibility').props.disabled, true);
+      for (const retired of ['legacy', 'natural', 'light']) assert.equal(f.find(`output.policy.${retired}`), undefined);
       assert.equal(f.find('output.policy.preserve').props.disabled, !processingContract?.cleanup_levels?.includes('preserve'));
-      assert.equal(f.find('output.policy.light').props.disabled, true);
       assert.equal(f.find('output.policy.action').props.disabled, true);
       assert.deepEqual(f.calls, []);
     }
@@ -119,15 +125,18 @@ test('opening during dictation does not start account work; explicit refresh wor
   assert.equal(f.find('output.style.formal').props.disabled, false);
 });
 
-test('opening preserves legacy style; one language save does not rewrite it', async () => {
-  const f = fixture({ language: 'auto', style: 'organized' }); await f.flush();
-  assert.deepEqual(f.calls, []);
-  assert.ok(f.find('output.language.de'), JSON.stringify(f.render()));
-  f.find('output.language.de').props.onPress(); await f.flush();
-  assert.deepEqual(f.calls, [['language', 'de']]);
-  assert.equal(f.find('output.language.de').props.selected, true);
-  assert.equal(f.render().find(node => node.type === 'DictationPolicyControls').props.outputLanguage, 'de', 'Saved translation actions use the same output language');
-  assert.ok(f.render().some(node => node.props?.title === 'Organizado' && node.props.selected));
+test('opening preserves legacy styles; one language save does not rewrite them', async () => {
+  for (const [style, label] of [['very_casual', 'Muito casual'], ['informal', 'Informal'], ['organized', 'Organizado']]) {
+    const f = fixture({ language: 'auto', style }); await f.flush();
+    assert.deepEqual(f.calls, []);
+    const compatibility = f.render().find(node => node.props?.title === label && node.props.selected);
+    assert.ok(compatibility); assert.equal(compatibility.props.disabled, true);
+    f.find('output.language.de').props.onPress(); await f.flush();
+    assert.deepEqual(f.calls, [['language', 'de']]);
+    assert.equal(f.find('output.language.de').props.selected, true);
+    assert.equal(f.render().find(node => node.type === 'DictationPolicyControls').props.outputLanguage, 'de', 'Saved translation actions use the same output language');
+    assert.ok(f.render().some(node => node.props?.title === label && node.props.selected));
+  }
 });
 
 test('a failed single-field save keeps the saved value and exposes failure', async () => {
@@ -169,7 +178,7 @@ test('tone is hidden for preserve, light and destinations without clarity; more 
       assert.ok(f.find('output.policy.preserve'));
       f.find('output.more').props.onPress();
       assert.ok(f.find('fixture.more'));
-      assert.ok(f.find('output.policy.legacy'));
+      assert.equal(!!f.find('output.policy.compatibility'), !['clarity', 'preserve'].includes(policyMode));
     }
   }
 });
@@ -193,5 +202,35 @@ test('paired tone uses advertised editing readiness instead of recognition readi
       await f.flush();
       assert.equal(!!f.find('fixture.tone'), language === 'auto');
     }
+  }
+});
+
+test('automatic saved action stays active until an explicit choice; turning it off selects clarity', async () => {
+  const action = { id: 'saved', revision: '2', name: 'Saved', kind: 'custom', enabled: true, ready: true };
+  const f = fixture({ language: 'es', style: 'organized' }, { policyOnly: true, policyMode: 'action',
+    actionID: action.id, actionRevision: action.revision, textActions: [action],
+    processingContract: { explicit_dictation_policy: true, cleanup_levels: ['clarity', 'preserve'], dictation_actions: true } });
+  await f.flush();
+  assert.deepEqual(f.calls, []);
+  assert.equal(f.find('output.policy.compatibility').props.disabled, true);
+  f.find('output.more').props.onPress();
+  assert.equal(f.find('output.policy.action.saved').props.selected, true);
+  f.find('output.policy.action.off').props.onPress(); await f.flush();
+  assert.deepEqual(f.calls, [['clarity', '', '', 'auto', 'fixture']]);
+  assert.equal(f.find('output.policy.clarity').props.selected, true);
+  assert.equal(f.find('output.policy.compatibility'), undefined);
+});
+
+test('old modes remain read-only until an explicit modern choice', async () => {
+  for (const policyMode of ['legacy', 'natural', 'light']) {
+    const f = fixture({ language: 'auto', style: 'natural' }, { policyOnly: true, policyMode,
+      processingContract: { explicit_dictation_policy: true, cleanup_levels: ['clarity', 'preserve', 'light'] } });
+    await f.flush();
+    f.find('output.policy.compatibility').props.onPress();
+    f.find('output.more').props.onPress();
+    for (const retired of ['legacy', 'natural', 'light']) assert.equal(f.find(`output.policy.${retired}`), undefined);
+    assert.deepEqual(f.calls, []);
+    f.find('output.policy.preserve').props.onPress(); await f.flush();
+    assert.deepEqual(f.calls, [['preserve', '', '', 'auto', 'fixture']]);
   }
 });

@@ -12,6 +12,7 @@ test("styles: simplified choices persist, legacy tones remain readable, and forb
   const editing = page.getByRole("combobox", { name: "Edição do texto", exact: true });
   const tone = page.getByRole("combobox", { name: "Tom", exact: true });
   await expect(editing).toContainText("Instruções atuais");
+  expect((await rpc("snapshot")).dictationCleanupLevel).toBe("");
   for (const [value, label] of [["very_casual", "Muito casual"], ["informal", "Informal"], ["organized", "Organizado"]]) {
     await rpc("savePreference", ["setDictationWritingStyle", [value]]);
     await page.reload(); await navigate(page, "Estilo");
@@ -30,6 +31,10 @@ test("styles: simplified choices persist, legacy tones remain readable, and forb
   await expect(editing).toContainText("Ajustes mínimos"); await expect(tone).toHaveCount(0);
   await editing.click(); await page.getByRole("option", { name: "Melhorar a clareza", exact: true }).click();
   await expect(tone).toContainText("Manter meu tom");
+  await editing.click();
+  await expect(page.getByRole("option", { name: "Ajustes mínimos", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: "Instruções atuais", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape"); await expect(editing).toBeFocused();
   await page.screenshot({ path: testInfo.outputPath("clarity-natural.png"), fullPage: true });
   await openStyleReview(page);
   await page.getByRole("switch", { name: "Ativar revisão por IA", exact: true }).click();

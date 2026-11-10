@@ -7,7 +7,6 @@ function commands(python, node = process.execPath, root = path.resolve(__dirname
   const tests = fs.readdirSync(path.join(root, 'tests')).filter(name => name.endsWith('.test.ts')).sort();
   return [
     [python, '../scripts/sync_locales.py', '--check'],
-    [python, 'scripts/sync-prompts.py', '--check'],
     [python, '../scripts/sync_processing_contract.py', '--check'],
     [node, 'node_modules/typescript/bin/tsc', '--noEmit'],
     [node, 'node_modules/expo/bin/cli', 'lint'],
