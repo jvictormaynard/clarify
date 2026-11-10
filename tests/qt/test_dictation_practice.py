@@ -179,7 +179,8 @@ class PracticeSettingsTests(unittest.TestCase):
         runtime.clipboard.write_dictation_result = clipboard_write
         runtime.recording_audio.microphone_available = lambda: True
         runtime.recording_audio.create_session = FakeAudio
-        runtime.practice_workflow._provider.transcribe = FakeProvider().transcribe
+        provider = FakeProvider()
+        runtime.practice_workflow._provider.transcribe = provider.transcribe
         runtime.practice_workflow._provider.prepare_dictation = lambda _recording: None
         practice = PracticeController(
             runtime.practice_workflow, language=lambda: "pt", readiness=lambda: ""
@@ -188,5 +189,9 @@ class PracticeSettingsTests(unittest.TestCase):
         practice.command("start")
         practice.command("stop")
         self.assertEqual(practice.snapshot()["text"], "Transcribed")
+        self.assertEqual(
+            provider.writing_style,
+            runtime.repositories.config.load().application_writing_styles.default_style,
+        )
         self.assertEqual(len(runtime.repositories.usage_stats.load_events()), 1)
         clipboard_write.assert_not_called()

@@ -20,7 +20,14 @@ editor and the current destination's saved actions. Library contains the
 dictionary and snippets. Settings separates account, processing destination,
 dictation output, microphone and keyboard, and history and privacy.
 
-The keyboard always shows the output-language flag and writing style. Its menu
+The app and keyboard offer Improve clarity and Keep my words. Tone appears when
+editing is allowed, with Keep my tone, Formal and Casual. New installations start
+with clarity editing and Keep my tone; existing saved choices remain unchanged.
+More options contains output language and optional automatic text actions.
+Saved legacy choices remain visible until the user selects a current option.
+Keep my words ignores saved tone and translation choices for dictation without
+clearing them. Manual Rewrite and Translation remain separate actions.
+The keyboard shows the output-language flag and the applicable tone. Its menu
 changes dictation output when no text is selected. With selected text, the same
 control shows a wand and offers rewrite, translation and saved text actions.
 The language picker in Actions and the keyboard translation menu update the same
@@ -284,9 +291,9 @@ and dictionary are active. Whisper receives plain enabled spellings, bounded to
 enabled flags are unchanged; rewriting keeps its vocabulary context. Account
 processing uses the same correction already deployed to the Clarify service.
 That candidate required native tests, a live synthetic-speech provider check and
-signed TestFlight delivery. The retained `short_dictation_acceptance` workflow
-input runs the [direct-provider harness](#short-speech-provider-harness). Its
-result does not establish acceptance of the current account processing path.
+signed TestFlight delivery. The historical direct-provider harness and its
+workflow input have been removed. Current processing uses a Clarify account or
+a paired computer. Local data migrations remain.
 
 Version **0.7.2 (25)** improves touch coverage between keys, sliding to adjacent
 keys, fast overlapping taps and automatic capitalization after `.?!`. Local
@@ -532,23 +539,6 @@ digest. Direct Xcode remains the signer for all three bundles. No EAS provisioni
 or OTA update path is added. An upload alone does not
 establish TestFlight availability; verify `VALID` and `IN_BETA_TESTING` in Apple.
 
-### Short-speech provider harness
-
-[`scripts/test-short-dictation.cjs`](scripts/test-short-dictation.cjs) compiles
-[`ShortDictationAcceptance.swift`](scripts/ShortDictationAcceptance.swift) with
-`GroqClient.swift` and local storage helpers. It retains the historical personal-key
-check from 0.7.3 (26): synthetic M4A speech goes directly to Groq, then the harness
-checks dictionary and history persistence. It uses the optional
-`short_dictation_acceptance` input and temporary
-`CLARIFY_SHORT_DICTATION_ACCEPTANCE` secret. Remove that secret after an authorized
-run. This harness makes live provider requests; it is separate from isolated CI.
-
-The current app calls `CloudAccount.dictate` from `AudioSession.swift`. This
-provider harness bypasses that path, account authentication, managed quotas and
-account history synchronization. Its success is provider evidence only. It
-does not establish current app acceptance, physical microphone capture or
-insertion in another app on an iPhone.
-
 ## Snippets
 
 Open **Snippets** in the bottom tab bar to add a spoken phrase and its saved text.
@@ -683,7 +673,7 @@ Live Activities must be enabled on the device. iOS controls placement and priori
 This does not replace the system's microphone icon or orange privacy indicator.
 
 Settings includes optional **Apple rewriting** for normal dictation. It is off
-by default. Use Natural dictation mode and Default, Formal or Casual style. The
+by default. Use Improve clarity and Keep my tone, Formal or Casual. Saved Natural/legacy modes remain compatible. Keep my words bypasses Apple rewriting and translation. The
 transcription destination must support the explicit Preserve policy. Clarify
 requests source-only transcription, then calls the private TextComposer service
 and the public installed-language TranslationSession API. No editor, review,
@@ -725,8 +715,9 @@ opening the editor. Translation can request permission to download missing langu
 
 The private-API experiment is separate from normal dictation. **Inspect private
 interfaces** reads class, selector and signature metadata on the actual device.
-The TextComposer direct route remains a contract probe: its callback and rewrite
-identifiers are not verified, so this build starts no direct model request.
+The TextComposer direct route invokes the same protocol service used by normal
+dictation. Its class and selector are runtime-checked; device service access
+and execution still require acceptance.
 The private route uses UIKit's text-responder action to request Rewrite,
 Professional or Friendly from the chosen lab style. UIKit owns its controller,
 text delegate and keyboard lifecycle. Clarify does not construct a separate
@@ -799,12 +790,13 @@ The OpenWhispr MIT notice is retained in source and bundled in the signed IPA.
 Physical-device quality and latency must still be evaluated on the actual source,
 output language and style before this prototype can replace normal rewriting.
 
-The rewrite rules are generated from the desktop's canonical dictation prompt,
-including spoken self-corrections, faithful editing and source-data boundaries.
-Run `python3 scripts/sync-prompts.py` after changing the desktop rules; `npm run
-check` detects drift. Output language and writing style are independent of speech
-recognition. Saved rewrite, translation and custom actions use their destination's
-catalog and revision. Vocabulary supports canonical terms, pronunciation, aliases and an
+The Clarify service or paired computer owns normal rewrite rules. The optional
+Apple provider instead uses the native service described above. The app has no
+personal-key processing route or generated legacy rewrite prompt. The separate
+Apple model lab owns its retained presentation suffixes in AppleRewritePrompt.
+Output language and writing style are independent of speech recognition. Saved
+rewrite, translation and custom actions use their destination's catalog and
+revision. Vocabulary supports canonical terms, pronunciation, aliases and an
 enabled flag, with the same limits as desktop (512 terms, 256 characters,
 32 aliases). Active vocabulary is bounded context for ASR and rewrite, never
 an instruction or unconditional replacement. Editing is disabled while busy.
@@ -1022,11 +1014,8 @@ Apple ID CLI session. API access, App Group registration and assignment succeede
 
 ## Keyboard update — 2026-10-09
 
-- Desktop dictation prompt rules now generate `RewritePrompt.swift`, including
-  self-corrections and faithful editing. The mobile route uses the same source
-  delimiters, temperature 0.1 and protection against excessive text removal.
-  Mobile keeps the source language; custom desktop workflows/dictionaries are
-  outside this MVP.
+- The initial mobile editor added faithful editing, spoken self-corrections,
+  and protection against extreme text removal.
 - A UIKit key grid replaces the microphone-only panel. A compact top bar contains
   the microphone and recording status; cancellation is shown only while busy.
   Upward movement of 28 points locks recording in both app and keyboard.

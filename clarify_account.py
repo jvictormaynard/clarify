@@ -1139,6 +1139,12 @@ class AccountService:
         value = result.get("text")
         if not isinstance(value, str) or not value.strip():
             raise AccountError("O Clarify retornou um resultado inválido.")
+        from shared.text_preservation import validate_preserved_text
+
+        try:
+            validate_preserved_text(str(text), value)
+        except ValueError:
+            raise AccountError("O Clarify retornou um resultado inválido.") from None
         return value
 
     def text_actions_path(self, identity):
@@ -1241,7 +1247,14 @@ class AccountService:
         return result
 
     def execute_text_action(
-        self, snapshot, text, language="auto", *, cancel=None, output_language=None
+        self,
+        snapshot,
+        text,
+        language="auto",
+        *,
+        cancel=None,
+        output_language=None,
+        writing_style=None,
     ):
         from text_actions import validate_input, validate_output
 
@@ -1250,8 +1263,32 @@ class AccountService:
             output_language_outcome,
         )
 
+        from shared.writing_style_policy import (
+            writing_style as parse_writing_style,
+            style_outcome,
+        )
+        from shared.text_preservation import validate_preserved_text
+
         validate_input(text, language)
         target = parse_output_language(output_language)
+        style = parse_writing_style(writing_style)
+        if style is not None:
+            if cancel is not None:
+                cancel.raise_if_cancelled()
+            with self._lock:
+                identity = self.history_identity()
+                if identity is None or identity != snapshot.account_context:
+                    raise AccountError("A conta mudou. O resultado foi descartado.")
+                known = self._output_preferences_identity == identity
+            if not known:
+                self.refresh(cancel=cancel)
+            with self._lock:
+                if identity != self.history_identity():
+                    raise AccountError("A conta mudou. O resultado foi descartado.")
+                if not self.output_preferences_supported:
+                    raise AccountError(
+                        "Atualize o serviço para usar estas preferências de saída."
+                    )
         code, result = self._request(
             "POST",
             "/v1/text-actions/execute",
@@ -1263,6 +1300,7 @@ class AccountService:
                 "action_revision": snapshot.action.revision,
                 "text": text,
                 "language": language,
+                **({"writing_style": style.value} if style is not None else {}),
             },
         )
         if code != 200:
@@ -1275,9 +1313,19 @@ class AccountService:
                 "A preferência de saída não foi aplicada. O texto original foi preservado.",
                 code="output_preferences_unapplied",
             )
+        if style is not None and any(
+            result.get(key) != value
+            for key, value in style_outcome(style, refined=True).items()
+        ):
+            raise AccountError(
+                "A preferência de saída não foi aplicada. O texto original foi preservado.",
+                code="output_preferences_unapplied",
+            )
         value = result.get("text")
         try:
             validate_output(value)
+            if snapshot.action.kind != "custom":
+                validate_preserved_text(text, value)
         except ValueError:
             raise AccountError("O Clarify retornou um resultado inválido.")
         if (

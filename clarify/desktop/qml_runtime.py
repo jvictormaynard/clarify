@@ -30,16 +30,7 @@ from PySide6.QtCore import QCoreApplication, QObject, QTimer, Qt, Signal, Slot
 from shared.rewrite_prompts import language_display_name
 from workflow_provider import (
     WorkflowProviderService as WorkflowProviderService,
-    FAITHFUL_REWRITE_INSTRUCTION as FAITHFUL_REWRITE_INSTRUCTION,
-    TRANSFORMATION_BOUNDARY_INSTRUCTION as TRANSFORMATION_BOUNDARY_INSTRUCTION,
-    DICTATION_EDIT_INSTRUCTION as DICTATION_EDIT_INSTRUCTION,
     PROMPT_INSTRUCTION as PROMPT_INSTRUCTION,
-    TRANSCRIPT_REWRITE_INSTRUCTION as TRANSCRIPT_REWRITE_INSTRUCTION,
-    SELECTED_TEXT_REWRITE_INSTRUCTION as SELECTED_TEXT_REWRITE_INSTRUCTION,
-    SELECTED_TEXT_TRANSLATION_INSTRUCTION as SELECTED_TEXT_TRANSLATION_INSTRUCTION,
-    TRANSCRIPTION_INSTRUCTION as TRANSCRIPTION_INSTRUCTION,
-    _workflow_instruction as _workflow_instruction,
-    _is_exact_duplicate_removal as _is_exact_duplicate_removal,
 )
 
 
@@ -1816,7 +1807,6 @@ class QtWorkflowRuntime:
             .strip()
             .lower()
         )
-        selected_mode = "prompt"
         custom_endpoint = (
             route.custom_endpoint if selected_provider == route.provider_id else ""
         )
@@ -1827,20 +1817,15 @@ class QtWorkflowRuntime:
             custom_endpoint=custom_endpoint,
         )
         language_label = language_display_name(selected_language)
-        instruction = (
-            TRANSCRIPTION_INSTRUCTION
-            if selected_mode == "transcription"
-            else PROMPT_INSTRUCTION
-        ).format(lang=language_label)
+        instruction = PROMPT_INSTRUCTION.format(lang=language_label)
         return FileTranscriptionSelection(
             provider_id=selected_provider,
             model=selected_model,
             language=selected_language,
-            mode=selected_mode,
             connection=connection,
             instruction=instruction,
             prompt=route.prompt or instruction,
-            temperature=0.0 if selected_mode == "transcription" else 0.1,
+            temperature=0.1,
         )
 
     def copy_result(self, text: str) -> SelectionDisposition:

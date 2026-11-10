@@ -85,9 +85,9 @@ export default function AppleDictation() {
     </Section>
     <Section title={t('Requisitos')}>
       <Text style={[ui.small, { color: c.muted }]}>{t('Download translation languages before dictating. Missing languages produce an error; no download window opens during dictation.')}</Text>
-      <Text style={[ui.body, { color: c.text }]}>{t('Requer iOS 26, Apple Intelligence e o modo de ditado Natural. Use apenas os estilos Padrão, Formal ou Casual.')}</Text>
+      <Text style={[ui.body, { color: c.text }]}>{t('Apple rewriting requires iOS 26 and Apple Intelligence. Select Improve clarity. Keep my words skips rewriting and translation.')}</Text>
       <Text style={[ui.body, { color: c.text }]}>{t('Use dictation as usual, including from the Clarify keyboard in another app. No review or translation screen opens.')}</Text>
-      <Text style={[ui.small, { color: c.muted }]}>{t('Selecione Natural e um estilo compatível em Saída do ditado antes de ativar.')}</Text>
+      <Text style={[ui.small, { color: c.muted }]}>{t('Choose Improve clarity in Output settings for Apple rewriting.')}</Text>
       <Text style={[ui.small, { color: c.muted }]}>{t('Expanded snippets are preserved. Apple style and language changes are not applied to them in this build.')}</Text>
       <Text style={[ui.small, { color: c.muted }]}>{t('Use short recordings. Apple rewriting accepts up to 2,000 bytes of transcribed text.')}</Text>
     </Section>

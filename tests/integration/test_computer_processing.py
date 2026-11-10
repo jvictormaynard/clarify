@@ -74,6 +74,58 @@ class ComputerProcessorTests(unittest.TestCase):
         )
         self.token = CancellationToken()
 
+    def test_dictation_editing_readiness_respects_local_permission_and_selected_action(
+        self,
+    ):
+        self.assertTrue(self.processor.ready)
+        self.assertFalse(self.processor.dictation_editing["clarity"])
+        self.saved_actions(
+            after={"personal": {"cloud": {"id": "summary", "language": "auto"}}}
+        )
+        self.current = replace(
+            self.current,
+            workflows=replace(
+                self.current.workflows,
+                refinement=WorkflowRoute("gemini", "gemini-2.5-flash"),
+            ),
+        )
+        self.assertFalse(self.processor.dictation_editing["clarity"])
+        self.assertTrue(self.processor.dictation_editing["legacy"])
+        self.current = replace(
+            self.current,
+            workflows=replace(
+                self.current.workflows,
+                transcription=WorkflowRoute("local_asr", "ggml-base"),
+                local_asr_refinement=WorkflowRoute("groq", "cleanup"),
+            ),
+        )
+        self.assertTrue(self.processor.ready)
+        self.assertFalse(any(self.processor.dictation_editing.values()))
+        self.current = replace(self.current, local_asr_cloud_refinement=True)
+        self.assertTrue(self.processor.dictation_editing["clarity"])
+        self.assertTrue(self.processor.dictation_editing["legacy"])
+        self.current = replace(self.current, dictation_cleanup_level="preserve")
+        self.assertFalse(self.processor.dictation_editing["legacy"])
+        self.assertTrue(self.processor.dictation_editing["clarity"])
+        self.current = replace(
+            self.current,
+            dictation_cleanup_level=None,
+            text_actions=None,
+            gemini=ProviderConfig(api_key="fake"),
+            workflows=replace(
+                self.current.workflows,
+                transcription=WorkflowRoute("gemini", "gemini-2.5-flash"),
+                refinement=WorkflowRoute("groq", "cleanup", enabled=False),
+            ),
+        )
+        for mode in ("natural", "legacy"):
+            self.assertTrue(self.processor.dictation_editing[mode])
+            self.assertFalse(self.processor.dictation_editing[mode + "_translated"])
+        self.registry.transcribe.assert_not_called()
+        self.registry.rewrite.assert_not_called()
+        self.registry.validate.assert_not_called()
+        self.registry.discover_models.assert_not_called()
+
     def test_missing_action_key_is_rejected_before_provider_call(self):
         self.assertTrue(self.processor.action_readiness["rewrite"])
         self.current = replace(self.current, groq=ProviderConfig())
@@ -192,6 +244,7 @@ class ComputerProcessorTests(unittest.TestCase):
 
     def test_legacy_rewrite_keeps_the_existing_utf8_wire_limit(self):
         source = "é" * 16384
+        self.registry.rewrite.return_value = RewriteResult(source, "groq", "editor")
         result = self.processor.process_text("rewrite", source, "en", self.token)
         self.assertEqual(result["transcript"], source)
         self.assertEqual(self.registry.rewrite.call_args.args[1].text, source)
@@ -203,6 +256,9 @@ class ComputerProcessorTests(unittest.TestCase):
 
     def test_legacy_translation_keeps_language_tags_and_wire_limit(self):
         source = "é" * 16384
+        self.registry.translate.return_value = TranslationResult(
+            source, "openai", "translator", "fr"
+        )
         self.processor.process_text("translate", source, "fr", self.token)
         request = self.registry.translate.call_args.args[1]
         self.assertEqual(request.text, source)

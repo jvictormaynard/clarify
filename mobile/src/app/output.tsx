@@ -92,23 +92,20 @@ export default function Output() {
       disabled={pending || busy || !account?.mode}
       onPress={() => { void load(); void refreshSupport(); }}>{t('Tentar carregar novamente')}</Button>}
     {!preferences && !error && <ActivityIndicator />}
-    {preferences && <>
-      <Section title={t('Idioma de saída')}>
+    <DictationPolicyControls outputLanguage={preferences?.language} more={preferences && <><Section title={t('Idioma de saída')}>
         {[{ value: 'auto', label: `🌐 ${t('Idioma original')}` }, ...targetLanguages].map(item => <ChoiceRow key={item.value}
           testID={`output.language.${item.value}`} title={item.label} selected={preferences.language === item.value} disabled={pending || refreshing || (!supported && item.value !== 'auto')}
           onPress={() => void save('language', item.value)} />)}
       </Section>
-      <Section title={t('Estilo')}>
-        {appleSettings?.enabled && <Text style={[ui.small, { color: c.muted }]}>{t('A reescrita com Apple aceita apenas os estilos Padrão, Formal ou Casual.')}</Text>}
+        {!supported && <ChoiceRow testID="output.style.default" title={t('Padrão')} selected={preferences.style === 'default'}
+          disabled={pending || refreshing} onPress={() => void save('style', 'default')} />}
+      </>} tone={preferences && <Section title={t('Tom')}>
+        {appleSettings?.enabled && <Text style={[ui.small, { color: c.muted }]}>{t('Apple rewriting supports only Default, Formal or Casual styles.')}</Text>}
         {styles.map(item => <ChoiceRow key={item.value} testID={`output.style.${item.value}`} title={t(item.label)}
-          selected={preferences.style === item.value} disabled={pending || refreshing || (!supported && item.value !== 'default')} onPress={() => void save('style', item.value)} />)}
-        {legacy && <ChoiceRow testID="output.style.unsupported" title={t(outputStyleLabel(preferences.style))}
-          detail={appleSettings?.enabled ? t('O estilo salvo não é compatível com a reescrita com Apple. Selecione Padrão, Formal ou Casual.') : undefined}
-          selected disabled onPress={() => {}} />}
-      </Section>
-    </>}
+          selected={preferences.style === item.value} disabled={pending || refreshing || !supported} onPress={() => void save('style', item.value)} />)}
+        {legacy && <ChoiceRow title={t(outputStyleLabel(preferences.style))} selected disabled onPress={() => {}} />}
+      </Section>} />
     {pending && <ActivityIndicator accessibilityLabel={t('Salvando…')} />}
-    <DictationPolicyControls outputLanguage={preferences?.language} />
     <Button testID="output.close" onPress={() => router.back()}>{t('Fechar')}</Button>
   </ScrollView>;
 }

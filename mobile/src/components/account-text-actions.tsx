@@ -11,7 +11,7 @@ import { Button, Card, ChoiceRow, NativeSheet, ui, usePalette } from './ui';
 type Editor = { value: AccountTextActionDefinition; originalID: string | null; base: AccountTextActionLibrary; rebased?: boolean };
 export function AccountTextActions() {
   const c = usePalette();
-  const { account, state, accountBusy, refresh } = useClarify();
+  const { account, state, accountBusy, refresh, refreshAccount } = useClarify();
   const focused = useIsFocused();
   const context = account?.historyContext ?? '';
   const computer = account?.mode === 'computer';
@@ -28,13 +28,16 @@ export function AccountTextActions() {
   useEffect(() => {
     if (!focused || computer || !signedIn) return;
     const sequence = ++request.current;
-    void Core.getAccountTextActions(context).then(value => {
-      if (request.current === sequence && owned(value)) { setLibrary(value); setFailed(false); }
+    void Core.getAccountTextActions(context).then(async value => {
+      if (request.current === sequence && owned(value)) {
+        setLibrary(value); setFailed(false);
+        await refreshAccount();
+      }
     }).catch(() => { if (request.current === sequence) setFailed(true); });
     // This ref is a request counter, not a React node. Cleanup rejects late results.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { ++request.current; };
-  }, [context, computer, signedIn, focused]);
+  }, [context, computer, signedIn, focused, refreshAccount]);
 
   function edit(value?: AccountTextActionDefinition, duplicate = false) {
     if (!library || !owned(library)) return;
@@ -62,6 +65,7 @@ export function AccountTextActions() {
       if (sequence !== request.current || !owned(value)) return;
       setLibrary(value); setFailed(false);
       if (keepDraft) setEditing(old => old && owned(old.base) ? { ...old, base: value, rebased: true } : old);
+      await refreshAccount();
     } catch (error) { if (sequence === request.current) { setFailed(true); report(error); } }
     finally { setWorking(false); }
   }

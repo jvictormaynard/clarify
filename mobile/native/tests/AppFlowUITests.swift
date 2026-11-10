@@ -18,11 +18,15 @@ final class AppFlowUITests: XCTestCase {
   @discardableResult func reveal(_ element: XCUIElement, identifier: String) -> Bool {
     for attempt in 0...12 {
       let page = app.scrollViews.containing(element.elementType, identifier: identifier).firstMatch
-      let viewport = page.exists ? page.frame.intersection(app.frame) : app.frame
+      var viewport = page.exists ? page.frame.intersection(app.frame) : app.frame
+      let tabBar = app.tabBars.firstMatch
+      if tabBar.exists && tabBar.isHittable && viewport.intersects(tabBar.frame) {
+        viewport.size.height = max(0, tabBar.frame.minY - viewport.minY)
+      }
       let frame = element.frame
       let located = !frame.isNull && !frame.isInfinite && frame.width > 0 && frame.height > 0
       let center = CGPoint(x: frame.midX, y: frame.midY)
-      // Require the target inside the scroll viewport even when AX reports hittable.
+      // A partly exposed control can be hittable while its center is under the tab bar.
       if located && element.isHittable && viewport.contains(center) { return true }
       if attempt == 12 { break }
       if page.exists && page.frame.height > 0 && page.frame.intersects(app.frame) {
@@ -372,10 +376,10 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
     press("settings.processing"); capture("processing"); back()
     press("settings.output")
-    press("output.language.de"); press("output.style.very_casual")
+    press("output.policy.clarity"); press("output.style.casual"); press("output.more"); press("output.language.de")
     capture("output-preferences")
     press("output.close")
-    press("settings.output")
+    press("settings.output"); press("output.more")
     let german = app.descendants(matching: .any)["output.language.de"].firstMatch
     XCTAssertTrue(german.waitForExistence(timeout: 15))
     XCTAssertTrue(german.isSelected)
@@ -388,7 +392,7 @@ final class AppFlowUITests: XCTestCase {
     capture("guide-keyboard"); back()
     XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
     verifyActions()
-    tab("Ajustes"); press("settings.output")
+    tab("Ajustes"); press("settings.output"); press("output.more")
     let sharedLanguage = app.descendants(matching: .any)["output.language.ru"].firstMatch
     XCTAssertTrue(sharedLanguage.waitForExistence(timeout: 15))
     XCTAssertTrue(sharedLanguage.isSelected, "Text actions and dictation use the same output language")
@@ -409,7 +413,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["account.weeklyUsage"].waitForExistence(timeout: 15))
     capture("compact-account"); back()
     press("settings.output")
-    press("output.language.de"); press("output.style.very_casual")
+    press("output.policy.clarity"); press("output.style.casual"); press("output.more"); press("output.language.de")
     capture("compact-output"); press("output.close")
     verifyAppleRewriteLab()
     tab("Ações")
@@ -428,6 +432,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
     XCTAssertEqual(text.value as? String, draft)
     press("actions.refresh")
+    absent(app.staticTexts["actions.catalog-status"])
     enter("ok", in: text, name: "compact-result", replacing: true)
     press("actions.choose"); capture("compact-action-sheet")
     press("actions.option.saved:translation:1"); press("actions.language")

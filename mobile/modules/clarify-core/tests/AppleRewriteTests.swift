@@ -48,7 +48,7 @@ final class AppleRewriteTests: XCTestCase {
       calls += 1
       XCTAssertEqual(instructions, AppleRewritePrompt.instructions(preferences))
       XCTAssertTrue(instructions.hasPrefix("You MUST respond in German."))
-      XCTAssertTrue(instructions.hasSuffix(RewritePrompt.presentation(preferences)))
+      XCTAssertTrue(instructions.hasSuffix(AppleRewritePrompt.presentation(preferences)))
       XCTAssertTrue(instructions.contains("Formal presentation:"))
       XCTAssertTrue(instructions.contains("requested output language is German"))
       XCTAssertEqual(prompt, "<transcript>\n" + source + "\n</transcript>\n\nOutput only the cleaned transcript.")

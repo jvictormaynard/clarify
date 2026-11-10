@@ -3,24 +3,25 @@ import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog,
 
 settingsScenario({ quota: true, initialPage: "style" }, () => {
   test("quota: styles remain configurable for managed accounts", async ({ page }) => {
+    await page.getByRole("button", { name: "Mais opções", exact: true }).click();
     await page.getByRole("button", { name: "Adicionar aplicativo", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Estilo do aplicativo", exact: true });
     await dialog.getByRole("textbox", { name: "Caminho do aplicativo", exact: true }).fill("C:\\Apps\\Chat.exe");
     await dialog.getByRole("button", { name: "Salvar regra", exact: true }).click();
     await expect(dialog).toBeHidden();
     await page.getByRole("button", { name: "Editar estilo de chat", exact: true }).click();
-    await expect(dialog.getByRole("combobox", { name: "Estilo de escrita", exact: true })).toContainText("Casual");
+    await expect(dialog.getByRole("combobox", { name: "Estilo de escrita", exact: true })).toContainText("Manter meu tom");
   });
 });
 
 settingsScenario({ quota: true, initialPage: "style" }, () => {
   test("quota: cleanup choices remain available for managed accounts", async ({ page }) => {
-    const level = page.getByRole("combobox", { name: "Após o ditado", exact: true });
+    const level = page.getByRole("combobox", { name: "Edição do texto", exact: true });
     await level.click();
-    await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
-    await expect(level).toContainText("Preservar palavras");
+    await page.getByRole("option", { name: "Manter minhas palavras", exact: true }).click();
+    await expect(level).toContainText("Manter minhas palavras");
     await page.reload(); await navigate(page, "Estilo");
-    await expect(level).toContainText("Preservar palavras");
+    await expect(level).toContainText("Manter minhas palavras");
   });
 });
 

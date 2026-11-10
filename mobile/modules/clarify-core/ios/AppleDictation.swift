@@ -37,8 +37,8 @@ enum AppleDictationPreference {
     guard [.default, .formal, .casual].contains(preferences.style) else {
       throw ClarifyError(L("Choose Default, Formal or Casual in Output settings for Apple rewriting."))
     }
-    guard [.legacy, .natural].contains(policy.mode) else {
-      throw ClarifyError(L("Choose Natural dictation mode in Output settings for Apple rewriting."))
+    guard [.legacy, .natural, .clarity, .preserve, .light].contains(policy.mode) else {
+      throw ClarifyError(L("Choose Improve clarity in Output settings for Apple rewriting."))
     }
     let capabilities = ProcessingDestination.shared.processingCapabilities
     guard capabilities.explicitPolicy, capabilities.supports("cleanup_levels", "preserve") else {

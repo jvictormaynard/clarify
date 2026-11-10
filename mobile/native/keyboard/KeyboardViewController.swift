@@ -219,6 +219,10 @@ class KeyboardViewController: UIInputViewController {
     let catalog: TextActionCatalog
     let rewriteReady: Bool
     let translateReady: Bool
+    let dictationMode: String
+    let dictationModes: [String]
+    let dictationActionID: String
+    let toneAllowed: Bool
     let preferencesSupported: Bool
     let dictionaryTitle: String?
     let dictionaryEnabled: Bool
@@ -684,7 +688,7 @@ class KeyboardViewController: UIInputViewController {
       undoDictation.accessibilityLabel = edit.removed ? L("Refazer ditado") : L("Desfazer ditado")
     }
     let preferences = store?.outputPreferences() ?? OutputPreferences()
-    let title = preferences.language.flag + " " + preferences.style.title
+    let title = preferences.language.flag + " " + (state.toneAllowed ? preferences.style.title : L("Saída do ditado"))
     let wand = selection != nil
     let setupTitle = !hasFullAccess ? L("Ative o Acesso Total") : !state.configured ?
       (state.computerMode ? L("Conecte seu computador") : L("Entre no Clarify")) : nil
@@ -713,13 +717,15 @@ class KeyboardViewController: UIInputViewController {
       addToDictionary.semanticContentAttribute = .forceLeftToRight; addToDictionary.tintColor = .label
     }
     addToDictionary.isHidden = false; addToDictionary.isEnabled = hasFullAccess && store != nil
-    addToDictionary.accessibilityLabel = L("Saída do ditado") + ": " + preferences.language.title + ", " + preferences.style.title
+    addToDictionary.accessibilityLabel = L("Saída do ditado") + ": " + preferences.language.title + (state.toneAllowed ? ", " + preferences.style.title : "")
     addToDictionary.accessibilityHint = dictionaryError ?? (wand ? L("Preferências e ações para o texto selecionado.") : L("Altera o idioma e o estilo do próximo ditado."))
     if !hasFullAccess || !state.configured { addToDictionary.accessibilityHint = detail.text }
     let menuState = SelectedTextMenuState(selection: selection, context: state.processingContext,
       computerMode: state.computerMode, language: ClarifyLocale.language,
       enabled: hasFullAccess && state.isLive && state.configured && available,
       preferences: preferences, catalog: state.textActions, rewriteReady: state.legacyRewriteReady, translateReady: state.legacyTranslateReady,
+      dictationMode: state.dictationMode, dictationModes: state.dictationModes,
+      dictationActionID: state.dictationActionID, toneAllowed: state.toneAllowed,
       preferencesSupported: state.outputPreferencesSupported,
       dictionaryTitle: !state.computerMode && term != nil && selection != nil ? (selectedTermSaved ? L("Salvo") : L("Adicionar ao dicionário")) : nil,
       dictionaryEnabled: hasFullAccess && available && !selectedTermSaved && dictionaryContext != nil)
@@ -747,8 +753,8 @@ class KeyboardViewController: UIInputViewController {
   }
   private func outputMenu(_ captured: SelectedTextMenuState) -> UIMenu {
     func preference(_ key: String, _ value: String, _ title: String, selected: Bool) -> UIAction {
-      UIAction(title: title, state: selected ? .on : .off) { [weak self] _ in
-        guard let self, self.menuIsCurrent(captured), self.hasFullAccess else { return }
+      UIAction(title: title, attributes: captured.preferencesSupported || value == "auto" || value == "default" ? [] : .disabled, state: selected ? .on : .off) { [weak self] _ in
+        guard let self, self.menuIsCurrent(captured), self.hasFullAccess, captured.preferencesSupported || value == "auto" || value == "default" else { return }
         do {
           _ = try self.store?.setOutputPreference(key, value: value)
           self.outputPreferenceError = nil
@@ -762,17 +768,44 @@ class KeyboardViewController: UIInputViewController {
     let language = UIMenu(title: L("Idioma de saída"), children: OutputLanguage.allCases.map {
       preference("language", $0.rawValue, $0.menuTitle, selected: $0 == captured.preferences.language)
     })
-    let styles: [OutputStyle] = [.formal, .casual, .very_casual]
+    let styles: [OutputStyle] = [.natural, .formal, .casual]
     var styleChoices: [UIMenuElement] = styles.map {
       preference("style", $0.rawValue, $0.title, selected: $0 == captured.preferences.style)
     }
-    if [.natural, .informal, .organized].contains(captured.preferences.style) {
+    if [.default, .very_casual, .informal, .organized].contains(captured.preferences.style) {
       let old = captured.preferences.style
-      styleChoices.append(preference("style", old.rawValue, old.title, selected: true))
+      styleChoices.append(UIAction(title: old.title, attributes: .disabled, state: .on) { _ in })
     }
-    styleChoices.append(preference("style", "default", L("Padrão"), selected: captured.preferences.style == .default))
-    var groups: [UIMenuElement] = [UIMenu(title: L("Saída do ditado"), options: .displayInline,
-      children: [language, UIMenu(title: L("Estilo de escrita"), children: styleChoices)])]
+
+    func policy(_ mode: String, title: String, saved: TextActionDescriptor? = nil) -> UIAction {
+      let supported = captured.dictationModes.contains(mode) && (saved == nil || (saved!.enabled && saved!.ready && (saved!.kind != "translation" || captured.preferences.language != .auto)))
+      return UIAction(title: title, attributes: captured.enabled && supported ? [] : .disabled,
+        state: captured.dictationMode == mode && (saved == nil || captured.dictationActionID == saved!.id) ? .on : .off) { [weak self] _ in
+        guard let self, self.menuIsCurrent(captured), supported, captured.enabled else { return }
+        do {
+          try self.store?.send("dictation_policy", operationID: UUID().uuidString, context: captured.context,
+            text: mode, language: captured.preferences.language.rawValue, actionID: saved?.id, actionRevision: saved?.revision)
+        } catch { self.outputPreferenceError = error.localizedDescription; self.updateToolbar() }
+      }
+    }
+    let legacyTitles = ["legacy": "Usar configuração do destino", "natural": "Usar instruções de ditado", "light": "Ajustar apenas espaços", "action": "Aplicar ação de texto"]
+    var editing: [UIMenuElement] = [policy("clarity", title: L("Revisar clareza")), policy("preserve", title: L("Manter minhas palavras"))]
+    if let title = legacyTitles[captured.dictationMode] {
+      editing.append(UIAction(title: L(title), attributes: .disabled, state: .on) { _ in })
+    }
+    var options: [UIMenuElement] = [language]
+    if !captured.preferencesSupported {
+      options.append(preference("style", "default", L("Padrão"), selected: captured.preferences.style == .default))
+    }
+    let automaticActionOff = policy("clarity", title: L("Não aplicar ação automaticamente"))
+    automaticActionOff.state = captured.dictationMode == "action" ? .off : .on
+    options.append(UIMenu(title: L("Aplicar ação de texto"), children: [automaticActionOff] + captured.catalog.actions.filter { $0.enabled }.map {
+      policy("action", title: $0.name, saved: $0)
+    }))
+    var output: [UIMenuElement] = [UIMenu(title: L("Edição do texto"), options: .displayInline, children: editing)]
+    if captured.toneAllowed { output.append(UIMenu(title: L("Tom"), children: styleChoices)) }
+    output.append(UIMenu(title: L("Mais opções"), children: options))
+    var groups: [UIMenuElement] = [UIMenu(title: L("Saída do ditado"), options: .displayInline, children: output)]
     if !captured.preferencesSupported, captured.preferences.language != .auto || captured.preferences.style != .default {
       groups.append(UIAction(title: L("Atualize o serviço para usar estas preferências de saída."), attributes: .disabled) { _ in })
     }

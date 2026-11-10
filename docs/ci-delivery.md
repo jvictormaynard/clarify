@@ -91,7 +91,7 @@ Component runners own collection and assertions.
 | `package` | Electron shell, inventory, Windows EXE, embedded payload, startup, update recovery |
 | `installer` | Disposable Windows install, upgrade, repair, rollback and removal |
 | `server` | PostgreSQL behavior, migrations, container startup and database health |
-| `mobile` | Types, lint, contracts, locale/prompt synchronization, iOS JavaScript bundle |
+| `mobile` | Types, lint, contracts, locale synchronization, iOS JavaScript bundle |
 | `ios` | Swift library, keyboard simulator, installed keyboard typing/activation, containing-app UI, unsigned app/extension build |
 | `audit` | Locked Python and JavaScript dependency audits |
 

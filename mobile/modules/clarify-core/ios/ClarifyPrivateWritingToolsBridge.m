@@ -286,7 +286,7 @@ static NSString *CWExtendedRewriteTypes(void) {
     Protocol *serviceProtocol = objc_getProtocol("TCTextCompositionXPCProtocol");
     Class inputClass = NSClassFromString(@"TCTextCompositionInput");
     const char *requestArgs[] = { @encode(id), @encode(id), "@?" };
-    const char *inputArgs[] = { @encode(id), @encode(NSRange), @encode(id), @encode(NSError **) };
+    const char *inputArgs[] = { @encode(id), @encode(NSRange), @encode(id), @encode(NSError * __autoreleasing *) };
     const char *cancelArgs[] = { @encode(long long) };
     NSString *type = CWRewriteType(style);
     NSString *tokenKey = CWConstant("TCTextCompositionAssistantOptionKeyToken");
