@@ -242,6 +242,19 @@ final class KeyboardExtensionTests: XCTestCase {
     XCTAssertTrue(next.waitForExistence(timeout: 5), "Releasing the accent hold must restore the letter keys")
     try perform("next", frame: next.frame) { next.tap() }
     expectText("1QQQQeq", in: app)
+    let space = app.keys.matching(NSPredicate(format: "identifier == %@ OR label IN %@", "space",
+      ["space", "espaço", "espacio"])).firstMatch
+    XCTAssertTrue(space.waitForExistence(timeout: 5), "The space shortcut needs the visible space key")
+    let spaceFrame = space.frame
+    XCTAssertTrue(!spaceFrame.isEmpty && windowFrame.contains(spaceFrame))
+    let spaceCoordinate = window.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: spaceFrame.midX - windowFrame.minX, dy: spaceFrame.midY - windowFrame.minY))
+    try perform("double-space", frame: spaceFrame) { spaceCoordinate.doubleTap() }
+    expectText("1QQQQeq. ", in: app)
+    let capital = app.keys["Q"]
+    XCTAssertTrue(capital.waitForExistence(timeout: 5), "The space shortcut must restore sentence capitals")
+    try perform("after-double-space", frame: capital.frame) { capital.tap() }
+    expectText("1QQQQeq. Q", in: app)
   }
   private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
     let app = XCUIApplication(); app.terminate()
