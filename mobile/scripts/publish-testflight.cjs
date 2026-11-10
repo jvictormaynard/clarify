@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    'en-US': `Clarify ${version} (${build}): tests automatic Apple rewriting through the direct TextComposer service. Enable Apple rewriting in Settings; select Natural mode and Default, Formal or Casual. Dictate from the Clarify keyboard in Notes as usual. No Apple editor, review or translation window should appear. Installed translation languages are required. Service failures preserve the transcript and show an error code. There is no visible Writing Tools or other-model fallback. This private service route still requires real iPhone acceptance; TestFlight publication does not prove service access or public App Store approval. Test suites skipped as requested.`,
+    'pt-BR': `Clarify ${version} (${build}): testa a reescrita automática pelo serviço direto da Apple. Ative Reescrita com Apple em Ajustes; selecione Natural e Padrão, Formal ou Casual. Dite normalmente pelo teclado Clarify no Notas. Nenhuma janela da Apple deve aparecer. Os idiomas de tradução devem estar instalados. Em caso de falha, a transcrição original é preservada com um código de erro. Não há troca para outro modelo. Acesso ao serviço privado e qualidade ainda precisam do teste no iPhone. Testes omitidos conforme solicitado.`,
+    'es-ES': `Clarify ${version} (${build}): prueba la reescritura automática mediante el servicio directo de Apple. Activa la reescritura Apple en Ajustes; selecciona Natural y Predeterminado, Formal o Casual. Dicta normalmente con el teclado Clarify en Notas. No debe aparecer ninguna ventana de Apple. Los idiomas de traducción deben estar instalados. Los fallos conservan la transcripción y muestran un código de error. No se usa otro modelo. El acceso al servicio privado y la calidad requieren pruebas en el iPhone. Pruebas omitidas según lo solicitado.`,
   };
 }
 
@@ -106,7 +106,17 @@ async function publish({ env = process.env, fetch = globalThis.fetch,
       if (!attached) {
         const membership = await list('betaGroups/' + group.id + '/builds?limit=100');
         if (!membership.data.some(item => item.id === build.id)) {
-          await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            try {
+              await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            } catch (error) {
+              // Auto-distribution can reject a redundant association before its
+              // group membership is visible. Never accept 422 as availability:
+              // retry the reads and require real membership and testing state.
+              if (!String(error.message).startsWith('Apple API 422 ')) throw error;
+              log('Apple group association is pending; verifying membership again.');
+              await sleep(30_000);
+              continue;
+            }
         }
         const localizations = await list('builds/' + build.id + '/betaBuildLocalizations');
         for (const [locale, whatsNew] of Object.entries(releaseNotes(selected.version, selected.build))) {
