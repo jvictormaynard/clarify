@@ -49,11 +49,19 @@ private final class Field: NSObject, UITextDocumentProxy {
   var isSecureTextEntry = false
   var autocapitalizationType: UITextAutocapitalizationType = .sentences
   var didInsert: ((String) -> Void)?
+  var didAdjust: (() -> Void)?
   func insertText(_ text: String) {
     before += text; selectedText = nil; didInsert?(before)
   }
   func deleteBackward() { if !before.isEmpty { before.removeLast() } }
-  func adjustTextPosition(byCharacterOffset offset: Int) {}
+  func adjustTextPosition(byCharacterOffset offset: Int) {
+    if offset < 0 {
+      for _ in 0..<min(before.count, -max(-32, offset)) { after.insert(before.removeLast(), at: after.startIndex) }
+    } else {
+      for _ in 0..<min(after.count, offset) { before.append(after.removeFirst()) }
+    }
+    didAdjust?()
+  }
   func setMarkedText(_ markedText: String, selectedRange: NSRange) {}
   func unmarkText() {}
 }
@@ -469,6 +477,54 @@ final class KeyboardUITests: XCTestCase {
       }
       emit(reentrant, .ended)
       XCTAssertEqual(text, beforeCallback + "eq", "Insertion callbacks must see the completed accent's suppression cleared")
+      grid.onInsert = { text += $0 }
+      var clock: TimeInterval = 100, offsets: [Int] = [], finishes = 0
+      grid.cursorUptime = { clock }; grid.onMoveCursor = { offsets.append($0); return true }
+      grid.onEndCursor = { finishes += 1 }
+      @MainActor func spacePoint() throws -> CGPoint {
+        center(try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("espaço") }))
+      }
+      let cursorPoint = try spacePoint(), beforeCursor = text
+      grid.beginPress("cursor", at: cursorPoint); clock += 0.1; grid.updateSpaceHold()
+      grid.endPress("cursor", at: cursorPoint)
+      XCTAssertEqual(text, beforeCursor + " ", "A short Space press still inserts")
+      let afterTap = text
+      grid.beginPress("cursor", at: try spacePoint()); clock += 1; grid.updateSpaceHold()
+      let heldSpace = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("espaço") })
+      grid.model.shift = .once; grid.rebuild()
+      XCTAssertTrue(heldSpace.isDescendant(of: grid), "Cursor mode must keep the original UIKit receiver attached")
+      let other = center(try key("q"))
+      grid.beginPress("foreign", at: other); grid.cancelPress("foreign"); grid.endPress("foreign", at: other)
+      grid.movePress("cursor", to: cursorPoint.applying(CGAffineTransform(translationX: -12, y: -100)))
+      grid.movePress("cursor", to: cursorPoint)
+      grid.endPress("cursor", at: cursorPoint); grid.endPress("cursor", at: other)
+      XCTAssertEqual(offsets, [-2, 2]); XCTAssertEqual(text, afterTap, "Held release and a second finger must not insert")
+      XCTAssertEqual(grid.model.shift, .once)
+      for cancelled in [true, false] {
+        let point = try spacePoint()
+        grid.beginPress("cancel-cursor", at: point); clock += 1; grid.updateSpaceHold()
+        if cancelled { grid.cancelPress("cancel-cursor") } else { grid.isHidden = true; grid.isHidden = false }
+        grid.movePress("cancel-cursor", to: other); grid.endPress("cancel-cursor", at: other)
+        XCTAssertEqual(text, afterTap, "Cancellation, hiding and late releases must not insert")
+      }
+      let completed = finishes
+      grid.beginPress("early", at: try spacePoint()); grid.cancelPress("early")
+      grid.beginPress("early", at: try spacePoint()); grid.updateSpaceHold()
+      grid.endPress("early", at: try spacePoint())
+      XCTAssertEqual(text, afterTap + " ", "A reused touch ID must get a new hold interval")
+      XCTAssertEqual(finishes, completed + 2)
+      grid.model.shift = .off; grid.rebuild()
+      let beforeOverlap = text, overlapSpace = try spacePoint(), overlapQ = center(try key("q"))
+      grid.beginPress("pending-space", at: overlapSpace); grid.beginPress("overlap-letter", at: overlapQ)
+      clock += 1; grid.updateSpaceHold()
+      grid.endPress("overlap-letter", at: overlapQ); grid.endPress("pending-space", at: overlapSpace)
+      XCTAssertEqual(text, beforeOverlap + "q ", "An overlapping tap must keep normal typing instead of entering cursor mode")
+      let beforeReentry = text, point = try spacePoint()
+      grid.onMoveCursor = { _ in grid.cancelPress("reentrant-cursor"); return true }
+      grid.beginPress("reentrant-cursor", at: point); clock += 1; grid.updateSpaceHold()
+      grid.movePress("reentrant-cursor", to: CGPoint(x: point.x - 20, y: point.y))
+      grid.endPress("reentrant-cursor", at: other)
+      XCTAssertEqual(text, beforeReentry, "Movement callbacks must not revive a cancelled owner")
     }
   }
   func testCustomVocabularyIsNotReplacedAndQuotedWordsStillCorrect() async {
@@ -1458,6 +1514,27 @@ final class KeyboardUITests: XCTestCase {
       shortcut.insert(" ", into: field); field.didInsert = nil; field.before = "word "
       shortcut.insert(" ", into: field)
       XCTAssertEqual(field.before, "word  ", "Reentrant input must invalidate the earlier Space")
+      start(); shortcut.insert(" ", into: field); shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertEqual(field.before, "word"); XCTAssertEqual(field.after, " ")
+      XCTAssertTrue(shortcut.moveCursor(1, in: field)); shortcut.endCursor()
+      shortcut.insert(" ", into: field)
+      XCTAssertEqual(field.before, "word  ", "Moving away and back must invalidate the pending double-Space shortcut")
+      for change in 0..<6 {
+        start(); shortcut.prepareCursor(in: field)
+        switch change {
+        case 0: field.documentIdentifier = UUID()
+        case 1: field.selectedText = "selected"
+        case 2: field.isSecureTextEntry = true
+        case 3: field.contextAvailable = false
+        case 4: field.after = "external edit"
+        default: shortcut.reset()
+        }
+        XCTAssertFalse(shortcut.moveCursor(-1, in: field))
+        XCTAssertEqual(field.before, "word", "Changed or unavailable documents must not move")
+      }
+      start(); field.didAdjust = { shortcut.endCursor() }; shortcut.prepareCursor(in: field)
+      XCTAssertFalse(shortcut.moveCursor(-1, in: field)); field.didAdjust = nil
+      XCTAssertFalse(shortcut.moveCursor(1, in: field), "A cancelled movement callback must not rearm the cursor session")
     }
   }
   func testInsertionRejectsAResultClearedByAnotherDestinationBeforeTheNextPoll() async throws {

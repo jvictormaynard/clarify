@@ -18,6 +18,7 @@ final class TypingAssistant {
   }
   private let now: () -> TimeInterval
   private var pendingSpace: (context: TypingContext, time: TimeInterval)?
+  private var cursorContext: TypingContext?
   private var inputGeneration: UInt = 0
   private let checker = UITextChecker()
   private var correction = TypingCorrection()
@@ -39,7 +40,30 @@ final class TypingAssistant {
     vocabularyWords = Set(words.flatMap { $0.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init) })
   }
   func reset() { invalidateSpace(); correction.reset() }
-  private func invalidateSpace() { inputGeneration &+= 1; pendingSpace = nil }
+  private func invalidateSpace() { inputGeneration &+= 1; pendingSpace = nil; cursorContext = nil }
+  func prepareCursor(in proxy: UITextDocumentProxy) {
+    endCursor()
+    let generation = inputGeneration
+    let captured = proxy.isSecureTextEntry != true ? context(proxy) : nil
+    if generation == inputGeneration, captured?.hasSelection == false { cursorContext = captured }
+  }
+  func endCursor() { inputGeneration &+= 1; cursorContext = nil }
+  func moveCursor(_ offset: Int, in proxy: UITextDocumentProxy) -> Bool {
+    let preparedGeneration = inputGeneration
+    guard offset != 0, (-32...32).contains(offset), proxy.isSecureTextEntry != true,
+          let captured = cursorContext, !captured.hasSelection, context(proxy) == captured,
+          inputGeneration == preparedGeneration else {
+      cursorContext = nil; return false
+    }
+    invalidateSpace(); correction.reset()
+    let generation = inputGeneration
+    // UIKit owns character boundaries and clamps at the document's edges.
+    proxy.adjustTextPosition(byCharacterOffset: offset)
+    guard inputGeneration == generation, proxy.isSecureTextEntry != true,
+          let current = context(proxy), current.document == captured.document, !current.hasSelection else { return false }
+    cursorContext = current
+    return true
+  }
   private func matches(_ actual: TypingContext?, _ expected: TypingContext) -> Bool {
     guard let actual, actual.document == expected.document, actual.after == expected.after,
           !actual.hasSelection, !actual.before.isEmpty, !expected.before.isEmpty else { return false }

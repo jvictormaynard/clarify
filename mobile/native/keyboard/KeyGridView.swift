@@ -8,6 +8,7 @@ private final class KeyButton: UIButton {
   weak var grid: KeyGridView?
   var isGlobe = false
   var isShift = false
+  var isSpace = false
   var startsNumberSlide = false
   var titleVerticalOffset: CGFloat = 0
   override func titleRect(forContentRect contentRect: CGRect) -> CGRect {
@@ -41,6 +42,10 @@ final class KeyGridView: UIView {
   var onDelete: (() -> Void)?
   var onNextKeyboard: ((UIButton, UIEvent?) -> Void)?
   var onKeyPress: (() -> Void)?
+  var onPrepareCursor: (() -> Void)?
+  var onMoveCursor: ((Int) -> Bool)?
+  var onEndCursor: (() -> Void)?
+  var cursorUptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
   weak var previewContainer: UIView?
   var model = KeyboardState()
   var needsGlobe = false
@@ -58,6 +63,18 @@ final class KeyGridView: UIView {
   private var presses: [AnyHashable: KeyButton] = [:]
   private var numberSlide: (id: AnyHashable, key: KeyButton, row: UIStackView)?
   private var shiftSlide: (id: AnyHashable, key: KeyButton, used: Bool)?
+  private struct SpacePress {
+    let token = UUID()
+    let id: AnyHashable
+    let key: KeyButton
+    let started: TimeInterval
+    var x: CGFloat
+    var remainder: CGFloat = 0
+    var active = false
+    var movable = true
+  }
+  private var spacePress: SpacePress?
+  private var spaceTimer: Timer?
   private var rebuildPending = false
   private var layoutSignature = ""
   private var usesModernKeyAppearance: Bool {
@@ -77,20 +94,48 @@ final class KeyGridView: UIView {
     }
   }
   func beginPress(_ id: AnyHashable, at point: CGPoint, event: UIEvent? = nil) {
-    guard presses[id] == nil, accentBar == nil, let key = nearestKey(at: point) else { return }
+    guard presses[id] == nil, accentBar == nil, spacePress?.active != true,
+          let key = nearestKey(at: point) else { return }
+    if spacePress != nil { finishSpacePress() }
+    let startsCursor = key.isSpace && presses.isEmpty
     if key.startsNumberSlide, model.page == .letters, presses.isEmpty,
        let bottom = stack.arrangedSubviews.last as? UIStackView {
       numberSlide = (id, key, bottom)
       model.page = .numbers; rebuild()
     }
     presses[id] = key; key.isHighlighted = true
+    guard presses[id] === key else { return }
     if key.isShift, model.page == .letters, model.shift == .off, presses.count == 1 {
       shiftSlide = (id, key, false); refreshLetterCasing()
+    }
+    if startsCursor {
+      let press = SpacePress(id: id, key: key, started: cursorUptime(), x: point.x)
+      spacePress = press
+      let timer = Timer(timeInterval: 0.45, repeats: false) { [weak self] _ in
+        guard self?.spacePress?.token == press.token else { return }
+        self?.updateSpaceHold()
+      }
+      spaceTimer = timer; RunLoop.main.add(timer, forMode: .common)
+      onPrepareCursor?()
     }
     if key.isGlobe { onNextKeyboard?(key, event) } else { key.sendActions(for: .touchDown) }
   }
   func movePress(_ id: AnyHashable, to point: CGPoint, event: UIEvent? = nil) {
     guard let previous = presses[id], accentBar == nil else { return }
+    if var space = spacePress, space.id == id {
+      guard point.x.isFinite else { return }
+      if space.active {
+        let distance = space.remainder + min(192, max(-192, point.x - space.x))
+        let offset = Int(distance / 6)
+        space.x = point.x; space.remainder = distance - CGFloat(offset) * 6
+        spacePress = space
+        if offset != 0, space.movable, onMoveCursor?(offset) != true,
+           spacePress?.token == space.token { spacePress?.movable = false }
+        return
+      }
+      if releaseKey(at: point) === space.key { spacePress?.x = point.x }
+      else { finishSpacePress() }
+    }
     if previous.isGlobe { onNextKeyboard?(previous, event); return }
     // A small release margin tolerates finger motion at the outer keyboard edge.
     guard let next = releaseKey(at: point), next !== previous else { return }
@@ -103,6 +148,11 @@ final class KeyGridView: UIView {
   func endPress(_ id: AnyHashable, at point: CGPoint, event: UIEvent? = nil) {
     movePress(id, to: point, event: event)
     guard let key = presses.removeValue(forKey: id) else { return }
+    if spacePress?.id == id {
+      let consumed = spacePress?.active == true
+      finishSpacePress()
+      if consumed { key.isHighlighted = false; key.sendActions(for: .touchCancel); finishPresses(); return }
+    }
     let slide = numberSlide
     let ownsSlide = slide?.id == id
     let shift = shiftSlide
@@ -125,11 +175,35 @@ final class KeyGridView: UIView {
   }
   func cancelPress(_ id: AnyHashable) {
     guard let key = presses.removeValue(forKey: id) else { return }
+    if spacePress?.id == id { finishSpacePress() }
     if !presses.values.contains(where: { $0 === key }) { key.isHighlighted = false }
     key.sendActions(for: .touchCancel)
     if shiftSlide?.id == id { shiftSlide = nil; refreshLetterCasing() }
     if numberSlide?.id == id { numberSlide = nil; model.page = .letters; layoutSignature = ""; rebuild() }
     finishPresses()
+  }
+  // Both the timer and controlled native tests use this elapsed-time boundary.
+  func updateSpaceHold() {
+    guard let space = spacePress, !space.active, presses.count == 1,
+          presses[space.id] === space.key, cursorUptime() - space.started >= 0.45 else { return }
+    spaceTimer?.invalidate(); spaceTimer = nil
+    spacePress?.active = true
+    space.key.isHighlighted = false; preview.removeFromSuperview()
+    setCursorTitlesHidden(true)
+  }
+  private func setCursorTitlesHidden(_ hidden: Bool) {
+    for key in touchRows.flatMap({ $0.keys }) {
+      key.titleLabel?.alpha = hidden ? 0 : 1; key.imageView?.alpha = hidden ? 0 : 1
+    }
+  }
+  private func finishSpacePress() {
+    guard spacePress != nil else { return }
+    spaceTimer?.invalidate(); spaceTimer = nil; spacePress = nil
+    setCursorTitlesHidden(false)
+    onEndCursor?()
+  }
+  func cancelAllPresses() {
+    for id in Array(presses.keys) { cancelPress(id) }
   }
   private func finishPresses() {
     if presses.isEmpty, rebuildPending { rebuildPending = false; rebuild() }
@@ -187,9 +261,10 @@ final class KeyGridView: UIView {
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
   override func didMoveToWindow() {
     super.didMoveToWindow()
-    if window == nil { for id in Array(presses.keys) { cancelPress(id) }; stopDelete(); preview.removeFromSuperview() }
+    if window == nil { cancelAllPresses(); stopDelete(); preview.removeFromSuperview() }
   }
-  deinit { repeatTimer?.invalidate() }
+  override var isHidden: Bool { didSet { if isHidden { cancelAllPresses() } } }
+  deinit { repeatTimer?.invalidate(); spaceTimer?.invalidate() }
 
   func rebuild() {
     guard accentBar == nil, presses.isEmpty else { rebuildPending = true; return }
@@ -234,7 +309,9 @@ final class KeyGridView: UIView {
       if index == 2 {
         let delete = key("", special: true) {}
         delete.setImage(UIImage(systemName: "delete.left"), for: .normal); delete.accessibilityLabel = L("Apagar")
-        delete.accessibleAction = { [weak self] in self?.onDelete?() }
+        delete.accessibleAction = { [weak self] in
+          guard let self, self.spacePress?.active != true else { return }; self.onDelete?()
+        }
         delete.addTarget(self, action: #selector(beginDelete), for: .touchDown)
         delete.addTarget(self, action: #selector(stopDelete), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
         row.addArrangedSubview(delete)
@@ -297,11 +374,15 @@ final class KeyGridView: UIView {
         let globe = key("", special: true) {}; globe.setImage(UIImage(systemName: "globe"), for: .normal)
         globe.isGlobe = true
         globe.accessibilityLabel = L("Próximo teclado")
-        globe.accessibleAction = { [weak self, weak globe] in if let globe = globe { self?.onNextKeyboard?(globe, nil) } }
+        globe.accessibleAction = { [weak self, weak globe] in
+          guard let self, self.spacePress?.active != true, let globe else { return }
+          self.onNextKeyboard?(globe, nil)
+        }
         globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
         bottom.addArrangedSubview(globe); globe.widthAnchor.constraint(equalTo: mode.widthAnchor).isActive = true
       }
       let space = key(L("espaço")) { [weak self] in self?.insert(" ") }
+      space.isSpace = true
       if usesModernKeyAppearance { space.setTitle("", for: .normal) }
       bottom.addArrangedSubview(space)
       let returns: [UIReturnKeyType: String] = [.go: L("ir"), .search: L("buscar"), .send: L("enviar"), .next: L("próximo"), .done: "OK", .join: L("entrar"), .route: L("rota")]
@@ -372,7 +453,9 @@ final class KeyGridView: UIView {
         }
       } else { self.preview.removeFromSuperview() }
     }
-    button.addAction(UIAction { _ in action() }, for: .touchUpInside)
+    button.addAction(UIAction { [weak self] _ in
+      guard let self, self.spacePress?.active != true else { return }; action()
+    }, for: .touchUpInside)
     return button
   }
   private func showsPressPreview(for key: KeyButton) -> Bool {
@@ -428,6 +511,7 @@ final class KeyGridView: UIView {
     }
   }
   private func insert(_ text: String) {
+    guard spacePress?.active != true else { return }
     if text.contains(where: \.isLetter) { shiftSlide?.used = true }
     model.didInsert(text); onInsert?(text); rebuild()
   }
@@ -439,6 +523,7 @@ final class KeyGridView: UIView {
   }
   @objc private func nextKeyboard(_ button: UIButton, event: UIEvent?) { onNextKeyboard?(button, event) }
   @objc private func beginDelete() {
+    guard spacePress?.active != true else { return }
     stopDelete(); onDelete?()
     repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
       guard let self = self else { return }; self.onDelete?()
@@ -449,7 +534,7 @@ final class KeyGridView: UIView {
   @objc private func accent(_ gesture: UILongPressGestureRecognizer) {
     guard let button = gesture.view as? UIButton, let title = button.title(for: .normal) else { return }
     if gesture.state == .began {
-      guard accentBar == nil else { return }
+      guard accentBar == nil, spacePress?.active != true else { return }
       preview.removeFromSuperview()
       suppressKey = true
       let choices = KeyboardState.accents(for: title)

@@ -283,6 +283,18 @@ class KeyboardViewController: UIInputViewController {
     cancel.addAction(UIAction { [weak self] _ in self?.cancelRecording() }, for: .touchUpInside)
     keys.previewContainer = view
     keys.onKeyPress = { [weak self] in self?.feedback.type() }
+    keys.onPrepareCursor = { [weak self] in
+      guard let self, self.attached else { return }
+      self.typing.prepareCursor(in: self.textDocumentProxy)
+    }
+    keys.onMoveCursor = { [weak self] offset in
+      guard let self, self.attached, !self.keys.isHidden else { return false }
+      self.dictationEdit = nil
+      let accepted = self.typing.moveCursor(offset, in: self.textDocumentProxy)
+      self.updateCapitalization(); self.updateSuggestions()
+      return accepted
+    }
+    keys.onEndCursor = { [weak self] in self?.typing.endCursor() }
     keys.onInsert = { [weak self] text in
       guard let self = self else { return }
       self.dictationEdit = nil
@@ -411,6 +423,7 @@ class KeyboardViewController: UIInputViewController {
   }
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated); attached = false; timer?.invalidate(); timer = nil
+    keys.cancelAllPresses()
     waveform.update(level: 0, recording: false)
     dictationEdit = nil; undoDictation.isHidden = true
     invalidateActivationSource()
