@@ -42,7 +42,9 @@ final class KeyPreview: UIView {
     shape.path = path.cgPath; shape.fillColor = fill.resolvedColor(with: container.traitCollection).cgColor
     layer.shadowPath = path.cgPath
     label.text = text; label.textColor = .label
-    label.frame = CGRect(x: 0, y: 0, width: width, height: cap)
+    var titleOffset: CGFloat = 0
+    if #available(iOS 26.0, *) { titleOffset = 13.0 / 3.0 }
+    label.frame = CGRect(x: 0, y: titleOffset, width: width, height: cap)
     container.addSubview(self)
   }
 }
