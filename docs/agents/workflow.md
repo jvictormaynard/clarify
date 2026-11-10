@@ -62,9 +62,10 @@ If delegation is unavailable, use sequential passes and report the limit.
 
 The coordinator integrates explicit task diffs in dependency order and validates
 the complete result. Use a separate integration worktree for independent feature
-branches. Preserve worker changes until integration is verified. If the base or
-candidate changes, repeat affected checks and review. Remove only task-owned
-temporary resources after preserving results; keep dirty or unrelated worktrees.
+branches. Preserve worker changes until integration is verified. For relevant
+code, base, or conflict changes, repeat only affected checks and review. Remove
+only task-owned temporary resources after preserving results; keep dirty or
+unrelated worktrees.
 
 ## Ownership and affected paths
 
@@ -77,6 +78,12 @@ applicable entry points, desktop/Settings/mobile/server clients, provider routes
 connection modes, persisted state, and reverse actions. Add separate coverage
 only when a layer has its own failure risk. Do not expand into unrelated clients.
 
+Check requirements and product fit, architecture and interfaces, state and reverse
+actions, frontend/backend consistency, test signal, and real UI behavior where
+affected. Load design or specification methods only when a concrete decision
+needs them. Explain material decisions in the PR or result; do not create a
+per-task design or audit document by default.
+
 Preserve stale-result rejection, accepted publication ownership, once-only usage
 accounting, focus-safe clipboard effects, audio cleanup, atomic persistence,
 migrations, and read-only handling of newer schemas. BYOK and Local Whisper keep
@@ -85,19 +92,23 @@ existing owners rather than adding a parallel service for the same decision.
 
 ## Validation by affected contract
 
-Use `scripts/ci.py --plan` for the complete candidate, including new and dirty
-files. Run focused checks while editing, then execute the selected local checks
-once the candidate is stable. [CI delivery](../ci-delivery.md#local-validation)
-owns commands, selection, platform requirements, and terminal results. Do not
-maintain a second command matrix in a skill.
+Use focused quick local checks during implementation. Inspect the complete
+candidate, including new and dirty files, with the normal validation plan.
+[CI delivery](../ci-delivery.md#local-validation) owns commands, selection,
+platform requirements, and terminal results. Quick mode gives bounded local
+feedback without browsers, native Qt, packaging, export, installs, fetches, or
+publication. It does not reduce the normal plan or CI obligations. Do not
+maintain a second command matrix in a skill or contributor guide.
 
-Python behavior requires the selected Python suite and relevant static checks.
-Settings changes require unit, browser/bridge, and production build/boot checks.
-Packaging inputs require Windows build and embedded-payload checks. A wording
-change needs policy/reference validation and `git diff --check`, not a product
-build. Do not run every component or repeat a full suite by habit. Broaden checks
-for a new change, failure, dependency risk, or unresolved concern. Never omit a
-selected gate merely because a focused check passed.
+Use remote CI for complete affected validation on the stable candidate. Do not
+duplicate the full selected run locally before pushing. Keep focused regression
+checks, targeted reproductions, and direct visible UI proof when they resolve
+the affected contract. A wording change needs policy/reference validation and
+`git diff --check`, not a product build. Repeat or broaden checks only for a
+relevant code, base, or conflict change, a failure, or an unresolved concern.
+Successful checks remain evidence for unchanged contracts. A quick pass never
+clears an unexecuted selected gate. If remote CI is unavailable or outside the
+authorized scope, report those gates as unexecuted.
 
 Use the configured interpreter and locked dependencies. A Windows virtual
 environment is not a Linux environment. Initialize temporary profiles before
@@ -196,12 +207,27 @@ Treat credentials/permissions, persistence/migrations, provider routing, workflo
 concurrency, clipboard/audio/ASR ownership, and update or publication policy as
 high-risk boundaries.
 
-An isolated wording change needs self-review. Changed behavior in adjacent
-modules needs one fresh read-only reviewer. High-risk boundaries, broad independent
+An isolated wording change needs self-review. Ordinary behavior changes need one
+fresh read-only reviewer covering both passes. High-risk boundaries, broad independent
 features, or substantial delivery-rule changes need two: requirements and
 engineering. Reviewers receive the same fixed candidate, request, rules, and
 terminal check results; they do not write, run mutating checks, or delegate.
 Repair confirmed findings and rerun affected checks. Disclose unavailable review.
+
+Use at most three review rounds by default, including the initial review.
+Limit follow-ups to changed behavior and open findings. Up to five rounds are
+permitted only for an evidenced security, data, permissions, or concurrency
+blocker. Stop rounds that contain only style preferences. Reject scope growth
+and tests without a meaningful coverage gap. A round or time budget never
+approves a substantive defect: keep the defect open and report the blocked
+delivery if it cannot be repaired within the budget.
+
+One agent owns each requested PR through CI and review. After necessary repairs,
+base updates, and pushes, use the environment's event-driven PR watch when
+waiting for checks or reviews. Do not poll or start duplicate child watchers.
+The owner handles events and finishes the authorized delivery; workers return
+their results without watching the PR. Without a watch facility, report the
+pending state and the monitoring limit.
 
 Finish the requested level: local work needs a reviewable diff and terminal local
 results; PR work needs the exact source and accurate description; merge needs
