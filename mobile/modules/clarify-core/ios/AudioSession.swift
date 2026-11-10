@@ -291,7 +291,7 @@ final class ClarifyAudioSession: NSObject {
     if apple {
       try MainActor.assumeIsolated {
         guard !AppleDictation.busy, !ClarifyPrivateWritingToolsBridge.isBusy() else {
-          throw ClarifyError(L("Close the current Apple editor before starting another review."))
+          throw ClarifyError(L("The previous Apple request is still finishing. Wait, or disable Apple rewriting in Settings."))
         }
         try AppleDictation.validate(preferences: frozenPreferences, policy: policy)
       }

@@ -694,8 +694,9 @@ before dictation; missing packs fail without presenting a download window.
 The direct service uses runtime-checked selectors and SDK-exported rewrite type
 constants (Magic, Professional, Friendly), not UI tool identifiers. Its input
 completion uses the output/error object contract in TCTextCompositionXPCProtocol.
-The assistant wrapper callback mapping is inferred from the matching input API;
-it still needs verification on a physical iPhone. This is a private API
+The conforming TextComposer service worker is instantiated and receives the exact
+protocol method. No assistant wrapper callback is inferred. Service initialization
+and execution outside its Apple host still need verification on a physical iPhone. This is a private API
 experiment, not verified public App Store compatibility. A service error, missing
 runtime contract, timeout, oversized output or failed translation preserves the
 transcript with an error. There is no fallback to the visible Writing Tools flow

@@ -5,6 +5,7 @@
 #import <stdbool.h>
 #import <stdlib.h>
 #import <string.h>
+#import <limits.h>
 
 // Declarations only; every private send is guarded against the loaded method.
 // https://github.com/qingralf/iOS26-Runtime-Headers/blob/cbf1d4c4122f3c6807eba36693581882640e5c6c/PrivateFrameworks/WritingToolsUI.framework/WTWritingToolsController.h
@@ -22,7 +23,8 @@
 - (bool)_supportsWritingTools;
 + (id)sharedAssistant;
 - (id)initWithAttributedString:(id)text range:(NSRange)range options:(id)options error:(NSError **)error;
-- (void)requestRewritingOfInput:(id)input rewritingType:(id)type completionHandler:(void (^)(id, NSError *))completion;
+- (void)rewriteWithInput:(id)input rewritingType:(id)type with:(void (^)(id, NSError *))completion;
+- (void)cancelWithToken:(long long)token;
 - (void)requestCancellationForToken:(unsigned long long)token cancelModelInvocations:(bool)cancel;
 - (id)rewrittenString;
 @end
@@ -47,7 +49,10 @@ static ClarifyPrivateWritingToolsSession *CWSession;
 static NSString *CWLastEndState = @"none";
 
 // Direct requests never create UIKit views. Callback object types correspond to
-// TCTextCompositionXPCProtocol rewriteWithInput:rewritingType:with: in iOS 26:
+// TCTextCompositionXPCProtocol rewriteWithInput:rewritingType:with: in iOS 26.
+// Its conforming service worker is instantiated directly; no wrapper callback
+// is inferred, no connection identity is forged, and no Apple UI is created.
+// https://github.com/qingralf/iOS26-Runtime-Headers/blob/cbf1d4c4122f3c6807eba36693581882640e5c6c/PrivateFrameworks/TextComposer.framework/_TtCC12TextComposer26TCTextCompositionXPCServer6Server.h
 // https://github.com/qingralf/iOS26-Runtime-Headers/blob/cbf1d4c4122f3c6807eba36693581882640e5c6c/protocols/TCTextCompositionXPCProtocol.h
 @interface ClarifyDirectRewriteSession : NSObject
 @property (nonatomic, copy) NSString *operationID;
@@ -277,27 +282,28 @@ static NSString *CWExtendedRewriteTypes(void) {
   }
   @try {
     CWLoad();
-    Class assistantClass = NSClassFromString(@"TCTextCompositionAssistant");
+    Class assistantClass = NSClassFromString(@"_TtCC12TextComposer26TCTextCompositionXPCServer6Server");
+    Protocol *serviceProtocol = objc_getProtocol("TCTextCompositionXPCProtocol");
     Class inputClass = NSClassFromString(@"TCTextCompositionInput");
     const char *requestArgs[] = { @encode(id), @encode(id), "@?" };
     const char *inputArgs[] = { @encode(id), @encode(NSRange), @encode(id), @encode(NSError **) };
-    const char *cancelArgs[] = { @encode(unsigned long long), @encode(bool) };
+    const char *cancelArgs[] = { @encode(long long) };
     NSString *type = CWRewriteType(style);
     NSString *tokenKey = CWConstant("TCTextCompositionAssistantOptionKeyToken");
-    if (!CWPlatform() || !type || !tokenKey
-        || !CWMethod(assistantClass, YES, @selector(sharedAssistant), @encode(id), NULL, 0)
+    if (!CWPlatform() || !type || !tokenKey || !serviceProtocol || !class_conformsToProtocol(assistantClass, serviceProtocol)
+        || !CWMethod(assistantClass, NO, @selector(init), @encode(id), NULL, 0)
         || !CWMethod(inputClass, NO, @selector(initWithAttributedString:range:options:error:), @encode(id), inputArgs, 4)
-        || !CWMethod(assistantClass, NO, @selector(requestRewritingOfInput:rewritingType:completionHandler:), @encode(void), requestArgs, 3)
-        || !CWMethod(assistantClass, NO, @selector(requestCancellationForToken:cancelModelInvocations:), @encode(void), cancelArgs, 2)) {
+        || !CWMethod(assistantClass, NO, @selector(rewriteWithInput:rewritingType:with:), @encode(void), requestArgs, 3)
+        || !CWMethod(assistantClass, NO, @selector(cancelWithToken:), @encode(void), cancelArgs, 1)) {
       completion(CWReply(@"service_contract_unavailable", @"The direct Apple rewrite service is unavailable on this iPhone. The transcript was preserved.", @"runtime_contract_rejected")); return;
     }
-    id assistant = [assistantClass sharedAssistant];
+    id assistant = [[assistantClass alloc] init];
     if (!assistant || object_getClass(assistant) != assistantClass) {
       completion(CWReply(@"service_unavailable", @"Apple rewriting could not start. The transcript was preserved.", @"assistant_unavailable")); return;
     }
     ClarifyDirectRewriteSession *session = [ClarifyDirectRewriteSession new];
     session.operationID = operationID; session.assistant = assistant;
-    session.token = ((unsigned long long)arc4random() << 32) | arc4random();
+    session.token = ((((unsigned long long)arc4random() << 32) | arc4random()) & LLONG_MAX);
     NSError *error = nil;
     session.input = [[inputClass alloc] initWithAttributedString:[[NSAttributedString alloc] initWithString:source]
       range:NSMakeRange(0, source.length) options:@{tokenKey: @(session.token)} error:&error];
@@ -306,7 +312,7 @@ static NSString *CWExtendedRewriteTypes(void) {
     }
     session.completion = completion;
     CWDirect = session;
-    [assistant requestRewritingOfInput:session.input rewritingType:type completionHandler:^(id output, NSError *serviceError) {
+    [assistant rewriteWithInput:session.input rewritingType:type with:^(id output, NSError *serviceError) {
       dispatch_async(dispatch_get_main_queue(), ^{
         if (CWDirect != session) return;
         void (^reply)(NSDictionary *) = session.completion;
@@ -331,7 +337,7 @@ static NSString *CWExtendedRewriteTypes(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(30 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
       if (CWDirect != session || !session.completion) return;
       void (^reply)(NSDictionary *) = session.completion; session.completion = nil;
-      @try { [session.assistant requestCancellationForToken:session.token cancelModelInvocations:true]; }
+      @try { [session.assistant cancelWithToken:(long long)session.token]; }
       @catch (__unused NSException *exception) {}
       // Keep the slot until its callback confirms the service request ended.
       reply(CWReply(@"service_timeout", @"Apple rewriting took too long. The transcript was preserved.", @"cancellation_requested"));
@@ -348,7 +354,7 @@ static NSString *CWExtendedRewriteTypes(void) {
   if (!NSThread.isMainThread || ![CWDirect.operationID isEqualToString:operationID]) return;
   ClarifyDirectRewriteSession *session = CWDirect;
   void (^reply)(NSDictionary *) = session.completion; session.completion = nil;
-  @try { [session.assistant requestCancellationForToken:session.token cancelModelInvocations:true]; }
+  @try { [session.assistant cancelWithToken:(long long)session.token]; }
   @catch (__unused NSException *exception) {}
   if (reply) reply(CWReply(@"cancelled", @"Apple rewriting was cancelled.", @"cancellation_requested"));
 }
