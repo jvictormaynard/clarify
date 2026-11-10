@@ -543,7 +543,9 @@ final class KeyGridView: UIView {
       suppressKey = true
       var choices = KeyboardState.accents(for: title)
       let bar = UIStackView(); bar.axis = .horizontal; bar.distribution = .fillEqually; bar.spacing = 2
-      let width = min(bounds.width - 12, CGFloat(choices.count) * 42)
+      let modern = usesModernKeyAppearance
+      let preferredWidth = modern ? CGFloat(choices.count) * 37 + CGFloat(choices.count - 1) * bar.spacing : CGFloat(choices.count) * 42
+      let width = min(bounds.width - 12, preferredWidth)
       let center = button.convert(CGPoint(x: button.bounds.midX, y: 0), to: self)
       let cell = (width - CGFloat(choices.count - 1) * bar.spacing) / CGFloat(choices.count)
       var baseIndex = 0, origin: CGFloat = 6, distance = CGFloat.greatestFiniteMagnitude
@@ -555,7 +557,7 @@ final class KeyGridView: UIView {
         if gap < distance { baseIndex = index; origin = candidate; distance = gap }
       }
       let base = choices.removeFirst(); choices.insert(base, at: baseIndex)
-      bar.frame = CGRect(x: origin, y: center.y - (usesModernKeyAppearance ? 60 : 52), width: width, height: 46)
+      bar.frame = CGRect(x: origin, y: center.y - (modern ? 62 : 52), width: width, height: modern ? 48 : 46)
       bar.backgroundColor = .secondarySystemBackground; bar.layer.cornerRadius = 8
       accentKeys = choices.map { value in let key = key(value) {}; bar.addArrangedSubview(key); return key }
       accentBar = bar; activeAccentGesture = gesture; addSubview(bar); selectedAccent = title
