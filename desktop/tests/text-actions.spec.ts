@@ -482,6 +482,7 @@ test("after dictation: removing a legacy saved action selects clarity without en
   expect(saved.afterDictationTextActionId).toBe("");
   expect(saved.dictationCleanupRefinementAllowed).toBe(false);
   await editing.click();
+  await expect(page.getByPlaceholder("Buscar edição do texto…", { exact: true })).toBeFocused();
   await expect(page.getByRole("option", { name: "Instruções atuais", exact: true })).toHaveCount(0);
   await expect(page.getByRole("option", { name: "Ajustes mínimos", exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape"); await expect(editing).toBeFocused();

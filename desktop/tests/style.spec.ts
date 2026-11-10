@@ -32,6 +32,7 @@ test("styles: simplified choices persist, legacy tones remain readable, and forb
   await editing.click(); await page.getByRole("option", { name: "Melhorar a clareza", exact: true }).click();
   await expect(tone).toContainText("Manter meu tom");
   await editing.click();
+  await expect(page.getByPlaceholder("Buscar edição do texto…", { exact: true })).toBeFocused();
   await expect(page.getByRole("option", { name: "Ajustes mínimos", exact: true })).toHaveCount(0);
   await expect(page.getByRole("option", { name: "Instruções atuais", exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape"); await expect(editing).toBeFocused();
