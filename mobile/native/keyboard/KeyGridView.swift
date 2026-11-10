@@ -555,7 +555,7 @@ final class KeyGridView: UIView {
         if gap < distance { baseIndex = index; origin = candidate; distance = gap }
       }
       let base = choices.removeFirst(); choices.insert(base, at: baseIndex)
-      bar.frame = CGRect(x: origin, y: center.y - 52, width: width, height: 46)
+      bar.frame = CGRect(x: origin, y: center.y - (usesModernKeyAppearance ? 60 : 52), width: width, height: 46)
       bar.backgroundColor = .secondarySystemBackground; bar.layer.cornerRadius = 8
       accentKeys = choices.map { value in let key = key(value) {}; bar.addArrangedSubview(key); return key }
       accentBar = bar; activeAccentGesture = gesture; addSubview(bar); selectedAccent = title
