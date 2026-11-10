@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    'pt-BR': `Clarify ${version} (${build}): reescrita com Apple opcional no ditado normal. Em Ajustes, abra Reescrita com Apple. Selecione modo Natural e estilo Padrão, Formal ou Casual em Saída do ditado. Ative a opção e dite dentro do Clarify. Aceite a alteração da Apple e toque em Usar resultado; se houver tradução, aceite seu resultado também. Volte ao teclado para inserir. Use gravações curtas (até 2.000 bytes de texto). Snippets expandidos são preservados sem alterações de estilo ou idioma. Revise cancelamento, histórico e nova gravação. Desativada por padrão. Suítes de testes omitidas conforme solicitado.`,
+    'en-US': `Clarify ${version} (${build}): optional Apple rewriting in normal dictation. Open Settings, Apple rewriting. Choose Natural mode and Default, Formal or Casual style in Dictation output. Enable the option and dictate inside Clarify. Accept Apple's edit and tap Use result; if translated, accept that result too. Return to the keyboard to insert. Use short recordings (up to 2,000 bytes of text). Expanded snippets are preserved without style or language changes. Check cancellation, history and recording again. Off by default. Test suites were skipped as requested.`,
+    'es-ES': `Clarify ${version} (${build}): reescritura opcional con Apple en el dictado normal. Abre Ajustes, Reescritura con Apple. Elige modo Natural y estilo Predeterminado, Formal o Casual en Salida del dictado. Activa la opción y dicta en Clarify. Acepta el cambio y toca Usar resultado; acepta también la traducción si aparece. Vuelve al teclado para insertar. Usa grabaciones cortas (hasta 2.000 bytes de texto). Se conservan los snippets expandidos sin cambios de estilo o idioma. Revisa cancelación, historial y una nueva grabación. Desactivada por defecto. Pruebas omitidas según lo solicitado.`,
   };
 }
 
@@ -106,7 +106,17 @@ async function publish({ env = process.env, fetch = globalThis.fetch,
       if (!attached) {
         const membership = await list('betaGroups/' + group.id + '/builds?limit=100');
         if (!membership.data.some(item => item.id === build.id)) {
-          await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            try {
+              await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            } catch (error) {
+              // Auto-distribution can reject a redundant association before its
+              // group membership is visible. Never accept 422 as availability:
+              // retry the reads and require real membership and testing state.
+              if (!String(error.message).startsWith('Apple API 422 ')) throw error;
+              log('Apple group association is pending; verifying membership again.');
+              await sleep(30_000);
+              continue;
+            }
         }
         const localizations = await list('builds/' + build.id + '/betaBuildLocalizations');
         for (const [locale, whatsNew] of Object.entries(releaseNotes(selected.version, selected.build))) {
