@@ -5,7 +5,7 @@ import { electron } from './platform';
 import { setUiLanguage } from './i18n';
 import { pillText as t } from './pill-labels';
 import './styles/pill.css';
-import type { Settings as SettingsState } from './settings/bridge';
+import type { WritingStyle } from './settings/bridge';
 import { writingStyleOptions } from './settings/writing-style-options';
 
 /** Same twelve-bar envelope and motion as StatusPill.qml; audio owns amplitude. */
@@ -46,6 +46,7 @@ export interface WorkflowState {
   microphoneDevices: {id: string; label: string}[]; quickMicrophoneId: string; microphoneInventoryBusy: boolean;
   textActions: {id: string; name: string; enabled: boolean}[];
   updateAvailable: boolean; updateBusy: boolean; updateVersion: string;
+  dictationWritingStyle: WritingStyle | ''; applicationStyleRefinementAllowed: boolean;
 }
 type Method = 'startRecordingFromButton' | 'stopRecording' | 'cancelRecording' | 'chooseTranslation' | 'cancelTranslation' | 'openSettings' | 'openFiles' | 'showResult' | 'copyResult' | 'finish' | 'reset' | 'undoCancellation' | 'dismissFeedback' | 'retryTranscription' | 'pasteLastTranscription' | 'toggleWindow' | 'quit' | 'runTextAction' | 'selectQuickMicrophone' | 'refreshMicrophones' | 'installUpdate';
 export function Pill() {
@@ -55,16 +56,6 @@ export function Pill() {
   const [menu, setMenu] = useState(false);
   const [languageMenu, setLanguageMenu] = useState(false);
   const [submenu, setSubmenu] = useState<'microphone' | 'actions' | 'tone' | null>(null);
-  const [preferences, setPreferences] = useState<Partial<SettingsState>>({});
-  useEffect(() => {
-    if (!menu) return;
-    let current = true;
-    const unsubscribe = electron()?.subscribe(message => {
-      if (current && message.event === 'settings') setPreferences(previous => ({ ...previous, ...message.state }));
-    });
-    void electron()?.call<SettingsState>('settings', 'snapshot', []).then(value => { if (current) setPreferences(value); }).catch(error => { if (current) setError(String(error)); });
-    return () => { current = false; unsubscribe?.(); };
-  }, [menu]);
   const [success, setSuccess] = useState(true);
   const [styleFeedback, setStyleFeedback] = useState(false);
   const dragging = useRef(false);
@@ -209,7 +200,6 @@ export function Pill() {
           {button('Iniciar gravação', <Mic />, 'startRecordingFromButton')}
           <button className="pill-language" title={t('Idioma')} aria-label={t('Idioma')} aria-expanded={languageMenu} onClick={() => {setLanguageMenu(!languageMenu); setMenu(false);}}><LanguageMark code={state.language} /></button>
           <button ref={moreOptions} title={t('Mais opções')} aria-label={t('Mais opções')} aria-expanded={menu} onClick={() => {
-            if (!menu) setPreferences({});
             setMenu(!menu); setLanguageMenu(false); setSubmenu(null);
             if (!menu) void electron()?.call('workflow', 'refreshMicrophones', []).catch(error => setError(String(error)));
           }}><Settings />{state.updateAvailable && <i className="pill-update-dot" />}</button>
@@ -226,10 +216,10 @@ export function Pill() {
     {menu && <nav data-pill-interactive className="pill-menu" aria-label={t('Mais opções')}>
       <button aria-expanded={submenu === 'microphone'} onClick={() => setSubmenu(submenu === 'microphone' ? null : 'microphone')}><Mic />{t('Microfone')}</button>
       {submenu === 'microphone' && state.microphoneDevices?.map(device => <button key={device.id} disabled={state.microphoneInventoryBusy} aria-pressed={state.quickMicrophoneId === device.id} onClick={() => run('selectQuickMicrophone', device.id)}>{device.label}</button>)}
-      {preferences.applicationStyleRefinementAllowed === true && <>
+      {state.applicationStyleRefinementAllowed === true && <>
         <button aria-expanded={submenu === 'tone'} onClick={() => setSubmenu(submenu === 'tone' ? null : 'tone')}>{t('Tom')}</button>
-        {submenu === 'tone' && writingStyleOptions(preferences.dictationWritingStyle ?? '').map(option => <button key={option.id}
-          aria-pressed={(preferences.dictationWritingStyle ?? '') === option.id} disabled={state.busy}
+        {submenu === 'tone' && writingStyleOptions(state.dictationWritingStyle ?? '').map(option => <button key={option.id}
+          aria-pressed={(state.dictationWritingStyle ?? '') === option.id} disabled={state.busy}
           onClick={() => {
             setMenu(false); moreOptions.current?.focus();
             void electron()?.call('settings', 'savePreference', ['setDictationWritingStyle', [option.id]]).catch(error => setError(String(error)));
