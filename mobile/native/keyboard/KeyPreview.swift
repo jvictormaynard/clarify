@@ -15,7 +15,10 @@ final class KeyPreview: UIView {
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
   func show(_ text: String, key: CGRect, in container: UIView, color: UIColor) {
     let width = max(54, key.width + 22), cap: CGFloat = 54
-    let x = min(max(2, key.midX - width / 2), container.bounds.width - width - 2)
+    let centeredX = key.midX - width / 2
+    var leadingInset: CGFloat = 2
+    if #available(iOS 26.0, *), centeredX < leadingInset { leadingInset = key.minX }
+    let x = min(max(leadingInset, centeredX), container.bounds.width - width - 2)
     let top = max(0, key.minY - cap - 9)
     frame = CGRect(x: x, y: top, width: width, height: key.maxY - top)
     let stemLeft = key.minX - x, stemRight = key.maxX - x
