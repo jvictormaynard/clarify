@@ -22,6 +22,60 @@ jobs:
           #import <objc/runtime.h>
           #import <dlfcn.h>
           #import <stdio.h>
+          #import <string.h>
+          #import <stdint.h>
+          #import <stdlib.h>
+          @interface NSObject (ClientInspection)
+          + (id)sharedAssistant;
+          - (id)initWithAttributedString:(id)text range:(NSRange)range options:(id)options error:(NSError **)error;
+          - (void)requestRewritingOfInput:(id)input rewritingType:(id)type completionHandler:(void (^)(id, id))completion;
+          - (void)requestCancellationForToken:(unsigned long long)token cancelModelInvocations:(BOOL)cancel;
+          - (id)rewrittenString;
+          - (id)options;
+          @end
+          static NSString *constant(void *image,const char *name) {
+            NSString * __unsafe_unretained *ptr=(NSString * __unsafe_unretained *)dlsym(image,name);
+            id value=ptr?*ptr:nil;
+            return [value isKindOfClass:NSString.class]?value:nil;
+          }
+          static int invoke_client(void *image) { @try {
+            Class cls=objc_getClass("TCTextCompositionAssistant");
+            Class inputClass=objc_getClass("TCTextCompositionInput");
+            NSString *type=constant(image,"TCTextCompositionAssistantRewritingTypeMagic");
+            NSString *tokenKey=constant(image,"TCTextCompositionAssistantOptionKeyToken");
+            if(!cls||!inputClass||!type||!tokenKey){puts("client_contract_missing");return 2;}
+            puts("before_shared_factory"); fflush(stdout);
+            id assistant=[cls sharedAssistant];
+            printf("shared_factory_returned=%d class=%s\n",assistant!=nil,assistant?class_getName(object_getClass(assistant)):"nil");fflush(stdout);
+            if(!assistant)return 3;
+            NSError *inputError=nil;
+            NSString *source=@"hello team uh can we move the meeting to tomorrow at three please let me know if that works";
+            unsigned long long token=47084001;
+            id input=[[inputClass alloc] initWithAttributedString:[[NSAttributedString alloc] initWithString:source]
+              range:NSMakeRange(0,source.length) options:@{tokenKey:@(token)} error:&inputError];
+            printf("input_ready=%d error_code=%ld\n",input!=nil,(long)inputError.code);fflush(stdout);
+            if(!input||inputError)return 4;
+            __block BOOL finished=NO;
+            [assistant requestRewritingOfInput:input rewritingType:type completionHandler:^(id output,id error) {
+              dispatch_async(dispatch_get_main_queue(), ^{
+                printf("callback output_class=%s error_class=%s\n",output?class_getName(object_getClass(output)):"nil",error?class_getName(object_getClass(error)):"nil");
+                if([error isKindOfClass:NSError.class])printf("error domain=%s code=%ld\n",[[error domain] UTF8String],(long)[error code]);
+                if(output&&[output respondsToSelector:@selector(rewrittenString)]) {
+                  id text=[output rewrittenString];
+                  if([text isKindOfClass:NSString.class])printf("synthetic_result=%s\n",[text UTF8String]);
+                }
+                finished=YES;fflush(stdout);
+              });
+            }];
+            puts("request_returned");fflush(stdout);
+            NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:30];
+            while(!finished&&[deadline timeIntervalSinceNow]>0)
+              [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+            if(!finished){puts("client_timeout");[assistant requestCancellationForToken:token cancelModelInvocations:YES];return 5;}
+            return 0;
+          } @catch(NSException *exception) {
+            printf("objective_c_exception=%s\n",exception.name.UTF8String);return 6;
+          }}
           uintptr_t inspection_imps[3];
           static void capture(const char *name,const char *selector,int index) {
             Class cls=objc_getClass(name); Method method=cls?class_getInstanceMethod(cls,sel_registerName(selector)):NULL;
@@ -43,9 +97,10 @@ jobs:
               free(methods);
             }
           }
-          int main(void) { @autoreleasepool {
+          int main(int argc,const char **argv) { @autoreleasepool {
             void *image=dlopen("/System/Library/PrivateFrameworks/TextComposer.framework/TextComposer",RTLD_NOW|RTLD_LOCAL);
             printf("TextComposer_loaded=%d\n",image!=NULL);
+            if(argc>1)return invoke_client(image);
             describe("TCGenerativeExperiencesRunner");
             describe("TCTextCompositionAssistant");
             describe("_TtC12TextComposer26TCTextCompositionXPCClient");
@@ -65,8 +120,12 @@ jobs:
           quit
           LLDB
           lldb --batch --source "$RUNNER_TEMP/client-contract/commands.lldb" "$RUNNER_TEMP/client-contract/probe" > "$RUNNER_TEMP/client-contract/disassembly.txt" 2>&1 || true
+          set +e
+          perl -e 'alarm 45; exec @ARGV' "$RUNNER_TEMP/client-contract/probe" invoke > "$RUNNER_TEMP/client-contract/client-invocation.txt" 2>&1
+          echo "process_exit=$?" >> "$RUNNER_TEMP/client-contract/client-invocation.txt"
+          set -e
           rm "$RUNNER_TEMP/client-contract/probe"
-          echo 'Read-only native metadata/disassembly inspection finished. No model or service-worker initialization was invoked.'
+          echo 'Read-only native metadata/disassembly inspection finished. A separate bounded process tested the shared assistant with synthetic input; no service-worker initializer was invoked.'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
