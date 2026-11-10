@@ -405,13 +405,26 @@ test("pill preferences: tone uses the shared saved owner and hides when editing 
   await settingsFixture.rpc("savePreference", "setDictationWritingStyle", ["organized"]);
   await page.addInitScript(() => {
     const listeners = new Set<(message: unknown) => void>();
+    const publishWorkflow = async () => {
+      const saved = await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] });
+      const state = { surface: "idle", uiLanguage: "pt", language: "auto",
+        dictationWritingStyle: saved.dictationWritingStyle,
+        applicationStyleRefinementAllowed: saved.applicationStyleRefinementAllowed };
+      for (const listener of listeners) listener({ event: "workflow", state });
+    };
     (window as any).clarifyDesktop = {
       call: async (channel: string, method: string, args: unknown[]) => {
-        if (channel === "workflow") return;
-        return (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method, args });
+        if (channel === "workflow") {
+          if (method === "refreshMicrophones") await publishWorkflow();
+          return;
+        }
+        if (method !== "savePreference") throw new Error("Invalid renderer channel");
+        const result = await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method, args });
+        await publishWorkflow();
+        return result;
       },
       subscribe: (listener: (message: unknown) => void) => { listeners.add(listener); return () => listeners.delete(listener); },
-      ready: async () => { for (const listener of listeners) listener({ event: "workflow", state: { surface: "idle", uiLanguage: "pt", language: "auto" } }); },
+      ready: publishWorkflow,
       window: async () => {},
     };
   });
@@ -425,9 +438,10 @@ test("pill preferences: tone uses the shared saved owner and hides when editing 
   await expect.poll(async () => (await settingsFixture.rpc("snapshot")).dictationWritingStyle).toBe("natural");
   await settingsFixture.rpc("savePreference", "setDictationCleanupLevel", ["preserve"]);
   await more.click();
-  // Wait for the real Settings snapshot, then verify that no tone can be selected.
+  // The adapter projects the saved controller state through the workflow push.
   await expect.poll(async () => (await settingsFixture.rpc("snapshot")).applicationStyleRefinementAllowed).toBe(false);
   await expect(page.getByRole("button", { name: "Tom", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await page.keyboard.press("Escape"); await expect(more).toBeFocused();
 });
 
