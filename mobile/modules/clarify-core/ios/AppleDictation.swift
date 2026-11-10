@@ -6,6 +6,11 @@ import NaturalLanguage
 enum AppleDictationPreference {
   static let key = "clarify.dictation.appleReview"
   static var enabled: Bool { UserDefaults.standard.bool(forKey: key) }
+  static func canApplyTone(policy: DictationPolicy, capabilities: ProcessingCapabilities) -> Bool {
+    enabled && [.legacy, .natural, .clarity].contains(policy.mode) &&
+      capabilities.explicitPolicy && capabilities.supports("cleanup_levels", "preserve")
+  }
+
 }
 @MainActor enum AppleDictation {
   static var available: Bool {

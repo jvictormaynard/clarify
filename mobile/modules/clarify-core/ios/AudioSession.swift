@@ -123,9 +123,11 @@ final class ClarifyAudioSession: NSObject {
     state.dictationMode = policy.mode.rawValue
     state.dictationActionID = policy.actionID
     state.dictationModes = DictationPolicy.selectableModes(capabilities: destination.processingCapabilities)
-    state.toneAllowed = destination.configured && destination.outputPreferencesSupported &&
+    let localTone = AppleDictationPreference.canApplyTone(policy: policy, capabilities: destination.processingCapabilities)
+    state.outputPreferencesSupported = destination.outputPreferencesSupported || (destination.configured && localTone)
+    state.toneAllowed = destination.configured && (localTone || (destination.outputPreferencesSupported &&
       policy.canApplyTone(capabilities: destination.processingCapabilities, catalog: destination.textActions, computer: destination.computerMode,
-        outputLanguage: store?.outputPreferences().language ?? .auto)
+        outputLanguage: store?.outputPreferences().language ?? .auto)))
     try? store?.write(state, to: "state.json")
     liveActivity.update(state)
     publishMeter()

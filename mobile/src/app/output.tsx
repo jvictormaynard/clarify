@@ -25,7 +25,7 @@ export default function Output() {
   const appleGeneration = useRef(0);
   const supportGeneration = useRef(0);
   const refreshInFlight = useRef(false);
-  const supported = account?.outputPreferencesSupported === true;
+  const supported = account?.outputPreferencesSupported === true || (appleSettings?.enabled === true && appleSettings.available);
   const busy = accountBusy || isBusy(state);
   const destination = useRef({ mode: account?.mode, busy, supported });
   useLayoutEffect(() => {
@@ -92,7 +92,7 @@ export default function Output() {
       disabled={pending || busy || !account?.mode}
       onPress={() => { void load(); void refreshSupport(); }}>{t('Tentar carregar novamente')}</Button>}
     {!preferences && !error && <ActivityIndicator />}
-    <DictationPolicyControls outputLanguage={preferences?.language} more={preferences && <><Section title={t('Idioma de saída')}>
+    <DictationPolicyControls localTone={appleSettings?.enabled === true && appleSettings.available} outputLanguage={preferences?.language} more={preferences && <><Section title={t('Idioma de saída')}>
         {[{ value: 'auto', label: `🌐 ${t('Idioma original')}` }, ...targetLanguages].map(item => <ChoiceRow key={item.value}
           testID={`output.language.${item.value}`} title={item.label} selected={preferences.language === item.value} disabled={pending || refreshing || (!supported && item.value !== 'auto')}
           onPress={() => void save('language', item.value)} />)}

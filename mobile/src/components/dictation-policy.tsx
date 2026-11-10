@@ -8,7 +8,7 @@ import { errorMessage } from '../errors';
 import { t } from '../i18n';
 import { dictationPolicyOptions } from '../dictation-policy';
 
-export function DictationPolicyControls({ outputLanguage, tone, more }: { outputLanguage?: OutputLanguage; tone?: React.ReactNode; more?: React.ReactNode }) {
+export function DictationPolicyControls({ outputLanguage, tone, more, localTone = false }: { outputLanguage?: OutputLanguage; tone?: React.ReactNode; more?: React.ReactNode; localTone?: boolean }) {
   const c = usePalette();
   const { account } = useClarify();
   const context = account?.historyContext ?? '';
@@ -46,7 +46,7 @@ export function DictationPolicyControls({ outputLanguage, tone, more }: { output
         onPress={() => void save(mode.value)} />)}
       {options.compatibilityLabel && <ChoiceRow testID="output.policy.compatibility" title={t(options.compatibilityLabel)} selected disabled onPress={() => {}} />}
     </Section>
-    {options.toneAllowed && tone}
+    {(options.toneAllowed || (localTone && policy && ['legacy', 'natural', 'clarity'].includes(policy.mode))) && tone}
     <TextButton testID="output.more" expanded={expanded} onPress={() => setExpanded(!expanded)}>{t('Mais opções')}</TextButton>
     {expanded && <Section title={t('Mais opções')}>
     <Text style={[ui.small, { color: c.muted }]}>{t('Idioma e tom se aplicam à revisão e às ações de texto.')}</Text>
