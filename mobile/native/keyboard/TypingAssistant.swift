@@ -12,7 +12,13 @@ final class TypingAssistant {
   var autocorrectionEnabled: Bool {
     didSet { if oldValue != autocorrectionEnabled { correction.reset() } }
   }
-  init(autocorrectionEnabled: Bool = true) { self.autocorrectionEnabled = autocorrectionEnabled }
+  init(autocorrectionEnabled: Bool = true,
+       now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    self.autocorrectionEnabled = autocorrectionEnabled; self.now = now
+  }
+  private let now: () -> TimeInterval
+  private var pendingSpace: (context: TypingContext, time: TimeInterval)?
+  private var inputGeneration: UInt = 0
   private let checker = UITextChecker()
   private var correction = TypingCorrection()
   private var protectedWords = Set<String>()
@@ -32,7 +38,14 @@ final class TypingAssistant {
   func protectVocabulary(_ words: [String]) {
     vocabularyWords = Set(words.flatMap { $0.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init) })
   }
-  func reset() { correction.reset() }
+  func reset() { invalidateSpace(); correction.reset() }
+  private func invalidateSpace() { inputGeneration &+= 1; pendingSpace = nil }
+  private func matches(_ actual: TypingContext?, _ expected: TypingContext) -> Bool {
+    guard let actual, actual.document == expected.document, actual.after == expected.after,
+          !actual.hasSelection, !actual.before.isEmpty, !expected.before.isEmpty else { return false }
+    // A proxy can expose a different bounded suffix after inserting or deleting.
+    return actual.before.hasSuffix(expected.before) || expected.before.hasSuffix(actual.before)
+  }
   private func context(_ proxy: UITextDocumentProxy) -> TypingContext? {
     guard let before = proxy.documentContextBeforeInput else { return nil }
     return TypingContext(document: proxy.documentIdentifier, before: before,
@@ -77,18 +90,42 @@ final class TypingAssistant {
     }
   }
   func insert(_ text: String, into proxy: UITextDocumentProxy) {
+    let previousSpace = pendingSpace; invalidateSpace()
+    let generation = inputGeneration, time = now(), before = context(proxy)
+    let permitsShortcut = proxy.isSecureTextEntry != true &&
+      [.default, .alphabet, .twitter].contains(proxy.keyboardType ?? .default)
+    if text == " ", permitsShortcut, let before, !before.hasSelection,
+       let previousSpace, previousSpace.context == before,
+       (0...0.3).contains(time - previousSpace.time) {
+      correction.reset()
+      var expected = before; expected.before.removeLast()
+      proxy.deleteBackward()
+      guard inputGeneration == generation, matches(context(proxy), expected) else { return }
+      proxy.insertText(". "); return
+    }
+    var expected = before
+    expected?.before += text
     if enabled(proxy), [" ", "\n", ".", ",", "!", "?", ";", ":"].contains(text),
        let context = context(proxy), let word = TypingCorrection.word(in: context),
        let guess = guesses(word, context: context).first,
        let edit = correction.replacement(in: context, candidate: guess, separator: text, automatic: true) {
+      expected?.before = String(context.before.dropLast(edit.deleteCount)) + edit.text
       apply(edit, to: proxy)
     } else { proxy.insertText(text) }
+    if text == " ", permitsShortcut, generation == inputGeneration,
+       let before, !before.hasSelection, let expected, let after = context(proxy),
+       matches(after, expected), after.before.last == " ",
+       let character = after.before.dropLast().last, character.isLetter || character.isNumber {
+      pendingSpace = (after, time)
+    }
   }
   func delete(in proxy: UITextDocumentProxy) {
+    invalidateSpace()
     if let context = context(proxy), let edit = correction.revert(in: context) { apply(edit, to: proxy) }
     else { proxy.deleteBackward() }
   }
   func choose(_ suggestion: Suggestion, in proxy: UITextDocumentProxy) {
+    invalidateSpace()
     guard enabled(proxy), context(proxy) == suggestion.context else { return }
     if suggestion.undo {
       if let edit = correction.revert(in: suggestion.context, keepSeparator: true) { apply(edit, to: proxy) }

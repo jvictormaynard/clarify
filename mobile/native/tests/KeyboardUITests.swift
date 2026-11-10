@@ -1412,6 +1412,52 @@ final class KeyboardUITests: XCTestCase {
       assistant.insert(" ", into: field); XCTAssertEqual(field.before, "obrigaddo ")
       field.autocorrectionType = .yes; field.before = "victor@obrigaddo"
       assistant.insert(" ", into: field); XCTAssertEqual(field.before, "victor@obrigaddo ")
+      var time: TimeInterval = 10
+      let shortcut = TypingAssistant(autocorrectionEnabled: false, now: { time })
+      func start(_ text: String = "word") {
+        shortcut.reset(); field.before = text; field.after = ""; field.selectedText = nil
+        field.contextAvailable = true; field.isSecureTextEntry = false; field.keyboardType = .default
+        field.didInsert = nil; time += 1
+      }
+      start("1QQQQeq"); shortcut.insert(" ", into: field); time += 0.1
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "1QQQQeq. ")
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "1QQQQeq.  ")
+      start(String(repeating: "word ", count: 20) + "word")
+      shortcut.insert(" ", into: field); shortcut.insert(" ", into: field)
+      XCTAssertTrue(field.before.hasSuffix("word. "), "Bounded proxy context must support the shortcut")
+      for text in ["", "word.", "word!", "word ", "\n"] {
+        start(text); shortcut.insert(" ", into: field); shortcut.insert(" ", into: field)
+        XCTAssertEqual(field.before, text + "  ")
+      }
+      start(); shortcut.insert(" ", into: field); time += 1
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      start(); shortcut.insert(" ", into: field); field.documentIdentifier = UUID()
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      start(); shortcut.insert(" ", into: field); field.after = "changed"
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      start(); shortcut.insert(" ", into: field); field.selectedText = "selection"
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      start(); shortcut.insert(" ", into: field); shortcut.reset()
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      start(); shortcut.insert(" ", into: field); shortcut.delete(in: field); field.before = "word "
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      for type in [UIKeyboardType.emailAddress, .URL, .numberPad] {
+        start(); field.keyboardType = type
+        shortcut.insert(" ", into: field); shortcut.insert(" ", into: field)
+        XCTAssertEqual(field.before, "word  ")
+      }
+      start(); field.isSecureTextEntry = true
+      shortcut.insert(" ", into: field); shortcut.insert(" ", into: field)
+      XCTAssertEqual(field.before, "word  ")
+      start(); field.contextAvailable = false
+      shortcut.insert(" ", into: field); shortcut.insert(" ", into: field)
+      XCTAssertEqual(field.before, "word  ")
+      start(); field.didInsert = { value in
+        if value == "word " { shortcut.insert("q", into: field) }
+      }
+      shortcut.insert(" ", into: field); field.didInsert = nil; field.before = "word "
+      shortcut.insert(" ", into: field)
+      XCTAssertEqual(field.before, "word  ", "Reentrant input must invalidate the earlier Space")
     }
   }
   func testInsertionRejectsAResultClearedByAnotherDestinationBeforeTheNextPoll() async throws {
