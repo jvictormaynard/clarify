@@ -1414,7 +1414,7 @@ final class KeyboardUITests: XCTestCase {
       assistant.insert(" ", into: field); XCTAssertEqual(field.before, "victor@obrigaddo ")
       var time: TimeInterval = 10
       let shortcut = TypingAssistant(autocorrectionEnabled: false, now: { time })
-      func start(_ text: String = "word") {
+      @MainActor func start(_ text: String = "word") {
         shortcut.reset(); field.before = text; field.after = ""; field.selectedText = nil
         field.contextAvailable = true; field.isSecureTextEntry = false; field.keyboardType = .default
         field.didInsert = nil; time += 1
