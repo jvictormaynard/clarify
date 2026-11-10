@@ -6,7 +6,7 @@ module AppIdleTrace
   end
 
   def self.delegate(source)
-    boundary = /didFinishLaunchingWithOptions[^\{]+\{\n/
+    boundary = /^[ \t]*didFinishLaunchingWithOptions launchOptions: \[UIApplication\.LaunchOptionsKey: Any\]\? = nil\n[ \t]*\) -> Bool \{\n/
     replace_once(source, boundary, source.match(boundary).to_s + "    ClarifyAppIdleTrace.start()\n")
   end
 
