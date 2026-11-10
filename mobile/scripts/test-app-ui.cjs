@@ -116,6 +116,7 @@ async function main() {
       if (name === 'Pods.xcodeproj') fs.cpSync(source, target, { recursive: true });
       else fs.symlinkSync(source, target);
     }
+    fs.symlinkSync(path.join(original, 'build'), path.join(fixture, 'build'), 'dir');
     run('python3', ['-c', 'import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,"rb")); d["ClarifyCloudURL"]=sys.argv[2]; d["NSAppTransportSecurity"]={"NSAllowsArbitraryLoads":True}; plistlib.dump(d,open(p,"wb"))', path.join(fixture, 'Clarify/Info.plist'), endpoint]);
     run('ruby', [path.join(root, 'scripts/app-ui-project.rb'), root, fixture, endpoint]);
     const traceSources = path.join(output, 'idle-trace-sources');
