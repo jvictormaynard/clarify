@@ -27,6 +27,24 @@ STANDARD = set(JOBS) - {"installer"}
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def release_jobs(component: str) -> set[str]:
+    """Return full release coverage; policy is a separate mandatory gate."""
+    if component == "desktop":
+        return {
+            "static",
+            "python",
+            "qt",
+            "settings_unit",
+            "settings_browser",
+            "desktop_shell",
+            "package",
+            "audit",
+        }
+    if component == "mobile":
+        return {"mobile", "ios", "audit"}
+    raise ValueError(f"Unknown release component: {component}")
+
+
 def commands(task, repo=ROOT):
     repo = Path(repo).resolve()
     python = sys.executable
