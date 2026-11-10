@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 
-from ci.tasks import JOBS, STANDARD
+from ci.tasks import JOBS
 from scripts.sync_locales import CATALOG_PATH, DESKTOP_KEYS_PATH, native_catalog
 
 COMPONENTS = (
@@ -23,6 +23,13 @@ COMPONENTS = (
 DESKTOP_BUILD = {"desktop", "settings", "desktop_shell", "package"}
 SHARED_CONSUMERS = DESKTOP_BUILD | {"server", "mobile", "ios"}
 RELEASE_INTENT = ".github/release-intent.json"
+POLICY_TOOLS = {
+    "scripts/release_delivery.py",
+    "scripts/release_candidate.py",
+    "scripts/app_store_handoff.py",
+    "scripts/check_agent_skills.py",
+    "scripts/format_staged.py",
+}
 FULL_INPUTS = {
     "ci/impact.py",
     "ci/tasks.py",
@@ -173,6 +180,25 @@ def path_components(path: str) -> set[str]:
         return {"desktop", "settings", "desktop_shell"}
     if path.startswith("tests/policy/"):
         return set()
+    if path in POLICY_TOOLS:
+        return {"static"}
+    if path.startswith(("desktop/unit-tests/", "desktop/test-support/")) or path in {
+        "desktop/vitest.config.ts",
+        "desktop/tsconfig.unit.json",
+        "desktop/scripts/test-unit.mjs",
+    }:
+        return {"settings_unit"}
+    if path.startswith(
+        (".github/actions/ios-env/", ".github/actions/ios-fixture-toolchain/")
+    ):
+        return {"mobile", "ios"}
+    if path.startswith(".github/actions/python-env/"):
+        return DESKTOP_BUILD.copy()
+    if path in {
+        ".github/workflows/release-preparation.yml",
+        ".github/workflows/release-promotion.yml",
+    }:
+        return set()
     if path in {"LICENSE", "THIRD_PARTY_NOTICES.md"}:
         return {"desktop", "package", "desktop_shell"}
     if (
@@ -264,6 +290,15 @@ def path_components(path: str) -> set[str]:
     }:
         return {"desktop_shell"}
     if path.startswith("desktop/"):
+        # Page content cannot change Electron startup or native window ownership.
+        # Shell entry points, pill, titlebar, platform adapter and public assets
+        # retain the Windows lane below.
+        if path.startswith("desktop/src/pages/") or path in {
+            "desktop/src/styles/pages.css",
+            "desktop/src/styles/snippets.css",
+            "desktop/src/styles/provider-brands.css",
+        }:
+            return {"settings"}
         if path.startswith(
             ("desktop/src/", "desktop/tests/", "desktop/public/")
         ) or path in {
@@ -313,6 +348,8 @@ def select_jobs(paths, repo=None):
         mapping = {
             "desktop": {"static", "python", "qt"},
             "settings": {"settings_unit", "settings_browser"},
+            "static": {"static"},
+            "settings_unit": {"settings_unit"},
             **{
                 name: {name}
                 for name in (
@@ -330,8 +367,6 @@ def select_jobs(paths, repo=None):
             selected.update(mapping[component])
         if path.startswith("tests/policy/"):
             selected.add("static")
-        if path.startswith(("desktop/unit-tests/", "desktop/test-support/")):
-            selected.update({"settings_unit", "settings_browser"})
         if dependency_input(path):
             selected.add("audit")
     if "installer" in selected:
@@ -339,29 +374,116 @@ def select_jobs(paths, repo=None):
     return selected
 
 
-def event_jobs(repo, event_name, event, head):
+def release_component(repo, revision=None):
+    """Read the selected metadata from the tested Git blob, or local candidate."""
+    if revision:
+        mode = subprocess.check_output(
+            ["git", "-C", str(repo), "ls-tree", revision, "--", RELEASE_INTENT],
+            timeout=30,
+        )
+        if not mode.startswith((b"100644 blob ", b"100755 blob ")):
+            raise ValueError("Release intent must be a regular Git blob")
+        raw = subprocess.check_output(
+            ["git", "-C", str(repo), "show", f"{revision}:{RELEASE_INTENT}"], timeout=30
+        )
+    else:
+        raw = (Path(repo) / RELEASE_INTENT).read_bytes()
+    intent = json.loads(raw, object_pairs_hook=json_object)
+    if (
+        not isinstance(intent, dict)
+        or type(intent.get("schema")) is not int
+        or intent["schema"] != 2
+        or intent.get("component") not in {"desktop", "mobile"}
+    ):
+        raise ValueError("Invalid release validation scope")
+    return intent["component"]
+
+
+def select_candidate(paths, repo, revision=None):
+    """Keep release coverage explicit without adding unrelated client platforms."""
+    from ci.tasks import release_jobs
+
+    paths = set(paths)
+    scopes = set()
+    if RELEASE_INTENT in paths:
+        scopes.add(release_component(repo, revision))
+        paths.remove(RELEASE_INTENT)
+    if "version.py" in paths:
+        scopes.add("desktop")
+    selected = select_jobs(paths, repo=repo)
+    for scope in scopes:
+        selected.update(release_jobs(scope))
+    return selected
+
+
+def explain(paths, selected, repo=None):
+    """Explain paths that select jobs. This is diagnostic data, not authority."""
+    reasons = {job: [] for job in sorted(selected)}
+    for path in sorted(paths):
+        for job in select_jobs([path], repo=repo) & set(selected):
+            reasons[job].append(path)
+    return reasons
+
+
+def event_selection(repo, event_name, event, head):
     if not re.fullmatch(r"[0-9a-f]{40}", head):
         raise ValueError("CI head must be a complete commit SHA")
-    if event_name == "push":
-        return set(STANDARD)
-    if event_name in {"schedule", "workflow_dispatch"}:
-        return set(JOBS)
-    if event_name != "pull_request":
+
+    def result(jobs, paths=(), reason=""):
+        return {
+            "jobs": sorted(jobs),
+            "paths": sorted(paths),
+            "reason": reason,
+            "reasons": explain(paths, jobs, repo),
+        }
+
+    if event_name == "schedule":
+        return result(JOBS, reason="Scheduled full validation")
+    if event_name == "workflow_dispatch":
+        scope = event.get("inputs", {}).get("scope", "full")
+        if scope == "full":
+            return result(JOBS, reason="Manual full validation")
+        from ci.tasks import release_jobs
+
+        return result(release_jobs(scope), reason=f"Manual {scope} release validation")
+    if event_name not in {"pull_request", "push"}:
         raise ValueError("Unsupported validation event")
     try:
-        base = event["pull_request"]["base"]["sha"]
+        base = (
+            event["before"]
+            if event_name == "push"
+            else event["pull_request"]["base"]["sha"]
+        )
         paths = changed_paths(repo, base, head)
         if git_links(repo, (base, head), paths):
-            return set(JOBS)
-        selected = select_jobs(paths, repo=repo)
+            return result(
+                JOBS, paths, "Linked validation inputs require full validation"
+            )
+        # Release scope is read only if metadata changed; ordinary edits need no intent.
+        if RELEASE_INTENT in paths or "version.py" in paths:
+            selected = select_candidate(paths, repo, head)
+        else:
+            selected = select_jobs(paths, repo=repo)
         if CATALOG_PATH in paths and native_catalog_unchanged(repo, base, head):
             other = select_jobs([p for p in paths if p != CATALOG_PATH], repo=repo)
             if "ios" not in other:
                 selected.discard("ios")
-        return selected
-    except (KeyError, OSError, ValueError, subprocess.SubprocessError):
+        reason = "Affected validation"
+        if selected == set(JOBS):
+            reason = (
+                "Full validation required by changed controls or unclassified paths"
+            )
+        return result(selected, paths, reason)
+    except (KeyError, OSError, ValueError, subprocess.SubprocessError) as error:
         # An unavailable diff is a request for full validation, never no checks.
-        return set(JOBS)
+        return result(
+            JOBS,
+            reason=f"Full validation: cannot establish impact ({type(error).__name__})",
+        )
+
+
+def event_jobs(repo, event_name, event, head):
+    return set(event_selection(repo, event_name, event, head)["jobs"])
 
 
 def git_links(repo, revisions, paths, *, index=False):

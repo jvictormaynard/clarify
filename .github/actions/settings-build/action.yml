@@ -75,8 +75,6 @@ runs:
         QT_QPA_PLATFORM: offscreen
       run: |
         $env:CLARIFY_TEST_FIXTURE = Join-Path $env:GITHUB_WORKSPACE 'tests/web_settings_fixture.py'
-        & $env:CLARIFY_TEST_PYTHON ../scripts/ci.py --task settings_unit
-        if ($LASTEXITCODE -ne 0) { throw 'Settings unit tests failed.' }
         & $env:CLARIFY_TEST_PYTHON ../scripts/ci.py --task settings_browser
         if ($LASTEXITCODE -ne 0) { throw 'Settings browser, bridge or boot checks failed.' }
     - name: Build Electron shell and dependency inventory

@@ -99,7 +99,7 @@ test('Windows builds embed the complete Electron shell without a Rust toolchain'
   const action = parseDocument(readFileSync(resolve(root, '.github/actions/settings-build/action.yml'), 'utf8')).toJS();
   const commands = action.runs.steps.map(step => step.run || '').join('\n');
   for (const command of ['npm ci', 'npm audit', 'npm run build',
-    '../scripts/ci.py --task settings_unit', '../scripts/ci.py --task settings_browser',
+    '../scripts/ci.py --task settings_browser',
     'build-desktop.ps1 -Python $env:BUILD_PYTHON -SkipInstall']) assert.ok(commands.includes(command), command);
   for (const job of [ci.jobs.package, workflows.get('release.yml').jobs.build_candidate]) {
     const settings = job.steps.findIndex(step => step.uses === './.github/actions/settings-build');
@@ -107,6 +107,7 @@ test('Windows builds embed the complete Electron shell without a Rust toolchain'
     assert.ok(settings >= 0 && settings < packaging);
     assert.ok(job.steps[packaging].run.includes('-DesktopShellDirectory dist\\desktop-shell'));
   }
+  assert.ok(!commands.includes('--task settings_unit'), 'Browser/build action must not repeat the independent unit lane');
 });
 
 test('Electron native validation is selected, isolated and retains failure evidence', () => {
@@ -158,6 +159,13 @@ test('native iOS validation includes app, keyboard, library and unsigned compila
   assert.ok(appEvidence.with.name.includes('$' + '{{ matrix.profile }}'));
   assert.deepEqual(ios.permissions, { contents: 'read' });
   assert.deepEqual(new Set(ios.jobs.validate.needs), new Set(['native', 'build', 'app']));
+  const fixtureSetup = './.github/actions/ios-fixture-toolchain';
+  assert.ok(ios.jobs.native.steps.some(step => step.uses === fixtureSetup));
+  const signed = workflows.get('ios-testflight.yml').jobs.publish.steps;
+  const setupIndex = signed.findIndex(step => step.uses === fixtureSetup);
+  const fixtureIndex = signed.findIndex(step => step.name === 'Test installed keyboard typing and activation');
+  assert.ok(setupIndex >= 0 && setupIndex < fixtureIndex);
+  assert.equal(signed[setupIndex].if, signed[fixtureIndex].if);
 });
 
 test('focused installed-keyboard validation is manual and cannot report full acceptance', () => {
@@ -353,7 +361,7 @@ test('optional Bitrise iOS routing isolates forks and selects the matching Xcode
   assert.ok(cache.with['restore-keys'].includes('env.DEVELOPER_DIR'));
 });
 
-test('PR proof upload is last and main authentication has read-only access', () => {
+test('PR and main proof upload is last and authentication has read-only access', () => {
   for (const id of ['plan', 'required']) {
     assert.deepEqual(ci.jobs[id].permissions, {contents: 'read', actions: 'read', 'pull-requests': 'read'});
     assert.equal(ci.jobs[id].steps.find(s => s.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 0);
@@ -366,7 +374,7 @@ test('PR proof upload is last and main authentication has read-only access', () 
   assert.ok(steps.at(-2).run.includes('--emit-proof'));
   const upload = steps.at(-1);
   assert.match(upload.uses, /^actions\/upload-artifact@/);
-  assert.equal(upload.if, "github.event_name == 'pull_request'");
+  assert.equal(upload.if, "github.event_name == 'pull_request' || (github.event_name == 'push' && github.repository == 'jvictormaynard/clarify')");
   assert.equal(steps.at(-2).if, upload.if);
   assert.equal(upload.with.name, 'ci-proof-$' + '{{ github.run_id }}-$' + '{{ github.run_attempt }}');
   assert.equal(upload.with['if-no-files-found'], 'error');

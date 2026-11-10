@@ -581,12 +581,6 @@ def verify_source(api, expected, *, building=False, allow_published=False):
             api, "desktop", expected["source_sha"], expected["tag"]
         )
         require(intent["version"] == expected["version"], "Reviewed version differs")
-        if building:
-            require(
-                api.request("GET", "/git/ref/heads/main")["object"]["sha"]
-                == expected["source_sha"],
-                "Stable build source is stale against main",
-            )
         if not allow_published:
             release.require_new_desktop_release(api, intent)
     else:

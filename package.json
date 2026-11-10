@@ -14,6 +14,7 @@
     "deploy": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/deploy.ps1",
     "ci": "python scripts/ci.py",
     "ci:plan": "python scripts/ci.py --plan",
+    "ci:quick": "python scripts/ci.py --quick",
     "ci:full": "python scripts/ci.py --full"
   }
 }

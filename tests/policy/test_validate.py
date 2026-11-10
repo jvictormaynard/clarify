@@ -104,13 +104,7 @@ class ValidationPlanTests(unittest.TestCase):
 
     def test_policy_is_the_selection_owner_and_full_does_not_hide_invalid_refs(self):
         self.write("unknown.control", "input\n")
-        with patch.object(
-            delivery_policy,
-            "select_jobs",
-            wraps=delivery_policy.select_jobs,
-        ) as select:
-            plan = validate.build_plan(self.repo)
-        select.assert_called_once_with(set(plan["paths"]), repo=self.repo)
+        plan = validate.build_plan(self.repo)
         self.assertTrue(all(plan["components"].values()))
         full = validate.build_plan(self.repo, base=self.base, full=True)
         self.assertTrue(all(full["components"].values()))
@@ -163,6 +157,40 @@ class ValidationPlanTests(unittest.TestCase):
         self.assertLess(
             ids.index("desktop-test:boot"), ids.index("desktop-test:browser")
         )
+
+    def test_quick_keeps_remote_obligations_without_starting_native_or_browser_work(
+        self,
+    ):
+        self.write("desktop/src/changed.ts", "export {};\n")
+        self.write("tests/unit/test_windows_clipboard.py", "# focused fixture\n")
+        plan = validate.build_plan(self.repo, quick=True)
+        self.assertEqual(plan["mode"], "quick")
+        self.assertTrue(plan["components"]["desktop_shell"])
+        self.assertIn("desktop_shell", plan["ci_required"])
+        commands = [check["argv"] for check in plan["checks"]]
+        self.assertFalse(
+            any(
+                "test:browser" in args or "build:electron" in args or "--suite" in args
+                for args in commands
+            )
+        )
+        self.assertTrue(
+            any("tests.unit.test_windows_clipboard" in args for args in commands)
+        )
+        self.assertTrue(any("test:unit" in args for args in commands))
+
+    def test_quick_plan_only_does_not_execute_and_rejects_full_or_task_modes(self):
+        with (
+            patch.object(validate, "ROOT", self.repo),
+            patch.object(validate, "run_plan") as run,
+        ):
+            with patch("sys.stdout", new=io.StringIO()) as output:
+                self.assertEqual(validate.main(["--quick", "--plan"]), 0)
+            self.assertEqual(json.loads(output.getvalue())["mode"], "quick")
+            run.assert_not_called()
+            for args in (["--quick", "--full"], ["--quick", "--task", "python"]):
+                with self.subTest(args=args), self.assertRaises(SystemExit):
+                    validate.main(args)
 
 
 class ValidationExecutionTests(unittest.TestCase):

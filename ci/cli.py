@@ -25,7 +25,7 @@ def git(repo, *arguments):
     ).stdout
 
 
-def build_plan(repo, base="origin/main", full=False):
+def build_plan(repo, base="origin/main", full=False, quick=False):
     repo = Path(repo).resolve()
     try:
         head = git(repo, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
@@ -50,7 +50,15 @@ def build_plan(repo, base="origin/main", full=False):
         full = full or impact.git_links(repo, (merge_base, head), paths, index=True)
     except (OSError, subprocess.SubprocessError) as error:
         raise ValueError("Cannot inspect validation input modes") from error
-    jobs = impact.select_jobs(paths, repo=repo) if not full else set(JOBS)
+    if full:
+        jobs = set(JOBS)
+    elif impact.RELEASE_INTENT in paths or "version.py" in paths:
+        try:
+            jobs = impact.select_candidate(paths, repo)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            jobs = set(JOBS)
+    else:
+        jobs = impact.select_jobs(paths, repo=repo)
     checks = [
         {
             "id": "diff",
@@ -64,11 +72,18 @@ def build_plan(repo, base="origin/main", full=False):
             "argv": ["git", "diff", "--cached", "--check", head, "--"],
             "cwd": str(repo),
         },
-        *commands("policy", repo),
-        *[check for job in JOBS if job in jobs for check in commands(job, repo)],
     ]
+    if quick:
+        from ci.quick import checks as quick_checks
+
+        checks.extend(quick_checks(repo, paths, jobs))
+    else:
+        checks.extend(commands("policy", repo))
+        checks.extend(
+            check for job in JOBS if job in jobs for check in commands(job, repo)
+        )
     for platform in ("Windows" if os.name != "nt" else "Linux",):
-        if jobs & {"python", "qt"}:
+        if not quick and jobs & {"python", "qt"}:
             checks.append(
                 {
                     "id": "python-other-platform",
@@ -85,6 +100,9 @@ def build_plan(repo, base="origin/main", full=False):
         "head": head,
         "paths": sorted(paths),
         "full": full,
+        "mode": "quick" if quick else ("full" if full else "affected"),
+        "ci_required": ["policy", *sorted(jobs)],
+        "reasons": impact.explain(paths, jobs, repo),
         "components": {job: job in jobs for job in JOBS},
         "checks": checks,
     }
@@ -230,7 +248,12 @@ def run_plan(plan, timeout=3600, check_timeout=1800):
         if states & {"failed", "cancelled", "timed_out"}
         else ("incomplete" if "unexecuted" in states else "passed")
     )
-    return {"schema": 1, "status": status, "plan": plan, "results": results}
+    report = {"schema": 1, "status": status, "plan": plan, "results": results}
+    if plan.get("mode") == "quick":
+        report.update(
+            scope="quick", ci_status="unverified", ci_required=plan["ci_required"]
+        )
+    return report
 
 
 def positive_seconds(value):
@@ -252,13 +275,20 @@ def main(arguments=None):
     mode.add_argument("--emit-proof", metavar="PATH")
     mode.add_argument("--task", choices=("policy", *JOBS))
     mode.add_argument("--list-tasks", action="store_true")
+    mode.add_argument(
+        "--quick",
+        action="store_true",
+        help="Run bounded local checks; CI obligations remain open",
+    )
     parser.add_argument("--base", default="origin/main")
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--shard")
-    parser.add_argument("--timeout", type=positive_seconds, default=3600)
-    parser.add_argument("--check-timeout", type=positive_seconds, default=1800)
+    parser.add_argument("--timeout", type=positive_seconds)
+    parser.add_argument("--check-timeout", type=positive_seconds)
     args = parser.parse_args(arguments)
+    if args.quick and args.full:
+        parser.error("--quick cannot be combined with --full")
     if args.shard and args.task != "python":
         parser.error("--shard requires --task python")
     try:
@@ -291,7 +321,10 @@ def main(arguments=None):
             head = git(ROOT, "rev-parse", "HEAD").decode().strip()
             if head != os.environ["GITHUB_SHA"]:
                 raise ValueError("The checked-out source does not match the CI event")
-            jobs = impact.event_jobs(ROOT, os.environ["GITHUB_EVENT_NAME"], event, head)
+            selection = impact.event_selection(
+                ROOT, os.environ["GITHUB_EVENT_NAME"], event, head
+            )
+            jobs = set(selection["jobs"])
             jobs, reuse = evidence.plan(ROOT, head, jobs, os.environ)
             runners = impact.runner_profile(
                 os.environ.get("CI_RUNNER_PROVIDER", "github"),
@@ -306,6 +339,35 @@ def main(arguments=None):
                 "a", encoding="utf-8"
             ) as output:
                 output.writelines(f"{key}={value}\n" for key, value in outputs.items())
+            if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
+                lines = [
+                    "## Validation plan",
+                    "",
+                    selection["reason"],
+                    "",
+                    "| Task | Decision | Changed inputs |",
+                    "| --- | --- | --- |",
+                ]
+                for job in JOBS:
+                    decision = (
+                        "run"
+                        if job in jobs
+                        else (
+                            "verified PR coverage"
+                            if job in selection["jobs"]
+                            else "not affected"
+                        )
+                    )
+                    inputs = [
+                        p.replace("|", "\\|").replace("`", "")
+                        for p in selection["reasons"].get(job, [])
+                    ]
+                    label = ", ".join(inputs[:3]) + (
+                        f" (+{len(inputs) - 3})" if len(inputs) > 3 else ""
+                    )
+                    lines.append(f"| {job} | {decision} | {label} |")
+                with Path(summary).open("a", encoding="utf-8") as stream:
+                    stream.write("\n".join(lines) + "\n")
             print(
                 json.dumps(
                     {
@@ -313,6 +375,7 @@ def main(arguments=None):
                         "jobs": sorted(jobs),
                         "runners": runners,
                         "reuse": reuse,
+                        "selection": selection,
                     }
                 )
             )
@@ -324,12 +387,30 @@ def main(arguments=None):
                     check["argv"].extend(["--shard", args.shard])
             plan = {"schema": 2, "task": args.task, "checks": checks}
         else:
-            plan = build_plan(ROOT, base=args.base, full=args.full)
+            plan = build_plan(ROOT, base=args.base, full=args.full, quick=args.quick)
         if args.plan:
             print(json.dumps(plan, indent=2))
             return 0
-        report = run_plan(plan, timeout=args.timeout, check_timeout=args.check_timeout)
-        print(json.dumps(report, indent=2))
+        report = run_plan(
+            plan,
+            timeout=args.timeout or (300 if args.quick else 3600),
+            check_timeout=args.check_timeout or (120 if args.quick else 1800),
+        )
+        if args.quick:
+            print(
+                json.dumps(
+                    {
+                        "scope": "quick",
+                        "status": report["status"],
+                        "ci_status": "unverified",
+                        "checks": report["results"],
+                        "ci_required": plan["ci_required"],
+                    },
+                    indent=2,
+                )
+            )
+        else:
+            print(json.dumps(report, indent=2))
         return {"passed": 0, "failed": 1, "incomplete": 2}[report["status"]]
     except (KeyError, OSError, ValueError, subprocess.SubprocessError) as error:
         print(json.dumps({"status": "failed", "error": str(error)}))

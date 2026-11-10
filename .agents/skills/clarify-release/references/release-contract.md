@@ -39,15 +39,16 @@ Release owners are:
 - `tests/policy/test_release_delivery.py`, `test_release_candidate.py`,
   `test_release_channels.py`, `test_release_preflight.py`: isolated policy evidence
 
-Use `python scripts/run_tests.py --suite policy` and applicable validation from
-`docs/ci-delivery.md`. Canonical release verification authenticates repository,
+Use the local and remote validation boundaries in `docs/ci-delivery.md`.
+Canonical release verification authenticates repository,
 workflow name `CI`, path `.github/workflows/ci.yml`, successful completed main
-push on the exact source and one successful terminal `CI required`. Component
+push on the exact source, successful policy, the full desktop coverage receipt,
+and one successful terminal `CI required`. Component
 job names and their graph belong to ordinary CI, not release consumers.
 
 A stable source needs one dedicated merged preparation PR, expected branch/title,
 a maintainer merge, metadata-only comparison from the prepared base, aligned
-versions and current exact green main at promotion/build. Tag changes are atomic;
+versions and exact green coverage for source reachable in main. Tag changes are atomic;
 never move or reuse an existing mismatched tag. Later main commits cannot change
 the bytes of a selected candidate.
 
