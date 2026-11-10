@@ -117,6 +117,14 @@ final class ClarifyAudioSession: NSObject {
     state.legacyRewriteReady = ProcessingDestination.shared.legacyRewriteReady
     state.legacyTranslateReady = ProcessingDestination.shared.legacyTranslateReady
     state.outputPreferencesSupported = ProcessingDestination.shared.outputPreferencesSupported
+    let destination = ProcessingDestination.shared
+    let policy = DictationPolicyStore().read(scope: destination.historyScope ?? "")
+    state.dictationMode = policy.mode.rawValue
+    state.dictationActionID = policy.actionID
+    state.dictationModes = DictationPolicy.selectableModes(capabilities: destination.processingCapabilities)
+    state.toneAllowed = destination.configured && destination.outputPreferencesSupported &&
+      policy.canApplyTone(capabilities: destination.processingCapabilities, catalog: destination.textActions, computer: destination.computerMode,
+        outputLanguage: store?.outputPreferences().language ?? .auto)
     try? store?.write(state, to: "state.json")
     liveActivity.update(state)
     publishMeter()
@@ -218,7 +226,18 @@ final class ClarifyAudioSession: NSObject {
       let age = Date().timeIntervalSince1970 - command.createdAt
       if age >= 0, age < 5, command.context == ProcessingDestination.shared.historyContext {
         // The visible keyboard owns feedback for keyboard-originated commands.
-        if let text = command.text, let language = command.language {
+        if command.action == "dictation_policy" {
+          guard !state.phase.busy else { continue }
+          do {
+            guard !state.phase.busy, let mode = command.text.flatMap(DictationMode.init(rawValue:)),
+              let scope = ProcessingDestination.shared.historyScope else { throw ComputerFailure.notReady }
+            let policy = DictationPolicy(mode: mode, actionID: command.actionID ?? "",
+              actionRevision: command.actionRevision ?? "", language: OutputLanguage(rawValue: command.language ?? "auto") ?? .auto)
+            _ = try ProcessingDestination.shared.dictationFields(policy)
+            try DictationPolicyStore().save(policy, scope: scope)
+            publish()
+          } catch { fail(error.localizedDescription, diagnostics: error as? ClarifyError) }
+        } else if let text = command.text, let language = command.language {
           let context = command.context ?? ""
           Task { @MainActor in
             do {
@@ -274,9 +293,11 @@ final class ClarifyAudioSession: NSObject {
     if ProcessingDestination.shared.computerMode, !ComputerConnection.shared.isReady(for: "dictate") {
       throw ComputerConnection.shared.status == "offline" ? ComputerFailure.offline : ComputerFailure.notReady
     }
-    let frozenPreferences = preferences ?? store?.outputPreferences() ?? OutputPreferences()
-    _ = try frozenPreferences.requestFields(supported: ProcessingDestination.shared.outputPreferencesSupported, dictation: true)
     let policy = DictationPolicyStore().read(scope: ProcessingDestination.shared.historyScope ?? "")
+    let savedPreferences = preferences ?? store?.outputPreferences() ?? OutputPreferences()
+    let frozenPreferences = policy.frozenPreferences(savedPreferences, capabilities: ProcessingDestination.shared.processingCapabilities,
+      catalog: ProcessingDestination.shared.textActions, computer: ProcessingDestination.shared.computerMode)
+    _ = try frozenPreferences.requestFields(supported: ProcessingDestination.shared.outputPreferencesSupported, dictation: true)
     _ = try ProcessingDestination.shared.dictationFields(policy)
     try ProcessingDestination.shared.processingCapabilities.validate(frozenPreferences)
     clipPolicy = policy

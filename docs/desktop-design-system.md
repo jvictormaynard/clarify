@@ -166,9 +166,14 @@ When local dictation is selected, put local-model setup first instead of the
 cloud connection. This also keeps local onboarding on its chosen setup path.
 Keep installation and activation visible beside local-model status. Put
 streaming, optimization and removal in advanced options. Keep recording mode
-with microphone and recording limits. Processing after dictation belongs to Style. The single selector offers Natural, preserve words, minimal changes, clarity revision and a saved text action. Choosing an action saves its revision mode and action together. Natural retains existing dictation instructions and clears the optional action. General writing style offers Natural, Formal, Casual and Very casual. Natural adds no style instruction; application rules override the general style. A disabled
-cleanup route links to the matching cloud or local context in Style without changing a setting
-automatically.
+with microphone and recording limits. Style shows Text editing with Improve
+clarity and Keep my words. Show Tone only when editing is allowed, with Keep my
+tone, Formal and Casual. Keep my tone is an explicit natural style, distinct
+from a legacy unset override. More options contains output language, application
+tone rules, the optional automatic text action and advanced review settings.
+Keep active legacy cleanup levels and tones readable until the user changes
+them. Changing tone must not clear an automatic action. A disabled cleanup route
+links to the matching cloud or local context without enabling it automatically.
 
 Use dialogs for one bounded edit: action definition, processing profile or app
 style. Use shared dialog headers, footers, overflow, focus return and dismissal
@@ -185,8 +190,8 @@ Duplicate starts a new draft with a new ID and no shortcut. Preview uses a saved
 action and explicit sample text, and never publishes through the clipboard.
 Translation requires its own target language.
 
-New application writing rules offer Natural, Formal, Casual and Very casual. Existing
-Informal and Organized rules retain their names and processing meaning
+New application tone rules offer Keep my tone, Formal and Casual. Existing
+Very casual, Informal and Organized rules retain their names and processing meaning
 until the user selects a new tone. Editing an existing legacy rule keeps its
 current choice available. A tone change remains a draft until Save and does not
 enable a disabled refinement route.

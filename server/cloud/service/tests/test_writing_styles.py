@@ -65,7 +65,11 @@ class WritingStyleTests(TestCase):
         self.assertEqual(response.json()["transcript"], "Não envie 42.")
         self.assertEqual(response.json()["writing_style_applied"], "organized")
         system = provider.call_args.kwargs["json"]["messages"][0]["content"]
-        self.assertTrue(system.startswith(groq.SYSTEM))
+        self.assertTrue(
+            system.startswith(
+                groq.SYSTEM.replace("Tone: professional yet natural. ", "")
+            )
+        )
         self.assertIn("Organized presentation", system)
 
     @patch("cloud.service.groq.perform")

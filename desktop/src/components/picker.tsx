@@ -10,12 +10,13 @@ import {
 } from "./primitives/combobox";
 
 export function Picker({
-  label, value, options, onChange, onRefresh, busy, disabled,
+  label, value, options, onChange, onRefresh, busy, disabled, literalLabels = false,
   empty = t("Nenhuma opção disponível."),
 }: {
   label: string;
   value: string;
   options: Option[];
+  literalLabels?: boolean;
   onChange: (value: string) => void;
   onRefresh?: () => void;
   busy?: boolean;
@@ -26,8 +27,8 @@ export function Picker({
   const [search, setSearch] = useState("");
   const { contains } = useComboboxFilter();
   const filteredOptions = useMemo(
-    () => options.filter(item => contains(t(item.label), search.trim())),
-    [options, search, contains],
+    () => options.filter(item => contains(literalLabels ? item.label : t(item.label), search.trim())),
+    [options, search, contains, literalLabels],
   );
   const selected = options.find(item => item.id === value) ?? null;
   const searchLabel = t("Buscar {label}", { label: label.toLocaleLowerCase() });
@@ -38,7 +39,7 @@ export function Picker({
       filteredItems={open ? filteredOptions : undefined}
       autoHighlight
       value={selected}
-      itemToStringLabel={item => t(item.label)}
+      itemToStringLabel={item => literalLabels ? item.label : t(item.label)}
       itemToStringValue={item => item.id}
       isItemEqualToValue={(item, current) => item.id === current.id}
       open={open}
@@ -58,7 +59,7 @@ export function Picker({
         aria-label={label}
         render={<SelectButton className="min-w-0" />}
       >
-        {t(selected?.label || value || "Selecionar…")}
+        {selected ? literalLabels ? selected.label : t(selected.label) : t(value || "Selecionar…")}
       </ComboboxTrigger>
       <ComboboxPopup>
         <div className={`relative shrink-0 ${onRefresh ? "pe-9" : ""}`}>
@@ -94,7 +95,7 @@ export function Picker({
         <ComboboxList>
           {(item: Option) => (
             <ComboboxItem key={item.id} value={item}>
-              <span className="min-w-0 flex-1 truncate">{t(item.label)}</span>
+              <span className="min-w-0 flex-1 truncate">{literalLabels ? item.label : t(item.label)}</span>
               <Check size={16} className={item.id === value ? "opacity-100" : "opacity-0"} aria-hidden />
             </ComboboxItem>
           )}

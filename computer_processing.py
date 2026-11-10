@@ -19,7 +19,7 @@ from dictionary_snippets import (
 )
 from provider_http import CancellationToken
 from provider_registry import PROVIDER_REGISTRY, ProviderRegistry
-from provider_types import ProviderError
+from provider_types import ProviderError, ProviderCapability
 from repositories import AppConfig
 from shared.dictation_policy import cleanup_level as parse_cleanup_level
 from shared.output_preferences import (
@@ -168,6 +168,67 @@ class ComputerProcessor:
         except (ValueError, TypeError, AttributeError):
             return dict.fromkeys(_ACTION_SCOPES, False)
         return {action: self._ready_for(current, action) for action in _ACTION_SCOPES}
+
+    @property
+    def dictation_editing(self) -> dict[str, bool]:
+        """Report editing eligibility separately from recognition readiness."""
+        unavailable = dict.fromkeys(
+            (
+                "legacy",
+                "natural",
+                "clarity",
+                "action",
+                "legacy_translated",
+                "natural_translated",
+            ),
+            False,
+        )
+        try:
+            current = self._current()
+            if not self._ready_for(current, "dictate"):
+                return unavailable
+            route = current.workflow(WorkflowScope.TRANSCRIPTION)
+            local = route.provider_id == "local_asr"
+            if local and not current.local_asr_cloud_refinement:
+                return unavailable
+            scope = (
+                WorkflowScope.LOCAL_ASR_REFINEMENT
+                if local
+                else WorkflowScope.REFINEMENT
+            )
+            clarity = self._route_ready(current, current.workflow(scope), scope)
+            inline = self.registry.supports(
+                route.provider_id, ProviderCapability.MULTIMODAL_AUDIO
+            ) and not any(
+                item.enabled for item in self.dictionary_service.state.snippets
+            )
+            natural = clarity or inline
+            snapshot = TextActionService(
+                _ConfigSnapshot(current)
+            ).resolve_after_dictation()
+            legacy = legacy_translated = False
+            if (
+                current.dictation_cleanup_level not in {"preserve", "light"}
+                and not snapshot.action_error
+            ):
+                legacy = (
+                    self._action_ready(current, snapshot.action.action.id)
+                    if snapshot.action is not None
+                    else (
+                        natural if current.dictation_cleanup_level is None else clarity
+                    )
+                )
+                legacy_translated = legacy if snapshot.action is not None else clarity
+            return {
+                "legacy": legacy,
+                "natural": natural,
+                "clarity": clarity,
+                "action": True,
+                "legacy_translated": legacy_translated,
+                "natural_translated": clarity,
+            }
+        except (ValueError, TypeError, AttributeError, RuntimeError, ProviderError):
+            return unavailable
 
     @property
     def text_actions(self) -> list[dict[str, Any]]:

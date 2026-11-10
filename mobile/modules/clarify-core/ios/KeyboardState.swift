@@ -16,7 +16,7 @@ extension OutputStyle {
     case .casual: return L("Casual")
     case .formal: return L("Formal")
     case .very_casual: return L("Muito casual")
-    case .natural: return L("Natural")
+    case .natural: return L("Manter meu tom")
     case .informal: return L("Informal")
     case .organized: return L("Organizado")
     }

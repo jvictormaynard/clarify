@@ -786,6 +786,12 @@ class WorkflowService:
         if getattr(self._provider, "text_actions", None) is not None:
             try:
                 session.dictation_snapshot = self._provider.snapshot_dictation()
+                if session.dictation_snapshot.config.dictation_cleanup_level in {
+                    "preserve",
+                    "light",
+                }:
+                    session.writing_style = None
+                    session.language = "auto"
             except Exception as error:
                 self._run_recording(recording, recording.cancel)
                 self._transition(
@@ -1269,6 +1275,10 @@ class WorkflowService:
         if session is None:
             return False
         session.text_action = snapshot
+        if snapshot is not None:
+            session.writing_style = snapshot.config.application_writing_styles.resolve(
+                session.target_executable
+            ).requested_style
         self._transition(session, WorkflowPhase.REWRITING)
         self._scheduler.run_in_background(lambda: self._rewrite_worker(session))
         return True
@@ -1321,6 +1331,11 @@ class WorkflowService:
                     capture.text,
                     output_language=session.text_action.config.ui.language,
                     cancel=session.cancel_token,
+                    **(
+                        {"writing_style": session.writing_style}
+                        if session.writing_style is not None
+                        else {}
+                    ),
                 )
                 if session.text_action is not None
                 else self._provider.rewrite(capture.text)
@@ -1377,6 +1392,10 @@ class WorkflowService:
         if session is None:
             return False
         session.text_action = snapshot
+        if snapshot is not None:
+            session.writing_style = snapshot.config.application_writing_styles.resolve(
+                session.target_executable
+            ).requested_style
         # The state is explicit even though the current presentation keeps this
         # preparation step visually silent until the picker is ready.
         self._transition(session, WorkflowPhase.PREPARING_TRANSLATION)
@@ -1484,6 +1503,11 @@ class WorkflowService:
                     session.target_language,
                     output_language=session.target_language,
                     cancel=session.cancel_token,
+                    **(
+                        {"writing_style": session.writing_style}
+                        if session.writing_style is not None
+                        else {}
+                    ),
                 )
                 if session.text_action is not None
                 else self._provider.translate(selection.text, session.target_language)

@@ -28,6 +28,24 @@ from tests.support.workflow_provider import (
 
 
 class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
+    def test_selected_text_never_publishes_a_completed_summary(self):
+        source = "\n".join(
+            f"Requirement {i}: Keep the complete audit record for recipient {i}."
+            for i in range(70)
+        )
+        self.registry.rewrite.return_value = RewriteResult(
+            "Keep records.", "groq", "editor"
+        )
+        self.registry.translate.return_value = TranslationResult(
+            "Conserve registros.", "openai", "translator", "es"
+        )
+        for transform in (
+            lambda: self.service.rewrite(source),
+            lambda: self.service.translate(source, "es"),
+        ):
+            with self.assertRaisesRegex(ValueError, "removed most"):
+                transform()
+
     def test_prompt_language_labels_preserve_regional_and_unknown_tags(self):
         from shared.rewrite_prompts import language_display_name
 

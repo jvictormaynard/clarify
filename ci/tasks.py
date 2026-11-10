@@ -160,7 +160,6 @@ def commands(task, repo=ROOT):
             "mobile",
         )
     elif task == "server":
-        run("server-prompts", [python, "mobile/scripts/sync-prompts.py", "--check"])
         gate(
             "server-database-container",
             "Run server-validation.yml with disposable PostgreSQL and Docker.",

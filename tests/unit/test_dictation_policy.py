@@ -22,6 +22,24 @@ from shared.dictation_policy import (
 
 
 class DictationPolicyTests(unittest.TestCase):
+    def test_new_profile_defaults_do_not_change_an_existing_legacy_profile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            repo = LocalConfigRepository(
+                path, environment={}, secret_store=MemorySecretStore()
+            )
+            fresh = repo.load()
+            self.assertEqual(fresh.ui.language, "auto")
+            self.assertEqual(fresh.dictation_cleanup_level, "clarity")
+            self.assertEqual(fresh.application_writing_styles.default_style, "natural")
+            repo.apply(fresh)
+            self.assertEqual(repo.load().dictation_cleanup_level, "clarity")
+            path.write_text(json.dumps({"schema_version": 6, "history_enabled": True}))
+            legacy = repo.load()
+            self.assertEqual(legacy.ui.language, "en")
+            self.assertIsNone(legacy.dictation_cleanup_level)
+            self.assertIsNone(legacy.application_writing_styles.default_style)
+
     def test_enum_is_bounded_and_policy_is_immutable(self):
         for invalid in ("", "legacy", "Preserve", "formal", 1, [], {}):
             with self.subTest(value=invalid), self.assertRaises(ValueError):

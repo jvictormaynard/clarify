@@ -3,6 +3,42 @@ import XCTest
 @testable import ClarifyContracts
 
 final class MobileActionsTests: XCTestCase {
+  func testTextRetentionRejectsExtremeLossAndAllowsExactSentenceDeduplication() throws {
+    let sentence = "Keep the delivery address and the confirmation number."
+    let repeated = Array(repeating: sentence, count: 12).joined(separator: " ")
+    XCTAssertTrue(TextRetention.accepts(source: repeated, output: sentence))
+    XCTAssertTrue(TextRetention.accepts(source: repeated, output: sentence.lowercased()))
+    XCTAssertTrue(TextRetention.accepts(source: Array(repeating: "Die Straße bleibt gesperrt.", count: 20).joined(separator: " "), output: "DIE STRASSE BLEIBT GESPERRT."))
+    XCTAssertFalse(TextRetention.accepts(source: repeated, output: "Keep the address."))
+    XCTAssertFalse(TextRetention.accepts(source: String(repeating: "界", count: 300), output: String(repeating: "界", count: 74)))
+    XCTAssertTrue(TextRetention.accepts(source: String(repeating: "界", count: 300), output: String(repeating: "a", count: 75)))
+    XCTAssertFalse(TextRetention.accepts(source: sentence, output: "  "))
+    for raw in [#"{"language":"es"}"#, #"{"language":"es","style":null}"#] {
+      XCTAssertEqual(try JSONDecoder().decode(OutputPreferences.self, from: Data(raw.utf8)), OutputPreferences(language: .es))
+    }
+  }
+  @MainActor func testNativeTextAcceptancePreservesSourceForShortRewriteAndTranslationButAllowsCustomSummary() async throws {
+    let original = (0..<30).map { "Requirement \($0) must stay in the message." }.joined(separator: " ")
+    for computer in [false, true] {
+      for kind in ["rewrite", "translation", "custom"] {
+        let f = try Fixture(computer: computer); defer { f.cleanup() }
+        let descriptor: [String: Any] = ["id": "summary", "revision": Int64.max, "name": "Action", "kind": kind, "enabled": true]
+        f.computerCatalog = [descriptor.merging(["ready": true]) { _, new in new }]
+        f.hostedCatalog = ["revision": 1, "actions": [descriptor.merging(["prompt": "Fixture instruction"]) { _, new in new }]]
+        f.supportsPreferences = true
+        let preferences = OutputPreferences(language: .es)
+        f.provenance = ["output_language_requested": "es", "output_language_applied": "es", "output_language_status": "applied"]
+        let prepared = try await f.prepare(preferences: preferences)
+        let result = try await f.destination.processText(UUID().uuidString, prepared: prepared, text: original)
+        XCTAssertEqual(result.text, kind == "custom" ? "Changed" : original)
+        XCTAssertEqual(result.successful, kind == "custom")
+        XCTAssertEqual(f.posts.count, 1)
+        f.provenance.merge(["text": original, "successful": true, "rewritten": false]) { _, new in new }
+        let unchanged = try await f.destination.processText(UUID().uuidString, prepared: prepared, text: original)
+        XCTAssertEqual(unchanged.text, original); XCTAssertTrue(unchanged.successful)
+      }
+    }
+  }
   func testSharedOutputOutcomeVectorsAndCapabilityBounds() throws {
     let cases = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(ProcessingOutcomeCases.json.utf8)) as? [[String: Any]])
     let known = ProcessingContractData.value
@@ -20,6 +56,38 @@ final class MobileActionsTests: XCTestCase {
     XCTAssertFalse(OutputPreferences().applied(in: [:], dictation: true, requireOriginalConfirmation: true))
     advertised["output_languages"] = ["auto", "unknown"]
     XCTAssertThrowsError(try ProcessingCapabilities(advertised))
+  }
+  func testToneEligibilityUsesEditingReadinessAndDoesNotEraseSavedPreferences() throws {
+    var raw = ProcessingContractData.value.filter { !["limits", "errors"].contains($0.key) }
+    raw["text_input_bytes"] = 32768; raw["text_output_bytes"] = 32768
+    let saved = OutputPreferences(language: .es, style: .formal)
+    let catalog = TextActionCatalog(status: .ready, actions: [])
+    for allowed in [false, true] {
+      raw["dictation_editing"] = ["legacy": allowed, "natural": allowed, "clarity": allowed, "action": allowed, "legacy_translated": allowed, "natural_translated": allowed]
+      let capabilities = try ProcessingCapabilities(raw)
+      let policy = DictationPolicy(mode: .clarity)
+      XCTAssertEqual(policy.canApplyTone(capabilities: capabilities, catalog: catalog, computer: true), allowed)
+      XCTAssertEqual(policy.frozenPreferences(saved, capabilities: capabilities, catalog: catalog, computer: true).style, allowed ? .formal : .default)
+      XCTAssertEqual(saved.style, .formal)
+    }
+    raw["dictation_editing"] = ["legacy": true, "natural": true, "clarity": false, "action": true, "legacy_translated": false, "natural_translated": false]
+    let inlineOnly = try ProcessingCapabilities(raw)
+    for mode in [DictationMode.legacy, .natural] {
+      let policy = DictationPolicy(mode: mode)
+      XCTAssertTrue(policy.canApplyTone(capabilities: inlineOnly, catalog: catalog, computer: true))
+      XCTAssertFalse(policy.canApplyTone(capabilities: inlineOnly, catalog: catalog, computer: true, outputLanguage: .es))
+    }
+    raw.removeValue(forKey: "dictation_editing")
+    let older = try ProcessingCapabilities(raw)
+    for computer in [false, true] {
+      for mode in [DictationMode.legacy, .natural, .action, .clarity, .preserve, .light] {
+        let policy = DictationPolicy(mode: mode)
+        XCTAssertEqual(policy.frozenPreferences(saved, capabilities: older, catalog: catalog, computer: computer),
+          [.preserve, .light].contains(mode) ? OutputPreferences() : saved)
+      }
+    }
+    raw["dictation_editing"] = ["legacy": true, "natural": true, "clarity": 1, "action": true, "legacy_translated": true, "natural_translated": true] as [String: Any]
+    XCTAssertThrowsError(try ProcessingCapabilities(raw))
   }
   func testDictationPolicyIsScopedFrozenAndRejectsStaleActions() throws {
     let suite = "clarify.policy." + UUID().uuidString, defaults = UserDefaults(suiteName: suite)!
@@ -187,6 +255,7 @@ final class MobileActionsTests: XCTestCase {
     var catalogStatus = 200
     var catalogFailure: Error?
     var supportsPreferences = false
+    var supportsDictationPolicy = false
     var dictateReady = false
     var computerCatalog: Any? = [["id": "summary", "revision": Int64.max, "name": "Summary", "kind": "custom", "enabled": true, "ready": true]]
     var hostedCatalog: [String: Any] = ["revision": 1, "actions": [["id": "summary", "revision": Int64.max, "name": "Summary", "kind": "custom", "enabled": true, "prompt": "Private prompt"]]]
@@ -235,6 +304,12 @@ final class MobileActionsTests: XCTestCase {
         }
         raw.merge(provenance) { _, new in new }
       } else { raw = [:] }
+      if supportsDictationPolicy && ["/v1/account", "/v1/computer/status"].contains(path) {
+        var contract = ProcessingContractData.value.filter { !["limits", "errors"].contains($0.key) }
+        contract["text_input_bytes"] = path == "/v1/account" ? ProcessingContractData.accountTextInputBytes : ProcessingContractData.computerTextInputBytes
+        contract["text_output_bytes"] = path == "/v1/account" ? ProcessingContractData.accountTextOutputBytes : ProcessingContractData.computerTextOutputBytes
+        raw["processing_contract"] = contract
+      }
       return (try JSONSerialization.data(withJSONObject: raw), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
     }
     func resume() { pausePath = nil; suspended?.resume(); suspended = nil }
@@ -489,6 +564,35 @@ final class MobileActionsTests: XCTestCase {
         XCTAssertTrue(standalone.successful); XCTAssertEqual(standalone.text, "Exact saved snippet")
         XCTAssertEqual(f.posts.count, 2, "Standalone metadata must never start another provider request")
       }
+    }
+  }
+
+  @MainActor func testKeepWordsOmitsSavedToneAndLanguageWithoutClearingThem() async throws {
+    for computer in [false, true] {
+      let f = try Fixture(computer: computer); defer { f.cleanup() }
+      f.supportsPreferences = true; f.supportsDictationPolicy = true; f.dictateReady = true
+      if computer { try await f.computer.refresh() } else { try await f.account.refreshTextActions() }
+      let saved = OutputPreferences(language: .es, style: .formal)
+      let policy = DictationPolicy(mode: .preserve)
+      f.provenance = ["text": "Original", "rewritten": false, "successful": true,
+        "cleanup_level_requested": "preserve", "cleanup_level_applied": "preserve",
+        "output_language_requested": "auto", "output_language_applied": "auto", "output_language_status": "unchanged"]
+      if computer {
+        let result = try await f.computer.process(UUID().uuidString,
+          wav: ComputerWAV.wrapPCM16(Data(repeating: 0, count: 8000)), language: "auto", preferences: saved, policy: policy)
+        XCTAssertTrue(result.successful); XCTAssertFalse(result.outputPreferenceFailed)
+        let body = try JSONSerialization.jsonObject(with: f.posts.last!.httpBody!) as! [String: Any]
+        XCTAssertNil(body["writing_style"]); XCTAssertEqual(body["output_language"] as? String, "auto")
+      } else {
+        let clip = f.root.appendingPathComponent("synthetic.m4a"); try Data([0, 1, 2]).write(to: clip)
+        let library = try LocalLibrary(root: f.root.appendingPathComponent("library"))
+        let result = try await f.account.dictate(clip, operationID: UUID().uuidString, library: library, preferences: saved, policy: policy)
+        XCTAssertTrue(result.successful); XCTAssertFalse(result.outputPreferenceFailed)
+        let body = String(decoding: f.posts.last!.httpBody!, as: UTF8.self)
+        XCTAssertFalse(body.contains("name=\"writing_style\""))
+        XCTAssertTrue(body.contains("name=\"output_language\"\r\n\r\nauto\r\n"))
+      }
+      XCTAssertEqual(saved, OutputPreferences(language: .es, style: .formal))
     }
   }
 

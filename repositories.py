@@ -91,7 +91,7 @@ SUPPORTED_LANGUAGES = ("auto", "en", "pt", "es", "de", "ru")
 def environment_defaults(
     environment: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Return startup defaults using the same environment contract as app.py.
+    """Return startup defaults for the typed configuration boundary.
 
     The precedence is persisted configuration, then environment variables,
     then built-in defaults.  Environment values therefore remain useful for
@@ -122,7 +122,7 @@ def environment_defaults(
         "refinement_provider": env.get("REFINEMENT_PROVIDER", ""),
         "refinement_model": env.get("REFINEMENT_MODEL", ""),
         "ui_mode": "prompt",
-        "ui_language": "en",
+        "ui_language": "auto",
         # Transcript history is deliberately opt-in.  Keeping these values in
         # the typed repository means the UI can apply one atomic preference
         # change without teaching the history file about configuration.
@@ -1360,6 +1360,7 @@ class LocalConfigRepository(ConfigRepository):
 
     def load(self) -> AppConfig:
         with self._lock:
+            new_profile = not self.path.exists()
             try:
                 raw = json.loads(self.path.read_text(encoding="utf-8"))
             except (OSError, ValueError, TypeError):
@@ -1367,6 +1368,8 @@ class LocalConfigRepository(ConfigRepository):
             migrated = migrate_config_payload(raw)
             raw_mapping = raw if isinstance(raw, Mapping) else {}
             runtime = self._load_runtime_mapping(raw_mapping, migrated)
+            if not new_profile:
+                runtime.setdefault("ui_language", "en")
             if not raw_mapping:
                 # ``_load_runtime_mapping`` adds environment/secret fields to
                 # a first-run payload, which would otherwise look like an old
@@ -1374,6 +1377,14 @@ class LocalConfigRepository(ConfigRepository):
                 # fresh-install defaults marker in that case.
                 runtime["hotkeys"] = self.defaults.get("hotkeys")
                 runtime["onboarding_completed"] = False
+            if new_profile:
+                runtime["dictation_cleanup_level"] = self.defaults.get(
+                    "dictation_cleanup_level", "clarity"
+                )
+                runtime["application_writing_styles"] = self.defaults.get(
+                    "application_writing_styles",
+                    {"default_style": "natural", "rules": []},
+                )
             return AppConfig.from_mapping(runtime, self.defaults)
 
     def _model_from_mapping(
@@ -1386,6 +1397,18 @@ class LocalConfigRepository(ConfigRepository):
     ) -> AppConfig:
         """Merge partial legacy input with disk before normalizing routes."""
         merged = dict(current_payload)
+        if self.path.exists():
+            merged.setdefault("ui_language", "en")
+        if not current_payload and not self.path.exists():
+            merged.update(
+                dictation_cleanup_level=self.defaults.get(
+                    "dictation_cleanup_level", "clarity"
+                ),
+                application_writing_styles=self.defaults.get(
+                    "application_writing_styles",
+                    {"default_style": "natural", "rules": []},
+                ),
+            )
         incoming = dict(config)
         current_workflows = current_payload.get("workflows")
         incoming_workflows = incoming.get("workflows")
