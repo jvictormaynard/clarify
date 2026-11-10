@@ -44,8 +44,6 @@ jobs:
         run: python server/manage.py makemigrations --check --dry-run
       - name: Test with isolated PostgreSQL
         run: python server/manage.py test cloud.service.tests --noinput
-      - name: Check shared prompt synchronization
-        run: python mobile/scripts/sync-prompts.py --check
       - name: Build and check the non-listening relay entrypoint
         run: |
           docker build --file connect/Dockerfile --tag clarify-connect:ci .

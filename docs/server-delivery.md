@@ -99,8 +99,6 @@ unrelated settings; do not copy their values into logs or review notes.
    /.github/workflows/ci.yml
    /.github/workflows/server-validation.yml
    /workflow_provider.py
-   /mobile/scripts/sync-prompts.py
-   /mobile/modules/clarify-core/ios/RewritePrompt.swift
    !**/*.md
    !**/*.rst
    ```

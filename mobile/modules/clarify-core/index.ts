@@ -45,6 +45,7 @@ export interface DictationPolicy { mode: 'legacy' | 'natural' | 'preserve' | 'li
 export interface ProcessingCapabilities {
   schema_version: 1; output_languages: OutputLanguage[]; writing_styles: ContractOutputStyle[];
   cleanup_levels: string[]; dictation_actions: boolean; explicit_dictation_policy: boolean;
+  dictation_editing?: Partial<Record<'legacy' | 'natural' | 'clarity' | 'action' | 'legacy_translated' | 'natural_translated', boolean>>;
   text_input_bytes: number; text_output_bytes: number;
 }
 export interface ComputerTextAction {

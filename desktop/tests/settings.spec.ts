@@ -222,8 +222,8 @@ test("settings organization: local cleanup setup opens and activates the local r
   const localReview = page.getByRole("switch", { name: "Ativar revisão por IA", exact: true });
   if (await localReview.isChecked()) await localReview.click();
   await expect(localReview).not.toBeChecked();
-  await page.getByRole("combobox", { name: "Após o ditado", exact: true }).click();
-  await page.getByRole("option", { name: "Revisar clareza", exact: true }).click();
+  await page.getByRole("combobox", { name: "Edição do texto", exact: true }).click();
+  await page.getByRole("option", { name: "Melhorar a clareza", exact: true }).click();
   await page.getByRole("button", { name: "Configurar revisão", exact: true }).click();
   await openStyleReview(page);
   await expect(page.getByRole("combobox", { name: "Contexto da revisão", exact: true })).toContainText("Transcrição local");
@@ -232,7 +232,7 @@ test("settings organization: local cleanup setup opens and activates the local r
   await navigate(page, "Ditado");
   await openStyleReview(page);
   await expect(localReview).toBeChecked();
-  await expect(page.getByRole("combobox", { name: "Após o ditado", exact: true })).toContainText("Revisar clareza");
+  await expect(page.getByRole("combobox", { name: "Edição do texto", exact: true })).toContainText("Melhorar a clareza");
   await expect(page.getByRole("button", { name: "Configurar revisão", exact: true })).toHaveCount(0);
 });
 
@@ -637,7 +637,7 @@ test("text actions stay with the form and choices need no save island", async ({
   await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Contextual text draft.");
   const editor = page.getByRole("textbox", { name: "Instruções", exact: true });
   const shell = await editor.locator("..").boundingBox();
-  const panel = await editor.locator("xpath=ancestor::*[@data-slot='settings-group']").boundingBox();
+  const panel = await editor.locator("xpath=ancestor::*[@data-slot='settings-group'][1]").boundingBox();
   expect(shell!.x).toBeGreaterThanOrEqual(panel!.x);
   expect(shell!.x + shell!.width).toBeLessThanOrEqual(panel!.x + panel!.width);
   await expect(actions).toBeVisible();

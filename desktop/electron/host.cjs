@@ -159,8 +159,9 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
   ipcMain.handle('clarify:call', (event, channel, method, args) => {
     const surface = sender(event);
     const pillPreference = surface === 'pill' && channel === 'settings' && method === 'savePreference'
-      && Array.isArray(args) && args.length === 2 && args[0] === 'setLanguage'
-      && Array.isArray(args[1]) && args[1].length === 1 && ['auto', 'en', 'pt', 'es', 'de', 'ru'].includes(args[1][0]);
+      && Array.isArray(args) && args.length === 2 && Array.isArray(args[1]) && args[1].length === 1
+      && ((args[0] === 'setLanguage' && ['auto', 'en', 'pt', 'es', 'de', 'ru'].includes(args[1][0]))
+        || (args[0] === 'setDictationWritingStyle' && ['', 'natural', 'formal', 'casual', 'very_casual', 'informal', 'organized'].includes(args[1][0])));
     if (!pillPreference && (surface === 'pill') !== (channel === 'workflow')) throw new Error('Invalid renderer channel');
     validateRequest(channel, method, args);
     if (channel === 'workflow' && method === 'quit') { bridge.send({event: 'quit'}); return null; }

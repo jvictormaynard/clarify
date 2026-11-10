@@ -98,6 +98,7 @@ public class ClarifyCoreModule: Module {
         actionRevision: selected == .action ? revision : "", language: target)
       _ = try destination.dictationFields(policy)
       try DictationPolicyStore().save(policy, scope: scope)
+      ClarifyAudioSession.shared.publish()
       return policy.snapshot
     }.runOnQueue(.main)
     AsyncFunction("processText") { (action: String, text: String, language: String, context: String, promise: Promise) in

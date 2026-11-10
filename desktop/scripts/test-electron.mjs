@@ -79,7 +79,7 @@ try {
   await settings.getByRole('button', {name:'Close window', exact:true}).click();
   await expect(settings.getByRole('dialog', {name:'Unsaved changes', exact:true})).toBeVisible();
   await settings.getByRole('button', {name:'Discard all', exact:true}).click();
-  const initial = {surface:'idle', status:'', result:'', busy:false, recording:false, uiLanguage:'en', language:'auto', levels:[], translationOptions:[]};
+  const initial = {surface:'idle', status:'', result:'', busy:false, recording:false, uiLanguage:'en', language:'auto', levels:[], translationOptions:[], dictationWritingStyle:'natural', applicationStyleRefinementAllowed:true};
   const state = async (name, patch) => {
     send({event:'workflow', state:{...initial,...patch}}); send({window:'pill-show'});
     await expect(pill.locator('.workflow-pill')).toHaveAttribute('data-surface', patch.surface || 'idle');
@@ -180,6 +180,16 @@ try {
   await state('success', {surface:'success'});
   await state('idle-menu', {});
   await pill.getByRole('button', {name:'More options',exact:true}).click();
+  await pill.getByRole('button', {name:'Tone',exact:true}).click();
+  await expect(pill.getByRole('button', {name:'Keep my tone',exact:true})).toHaveAttribute('aria-pressed','true');
+  await pill.getByRole('button', {name:'Formal',exact:true}).click();
+  await expect.poll(() => messages.some(message => message.channel === 'settings' && message.method === 'savePreference' && message.args[0] === 'setDictationWritingStyle' && message.args[1][0] === 'formal')).toBe(true);
+  await state('tone-selected', {dictationWritingStyle:'formal'});
+  await pill.getByRole('button', {name:'More options',exact:true}).click();
+  await pill.getByRole('button', {name:'Tone',exact:true}).click();
+  await expect(pill.getByRole('button', {name:'Formal',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(pill.getByRole('alert')).toHaveCount(0);
+  await pill.getByRole('button', {name:'Tone',exact:true}).click();
   await pill.screenshot({path:join(evidence,'idle-menu.png'), omitBackground:true});
   await pill.getByRole('button', {name:'Transcribe files',exact:true}).click();
   await expect.poll(() => messages.some(message => message.method === 'openFiles')).toBe(true);

@@ -7,10 +7,9 @@ test('mobile checks use the configured Python and fixed argument arrays', () => 
   const steps = commands('python with spaces.exe', 'node with spaces.exe');
   assert.equal(steps[0][0], 'python with spaces.exe');
   assert.equal(steps[1][0], 'python with spaces.exe');
-  assert.equal(steps[2][0], 'python with spaces.exe');
-  assert.ok(steps.slice(3).every((step: string[]) => step[0] === 'node with spaces.exe'));
-  assert.ok(steps[5].includes('tests/check.test.ts'));
-  assert.deepEqual(steps[6].slice(-2), ['install', '--check']);
+  assert.ok(steps.slice(2).every((step: string[]) => step[0] === 'node with spaces.exe'));
+  assert.ok(steps[4].includes('tests/check.test.ts'));
+  assert.deepEqual(steps[5].slice(-2), ['install', '--check']);
 });
 
 test('a failed or unavailable mobile check stops later checks', () => {

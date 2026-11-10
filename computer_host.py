@@ -1235,7 +1235,12 @@ class ComputerHost:
             self._require_started()
             actions = self.processor.action_readiness
             result = {
-                "processing_contract": processing_capabilities("computer"),
+                "processing_contract": processing_capabilities(
+                    "computer",
+                    dictation_editing=getattr(
+                        self.processor, "dictation_editing", None
+                    ),
+                ),
                 "schema_version": 1,
                 "computer_id": self._identity["computer_id"],
                 "computer_name": self.computer_name,

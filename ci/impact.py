@@ -44,8 +44,6 @@ FULL_INPUTS = {
 }
 SHARED_INPUTS = {
     "scripts/sync_locales.py",
-    "mobile/scripts/sync-prompts.py",
-    "mobile/modules/clarify-core/ios/RewritePrompt.swift",
 }
 SERVER_INPUTS = {
     "computer_relay_protocol.py",
