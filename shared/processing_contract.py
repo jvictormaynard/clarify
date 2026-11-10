@@ -37,7 +37,7 @@ CONTRACT = {
 }
 
 
-def capabilities(destination):
+def capabilities(destination, *, dictation_editing=None):
     return {
         **{
             key: value
@@ -45,4 +45,17 @@ def capabilities(destination):
             if key not in {"limits", "errors"}
         },
         **CONTRACT["limits"][destination],
+        "dictation_editing": dictation_editing
+        if dictation_editing is not None
+        else dict.fromkeys(
+            (
+                "legacy",
+                "natural",
+                "clarity",
+                "action",
+                "legacy_translated",
+                "natural_translated",
+            ),
+            destination == "account",
+        ),
     }

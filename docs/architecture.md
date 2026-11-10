@@ -80,7 +80,11 @@ The versioned processing contract owns supported choices, wire limits and error
 recovery categories for both clients. Its generated Python, Swift and TypeScript
 constants and shared outcome cases are checked by the mobile validation command.
 Services advertise their supported choices; older services cannot silently accept
-a new dictation policy. The iOS app stores the policy per account or paired
+a new dictation policy. The `dictation_editing` readiness map distinguishes
+recognition from editing and accounts for local review permission, the refinement
+route and the selected saved action. Inline audio editing and translated output
+have separate readiness flags. Mobile uses that map to hide an inapplicable
+tone without clearing its saved preference. The iOS app stores the policy per account or paired
 computer and freezes it when recording starts. Explicit natural mode removes the
 computer's selected post-dictation action and cleanup override while retaining
 its normal processing route. History records the actual rewrite flag independently
@@ -109,7 +113,13 @@ writing style and output language for desktop and hosted processing. Base rewrit
 and style rules do not select a language. The selected output preference supplies
 the language instruction after the task policy. The generated Swift prompt
 is a compatibility projection of that owner; clients do not maintain separate
-prompt definitions.
+prompt definitions. Keep my words and legacy minimal cleanup suppress saved tone
+and output-language overrides for dictation without clearing those preferences.
+Manual text actions still use their captured tone and language. Faithful rewrite
+and translation reject extreme shortening before replacing a selection; this
+size check does not prove semantic completeness. Custom actions may summarize.
+Dictation validates against the snippet-expanded source at its processing owner,
+so exact snippets are not rejected by comparing them with an unexpanded transcript.
 See [server operations and release gates](../server/README.md).
 
 Sponsored processing uses funded individual weekly quotas with a common Monday
@@ -322,8 +332,10 @@ migrates effective schema-4 rewrite/translation prompts, enabled state, routes,
 ChatGPT account bindings and shortcuts. An intentionally empty catalog remains
 empty. Older readers reject schema 5; newer unknown schemas remain read-only.
 
-Schema 6 adds the general writing style. Application rules override that style;
-Natural adds no style instruction. Schema-5 readers cannot save schema-6 files,
+Schema 6 adds the general writing style. Application rules override that style.
+New profiles use clarity editing, keep the source language and use an explicit
+natural style that preserves the speaker's tone. Existing profiles retain their saved cleanup and style,
+including an absent style override. Schema-5 readers cannot save schema-6 files,
 so an older desktop cannot silently erase this preference. The existing action
 catalog and personal instructions remain unchanged during migration.
 

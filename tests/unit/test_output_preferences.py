@@ -13,13 +13,46 @@ from shared.writing_style_policy import WritingStyle, with_writing_style, writin
 
 
 class OutputPreferencePolicyTests(unittest.TestCase):
+    def test_extreme_loss_guard_allows_exact_dedup_and_unicode_translation(self):
+        from shared.text_preservation import validate_preserved_text
+
+        sentence = "Send 42 copies to Ana, and keep the signed receipt."
+        validate_preserved_text("\n".join([sentence] * 20), sentence)
+        validate_preserved_text(
+            "Translate this complete sentence. " * 20, "完整翻译。" * 40
+        )
+        with self.assertRaises(ValueError):
+            validate_preserved_text(
+                "\n".join([sentence] * 20 + ["Do not send the backup copies."]),
+                sentence,
+            )
+
+    def test_keep_my_tone_overrides_the_old_default_register(self):
+        from shared.rewrite_prompts import (
+            SELECTED_TEXT_REWRITE_INSTRUCTION,
+            rewrite_instruction,
+        )
+
+        instruction = rewrite_instruction(
+            SELECTED_TEXT_REWRITE_INSTRUCTION, writing_style=WritingStyle.NATURAL
+        )
+        self.assertNotIn("Tone: professional yet natural.", instruction)
+        self.assertIn("speaker's vocabulary and tone", instruction)
+        self.assertIn("Do not invent information", instruction)
+
     def test_saved_language_authority_and_exact_legacy_default(self):
         from shared.rewrite_prompts import (
             SELECTED_TEXT_REWRITE_INSTRUCTION,
             rewrite_instruction,
         )
 
-        custom = "Translate into German. Preserve the source language in quotations."
+        custom = "Translate into German. Preserve the source language in quotations. Include the literal 'Tone: professional yet natural.'"
+        self.assertIn(
+            custom,
+            rewrite_instruction(
+                custom, action=True, writing_style=WritingStyle.NATURAL
+            ),
+        )
         self.assertEqual(rewrite_instruction(custom, action=True), custom)
         explicit = rewrite_instruction(custom, action=True, output_language="en")
         self.assertIn(custom, explicit)

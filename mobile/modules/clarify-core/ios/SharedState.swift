@@ -6,6 +6,13 @@ enum OutputStyle: String, Codable, CaseIterable { case `default`, formal, casual
 struct OutputPreferences: Codable, Equatable {
   var language: OutputLanguage = .auto
   var style: OutputStyle = .default
+  init(language: OutputLanguage = .auto, style: OutputStyle = .default) { self.language = language; self.style = style }
+  private enum CodingKeys: String, CodingKey { case language, style }
+  init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    language = try values.decodeIfPresent(OutputLanguage.self, forKey: .language) ?? .auto
+    style = try values.decodeIfPresent(OutputStyle.self, forKey: .style) ?? .default
+  }
   var snapshot: [String: String] { ["language": language.rawValue, "style": style.rawValue] }
   func requestFields(supported: Bool, dictation: Bool) throws -> [String: String] {
     var fields: [String: String] = [:]
@@ -113,6 +120,10 @@ struct DictationSnapshot: Codable {
   var legacyRewriteReady = false
   var legacyTranslateReady = false
   var outputPreferencesSupported = false
+  var dictationMode = "legacy"
+  var dictationModes: [String] = []
+  var dictationActionID = ""
+  var toneAllowed = false
   var libraryRevision = 0
   var isLive: Bool { sessionActive && Date().timeIntervalSince1970 - heartbeat < 3 }
   func textResult(for id: String, context: String, currentContext: String) -> String? {
@@ -121,7 +132,7 @@ struct DictationSnapshot: Codable {
       let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
     return text
   }
-  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, text, message, errorCode, errorRecovery, errorPhase, errorStatus, configured, libraryRevision, computerMode, processingContext, textOperation, textActions, legacyRewriteReady, legacyTranslateReady, outputPreferencesSupported }
+  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, text, message, errorCode, errorRecovery, errorPhase, errorStatus, configured, libraryRevision, computerMode, processingContext, textOperation, textActions, legacyRewriteReady, legacyTranslateReady, outputPreferencesSupported, dictationMode, dictationModes, dictationActionID, toneAllowed }
   init() {}
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -144,6 +155,10 @@ struct DictationSnapshot: Codable {
     legacyRewriteReady = try values.decodeIfPresent(Bool.self, forKey: .legacyRewriteReady) ?? false
     legacyTranslateReady = try values.decodeIfPresent(Bool.self, forKey: .legacyTranslateReady) ?? false
     outputPreferencesSupported = try values.decodeIfPresent(Bool.self, forKey: .outputPreferencesSupported) ?? false
+    dictationMode = try values.decodeIfPresent(String.self, forKey: .dictationMode) ?? "legacy"
+    dictationModes = try values.decodeIfPresent([String].self, forKey: .dictationModes) ?? []
+    dictationActionID = try values.decodeIfPresent(String.self, forKey: .dictationActionID) ?? ""
+    toneAllowed = try values.decodeIfPresent(Bool.self, forKey: .toneAllowed) ?? false
     libraryRevision = try values.decodeIfPresent(Int.self, forKey: .libraryRevision) ?? 0
   }
 }

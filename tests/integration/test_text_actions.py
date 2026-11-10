@@ -148,6 +148,84 @@ class HostedServiceTests(HostedServiceFixture, unittest.TestCase):
                 "Original language",
             )
 
+    def test_hosted_tone_is_sent_and_must_be_confirmed_before_acceptance(self):
+        from shared.writing_style_policy import style_outcome
+
+        snapshot = self.service.resolve("rewrite")
+        self.account._output_preferences_identity = self.account.history_identity()
+        self.account._output_preferences_available = True
+        response = {
+            "text": "A complete result",
+            "action_id": snapshot.action.id,
+            "action_name": snapshot.action.name,
+            "action_revision": snapshot.action.revision,
+        }
+        with patch.object(
+            self.account, "_request", return_value=(200, response)
+        ) as request:
+            with self.assertRaises(AccountError) as failure:
+                self.account.execute_text_action(
+                    snapshot, "Source", writing_style="formal"
+                )
+            self.assertEqual(failure.exception.code, "output_preferences_unapplied")
+            self.assertEqual(
+                request.call_args.kwargs["json"]["writing_style"], "formal"
+            )
+            response.update(style_outcome("formal", refined=True))
+            self.assertEqual(
+                self.account.execute_text_action(
+                    snapshot, "Source", writing_style="formal"
+                ),
+                "A complete result",
+            )
+        self.account._output_preferences_available = False
+        with patch.object(self.account, "_request") as request:
+            with self.assertRaises(AccountError):
+                self.account.execute_text_action(
+                    snapshot, "Source", writing_style="formal"
+                )
+            request.assert_not_called()
+
+    def test_restored_account_discovers_tone_support_and_rejects_identity_changes(self):
+        from shared.writing_style_policy import style_outcome
+
+        snapshot = self.service.resolve("rewrite")
+        account = {
+            "id": snapshot.account_context.user_id,
+            "email": "fixture@example.test",
+            "output_preferences_supported": True,
+        }
+        result = {
+            "text": "Complete result",
+            "action_id": snapshot.action.id,
+            "action_name": snapshot.action.name,
+            "action_revision": snapshot.action.revision,
+            **style_outcome("natural", refined=True),
+        }
+        with patch.object(
+            self.account, "_request", side_effect=[(200, account), (200, result)]
+        ) as request:
+            self.assertEqual(
+                self.account.execute_text_action(
+                    snapshot, "Source", writing_style="natural"
+                ),
+                "Complete result",
+            )
+            self.assertEqual(
+                [call.args[:2] for call in request.call_args_list],
+                [("GET", "/v1/account"), ("POST", "/v1/text-actions/execute")],
+            )
+        self.account._output_preferences_identity = None
+        other = {**account, "id": "22222222-2222-4222-8222-222222222222"}
+        with patch.object(
+            self.account, "_request", return_value=(200, other)
+        ) as request:
+            with self.assertRaises(AccountError):
+                self.account.execute_text_action(
+                    snapshot, "Source", writing_style="natural"
+                )
+            request.assert_called_once_with("GET", "/v1/account")
+
     def test_managed_expired_context_rejects_without_personal_route(self):
         self.account._state.pop("user_id")
         self.account._generation += 1
@@ -620,12 +698,17 @@ class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
     def test_selected_output_language_is_frozen_before_text_capture(self):
         from workflows import RunTextAction
 
+        from writing_styles import ApplicationWritingStyles, WritingStyle
+
         for language in ("es", "auto"):
             with self.subTest(language=language):
                 self.repo.apply(
                     replace(
                         self.repo.load(),
                         ui=replace(self.repo.load().ui, language=language),
+                        application_writing_styles=ApplicationWritingStyles(
+                            default_style=WritingStyle.FORMAL
+                        ),
                     )
                 )
                 provider, registry = self.provider()
@@ -635,12 +718,18 @@ class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
                 )
                 self.repo.apply(
                     replace(
-                        self.repo.load(), ui=replace(self.repo.load().ui, language="de")
+                        self.repo.load(),
+                        ui=replace(self.repo.load().ui, language="de"),
+                        application_writing_styles=ApplicationWritingStyles(
+                            default_style=WritingStyle.CASUAL
+                        ),
                     )
                 )
                 self.drain()
                 request = registry.rewrite.call_args.args[1]
                 self.assertEqual(request.language, language)
+                self.assertIn("Formal presentation", request.instruction)
+                self.assertNotIn("Casual presentation", request.instruction)
                 self.assertIn(
                     "Spanish" if language == "es" else "multiple languages",
                     request.instruction,
@@ -707,6 +796,10 @@ class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
 
     def test_translation_kind_uses_selected_output_for_arbitrary_id(self):
         from workflows import RunTextAction, WorkflowPhase
+
+        self.repo.apply(
+            replace(self.repo.load(), ui=replace(self.repo.load().ui, language="en"))
+        )
 
         self.save(
             TextAction(

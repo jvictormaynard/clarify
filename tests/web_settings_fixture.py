@@ -209,7 +209,14 @@ class OnboardingAccount:
         return self.text_actions()
 
     def execute_text_action(
-        self, snapshot, text, language, *, cancel=None, output_language=None
+        self,
+        snapshot,
+        text,
+        language,
+        *,
+        cancel=None,
+        output_language=None,
+        writing_style=None,
     ):
         return f"Preview ({language}): {text}"
 

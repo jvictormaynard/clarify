@@ -260,6 +260,14 @@ class ComputerHostTests(ComputerHostFixture, unittest.TestCase):
                 "explicit_dictation_policy": True,
                 "text_input_bytes": 32768,
                 "text_output_bytes": 32768,
+                "dictation_editing": {
+                    "legacy": False,
+                    "natural": False,
+                    "clarity": False,
+                    "action": True,
+                    "legacy_translated": False,
+                    "natural_translated": False,
+                },
             },
         )
         body = {

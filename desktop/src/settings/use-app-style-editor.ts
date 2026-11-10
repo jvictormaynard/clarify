@@ -18,7 +18,7 @@ export function useAppStyleEditor(state: Settings | undefined, run: Runner) {
   const [error, setError] = useState("");
   const [discardRequested, setDiscardRequested] = useState(false);
   const open = (rule?: ApplicationWritingStyle) => {
-    const value = rule ?? { executable: current.current?.applicationStyleTarget ?? "", style: "casual" };
+    const value = rule ?? { executable: current.current?.applicationStyleTarget ?? "", style: "natural" };
     update({ ...value, baseline: value, isNew: !rule, context: current.current?.snippetContext ?? "" });
     setError(""); setDiscardRequested(false);
   };

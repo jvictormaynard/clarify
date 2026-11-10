@@ -1,11 +1,10 @@
 import type { OutputStyle } from '../modules/clarify-core';
 
 export const outputStyles = [
-  { value: 'default', label: 'Padrão' },
+  { value: 'natural', label: 'Manter meu tom' },
   { value: 'formal', label: 'Formal' }, { value: 'casual', label: 'Casual' },
-  { value: 'very_casual', label: 'Muito casual' },
 ] as const;
 export function outputStyleLabel(style: OutputStyle): string {
   return ({ default: 'Padrão', formal: 'Formal', casual: 'Casual', very_casual: 'Muito casual',
-    natural: 'Natural', informal: 'Informal', organized: 'Organizado' })[style];
+    natural: 'Manter meu tom', informal: 'Informal', organized: 'Organizado' })[style];
 }

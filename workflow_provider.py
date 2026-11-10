@@ -8,6 +8,8 @@ does not load Qt, start capture, or read a user profile.
 
 from __future__ import annotations
 
+from shared.text_preservation import validate_preserved_text, is_exact_duplicate_removal
+
 from shared.writing_style_policy import (
     writing_style as parse_writing_style,
     with_writing_style,
@@ -35,7 +37,6 @@ from shared.rewrite_prompts import (
 
 from dataclasses import replace
 from contextlib import contextmanager, nullcontext
-import re
 import time
 from typing import Protocol
 
@@ -97,16 +98,8 @@ def _workflow_instruction(base: str, route_prompt: str = "") -> str:
 
 
 def _is_exact_duplicate_removal(source: str, edited: str) -> bool:
-    """Allow large compression only when each unique sentence stays intact."""
-    sentences = [
-        " ".join(sentence.casefold().split())
-        for sentence in re.split(r"(?<=[.!?。！？])\s+", source.strip())
-    ]
-    sentences = [sentence for sentence in sentences if sentence]
-    unique = list(dict.fromkeys(sentences))
-    return len(unique) < len(sentences) and (
-        " ".join(edited.casefold().split()) == " ".join(unique)
-    )
+    # Keep the Qt compatibility export while sharing the preservation policy.
+    return is_exact_duplicate_removal(source, edited)
 
 
 class WorkflowProviderService:
@@ -213,6 +206,11 @@ class WorkflowProviderService:
                 text,
                 target if target is not None else language,
                 cancel=cancel,
+                **(
+                    {"writing_style": writing_style}
+                    if writing_style is not None
+                    else {}
+                ),
                 **({"output_language": target} if target not in (None, "auto") else {}),
             )
             result = RewriteResult(value, "clarify", "openai/gpt-oss-20b")
@@ -276,6 +274,8 @@ class WorkflowProviderService:
         if not self.text_action_is_current(snapshot):
             raise RuntimeError("Text action account context changed")
         validate_output(result.text)
+        if action.kind != "custom":
+            validate_preserved_text(text, result.text)
         return result
 
     @property
@@ -676,17 +676,7 @@ class WorkflowProviderService:
         )
         if not refined.text or not refined.text.strip():
             raise RuntimeError("Refinement returned no text")
-        source_size = len(" ".join(raw_transcript.split()))
-        refined_size = len(" ".join(refined.text.split()))
-        if (
-            source_size >= 240
-            and target in (None, "auto")
-            and refined_size * 4 < source_size
-            and not _is_exact_duplicate_removal(raw_transcript, refined.text)
-        ):
-            # Dictation cleanup must not replace a long transcript with a title.
-            # Let the existing recovery path retain the exact original text.
-            raise RuntimeError("Refinement removed most of the transcript")
+        validate_preserved_text(raw_transcript, refined.text)
         return refined
 
     def rewrite(self, text: str) -> RewriteResult:
@@ -732,6 +722,7 @@ class WorkflowProviderService:
         )
         if not result.text.strip():
             raise RuntimeError("Provider returned an empty rewrite")
+        validate_preserved_text(source, result.text)
         return result
 
     def translate(self, text: str, target_language: str) -> TranslationResult:
@@ -788,4 +779,5 @@ class WorkflowProviderService:
         )
         if not result.text.strip():
             raise RuntimeError("Provider returned an empty translation")
+        validate_preserved_text(source, result.text)
         return result

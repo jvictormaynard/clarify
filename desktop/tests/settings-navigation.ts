@@ -47,7 +47,9 @@ export async function openStyleReview(page: Page, language = "pt") {
     await page.getByRole("button", { name, exact: true }).getAttribute("aria-current") !== "page") {
     await navigate(page, name);
   }
+  const more = page.getByRole("button", { name: /^(More options|Mais opções|Más opciones)$/ });
+  if (await more.getAttribute("aria-expanded") !== "true") await openDisclosure(page, (await more.innerText()).trim());
   const disclosure = page.getByRole("button", { name: language === "en" ? "Review model and instructions" : "Modelo e instruções da revisão", exact: true });
-  if (await disclosure.getAttribute("aria-expanded") !== "true") await disclosure.click();
+  if (await disclosure.getAttribute("aria-expanded") !== "true") await openDisclosure(page, (await disclosure.innerText()).trim());
   await expect(page.getByRole("textbox", { name: language === "en" ? "Instructions" : "Instruções", exact: true })).toBeVisible();
 }

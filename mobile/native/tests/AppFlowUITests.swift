@@ -347,10 +347,10 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
     press("settings.processing"); capture("processing"); back()
     press("settings.output")
-    press("output.language.de"); press("output.style.very_casual")
+    press("output.policy.clarity"); press("output.style.casual"); press("output.more"); press("output.language.de")
     capture("output-preferences")
     press("output.close")
-    press("settings.output")
+    press("settings.output"); press("output.more")
     let german = app.descendants(matching: .any)["output.language.de"].firstMatch
     XCTAssertTrue(german.waitForExistence(timeout: 15))
     XCTAssertTrue(german.isSelected)
@@ -362,7 +362,7 @@ final class AppFlowUITests: XCTestCase {
     capture("guide-keyboard"); back()
     XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
     verifyActions()
-    tab("Ajustes"); press("settings.output")
+    tab("Ajustes"); press("settings.output"); press("output.more")
     let sharedLanguage = app.descendants(matching: .any)["output.language.ru"].firstMatch
     XCTAssertTrue(sharedLanguage.waitForExistence(timeout: 15))
     XCTAssertTrue(sharedLanguage.isSelected, "Text actions and dictation use the same output language")
@@ -383,7 +383,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["account.weeklyUsage"].waitForExistence(timeout: 15))
     capture("compact-account"); back()
     press("settings.output")
-    press("output.language.de"); press("output.style.very_casual")
+    press("output.policy.clarity"); press("output.style.casual"); press("output.more"); press("output.language.de")
     capture("compact-output"); press("output.close")
     tab("Ações")
     let text = app.textViews["actions.text"], draft = "a\nb\nc"

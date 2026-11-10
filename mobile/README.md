@@ -20,7 +20,13 @@ editor and the current destination's saved actions. Library contains the
 dictionary and snippets. Settings separates account, processing destination,
 dictation output, microphone and keyboard, and history and privacy.
 
-The keyboard always shows the output-language flag and writing style. Its menu
+The app and keyboard offer Improve clarity and Keep my words. Tone appears when
+editing is allowed, with Keep my tone, Formal and Casual. New installations start
+with clarity editing and Keep my tone; existing saved choices remain unchanged.
+More options contains output language, automatic text actions and legacy choices.
+Keep my words ignores saved tone and translation choices for dictation without
+clearing them. Manual Rewrite and Translation remain separate actions.
+The keyboard shows the output-language flag and the applicable tone. Its menu
 changes dictation output when no text is selected. With selected text, the same
 control shows a wand and offers rewrite, translation and saved text actions.
 The language picker in Actions and the keyboard translation menu update the same

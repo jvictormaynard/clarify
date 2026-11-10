@@ -1,7 +1,6 @@
 """Bounded product transforms with server-owned models and credentials."""
 
 import json
-import re
 import time
 from dataclasses import dataclass, replace
 from decimal import Decimal
@@ -9,6 +8,8 @@ from pathlib import Path
 
 import requests
 from django.conf import settings
+
+from shared.text_preservation import validate_preserved_text
 
 from shared.dictation_policy import (
     DictationCleanupPolicy,
@@ -144,7 +145,13 @@ def text_operation(
         output_language=language,
         action=action != "rewrite",
     )
-    outcome = transform(source, system, cost_budget=cost_budget, authorize=authorize)
+    outcome = transform(
+        source,
+        system,
+        cost_budget=cost_budget,
+        authorize=authorize,
+        preserve_content=True,
+    )
     return replace(
         outcome,
         result={
@@ -165,9 +172,17 @@ def action_operation(
         output_language=language,
         action=True,
     )
+    original = source
     if action.kind == "translation":
         source = "Target language: " + text_actions.LANGUAGES[language] + ".\n" + source
-    outcome = transform(source, system, cost_budget=cost_budget, authorize=authorize)
+    outcome = transform(
+        source,
+        system,
+        cost_budget=cost_budget,
+        authorize=authorize,
+        preserve_content=action.kind != "custom",
+        preservation_source=original,
+    )
     return Outcome(
         {
             **outcome.result,
@@ -182,20 +197,39 @@ def action_operation(
     )
 
 
-def transform(source, system, *, cost_budget, authorize):
+def transform(
+    source,
+    system,
+    *,
+    cost_budget,
+    authorize,
+    preserve_content=False,
+    preservation_source=None,
+):
+    original = source if preservation_source is None else preservation_source
     source = "BEGIN_SELECTED_SOURCE\n" + source + "\nEND_SELECTED_SOURCE"
     plan = chat_plan(system, source, cost_budget)
     if plan is None:
         raise Rejected("allowance_exhausted")
     incoming_bound, outgoing_bound, ceiling = plan
     authorize(ceiling)
-    return _chat_completion(
+    outcome = _chat_completion(
         system,
         source,
         incoming_bound,
         outgoing_bound,
         max_output_bytes=CONTRACT["limits"]["account"]["text_output_bytes"],
     )
+    if preserve_content:
+        try:
+            validate_preserved_text(original, outcome.result["text"])
+        except ValueError:
+            raise ProviderFailure(
+                cost=outcome.cost,
+                input_tokens=outcome.input_tokens,
+                output_tokens=outcome.output_tokens,
+            ) from None
+    return outcome
 
 
 def _chat_completion(
@@ -458,24 +492,11 @@ def dictation(
         usage_known = True
         text = completion.result["text"]
 
-        def normalized(value):
-            return " ".join(value.casefold().split())
-
-        sentences = [
-            normalized(s) for s in re.split(r"(?<=[.!?。！？])\s+", rewrite_source)
-        ]
-        unique = list(dict.fromkeys(sentences))
-        exact_dedup = len(unique) < len(sentences) and normalized(text) == " ".join(
-            unique
-        )
-        if (
-            text_action is None
-            and target in (None, "auto")
-            and len(normalized(rewrite_source)) >= 240
-            and len(normalized(text)) * 4 < len(normalized(rewrite_source))
-            and not exact_dedup
-        ):
-            return Outcome(result, cost, input_tokens, output_tokens)
+        if text_action is None or text_action.kind != "custom":
+            try:
+                validate_preserved_text(rewrite_source, text)
+            except ValueError:
+                return Outcome(result, cost, input_tokens, output_tokens)
         result.update(text=text, rewritten=True)
         provenance(result, refined=True, attempted=True)
     except (ProviderFailure, AttributeError, KeyError, IndexError, TypeError):

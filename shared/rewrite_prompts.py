@@ -12,6 +12,8 @@ FAITHFUL_REWRITE_INSTRUCTION = (
     "comprehensible. This is editing, not summarization: "
     "preserve every requirement, constraint, example, named service, provider, "
     "model, technical identifier, and relationship expressed by the speaker. "
+    "Keep every unique point from the beginning, middle, and end of the source. "
+    "Shortening is not the goal. Never replace detailed text with an overview. "
     "Do not generalize, omit, merge, or invent technical details. Preserve the "
     "speaker's perspective and intent, including imperative wording when the "
     "speaker is dictating a task. Preserve attention directives such as "

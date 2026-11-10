@@ -22,6 +22,10 @@ struct ProcessingCapabilities {
     for key in ["dictation_actions", "explicit_dictation_policy"] {
       guard ComputerJSON.boolean(value[key]) != nil else { throw ComputerFailure.invalidResponse }
     }
+    if let rawEditing = value["dictation_editing"] {
+      guard let editing = rawEditing as? [String: Any], Set(editing.keys) == Set(["legacy", "natural", "clarity", "action", "legacy_translated", "natural_translated"]),
+        editing.values.allSatisfy({ ComputerJSON.boolean($0) != nil }) else { throw ComputerFailure.invalidResponse }
+    }
     for key in ["text_input_bytes", "text_output_bytes"] {
       guard let bound = ComputerJSON.integer(value[key]), bound > 0, bound <= 64_000 else { throw ComputerFailure.invalidResponse }
     }
@@ -71,6 +75,17 @@ struct DictationPolicy: Codable, Equatable {
     }
     return ["text_action_id": actionID, "text_action_revision": revision, "text_action_language": language.rawValue]
   }
+  func canApplyTone(capabilities: ProcessingCapabilities, catalog: TextActionCatalog, computer: Bool, outputLanguage: OutputLanguage = .auto) -> Bool {
+    guard ![.preserve, .light].contains(mode), capabilities.supports("cleanup_levels", "clarity") else { return false }
+    let editing = capabilities.value["dictation_editing"] as? [String: Any]
+    if computer && editing == nil { return false }
+    let readiness = outputLanguage != .auto && [.legacy, .natural].contains(mode) ? mode.rawValue + "_translated" : mode.rawValue
+    if let editing, ComputerJSON.boolean(editing[readiness]) != true { return false }
+    if mode == .action {
+      return catalog.actions.contains { $0.id == actionID && $0.revision == actionRevision && $0.enabled && $0.ready }
+    }
+    return true
+  }
   func accepts(_ raw: [String: Any]) -> Bool {
     if mode == .action {
       return raw["text_action_id"] as? String == actionID &&
@@ -89,10 +104,44 @@ final class DictationPolicyStore {
   private func key(_ scope: String) -> String { "clarify.dictation.policy|" + scope }
   func read(scope: String) -> DictationPolicy {
     guard let data = defaults.data(forKey: key(scope)), data.count <= 2048,
-      let policy = try? JSONDecoder().decode(DictationPolicy.self, from: data) else { return DictationPolicy() }
+      let policy = try? JSONDecoder().decode(DictationPolicy.self, from: data) else {
+      if defaults.object(forKey: key(scope)) == nil, defaults.bool(forKey: "clarify.textUX.fresh") {
+        return DictationPolicy(mode: .clarity)
+      }
+      return .legacy
+    }
     return policy
   }
   func save(_ policy: DictationPolicy, scope: String) throws {
     defaults.set(try JSONEncoder().encode(policy), forKey: key(scope))
+  }
+}
+
+// Extreme-loss guard, not semantic validation. Count characters across scripts.
+enum TextRetention {
+  static func accepts(source: String, output: String) -> Bool {
+    func normalize(_ value: String) -> String {
+      value.folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        .split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+    let original = normalize(source), result = normalize(output)
+    guard !result.isEmpty else { return false }
+    guard original.unicodeScalars.count >= 240, result.unicodeScalars.count * 4 < original.unicodeScalars.count else { return true }
+    // Same sentence boundaries as the shared Python preservation policy.
+    let sentences = source.replacingOccurrences(of: #"(?<=[.!?。！？])\s+|\n+"#,
+      with: "\n", options: .regularExpression).components(separatedBy: "\n")
+      .map(normalize).filter { !$0.isEmpty }
+    var seen = Set<String>()
+    let unique = sentences.filter { seen.insert($0).inserted }
+    return unique.count < sentences.count && unique.joined(separator: " ") == result
+  }
+}
+
+// App/core only: the keyboard shares saved preferences without processing policy dependencies.
+extension OutputPreferences {
+  func forDictation(_ policy: DictationPolicy, toneAllowed: Bool? = nil) -> OutputPreferences {
+    // Keep the saved choices for explicit text actions and later clarity edits.
+    if [.preserve, .light].contains(policy.mode) { return OutputPreferences() }
+    return toneAllowed == false ? OutputPreferences(language: language) : self
   }
 }

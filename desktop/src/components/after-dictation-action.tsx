@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { actionDisplayName } from "../settings/display-labels";
@@ -8,8 +8,12 @@ import { Dialog, DialogPopup, DialogHeader, DialogTitle, DialogDescription, Dial
 export const textActionLanguages = [{ id: "pt", label: "Português" }, { id: "en", label: "English" },
   { id: "es", label: "Español" }, { id: "de", label: "Deutsch" }, { id: "ru", label: "Русский" }];
 
+function DictationGroup({ advanced, children }: { advanced: boolean; children: ReactNode }) {
+  return advanced ? <Section title={t("Ação automática salva")}>{children}</Section> : <>{children}</>;
+}
+
 type Mode = "natural" | "preserve" | "light" | "clarity" | "action";
-export function AfterDictationAction({ controller: c }: SettingsPageProps) {
+export function AfterDictationAction({ controller: c, advanced = false }: SettingsPageProps & { advanced?: boolean }) {
   const [choosingContext, setChoosingContext] = useState<string | null>(null);
   const [target, setTarget] = useState<{ id: string; context: string; revision: string } | null>(null);
   const [language, setLanguage] = useState("");
@@ -49,23 +53,28 @@ export function AfterDictationAction({ controller: c }: SettingsPageProps) {
   }[mode];
   const needsReview = mode === "clarity" || mode === "action";
   return <>
-    <Section title={t("Após o ditado")}>
-      <Row title={t("Processamento do texto")}>
-        <Picker label={t("Após o ditado")} value={mode} disabled={disabled} options={[
-          { id: "natural", label: t("Natural") },
-          { id: "preserve", label: t("Preservar palavras") },
-          { id: "light", label: t("Ajustes mínimos") },
-          { id: "clarity", label: t("Revisar clareza") },
-          { id: "action", label: t("Aplicar ação de texto") },
+    <DictationGroup advanced={advanced}>
+      <Row title={t(advanced ? "Ação após o ditado" : "Edição do texto")}>
+        <Picker literalLabels label={t(advanced ? "Ação automática salva" : "Edição do texto")} value={advanced ? mode === "action" ? "action" : "off" : mode} disabled={disabled} options={advanced ? [
+          { id: "off", label: t("Nenhuma") }, { id: "action", label: t("Aplicar ação de texto") },
+        ] : [
+          { id: "clarity", label: t("Melhorar a clareza") },
+          { id: "preserve", label: t("Manter minhas palavras") },
+          ...(mode === "light" ? [{ id: "light", label: t("Ajustes mínimos") }] : []),
+          ...(mode === "natural" ? [{ id: "natural", label: t("Instruções atuais") }] : []),
+          ...(mode === "action" ? [{ id: "action", label: action ? actionDisplayName(action) : t("Ação indisponível") }] : []),
         ]} onChange={value => {
-          if (value === "action") setChoosingContext(c.state.textActionContext ?? null);
-          else void save(value as Mode);
+          if (value === "action") { if (advanced) setChoosingContext(c.state.textActionContext ?? null); }
+          else if (value === "off") {
+            if (!selected) setChoosingContext(null);
+            else void save((level || "natural") as Mode);
+          } else void save(value as Mode);
         }} />
       </Row>
-      <p className="hint">{t(help)}</p>
-      {mode === "action" && <>
+      {!advanced && <p className="hint">{t(help)}</p>}
+      {advanced && mode === "action" && <>
         <Row title={t("Ação de texto")}>
-          <Picker label={t("Ação após o ditado")} value={selected} disabled={disabled || !c.state.textActionContext}
+          <Picker literalLabels label={t("Ação após o ditado")} value={selected} disabled={disabled || !c.state.textActionContext}
             options={[{ id: "", label: t("Escolher ação") }, ...actions.map(item => ({ id: item.id, label: actionDisplayName(item) }))]}
             onChange={id => { if (id) void setAction(id); }} />
         </Row>
@@ -80,13 +89,11 @@ export function AfterDictationAction({ controller: c }: SettingsPageProps) {
           <Button disabled={disabled} onClick={() => void setAction(selected)}>{t(textActionLanguages.find(item => item.id === c.state.afterDictationTextActionLanguage)?.label ?? "Escolher idioma")}</Button>
         </Row>}
       </>}
-      {needsReview && c.state.dictationCleanupRefinementAllowed === false && <div>
+      {!advanced && needsReview && c.state.dictationCleanupRefinementAllowed === false && <div>
         <p className="hint" role="status">{t("Revisão indisponível nesta rota. As palavras serão preservadas.")}</p>
         {!(c.state.accountState?.managed || c.state.accountState?.signedIn) && <Button variant="text" onClick={() => void c.navigate("style", c.state.textActionDictationContext === "local_asr" ? "local_asr_refinement" : "refinement")}>{t("Configurar revisão")}</Button>}
       </div>}
-      <p className="hint">{t("A escolha vale para o próximo ditado. Ela não ativa serviços na nuvem.")}</p>
-      <p className="hint">{t("Snippets isolados inserem o texto salvo exatamente. Outros snippets são expandidos uma vez antes da revisão.")}</p>
-    </Section>
+    </DictationGroup>
     <Dialog open={!!target} onOpenChange={open => { if (!open && !saving) setTarget(null); }}>
       <DialogPopup bottomStickOnMobile={false}>
         <DialogHeader><DialogTitle>{t("Idioma da tradução")}</DialogTitle>

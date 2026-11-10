@@ -55,6 +55,7 @@ def presentation(style: WritingStyle | str) -> str:
 def with_action_style(instruction: str, style: WritingStyle | None) -> str:
     if style is None:
         return instruction
+    instruction = _without_default_tone(instruction)
     return (
         instruction
         + "\n\nApply this presentation to the saved action's result: "
@@ -63,11 +64,21 @@ def with_action_style(instruction: str, style: WritingStyle | None) -> str:
     )
 
 
+def _without_default_tone(instruction: str) -> str:
+    # Older saved application defaults can still contain this exact sentence.
+    # An explicit tone choice owns presentation; personal instructions stay saved.
+    return instruction.replace(
+        "result easier to read. Tone: professional yet natural. NEVER say 'The user says'. ",
+        "result easier to read. NEVER say 'The user says'. ",
+    )
+
+
 def with_writing_style(instruction: str, style: WritingStyle | None) -> str:
     """Extend the existing editor instruction; None keeps it byte-for-byte."""
 
     if style is None:
         return instruction
+    instruction = _without_default_tone(instruction)
     return (
         instruction
         + "\n\n"

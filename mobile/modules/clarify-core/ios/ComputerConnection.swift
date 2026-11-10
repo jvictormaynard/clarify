@@ -287,6 +287,9 @@ final class ComputerConnection {
   @MainActor func process(_ operationID: String, action: String? = nil, text: String? = nil, wav: Data? = nil,
     language: String = ClarifyLocale.language, savedAction: TextActionDescriptor? = nil,
     preferences: OutputPreferences = OutputPreferences(), policy: DictationPolicy = .legacy) async throws -> ComputerResult {
+    let effectivePreferences = action == nil ? preferences.forDictation(policy,
+      toneAllowed: processingCapabilities.value["dictation_editing"] == nil ? nil :
+        policy.canApplyTone(capabilities: processingCapabilities, catalog: textActions, computer: true, outputLanguage: preferences.language)) : preferences
     try Task.checkCancellation()
     guard let localID = UUID(uuidString: operationID) else { throw ComputerFailure.notReady }
     let key = localID.uuidString
@@ -297,9 +300,9 @@ final class ComputerConnection {
       language.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || $0 == 45 }) else { throw ComputerFailure.invalidResponse }
     guard operations[key] == nil else { throw ComputerFailure.busy }
     let owner = generation
-    try processingCapabilities.validate(preferences)
+    try processingCapabilities.validate(effectivePreferences)
     var json: [String: Any] = ["language": language]
-    for (key, value) in try preferences.requestFields(supported: outputPreferencesSupported, dictation: action == nil) { json[key] = value }
+    for (key, value) in try effectivePreferences.requestFields(supported: outputPreferencesSupported, dictation: action == nil) { json[key] = value }
     if let action, let text {
       guard ["rewrite", "translate", "text_action"].contains(action), (action == "text_action") == (savedAction != nil),
         !text.contains("\0"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= ProcessingContractData.computerTextInputBytes else { throw ComputerFailure.invalidResponse }
@@ -314,6 +317,8 @@ final class ComputerConnection {
     if action == nil {
       for (key, value) in try policy.fields(capabilities: processingCapabilities, catalog: textActions, computer: true) { json[key] = value }
     }
+    let custom = savedAction?.kind == "custom"
+    let requiresOriginalConfirmation = processingCapabilities.available
     let wireID = try newOperationID()
     json["operation_id"] = wireID.uuidString
     operations[key] = (credential, route, wireID)
@@ -355,8 +360,9 @@ final class ComputerConnection {
           ComputerJSON.integer(raw["action_revision"]).map({ String($0) }) == savedAction.revision else { throw ComputerFailure.invalidResponse }
       }
       if action == nil, !policy.accepts(raw) { throw ComputerFailure.invalidResponse }
-      let applied = preferences.applied(in: raw, dictation: action == nil, requireOriginalConfirmation: processingCapabilities.available)
-      let fallback = action == nil && !result.successful && preferences.hasDictationFallback(in: raw)
+      let retained = action == nil || custom || TextRetention.accepts(source: text ?? result.transcript, output: result.text)
+      let applied = retained && (action == nil || result.successful) && effectivePreferences.applied(in: raw, dictation: action == nil, requireOriginalConfirmation: requiresOriginalConfirmation)
+      let fallback = retained && action == nil && !result.successful && effectivePreferences.hasDictationFallback(in: raw)
         ? result.text : text ?? result.transcript
       return ComputerResult(operationID: localID, transcript: result.transcript, text: result.text,
         rewritten: result.rewritten, successful: result.successful).checkingPreferences(applied, original: fallback)

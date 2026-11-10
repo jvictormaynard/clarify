@@ -304,6 +304,8 @@ final class KeyboardUITests: XCTestCase {
     let store = SharedState(root: root)
     var state = DictationSnapshot(); state.sessionActive = true; state.configured = true
     state.textActions = .unsupported; state.legacyRewriteReady = true; state.legacyTranslateReady = true
+    state.outputPreferencesSupported = true; state.toneAllowed = true
+    state.dictationMode = "clarity"; state.dictationModes = ["legacy", "natural", "preserve", "light", "clarity", "action"]
     try store.write(state, to: "state.json")
     let keyboard = SelectionKeyboard(); keyboard.store = store
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))

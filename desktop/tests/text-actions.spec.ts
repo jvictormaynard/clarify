@@ -1,3 +1,4 @@
+import { openDisclosure } from "./settings-navigation";
 import { test, expect, openSettings } from "./settings-harness";
 
 test("workspace: navigation presents tasks and keeps keyboard focus at every width", async ({ page }, testInfo) => {
@@ -13,7 +14,7 @@ test("workspace: navigation presents tasks and keeps keyboard focus at every wid
     await expect(navigation.getByRole("button", { name: "Estilo", exact: true })).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("heading", { level: 1, name: "Estilo", exact: true })).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Após o ditado", exact: true })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Edição do texto", exact: true })).toBeVisible();
     await expect(navigation.getByRole("button", { name: "Configurações", exact: true })).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await page.screenshot({ path: testInfo.outputPath(`style-${width}.png`) });
@@ -22,6 +23,7 @@ test("workspace: navigation presents tasks and keeps keyboard focus at every wid
 
 test("text profiles: Cancel keeps the route and Save preserves unrelated Style instructions", async ({ page, settingsFixture }, testInfo) => {
   await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await openDisclosure(page, "Mais opções");
   await page.getByRole("button", { name: "Modelo e instruções da revisão", exact: true }).click();
   const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
   await prompt.fill("Pending style instructions.");
@@ -50,7 +52,8 @@ test("text profiles: Cancel keeps the route and Save preserves unrelated Style i
 
 test("after dictation: translation saves only after an explicit target language", async ({ page, settingsFixture }) => {
   await page.getByRole("button", { name: "Estilo", exact: true }).click();
-  await page.getByRole("combobox", { name: "Após o ditado", exact: true }).click();
+  await openDisclosure(page, "Mais opções");
+  await page.getByRole("combobox", { name: "Ação automática salva", exact: true }).click();
   await page.getByRole("option", { name: "Aplicar ação de texto", exact: true }).click();
   const select = page.getByRole("combobox", { name: "Ação após o ditado", exact: true });
   await select.click();
@@ -73,28 +76,18 @@ test("after dictation: translation saves only after an explicit target language"
   await page.reload();
   await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Estilo", exact: true }).click();
-  await expect(select).toContainText("Tradução");
-  await page.getByRole("combobox", { name: "Após o ditado", exact: true }).click();
-  await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Edição do texto", exact: true })).toContainText("Tradução");
+  // Changing tone must not remove the selected automatic action or its target.
+  await page.getByRole("combobox", { name: "Tom", exact: true }).click();
+  await page.getByRole("option", { name: "Formal", exact: true }).click();
+  expect((await settingsFixture.rpc("snapshot")).afterDictationTextActionId).toBe("translation");
+  expect((await settingsFixture.rpc("snapshot")).afterDictationTextActionLanguage).toBe("en");
+  await page.getByRole("combobox", { name: "Edição do texto", exact: true }).click();
+  await page.getByRole("option", { name: "Manter minhas palavras", exact: true }).click();
   await expect(select).toHaveCount(0);
   const preserved = await settingsFixture.rpc("snapshot");
   expect(preserved.dictationCleanupLevel).toBe("preserve");
   expect(preserved.afterDictationTextActionId).toBe("");
-});
-
-test("styles: general tone persists and Natural clears its override", async ({ page, settingsFixture }) => {
-  await page.getByRole("button", { name: "Estilo", exact: true }).click();
-  const style = page.getByRole("combobox", { name: "Estilo geral", exact: true });
-  await expect(style).toContainText("Natural");
-  await style.click(); await page.getByRole("option", { name: "Formal", exact: true }).click();
-  await expect(style).toContainText("Formal");
-  expect((await settingsFixture.rpc("snapshot")).dictationWritingStyle).toBe("formal");
-  await page.reload();
-  await page.getByRole("button", { name: "Estilo", exact: true }).click();
-  await expect(style).toContainText("Formal");
-  await style.click(); await page.getByRole("option", { name: "Natural", exact: true }).click();
-  await expect(style).toContainText("Natural");
-  expect((await settingsFixture.rpc("snapshot")).dictationWritingStyle).toBe("");
 });
 
 test("after dictation: basic processing stays available without an action catalog", async ({ page, settingsFixture }) => {
@@ -104,11 +97,19 @@ test("after dictation: basic processing stays available without an action catalo
     await route.fulfill({ json: { result: { ...result, textActionContext: "", textActions: [] } } });
   });
   await page.getByRole("button", { name: "Estilo", exact: true }).click();
-  const mode = page.getByRole("combobox", { name: "Após o ditado", exact: true });
+  const mode = page.getByRole("combobox", { name: "Edição do texto", exact: true });
   await expect(mode).toBeEnabled();
-  await mode.click(); await page.getByRole("option", { name: "Preservar palavras", exact: true }).click();
-  await expect(mode).toContainText("Preservar palavras");
+  await mode.click(); await page.getByRole("option", { name: "Manter minhas palavras", exact: true }).click();
+  await expect(mode).toContainText("Manter minhas palavras");
   expect((await settingsFixture.rpc("snapshot")).dictationCleanupLevel).toBe("preserve");
+  await openDisclosure(page, "Mais opções");
+  await page.getByRole("combobox", { name: "Ação automática salva", exact: true }).click();
+  await page.getByRole("option", { name: "Aplicar ação de texto", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Ação após o ditado", exact: true })).toBeDisabled();
+  await page.getByRole("combobox", { name: "Ação automática salva", exact: true }).click();
+  await page.getByRole("option", { name: "Nenhuma", exact: true }).click();
+  expect((await settingsFixture.rpc("snapshot")).dictationCleanupLevel).toBe("preserve");
+
 });
 
 test("text actions: saved preview uses the latest sample and the shared output language", async ({ page, settingsFixture }, testInfo) => {
@@ -166,6 +167,7 @@ test("settings dialog: unsaved privacy changes stay local and the task remains s
 
 test("style rule: Cancel preserves configuration and Save adds the named app", async ({ page, settingsFixture }, testInfo) => {
   await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await openDisclosure(page, "Mais opções");
   const original = (await settingsFixture.rpc("snapshot")).applicationWritingStyles;
   await page.getByRole("button", { name: "Adicionar aplicativo", exact: true }).click();
   let dialog = page.getByRole("dialog", { name: "Estilo do aplicativo", exact: true });
@@ -173,7 +175,7 @@ test("style rule: Cancel preserves configuration and Save adds the named app", a
   if (!await path.isVisible()) await dialog.getByRole("button", { name: "Escolher outro aplicativo", exact: true }).click();
   await path.fill("C:\\Apps\\Editor.exe");
   await dialog.getByRole("combobox", { name: "Estilo de escrita", exact: true }).click();
-  await page.getByRole("option", { name: "Muito casual", exact: true }).click();
+  await page.getByRole("option", { name: "Casual", exact: true }).click();
   await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
   expect((await settingsFixture.rpc("snapshot")).applicationWritingStyles).toEqual(original);
   await page.getByRole("button", { name: "Adicionar aplicativo", exact: true }).click();
@@ -397,4 +399,49 @@ test.describe("hosted text actions", () => {
     await confirmation.getByRole("button", { name: "Cancelar", exact: true }).click();
     await expect(row).toBeVisible();
   });
+});
+
+test("pill preferences: tone uses the shared saved owner and hides when editing is forbidden", async ({ page, settingsFixture }) => {
+  await settingsFixture.rpc("savePreference", "setDictationWritingStyle", ["organized"]);
+  await page.addInitScript(() => {
+    const listeners = new Set<(message: unknown) => void>();
+    (window as any).clarifyDesktop = {
+      call: async (channel: string, method: string, args: unknown[]) => {
+        if (channel === "workflow") return;
+        return (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method, args });
+      },
+      subscribe: (listener: (message: unknown) => void) => { listeners.add(listener); return () => listeners.delete(listener); },
+      ready: async () => { for (const listener of listeners) listener({ event: "workflow", state: { surface: "idle", uiLanguage: "pt", language: "auto" } }); },
+      window: async () => {},
+    };
+  });
+  await page.goto("/?surface=pill");
+  const more = page.getByRole("button", { name: "Mais opções", exact: true });
+  await more.click();
+  await page.getByRole("button", { name: "Tom", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Organizado", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Manter meu tom", exact: true }).click();
+  await expect(more).toBeFocused();
+  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).dictationWritingStyle).toBe("natural");
+  await settingsFixture.rpc("savePreference", "setDictationCleanupLevel", ["preserve"]);
+  await more.click();
+  // Wait for the real Settings snapshot, then verify that no tone can be selected.
+  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).applicationStyleRefinementAllowed).toBe(false);
+  await expect(page.getByRole("button", { name: "Tom", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape"); await expect(more).toBeFocused();
+});
+
+test("after dictation: custom saved names stay literal in main and advanced pickers", async ({ page, settingsFixture }) => {
+  let state = await settingsFixture.rpc("snapshot");
+  await settingsFixture.rpc("saveTextAction", {
+    ...state.textActions![0], id: "11111111-1111-4111-8111-111111111111", name: "Rewrite", kind: "custom", shortcut: null,
+  }, state.textActionContext, state.textActionsRevision);
+  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).textActionMutation?.status).toBe("succeeded");
+  state = await settingsFixture.rpc("snapshot");
+  await settingsFixture.rpc("setDictationPostProcessing", "action", "11111111-1111-4111-8111-111111111111", "auto", state.textActionContext, state.textActionsRevision);
+  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).textActionMutation?.status).toBe("succeeded");
+  await page.reload(); await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Edição do texto", exact: true })).toContainText("Rewrite");
+  await openDisclosure(page, "Mais opções");
+  await expect(page.getByRole("combobox", { name: "Ação após o ditado", exact: true })).toContainText("Rewrite");
 });
