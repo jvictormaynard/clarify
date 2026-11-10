@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    'pt-BR': `Clarify ${version} (${build}): corrige o botão de gravação dentro do app para contas Clarify. Abra a primeira aba, Ditado. Coloque o interruptor em On. Segure o grande botão redondo do microfone para falar e solte para concluir. Com Reescrita com Apple ativada, a revisão abre após a transcrição. Aceite a alteração e toque em Usar resultado; aceite a tradução se necessária. O controle também continua disponível no modo Computador. Suítes de testes omitidas conforme solicitado.`,
+    'en-US': `Clarify ${version} (${build}): fixes the missing in-app recording button for Clarify accounts. Open the first tab, Dictation. Turn the switch On. Hold the large round microphone button to speak, then release to finish. With Apple rewriting enabled, review opens after transcription. Accept the edit and tap Use result; accept translation if needed. The same control remains available in Computer mode. Test suites were skipped as requested.`,
+    'es-ES': `Clarify ${version} (${build}): corrige el botón de grabación que faltaba para cuentas Clarify. Abre la primera pestaña, Dictado. Activa On. Mantén pulsado el botón redondo del micrófono para hablar y suéltalo para terminar. Con reescritura Apple activada, la revisión abre tras transcribir. Acepta el cambio y toca Usar resultado; acepta la traducción si hace falta. El control sigue disponible en modo Ordenador. Pruebas omitidas según lo solicitado.`,
   };
 }
 
@@ -106,7 +106,17 @@ async function publish({ env = process.env, fetch = globalThis.fetch,
       if (!attached) {
         const membership = await list('betaGroups/' + group.id + '/builds?limit=100');
         if (!membership.data.some(item => item.id === build.id)) {
-          await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            try {
+              await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            } catch (error) {
+              // Auto-distribution can reject a redundant association before its
+              // group membership is visible. Never accept 422 as availability:
+              // retry the reads and require real membership and testing state.
+              if (!String(error.message).startsWith('Apple API 422 ')) throw error;
+              log('Apple group association is pending; verifying membership again.');
+              await sleep(30_000);
+              continue;
+            }
         }
         const localizations = await list('builds/' + build.id + '/betaBuildLocalizations');
         for (const [locale, whatsNew] of Object.entries(releaseNotes(selected.version, selected.build))) {
