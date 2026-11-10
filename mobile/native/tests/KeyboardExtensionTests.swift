@@ -214,6 +214,35 @@ final class KeyboardExtensionTests: XCTestCase {
     expectText("1QQQQ", in: app)
     XCTAssertTrue(app.keys["q"].waitForExistence(timeout: 5), "A Shift tap must turn Caps Lock off")
   }
+  private func checkAccentHold(_ name: String, in app: XCUIApplication) throws {
+    expectText("1QQQQ", in: app)
+    let letter = app.keys["e"]
+    XCTAssertTrue(letter.waitForExistence(timeout: 5), "The accent hold must start from lowercase")
+    let window = app.windows.firstMatch, windowFrame = window.frame, source = letter.frame
+    XCTAssertTrue(!source.isEmpty && windowFrame.contains(source))
+    let coordinate = window.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: source.midX - windowFrame.minX, dy: source.midY - windowFrame.minY))
+    captureKeyboardAppearance("\(name)-before", in: app)
+    func perform(_ phase: String, frame: CGRect, action: () -> Void) throws {
+      let started = Date().timeIntervalSince1970, startedUptime = ProcessInfo.processInfo.systemUptime
+      action()
+      let ended = Date().timeIntervalSince1970, endedUptime = ProcessInfo.processInfo.systemUptime
+      captureKeyboardAppearance("\(name)-\(phase)", in: app)
+      let data = try JSONSerialization.data(withJSONObject: ["name": name, "phase": phase,
+        "startedUTC": started, "endedUTC": ended, "startedUptime": startedUptime, "endedUptime": endedUptime,
+        "sourceAXFrame": ["x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height],
+        "syntheticResult": app.textFields["composer"].value as? String ?? "",
+        "timingScope": "XCTest action API bounds, not actual touch delivery or physical latency"], options: [.sortedKeys])
+      let trace = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+      trace.name = "\(name)-\(phase)-action-trace"; trace.lifetime = .keepAlways; add(trace)
+    }
+    try perform("released", frame: source) { coordinate.press(forDuration: 0.8) }
+    expectText("1QQQQe", in: app)
+    let next = app.keys["q"]
+    XCTAssertTrue(next.waitForExistence(timeout: 5), "Releasing the accent hold must restore the letter keys")
+    try perform("next", frame: next.frame) { next.tap() }
+    expectText("1QQQQeq", in: app)
+  }
   private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
     let app = XCUIApplication(); app.terminate()
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
@@ -285,6 +314,7 @@ final class KeyboardExtensionTests: XCTestCase {
     try checkNumberSlide("apple-\(language)-number-slide", in: app)
     try checkTemporaryShiftSlide("apple-\(language)-shift-slide", in: app)
     try checkCapsLock("apple-\(language)-caps-lock", in: app)
+    try checkAccentHold("apple-\(language)-accent-hold", in: app)
     app.terminate()
   }
   private func capturePagesAndDarkAppearance(_ prefix: String, in app: XCUIApplication) throws {
@@ -478,6 +508,7 @@ final class KeyboardExtensionTests: XCTestCase {
     try checkNumberSlide("clarify-number-slide", in: app)
     try checkTemporaryShiftSlide("clarify-shift-slide", in: app)
     try checkCapsLock("clarify-caps-lock", in: app)
+    try checkAccentHold("clarify-accent-hold", in: app)
   }
   // Keep the original installed acceptance first, before changing enabled languages.
   func testZ1NativeEnglishUSReference() throws {
