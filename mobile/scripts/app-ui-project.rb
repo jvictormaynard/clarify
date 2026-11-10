@@ -7,6 +7,22 @@ project_path = File.join(fixture, 'Clarify.xcodeproj')
 project = Xcodeproj::Project.open(project_path)
 app = project.targets.find { |target| target.name == 'Clarify' }
 raise 'Containing app target is missing' unless app
+require_relative 'app-idle-trace'
+delegate_path = File.join(fixture, 'Clarify/AppDelegate.swift')
+File.write(delegate_path, AppIdleTrace.delegate(File.read(delegate_path)))
+trace_path = File.join(fixture, 'ClarifyAppIdleTrace.swift')
+File.write(trace_path, AppIdleTrace.observer)
+app.source_build_phase.add_file_reference(project.main_group.new_file(trace_path))
+cloud_original = File.realpath(File.join(root, 'modules/clarify-core/ios/CloudAccount.swift'))
+cloud_path = File.join(fixture, 'CloudAccount.idle-trace.swift')
+File.write(cloud_path, AppIdleTrace.cloud(File.read(cloud_original)))
+# The harness copied this metadata directory; shared Pods remain untouched.
+pods = Xcodeproj::Project.open(File.join(fixture, 'Pods/Pods.xcodeproj'))
+references = pods.files.select { |ref| File.exist?(ref.real_path) && File.realpath(ref.real_path) == cloud_original }
+raise 'Expected one CloudAccount source reference in the copied Pods project' unless references.length == 1
+references.first.path = cloud_path
+references.first.source_tree = '<absolute>'
+pods.save
 tests = project.new_target(:ui_test_bundle, 'ClarifyAppFlowTests', :ios, '16.4')
 tests.add_dependency(app)
 tests.build_configurations.each do |configuration|

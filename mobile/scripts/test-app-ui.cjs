@@ -69,6 +69,8 @@ async function main() {
   const fingerprint = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
   const original = path.join(root, 'ios');
   const preserved = ['Clarify/Info.plist', 'Clarify.xcodeproj/project.pbxproj'].map(name => [name, fingerprint(path.join(original, name))]);
+  const traceOriginals = [path.join(original, 'Pods/Pods.xcodeproj/project.pbxproj'),
+    path.join(root, 'modules/clarify-core/ios/CloudAccount.swift')].map(file => [file, fingerprint(file)]);
   const fixture = fs.mkdtempSync(path.join(root, '.app-ui-'));
   const journalPath = path.join(output, 'requests.jsonl');
   function record(event) {
@@ -85,15 +87,42 @@ async function main() {
   const derivedData = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-app-ui-derived-'));
   let testRun, buildSeconds;
   let nativeTextInputAcceptance = false;
+  const idleTraceCaptures = [];
+  function captureIdleTrace(profile) {
+    const predicate = 'process == "Clarify" AND (eventMessage BEGINSWITH "ClarifyAppIdleTrace" OR eventMessage BEGINSWITH "ClarifyAppIdleError")';
+    const captured = spawnSync('xcrun', ['simctl', 'spawn', simulator, 'log', 'show', '--style', 'compact', '--info', '--debug', '--last', '35m', '--predicate', predicate],
+      { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+    const log = captured.stdout ?? '';
+    fs.writeFileSync(path.join(output, `idle-trace-${profile}.log`), log);
+    const exhausted = /stage=trace-limit\b/.test(log);
+    const valid = captured.status === 0 && !captured.error && !exhausted && /stage=start\b/.test(log)
+      && /stage=keyboard\b/.test(log) && /stage=snapshot reason=post-hide\b/.test(log);
+    const result = { profile, status: captured.status, signal: captured.signal, error: captured.error?.message ?? null,
+      stderr: captured.stderr ?? '', bytes: Buffer.byteLength(log), exhausted, captured: valid };
+    idleTraceCaptures.push(result);
+    fs.writeFileSync(path.join(output, 'idle-trace-capture.json'), JSON.stringify(idleTraceCaptures, null, 2));
+  }
   let exitCode = 1;
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const endpoint = `http://127.0.0.1:${server.address().port}`;
     record({ event: 'listening', endpoint });
     fs.cpSync(original, fixture, { recursive: true, filter: file => !['Pods', 'build'].includes(path.relative(original, file).split(path.sep)[0]) });
-    fs.symlinkSync(path.join(original, 'Pods'), path.join(fixture, 'Pods'), 'dir');
+    // Copy only project metadata. Every other Pods child remains a shared symlink.
+    const copiedPods = path.join(fixture, 'Pods');
+    fs.mkdirSync(copiedPods);
+    for (const name of fs.readdirSync(path.join(original, 'Pods'))) {
+      const source = path.join(original, 'Pods', name), target = path.join(copiedPods, name);
+      if (name === 'Pods.xcodeproj') fs.cpSync(source, target, { recursive: true });
+      else fs.symlinkSync(source, target);
+    }
     run('python3', ['-c', 'import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,"rb")); d["ClarifyCloudURL"]=sys.argv[2]; d["NSAppTransportSecurity"]={"NSAllowsArbitraryLoads":True}; plistlib.dump(d,open(p,"wb"))', path.join(fixture, 'Clarify/Info.plist'), endpoint]);
     run('ruby', [path.join(root, 'scripts/app-ui-project.rb'), root, fixture, endpoint]);
+    const traceSources = path.join(output, 'idle-trace-sources');
+    fs.mkdirSync(traceSources);
+    for (const name of ['ClarifyAppIdleTrace.swift', 'CloudAccount.idle-trace.swift', 'Clarify/AppDelegate.swift']) {
+      fs.copyFileSync(path.join(fixture, name), path.join(traceSources, path.basename(name)));
+    }
     const testSource = path.join(fixture, 'ClarifyAppFlowTests.swift');
     fs.writeFileSync(testSource, fs.readFileSync(testSource, 'utf8').replaceAll('__CLARIFY_APP_UI_ENDPOINT__', endpoint));
     const runtimes = JSON.parse(run('xcrun', ['simctl', 'list', 'runtimes', '--json'], { encoding: 'utf8', stdio: 'pipe' })).runtimes;
@@ -134,7 +163,9 @@ async function main() {
       }
       if (fingerprint(testRun.path) !== testRun.sha256) throw new Error('App UI test manifest changed between profiles.');
       const started = Date.now();
-      await runXcode(['test-without-building', '-xctestrun', testRun.path, '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-resultBundlePath', result, `-only-testing:ClarifyAppFlowTests/AppFlowUITests/${scenario.method}`], scenario.method);
+      try {
+        await runXcode(['test-without-building', '-xctestrun', testRun.path, '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-resultBundlePath', result, `-only-testing:ClarifyAppFlowTests/AppFlowUITests/${scenario.method}`], scenario.method);
+      } finally { captureIdleTrace(scenario.profile); }
       scenarios.at(-1).testSeconds = (Date.now() - started) / 1000;
       run('xcrun', ['simctl', 'shutdown', simulator]);
       run('xcrun', ['simctl', 'delete', simulator]);
@@ -143,11 +174,13 @@ async function main() {
     if (unexpected.length) throw new Error(`Unexpected fixture endpoints: ${JSON.stringify(unexpected)}`);
     if (!requests.some(item => item.route === '/_allauth/app/v1/auth/code/confirm') || !requests.some(item => item.method === 'DELETE')) throw new Error('Account flow did not traverse the real native HTTP client.');
     if (requests.some(item => ['/v1/text', '/v1/text-actions/execute'].includes(item.route) && ['cancel', 'off', 'a\nb\nc'].includes(item.value.text))) throw new Error('Cancelled or deactivated discovery sent a late processing POST.');
-    exitCode = 0;
+    exitCode = idleTraceCaptures.length === profiles.length && idleTraceCaptures.every(item => item.captured) ? 0 : 1;
   } catch (error) { console.error(error.message); } finally {
     for (const result of results) if (fs.existsSync(result.path)) spawnSync('xcrun', ['xcresulttool', 'export', 'attachments', '--path', result.path, '--output-path', path.join(output, 'captures', result.name)], { stdio: 'inherit' });
     for (const [name, hash] of preserved) if (fingerprint(path.join(original, name)) !== hash) { console.error('Production generated project changed during app UI testing.'); exitCode = 1; }
-    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, profiles, nativeTextInputAcceptance, completeAppAcceptance: exitCode === 0 && profiles.length === 2 && nativeTextInputAcceptance, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
+    const traceOriginalsUnchanged = traceOriginals.every(([file, hash]) => fingerprint(file) === hash);
+    if (!traceOriginalsUnchanged) { console.error('Shared Pods or CloudAccount source changed during idle tracing.'); exitCode = 1; }
+    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, profiles, nativeTextInputAcceptance, idleDiagnostics: true, idleTraceCaptures, completeAppAcceptance: false, traceOriginalsUnchanged, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
     service.release();
     await new Promise(resolve => server.close(resolve));
     if (simulator) { spawnSync('xcrun', ['simctl', 'shutdown', simulator]); spawnSync('xcrun', ['simctl', 'delete', simulator]); }
